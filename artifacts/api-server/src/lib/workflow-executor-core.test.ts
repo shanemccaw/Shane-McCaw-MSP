@@ -165,12 +165,6 @@ vi.mock("@workspace/integrations-openai-ai-server/image", () => ({
   }),
 }));
 
-// ── Mock system-action-handlers dependencies ──────────────────────────────────
-vi.mock("../routes/admin-insights", () => ({
-  executeAutomation: async () => {},
-  nextRunFromCron:   () => new Date(),
-}));
-
 // ── Mock mailer ───────────────────────────────────────────────────────────────
 vi.mock("./mailer", () => ({
   sendEmail:    async () => {},

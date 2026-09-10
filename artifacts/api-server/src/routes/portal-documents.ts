@@ -6,7 +6,7 @@ import { requireAuth } from "../middlewares/requireAuth.ts";
 import { resolveSiblingUserIds } from "../lib/tenant-signals.ts";
 import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
 import { getMspPortalBaseUrl, buildPrintDocumentUrl } from "../lib/portal-url.ts";
-import { buildHtmlDoc, htmlToPdf, renderLiveDocumentToPdf } from "../lib/insight-pdf.ts";
+import { buildHtmlDoc, htmlToPdf, renderLiveDocumentToPdf } from "../lib/html-pdf.ts";
 import { logger } from "../lib/logger.ts";
 import path from "path";
 import fs from "fs";

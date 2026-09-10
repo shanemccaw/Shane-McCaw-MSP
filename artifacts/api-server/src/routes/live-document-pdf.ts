@@ -3,7 +3,7 @@ import { db, documentPrintTokensTable } from "@workspace/db";
 import { randomBytes } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { buildLiveDocumentPrintUrl } from "../lib/portal-url.ts";
-import { renderLiveDocumentToPdf } from "../lib/insight-pdf.ts";
+import { renderLiveDocumentToPdf } from "../lib/html-pdf.ts";
 import { resolveMspSlugForUser } from "../lib/resolve-msp-id.ts";
 import { logger } from "../lib/logger.ts";
 

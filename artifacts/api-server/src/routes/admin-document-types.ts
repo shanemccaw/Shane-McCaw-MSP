@@ -4,7 +4,8 @@
  * Audit-logged CRUD for the document_types registry — the admin-editable
  * replacement for the hardcoded REPORT_DOC_TYPE_LABELS / CONSULTING_TYPE_LABELS /
  * CONSULTING_SECTION_HINTS object literals that used to be duplicated across
- * document-generator.ts and admin-insights.ts. All routes are admin-only.
+ * document-generator.ts and the now-deleted admin-insights.ts (Git #3478).
+ * All routes are admin-only.
  *
  * Creating a document type also creates its matching ai_prompts row
  * ("insights-<category>-<key>") with a sensible default prompt body, so the
@@ -92,8 +93,9 @@ async function auditLog(
 }
 
 // ── Default prompt body builders ───────────────────────────────────────────────
-// Mirror INSIGHTS_REPORT_PROMPT_FALLBACK / INSIGHTS_CONSULTING_PROMPT_FALLBACK
-// in admin-insights.ts / document-generator.ts — same tokens, same structure —
+// Mirror INSIGHTS_REPORT_PROMPT_FALLBACK / INSIGHTS_CONSULTING_PROMPT_FALLBACK,
+// formerly in admin-insights.ts (deleted, Git #3478), and document-generator.ts —
+// same tokens, same structure —
 // so a freshly-created type's default prompt runs correctly on first use.
 
 function buildDefaultReportPrompt(): string {

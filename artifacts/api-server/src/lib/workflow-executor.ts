@@ -378,8 +378,9 @@ async function purgeGeneratedSecretsForTerminalRun(
 }
 
 // ── Insights document generation helpers ─────────────────────────────────────
-// Mirrors the same helpers in routes/admin-insights.ts so the generate_document
-// workflow node produces identical output to clicking Generate in the UI.
+// Previously mirrored the same helpers in routes/admin-insights.ts (deleted as
+// dead code in Git #3478) so the generate_document workflow node produces the
+// same output as clicking Generate in the UI used to.
 
 export const ENGINE_NODE_TYPE_MAP = {
   calculate_priority: "priority",

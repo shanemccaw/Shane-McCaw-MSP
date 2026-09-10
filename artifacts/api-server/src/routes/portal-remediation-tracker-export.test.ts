@@ -6,7 +6,7 @@
  *      the customer never touched (no row means `not_started`, same
  *      convention the GET route uses — an untouched tracker must still
  *      export a complete row set, not a partial one).
- *   2. THE PDF PIPELINE IS THE PLATFORM'S REAL ONE — `insight-pdf.ts`'s
+ *   2. THE PDF PIPELINE IS THE PLATFORM'S REAL ONE — `html-pdf.ts`'s
  *      `buildHtmlDoc`/`htmlToPdf`, the same Chromium path `dashboard-export.ts`
  *      already uses, not a second bespoke renderer.
  */
@@ -78,7 +78,7 @@ vi.mock("../lib/logger", () => {
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
 
-vi.mock("../lib/insight-pdf", () => ({
+vi.mock("../lib/html-pdf", () => ({
   buildHtmlDoc: (html: string) => `<html><body>${html}</body></html>`,
   htmlToPdf: vi.fn(async (html: string) => {
     htmlToPdfCalls.push(html);
@@ -156,7 +156,7 @@ describe("GET /portal/remediation-tracker/export.pdf", () => {
     expect(res.status).toBe(403);
   });
 
-  it("renders through the real insight-pdf.ts pipeline and streams the buffer", async () => {
+  it("renders through the real html-pdf.ts pipeline and streams the buffer", async () => {
     mockSelectResultsQueue = [[], [{ customerName: "Halden Materials" }]];
 
     const res = await request(makeApp(CUSTOMER)).get("/api/portal/remediation-tracker/export.pdf");

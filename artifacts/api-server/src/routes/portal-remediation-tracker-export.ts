@@ -38,7 +38,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
-import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf";
+import { buildHtmlDoc, htmlToPdf } from "../lib/html-pdf";
 import {
   REMEDIATION_TRACKER_CATALOGUE,
   REMEDIATION_TRACKER_STATUS_LABELS,

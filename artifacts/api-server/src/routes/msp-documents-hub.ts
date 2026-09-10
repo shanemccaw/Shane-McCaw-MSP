@@ -46,7 +46,7 @@ import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
-import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
+import { buildHtmlDoc, htmlToPdf } from "../lib/html-pdf.ts";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "tenant.portal" });

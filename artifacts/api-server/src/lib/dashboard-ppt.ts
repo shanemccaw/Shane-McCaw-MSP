@@ -8,7 +8,7 @@
  * exported helpers directly to get structured MetricResult data instead of HTML,
  * since a slide deck needs native shapes/charts, not markup.
  *
- * PDF export renders HTML through a Chromium pipeline (insight-pdf.ts); that
+ * PDF export renders HTML through a Chromium pipeline (html-pdf.ts); that
  * approach doesn't carry over to PPT, which needs real slide objects (native
  * chart XML, not a screenshot) to be useful in PowerPoint/Keynote. pptxgenjs is
  * the library used here — it was not already a dependency anywhere in this

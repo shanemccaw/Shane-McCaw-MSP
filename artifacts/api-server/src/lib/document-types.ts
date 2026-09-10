@@ -4,7 +4,7 @@
  * Shared lookup for the document_types registry table — the admin-editable
  * replacement for the hardcoded REPORT_DOC_TYPE_LABELS / CONSULTING_TYPE_LABELS /
  * CONSULTING_SECTION_HINTS object literals that used to be duplicated across
- * document-generator.ts and admin-insights.ts.
+ * document-generator.ts and the now-deleted admin-insights.ts (Git #3478).
  *
  * This is the TYPE REGISTRY only (key, label, category, section hints,
  * requiresSowHtml). The AI prompt CONTENT for each type is a separate,

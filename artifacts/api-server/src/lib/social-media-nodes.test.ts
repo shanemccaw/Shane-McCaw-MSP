@@ -116,12 +116,6 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
   },
 }));
 
-// ── Mock system-action-handlers dependencies ──────────────────────────────────
-vi.mock("../routes/admin-insights", () => ({
-  executeAutomation: async () => {},
-  nextRunFromCron:   () => new Date(),
-}));
-
 // ── Import after all mocks are registered ─────────────────────────────────────
 import { executeWorkflowRun } from "./workflow-executor";
 

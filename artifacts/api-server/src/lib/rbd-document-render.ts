@@ -8,7 +8,7 @@
  * `content` snapshot and its own `signed`/`signedBy`/`signatureData` columns
  * — never an AI generation (unlike `document-engine-sow.ts` next door), and
  * never a re-read of live child rows. Reuses the existing HTML→PDF pipeline
- * (`insight-pdf.ts`'s `buildHtmlDoc` + `htmlToPdf`, the same Chromium path
+ * (`html-pdf.ts`'s `buildHtmlDoc` + `htmlToPdf`, the same Chromium path
  * `portal-remediation-tracker-export.ts` and `dashboard-export.ts` already
  * use) rather than building a second render path, and persists through
  * `msp_report_runs` (via `rbdVersionUid`, #1512's migration) rather than a
@@ -24,7 +24,7 @@
 import { randomUUID } from "node:crypto";
 import { db, mspReportDefinitionsTable, mspReportRunsTable, type MspRbdVersion } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
-import { buildHtmlDoc, htmlToPdf } from "./insight-pdf.ts";
+import { buildHtmlDoc, htmlToPdf } from "./html-pdf.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });

@@ -6,7 +6,8 @@
  *
  * Used by:
  *   - workflow-executor.ts  (generate_document + calculate_pricing nodes)
- *   - routes/admin-insights.ts  (consolidated SOW generation route)
+ *   (previously also routes/admin-insights.ts's consolidated SOW generation
+ *   route, deleted as dead code in Git #3478)
  *
  * Keeping the implementation in one place ensures that both callers
  * produce identical data regardless of how the document was generated.

@@ -1,10 +1,16 @@
 /**
- * Chromium-based PDF generation for AI insights documents.
+ * Chromium-based HTML → PDF rendering, generic across the platform.
  *
  * Uses the system Chromium binary (installed via Nix) with --print-to-pdf,
  * rendering the same HTML + CSS + Inter font as the client-side iframe.
  * This ensures complete visual parity — tables, headings, blockquotes, and
  * colours all match the in-app preview without any lossy reconstruction.
+ *
+ * Despite the historical filename this superseded (`insight-pdf.ts`), none of
+ * this is Insights-Engine-specific — it is imported by the MSP/portal
+ * remediation tracker exports, the live-document PDF route, dashboard/RBD
+ * export, and the documents hub, none of which have anything to do with
+ * Insights (Git #3478).
  */
 
 import { spawn } from "child_process";

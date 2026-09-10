@@ -106,7 +106,7 @@ vi.mock("./portal-mission-control.ts", () => ({
 
 // #363 — action layer. LIVE_RENDERED_DOC_TYPES is the only thing support-chat
 // imports from portal-documents.ts; mock the module so its heavy transitive
-// imports (insight-pdf.ts's PDF rendering) never load here. generateDocument/
+// imports (html-pdf.ts's PDF rendering) never load here. generateDocument/
 // generateSowDocument/runDiagnostics are the real regenerate/rescan functions
 // support-chat's action handlers call — their own modules pull in
 // workflow-executor.ts (and beyond), so they're mocked the same way.

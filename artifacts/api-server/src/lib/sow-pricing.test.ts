@@ -122,7 +122,8 @@ describe("stripMarkdownFence() — CRLF line endings", () => {
 // Integration-path tests — extractAiHtml()
 //
 // extractAiHtml() is the single function called by every document-generation
-// route in admin-insights.ts and document-generator.ts before the DB insert.
+// route in document-generator.ts (and formerly admin-insights.ts, deleted as
+// dead code in Git #3478) before the DB insert.
 // If stripMarkdownFence() is removed from inside extractAiHtml(), these tests
 // will fail — exactly what the task requires.
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@
  * matching the precedent set by the existing document-sharing feature (its
  * public view also serves htmlContent captured at generation time, not a live
  * re-render):
- *   - PDF: rendered on-demand through the existing insight-pdf.ts Chromium
+ *   - PDF: rendered on-demand through the existing html-pdf.ts Chromium
  *     pipeline (buildHtmlDoc + htmlToPdf), same as /portal/insights-documents/:id/pdf.
  *   - PPT: rendered on-demand via dashboard-ppt.ts (pptxgenjs), an independent
  *     consumer of the same resolveCallerScope/findDefaultTemplate/resolveTemplate/
@@ -24,7 +24,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, insightsGeneratedDocumentsTable, quickWinResultSharesTable } from "@workspace/db";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { requireCapability } from "../middlewares/requireAuth.ts";
-import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
+import { buildHtmlDoc, htmlToPdf } from "../lib/html-pdf.ts";
 import { renderDashboardSnapshotHtml, DashboardSnapshotError } from "../lib/dashboard-snapshot.ts";
 import { renderDashboardPpt } from "../lib/dashboard-ppt.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";

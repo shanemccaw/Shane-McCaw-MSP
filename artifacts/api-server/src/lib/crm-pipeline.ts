@@ -235,7 +235,8 @@ export async function markAssessmentLeadPurchased(
  *   2. Move the staged lead to "qualified" status if it was earlier in the funnel
  *   3. Find or create an Opportunity linked to that staged lead
  *
- * Called from document-generator.ts (auto-fire path) and admin-insights.ts (send endpoint).
+ * Called from document-generator.ts (auto-fire path); previously also from
+ * admin-insights.ts's own send endpoint, deleted as dead code in Git #3478.
  *
  * The opportunity row is scoring EVIDENCE, not the deal itself (Zoho owns the
  * deal — see opportunitiesTable's #83 note). It is written against

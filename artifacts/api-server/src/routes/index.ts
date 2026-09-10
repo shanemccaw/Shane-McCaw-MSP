@@ -102,7 +102,7 @@ import notificationPreferencesRouter from "./notification-preferences";
 import portalAlertPreferencesRouter from "./portal-alert-preferences";
 import pushRouter from "./push";
 import adminCallbackTokensRouter from "./admin-callback-tokens";
-import adminInsightsRouter from "./admin-insights";
+import adminDocumentDownloadsRouter from "./admin-document-downloads";
 import portalQuickWinScoringRouter from "./portal-quick-win-scoring";
 import adminWorkflowsRouter from "./admin-workflows";
 import adminGeneratedImagesRouter from "./admin-generated-images";
@@ -427,15 +427,10 @@ router.use(notificationPreferencesRouter);
 router.use(portalAlertPreferencesRouter);
 router.use(pushRouter);
 router.use(adminCallbackTokensRouter);
-// ⚠️ admin-insights.ts carries a "DEAD — do not use" banner, but it is STILL
-// MOUNTED ON PURPOSE and must stay mounted for now. Its three document-creating
-// routes are gated off (410) inside the file; its GET routes are not dead:
-// /admin/insights/documents/:id/download is the URL stored in every generated
-// document's `pdf_url` (stamped by the CURRENT engine path in
-// workflow-executor.ts), and /admin/insights/documents + /admin/insights/projects
-// back live pickers in ScriptGeneratorPage / WorkflowBuilderPage / WorkflowListPage.
-// Unmounting this router breaks all of those. Rehome those three GETs first.
-router.use(adminInsightsRouter);
+// Rehomed from admin-insights.ts (Git #3478) — admin-insights.ts and
+// insight-pdf.ts were deleted outright once these three still-live GET routes
+// (and the generic HTML→PDF helpers other features depend on) were moved out.
+router.use(adminDocumentDownloadsRouter);
 router.use(portalQuickWinScoringRouter);
 router.use(adminWorkflowsRouter);
 router.use(adminGeneratedImagesRouter);
