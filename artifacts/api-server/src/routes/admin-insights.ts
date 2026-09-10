@@ -125,7 +125,7 @@ const router = Router();
 function retiredWriteRoute(req: Request, res: Response): boolean {
   log.warn({ path: req.originalUrl }, "admin-insights: blocked call to a retired legacy generation route");
   res.status(410).json({
-    error: "This legacy Insights generation route has been retired. Use the Document Generator (/command/doc-generator) instead.",
+    error: "This legacy Insights generation route has been retired. Use Simulator Studio's Documents node (/system/simulator) instead.",
   });
   return true;
 }
@@ -150,7 +150,7 @@ function retiredWriteRoute(req: Request, res: Response): boolean {
  */
 function retiredWriteRouteHasNoTenant(): number {
   throw new Error(
-    "admin-insights: retired legacy generation path reached — it has no tenant scope, so insights_generated_documents.msp_customer_id cannot be satisfied. Use the Document Generator (/command/doc-generator).",
+    "admin-insights: retired legacy generation path reached — it has no tenant scope, so insights_generated_documents.msp_customer_id cannot be satisfied. Use Simulator Studio's Documents node (/system/simulator).",
   );
 }
 

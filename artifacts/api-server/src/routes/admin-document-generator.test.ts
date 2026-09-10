@@ -1,13 +1,10 @@
 /**
  * admin-document-generator.test.ts
  *
- * Regression tests for GET /admin/document-generator/missing-types
- * (Document Generator IDE Phase 4) — services flagged for
- * delivery_type = 'document_generation' with no matching document_types row —
- * and for GET /admin/document-generator/history's cost column (#53, parent
- * #48): the route joins ai_usage_events via generatedArtifactId/Type and must
- * pass a null costCents (no matching usage event) through as null, never a
- * fabricated 0.
+ * Regression tests for GET /admin/document-generator/history's cost column
+ * (#53, parent #48): the route joins ai_usage_events via
+ * generatedArtifactId/Type and must pass a null costCents (no matching usage
+ * event) through as null, never a fabricated 0.
  *
  * Run with: pnpm --filter @workspace/api-server run test
  */
@@ -23,10 +20,9 @@ const ADMIN_PASS = "test-admin-pass";
 
 let selectResult: unknown[] = [];
 
-// Chain depth varies by route (missing-types: 1 leftJoin + where + orderBy;
-// history: 4 leftJoins + where + orderBy + limit) — a single self-returning,
-// thenable chain object supports every route's query shape without a mock
-// change per route.
+// Chain depth varies by route (history: 4 leftJoins + where + orderBy + limit;
+// others are shallower) — a single self-returning, thenable chain object
+// supports every route's query shape without a mock change per route.
 function makeQueryChain(): unknown {
   const chain: Record<string, unknown> = {
     from: () => chain,
@@ -93,41 +89,6 @@ beforeEach(async () => {
 });
 
 const auth = (r: request.Test) => r.set("Authorization", `Bearer ${ADMIN_PASS}`);
-
-describe("GET /admin/document-generator/missing-types", () => {
-  it("requires authentication", async () => {
-    const res = await request(app).get("/api/admin/document-generator/missing-types");
-    expect(res.status).toBe(401);
-  });
-
-  it("returns services with no matching document_types row", async () => {
-    selectResult = [
-      { id: 12, name: "Email Security Audit", description: "Automated email security report", slug: "email-security-audit" },
-      { id: 19, name: "License Waste Report", description: null, slug: null },
-    ];
-
-    const res = await auth(request(app).get("/api/admin/document-generator/missing-types"));
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual(selectResult);
-  });
-
-  it("returns an empty list when every document-generation service is covered", async () => {
-    selectResult = [];
-    const res = await auth(request(app).get("/api/admin/document-generator/missing-types"));
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual([]);
-  });
-
-  it("returns 500 on a query failure", async () => {
-    const { db } = await import("@workspace/db");
-    (db.select as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
-      throw new Error("db down");
-    });
-
-    const res = await auth(request(app).get("/api/admin/document-generator/missing-types"));
-    expect(res.status).toBe(500);
-  });
-});
 
 describe("GET /admin/document-generator/history", () => {
   it("requires authentication", async () => {

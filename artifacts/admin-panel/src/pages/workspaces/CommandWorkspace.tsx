@@ -5,7 +5,6 @@ import AnalyticsPage from "@/pages/Analytics";
 import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
 import RunningScriptsPage from "@/pages/RunningScriptsPage";
 import PromptCenterPage from "@/pages/PromptCenter";
-import DocumentGeneratorPage from "@/pages/DocumentGeneratorIde";
 import PresentationsPage from "@/pages/workspaces/command/PresentationsPage";
 
 const MarketingCommandCenterPage = lazy(() => import("@/pages/MarketingCommandCenter"));
@@ -26,7 +25,6 @@ function getContent(section: string): ReactNode {
         <MarketingCommandCenterPage />
       </Suspense>
     );
-    case "doc-generator":    return <DocumentGeneratorPage />;
     case "presentations":    return <PresentationsPage />;
     default:                 return <OverviewPage />;
   }

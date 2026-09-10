@@ -256,7 +256,15 @@ router.post("/admin/document-types", requireAdmin, async (req: Request, res: Res
           description: `Generates the "${label}" ${category} deliverable in HTML. Created automatically for the document_types registry entry "${key}".`,
           category: "insights",
           featureArea: "Command — Insights",
-          featureRoute: "/command/doc-generator",
+          // The standalone Document Generator IDE this used to point at was
+          // removed (Git #3416), and the Insights workspace's Document Types
+          // tab it would otherwise point to was ALSO removed as unreachable
+          // dead code by the concurrent Git #3417 — that page is gone too.
+          // Simulator Studio's Documents node is the one surface left where
+          // this prompt is actually exercised (generation + property edits);
+          // see the real gap this leaves (no UI left to CREATE a document
+          // type) filed as a sibling finding under #1095.
+          featureRoute: "/system/simulator",
           model: "claude-haiku-4-5",
           promptBody: defaultBody,
           defaultBody,

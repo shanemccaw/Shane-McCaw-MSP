@@ -190,7 +190,7 @@ export interface AssessmentNode {
 }
 
 // Real `document_types` rows from GET /api/admin/document-types — the same
-// registry DocumentGeneratorIde.tsx / DocumentTypesManager.tsx already read.
+// registry DocumentTypesManager.tsx already reads.
 // Grouped by the real `category` column ("report"/"consulting"), mirroring
 // how Section 11 groups Assessments Free/Paid on `is_free_offering`.
 export interface DocumentTypeNode {
@@ -519,7 +519,7 @@ export function SimulatorLeftTree() {
   );
 
   // Group document types by the real `category` column ("report"/"consulting") —
-  // the same split DocumentGeneratorIde.tsx/DocumentTypesManager.tsx already show.
+  // the same split DocumentTypesManager.tsx already shows.
   const documentsByCategory = filteredDocumentTypes.reduce(
     (acc, d) => {
       if (!acc[d.category]) acc[d.category] = [];

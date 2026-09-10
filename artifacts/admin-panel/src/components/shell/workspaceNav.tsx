@@ -248,7 +248,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         items: [
           { id: "cmd-overview", label: "Overview", path: "/command/overview", icon: LayoutDashboard },
           { id: "cmd-analytics", label: "Analytics", path: "/command/analytics", icon: BarChart3 },
-          { id: "cmd-doc-generator", label: "Document Generator", path: "/command/doc-generator", icon: FileText },
         ],
       },
       {

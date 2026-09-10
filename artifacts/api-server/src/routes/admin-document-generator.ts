@@ -1,18 +1,22 @@
 /**
  * admin-document-generator.ts
  *
- * Document Generator IDE — real, on-demand document generation for any
- * active document_types row, routed to generateDocument()/generateSowDocument()
- * by pipelineCategory, plus the tenant/project pickers and generation history
- * the admin page needs. Dry-run preview stays on the existing
- * GET /api/admin/document-types/:key/preview route (admin-document-types.ts);
- * this file only adds the real (persisting) trigger and read paths.
+ * Real, on-demand document generation for any active document_types row,
+ * routed to generateDocument()/generateSowDocument() by pipelineCategory,
+ * plus the tenant/project pickers and generation history real callers need.
+ * The standalone Document Generator IDE page (Git #3416) that originally
+ * introduced these routes has been removed; the routes stay because real
+ * callers remain — SimulatorDocumentCanvas.tsx (Simulator Studio's Documents
+ * node), DocumentScopingEditor.tsx / DocumentTypesManager.tsx (document type
+ * authoring), and the adminv2 Documents screen (generation history/archive).
+ * Dry-run preview stays on the existing GET /api/admin/document-types/:key/preview
+ * route (admin-document-types.ts); this file only adds the real (persisting)
+ * trigger and read paths.
  *
  * Routes
  * ──────
  * GET  /api/admin/document-generator/tenants                       — tenant picker (msp_customers)
  * GET  /api/admin/document-generator/tenants/:mspCustomerId/projects — project picker for a tenant
- * GET  /api/admin/document-generator/missing-types           — document_generation services with no document_types row
  * POST /api/admin/document-generator/document-types/:key/generate — real generation
  * GET  /api/admin/document-generator/history                — recent generations
  * GET  /api/admin/document-generator/history/:id/html        — view/download stored HTML
@@ -23,7 +27,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, documentTypesTable, insightsGeneratedDocumentsTable, monitorChecksTable, tenantsTable, projectsTable, servicesTable, usersTable, aiUsageEventsTable, SIGNAL_CATEGORY_PREFIXES } from "@workspace/db";
-import { eq, desc, and, isNull, inArray, asc, sql } from "drizzle-orm";
+import { eq, desc, and, inArray, asc, sql } from "drizzle-orm";
 import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { generateDocument } from "../lib/document-engine.ts";
@@ -32,7 +36,6 @@ import { namespacedProfileKey, resolveCustomerUserIds, BRIDGED_KEY_PRODUCER_CHEC
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
-const missingTypesLog = logger.child({ channel: "engine.document-generator" });
 const scopingLog = logger.child({ channel: "engine.document-generator" });
 const router: IRouter = Router();
 
@@ -83,33 +86,6 @@ router.get("/admin/document-generator/tenants/:mspCustomerId/projects", requireA
   } catch (err) {
     log.error({ err, mspCustomerId }, "admin-document-generator: list tenant projects failed");
     res.status(500).json({ error: "Failed to fetch projects" });
-  }
-});
-
-// ── Missing document types ───────────────────────────────────────────────────
-// Services flagged for document-generation delivery with no matching
-// document_types row yet — surfaces registry gaps before they're hit at
-// generation time. `slug` is included alongside the id/name/description the
-// panel displays so the frontend's Quick Add can derive a key without a
-// second round trip.
-
-router.get("/admin/document-generator/missing-types", requireAdmin, async (_req: Request, res: Response) => {
-  try {
-    const rows = await db
-      .select({
-        id: servicesTable.id,
-        name: servicesTable.name,
-        description: servicesTable.description,
-        slug: servicesTable.slug,
-      })
-      .from(servicesTable)
-      .leftJoin(documentTypesTable, eq(documentTypesTable.serviceId, servicesTable.id))
-      .where(and(eq(servicesTable.deliveryType, "document_generation"), isNull(documentTypesTable.id)))
-      .orderBy(servicesTable.name);
-    res.json(rows);
-  } catch (err) {
-    missingTypesLog.error({ err }, "admin-document-generator: missing-types failed");
-    res.status(500).json({ error: "Failed to fetch missing document types" });
   }
 });
 

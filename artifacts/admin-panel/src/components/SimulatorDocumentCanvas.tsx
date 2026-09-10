@@ -1,10 +1,11 @@
 // artifacts/admin-panel/src/components/SimulatorDocumentCanvas.tsx
 //
 // Center view for the Simulator Studio's "Documents" node (Phase 7). Tenant/
-// project picker mirrors DocumentGeneratorIde.tsx's tenant-native fetch
-// pattern (GET /api/admin/document-generator/tenants,
-// GET /api/admin/document-generator/tenants/:mspCustomerId/projects), landed
-// alongside it in Phase 9. Dry-Run/Real AI toggle defaults to Dry-Run so a
+// project picker uses the same tenant-native fetch pattern
+// (GET /api/admin/document-generator/tenants,
+// GET /api/admin/document-generator/tenants/:mspCustomerId/projects) as the
+// now-removed Document Generator IDE (Git #3416) that originally introduced
+// those routes in Phase 9. Dry-Run/Real AI toggle defaults to Dry-Run so a
 // stray click can't spend real AI tokens by accident:
 //   - Dry-Run → GET /api/admin/document-types/:key/preview, rendered through
 //     the shared DocumentTypePreviewContent (same component the modal dialog
