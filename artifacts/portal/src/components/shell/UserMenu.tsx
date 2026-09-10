@@ -64,9 +64,9 @@ function Divider() {
  * section).
  *
  * Scope per #1820: identity, sign-out, and links out to the surfaces that
- * own their own controls. Billing (#2998) and Account security (#2996) are
- * real pages now, routed directly. Webhooks and Settings have no page in
- * `artifacts/portal` yet, so they still route through the honest
+ * own their own controls. Billing (#2998), Account security (#2996) and
+ * Webhooks (#3523) are real pages now, routed directly. Settings has no page
+ * in `artifacts/portal` yet, so it still routes through the honest
  * `/coming-soon?feature=` state #1819 established rather than a dead link.
  * This dropdown never duplicates password/MFA/session controls itself. Per
  * #1751, the signed-in e-mail is NOT presented as a verified M365 identity —
@@ -127,7 +127,7 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
           />
         )}
         <MenuRow
-          href={comingSoonHref("Webhooks", "account")}
+          href="/webhooks"
           icon={Webhook}
           label="Webhooks"
           testId="user-menu-webhooks"

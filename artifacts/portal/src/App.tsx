@@ -18,6 +18,7 @@ import ResetPasswordPage from "@/pages/reset-password";
 import AccountSetupPage from "@/pages/account-setup";
 import SignInHelpPage from "@/pages/sign-in-help";
 import NotificationPreferencesPage from "@/pages/notification-preferences";
+import WebhooksPage from "@/pages/webhooks";
 import SopsPage from "@/pages/sops";
 import RunbooksPage from "@/pages/runbooks";
 import RiskRegisterPage from "@/pages/risk-register";
@@ -85,6 +86,7 @@ function ProtectedRoutes() {
           <Route path="/billing" component={BillingPage} />
           <Route path="/config-state" component={ConfigStatePage} />
           <Route path="/notification-preferences" component={NotificationPreferencesPage} />
+          <Route path="/webhooks" component={WebhooksPage} />
           <Route path="/sops" component={SopsPage} />
           <Route path="/runbooks" component={RunbooksPage} />
           <Route path="/risk-register" component={RiskRegisterPage} />
