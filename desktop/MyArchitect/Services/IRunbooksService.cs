@@ -9,12 +9,16 @@ namespace MyArchitect.Services;
 /// (msp-runbooks.ts, #2669): a customer's Active Runbooks + run history,
 /// step completion on a live cycle, and hold-window extend + audit trail.
 /// #3479's own real remaining scope (Client: GET runbooks, PUT step
-/// completion, hold-window extend + audit view) is exactly this service —
-/// it has nowhere to render into yet (#3493 UI Shell hasn't landed), so this
-/// is the non-UI data layer scoped ahead of that.
+/// completion, hold-window extend + audit view) is exactly this service,
+/// now wired into #3493's real shell (Console tab galleries + record
+/// workspaces) in MainWindow.
 /// </summary>
 public interface IRunbooksService
 {
+    /// <summary>Bearer token attached to every request — set from <see cref="MyArchitect.MainWindow"/>'s
+    /// single auth-fanout point (<c>ApplyAuthState</c>) alongside every other MSP-console service.</summary>
+    string? AuthToken { get; set; }
+
     /// <summary>
     /// Fetches a customer's runbooks + run history (GET /api/msp/runbooks).
     /// Served from cache when a fresh-enough entry exists unless

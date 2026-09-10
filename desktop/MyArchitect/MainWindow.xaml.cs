@@ -39,6 +39,7 @@ public partial class MainWindow : FluentWindow
     private readonly IRemediationTrackerService _remediationTrackerService;
     private readonly ILaunchControlActionsService _launchControlActionsService;
     private readonly IAdminRetainerService _adminRetainerService;
+    private readonly IRunbooksService _runbooksService;
     private readonly IVaultService _vaultService;
     private readonly IBreakGlassService _breakGlassService;
     private readonly IAuthService _authService;
@@ -72,6 +73,7 @@ public partial class MainWindow : FluentWindow
         _remediationTrackerService = new RemediationTrackerService();
         _launchControlActionsService = new LaunchControlActionsService();
         _adminRetainerService = new AdminRetainerService();
+        _runbooksService = new RunbooksService();
         _vaultService = new VaultService();
         _breakGlassService = new BreakGlassService();
         _authService = new AuthService();
@@ -300,6 +302,41 @@ public partial class MainWindow : FluentWindow
                         Title = "Script Library",
                         Searchable = true,
                         GetRows = BuildScriptLibraryRows,
+                    },
+                    OnSelect = () => { },
+                },
+            },
+        });
+
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Console, new RibbonGroupSpec
+        {
+            Label = "Runbooks",
+            Order = 30,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Browse",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Real GET /api/msp/runbooks (#3479) — a customer's active runbooks + run history",
+                    Gallery = new GallerySpec
+                    {
+                        Title = "Runbooks",
+                        Searchable = true,
+                        GetRows = BuildRunbookRows,
+                    },
+                    OnSelect = () => { },
+                },
+                new RibbonCommandSpec
+                {
+                    Label = "Hold Windows",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Real GET /api/msp/runbooks (#3479) — the same payload's top-level hold windows",
+                    Gallery = new GallerySpec
+                    {
+                        Title = "Hold Windows",
+                        Searchable = true,
+                        GetRows = BuildHoldWindowRows,
                     },
                     OnSelect = () => { },
                 },
@@ -1238,13 +1275,14 @@ public partial class MainWindow : FluentWindow
         _shellRegistry.OpenRecord(spec);
     }
 
-    /// <summary>Real MSP+customer id resolution for every Launch Control call. As of #3501 the
-    /// <paramref name="mspId"/> now comes from the real signed-in session (users.msp_id claim).
-    /// The <paramref name="customerId"/> — the target customer being operated on — still cannot
-    /// be resolved: MyArchitect's <see cref="TenantService"/> is fixture data (fake tenant GUIDs,
-    /// no numeric tenants.id), so there is no real customer to scope to. That remaining gap is a
-    /// separate data-loading problem (filed as its own finding), not an auth one. Returns true
-    /// only when BOTH ids are real.</summary>
+    /// <summary>Real MSP+customer id resolution shared by every real MSP-console call that needs
+    /// one — Launch Control (#3460), ad-hoc retainer hours (#3464), and now Runbooks (#3479). As
+    /// of #3501 the <paramref name="mspId"/> comes from the real signed-in session (users.msp_id
+    /// claim). The <paramref name="customerId"/> — the target customer being operated on — still
+    /// cannot be resolved: MyArchitect's <see cref="TenantService"/> is fixture data (fake
+    /// tenant GUIDs, no numeric tenants.id). That remaining gap is filed and tracked at
+    /// #3502/#3505/#3540 (owned by #3457, the Feature that actually owns TenantService) — not
+    /// re-filed here. Returns true only when BOTH ids are real.</summary>
     private bool TryResolveLaunchControlScope(out int mspId, out int customerId)
     {
         mspId = _authService.MspId ?? 0;
@@ -1431,6 +1469,348 @@ public partial class MainWindow : FluentWindow
         }
     }
 
+    // ---- Runbooks (#3479) — Console tab galleries + record workspaces ----------------------
+
+    /// <summary>Real rows from GET /api/msp/runbooks (#3479), gated by the same MSP+customer
+    /// scope gap <see cref="TryResolveLaunchControlScope"/> already states honestly. Tile
+    /// carries the current cycle's completion percentage — the closest equivalent to Script
+    /// Library's destructive-vs-read-only tile UI_RULES.md §4 asks for.</summary>
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildRunbookRows()
+    {
+        if (!TryResolveLaunchControlScope(out var mspId, out var customerId))
+        {
+            var reason = !_authService.IsAuthenticated
+                ? "Sign in to load Runbooks"
+                : "Runbooks needs a real customer id — TenantService is fixture data (#3502/#3505/#3540)";
+            return new[] { new GalleryRowSpec { Id = "blocked", Name = reason, OnSelect = () => { } } };
+        }
+
+        RunbooksPayload payload;
+        try
+        {
+            payload = _runbooksService.GetRunbooksAsync(mspId, customerId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            // Real, honest failure — most likely 401/403 (auth still not wired), not a bug in
+            // this client. Surfaced as a single disabled row rather than a fake row.
+            return new[] { new GalleryRowSpec { Id = "error", Name = $"Could not load: {ex.Message}", OnSelect = () => { } } };
+        }
+
+        if (payload.Runbooks.Count == 0)
+        {
+            return new[] { new GalleryRowSpec { Id = "empty", Name = "No active runbooks for this customer", OnSelect = () => { } } };
+        }
+
+        return payload.Runbooks
+            .Select(rb => new GalleryRowSpec
+            {
+                Id = rb.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Tile = $"{(int)Math.Round(rb.Pct)}%",
+                Name = rb.Title,
+                Sub = $"{rb.StatusLabel} · {rb.CheckedSteps}/{rb.TotalSteps} steps" + (rb.Hold != null ? $" · hold: {rb.Hold.Badge}" : string.Empty),
+                OnSelect = () => OpenRunbookRecord(rb, mspId, customerId),
+            })
+            .ToList();
+    }
+
+    /// <summary>Real rows from the same GET /api/msp/runbooks payload's top-level <c>holds</c>
+    /// list (#3479) — every active hold window for the customer, not just the one gating a
+    /// runbook's current cycle. Shares <see cref="IRunbooksService"/>'s short-TTL cache, so
+    /// browsing this gallery right after Runbooks' own doesn't force a second real GET.</summary>
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildHoldWindowRows()
+    {
+        if (!TryResolveLaunchControlScope(out var mspId, out var customerId))
+        {
+            var reason = !_authService.IsAuthenticated
+                ? "Sign in to load Hold Windows"
+                : "Hold Windows needs a real customer id — TenantService is fixture data (#3502/#3505/#3540)";
+            return new[] { new GalleryRowSpec { Id = "blocked", Name = reason, OnSelect = () => { } } };
+        }
+
+        RunbooksPayload payload;
+        try
+        {
+            payload = _runbooksService.GetRunbooksAsync(mspId, customerId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return new[] { new GalleryRowSpec { Id = "error", Name = $"Could not load: {ex.Message}", OnSelect = () => { } } };
+        }
+
+        if (payload.Holds.Count == 0)
+        {
+            return new[] { new GalleryRowSpec { Id = "empty", Name = "No active hold windows for this customer", OnSelect = () => { } } };
+        }
+
+        return payload.Holds
+            .Select(hold => new GalleryRowSpec
+            {
+                Id = hold.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Tile = hold.Badge,
+                Name = hold.Title,
+                Sub = $"{hold.State} · {hold.Pillar} · {hold.TMinus}",
+                OnSelect = () => OpenHoldWindowRecord(hold, mspId, customerId),
+            })
+            .ToList();
+    }
+
+    /// <summary>Opens a runbook's full-panel record workspace (UI_RULES.md §3) — real facts, the
+    /// current cycle's steps rendered as one confirm-less <see cref="WorkspaceAction"/> each
+    /// (UI_RULES.md §3's own example: "a runbook step-complete is an actions entry"), a link into
+    /// the gating hold window when one exists, and real run history as a <see cref="WorkspaceListRow"/>
+    /// list. Same gallery → contextual tab → workspace contract #3493 proved with Change Requests
+    /// and Script Library.</summary>
+    private void OpenRunbookRecord(Runbook rb, int mspId, int customerId)
+    {
+        var actions = rb.Steps
+            .Select(step => new WorkspaceAction
+            {
+                Label = (step.Checked ? "☑ " : "☐ ") + $"{step.Position}. {step.Text}",
+                OnSelect = () => ToggleRunbookStep(rb, mspId, customerId, step),
+            })
+            .ToList();
+
+        if (rb.Hold != null)
+        {
+            var hold = rb.Hold;
+            actions.Add(new WorkspaceAction
+            {
+                Label = $"Open Hold Window — {hold.Title}",
+                OnSelect = () => OpenHoldWindowRecord(hold, mspId, customerId),
+            });
+        }
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "runbook",
+            Id = rb.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Eyebrow = "Runbook",
+            Title = rb.Title,
+            Sub = $"{rb.Pillar} · Cycle {rb.CycleNumber} · {rb.StatusLabel}",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Progress", Value = $"{rb.CheckedSteps}/{rb.TotalSteps} steps ({(int)Math.Round(rb.Pct)}%)" },
+                new WorkspaceFact { Label = "Days elapsed", Value = rb.DaysElapsed.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                new WorkspaceFact { Label = "Days left", Value = rb.DaysLeft.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                new WorkspaceFact { Label = "Recurring", Value = rb.Recurring ? "Yes" : "No" },
+                new WorkspaceFact { Label = "Hold", Value = rb.Hold != null ? $"{rb.Hold.Badge} — {rb.Hold.TMinus}" : "None" },
+            },
+            Body = ("Context", string.IsNullOrEmpty(rb.Context) ? "(none)" : rb.Context),
+            Actions = actions,
+            List = rb.RunHistory.Count == 0
+                ? null
+                : ("Run History", rb.RunHistory.Select(run => new WorkspaceListRow
+                {
+                    Id = run.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    Name = $"Cycle {run.CycleNumber}",
+                    Sub = $"{run.Status} · started {run.StartedOn}",
+                    Right = $"{run.CheckedSteps}/{run.TotalSteps}",
+                    OnSelect = () => { },
+                }).ToList()),
+        };
+
+        _shellRegistry.OpenContextual(
+            new TrailEntry("runbook", spec.Id, rb.Title, () => OpenRunbookRecord(rb, mspId, customerId)),
+            new ContextualTabSpec
+            {
+                Id = "runbook",
+                Label = "Runbook",
+                Groups =
+                {
+                    new RibbonGroupSpec
+                    {
+                        Label = "Steps",
+                        Large = { new RibbonCommandSpec
+                        {
+                            Label = "Mark step complete",
+                            Intent = RibbonIntent.Record,
+                            OnSelect = () => { },
+                        } },
+                    },
+                },
+            },
+            onSearchEverything: () => PaletteOverlay.Open());
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Wires PUT /api/msp/runbooks/:runbookId/steps/:position into the Console tab's
+    /// output pane (#3479's own "wired into embedded Console execution flow" checklist item,
+    /// #3459 dependency) — the same feedback channel <see cref="RunScriptLibraryAction"/> already
+    /// uses, since this call also runs server-side rather than through the hosted runspace.
+    /// Re-opens the record afterward against a freshly re-fetched (cache-busted by the write
+    /// itself) payload, so the checkbox glyph reflects the real, just-written state.</summary>
+    private void ToggleRunbookStep(Runbook rb, int mspId, int customerId, RunbookStep step)
+    {
+        ShowDocument(ConsolePanel);
+        var wantChecked = !step.Checked;
+        ConsolePanel.AppendExternal($"[Runbooks] {(wantChecked ? "Completing" : "Reopening")} step {step.Position} of \"{rb.Title}\"…");
+
+        try
+        {
+            var result = _runbooksService
+                .SetStepCompletionAsync(mspId, customerId, rb.Id, step.Position, wantChecked)
+                .GetAwaiter().GetResult();
+
+            ConsolePanel.AppendExternal($"[Runbooks] Step {result.Position} now {(result.Checked ? "checked" : "unchecked")}.");
+
+            var refreshed = _runbooksService.GetRunbooksAsync(mspId, customerId).GetAwaiter().GetResult();
+            var reloaded = refreshed.Runbooks.FirstOrDefault(r => r.Id == rb.Id);
+            if (reloaded != null) OpenRunbookRecord(reloaded, mspId, customerId);
+        }
+        catch (RunbooksServiceException ex)
+        {
+            // A real server-side rejection (401/403/404/409 — see msp-runbooks.ts), surfaced
+            // with its own real message, not swallowed or faked into a success.
+            ConsolePanel.AppendExternal($"[Runbooks] Step update failed: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            ConsolePanel.AppendExternal($"[Runbooks] Exception: {ex.Message}");
+        }
+    }
+
+    /// <summary>Opens a hold window's own full-panel record workspace (#3479's "hold-window
+    /// extend + audit trail view" checklist item) — real facts, a write-through Extend action
+    /// (Edits feed a dictionary a confirm-armed Action reads, same shape as
+    /// <see cref="OpenScriptLibraryRecord"/>), and the real decision audit trail from GET
+    /// /api/msp/hold-windows/:holdId/events, fetched fresh every open (never cached — a stale
+    /// audit trail would be worse than none, same reasoning UI_RULES.md §5 states for the
+    /// command palette's <c>?</c> answers).</summary>
+    private void OpenHoldWindowRecord(HoldWindow hold, int mspId, int customerId)
+    {
+        var extend = new System.Collections.Generic.Dictionary<string, string> { ["days"] = string.Empty, ["reason"] = string.Empty };
+
+        HoldWindowEventsResponse? events;
+        try
+        {
+            events = _runbooksService.GetHoldWindowEventsAsync(mspId, customerId, hold.Id).GetAwaiter().GetResult();
+        }
+        catch (Exception)
+        {
+            events = null; // falls through to a stated "could not load" row below, not a fake empty trail
+        }
+
+        var auditRows = events == null
+            ? new System.Collections.Generic.List<WorkspaceListRow> { new() { Id = "error", Name = "Could not load audit trail", OnSelect = () => { } } }
+            : events.Events.Count == 0
+                ? new System.Collections.Generic.List<WorkspaceListRow> { new() { Id = "empty", Name = "No decisions recorded yet", OnSelect = () => { } } }
+                : events.Events.Select((e, i) => new WorkspaceListRow
+                {
+                    Id = i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    Name = e.Kind + (e.DaysDelta != null ? $" ({(e.DaysDelta > 0 ? "+" : string.Empty)}{e.DaysDelta}d)" : string.Empty),
+                    Sub = string.IsNullOrEmpty(e.Reason)
+                        ? e.ChangeRequestCode
+                        : $"{e.Reason}{(string.IsNullOrEmpty(e.ChangeRequestCode) ? string.Empty : $" · {e.ChangeRequestCode}")}",
+                    Right = e.CreatedAt.ToLocalTime().ToString("g"),
+                    OnSelect = () => { },
+                }).ToList();
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "hold-window",
+            Id = hold.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Eyebrow = "Hold Window",
+            Title = hold.Title,
+            Sub = $"{hold.Pillar} · {hold.State} · {hold.TMinus}",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Badge", Value = hold.Badge },
+                new WorkspaceFact { Label = "Days left", Value = hold.DaysLeft.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                new WorkspaceFact { Label = "Hours left", Value = hold.HoursLeft.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                new WorkspaceFact { Label = "Total days", Value = hold.TotalDays.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                new WorkspaceFact { Label = "Extended days", Value = hold.ExtendedDays.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                new WorkspaceFact { Label = "Closes", Value = hold.ClosesAt },
+                new WorkspaceFact { Label = "Scan verdict", Value = string.IsNullOrEmpty(hold.ScanLabel) ? "(none)" : hold.ScanLabel },
+            },
+            Body = ("Why", string.IsNullOrEmpty(hold.Why) ? "(none)" : hold.Why),
+            Edits =
+            {
+                new WorkspaceEdit { Key = "days", Label = "Extend by (days)", Value = string.Empty, OnChange = v => extend["days"] = v },
+                new WorkspaceEdit { Key = "reason", Label = "Reason", Value = string.Empty, OnChange = v => extend["reason"] = v },
+            },
+            Actions =
+            {
+                new WorkspaceAction
+                {
+                    Label = "Extend Hold Window",
+                    Confirm = true,
+                    OnSelect = () => ExtendHoldWindow(hold, mspId, customerId, extend),
+                },
+            },
+            List = ("Audit Trail", auditRows),
+        };
+
+        _shellRegistry.OpenContextual(
+            new TrailEntry("hold-window", spec.Id, hold.Title, () => OpenHoldWindowRecord(hold, mspId, customerId)),
+            new ContextualTabSpec
+            {
+                Id = "hold-window",
+                Label = "Hold Window",
+                Groups =
+                {
+                    new RibbonGroupSpec
+                    {
+                        Label = "Actions",
+                        Large = { new RibbonCommandSpec
+                        {
+                            Label = "Extend",
+                            Intent = RibbonIntent.Record,
+                            OnSelect = () => { },
+                        } },
+                    },
+                },
+            },
+            onSearchEverything: () => PaletteOverlay.Open());
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Real POST /api/msp/hold-windows/:holdId/extend — validates a positive day count
+    /// and a non-empty reason client-side (matching msp-runbooks.ts's own extend schema),
+    /// reports the real result to the Console pane the same way <see cref="RunScriptLibraryAction"/>
+    /// does, then reopens the hold window's own record against the freshly re-fetched (cache-busted
+    /// by the write itself) payload so the extended-days fact reflects reality.</summary>
+    private void ExtendHoldWindow(HoldWindow hold, int mspId, int customerId, System.Collections.Generic.Dictionary<string, string> fields)
+    {
+        if (!int.TryParse(fields["days"], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var days) || days <= 0)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal("[Runbooks] Extend needs a positive number of days — nothing sent.");
+            return;
+        }
+
+        var reason = fields["reason"];
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal("[Runbooks] Extend needs a reason — nothing sent.");
+            return;
+        }
+
+        ShowDocument(ConsolePanel);
+        ConsolePanel.AppendExternal($"[Runbooks] Extending hold window \"{hold.Title}\" by {days} day(s)…");
+
+        try
+        {
+            var result = _runbooksService.ExtendHoldWindowAsync(mspId, customerId, hold.Id, days, reason).GetAwaiter().GetResult();
+            ConsolePanel.AppendExternal($"[Runbooks] Extended — hold window now carries {result.ExtendedDays} extended day(s) total.");
+
+            var refreshed = _runbooksService.GetRunbooksAsync(mspId, customerId).GetAwaiter().GetResult();
+            var reloadedHold = refreshed.Holds.FirstOrDefault(h => h.Id == hold.Id);
+            if (reloadedHold != null) OpenHoldWindowRecord(reloadedHold, mspId, customerId);
+        }
+        catch (RunbooksServiceException ex)
+        {
+            ConsolePanel.AppendExternal($"[Runbooks] Extend failed: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            ConsolePanel.AppendExternal($"[Runbooks] Exception: {ex.Message}");
+        }
+    }
+
     private System.Collections.Generic.IReadOnlyList<PaletteCommand> BuildPaletteCommands()
     {
         var commands = new System.Collections.Generic.List<PaletteCommand>
@@ -1563,6 +1943,7 @@ public partial class MainWindow : FluentWindow
         _adminRetainerService.AuthToken = token;
         _remediationTrackerService.AuthToken = token;
         _retainerService.AuthToken = token;
+        _runbooksService.AuthToken = token;
         TelemetryDashboardView.SetAuthToken(token);
         SowAssessmentDashboardView.SetAuthToken(token);
         EvidenceGalleryPanel.SetAuthToken(token);
