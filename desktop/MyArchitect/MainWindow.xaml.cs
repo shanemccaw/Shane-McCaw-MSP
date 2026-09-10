@@ -262,7 +262,7 @@ public partial class MainWindow : FluentWindow
                     {
                         Title = "Remediation Plan",
                         Searchable = true,
-                        GetRows = BuildRemediationPlanRows,
+                        GetRowsAsync = BuildRemediationPlanRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -2174,7 +2174,7 @@ public partial class MainWindow : FluentWindow
     /// tenant. Selecting a row opens the contextual tab + right-panel workspace with a real,
     /// confirm-armed action calling <see cref="IChangeControlService.RecordHumanActionAsync"/> —
     /// the end-to-end proof of the shell's gallery → contextual tab → workspace contract.</summary>
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildChangeRequestRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildChangeRequestRowsAsync()
     {
         var tenant = _tenantService.CurrentTenant;
         if (tenant == null) return Array.Empty<GalleryRowSpec>();
@@ -2182,7 +2182,9 @@ public partial class MainWindow : FluentWindow
         System.Collections.Generic.IReadOnlyList<ChangeRequest> requests;
         try
         {
-            requests = _changeControlService.GetChangeRequestsAsync(tenant.TenantGuid).GetAwaiter().GetResult();
+            // #3554 — awaited, not .GetAwaiter().GetResult(): this is a gallery row source, and
+            // blocking the UI thread on it froze the ribbon until the HTTP call returned.
+            requests = await _changeControlService.GetChangeRequestsAsync(tenant.TenantGuid).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -2427,7 +2429,7 @@ public partial class MainWindow : FluentWindow
     // ---- POA&Ms (#3481) --------------------------------------------------------------------
 
     /// <summary>Real rows from GET /api/msp/poams, filtered client-side to the active tenant —
-    /// same approach <see cref="BuildChangeRequestRows"/> already takes against
+    /// same approach <see cref="BuildChangeRequestRowsAsync"/> already takes against
     /// GET /api/msp/change-requests (msp-poams.ts's list route has no per-tenant filter either).
     /// Selecting a row opens the full-panel workspace with real milestone CRUD + a confirm-armed
     /// cancel action — the same gallery → contextual tab → workspace contract #3493 proved.</summary>
@@ -3467,11 +3469,11 @@ public partial class MainWindow : FluentWindow
     /// tracker steps and catalog-backed change requests) in one gallery, real instruction/action
     /// text per item (the issue's own words), instead of the two separate galleries the shell's
     /// own #3493 proof-of-concept session first added for Change Requests alone.</summary>
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildRemediationPlanRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildRemediationPlanRowsAsync()
     {
         var rows = new System.Collections.Generic.List<GalleryRowSpec>();
-        rows.AddRange(BuildTrackerStepRows());
-        rows.AddRange(BuildChangeRequestRows());
+        rows.AddRange(await BuildTrackerStepRowsAsync().ConfigureAwait(true));
+        rows.AddRange(await BuildChangeRequestRowsAsync().ConfigureAwait(true));
         return rows;
     }
 
@@ -3490,7 +3492,7 @@ public partial class MainWindow : FluentWindow
     /// there is no real customer id to scope the call to (#3540), so this states that honestly as
     /// a single disabled row — same pattern <see cref="BuildScriptLibraryRows"/> already uses for
     /// the identical underlying gap — rather than guessing one.</summary>
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildTrackerStepRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildTrackerStepRowsAsync()
     {
         if (!TryResolveTrackerCustomerId(out var customerId))
         {
@@ -3508,7 +3510,9 @@ public partial class MainWindow : FluentWindow
         RemediationTrackerCatalogueResponse catalogue;
         try
         {
-            catalogue = _remediationTrackerService.GetCatalogueAsync(customerId).GetAwaiter().GetResult();
+            // #3554 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the catalogue call is in flight.
+            catalogue = await _remediationTrackerService.GetCatalogueAsync(customerId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -5252,23 +5256,34 @@ public partial class MainWindow : FluentWindow
 
     private async void OnCurrentTenantChanged(object? sender, Tenant? tenant)
     {
-        if (tenant == null) return;
-
-        LeftReferencePanelControl.SetTenantName(tenant.Name);
-        _trayIconManager.UpdateTenant(tenant);
-
-        var existingTab = _tabs.FirstOrDefault(t => t.Tenant != null && t.Tenant.Id.Equals(tenant.Id, StringComparison.OrdinalIgnoreCase));
-        if (existingTab != null)
+        // #3554 — event-subscribed async void: an exception escaping here is uncatchable and
+        // kills the process. This one runs on the UI thread and touches UI after every await, so
+        // it must stay UI-thread-affine (no ConfigureAwait(false)); the guard is the whole body in
+        // a try/catch that logs and keeps the app alive rather than crashing on a tenant switch.
+        try
         {
-            ActivateTab(existingTab);
-        }
-        else
-        {
-            await OpenPortalTabAsync(tenant, PortalType.M365Admin);
-        }
+            if (tenant == null) return;
 
-        await RefreshContractHoursAsync();
-        await RefreshConsentStatusAsync();
+            LeftReferencePanelControl.SetTenantName(tenant.Name);
+            _trayIconManager.UpdateTenant(tenant);
+
+            var existingTab = _tabs.FirstOrDefault(t => t.Tenant != null && t.Tenant.Id.Equals(tenant.Id, StringComparison.OrdinalIgnoreCase));
+            if (existingTab != null)
+            {
+                ActivateTab(existingTab);
+            }
+            else
+            {
+                await OpenPortalTabAsync(tenant, PortalType.M365Admin);
+            }
+
+            await RefreshContractHoursAsync();
+            await RefreshConsentStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            Infrastructure.CrashLog.Write("MainWindow.OnCurrentTenantChanged", ex);
+        }
     }
 
     // ---- Contract-hours utilization (#3474) — real GET /api/admin/retainer/:customerId -------

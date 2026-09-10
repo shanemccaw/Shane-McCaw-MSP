@@ -44,22 +44,34 @@ public sealed class TenantModuleConnectionService : ITenantModuleConnectionServi
 
     private async void OnTenantChanged(object? sender, Tenant? tenant)
     {
-        // async void is intentional here — this is a top-level event handler reacting to a
-        // tenant switch; there is no caller awaiting it. Exceptions are caught inside
-        // ConnectAsync and surfaced on ConnectionCompleted rather than escaping to the event.
-        if (tenant == null || string.IsNullOrWhiteSpace(tenant.TenantGuid)) return;
+        // async void is unavoidable here — this is a top-level event handler on
+        // ITenantService.CurrentTenantChanged with no caller to await it. Because an exception
+        // escaping an async void handler is uncatchable and kills the whole process (#3554), the
+        // ENTIRE body is guarded: not just the ConnectAsync await, but the ConnectionCompleted
+        // invoke inside the catch, which can itself throw if a subscriber throws. Nothing here is
+        // allowed to escape — the tenant switch that fires this must never be able to crash the app.
         try
         {
-            await ConnectAsync(tenant).ConfigureAwait(false);
+            if (tenant == null || string.IsNullOrWhiteSpace(tenant.TenantGuid)) return;
+            try
+            {
+                await ConnectAsync(tenant).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                ConnectionCompleted?.Invoke(new TenantModuleConnectionResult
+                {
+                    Tenant = tenant,
+                    GraphConnected = false,
+                    GraphDetail = $"Auto-connect failed: {ex.Message}",
+                });
+            }
         }
         catch (Exception ex)
         {
-            ConnectionCompleted?.Invoke(new TenantModuleConnectionResult
-            {
-                Tenant = tenant,
-                GraphConnected = false,
-                GraphDetail = $"Auto-connect failed: {ex.Message}",
-            });
+            // Last line of defence — a throwing ConnectionCompleted subscriber (or any other
+            // unexpected failure) is logged instead of taking the process down uncatchably.
+            Infrastructure.CrashLog.Write("TenantModuleConnectionService.OnTenantChanged", ex);
         }
     }
 

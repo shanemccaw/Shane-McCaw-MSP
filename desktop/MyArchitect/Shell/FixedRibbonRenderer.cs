@@ -120,10 +120,9 @@ public sealed class FixedRibbonRenderer
             ToolTip = gallery.Title,
         };
 
-        void Populate()
+        void RenderRows(IReadOnlyList<GalleryRowSpec> rows)
         {
             dropDown.Items.Clear();
-            var rows = gallery.GetRows(); // real data rows, not labels (UI_RULES.md §4)
             if (rows.Count == 0)
             {
                 dropDown.Items.Add(new System.Windows.Controls.MenuItem
@@ -157,6 +156,47 @@ public sealed class FixedRibbonRenderer
                 menuItem.Click += (_, _) => onSelect();
                 dropDown.Items.Add(menuItem);
             }
+        }
+
+        // #3554 — async row source (a network-backed gallery) loads without a synchronous
+        // .GetAwaiter().GetResult() freezing the UI thread. Show a transient "Loading…" row, then
+        // swap in real rows. async void is deliberate and safe here: this is a UI event handler and
+        // the whole body is guarded — anything it could throw is caught and rendered as an error
+        // row, never escaping to become an unhandled async void crash (the class of bug #3554 exists
+        // to close). It also composes with App.xaml.cs's global handler as a second line of defence.
+        async void PopulateAsync()
+        {
+            dropDown.Items.Clear();
+            dropDown.Items.Add(new System.Windows.Controls.MenuItem { Header = "Loading…", IsEnabled = false });
+            IReadOnlyList<GalleryRowSpec> rows;
+            try
+            {
+                rows = await gallery.GetRowsAsync!().ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                dropDown.Items.Clear();
+                dropDown.Items.Add(new System.Windows.Controls.MenuItem
+                {
+                    Header = $"Could not load: {ex.Message}",
+                    IsEnabled = false,
+                });
+                return;
+            }
+            RenderRows(rows);
+        }
+
+        void Populate()
+        {
+            if (gallery.GetRowsAsync != null)
+            {
+                PopulateAsync();
+                return;
+            }
+
+            // real data rows, not labels (UI_RULES.md §4)
+            var rows = gallery.GetRows?.Invoke() ?? (IReadOnlyList<GalleryRowSpec>)Array.Empty<GalleryRowSpec>();
+            RenderRows(rows);
         }
 
         dropDown.DropDownOpened += (_, _) => Populate();

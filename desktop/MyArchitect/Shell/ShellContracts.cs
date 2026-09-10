@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Brush = System.Windows.Media.Brush;
 
 namespace MyArchitect.Shell;
@@ -91,7 +92,16 @@ public sealed class GallerySpec
 {
     public required string Title { get; init; }
     public bool Searchable { get; init; }
-    public required Func<IReadOnlyList<GalleryRowSpec>> GetRows { get; init; }
+
+    /// <summary>Synchronous row source. Simple, non-networked galleries use this. Exactly one of
+    /// <see cref="GetRows"/> or <see cref="GetRowsAsync"/> is set.</summary>
+    public Func<IReadOnlyList<GalleryRowSpec>>? GetRows { get; init; }
+
+    /// <summary>#3554 — async row source. A gallery backed by a network call sets this instead of
+    /// <see cref="GetRows"/> so its rows load without a synchronous <c>.GetAwaiter().GetResult()</c>
+    /// blocking (freezing) the UI thread. The renderer shows a transient "Loading…" row while it
+    /// awaits, then swaps in the real rows.</summary>
+    public Func<Task<IReadOnlyList<GalleryRowSpec>>>? GetRowsAsync { get; init; }
 }
 
 /// <summary>One entry in the navigation trail (most-recent-first, deduped on Kind:Id, capped at 6)
