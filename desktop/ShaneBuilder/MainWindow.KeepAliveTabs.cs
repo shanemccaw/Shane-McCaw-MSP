@@ -53,12 +53,7 @@ public partial class MainWindow
     /// entry point (Web Shelf #2158, or a dedicated Azure/M365 Admin or product-site action) gets
     /// correct keep-alive classification and per-tab WebView2 instancing for free, instead of
     /// re-deriving it.</summary>
-    /// <summary>Git #2392 added <c>Favorite</c> — a saved quick-access link (Feature #2388),
-    /// opened via <see cref="OpenFavoriteTab"/> rather than <see cref="OpenKeepAliveBrowserTab"/>
-    /// since it needs its own WorkspaceId (Web/Dev/Stage/Production, via
-    /// FavoritesService.ClassifyWorkspace) instead of the other four categories' fixed
-    /// classification.</summary>
-    internal enum BrowserTabCategory { ClaudeAi, GeminiAiStudio, ProductWebsite, AzureM365Admin, Favorite }
+    internal enum BrowserTabCategory { ClaudeAi, GeminiAiStudio, ProductWebsite, AzureM365Admin }
 
     /// <summary>One keep-alive tab's own live WebView2, parked in <c>KeepAliveHostCanvas</c> when its
     /// tab isn't active and mounted into its real dock (<c>ChatWebViewHost</c> for a chat,
@@ -145,49 +140,6 @@ public partial class MainWindow
         SelectTab(tab.Id);
         Services.ConsoleOutputSink.Log(Services.LogLevel.Info, $"[chat.keepalive] opened {category} tab {tab.Id} -> {url}");
         return tab;
-    }
-
-    /// <summary>Git #2392 (Feature #2388 item 4/7, "a link matching a Dev URL groups into Dev") —
-    /// open a saved favorite as its own keep-alive tab, in the real workspace
-    /// <see cref="Services.FavoritesService.ClassifyWorkspace"/> assigns it (Web/Dev/Stage/
-    /// Production) rather than the fixed per-category default <see cref="OpenKeepAliveBrowserTab"/>
-    /// uses for the other four browser categories.</summary>
-    private TabDef OpenFavoriteTab(Services.FavoriteLink favorite)
-    {
-        string workspaceId = Services.FavoritesService.ClassifyWorkspace(favorite.Url);
-        var wsDef = Array.Find(AllWorkspaces, w => w.Id == workspaceId);
-        Brush? dot = wsDef != null ? (Brush)FindResource(wsDef.BrushKey) : null;
-
-        var tab = new TabDef(
-            "favorite-" + Guid.NewGuid().ToString("N"),
-            favorite.Title,
-            kind: TabKind.Favorite,
-            workspaceId: workspaceId,
-            dot: dot,
-            keepAliveClass: TabKeepAliveClass.KeepAlive,
-            browserCategory: BrowserTabCategory.Favorite);
-        _tabs.Add(tab);
-        _keepAliveInitialUrl[tab.Id] = favorite.Url;
-        SelectTab(tab.Id);
-        Services.ConsoleOutputSink.Log(Services.LogLevel.Info,
-            $"[favorites] opened '{favorite.Title}' ({favorite.Url}) -> workspace '{workspaceId}'");
-        return tab;
-    }
-
-    /// <summary>Git #2392 — the real "Add Favorite" entry point (Command Palette tile, see
-    /// RenderCommandPaletteResults). Prompts for a title and URL, persists the link via
-    /// FavoritesService, then opens it immediately so the URL→workspace grouping is visibly real.
-    /// The full quick-access list/re-open UI (Feature #2388 items 1-2) is separate follow-up scope.</summary>
-    private void OpenAddFavoriteFlow()
-    {
-        string? title = AppDialog.Input(this, "Link title (e.g. GitHub, Dev Portal):", "Add Favorite");
-        if (string.IsNullOrWhiteSpace(title)) return;
-
-        string? url = AppDialog.Input(this, "URL:", "Add Favorite");
-        if (string.IsNullOrWhiteSpace(url)) return;
-
-        var favorite = Services.FavoritesService.Add(title.Trim(), url.Trim());
-        OpenFavoriteTab(favorite);
     }
 
     /// <summary>Ensure a keep-alive tab has its own live WebView2, created + wired + navigated to its

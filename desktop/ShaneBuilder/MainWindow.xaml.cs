@@ -1097,13 +1097,7 @@ public partial class MainWindow : Window
         new("chats", "CLAUDE CHATS", "Icon.Chat", "Brush.Workspace.Chats", true),
         new("designs", "CLAUDE DESIGNS", "Icon.LayoutGrid", "Brush.Workspace.Designs", false),
         new("git", "GIT ISSUES", "Icon.Git", "Brush.Workspace.GitIssues", false),
-        // Git #2392 (Feature #2388 items 3-6) — Favorites links group into one of these four real
-        // workspaces by URL, not a single generic "favorites" bucket (the old placeholder entry
-        // this replaces). See Services.FavoritesService.ClassifyWorkspace for the matching rules.
-        new("web", "WEB", "Icon.Star", "Brush.Workspace.Web", false),
-        new("dev", "DEV", "Icon.Star", "Brush.Workspace.Dev", false),
-        new("stage", "STAGE", "Icon.Star", "Brush.Workspace.Stage", false),
-        new("production", "PRODUCTION", "Icon.Star", "Brush.Workspace.Production", false),
+        new("favorites", "FAVORITES", "Icon.Star", "Brush.Workspace.Favorites", false),
         new("logs", "LOGS", "Icon.Activity", "Brush.Workspace.Logs", false),
         new("api", "API EXPLORERS", "Icon.Zap", "Brush.Workspace.Api", false),
         new("files", "FILES", "Icon.FileCode", "Brush.Workspace.Files", false),
@@ -1114,10 +1108,7 @@ public partial class MainWindow : Window
         [TabKind.Chat] = "chats",
         [TabKind.Design] = "designs",
         [TabKind.GitIssue] = "git",
-        // Fallback only — every real favorite tab sets its own WorkspaceId override from
-        // FavoritesService.ClassifyWorkspace (Git #2392), so this default is only hit if that
-        // classification is ever bypassed.
-        [TabKind.Favorite] = "web",
+        [TabKind.Favorite] = "favorites",
         [TabKind.Log] = "logs",
         [TabKind.Api] = "api",
         [TabKind.File] = "files",
@@ -4563,9 +4554,6 @@ public partial class MainWindow : Window
         CommandPaletteTiles.Children.Clear();
         CommandPaletteTiles.Children.Add(PaletteTile("", "Toggle Build\nQueue", () => BtnToggleQueue_Click(BtnToggleQueue, new RoutedEventArgs())));
         CommandPaletteTiles.Children.Add(PaletteTile("", "Open Home", () => SelectTab("home")));
-        // Git #2392 - the real "Add Favorite" entry point; opens the link immediately in its
-        // real Web/Dev/Stage/Production workspace (FavoritesService.ClassifyWorkspace).
-        CommandPaletteTiles.Children.Add(PaletteTile("", "Add Favorite\nLink", OpenAddFavoriteFlow));
     }
 
     private Border PaletteTile(string glyph, string label, Action onClick)
