@@ -42,6 +42,8 @@ public partial class MainWindow : FluentWindow
         EvidenceGalleryPanel.CaptureRequested += (s, e) => TriggerScreenCapture();
         DesktopScreenClipService.CaptureCompleted += (s, item) => Dispatcher.Invoke(() => ShowEvidencePanel());
 
+        SowAssessmentDashboardView.Initialize(_tenantService);
+
         Loaded += MainWindow_Loaded;
         Closed += MainWindow_Closed;
     }
@@ -153,6 +155,8 @@ public partial class MainWindow : FluentWindow
 
     public void ActivateTab(PortalTabItem tab)
     {
+        HideAssessmentView();
+
         if (_activeTab != null)
         {
             _activeTab.IsActive = false;
@@ -277,6 +281,11 @@ public partial class MainWindow : FluentWindow
             TriggerScreenCapture();
             e.Handled = true;
         }
+        else if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.A)
+        {
+            ToggleAssessmentView();
+            e.Handled = true;
+        }
     }
 
     public void TriggerScreenCapture()
@@ -341,6 +350,52 @@ public partial class MainWindow : FluentWindow
         {
             ShowEvidencePanel();
         }
+    }
+
+    public void ToggleAssessmentView()
+    {
+        if (SowAssessmentDashboardView.Visibility == Visibility.Visible)
+        {
+            HideAssessmentView();
+        }
+        else
+        {
+            ShowAssessmentView();
+        }
+    }
+
+    public void ShowAssessmentView()
+    {
+        WebViewsContainer.Visibility = Visibility.Collapsed;
+        EmptyTabsOverlay.Visibility = Visibility.Collapsed;
+        SowAssessmentDashboardView.Visibility = Visibility.Visible;
+        ActivityExplorerRadio.IsChecked = true;
+
+        IsolatedProfileBadgeTextBlock.Text = "Mode: SOW Assessment Dashboard";
+        StatusProfileTextBlock.Text = $"Active Tenant Assessment: {_tenantService.CurrentTenant?.Name}";
+
+        if (_tenantService.CurrentTenant != null)
+        {
+            _ = SowAssessmentDashboardView.LoadForTenantAsync(_tenantService.CurrentTenant);
+        }
+    }
+
+    public void HideAssessmentView()
+    {
+        SowAssessmentDashboardView.Visibility = Visibility.Collapsed;
+        WebViewsContainer.Visibility = Visibility.Visible;
+        ActivityExplorerRadio.IsChecked = false;
+        UpdateTabsState();
+    }
+
+    private void ActivityExplorerRadio_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleAssessmentView();
+    }
+
+    private void BookmarkAssessment_Click(object sender, RoutedEventArgs e)
+    {
+        ShowAssessmentView();
     }
 
     private void ActivityBookmarksRadio_Click(object sender, RoutedEventArgs e)
