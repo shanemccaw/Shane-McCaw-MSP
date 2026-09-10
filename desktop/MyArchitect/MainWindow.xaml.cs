@@ -38,6 +38,10 @@ public partial class MainWindow : FluentWindow
 
         _tenantService.CurrentTenantChanged += OnCurrentTenantChanged;
 
+        EvidenceGalleryPanel.CloseRequested += (s, e) => CloseEvidencePanel();
+        EvidenceGalleryPanel.CaptureRequested += (s, e) => TriggerScreenCapture();
+        DesktopScreenClipService.CaptureCompleted += (s, item) => Dispatcher.Invoke(() => ShowEvidencePanel());
+
         Loaded += MainWindow_Loaded;
         Closed += MainWindow_Closed;
     }
@@ -267,6 +271,22 @@ public partial class MainWindow : FluentWindow
             ToggleBookmarksPanel();
             e.Handled = true;
         }
+        else if (e.Key == Key.PrintScreen ||
+                 ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.S))
+        {
+            TriggerScreenCapture();
+            e.Handled = true;
+        }
+    }
+
+    public void TriggerScreenCapture()
+    {
+        DesktopScreenClipService.Capture(_tenantService.CurrentTenant, _activeTab?.Url, _activeTab?.Title);
+    }
+
+    private void ScreenClipButton_Click(object sender, RoutedEventArgs e)
+    {
+        TriggerScreenCapture();
     }
 
     private void ToggleBookmarksPanel()
@@ -278,9 +298,48 @@ public partial class MainWindow : FluentWindow
         }
         else
         {
+            CloseEvidencePanel();
             BookmarksSidePanel.Visibility = Visibility.Visible;
             ActivityBookmarksRadio.IsChecked = true;
             PortalSearchTextBox.Focus();
+        }
+    }
+
+    private void ToggleEvidencePanel()
+    {
+        if (ScreenshotEvidenceSidePanel.Visibility == Visibility.Visible)
+        {
+            CloseEvidencePanel();
+        }
+        else
+        {
+            ShowEvidencePanel();
+        }
+    }
+
+    private void ShowEvidencePanel()
+    {
+        BookmarksSidePanel.Visibility = Visibility.Collapsed;
+        ActivityBookmarksRadio.IsChecked = false;
+        ScreenshotEvidenceSidePanel.Visibility = Visibility.Visible;
+        ActivityScreenshotsRadio.IsChecked = true;
+    }
+
+    private void CloseEvidencePanel()
+    {
+        ScreenshotEvidenceSidePanel.Visibility = Visibility.Collapsed;
+        ActivityScreenshotsRadio.IsChecked = false;
+    }
+
+    private void ActivityScreenshotsRadio_Click(object sender, RoutedEventArgs e)
+    {
+        if (ScreenshotEvidenceSidePanel.Visibility == Visibility.Visible && ActivityScreenshotsRadio.IsChecked == false)
+        {
+            CloseEvidencePanel();
+        }
+        else
+        {
+            ShowEvidencePanel();
         }
     }
 
