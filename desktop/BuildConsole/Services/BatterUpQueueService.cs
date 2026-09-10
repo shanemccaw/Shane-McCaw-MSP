@@ -425,14 +425,6 @@ namespace BuildConsole.Services
                     "BUILD: comments served from the last-known cache, closed-sweep deferred. Free Flow keeps queuing resolved items (Git #3512).");
             }
 
-            // Git #2557 — auto-sweep: a closed issue sitting in "Batter Up" status is
-            // structurally invisible to the OPEN-only board read below (GetBatterUpIssuesAsync),
-            // so nothing ever demotes it on its own. Runs BEFORE the open-only row list is built
-            // so a just-closed item can never flash into the visible list on the same refresh
-            // it's being swept off of. Git #3448 — its real result is now carried out (not just
-            // logged) so the caller can report honest sync status via a toast.
-            var sweepResult = await SweepClosedIssuesAsync(gh, log);
-
             var (boardItems, fromMirror, mirrorRows) = await GetBatterUpBoardItemsAsync(gh, log);
             var rows = new List<BatterUpRow>();
 
@@ -455,7 +447,20 @@ namespace BuildConsole.Services
             // reads up front, instead of one live REST call per item inside the loop below. Empty when
             // the rate-limit circuit is open or the batch failed — a missing entry just means "resolve
             // it next refresh", the same non-queueable-this-pass outcome a null comment already had.
+            // Git #3497 — this now runs BEFORE the closed-sweep below: under the #2815 circuit, a
+            // scarce closed-window's GitHub budget goes to real BUILD-comment dispatch first, not to
+            // the purely cosmetic closed-sweep.
             var buildComments = await ResolveBuildCommentsAsync(gh, boardItems.Select(b => b.Number).ToList(), log);
+
+            // Git #2557 — auto-sweep: a closed issue sitting in "Batter Up" status is
+            // structurally invisible to the OPEN-only board read above (GetBatterUpIssuesAsync),
+            // so nothing ever demotes it on its own. Git #3448 — its real result is now carried out
+            // (not just logged) so the caller can report honest sync status via a toast. Git #3497 —
+            // moved to run AFTER ResolveBuildCommentsAsync (previously ran first): this is cosmetic
+            // board hygiene, so a scarce circuit-closed window is spent on real dispatch work before
+            // it, at the cost of a just-closed item potentially flashing into this pass's list one
+            // refresh later than before.
+            var sweepResult = await SweepClosedIssuesAsync(gh, log);
 
             // Git #3350 — resolve blocked-by from the local mirror rather than one live
             // `GetBlockedByAsync` REST call per item (the exact per-item burst this issue removes; the
