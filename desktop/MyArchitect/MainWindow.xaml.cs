@@ -41,6 +41,7 @@ public partial class MainWindow : FluentWindow
     private readonly ILaunchControlActionsService _launchControlActionsService;
     private readonly IAdminRetainerService _adminRetainerService;
     private readonly IRunbooksService _runbooksService;
+    private readonly IDocumentHubService _documentHubService;
     private readonly IVaultService _vaultService;
     private readonly IBreakGlassService _breakGlassService;
     private readonly IAuthService _authService;
@@ -77,6 +78,7 @@ public partial class MainWindow : FluentWindow
         _launchControlActionsService = new LaunchControlActionsService();
         _adminRetainerService = new AdminRetainerService();
         _runbooksService = new RunbooksService();
+        _documentHubService = new DocumentHubService();
         _vaultService = new VaultService();
         _breakGlassService = new BreakGlassService();
         _authService = new AuthService();
@@ -165,12 +167,13 @@ public partial class MainWindow : FluentWindow
 
         RegisterHomeTab();
         RegisterConsoleTab();
+        RegisterDocumentsTab();
         RegisterAdminTab();
-        // Watch / Documents are intentionally left unregistered here — their real content is
-        // #3483/#3487/#3490 (Watch) and #3486 (Documents), separate Features. FixedRibbonRenderer
-        // renders a stated empty state for each until those land (SHELL.md §6) — never a
-        // fabricated placeholder group. Admin now carries Vault (#3461); Audit Log (#3489),
-        // Break-Glass (#3480) and consent status (#3485) attach here as they land.
+        // Watch is intentionally left unregistered here — its real content is #3483/#3487/#3490,
+        // separate Features. FixedRibbonRenderer renders a stated empty state until those land
+        // (SHELL.md §6) — never a fabricated placeholder group. Admin now carries Vault (#3461);
+        // Audit Log (#3489), Break-Glass (#3480) and consent status (#3485) attach here as they
+        // land. Documents now carries Document Hub (#3486).
 
         _shellRegistry.RegisterPaletteProvider(BuildPaletteCommands);
     }
@@ -371,6 +374,36 @@ public partial class MainWindow : FluentWindow
                         Title = "Hold Windows",
                         Searchable = true,
                         GetRows = BuildHoldWindowRows,
+                    },
+                    OnSelect = () => { },
+                },
+            },
+        });
+    }
+
+    /// <summary>Documents tab (UI_RULES.md §2 / §4). Carries Document Hub (#3486) — the real
+    /// GET /api/msp/documents-hub aggregated browse across the caller's whole book (see
+    /// <see cref="BuildDocumentHubRows"/> for why it isn't filtered to one tenant yet). A gallery
+    /// command, same shape as Script Library/Runbooks: selecting a row opens its full-panel
+    /// record workspace (§3), never navigates away.</summary>
+    private void RegisterDocumentsTab()
+    {
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Documents, new RibbonGroupSpec
+        {
+            Label = "Document Hub",
+            Order = 10,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Browse",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Real GET /api/msp/documents-hub (#3486) — customer-generated reports, SOWs and consulting docs across the whole book",
+                    Gallery = new GallerySpec
+                    {
+                        Title = "Document Hub",
+                        Searchable = true,
+                        GetRows = BuildDocumentHubRows,
                     },
                     OnSelect = () => { },
                 },
@@ -2331,6 +2364,206 @@ public partial class MainWindow : FluentWindow
         _shellRegistry.OpenRecord(spec);
     }
 
+    // ---- Document Hub (#3486) — real msp-documents-hub.ts client, gallery + full-panel workspace ----
+
+    /// <summary>Real rows from GET /api/msp/documents-hub (#3486). Unlike Launch Control's write
+    /// actions (<see cref="TryResolveLaunchControlScope"/>), this endpoint is book-wide and does
+    /// NOT require a customerId to work — only mspId. #3486's own checklist item names "browse/
+    /// view for the selected tenant," but <see cref="Models.Tenant.Id"/> is a display string, not
+    /// the numeric <c>tenants.id</c> the endpoint's <c>customerId</c> filter takes, and
+    /// TenantService remains fixture data for that numeric id (the same real, already-tracked gap
+    /// #3502/#3505/#3540 document for every other gallery in this file). Filtering by a
+    /// non-numeric fixture id would be inventing a match, not honoring the real selection — so
+    /// until that numeric id is real, Document Hub browses the caller's whole book rather than
+    /// guessing a filter.</summary>
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildDocumentHubRows()
+    {
+        if (!_authService.IsAuthenticated)
+        {
+            return new[] { new GalleryRowSpec { Id = "blocked", Name = "Sign in to load Document Hub", OnSelect = () => { } } };
+        }
+
+        var mspId = _authService.MspId;
+        if (mspId is not > 0)
+        {
+            return new[] { new GalleryRowSpec { Id = "blocked", Name = "Document Hub needs a real MSP context (not resolved from the current session)", OnSelect = () => { } } };
+        }
+
+        DocumentHubListResponse payload;
+        try
+        {
+            payload = _documentHubService.GetDocumentsAsync(mspId.Value, customerId: null).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            // Real, honest failure — most likely 401/403 (auth still not wired), not a bug in
+            // this client. Surfaced as a single disabled row rather than a fake row.
+            return new[] { new GalleryRowSpec { Id = "error", Name = $"Could not load: {ex.Message}", OnSelect = () => { } } };
+        }
+
+        if (payload.Documents.Count == 0)
+        {
+            return new[] { new GalleryRowSpec { Id = "empty", Name = "No documents generated yet across your book", OnSelect = () => { } } };
+        }
+
+        return payload.Documents
+            .Select(doc => new GalleryRowSpec
+            {
+                Id = doc.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Tile = (doc.DocType ?? doc.Category ?? "doc").Length > 3 ? (doc.DocType ?? doc.Category ?? "doc")[..3].ToUpperInvariant() : (doc.DocType ?? doc.Category ?? "doc").ToUpperInvariant(),
+                Name = doc.Title,
+                Sub = $"{doc.CustomerName ?? "Unknown customer"} · {doc.Status} · {(doc.DeliveredAt ?? doc.CreatedAt ?? "")}",
+                OnSelect = () => OpenDocumentHubRecord(doc, mspId.Value),
+            })
+            .ToList();
+    }
+
+    /// <summary>Opens a document's full-panel record workspace (UI_RULES.md §3) — real facts, and
+    /// the gallery's own three named checklist actions: View (fetches the sandboxed-viewer HTML
+    /// and opens it in the OS default browser via a local temp file — the same
+    /// Process.Start(UseShellExecute) pattern <c>LaunchExternalButton_Click</c> already uses;
+    /// MyArchitect has no in-app HTML document renderer, and adding one is shell chrome UI_RULES.md
+    /// doesn't define), Download PDF (same temp-file-then-launch pattern, PDF bytes), and Share
+    /// (POST .../share, real shareUrl surfaced as a fact and copied to the clipboard).</summary>
+    private void OpenDocumentHubRecord(DocumentHubItem doc, int mspId)
+    {
+        var canDownloadOrShare = doc.Status is "approved" or "delivered";
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "document-hub-item",
+            Id = doc.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Eyebrow = "Document Hub",
+            Title = doc.Title,
+            Sub = $"{doc.CustomerName ?? "Unknown customer"} · {doc.Status}",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Category", Value = doc.Category ?? "—" },
+                new WorkspaceFact { Label = "Type", Value = doc.DocType ?? "—" },
+                new WorkspaceFact { Label = "Status", Value = doc.Status ?? "—" },
+                new WorkspaceFact { Label = "Created", Value = doc.CreatedAt ?? "—", Prose = true },
+                new WorkspaceFact { Label = "Delivered", Value = doc.DeliveredAt ?? "not yet", Prose = true },
+            },
+            Actions =
+            {
+                new WorkspaceAction
+                {
+                    Label = "View document",
+                    OnSelect = () => ViewDocumentHubItem(doc),
+                },
+            },
+            Body = canDownloadOrShare
+                ? null
+                : ("PDF / Share", $"Not available while status is \"{doc.Status}\" — the endpoint only serves approved/delivered documents."),
+        };
+
+        if (!string.IsNullOrEmpty(doc.ProjectTitle))
+        {
+            spec.Facts.Add(new WorkspaceFact { Label = "Project", Value = doc.ProjectTitle, Prose = true });
+        }
+        if (!string.IsNullOrEmpty(doc.SowTotalPrice))
+        {
+            spec.Facts.Add(new WorkspaceFact { Label = "SOW total", Value = doc.SowTotalPrice });
+        }
+
+        if (canDownloadOrShare)
+        {
+            spec.Actions.Add(new WorkspaceAction
+            {
+                Label = "Download PDF",
+                OnSelect = () => DownloadDocumentHubPdf(doc),
+            });
+            spec.Actions.Add(new WorkspaceAction
+            {
+                Label = "Create & copy share link",
+                Confirm = true,
+                OnSelect = () => ShareDocumentHubItem(doc),
+            });
+        }
+
+        _shellRegistry.OpenContextual(
+            new TrailEntry("document-hub-item", spec.Id, doc.Title, () => OpenDocumentHubRecord(doc, mspId)),
+            new ContextualTabSpec { Id = "document-hub-item", Label = "Document" },
+            onSearchEverything: () => PaletteOverlay.Open());
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>GET /api/msp/documents-hub/:id/view, then opens the real sandboxed-viewer HTML in
+    /// the OS default browser via a temp file. Feedback goes to the Console pane, same channel
+    /// <see cref="ToggleRunbookStep"/> already uses for a real side-effecting action's result.</summary>
+    private void ViewDocumentHubItem(DocumentHubItem doc)
+    {
+        ShowDocument(ConsolePanel);
+        ConsolePanel.AppendExternal($"[Document Hub] Loading \"{doc.Title}\"…");
+        try
+        {
+            var view = _documentHubService.GetDocumentViewAsync(doc.Id).GetAwaiter().GetResult();
+            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"myarchitect-doc-{doc.Id}.html");
+            System.IO.File.WriteAllText(path, view.HtmlContent);
+            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+            ConsolePanel.AppendExternal($"[Document Hub] Opened \"{view.Title ?? doc.Title}\" in the default browser.");
+        }
+        catch (DocumentHubServiceException ex)
+        {
+            ConsolePanel.AppendExternal($"[Document Hub] View failed: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            ConsolePanel.AppendExternal($"[Document Hub] Exception: {ex.Message}");
+        }
+    }
+
+    /// <summary>GET /api/msp/documents-hub/:id/pdf, then opens the real branded PDF bytes in the
+    /// OS default PDF viewer via a temp file — same Process.Start pattern as
+    /// <see cref="ViewDocumentHubItem"/>.</summary>
+    private void DownloadDocumentHubPdf(DocumentHubItem doc)
+    {
+        ShowDocument(ConsolePanel);
+        ConsolePanel.AppendExternal($"[Document Hub] Downloading PDF for \"{doc.Title}\"…");
+        try
+        {
+            var bytes = _documentHubService.GetDocumentPdfAsync(doc.Id).GetAwaiter().GetResult();
+            var safeTitle = new string(doc.Title.Where(c => char.IsLetterOrDigit(c) || c is ' ' or '_' or '-').ToArray()).Trim();
+            if (safeTitle.Length == 0) safeTitle = $"document-{doc.Id}";
+            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"{safeTitle}.pdf");
+            System.IO.File.WriteAllBytes(path, bytes);
+            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+            ConsolePanel.AppendExternal($"[Document Hub] PDF saved to {path} and opened.");
+        }
+        catch (DocumentHubServiceException ex)
+        {
+            ConsolePanel.AppendExternal($"[Document Hub] PDF download failed: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            ConsolePanel.AppendExternal($"[Document Hub] Exception: {ex.Message}");
+        }
+    }
+
+    /// <summary>POST /api/msp/documents-hub/:id/share, then copies the real shareUrl to the
+    /// clipboard so the operator can paste it straight into an email/Teams message to the
+    /// customer.</summary>
+    private void ShareDocumentHubItem(DocumentHubItem doc)
+    {
+        ShowDocument(ConsolePanel);
+        ConsolePanel.AppendExternal($"[Document Hub] Creating share link for \"{doc.Title}\"…");
+        try
+        {
+            var share = _documentHubService.ShareDocumentAsync(doc.Id).GetAwaiter().GetResult();
+            try { System.Windows.Clipboard.SetText(share.ShareUrl); } catch { /* clipboard access can legitimately fail (e.g. locked by another process) — link is still logged below */ }
+            ConsolePanel.AppendExternal($"[Document Hub] Share link (copied to clipboard, expires {share.ExpiresAt}): {share.ShareUrl}");
+        }
+        catch (DocumentHubServiceException ex)
+        {
+            ConsolePanel.AppendExternal($"[Document Hub] Share failed: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            ConsolePanel.AppendExternal($"[Document Hub] Exception: {ex.Message}");
+        }
+    }
+
     /// <summary>Wires PUT /api/msp/runbooks/:runbookId/steps/:position into the Console tab's
     /// output pane (#3479's own "wired into embedded Console execution flow" checklist item,
     /// #3459 dependency) — the same feedback channel <see cref="RunScriptLibraryAction"/> already
@@ -2641,6 +2874,7 @@ public partial class MainWindow : FluentWindow
         _vipClassificationsService.AuthToken = token;
         _retainerService.AuthToken = token;
         _runbooksService.AuthToken = token;
+        _documentHubService.AuthToken = token;
         _poamsService.AuthToken = token;
         TelemetryDashboardView.SetAuthToken(token);
         SowAssessmentDashboardView.SetAuthToken(token);
