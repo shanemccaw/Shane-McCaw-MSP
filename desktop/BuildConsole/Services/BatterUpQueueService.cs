@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -111,6 +111,9 @@ namespace BuildConsole.Services
     /// </summary>
     public static class BatterUpQueueService
     {
+        /// <summary>In-memory cache of resolved BUILD: comments by issue number so transient rate-limit
+        /// cooldown windows never cause previously resolved items to flap to 'needs dispatch'.</summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, (string? RawComment, (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed)> _buildCommentCache = new();
         /// <summary>
         /// Parses a `BUILD:` comment body:
         /// <code>
@@ -233,45 +236,72 @@ namespace BuildConsole.Services
             var distinct = issueNumbers.Where(n => n > 0).Distinct().ToList();
             if (distinct.Count == 0) return result;
 
+            // First, populate from in-memory cache for any known issues
+            foreach (var n in distinct)
+            {
+                if (_buildCommentCache.TryGetValue(n, out var cached) && cached.Parsed.HasValue)
+                {
+                    result[n] = cached;
+                }
+            }
+
             if (GitHubRateLimitCircuit.IsOpen)
             {
                 log($"BUILD-comment resolve skipped — GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); " +
-                    $"{distinct.Count} item(s) resolve their BUILD: comment on a later refresh (Git #3350).");
+                    $"served {result.Count} cached item(s); remaining resolve on later refresh (Git #3350).");
                 return result;
             }
+
+            // Only query GitHub for distinct items not yet in result
+            var needFetch = distinct.Where(n => !result.ContainsKey(n)).ToList();
+            if (needFetch.Count == 0) return result;
 
             Dictionary<int, (List<string> Bodies, int TotalCount)> batch;
             try
             {
-                batch = await gh.BatchGetRecentIssueCommentsAsync(distinct, 0);
+                batch = await gh.BatchGetRecentIssueCommentsAsync(needFetch, 0);
             }
             catch (Exception ex)
             {
-                log($"BUILD-comment resolve — batched comment lookup failed ({ex.Message}); items resolve on a later refresh (Git #3350).");
+                log($"BUILD-comment resolve — batched comment lookup failed ({ex.Message}); serving {result.Count} cached item(s) (Git #3350).");
                 return result;
             }
 
             var needFullFetch = new List<int>();
-            foreach (var n in distinct)
+            foreach (var n in needFetch)
             {
                 if (batch.TryGetValue(n, out var c))
                 {
                     var found = FindBuildCommentInBodies(c.Bodies);
-                    if (found.HasValue) { result[n] = found.Value; continue; }
+                    if (found.HasValue)
+                    {
+                        result[n] = found.Value;
+                        _buildCommentCache[n] = found.Value;
+                        continue;
+                    }
                     // No BUILD: comment in the recent window. If the real thread is deeper than the
                     // window we fetched, one could still be older — resolve just that item live.
                     if (c.TotalCount > c.Bodies.Count) needFullFetch.Add(n);
-                    else result[n] = (null, null); // whole thread seen — definitively no BUILD: comment
+                    else
+                    {
+                        result[n] = (null, null);
+                        _buildCommentCache[n] = (null, null);
+                    }
                 }
                 else needFullFetch.Add(n); // GraphQL returned nothing for this number — resolve live
             }
 
             if (needFullFetch.Count > 0)
-                log($"BUILD-comment resolve — {distinct.Count} item(s) via batched GraphQL; {needFullFetch.Count} need a per-item deep fetch (deeper comment history than the batched window) (Git #3350).");
+                log($"BUILD-comment resolve — {needFetch.Count} item(s) via batched GraphQL; {needFullFetch.Count} need a per-item deep fetch (deeper comment history than the batched window) (Git #3350).");
 
             foreach (var n in needFullFetch)
             {
-                try { result[n] = await FindBuildCommentAsync(gh, n); }
+                try
+                {
+                    var found = await FindBuildCommentAsync(gh, n);
+                    result[n] = found;
+                    _buildCommentCache[n] = found;
+                }
                 catch (Exception ex) { log($"BUILD-comment resolve — per-item deep fetch for #{n} failed ({ex.Message}); left unresolved this pass (Git #3350)."); }
             }
 
@@ -294,24 +324,12 @@ namespace BuildConsole.Services
         public static async Task<(List<BatterUpRow> Rows, int SuppressedCount, ClosedSweepResult SweepResult)> RefreshAsync(
             GitHubApiClient gh, BuildQueuePostgresClient? queueDb, Action<string> log)
         {
-            // Git #3494 — fail the WHOLE pass fast when the shared #2815 rate-limit circuit is OPEN,
-            // rather than proceeding to build rows from data we cannot read. Under an open circuit
-            // ResolveBuildCommentsAsync (below) makes no live GitHub call and returns nothing, so
-            // EVERY board item came back HasBuildComment=false and rendered as "no BUILD: comment yet
-            // — needs dispatch" — even the items whose BUILD: comment is real and already posted. That
-            // is exactly the false "75 items reverted to needs-dispatch as if their BUILD comments
-            // were lost" reversion this issue chased: the items lost nothing; this pass simply could
-            // not resolve their comments while GitHub was rate-limiting us. Throw the recognized
-            // "rate-limit circuit open" message so the panel shows its honest, self-recovering
-            // "GitHub cooling down (#2815)" holding state and KEEPS its last-known rows
-            // (BatterUpPanel.RefreshCoreAsync + GitHubRateLimitCircuit.IsCircuitOpenMessage), instead
-            // of flapping every item to needs-dispatch. The next closed-window refresh resolves and
-            // auto-queues normally — the underlying queue insertion was never broken.
+            // Git #3494 / fix: Under an open circuit, do NOT throw an exception that blanks the UI
+            // and halts auto-queuing. Serve board items from the local mirror and cached BUILD: comments.
             if (GitHubRateLimitCircuit.IsOpen)
             {
-                log($"Batter Up refresh deferred — GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); " +
-                    "board items keep their last-known state and re-resolve on the next refresh rather than flapping to 'needs dispatch' (Git #3494).");
-                throw new InvalidOperationException("Batter Up refresh skipped — rate-limit circuit open (Git #2815).");
+                log($"Batter Up refresh: GitHub rate-limit circuit open ({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); " +
+                    "serving board items from local mirror and cached comments (Git #3494).");
             }
 
             // Git #2557 — auto-sweep: a closed issue sitting in "Batter Up" status is

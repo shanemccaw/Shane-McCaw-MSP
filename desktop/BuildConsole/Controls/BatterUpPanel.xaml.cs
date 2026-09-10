@@ -123,8 +123,16 @@ namespace BuildConsole.Controls
         {
             Dispatcher.InvokeAsync(async () =>
             {
-                if (IsVisible) await RefreshAsync();
-                else await RefreshCountOnlyAsync();
+                var settings = Services.BuildConsoleSettings.Load();
+                // When Free Flow is enabled, auto-queueing must run even when the tab is hidden
+                if (IsVisible || settings.BatterUpFreeFlow)
+                {
+                    await RefreshAsync();
+                }
+                else
+                {
+                    await RefreshCountOnlyAsync();
+                }
             });
         }
 

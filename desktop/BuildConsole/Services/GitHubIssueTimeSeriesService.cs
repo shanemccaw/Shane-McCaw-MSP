@@ -208,10 +208,14 @@ namespace BuildConsole.Services
                 // below, so this can never make Home worse than today — only cheaper and rate-limit
                 // proof on the common hit. A manual refresh (forceRefresh) deliberately still goes
                 // live, matching #3358's guaranteed-fresh manual-refresh escape hatch.
-                if (await GitHubIssueMirror.HasUsableDataAsync() && await GitHubIssueMirror.HasClosedBackfillAsync())
+                // Git #3359 / fix — serve from local mirror whenever usable data exists.
+                // Does NOT gate on HasClosedBackfillAsync: an unbounded live ALL-states walk
+                // across 3,500+ issues exceeds GraphQL query complexity / node limits and trips
+                // GitHub rate-limit circuits every minute from background timers.
+                if (await GitHubIssueMirror.HasUsableDataAsync())
                 {
                     var mirrored = await GitHubIssueMirror.TryGetBoardIssuesAsync(openOnly: false);
-                    if (mirrored != null)
+                    if (mirrored != null && mirrored.Count > 0)
                     {
                         lock (_lock)
                         {
@@ -219,10 +223,25 @@ namespace BuildConsole.Services
                             _cacheFetchedUtc = DateTime.UtcNow;
                         }
                         ActivityLog.Log("git-board.data",
-                            $"issue time-series fetch: {mirrored.Count} real issue(s) (open+closed) served from the local mirror — no live GitHub call (Git #3359); cached for {CacheTtl.TotalMinutes:0}m.");
+                            $"issue time-series fetch: {mirrored.Count} real issue(s) served from the local mirror — no live GitHub call (Git #3359); cached for {CacheTtl.TotalMinutes:0}m.");
                         return IssueFetchResult.Ok(mirrored);
                     }
                 }
+            }
+
+            // If circuit is open, do not hit GitHub — serve cache or mirror if available
+            if (GitHubRateLimitCircuit.IsOpen)
+            {
+                lock (_lock)
+                {
+                    if (_cache != null) return IssueFetchResult.Ok(_cache);
+                }
+                if (await GitHubIssueMirror.HasUsableDataAsync())
+                {
+                    var mirrored = await GitHubIssueMirror.TryGetBoardIssuesAsync(openOnly: false);
+                    if (mirrored != null && mirrored.Count > 0) return IssueFetchResult.Ok(mirrored);
+                }
+                return IssueFetchResult.Failure("GitHub rate-limit circuit open; time-series fetch deferred.");
             }
 
             var settings = BuildConsoleSettings.Load();
@@ -232,21 +251,29 @@ namespace BuildConsole.Services
             try
             {
                 var client = new GitHubApiClient(settings.GitHubPat);
-                // ALL states: the time series needs every issue's real created date (opened/day) AND
-                // every closed issue's real closed date (closed/day) to reconstruct the true history.
-                var issues = await client.ListBoardIssuesAsync(GitHubIssueState.All);
+                // Open issues only for live fetch to avoid 35-page GraphQL rate-limit storms
+                var issues = await client.ListBoardIssuesAsync(GitHubIssueState.Open);
                 lock (_lock)
                 {
                     _cache = issues;
                     _cacheFetchedUtc = DateTime.UtcNow;
                 }
                 ActivityLog.Log("git-board.data",
-                    $"issue time-series fetch: {issues.Count} real issue(s) (open+closed) loaded with created/closed timestamps; cached for {CacheTtl.TotalMinutes:0}m.");
+                    $"issue time-series fetch: {issues.Count} real issue(s) loaded with created/closed timestamps; cached for {CacheTtl.TotalMinutes:0}m.");
                 return IssueFetchResult.Ok(issues);
             }
             catch (Exception ex)
             {
-                ActivityLog.Log("git-board.data", $"issue time-series fetch failed (fail-closed, no fabricated series): {ex.Message}");
+                ActivityLog.Log("git-board.data", $"issue time-series fetch failed: {ex.Message}");
+                lock (_lock)
+                {
+                    if (_cache != null) return IssueFetchResult.Ok(_cache);
+                }
+                if (await GitHubIssueMirror.HasUsableDataAsync())
+                {
+                    var mirrored = await GitHubIssueMirror.TryGetBoardIssuesAsync(openOnly: false);
+                    if (mirrored != null && mirrored.Count > 0) return IssueFetchResult.Ok(mirrored);
+                }
                 return IssueFetchResult.Failure($"GitHub fetch failed: {ex.Message}");
             }
         }

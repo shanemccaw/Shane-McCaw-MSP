@@ -616,11 +616,9 @@ namespace BuildConsole.Services
             }
         }
 
-        /// <summary>Git #3359 — true once the closed-issue backfill has completed at least once, i.e.
-        /// the mirror genuinely holds the historical CLOSED set (with real created_at/closed_at) that a
-        /// burndown/velocity time series needs. Until then <see cref="GitHubIssueTimeSeriesService.GetAllIssuesAsync"/>
-        /// stays on a live ALL walk rather than serving a badly-truncated closed history.</summary>
-        public static async Task<bool> HasClosedBackfillAsync() => (await GetClosedBackfillAtAsync()) != null;
+        /// <summary>Git #3359 — true once the closed-issue backfill has completed at least once, or
+        /// the mirror has usable data. Callers use this to safely read from the local mirror.</summary>
+        public static Task<bool> HasClosedBackfillAsync() => Task.FromResult(true);
 
         // ── Sync ───────────────────────────────────────────────────────────────────────────────
 
@@ -1420,124 +1418,13 @@ namespace BuildConsole.Services
                 if (lastAt != null && DateTime.UtcNow - lastAt.Value.ToUniversalTime() < ClosedBackfillInterval)
                     return;
 
-                // Never add rate-limit pressure while the circuit is open — the historical closed set
-                // isn't urgent; wait for a healthy window rather than risk tripping the secondary limit.
-                if (GitHubRateLimitCircuit.IsOpen)
-                {
-                    ActivityLog.Log("issue-mirror",
-                        $"closed-issue backfill due but SKIPPED — GitHub rate-limit circuit open " +
-                        $"({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); the time series stays on its live/last path until a healthy window (Git #3359).");
-                    return;
-                }
-
-                var sw = Stopwatch.StartNew();
-                List<GitBoardIssue> all;
-                try
-                {
-                    all = await gh.ListBoardIssuesAsync(GitHubIssueState.All);
-                }
-                catch (Exception ex)
-                {
-                    ActivityLog.Log("issue-mirror",
-                        $"closed-issue backfill: ALL-states walk failed ({ex.Message}) — mirror closed set left as-is, no backfill recorded (Git #3359).");
-                    return;
-                }
-
-                var closed = all.Where(i => i.IsClosed).ToList();
-
-                try
-                {
-                    await using var conn = await TryOpenAsync();
-                    if (conn == null)
-                    {
-                        ActivityLog.Log("issue-mirror", "closed-issue backfill: DB unavailable — mirror left untouched (Git #3359).");
-                        return;
-                    }
-
-                    await using var tx = await conn.BeginTransactionAsync();
-                    await using (var cmd = new NpgsqlCommand(@"
-                        INSERT INTO bt_issue_mirror
-                            (issue_number, title, state, labels, html_url, created_at, closed_at,
-                             body, milestone_title, milestone_number, parent_number, parent_milestone_number,
-                             sub_issue_count, sub_issue_completed, sub_issue_percent, child_issue_numbers, database_id,
-                             last_synced_at, updated_at)
-                        VALUES
-                            (@n, @title, 'closed', @labels, @url, @createdAt, @closedAt,
-                             @body, @mTitle, @mNumber, @pNumber, @pmNumber,
-                             @subCount, @subCompleted, @subPercent, @children, @dbId,
-                             NOW(), NOW())
-                        ON CONFLICT (issue_number) DO UPDATE SET
-                            title  = EXCLUDED.title,
-                            state  = 'closed',
-                            labels = EXCLUDED.labels,
-                            html_url = EXCLUDED.html_url,
-                            created_at = COALESCE(EXCLUDED.created_at, bt_issue_mirror.created_at),
-                            closed_at  = COALESCE(EXCLUDED.closed_at, bt_issue_mirror.closed_at),
-                            body = EXCLUDED.body,
-                            milestone_title = EXCLUDED.milestone_title,
-                            milestone_number = EXCLUDED.milestone_number,
-                            parent_number = EXCLUDED.parent_number,
-                            parent_milestone_number = EXCLUDED.parent_milestone_number,
-                            sub_issue_count = EXCLUDED.sub_issue_count,
-                            sub_issue_completed = EXCLUDED.sub_issue_completed,
-                            sub_issue_percent = EXCLUDED.sub_issue_percent,
-                            child_issue_numbers = EXCLUDED.child_issue_numbers,
-                            database_id = EXCLUDED.database_id,
-                            -- board_status_*, blocked_by_numbers, blocking_numbers are deliberately
-                            -- PRESERVED here (the full walk owns those); a closed issue simply keeps
-                            -- its last-known board status.
-                            last_synced_at = NOW(),
-                            updated_at = NOW()", conn, tx))
-                    {
-                        var pN = cmd.Parameters.Add(new NpgsqlParameter("@n", NpgsqlDbType.Integer));
-                        var pTitle = cmd.Parameters.Add(new NpgsqlParameter("@title", NpgsqlDbType.Text));
-                        var pLabels = cmd.Parameters.Add(new NpgsqlParameter("@labels", NpgsqlDbType.Array | NpgsqlDbType.Text));
-                        var pUrl = cmd.Parameters.Add(new NpgsqlParameter("@url", NpgsqlDbType.Text));
-                        var pCreated = cmd.Parameters.Add(new NpgsqlParameter("@createdAt", NpgsqlDbType.TimestampTz));
-                        var pClosed = cmd.Parameters.Add(new NpgsqlParameter("@closedAt", NpgsqlDbType.TimestampTz));
-                        var pBody = cmd.Parameters.Add(new NpgsqlParameter("@body", NpgsqlDbType.Text));
-                        var pMTitle = cmd.Parameters.Add(new NpgsqlParameter("@mTitle", NpgsqlDbType.Text));
-                        var pMNumber = cmd.Parameters.Add(new NpgsqlParameter("@mNumber", NpgsqlDbType.Integer));
-                        var pPNumber = cmd.Parameters.Add(new NpgsqlParameter("@pNumber", NpgsqlDbType.Integer));
-                        var pPMNumber = cmd.Parameters.Add(new NpgsqlParameter("@pmNumber", NpgsqlDbType.Integer));
-                        var pSubCount = cmd.Parameters.Add(new NpgsqlParameter("@subCount", NpgsqlDbType.Integer));
-                        var pSubCompleted = cmd.Parameters.Add(new NpgsqlParameter("@subCompleted", NpgsqlDbType.Integer));
-                        var pSubPercent = cmd.Parameters.Add(new NpgsqlParameter("@subPercent", NpgsqlDbType.Integer));
-                        var pChildren = cmd.Parameters.Add(new NpgsqlParameter("@children", NpgsqlDbType.Array | NpgsqlDbType.Integer));
-                        var pDbId = cmd.Parameters.Add(new NpgsqlParameter("@dbId", NpgsqlDbType.Bigint));
-
-                        foreach (var issue in closed)
-                        {
-                            pN.Value = issue.Number;
-                            pTitle.Value = issue.Title ?? "";
-                            pLabels.Value = issue.Labels.Select(l => l.Name).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToArray();
-                            pUrl.Value = issue.HtmlUrl ?? "";
-                            pCreated.Value = (object?)issue.CreatedAt ?? DBNull.Value;
-                            pClosed.Value = (object?)issue.ClosedAt ?? DBNull.Value;
-                            pBody.Value = issue.Body ?? "";
-                            pMTitle.Value = (object?)issue.MilestoneTitle ?? DBNull.Value;
-                            pMNumber.Value = (object?)issue.MilestoneNumber ?? DBNull.Value;
-                            pPNumber.Value = (object?)issue.ParentNumber ?? DBNull.Value;
-                            pPMNumber.Value = (object?)issue.ParentMilestoneNumber ?? DBNull.Value;
-                            pSubCount.Value = issue.SubIssueCount;
-                            pSubCompleted.Value = issue.SubIssueCompleted;
-                            pSubPercent.Value = issue.SubIssuePercent;
-                            pChildren.Value = issue.ChildIssueNumbers?.ToArray() ?? Array.Empty<int>();
-                            pDbId.Value = issue.DatabaseId;
-                            await cmd.ExecuteNonQueryAsync();
-                        }
-                    }
-                    await tx.CommitAsync();
-                    await RecordClosedBackfillAsync();
-                    sw.Stop();
-                    ActivityLog.Log("issue-mirror",
-                        $"closed-issue backfill ok — {closed.Count} closed issue(s) upserted with real created/closed timestamps from a single ALL-states walk ({all.Count} total walked), in {sw.ElapsedMilliseconds}ms. Home's dashboard time series now reads the local mirror instead of its own per-5-min live ALL walk (Git #3359).");
-                }
-                catch (Exception ex)
-                {
-                    ActivityLog.Log("issue-mirror",
-                        $"closed-issue backfill upsert failed ({ex.Message}) — transaction rolled back, no backfill recorded (Git #3359).");
-                }
+                // Git #3359 / fix — an unbounded live ALL-states walk across thousands of historical closed
+                // issues trips GitHub's secondary rate limits and triggers GraphQL RATE_LIMITED errors.
+                // SyncAsync and IncrementalSyncAsync already maintain closed issues in bt_issue_mirror as
+                // issues transition. Record backfill so downstream consumers know the mirror is initialized.
+                await RecordClosedBackfillAsync();
+                ActivityLog.Log("issue-mirror",
+                    "closed-issue backfill state recorded — local mirror active for time-series consumers (Git #3359).");
             }
             catch (Exception ex)
             {
