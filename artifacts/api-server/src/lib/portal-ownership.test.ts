@@ -20,6 +20,7 @@
  * not need a tenant to be true.
  */
 import { describe, it, expect } from "vitest";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import {
   actorMayRespond,
   assignEventType,
@@ -47,8 +48,8 @@ import {
 } from "./portal-ownership.ts";
 
 const USERS: UserRow[] = [
-  { id: 39, email: "buyer@example.com", name: "Buy Assessment", jobTitle: null, department: null, mspRole: "CustomerUser" },
-  { id: 42, email: "joe@example.com", name: "Joe Joe", jobTitle: "IT Manager", department: null, mspRole: "CustomerUser" },
+  { id: 39, email: "buyer@example.com", name: "Buy Assessment", jobTitle: null, department: null, mspRole: LEGACY_ROLE.customerUser },
+  { id: 42, email: "joe@example.com", name: "Joe Joe", jobTitle: "IT Manager", department: null, mspRole: LEGACY_ROLE.customerUser },
   { id: 55, email: "shane@example.com", name: null, jobTitle: null, department: "Operations", mspRole: "Assessment" },
 ];
 
@@ -85,22 +86,22 @@ describe("toWirePerson()", () => {
 
 describe("personRoleLabel()", () => {
   it("prefers a real job title", () => {
-    expect(personRoleLabel("IT Manager", "Operations", "CustomerUser")).toBe("IT Manager");
+    expect(personRoleLabel("IT Manager", "Operations", LEGACY_ROLE.customerUser)).toBe("IT Manager");
   });
 
   it("falls back to the department before the role", () => {
-    expect(personRoleLabel(null, "Operations", "CustomerUser")).toBe("Operations");
+    expect(personRoleLabel(null, "Operations", LEGACY_ROLE.customerUser)).toBe("Operations");
   });
 
   it("never prints the enum spelling of a portal role", () => {
-    expect(personRoleLabel(null, null, "CustomerUser")).toBe("Team member");
+    expect(personRoleLabel(null, null, LEGACY_ROLE.customerUser)).toBe("Team member");
     expect(personRoleLabel(null, null, "Assessment")).toBe("Assessment access");
     expect(personRoleLabel(null, null, null)).toBe("Team member");
   });
 
   it("labels MSP staff readably (#1520)", () => {
-    expect(personRoleLabel(null, null, "MSPAdmin")).toBe("MSP Admin");
-    expect(personRoleLabel(null, null, "MSPOperator")).toBe("MSP Operator");
+    expect(personRoleLabel(null, null, LEGACY_ROLE.mspAdmin)).toBe("MSP Admin");
+    expect(personRoleLabel(null, null, LEGACY_ROLE.mspOperator)).toBe("MSP Operator");
   });
 });
 
@@ -111,8 +112,8 @@ describe("personRoleLabel()", () => {
 
 describe("MSP staff as real people, side MSP", () => {
   const MSP_STAFF: UserRow[] = [
-    { id: 90, email: "priya@msp.example.com", name: "Priya Raman", jobTitle: null, department: null, mspRole: "MSPAdmin" },
-    { id: 91, email: "dan@msp.example.com", name: "Dan Kessler", jobTitle: null, department: null, mspRole: "MSPOperator" },
+    { id: 90, email: "priya@msp.example.com", name: "Priya Raman", jobTitle: null, department: null, mspRole: LEGACY_ROLE.mspAdmin },
+    { id: 91, email: "dan@msp.example.com", name: "Dan Kessler", jobTitle: null, department: null, mspRole: LEGACY_ROLE.mspOperator },
   ];
   const mspPeople = MSP_STAFF.map((u) => toWirePerson(u, "MSP"));
 

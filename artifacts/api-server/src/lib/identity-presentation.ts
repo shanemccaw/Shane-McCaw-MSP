@@ -35,11 +35,11 @@
  * Both functions key off the legacy `MspRole` rung, because that is genuinely
  * what decides them today. That is not an endorsement of the ladder — it is the
  * same discipline `legacy-ladder.ts` applies: transcribe today's real rule into
- * one server-side place, so that when #2460 retires `MSP_ROLES` there is exactly
+ * one server-side place, so that when #2460 retired the role enum there was exactly
  * one call site to change instead of three files across two apps.
  */
 
-import { effectiveLegacyRole, type LegacyRole } from "@workspace/db/rbac/legacy-ladder";
+import { effectiveLegacyRole, LEGACY_ROLE, type LegacyRole } from "@workspace/db/rbac/legacy-ladder";
 
 /**
  * The portal route segment an identity lands on after an impersonation exchange.
@@ -62,7 +62,7 @@ export type PortalLandingSurface = string;
 
 export function portalLandingSurface(effective: LegacyRole | undefined): PortalLandingSurface {
   if (effective === "Assessment") return "copilot-readiness";
-  if (effective === "CustomerUser") return "portal-v2";
+  if (effective === LEGACY_ROLE.customerUser) return "portal-v2";
   return "dashboard";
 }
 

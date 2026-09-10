@@ -40,6 +40,7 @@ import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
 import { getRequestContext } from "../lib/request-context.ts";
 import { z } from "zod";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const router = Router();
 
@@ -55,7 +56,7 @@ function apiErr(res: Response, status: number, message: string) {
 
 function getMspId(req: Request): number | null {
   const user = req.user!;
-  if (user.role === "admin" || user.mspRole === "PlatformAdmin") {
+  if (user.role === "admin" || user.mspRole === LEGACY_ROLE.platformAdmin) {
     const q = parseInt(p(req.query["mspId"] as string | undefined), 10);
     // Fall back to the user's own mspId (e.g. PlatformAdmin browsing their own MSP)
     if (isNaN(q)) return user.mspId ?? null;
@@ -89,7 +90,7 @@ async function emitBundleActivationEvents(
     customerId,
     eventType: "bundle.package.activated",
     source: "msp-sales-bundles",
-    actor: { id: actorUserId, role: "MSPAdmin" as const, type: "user" as const },
+    actor: { id: actorUserId, role: LEGACY_ROLE.mspAdmin, type: "user" as const },
     meta: { tenant: { mspId, customerId } },
     payload: { bundleId, packageKey, activatedAt: new Date().toISOString() } as Record<string, unknown>,
     correlationId,
@@ -748,7 +749,7 @@ router.delete(
           customerId: assignment.customerId,
           eventType: "bundle.package.deactivated",
           source: "msp-sales-bundles",
-          actor: { id: req.user!.id, role: "MSPAdmin" as const, type: "user" as const },
+          actor: { id: req.user!.id, role: LEGACY_ROLE.mspAdmin, type: "user" as const },
           meta: { tenant: { mspId, customerId: assignment.customerId } },
           payload: { bundleId, packageKey, revokedAt: new Date().toISOString() } as Record<string, unknown>,
           correlationId: assignmentId,

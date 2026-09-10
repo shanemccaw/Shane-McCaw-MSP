@@ -77,6 +77,7 @@ vi.mock("../lib/tenant-signals", () => ({
 
 import router from "./portal-customer-engines";
 import { db } from "@workspace/db";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();
 app.use(express.json());
@@ -87,7 +88,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 
 function makeToken(overrides: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 1, email: "customer@company.com", role: "client", mspRole: "CustomerUser", mspId: 1, customerId: 10, ...overrides },
+    { id: 1, email: "customer@company.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10, ...overrides },
     JWT_SECRET,
     { expiresIn: "1h" }
   );

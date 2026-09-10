@@ -19,6 +19,7 @@ import { generateWebhookSecret, getDeliveryLog } from "../lib/webhook-delivery.t
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "comms.webhook" });
 import { EVENT_TYPES } from "../lib/event-bus.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const router = Router();
 
@@ -73,20 +74,20 @@ function resolveOwner(req: Request): OwnerContext | null {
   if (!user) return null;
 
   // CustomerUser → webhook is scoped to their customer
-  if (user.mspRole === "CustomerUser" && user.customerId) {
+  if (user.mspRole === LEGACY_ROLE.customerUser && user.customerId) {
     return { ownerType: "customer", mspId: user.mspId ?? null, customerId: user.customerId };
   }
 
   // MSPAdmin / MSPOperator → webhook scoped to their MSP
   if (
-    (user.mspRole === "MSPAdmin" || user.mspRole === "MSPOperator") &&
+    (user.mspRole === LEGACY_ROLE.mspAdmin || user.mspRole === LEGACY_ROLE.mspOperator) &&
     user.mspId
   ) {
     return { ownerType: "msp", mspId: user.mspId, customerId: null };
   }
 
   // PlatformAdmin acting via portal endpoints — scope to msp if provided
-  if (user.mspRole === "PlatformAdmin" || user.role === "admin") {
+  if (user.mspRole === LEGACY_ROLE.platformAdmin || user.role === "admin") {
     const mspId = user.mspId ?? null;
     const customerId = user.customerId ?? null;
     const ownerType: "msp" | "customer" = customerId ? "customer" : "msp";

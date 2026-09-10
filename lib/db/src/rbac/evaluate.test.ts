@@ -191,7 +191,7 @@ describe("allow", () => {
   });
 
   it("composes permission sets sideways — two roles, neither a superset of the other", () => {
-    // The thing the MSP_ROLES ladder structurally cannot do (#1696): an engineer
+    // The thing the legacy ladder structurally cannot do (#1696): an engineer
     // who can approve changes but not see billing, and a billing contact who can
     // see billing but not approve changes. Holding both grants both.
     const mappings = [

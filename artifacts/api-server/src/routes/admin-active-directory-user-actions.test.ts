@@ -76,6 +76,7 @@ vi.mock("../lib/audit", () => ({
 }));
 
 import router from "./admin-active-directory";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();
 app.use(express.json());
@@ -85,7 +86,7 @@ const JWT_SECRET = "admin-active-directory-user-actions-test-secret";
 process.env.JWT_SECRET = JWT_SECRET;
 
 function adminToken(): string {
-  return jwt.sign({ id: 1, email: "pa@platform.com", name: "Platform Admin", role: "admin", mspRole: "PlatformAdmin" }, JWT_SECRET, {
+  return jwt.sign({ id: 1, email: "pa@platform.com", name: "Platform Admin", role: "admin", mspRole: LEGACY_ROLE.platformAdmin }, JWT_SECRET, {
     expiresIn: "15m",
   });
 }
@@ -111,16 +112,16 @@ describe("PATCH /admin/active-directory/user/:id/role", () => {
     const res = await request(app)
       .patch("/api/admin/active-directory/user/100/role")
       .set("Authorization", `Bearer ${adminToken()}`)
-      .send({ mspRole: "MSPAdmin" });
+      .send({ mspRole: LEGACY_ROLE.mspAdmin });
     expect(res.status).toBe(404);
   });
 
   it("400s an invalid transition — CustomerUser target with no customer linkage (acceptance-criteria rejection case)", async () => {
-    mockResultQueue = [[{ mspRole: "MSPAdmin", mspId: 1, customerId: null }]];
+    mockResultQueue = [[{ mspRole: LEGACY_ROLE.mspAdmin, mspId: 1, customerId: null }]];
     const res = await request(app)
       .patch("/api/admin/active-directory/user/100/role")
       .set("Authorization", `Bearer ${adminToken()}`)
-      .send({ mspRole: "CustomerUser" });
+      .send({ mspRole: LEGACY_ROLE.customerUser });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/no customer linkage/i);
     expect(auditLogSpy).not.toHaveBeenCalled();
@@ -128,21 +129,21 @@ describe("PATCH /admin/active-directory/user/:id/role", () => {
 
   it("200s a valid role change, clearing customer linkage when moving a CustomerUser to an MSP-scoped role, and audit-logs before/after", async () => {
     mockResultQueue = [
-      [{ mspRole: "CustomerUser", mspId: 1, customerId: 10 }], // current row
+      [{ mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10 }], // current row
       [], // update()
       [], // createAuditLog's insert() (unused since createAuditLog is mocked, but harmless if consumed)
     ];
     const res = await request(app)
       .patch("/api/admin/active-directory/user/100/role")
       .set("Authorization", `Bearer ${adminToken()}`)
-      .send({ mspRole: "MSPOperator" });
+      .send({ mspRole: LEGACY_ROLE.mspOperator });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true, mspRole: "MSPOperator", mspId: 1, customerId: null });
+    expect(res.body).toEqual({ ok: true, mspRole: LEGACY_ROLE.mspOperator, mspId: 1, customerId: null });
     expect(auditLogSpy).toHaveBeenCalledTimes(1);
     const call = auditLogSpy.mock.calls[0][0];
     expect(call.actionType).toBe("user.role.update");
-    expect(call.metadata.before).toEqual({ mspRole: "CustomerUser", mspId: 1, customerId: 10 });
-    expect(call.metadata.after).toEqual({ mspRole: "MSPOperator", mspId: 1, customerId: null });
+    expect(call.metadata.before).toEqual({ mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10 });
+    expect(call.metadata.after).toEqual({ mspRole: LEGACY_ROLE.mspOperator, mspId: 1, customerId: null });
   });
 });
 
@@ -160,7 +161,7 @@ describe("PATCH /admin/active-directory/user/:id/assignment", () => {
 
   it("404s a target MSP that doesn't exist", async () => {
     mockResultQueue = [
-      [{ mspRole: "MSPAdmin", mspId: 1, customerId: null }], // current row
+      [{ mspRole: LEGACY_ROLE.mspAdmin, mspId: 1, customerId: null }], // current row
       [], // target MSP lookup — not found
     ];
     const res = await request(app)
@@ -173,7 +174,7 @@ describe("PATCH /admin/active-directory/user/:id/assignment", () => {
 
   it("400s assigning a customer to an MSP-scoped role (invalid-reassignment rejection case)", async () => {
     mockResultQueue = [
-      [{ mspRole: "MSPAdmin", mspId: 1, customerId: null }], // current row
+      [{ mspRole: LEGACY_ROLE.mspAdmin, mspId: 1, customerId: null }], // current row
       [{ mspId: 7 }], // target customer lookup resolves (but is the wrong field for this role)
     ];
     const res = await request(app)
@@ -187,7 +188,7 @@ describe("PATCH /admin/active-directory/user/:id/assignment", () => {
 
   it("200s a valid CustomerUser reassignment, deriving mspId from the target customer's real owning MSP", async () => {
     mockResultQueue = [
-      [{ mspRole: "CustomerUser", mspId: 1, customerId: 10 }], // current row
+      [{ mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10 }], // current row
       [{ mspId: 7 }], // target customer's owning MSP
       [], // update()
       [], // createAuditLog insert
@@ -204,7 +205,7 @@ describe("PATCH /admin/active-directory/user/:id/assignment", () => {
 
   it("400s a client-supplied mspId alongside a customerId for a CustomerUser (mspId is always derived server-side)", async () => {
     mockResultQueue = [
-      [{ mspRole: "CustomerUser", mspId: 1, customerId: 10 }], // current row
+      [{ mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10 }], // current row
       [{ mspId: 7 }], // target customer lookup
       [{ id: 3 }], // target MSP lookup (since bodyMspId is also provided)
     ];

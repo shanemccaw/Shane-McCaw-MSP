@@ -3,7 +3,7 @@
  *
  * The tables are in ../schema/rbac.ts; everything here is the mechanism that reads
  * them. Nothing in the running product imports this yet: #2455 landed the
- * foundation alongside `MSP_ROLES` with zero behavior change, #2457 expressed
+ * foundation alongside the legacy role enum with zero behavior change, #2457 expressed
  * today's seven roles and three capability columns as real rows (and added
  * ./legacy-ladder.ts, the citable transcription of what those rules are today),
  * #2458 moves enforcement onto it.

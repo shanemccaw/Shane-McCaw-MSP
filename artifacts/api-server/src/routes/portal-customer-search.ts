@@ -50,6 +50,7 @@ import {
 } from "@workspace/db";
 import { and, eq, ilike, inArray, or, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -63,7 +64,7 @@ const CUSTOMER_SERVICE_TYPES = ["assessment", "monitoring_tier", "micro_offer", 
 function effectiveRole(req: Request): MspRole | undefined {
   const user = req.user as { role?: string; mspRole?: MspRole } | undefined;
   if (!user) return undefined;
-  if (user.role === "admin") return "PlatformAdmin";
+  if (user.role === "admin") return LEGACY_ROLE.platformAdmin;
   return user.mspRole;
 }
 

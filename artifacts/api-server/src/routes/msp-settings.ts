@@ -76,7 +76,7 @@ import { eq, and, desc, isNull, inArray, gte, lt, count } from "drizzle-orm";
 import { requireAuth, requireCapability, effectiveMspRole } from "../middlewares/requireAuth.ts";
 import { roleClearsLadderFloor } from "../middlewares/rbac-ladder.ts";
 import { setGrantRole, usersHoldingGrantRole } from "../middlewares/rbac-capability.ts";
-import { CAPABILITY_COLUMN_ROLE_KEYS } from "@workspace/db/rbac/legacy-ladder";
+import { CAPABILITY_COLUMN_ROLE_KEYS, LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import { z } from "zod";
 import { randomBytes, createHash, randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
@@ -110,7 +110,7 @@ function apiError(res: Response, status: number, message: string) {
 // privilege escalation, no interaction with the target needed). Mirrors the
 // existing pattern that already keeps PlatformAdmin unassignable through this
 // surface (`updateRoleSchema`/`createInviteSchema` above only ever enumerate
-// `["MSPAdmin", "MSPOperator"]`), generalized to a real role-index ceiling so
+// `[`MSPAdmin`, `MSPOperator`]`), generalized to a real role-index ceiling so
 // a peer or higher-privileged target is rejected regardless of which two
 // tiers are involved, not just the PlatformAdmin case.
 //
@@ -688,7 +688,7 @@ router.get("/msp/settings/users/:userId/customer-scopes", requireCapability("lad
   res.json({
     mspRole: target.mspRole,
     // Scoping is meaningful only for these staff roles; the UI hides the picker otherwise.
-    scopable: target.mspRole === "MSPAdmin" || target.mspRole === "MSPOperator",
+    scopable: target.mspRole === LEGACY_ROLE.mspAdmin || target.mspRole === LEGACY_ROLE.mspOperator,
     allCustomers,
     assignedCustomerIds: assigned.map((a) => a.customerId),
   });
@@ -718,7 +718,7 @@ router.put("/msp/settings/users/:userId/customer-scopes", requireCapability("lad
     .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
-  if (target.mspRole !== "MSPAdmin" && target.mspRole !== "MSPOperator") {
+  if (target.mspRole !== LEGACY_ROLE.mspAdmin && target.mspRole !== LEGACY_ROLE.mspOperator) {
     apiError(res, 400, "Customer scoping applies only to MSP staff (MSPAdmin/MSPOperator)");
     return;
   }
@@ -770,7 +770,7 @@ router.put("/msp/settings/users/:userId/customer-scopes", requireCapability("lad
 });
 
 const updateRoleSchema = z.object({
-  mspRole: z.enum(["MSPAdmin", "MSPOperator"]),
+  mspRole: z.enum([LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspOperator]),
 });
 
 router.patch("/msp/settings/users/:userId/role", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
@@ -1741,7 +1741,7 @@ function getMspPortalInviteUrl(token: string): string {
 
 const createInviteSchema = z.object({
   email: z.string().email("A valid email is required"),
-  mspRole: z.enum(["MSPAdmin", "MSPOperator"]),
+  mspRole: z.enum([LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspOperator]),
 });
 
 router.post("/msp/settings/invites", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
@@ -1821,7 +1821,7 @@ router.post("/msp/settings/invites", requireCapability("ladder.msp-admin"), asyn
 
   const bodyHtml = `
     <h2 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#0A2540;">You've been invited to join ${mspName}</h2>
-    <p>You have been invited to join the ${mspName} team portal as <strong>${parsed.data.mspRole === "MSPAdmin" ? "MSP Admin" : "MSP Operator"}</strong>.</p>
+    <p>You have been invited to join the ${mspName} team portal as <strong>${parsed.data.mspRole === LEGACY_ROLE.mspAdmin ? "MSP Admin" : "MSP Operator"}</strong>.</p>
     <p>Click the link below to accept your invitation and set up your account. This link expires in <strong>72 hours</strong>.</p>
     ${emailButton("Accept Invitation", inviteUrl)}
     <p style="margin-top:24px;font-size:13px;color:#64748b;">If you weren't expecting this, you can safely ignore this email.</p>

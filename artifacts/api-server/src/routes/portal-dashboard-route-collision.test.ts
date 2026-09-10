@@ -144,6 +144,7 @@ vi.mock("../lib/tenant-signals", () => ({
 }));
 
 import router from "./portal-customer-engines";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 function makeApp() {
   const app = express();
@@ -275,7 +276,7 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
 
     const res = await request(makeApp())
       .get("/api/portal/dashboard")
-      .set("Authorization", `Bearer ${token("CustomerUser")}`);
+      .set("Authorization", `Bearer ${token(LEGACY_ROLE.customerUser)}`);
 
     expect(res.status).toBe(200);
     // Fields that only ever came from the customer-engines handler.
@@ -314,7 +315,7 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
   it("still refuses a token with no customerId claim — the floor drop is not an untenanted hole", async () => {
     const res = await request(makeApp())
       .get("/api/portal/dashboard")
-      .set("Authorization", `Bearer ${token("MSPAdmin", null)}`);
+      .set("Authorization", `Bearer ${token(LEGACY_ROLE.mspAdmin, null)}`);
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/no customer account/i);

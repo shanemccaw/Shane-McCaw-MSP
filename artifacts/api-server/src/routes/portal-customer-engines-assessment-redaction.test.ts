@@ -123,6 +123,7 @@ vi.mock("../lib/tenant-signals", () => ({
 }));
 
 import router from "./portal-customer-engines";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 function makeApp() {
   const app = express();
@@ -133,7 +134,7 @@ function makeApp() {
 
 function customerToken(customerId = 10, id = 1): string {
   return jwt.sign(
-    { id, email: "customer@test.com", role: "client", mspRole: "CustomerUser", mspId: 1, customerId },
+    { id, email: "customer@test.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

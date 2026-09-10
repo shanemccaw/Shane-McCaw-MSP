@@ -76,6 +76,7 @@ import { fetchPublishedKnowledgeBaseRows } from "../lib/remediation-knowledge-ba
 import { resolveTenantScope } from "../lib/portal-customer-scope";
 import { declineRemediationStepToRisk } from "../lib/remediation-tracker-risk-decline";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import {
   remediationTerminalState,
   type RemediationTerminalState,
@@ -88,7 +89,7 @@ import {
  * logging retainer hours, and attributing his time to their action would be
  * wrong. `admin` is the platform-admin session the AdminV2 console carries.
  */
-const RETAINER_MSP_ACTOR_ROLES = new Set(["admin", "PlatformAdmin", "MSPOperator", "MSPAdmin"]);
+const RETAINER_MSP_ACTOR_ROLES = new Set(["admin", LEGACY_ROLE.platformAdmin, LEGACY_ROLE.mspOperator, LEGACY_ROLE.mspAdmin]);
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

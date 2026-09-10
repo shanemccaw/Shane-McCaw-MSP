@@ -86,6 +86,7 @@ vi.mock("../lib/scope-creep-engine.ts", () => ({
 }));
 
 import router from "./dashboard-data";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();
 app.use(express.json());
@@ -96,7 +97,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 
 function customerToken(overrides: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 1, email: "c@co.com", role: "client", mspRole: "CustomerUser", mspId: 1, customerId: 10, ...overrides },
+    { id: 1, email: "c@co.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10, ...overrides },
     JWT_SECRET,
     { expiresIn: "1h" },
   );
@@ -104,7 +105,7 @@ function customerToken(overrides: Record<string, unknown> = {}): string {
 
 function operatorToken(overrides: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 2, email: "op@msp.com", role: "client", mspRole: "MSPOperator", mspId: 1, ...overrides },
+    { id: 2, email: "op@msp.com", role: "client", mspRole: LEGACY_ROLE.mspOperator, mspId: 1, ...overrides },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

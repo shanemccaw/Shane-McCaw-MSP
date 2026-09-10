@@ -23,7 +23,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 
 function makeToken(claims: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 1, email: "test@msp.com", role: "client", mspRole: "MSPAdmin", ...claims },
+    { id: 1, email: "test@msp.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, ...claims },
     JWT_SECRET,
     { expiresIn: "1h" },
   );
@@ -70,6 +70,7 @@ function makeRes(): Response {
 // ── Import the module under test after mocks are set ─────────────────────────
 
 import { requireAuth } from "./requireAuth";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

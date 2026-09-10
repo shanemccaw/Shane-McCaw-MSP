@@ -113,6 +113,7 @@ import {
 } from "../lib/active-directory";
 import { resolveCustomerUserIds } from "../lib/tenant-signals";
 import { userEntitlementOverridesTable } from "@workspace/db";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // Most recent N diagnostic runs shown in the Customer Object pane's summary —
 // a run-history preview, not a full diagnostics browser (Issue #63 scope).
@@ -1702,7 +1703,7 @@ router.post("/admin/active-directory/user/:id/impersonate", requireAdmin, async 
       .where(eq(usersTable.id, userId))
       .limit(1);
 
-    if (linkage?.mspRole === "PlatformAdmin") {
+    if (linkage?.mspRole === LEGACY_ROLE.platformAdmin) {
       authLog.warn({ actorUserId: actor.id, targetUserId: userId }, "impersonate: refused PlatformAdmin target");
       res.status(403).json({ error: "PlatformAdmin accounts cannot be impersonated" });
       return;
@@ -1725,7 +1726,7 @@ router.post("/admin/active-directory/user/:id/impersonate", requireAdmin, async 
     try {
       await db.insert(mspAuditLogsTable).values({
         actorUserId: actor.id,
-        actorRole: actor.mspRole ?? "PlatformAdmin",
+        actorRole: actor.mspRole ?? LEGACY_ROLE.platformAdmin,
         mspId: linkage?.mspId ?? null,
         customerId: linkage?.customerId ?? null,
         actionType: "IMPERSONATION_TOKEN_ISSUED",

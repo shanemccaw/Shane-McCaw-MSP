@@ -209,6 +209,7 @@ vi.mock("@workspace/db", () => {
 });
 
 import router from "./admin-active-directory";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();
 app.use(express.json());
@@ -218,7 +219,7 @@ const JWT_SECRET = "admin-active-directory-delete-test-secret";
 process.env.JWT_SECRET = JWT_SECRET;
 
 function adminToken(): string {
-  return jwt.sign({ id: 1, email: "pa@platform.com", name: "Platform Admin", role: "admin", mspRole: "PlatformAdmin" }, JWT_SECRET, {
+  return jwt.sign({ id: 1, email: "pa@platform.com", name: "Platform Admin", role: "admin", mspRole: LEGACY_ROLE.platformAdmin }, JWT_SECRET, {
     expiresIn: "15m",
   });
 }
@@ -311,7 +312,7 @@ function deletedTables(): string[] {
   return h.opRecords.filter((r) => r.op === "delete").map((r) => r.table ?? "?");
 }
 
-const TARGET_ROW = { id: 42, email: "victim@customer.com", name: "Victim", mspRole: "CustomerUser", mspId: 3, tenantId: 7 };
+const TARGET_ROW = { id: 42, email: "victim@customer.com", name: "Victim", mspRole: LEGACY_ROLE.customerUser, mspId: 3, tenantId: 7 };
 
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 
@@ -463,7 +464,7 @@ describe("DELETE /admin/active-directory/user/:id — successful full wipe (acce
 
   it("skips project-scoped and tenant-scoped tables when the account has no projects and no tenant linkage, but still wipes every user-keyed table", async () => {
     h.queue.push(
-      [{ ...TARGET_ROW, tenantId: null, mspRole: "MSPOperator" }], // no tenant
+      [{ ...TARGET_ROW, tenantId: null, mspRole: LEGACY_ROLE.mspOperator }], // no tenant
       [], // project ids — none
       [], // client_service ids — none
       [], // diagnostic run ids — none

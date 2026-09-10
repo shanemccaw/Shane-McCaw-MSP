@@ -33,6 +33,7 @@ import { broadcastKanbanChange } from "../lib/sse-channels.ts";
 import { fireWorkflowForDefinition } from "../lib/workflow-executor.ts";
 import { executeMonitoringPackage } from "../lib/monitor-executor.ts";
 import { logger } from "../lib/logger.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "engine.kanban" });
 
 const router = Router();
@@ -48,7 +49,7 @@ const VALID_COLUMNS: DeliveryColumn[] = [
 ];
 
 function isAdmin(req: Request): boolean {
-  return req.user?.role === "admin" || (req.user?.mspRole !== "CustomerUser" && req.user?.mspRole !== undefined && req.user?.role !== "client");
+  return req.user?.role === "admin" || (req.user?.mspRole !== LEGACY_ROLE.customerUser && req.user?.mspRole !== undefined && req.user?.role !== "client");
 }
 
 function stripInternalNotes<T extends { internalNotes?: string | null }>(task: T): Omit<T, "internalNotes"> {

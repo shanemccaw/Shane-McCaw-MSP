@@ -13,6 +13,7 @@ import { logger } from "./logger";
 import { sendMessage } from "./graphEmail.ts";
 import { dispatchEvent } from "./event-bus.ts";
 import { resolvePortalDeepLink } from "./portal-deep-links";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "notification" });
 
 /**
@@ -119,7 +120,7 @@ async function fanOutToCustomerWebhook(
     if (!ctx) return;
     await dispatchEvent({
       eventType: `notification.${payload.category ?? "general"}`,
-      actor: { id: userId, role: "CustomerUser", type: "user" },
+      actor: { id: userId, role: LEGACY_ROLE.customerUser, type: "user" },
       source: "notification-center",
       mspId: ctx.mspId,
       customerId: ctx.customerId,
@@ -291,7 +292,7 @@ export async function notifyOwnershipPending(opts: {
     const roleLabel = roleKey === "r" ? "Responsible" : "Accountable";
     const title = `New ${roleLabel} assignment on your Ownership matrix`;
     const body = "Your acceptance is needed before this assignment counts.";
-    const isMspStaff = row.mspRole === "MSPAdmin" || row.mspRole === "MSPOperator";
+    const isMspStaff = row.mspRole === LEGACY_ROLE.mspAdmin || row.mspRole === LEGACY_ROLE.mspOperator;
 
     await createNotification({
       title,
@@ -367,7 +368,7 @@ export async function notifyOwnershipDeclined(opts: {
     const body = declineReason
       ? `The cell you assigned was declined: "${declineReason}"`
       : "The cell you assigned was declined.";
-    const isMspStaff = row.mspRole === "MSPAdmin" || row.mspRole === "MSPOperator";
+    const isMspStaff = row.mspRole === LEGACY_ROLE.mspAdmin || row.mspRole === LEGACY_ROLE.mspOperator;
 
     await createNotification({
       title,
@@ -474,7 +475,7 @@ export async function notifyDriftAccountableOwners(opts: {
         .limit(1);
       if (!row || row.acceptance === "declined") continue;
 
-      const isMspStaff = row.mspRole === "MSPAdmin" || row.mspRole === "MSPOperator";
+      const isMspStaff = row.mspRole === LEGACY_ROLE.mspAdmin || row.mspRole === LEGACY_ROLE.mspOperator;
       const notifId = await createNotification({
         title: `Unauthorized change on ${workloadLabel}`,
         body: summary,

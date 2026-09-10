@@ -47,6 +47,7 @@ vi.mock("@workspace/db", () => {
 });
 
 import router from "./dashboard-templates";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();
 app.use(express.json());
@@ -56,19 +57,19 @@ const JWT_SECRET = "test-secret";
 process.env.JWT_SECRET = JWT_SECRET;
 
 function platformAdminToken(): string {
-  return jwt.sign({ id: 1, email: "admin@platform.com", role: "admin", mspRole: "PlatformAdmin" }, JWT_SECRET, { expiresIn: "1h" });
+  return jwt.sign({ id: 1, email: "admin@platform.com", role: "admin", mspRole: LEGACY_ROLE.platformAdmin }, JWT_SECRET, { expiresIn: "1h" });
 }
 
 function operatorToken(mspId = 1): string {
-  return jwt.sign({ id: 2, email: "op@msp.com", role: "client", mspRole: "MSPOperator", mspId }, JWT_SECRET, { expiresIn: "1h" });
+  return jwt.sign({ id: 2, email: "op@msp.com", role: "client", mspRole: LEGACY_ROLE.mspOperator, mspId }, JWT_SECRET, { expiresIn: "1h" });
 }
 
 function mspAdminToken(mspId = 1): string {
-  return jwt.sign({ id: 3, email: "admin@msp.com", role: "client", mspRole: "MSPAdmin", mspId }, JWT_SECRET, { expiresIn: "1h" });
+  return jwt.sign({ id: 3, email: "admin@msp.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId }, JWT_SECRET, { expiresIn: "1h" });
 }
 
 function customerUserToken(): string {
-  return jwt.sign({ id: 4, email: "user@customer.com", role: "client", mspRole: "CustomerUser", mspId: 1, customerId: 10 }, JWT_SECRET, { expiresIn: "1h" });
+  return jwt.sign({ id: 4, email: "user@customer.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10 }, JWT_SECRET, { expiresIn: "1h" });
 }
 
 const SAMPLE_LAYOUT = [

@@ -11,7 +11,7 @@
  * The rule is `assertCustomerAccess`'s rule, expressed as a set rather than as a
  * yes/no on one id — deliberately not a second scoping mechanism:
  *
- *  - PlatformAdmin (`role === "admin"` or `mspRole === "PlatformAdmin"`) — every
+ *  - PlatformAdmin (`role === "admin"` or `mspRole === `PlatformAdmin``) — every
  *    tenant, unless they name one MSP via `?mspId=` / `?slug=`, which narrows.
  *    `assertCustomerAccess` already returns true unconditionally for this role; the
  *    set form must agree with it or the two would disagree about the same caller.
@@ -34,6 +34,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { resolveMspId } from "./resolve-msp-id.ts";
 import { resolveStaffScopedCustomerIds, type AuthUser } from "../middlewares/requireAuth.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 export interface ConfigStateBook {
   /** Whose book this is. `null` for a PlatformAdmin who named no MSP. */
@@ -56,8 +57,8 @@ export async function resolveConfigStateBook(req: Request): Promise<ConfigStateB
   const user = req.user as AuthUser | undefined;
   if (!user) return { mspId: null, isPlatformAdmin: false, tenantIds: [], tenants: [] };
 
-  const isPlatformAdmin = user.role === "admin" || user.mspRole === "PlatformAdmin";
-  const isMspStaff = user.mspRole === "MSPAdmin" || user.mspRole === "MSPOperator";
+  const isPlatformAdmin = user.role === "admin" || user.mspRole === LEGACY_ROLE.platformAdmin;
+  const isMspStaff = user.mspRole === LEGACY_ROLE.mspAdmin || user.mspRole === LEGACY_ROLE.mspOperator;
   if (!isPlatformAdmin && !isMspStaff) {
     return { mspId: null, isPlatformAdmin: false, tenantIds: [], tenants: [] };
   }

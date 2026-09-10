@@ -1,3 +1,4 @@
+import type { LegacyRole } from "@workspace/db/rbac/legacy-ladder";
 /**
  * Active Directory — wire types.
  *
@@ -18,20 +19,19 @@
  * `GET /admin/active-directory/roles` via `@/lib/useDirectoryRoles`, so the
  * console cannot offer a role the server does not have (or miss one it does).
  *
- * The TYPE stays, and stays a union, on purpose: it is the wire shape of a field
- * the server sends, and `setAdUserRole` takes it as an argument. That is
- * describing a payload, not making an authorization decision from a literal —
- * which is the distinction #2459 is actually about. #2460 retires `MSP_ROLES`
- * itself, and this union goes with it.
+ * The TYPE stays on purpose: it is the wire shape of a field the server sends, and
+ * `setAdUserRole` takes it as an argument. That is describing a payload, not making
+ * an authorization decision from a literal — which is the distinction #2459 is
+ * actually about.
+ *
+ * #2460 — it was a hand-written union of the same seven strings the server's own
+ * enum held, which is a second copy of a wire contract with nothing checking the two
+ * agree. It is now an alias of `LegacyRole`, the single transcription in the
+ * migration's compatibility shim that #2457's seed and its parity check are both
+ * computed from. Same type, one definition, and a rung added or removed there now
+ * reaches this console automatically instead of silently drifting from it.
  */
-export type DirectoryGroupRole =
-  | "PlatformAdmin"
-  | "MSPAdmin"
-  | "MSPOperator"
-  | "CustomerUser"
-  | "ServiceAccount"
-  | "Free"
-  | "Assessment";
+export type DirectoryGroupRole = LegacyRole;
 
 // ── Tree (GET /admin/active-directory/tree) ──────────────────────────────────
 

@@ -30,9 +30,10 @@ import {
   REMEDIATION_TRACKER_STATUS_LABELS,
 } from "../lib/remediation-tracker-catalogue";
 import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "../lib/remediation-tracker-verification";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
-/** MSP-side roles (`users.mspRole`) — see lib/db/src/schema/index.ts's MSP_ROLES. */
-const MSP_STAFF_ROLES = new Set(["PlatformAdmin", "MSPAdmin", "MSPOperator", "ServiceAccount"]);
+/** MSP-side roles (`users.mspRole`) — see `LEGACY_ROLE_ORDER` in @workspace/db/rbac. */
+const MSP_STAFF_ROLES: ReadonlySet<string> = new Set([LEGACY_ROLE.platformAdmin, LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspOperator, LEGACY_ROLE.serviceAccount]);
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

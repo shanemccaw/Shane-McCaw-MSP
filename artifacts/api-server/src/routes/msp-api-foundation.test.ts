@@ -97,6 +97,7 @@ mock.module("../lib/msp-jobs.ts", {
 
 import jwt from "jsonwebtoken";
 import express from "express";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const SECRET = process.env["JWT_SECRET"]!;
 
@@ -205,7 +206,7 @@ describe("MSP v1 standard error shape", () => {
   });
 
   it("invalid mspId returns 400 with VALIDATION_ERROR code", async () => {
-    const token = makeToken({ id: 1, email: "a@b.com", role: "admin", mspRole: "MSPAdmin", mspId: 1 });
+    const token = makeToken({ id: 1, email: "a@b.com", role: "admin", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 });
     const { status, body } = await request("GET", "/msp/v1/msps/not-a-number", { token });
     assert.equal(status, 400);
     assert.equal((body as { error: { code: string } }).error.code, "VALIDATION_ERROR");
@@ -216,7 +217,7 @@ describe("MSP v1 standard error shape", () => {
 
 describe("MSP v1 request observability", () => {
   it("every response carries X-Trace-Id", async () => {
-    const token = makeToken({ id: 1, email: "a@b.com", role: "admin", mspRole: "PlatformAdmin" });
+    const token = makeToken({ id: 1, email: "a@b.com", role: "admin", mspRole: LEGACY_ROLE.platformAdmin });
     const { headers } = await request("GET", "/msp/v1/health", { token });
     assert.ok(headers["x-trace-id"], "X-Trace-Id must be present on every response");
   });

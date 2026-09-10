@@ -72,7 +72,7 @@ beforeEach(() => {
 describe("an unseeded model is reported unavailable, never denied", () => {
   it("returns 'unavailable' — not 'deny' — when no rows exist at all", async () => {
     const { roleClearsLadderFloor } = await freshModule();
-    const outcome = await roleClearsLadderFloor("PlatformAdmin", "PlatformAdmin");
+    const outcome = await roleClearsLadderFloor(LEGACY_ROLE.platformAdmin, LEGACY_ROLE.platformAdmin);
     // The distinction is the point: a 403 here would report a missing migration as a
     // permission decision, and the real cause would be invisible.
     expect(outcome.kind).toBe("unavailable");
@@ -83,16 +83,16 @@ describe("an unseeded model is reported unavailable, never denied", () => {
     seededRows();
     mappingRows = [];
     const { roleClearsLadderFloor } = await freshModule();
-    expect((await roleClearsLadderFloor("PlatformAdmin", "MSPAdmin")).kind).toBe("unavailable");
+    expect((await roleClearsLadderFloor(LEGACY_ROLE.platformAdmin, LEGACY_ROLE.mspAdmin)).kind).toBe("unavailable");
   });
 
   it("is unavailable when ONE rung is missing, not silently partially enforced", async () => {
     seededRows();
-    roleRows = roleRows.filter((r) => r.key !== "MSPOperator");
+    roleRows = roleRows.filter((r) => r.key !== LEGACY_ROLE.mspOperator);
     const { roleClearsLadderFloor } = await freshModule();
     // A partial seed must not answer at all: MSPOperator would otherwise resolve to
     // "holds no role" and be denied every floor it legitimately clears.
-    expect((await roleClearsLadderFloor("PlatformAdmin", "PlatformAdmin")).kind).toBe("unavailable");
+    expect((await roleClearsLadderFloor(LEGACY_ROLE.platformAdmin, LEGACY_ROLE.platformAdmin)).kind).toBe("unavailable");
   });
 });
 
@@ -100,7 +100,7 @@ describe("a failed read fails closed", () => {
   it("returns 'unavailable' when the read throws and nothing is cached", async () => {
     readError = new Error("connection terminated unexpectedly");
     const { roleClearsLadderFloor } = await freshModule();
-    const outcome = await roleClearsLadderFloor("PlatformAdmin", "PlatformAdmin");
+    const outcome = await roleClearsLadderFloor(LEGACY_ROLE.platformAdmin, LEGACY_ROLE.platformAdmin);
     expect(outcome.kind).toBe("unavailable");
     if (outcome.kind === "unavailable") expect(outcome.reason).toBe("rbac_model_unreadable");
   });
@@ -108,7 +108,7 @@ describe("a failed read fails closed", () => {
   it("serves the last good snapshot when a later read fails inside the stale grace", async () => {
     seededRows();
     const { roleClearsLadderFloor } = await freshModule();
-    expect((await roleClearsLadderFloor("MSPAdmin", "MSPAdmin")).kind).toBe("allow");
+    expect((await roleClearsLadderFloor(LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspAdmin)).kind).toBe("allow");
 
     // Expire the TTL, then break the database.
     vi.useFakeTimers();
@@ -116,12 +116,12 @@ describe("a failed read fails closed", () => {
       vi.setSystemTime(Date.now() + 60_000);
       readError = new Error("connection terminated unexpectedly");
       // A transient blip must not 503 every gated route at once.
-      expect((await roleClearsLadderFloor("MSPAdmin", "MSPAdmin")).kind).toBe("allow");
+      expect((await roleClearsLadderFloor(LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspAdmin)).kind).toBe("allow");
 
       // Past the grace window it stops being served — stale forever is how a revoked
       // grant keeps working.
       vi.setSystemTime(Date.now() + 10 * 60_000);
-      expect((await roleClearsLadderFloor("MSPAdmin", "MSPAdmin")).kind).toBe("unavailable");
+      expect((await roleClearsLadderFloor(LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspAdmin)).kind).toBe("unavailable");
     } finally {
       vi.useRealTimers();
     }
@@ -131,7 +131,7 @@ describe("a failed read fails closed", () => {
     seededRows();
     const { roleClearsLadderFloor } = await freshModule();
     for (const floor of ["", "Engineer", "platformadmin", "admin"]) {
-      const outcome = await roleClearsLadderFloor("PlatformAdmin", floor);
+      const outcome = await roleClearsLadderFloor(LEGACY_ROLE.platformAdmin, floor);
       expect(outcome.kind, `floor=${floor}`).toBe("unavailable");
     }
   });
@@ -141,7 +141,7 @@ describe("the snapshot is loaded once, not per request", () => {
   it("issues one pair of reads for a burst of concurrent checks", async () => {
     seededRows();
     const { roleClearsLadderFloor } = await freshModule();
-    await Promise.all(LEGACY_ROLE_ORDER.map((rung) => roleClearsLadderFloor(rung, "CustomerUser")));
+    await Promise.all(LEGACY_ROLE_ORDER.map((rung) => roleClearsLadderFloor(rung, LEGACY_ROLE.customerUser)));
     // ONE read for all seven checks — the in-flight dedupe. A per-request query on
     // 616 route gates is the regression this guards against.
     expect(reads).toBe(1);
@@ -150,15 +150,15 @@ describe("the snapshot is loaded once, not per request", () => {
   it("re-reads after invalidateLadderSnapshot(), so a revoke is not held for a TTL", async () => {
     seededRows();
     const { roleClearsLadderFloor, invalidateLadderSnapshot } = await freshModule();
-    await roleClearsLadderFloor("MSPAdmin", "MSPAdmin");
+    await roleClearsLadderFloor(LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspAdmin);
     expect(reads).toBe(1);
 
     invalidateLadderSnapshot();
     // Revoke MSPAdmin's own rung from the floor it used to clear.
     const row = mappingRows.find((m) => m.capabilityKey === LADDER_CAPABILITY_KEYS.MSPAdmin)!;
-    row.allow = row.allow.filter((id) => id !== rungRoleId("MSPAdmin"));
+    row.allow = row.allow.filter((id) => id !== rungRoleId(LEGACY_ROLE.mspAdmin));
 
-    expect((await roleClearsLadderFloor("MSPAdmin", "MSPAdmin")).kind).toBe("deny");
+    expect((await roleClearsLadderFloor(LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspAdmin)).kind).toBe("deny");
     expect(reads).toBe(2);
   });
 });
@@ -167,11 +167,11 @@ describe("deny wins, through the shared evaluator", () => {
   it("denies a rung that is on both the allow and the deny list", async () => {
     seededRows();
     const row = mappingRows.find((m) => m.capabilityKey === LADDER_CAPABILITY_KEYS.CustomerUser)!;
-    row.deny = [rungRoleId("PlatformAdmin")];
+    row.deny = [rungRoleId(LEGACY_ROLE.platformAdmin)];
     const { roleClearsLadderFloor } = await freshModule();
     // Not this module's rule — it is #2455's evaluator, reached unchanged. Asserted
     // here because `requireRole` is the caller that has to inherit it.
-    const outcome = await roleClearsLadderFloor("PlatformAdmin", "CustomerUser");
+    const outcome = await roleClearsLadderFloor(LEGACY_ROLE.platformAdmin, LEGACY_ROLE.customerUser);
     expect(outcome.kind).toBe("deny");
     if (outcome.kind === "deny") expect(outcome.decision.effect).toBe("deny");
   });

@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -83,7 +84,7 @@ vi.mock("../middlewares/requireAuth.ts", () => ({
         id: 1,
         email: "admin@contoso.com",
         role: "client",
-        mspRole: "MSPAdmin",
+        mspRole: LEGACY_ROLE.mspAdmin,
         mspId: 42,
       };
     }
@@ -113,7 +114,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 
 function makeToken(overrides: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 1, email: "admin@contoso.com", role: "client", mspRole: "MSPAdmin", mspId: 42, ...overrides },
+    { id: 1, email: "admin@contoso.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 42, ...overrides },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

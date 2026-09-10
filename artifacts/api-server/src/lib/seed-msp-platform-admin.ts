@@ -1,6 +1,7 @@
 import { db, mspsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "admin.insights" });
 
 const MSP_SLUG = "shane-mccaw-consulting";
@@ -60,7 +61,7 @@ export async function seedMspPlatformAdmin(): Promise<void> {
   if (existing.mspRole === "Free") {
     await db
       .update(usersTable)
-      .set({ mspRole: "PlatformAdmin", mspId: msp.id, isActive: true })
+      .set({ mspRole: LEGACY_ROLE.platformAdmin, mspId: msp.id, isActive: true })
       .where(eq(usersTable.id, existing.id));
   }
 

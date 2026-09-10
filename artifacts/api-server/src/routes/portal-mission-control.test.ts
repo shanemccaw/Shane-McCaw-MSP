@@ -30,7 +30,7 @@ process.env["JWT_SECRET"] = JWT_SECRET;
 
 function customerToken(customerId: number, userId = 1): string {
   return jwt.sign(
-    { id: userId, email: `c${customerId}@test.com`, role: "client", mspRole: "CustomerUser", customerId },
+    { id: userId, email: `c${customerId}@test.com`, role: "client", mspRole: LEGACY_ROLE.customerUser, customerId },
     JWT_SECRET,
     { expiresIn: "1h" },
   );
@@ -86,6 +86,7 @@ import { db } from "@workspace/db";
 import { runEngineManifestForTenant } from "../lib/engine-registry";
 import { runConfigPackForCustomer } from "../lib/config-pack-orchestrator";
 import router from "./portal-mission-control";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;
 const mockManifest = runEngineManifestForTenant as unknown as ReturnType<typeof vi.fn>;

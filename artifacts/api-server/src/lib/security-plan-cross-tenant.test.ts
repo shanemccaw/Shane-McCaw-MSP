@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 import type { Request } from "express";
 import { resolveSecurityPlanCrossTenantBook } from "./security-plan-cross-tenant.ts";
 import type { AuthUser } from "../middlewares/requireAuth.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 function reqWithUser(user: AuthUser | undefined): Request {
   return { user, query: {} } as unknown as Request;
@@ -25,13 +26,13 @@ describe("resolveSecurityPlanCrossTenantBook() — fail-closed guard (#2145)", (
   });
 
   it("returns an empty book for a CustomerUser — never a customer-role cross-tenant read", async () => {
-    const user: AuthUser = { id: 1, email: "customer@example.com", role: "client", mspRole: "CustomerUser", customerId: 9 };
+    const user: AuthUser = { id: 1, email: "customer@example.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 9 };
     const book = await resolveSecurityPlanCrossTenantBook(reqWithUser(user));
     expect(book).toEqual({ mspId: null, isPlatformAdmin: false, tenants: [] });
   });
 
   it("returns an empty book for MSP-staff with no resolvable mspId (blank scope), never falling through to every tenant", async () => {
-    const user: AuthUser = { id: 2, email: "staff@example.com", role: "client", mspRole: "MSPOperator" };
+    const user: AuthUser = { id: 2, email: "staff@example.com", role: "client", mspRole: LEGACY_ROLE.mspOperator };
     const book = await resolveSecurityPlanCrossTenantBook(reqWithUser(user));
     expect(book).toEqual({ mspId: null, isPlatformAdmin: false, tenants: [] });
   });

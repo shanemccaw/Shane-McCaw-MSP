@@ -10,6 +10,7 @@ import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { ensureClientSetupToken } from "../lib/client-setup-token";
 import { logger } from "../lib/logger.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
@@ -133,7 +134,7 @@ router.post("/portal/team/invite", requireAuth, async (req: Request, res: Respon
     name: name?.trim() || null,
     mspId: inviterMspId,
     tenantId: inviterCustomerId,
-    mspRole: "CustomerUser",
+    mspRole: LEGACY_ROLE.customerUser,
     isActive: true,
     department: department?.trim() || null,
     jobTitle: jobTitle?.trim() || null,

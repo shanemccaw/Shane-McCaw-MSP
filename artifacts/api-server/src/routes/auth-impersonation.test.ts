@@ -21,6 +21,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import jwt from "jsonwebtoken";
 import type { AddressInfo } from "node:net";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const TEST_JWT_SECRET = "impersonation-auth-test-secret-abc";
 process.env.JWT_SECRET = TEST_JWT_SECRET;
@@ -197,7 +198,7 @@ const fakeMspUserRow = {
   userId: TARGET_USER_ID,
   mspId: TARGET_MSP_ID,
   customerId: TARGET_CUSTOMER_ID,
-  mspRole: "CustomerUser",
+  mspRole: LEGACY_ROLE.customerUser,
   isActive: true,
 };
 

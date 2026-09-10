@@ -14,7 +14,7 @@ import { dispatchEvent, EVENT_TYPES, systemActor, userActor, impersonationActor 
 import { requireCapability, requireAuth } from "../middlewares/requireAuth.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 import { portalLandingSurface } from "../lib/identity-presentation.ts";
-import { effectiveLegacyRole } from "@workspace/db/rbac/legacy-ladder";
+import { effectiveLegacyRole, LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import { logger } from "../lib/logger.ts";
 import {
   createSession,
@@ -1023,7 +1023,7 @@ router.post("/auth/impersonate-exchange", async (req: Request, res: Response) =>
     eventType: EVENT_TYPES.IMPERSONATION_SESSION_STARTED,
     actor: impersonatedMspId !== undefined
       ? impersonationActor(record.adminUserId, impersonatedMspId)
-      : userActor(record.adminUserId, "PlatformAdmin"),
+      : userActor(record.adminUserId, LEGACY_ROLE.platformAdmin),
     source: "auth.impersonate-exchange",
     mspId: mspClaims.mspId,
     customerId: mspClaims.customerId,
@@ -1299,7 +1299,7 @@ export async function seedAdminUser(): Promise<void> {
     if (existing.mspRole === "Free") {
       await db
         .update(usersTable)
-        .set({ mspRole: "PlatformAdmin", isActive: true })
+        .set({ mspRole: LEGACY_ROLE.platformAdmin, isActive: true })
         .where(eq(usersTable.id, existing.id));
     }
     return;
@@ -1312,7 +1312,7 @@ export async function seedAdminUser(): Promise<void> {
       email: email.toLowerCase(),
       passwordHash,
       role: "admin",
-      mspRole: "PlatformAdmin",
+      mspRole: LEGACY_ROLE.platformAdmin,
       isActive: true,
     });
 }
@@ -1368,7 +1368,7 @@ router.post("/admin/msp/service-accounts", requireCapability("ladder.platform-ad
   const actor = req.user as { id: number; mspRole?: string } | undefined;
   void dispatchEvent({
     eventType: EVENT_TYPES.MSP_SERVICE_ACCOUNT_CREATED,
-    actor: userActor(actor?.id ?? 0, (actor?.mspRole ?? "PlatformAdmin") as import("@workspace/db").MspRole),
+    actor: userActor(actor?.id ?? 0, (actor?.mspRole ?? LEGACY_ROLE.platformAdmin) as import("@workspace/db").MspRole),
     source: "auth.service-accounts",
     mspId: mspId ?? null,
     payload: { serviceAccountId: inserted?.id, name, keyPrefix: prefix },

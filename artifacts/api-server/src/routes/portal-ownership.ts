@@ -139,6 +139,7 @@ import { notifyOwnershipPending, notifyOwnershipDeclined } from "../lib/notifica
 import { displayStatus, formatChangeRequestCode } from "../lib/portal-change-control";
 import { groupEnabledServicePlansByWorkload } from "../lib/tenant-workloads.ts";
 import { resolveUntrackedWorkloadKeys } from "../lib/ownership-workload-membership";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import {
   actorMayRespond,
   assignEventType,
@@ -241,7 +242,7 @@ export async function gatherOwnershipObjects(
             and(
               eq(usersTable.mspId, mspId),
               eq(usersTable.isActive, true),
-              or(eq(usersTable.mspRole, "MSPAdmin"), eq(usersTable.mspRole, "MSPOperator")),
+              or(eq(usersTable.mspRole, LEGACY_ROLE.mspAdmin), eq(usersTable.mspRole, LEGACY_ROLE.mspOperator)),
             ),
           )
           .orderBy(asc(usersTable.id));

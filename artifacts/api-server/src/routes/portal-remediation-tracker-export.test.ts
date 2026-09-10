@@ -87,6 +87,7 @@ vi.mock("../lib/insight-pdf", () => ({
 }));
 
 import router from "./portal-remediation-tracker-export";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 function makeApp(user: Record<string, unknown> | null) {
   const app = express();
@@ -209,7 +210,7 @@ describe("GET /portal/remediation-tracker/evidence-pack.pdf", () => {
           severity: "ok",
         },
       ],
-      [{ id: 3, name: "Jamie Ops", mspRole: "MSPAdmin", mspId: 9 }],
+      [{ id: 3, name: "Jamie Ops", mspRole: LEGACY_ROLE.mspAdmin, mspId: 9 }],
       [{ id: 9, name: "Shane McCaw Consulting" }],
     ];
 

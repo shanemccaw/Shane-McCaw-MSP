@@ -30,7 +30,7 @@
  * by #2457) the seven rungs of the `ROLE_ORDER` ladder, one capability each.
  *
  * With the rungs catalogued, every one of the ~480 `requireRole` call sites is
- * expressible: `requireRole("MSPAdmin")` is `ladder.msp-admin`. What has NOT
+ * expressible: `requireRole(`MSPAdmin`)` is `ladder.msp-admin`. What has NOT
  * happened is any call site being changed — #2457 only makes the data correct,
  * #2458 moves enforcement onto this evaluator, and #1698 is the mechanical
  * route-coverage pass. Adding an entry here is a one-line change plus a catalog
@@ -68,15 +68,15 @@ export interface RbacCapability {
 export const RBAC_CAPABILITIES: readonly RbacCapability[] = Object.freeze([
   // ── MSP system: the ROLE_ORDER ladder, one capability per rung (#2457) ────
   //
-  // Added by migration step 2. `requireRole("MSPAdmin")` is an authorization
+  // Added by migration step 2. `requireRole(`MSPAdmin`)` is an authorization
   // decision like any other, and these seven keys are what it becomes once the
   // decision comes out of the database instead of an array index — the allow set
   // of `ladder.msp-admin` is literally {MSPAdmin, PlatformAdmin}, which is
-  // `roleIndex >= roleIndex("MSPAdmin")` enumerated rather than computed.
+  // `roleIndex >= roleIndex(`MSPAdmin`)` enumerated rather than computed.
   //
   // Generated from LEGACY_ROLE_ORDER rather than typed out, so a rung cannot be
   // catalogued that the ladder does not have, or vice versa. Transitional: #2458
-  // reads them, #2460 retires them with MSP_ROLES itself.
+  // reads them, #2460 retired the enum itself and these go with it.
   ...LEGACY_ROLE_ORDER.map((role): RbacCapability => ({
     system: "msp",
     key: ladderCapabilityKey(role),

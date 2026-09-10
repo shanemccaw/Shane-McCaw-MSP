@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── Module mocks ───────────────────────────────────────────────────────────────
 
@@ -90,7 +91,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 
 function makeToken(overrides: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 1, email: "op@msp.com", role: "client", mspRole: "MSPOperator", mspId: 7, ...overrides },
+    { id: 1, email: "op@msp.com", role: "client", mspRole: LEGACY_ROLE.mspOperator, mspId: 7, ...overrides },
     JWT_SECRET,
     { expiresIn: "1h" },
   );
@@ -120,7 +121,7 @@ describe("MSP SLA routes — auth enforcement", () => {
     app.use(express.json());
     app.use("/api", router);
 
-    const token = makeToken({ mspRole: "CustomerUser" });
+    const token = makeToken({ mspRole: LEGACY_ROLE.customerUser });
     const res = await request(app)
       .get("/api/msp/sla/timers")
       .set("Authorization", `Bearer ${token}`);
@@ -196,7 +197,7 @@ describe("MSP SLA routes — auth enforcement", () => {
     };
     mockExecute.mockResolvedValueOnce({ rows: [fakePolicy] });
 
-    const token = makeToken({ mspRole: "MSPAdmin" });
+    const token = makeToken({ mspRole: LEGACY_ROLE.mspAdmin });
     const res = await request(app)
       .get("/api/msp/sla/policies")
       .set("Authorization", `Bearer ${token}`);
@@ -410,7 +411,7 @@ describe("MSP Scope Creep routes — auth enforcement (sampled)", () => {
     app.use(express.json());
     app.use("/api", router);
 
-    const token = makeToken({ mspRole: "CustomerUser" });
+    const token = makeToken({ mspRole: LEGACY_ROLE.customerUser });
     const res = await request(app)
       .get("/api/msp/scope-creep/violations")
       .set("Authorization", `Bearer ${token}`);

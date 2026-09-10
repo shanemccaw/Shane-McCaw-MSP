@@ -15,6 +15,7 @@ import express from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── DB mock ───────────────────────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 
 function makeToken(overrides: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 1, email: "admin@msp.com", role: "client", mspRole: "MSPAdmin", mspId: 42, ...overrides },
+    { id: 1, email: "admin@msp.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 42, ...overrides },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

@@ -71,6 +71,7 @@ import {
 import { and, desc, eq, gte, isNotNull, isNull } from "drizzle-orm";
 import { provisionProspectAccount } from "./direct-tenant-provisioning.ts";
 import { logger } from "./logger.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "auth" });
 
@@ -313,7 +314,7 @@ export type AttachPasswordResult =
  *
  * provisionIfMissing: the generalized Buy.tsx path provisions a missing users
  * row through the SAME provisionProspectAccount the consent flow uses (role
- * "CustomerUser" — these are paid purchases, not assessment prospects). The
+ * `CustomerUser` — these are paid purchases, not assessment prospects). The
  * assessment funnel's own semantics (missing row = upstream defect) are
  * available by passing false.
  *
@@ -345,7 +346,7 @@ export async function attachPasswordToAccount(
       company: session.company,
       industry: session.industry,
       tenantId: session.tenantId,
-      role: "CustomerUser",
+      role: LEGACY_ROLE.customerUser,
     });
     if (!result) return { outcome: "account_missing" };
     provisioned = true;

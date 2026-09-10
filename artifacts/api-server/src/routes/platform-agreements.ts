@@ -20,6 +20,7 @@ import { db, platformAgreementsTable, mspAgreementAcceptancesTable } from "@work
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "auth" });
 
@@ -131,7 +132,7 @@ router.post("/platform/agreement/accept", requireAuth, async (req: Request, res:
     const ip = (req.ip ?? req.socket?.remoteAddress) ?? null;
     const ua = req.headers["user-agent"] ?? null;
 
-    const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+    const effectiveRole = user.role === "admin" ? LEGACY_ROLE.platformAdmin : user.mspRole;
     const mspId = user.mspId ?? null;
 
     await db.insert(mspAgreementAcceptancesTable).values({

@@ -83,7 +83,7 @@ declare global {
 // ── MSP privilege ladder — RETIRED HERE (#2460) ────────────────────────────
 //
 // This file used to hold `ROLE_ORDER` — a totally ordered array of the seven
-// `MSP_ROLES` values — and `roleIndex()`, and every route gate was the comparison
+// seven legacy role values — and `roleIndex()`, and every route gate was the comparison
 // `roleIndex(effectiveRole) >= roleIndex(minimumRole)`. #1696's diagnosis of that
 // shape, *"this is not RBAC, it is a privilege ladder"*, is the reason the redesign
 // exists: a total order cannot express a sideways permission, which is why
@@ -92,7 +92,7 @@ declare global {
 //
 // #2458 moved the DECISION onto the seeded `ladder.*` mapping rows while keeping
 // this array as the (unread) definition of the ordering. #2460 removes the array,
-// the index function, and `MSP_ROLES` itself. The ordering still exists — as data,
+// the index function, and the enum itself. The ordering still exists — as data,
 // in `msp_feature_role_mapping`, where changing who clears a gate is an UPDATE
 // rather than a deploy — and its one remaining source-of-truth transcription lives
 // in `@workspace/db/rbac/legacy-ladder` (`LEGACY_ROLE_ORDER`), the migration's own

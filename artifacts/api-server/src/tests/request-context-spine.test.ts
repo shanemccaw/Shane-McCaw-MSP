@@ -69,6 +69,7 @@ import { requireAuth } from "../middlewares/requireAuth.ts";
 import { mspRequestLog } from "../middlewares/mspRequestLog.ts";
 import { dispatchUnsafe, systemActor } from "../lib/event-bus.ts";
 import * as dbModule from "@workspace/db";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const insertCalls = (dbModule as unknown as {
   __insertCalls: { table: { __name?: string }; values: Record<string, unknown> }[];
@@ -156,7 +157,7 @@ beforeEach(() => {
 
 function makeToken(): string {
   return jwt.sign(
-    { id: 7, email: "op@test.example", role: "client", mspRole: "MSPAdmin", mspId: 42, customerId: 99 },
+    { id: 7, email: "op@test.example", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 42, customerId: 99 },
     process.env.JWT_SECRET as string,
   );
 }
@@ -180,7 +181,7 @@ describe("correlation id spine (AsyncLocalStorage)", () => {
     // requireAuth enriched the SAME context once the JWT resolved
     expect(body.ctx.mspId).toBe(42);
     expect(body.ctx.customerId).toBe(99);
-    expect(body.ctx.actor).toEqual({ id: 7, role: "MSPAdmin" });
+    expect(body.ctx.actor).toEqual({ id: 7, role: LEGACY_ROLE.mspAdmin });
 
     // The dispatched event inherited the request's traceId as correlationId
     const events = eventStoreInserts();

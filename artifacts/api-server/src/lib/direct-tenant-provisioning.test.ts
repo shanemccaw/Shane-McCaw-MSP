@@ -79,6 +79,7 @@ vi.mock("./logger.ts", () => {
 
 import { ensureClientMspUser } from "./direct-tenant-provisioning.ts";
 import { db, usersTable } from "@workspace/db";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // Cross-MSP tenant boundary backstop in ensureClientMspUser. This is the
 // post-payment defense-in-depth half of "Reject cross-MSP tenant consent
@@ -101,7 +102,7 @@ describe("ensureClientMspUser — cross-MSP customerId patch backstop", () => {
       // 1. tenantId → tenants lookup: tenant 1 lives under mspId 1
       [{ id: 1, mspId: 1 }],
       // 2. the user's own row: under mspId 89, not tenant-linked yet
-      [{ existingCustomerId: null, existingMspId: 89, existingRole: "CustomerUser" }],
+      [{ existingCustomerId: null, existingMspId: 89, existingRole: LEGACY_ROLE.customerUser }],
     ];
 
     await ensureClientMspUser(92, "tenant-conflict");
@@ -115,7 +116,7 @@ describe("ensureClientMspUser — cross-MSP customerId patch backstop", () => {
       // 1. tenantId → tenants lookup: tenant 5 under mspId 89 (matches the user's MSP)
       [{ id: 5, mspId: 89 }],
       // 2. the user's own row: under mspId 89, not tenant-linked → safe to patch
-      [{ existingCustomerId: null, existingMspId: 89, existingRole: "CustomerUser" }],
+      [{ existingCustomerId: null, existingMspId: 89, existingRole: LEGACY_ROLE.customerUser }],
     ];
 
     await ensureClientMspUser(92, "tenant-ok");
@@ -128,7 +129,7 @@ describe("ensureClientMspUser — cross-MSP customerId patch backstop", () => {
     mockSelectResultsQueue = [
       [{ id: 5, mspId: 89 }],
       // already linked → no patch regardless of MSP
-      [{ existingCustomerId: 5, existingMspId: 89, existingRole: "CustomerUser" }],
+      [{ existingCustomerId: 5, existingMspId: 89, existingRole: LEGACY_ROLE.customerUser }],
     ];
 
     await ensureClientMspUser(92, "tenant-ok");

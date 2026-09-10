@@ -509,6 +509,7 @@ describe("executeRun failure path — DLQ + operator task writes", () => {
 // ── REPORT_GENERATION_GRAPH invariants ────────────────────────────────────────
 
 import { REPORT_GENERATION_GRAPH, REPORT_GENERATION_WORKFLOW_KEY } from "../lib/report-nodes";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 describe("REPORT_GENERATION_GRAPH", () => {
   it("has a start node", () => {
@@ -587,7 +588,7 @@ describe("POST /api/msp/reports/canvases/:id/send-test", () => {
   const makeToken = (overrides = {}) => {
     const jwt = require("jsonwebtoken");
     return jwt.sign(
-      { id: 5, email: "op@msp.com", role: "client", mspRole: "MSPOperator", mspId: 1, ...overrides },
+      { id: 5, email: "op@msp.com", role: "client", mspRole: LEGACY_ROLE.mspOperator, mspId: 1, ...overrides },
       JWT_SECRET,
       { expiresIn: "1h" }
     );

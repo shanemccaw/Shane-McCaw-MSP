@@ -39,6 +39,7 @@ import request from "supertest";
 import jwt from "jsonwebtoken";
 import { LADDER, LEGACY_ROLE_ORDER, ladderCapabilityKey, legacyRoleIndex, type LegacyRole } from "@workspace/db/rbac";
 import type { MspRole } from "@workspace/db";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // The whole point of this file is that it reads the REAL rows. `vitest.config.ts`
 // installs a setup-file mock of the row source so the 33 route suites that mock
@@ -53,7 +54,7 @@ const hasDb = Boolean(process.env.DATABASE_URL);
 const describeLive = hasDb ? describe : describe.skip;
 
 /** Every floor that a real route gate actually requires today. */
-const REAL_FLOORS: readonly LegacyRole[] = ["Assessment", "CustomerUser", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
+const REAL_FLOORS: readonly LegacyRole[] = [LEGACY_ROLE.assessment, LEGACY_ROLE.customerUser, LEGACY_ROLE.mspOperator, LEGACY_ROLE.mspAdmin, LEGACY_ROLE.platformAdmin];
 
 describeLive("#2458/#2460 — the capability gate's decision source, against the real seeded rows", () => {
   let roleClearsLadderFloor: typeof import("./rbac-ladder.ts").roleClearsLadderFloor;
@@ -84,7 +85,7 @@ describeLive("#2458/#2460 — the capability gate's decision source, against the
   it("is seeded — the model answers allow/deny, never 'unavailable'", async () => {
     // Guards every assertion below: `unavailable` would make a deny look like a
     // pass-by-accident, so it is asserted absent once, loudly, first.
-    const outcome = await roleClearsLadderFloor("PlatformAdmin", "PlatformAdmin");
+    const outcome = await roleClearsLadderFloor(LEGACY_ROLE.platformAdmin, LEGACY_ROLE.platformAdmin);
     expect(outcome.kind, "the ladder.* rows from #2457's seed must be present in this database").not.toBe("unavailable");
     expect(outcome.kind).toBe("allow");
   });
@@ -133,7 +134,7 @@ describeLive("#2458/#2460 — the capability gate's decision source, against the
   });
 
   it("fails closed on a floor that is not a ladder rung, rather than allowing it", async () => {
-    const outcome = await roleClearsLadderFloor("PlatformAdmin", "Engineer");
+    const outcome = await roleClearsLadderFloor(LEGACY_ROLE.platformAdmin, "Engineer");
     expect(outcome.kind).toBe("unavailable");
   });
 
@@ -144,11 +145,11 @@ describeLive("#2458/#2460 — the capability gate's decision source, against the
     // is still relied upon. It is (subscription-gate OPERATOR_ROLES,
     // msp-ownership MSP_SCOPED_ROLES, the two remediation-tracker exports'
     // MSP_STAFF_ROLES, event-bus's ServiceAccount actor), so it is transcribed as-is.
-    expect((await roleClearsLadderFloor("ServiceAccount", "CustomerUser")).kind).toBe("allow");
+    expect((await roleClearsLadderFloor(LEGACY_ROLE.serviceAccount, LEGACY_ROLE.customerUser)).kind).toBe("allow");
     expect((await roleClearsLadderFloor("ServiceAccount", "Assessment")).kind).toBe("allow");
     // And it still does NOT reach MSP-staff floors, exactly as the index comparison had it.
-    expect((await roleClearsLadderFloor("ServiceAccount", "MSPOperator")).kind).toBe("deny");
-    expect((await roleClearsLadderFloor("ServiceAccount", "MSPAdmin")).kind).toBe("deny");
+    expect((await roleClearsLadderFloor(LEGACY_ROLE.serviceAccount, LEGACY_ROLE.mspOperator)).kind).toBe("deny");
+    expect((await roleClearsLadderFloor(LEGACY_ROLE.serviceAccount, LEGACY_ROLE.mspAdmin)).kind).toBe("deny");
   });
 
   it("carries the role === 'admin' → PlatformAdmin promotion forward", async () => {
@@ -164,7 +165,7 @@ describeLive("#2458/#2460 — the capability gate's decision source, against the
   });
 
   it("does not let a stale mspRole claim override the admin promotion", async () => {
-    // The gate has always read `role === "admin" ? "PlatformAdmin" : mspRole`, so an
+    // The gate has always read `role === "admin" ? `PlatformAdmin` : mspRole`, so an
     // admin row carrying a LOWER mspRole is still promoted. Transcribed, not tidied.
     const outcome = await userClearsLadderCapability({ role: "admin", mspRole: "Assessment" }, LADDER.platformAdmin);
     expect(outcome.kind).toBe("allow");
@@ -180,7 +181,7 @@ describeLive("#2458/#2460 — the capability gate's decision source, against the
   it("returns the unchanged 403 body for a genuine denial", async () => {
     const res = await request(app)
       .get("/t/MSPAdmin")
-      .set("Authorization", `Bearer ${token({ id: 1, email: "op@x.com", role: "client", mspRole: "MSPOperator" })}`);
+      .set("Authorization", `Bearer ${token({ id: 1, email: "op@x.com", role: "client", mspRole: LEGACY_ROLE.mspOperator })}`);
     expect(res.status).toBe(403);
     // Byte-for-byte the message the retired ROLE_ORDER comparison produced. 631 call
     // sites and every client of them depend on this string not moving — #2460 changed
@@ -191,12 +192,12 @@ describeLive("#2458/#2460 — the capability gate's decision source, against the
 
   it("serves the real 200/403 matrix for every real floor", async () => {
     const principals: ReadonlyArray<{ label: string; claims: Record<string, unknown>; held: LegacyRole | undefined }> = [
-      { label: "PlatformAdmin", claims: { id: 1, role: "client", mspRole: "PlatformAdmin" }, held: "PlatformAdmin" },
-      { label: "legacy admin", claims: { id: 2, role: "admin" }, held: "PlatformAdmin" },
-      { label: "MSPAdmin", claims: { id: 3, role: "client", mspRole: "MSPAdmin" }, held: "MSPAdmin" },
-      { label: "MSPOperator", claims: { id: 4, role: "client", mspRole: "MSPOperator" }, held: "MSPOperator" },
+      { label: LEGACY_ROLE.platformAdmin, claims: { id: 1, role: "client", mspRole: LEGACY_ROLE.platformAdmin }, held: LEGACY_ROLE.platformAdmin },
+      { label: "legacy admin", claims: { id: 2, role: "admin" }, held: LEGACY_ROLE.platformAdmin },
+      { label: LEGACY_ROLE.mspAdmin, claims: { id: 3, role: "client", mspRole: LEGACY_ROLE.mspAdmin }, held: LEGACY_ROLE.mspAdmin },
+      { label: LEGACY_ROLE.mspOperator, claims: { id: 4, role: "client", mspRole: LEGACY_ROLE.mspOperator }, held: LEGACY_ROLE.mspOperator },
       { label: "ServiceAccount", claims: { id: 5, role: "client", mspRole: "ServiceAccount" }, held: "ServiceAccount" },
-      { label: "CustomerUser", claims: { id: 6, role: "client", mspRole: "CustomerUser" }, held: "CustomerUser" },
+      { label: LEGACY_ROLE.customerUser, claims: { id: 6, role: "client", mspRole: LEGACY_ROLE.customerUser }, held: LEGACY_ROLE.customerUser },
       { label: "Free", claims: { id: 7, role: "client", mspRole: "Free" }, held: "Free" },
       { label: "Assessment", claims: { id: 8, role: "client", mspRole: "Assessment" }, held: "Assessment" },
       { label: "no mspRole claim", claims: { id: 9, role: "client" }, held: undefined },

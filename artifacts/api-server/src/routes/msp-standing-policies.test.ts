@@ -17,8 +17,8 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = "msp-standing-policies-test-secret";
 process.env["JWT_SECRET"] = JWT_SECRET;
 
-function mspToken(opts: { mspId?: number; mspRole?: "MSPOperator" | "MSPAdmin" | "CustomerUser" | "PlatformAdmin"; id?: number }): string {
-  const { mspId, mspRole = "MSPOperator", id = 1 } = opts;
+function mspToken(opts: { mspId?: number; mspRole?: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customerUser | typeof LEGACY_ROLE.platformAdmin; id?: number }): string {
+  const { mspId, mspRole = LEGACY_ROLE.mspOperator, id = 1 } = opts;
   return jwt.sign(
     { id, email: "staff@test.com", role: "client", mspRole, ...(mspId !== undefined ? { mspId } : {}) },
     JWT_SECRET,
@@ -57,6 +57,7 @@ vi.mock("../lib/logger", () => {
 
 import { db } from "@workspace/db";
 import router from "./msp-standing-policies";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;
 const mockUpdate = (db as unknown as { update: ReturnType<typeof vi.fn> }).update;
@@ -121,7 +122,7 @@ describe("GET /msp/standing-policies/:id/enactment", () => {
   it("rejects roles below MSPOperator", async () => {
     const res = await request(makeApp())
       .get("/api/msp/standing-policies/7/enactment?customerId=1")
-      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: "CustomerUser" })}`);
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: LEGACY_ROLE.customerUser })}`);
     expect(res.status).toBe(403);
   });
 
@@ -227,7 +228,7 @@ describe("PATCH /msp/standing-policies/:id (#3034)", () => {
   it("rejects roles below MSPOperator", async () => {
     const res = await request(makeApp())
       .patch("/api/msp/standing-policies/7")
-      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: "CustomerUser" })}`)
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: LEGACY_ROLE.customerUser })}`)
       .send({ isActive: false });
     expect(res.status).toBe(403);
   });

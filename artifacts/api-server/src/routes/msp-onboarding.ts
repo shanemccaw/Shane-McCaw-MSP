@@ -50,6 +50,7 @@ import { getActiveMfaMethods } from "./mfa.ts";
 import { mfaEnforcementActive } from "./auth.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
 import { z } from "zod";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const router: IRouter = Router();
 
@@ -609,7 +610,7 @@ router.post("/public/msp-invite/:token/accept", inviteAcceptLimiter, async (req:
       // tenantId — a bare {email, name, passwordHash} insert would now be
       // refused by Postgres. An MSP staff invite is MSP-scoped by definition,
       // so the invited role and mspId are exactly the right values to carry.
-      const invitedRole = row.mspRole as "MSPAdmin" | "MSPOperator";
+      const invitedRole = row.mspRole as typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.mspOperator;
       let userId: number;
       if (existingUser) {
         userId = existingUser.id;

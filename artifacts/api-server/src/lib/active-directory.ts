@@ -9,6 +9,7 @@
 
 // ── Tree ───────────────────────────────────────────────────────────────────
 
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 export interface MspRow {
   id: number;
   name: string;
@@ -111,14 +112,14 @@ export function buildMspTree(
 
 // ── Groups (RBAC role nodes) ─────────────────────────────────────────────────
 //
-// All 7 real MSP_ROLES values from the schema (lib/db/src/schema/msp.ts),
+// All 7 real role values, from `LEGACY_ROLE_ORDER` in @workspace/db/rbac,
 // including Free and Assessment.
 
 export const DIRECTORY_GROUP_ROLES = [
-  "PlatformAdmin",
-  "MSPAdmin",
-  "MSPOperator",
-  "CustomerUser",
+  LEGACY_ROLE.platformAdmin,
+  LEGACY_ROLE.mspAdmin,
+  LEGACY_ROLE.mspOperator,
+  LEGACY_ROLE.customerUser,
   "ServiceAccount",
   "Free",
   "Assessment",
@@ -700,13 +701,13 @@ export type RoleLinkageRequirement = "none" | "msp" | "customer";
 
 export function roleLinkageRequirement(role: DirectoryGroupRole): RoleLinkageRequirement {
   switch (role) {
-    case "PlatformAdmin":
+    case LEGACY_ROLE.platformAdmin:
       return "none";
-    case "MSPAdmin":
-    case "MSPOperator":
+    case LEGACY_ROLE.mspAdmin:
+    case LEGACY_ROLE.mspOperator:
     case "ServiceAccount":
       return "msp";
-    case "CustomerUser":
+    case LEGACY_ROLE.customerUser:
     case "Free":
     case "Assessment":
       return "customer";

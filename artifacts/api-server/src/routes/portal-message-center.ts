@@ -49,7 +49,7 @@
  * free-text predicate to have that problem with.
  *
  * ── Role floor: `CustomerUser`, as specified ──────────────────────────────
- * MSP_ROLES ranks PlatformAdmin, MSPAdmin, MSPOperator, CustomerUser,
+ * The legacy ladder ranked PlatformAdmin, MSPAdmin, MSPOperator, CustomerUser,
  * ServiceAccount, Free, Assessment — so `requireCapability("ladder.customer-user")` admits
  * paying customers and MSP staff, and excludes Free and Assessment tiers. That
  * is a deliberately higher floor than `portal-change-control.ts`'s `Assessment`:

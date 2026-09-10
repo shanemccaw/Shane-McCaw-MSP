@@ -47,6 +47,7 @@ import {
   passwordResetTokensTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 vi.mock("../lib/mailer.ts", () => ({
   sendEmailForMsp: vi.fn().mockResolvedValue(undefined),
@@ -84,7 +85,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         .values({
           email: `mspadmin-${suffix}@example.com`,
           role: "client",
-          mspRole: "MSPAdmin",
+          mspRole: LEGACY_ROLE.mspAdmin,
           mspId,
         })
         .returning({ id: usersTable.id });
@@ -97,7 +98,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         .values({
           email: `platformadmin-${suffix}@example.com`,
           role: "client",
-          mspRole: "PlatformAdmin",
+          mspRole: LEGACY_ROLE.platformAdmin,
           mspId,
           passwordHash: originalPlatformAdminHash,
           mfaEnforced: false,
@@ -121,7 +122,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         .values({
           email: `mspoperator-${suffix}@example.com`,
           role: "client",
-          mspRole: "MSPOperator",
+          mspRole: LEGACY_ROLE.mspOperator,
           mspId,
           mfaEnforced: false,
           isActive: true,
@@ -130,7 +131,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       mspOperatorUserId = mspOperator.id;
 
       mspAdminToken = jwt.sign(
-        { id: mspAdminUserId, email: `mspadmin-${suffix}@example.com`, role: "client", mspRole: "MSPAdmin", mspId },
+        { id: mspAdminUserId, email: `mspadmin-${suffix}@example.com`, role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId },
         JWT_SECRET,
         { expiresIn: "1h" },
       );

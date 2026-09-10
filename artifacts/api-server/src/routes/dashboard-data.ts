@@ -57,6 +57,7 @@ import { getMetric } from "@workspace/dashboard-registry";
 import { resolveMetric, resolveMetricHistory, type MetricResult, type ResolveContext } from "../lib/dashboard-resolvers.ts";
 import { logger } from "../lib/logger";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -98,8 +99,8 @@ router.post(
         : undefined;
 
     // ── Resolve scope ──
-    const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
-    const isCustomerUser = effectiveRole === "CustomerUser" || effectiveRole === "Free" || effectiveRole === "Assessment";
+    const effectiveRole = user.role === "admin" ? LEGACY_ROLE.platformAdmin : user.mspRole;
+    const isCustomerUser = effectiveRole === LEGACY_ROLE.customerUser || effectiveRole === LEGACY_ROLE.free || effectiveRole === LEGACY_ROLE.assessment;
     const mspId = user.mspId;
 
     if (mspId == null) {

@@ -35,6 +35,7 @@ vi.mock("drizzle-orm", () => ({
 vi.mock("../lib/request-context.ts", () => ({ enrichRequestContext: vi.fn() }));
 
 import { db } from "@workspace/db";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import {
   assertCustomerAccess,
   resolveStaffScopedCustomerIds,
@@ -56,8 +57,8 @@ function buildChain(rows: unknown[]) {
 }
 
 const platformAdmin: AuthUser = { id: 10, email: "a@p.com", role: "admin" };
-const operator: AuthUser = { id: 20, email: "op@msp.com", role: "client", mspRole: "MSPOperator", mspId: 900 };
-const customerUser: AuthUser = { id: 30, email: "c@x.com", role: "client", mspRole: "CustomerUser", customerId: 7 };
+const operator: AuthUser = { id: 20, email: "op@msp.com", role: "client", mspRole: LEGACY_ROLE.mspOperator, mspId: 900 };
+const customerUser: AuthUser = { id: 30, email: "c@x.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 7 };
 
 beforeEach(() => {
   mockSelect.mockReset();

@@ -1,13 +1,13 @@
 /**
  * RBAC foundation tables (#2455, part of #1696 — RBAC Role Model Redesign).
  *
- * Migration step 1 of 5. These tables land ALONGSIDE the existing `MSP_ROLES`
+ * Migration step 1 of 5. These tables landed ALONGSIDE the then-existing role enum
  * enum and the three per-user boolean capability columns, and nothing reads them
  * yet — expressing today's roles as data is #2457, moving `requireRole`'s decision
  * source onto them is #2458. This step is purely additive: zero behavior change.
  *
  * ── Why any of this exists ──────────────────────────────────────────────────
- * `MSP_ROLES` is not RBAC, it is a privilege ladder — `requireAuth.ts`'s
+ * That enum was not RBAC, it was a privilege ladder — `requireAuth.ts`'s
  * `ROLE_ORDER` is a totally ordered list and every check is "your index >= the
  * required index," so every role is a strict superset of the one below it. A
  * ladder cannot express "an engineer can see remediation but not billing," which

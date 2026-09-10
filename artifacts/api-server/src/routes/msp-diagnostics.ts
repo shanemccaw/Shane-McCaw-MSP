@@ -76,6 +76,7 @@ import { REQUIRED_MT_SCOPES } from "../lib/graph";
 import { classifyMonitorFailure, type FailureClassification } from "../lib/monitor-failure-classifier";
 import jwt from "jsonwebtoken";
 import { randomUUID } from "crypto";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const router: IRouter = Router();
 
@@ -618,7 +619,7 @@ router.get(
       const isAdmin = decoded.role === "admin";
 
       if (!isAdmin) {
-        if (userRole === "CustomerUser" || userRole === "Assessment") {
+        if (userRole === LEGACY_ROLE.customerUser || userRole === LEGACY_ROLE.assessment) {
           // A customer (full portal user or Assessment-role prospect) may stream
           // progress only for runs on their own tenant. CustomerUser uses this
           // for the Mission Control scan-progress strip; Assessment uses the same
@@ -629,7 +630,7 @@ router.get(
             res.status(403).json({ error: "Insufficient role" }); return;
           }
         } else {
-          const allowedRoles = ["MSPOperator", "MSPAdmin", "PlatformAdmin"];
+          const allowedRoles: readonly string[] = [LEGACY_ROLE.mspOperator, LEGACY_ROLE.mspAdmin, LEGACY_ROLE.platformAdmin];
           if (!userRole || !allowedRoles.includes(userRole)) {
             res.status(403).json({ error: "Insufficient role" }); return;
           }

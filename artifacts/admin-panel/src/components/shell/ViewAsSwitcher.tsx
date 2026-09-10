@@ -21,7 +21,7 @@ import {
 //
 // Git #2459 (part of #1696) — this component used to hold three hardcoded role
 // decisions: the group ordering, the group labels, and
-// `account.tier === "MSPAdmin"` choosing which of the two token endpoints to
+// `account.tier === `MSPAdmin`` choosing which of the two token endpoints to
 // call. All three now arrive from the server. The last one is the one that
 // actually mattered: which impersonation mechanism an account uses is a
 // property of the account that the server knows, and a component re-deriving it

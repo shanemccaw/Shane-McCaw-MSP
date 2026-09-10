@@ -7,7 +7,7 @@
  * is what "two systems, one mechanism" means in practice.
  *
  * Nothing in the running product calls this yet. #2455 is additive only: the
- * tables and this loader land, `requireRole` and `MSP_ROLES` keep working exactly
+ * tables and this loader land, the existing route gates keep working exactly
  * as they do today, and #2458 is what swaps the decision source underneath the
  * existing call signature.
  */

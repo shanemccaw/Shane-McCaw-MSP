@@ -4,11 +4,11 @@
 // #1696 (RBAC Role Model Redesign). This is the backend AdminV2's re-pointed
 // AD-style UI calls to manage `msp_roles`/`customer_roles`, their `*_user_roles`
 // memberships, and `*_feature_role_mapping` allow/deny rows — additive
-// alongside the existing `MSP_ROLES` ladder UI those screens already have.
+// alongside the ladder UI those screens already have.
 //
 // #2457 (express today's 7 roles as data) and #2458 (move enforcement onto the
 // evaluator) have NOT landed. Nothing here changes what actually gates a
-// request — `requireRole`/`MSP_ROLES` remain the real enforcement path exactly
+// request — the route gates remain the real enforcement path exactly
 // as #2455 left them. This route lets a PlatformAdmin build out the new model
 // (roles, memberships, mappings) ahead of that cutover, which is what makes
 // #2461 genuinely "parallel-safe once #2455's data model exists" per the issue.

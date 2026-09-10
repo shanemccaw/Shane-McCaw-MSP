@@ -33,6 +33,7 @@ import {
 } from "./subscription-gate";
 import { postTerminationDueAt } from "./clock";
 import type { TenantSubscriptionState } from "./subscription-state";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import {
   __resetTenantDataPurgersForTest,
   listTenantDataPurgers,
@@ -75,7 +76,7 @@ function state(overrides: Partial<TenantSubscriptionState> = {}): TenantSubscrip
   return { ...base, ...overrides };
 }
 
-const customer: GatePrincipal = { role: "client", mspRole: "CustomerUser", customerId: 42 };
+const customer: GatePrincipal = { role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 42 };
 
 describe("#2765 — who the gate applies to (part 8: no new role, no new permission)", () => {
   it("gates a CustomerUser session, resolving to its own tenant", () => {
@@ -88,9 +89,9 @@ describe("#2765 — who the gate applies to (part 8: no new role, no new permiss
   });
 
   it("does NOT gate the operator — the #1571 review queue exists to look at cancelled customers", () => {
-    expect(gatedTenantIdFor({ mspRole: "MSPOperator", customerId: 42 })).toBeNull();
-    expect(gatedTenantIdFor({ mspRole: "MSPAdmin", customerId: 42 })).toBeNull();
-    expect(gatedTenantIdFor({ mspRole: "PlatformAdmin", customerId: 42 })).toBeNull();
+    expect(gatedTenantIdFor({ mspRole: LEGACY_ROLE.mspOperator, customerId: 42 })).toBeNull();
+    expect(gatedTenantIdFor({ mspRole: LEGACY_ROLE.mspAdmin, customerId: 42 })).toBeNull();
+    expect(gatedTenantIdFor({ mspRole: LEGACY_ROLE.platformAdmin, customerId: 42 })).toBeNull();
   });
 
   it("treats a legacy role:\"admin\" session as PlatformAdmin, same as everywhere else", () => {
@@ -103,7 +104,7 @@ describe("#2765 — who the gate applies to (part 8: no new role, no new permiss
   });
 
   it("does not gate a customer principal with no tenant claim — authentication is requireAuth's job", () => {
-    expect(gatedTenantIdFor({ mspRole: "CustomerUser" })).toBeNull();
+    expect(gatedTenantIdFor({ mspRole: LEGACY_ROLE.customerUser })).toBeNull();
   });
 });
 
@@ -195,7 +196,7 @@ describe("#2765 — the gate decision (part 8: one check point, closed by defaul
 
   it("does not gate the operator even on a lapsed tenant", () => {
     const outcome = evaluateSubscriptionGate({
-      principal: { mspRole: "MSPAdmin", customerId: 42 },
+      principal: { mspRole: LEGACY_ROLE.mspAdmin, customerId: 42 },
       method: "GET",
       path: "/msp/customers/42/ghosted",
       state: state(),

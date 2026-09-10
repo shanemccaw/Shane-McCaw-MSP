@@ -12,7 +12,7 @@
  * session-keyed checkout-session flow (#1361), and the callback provisions the
  * Prospect via provisionProspectAccount the instant Microsoft confirms the
  * grant. The role that call passes is chosen from the product's service_type
- * (`serviceType === "assessment" ? "Assessment" : "CustomerUser"`), and the Free
+ * (`serviceType === "assessment" ? `Assessment` : `CustomerUser``), and the Free
  * Scan product `license-waste-audit-free` is an `assessment`, so the Prospect
  * lands with the low-privilege "Assessment" role.
  *
@@ -53,15 +53,16 @@ import {
 } from "@workspace/db";
 import { eq, inArray, like, sql } from "drizzle-orm";
 import { provisionProspectAccount } from "./direct-tenant-provisioning.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const FREE_SCAN_PRODUCT_SLUG = "license-waste-audit-free";
 
 // The exact role selection routes/consent.ts makes for a checkout-session
 // Prospect. Mirrored here so the test breaks if the product's service_type
 // drifts away from "assessment" and the Free Scan silently starts minting
-// higher-privilege "CustomerUser" prospects.
-function roleForServiceType(serviceType: string | null): "Assessment" | "CustomerUser" {
-  return serviceType === "assessment" ? "Assessment" : "CustomerUser";
+// higher-privilege `CustomerUser` prospects.
+function roleForServiceType(serviceType: string | null): typeof LEGACY_ROLE.assessment | typeof LEGACY_ROLE.customerUser {
+  return serviceType === "assessment" ? LEGACY_ROLE.assessment : LEGACY_ROLE.customerUser;
 }
 
 const createdEmails: string[] = [];
@@ -111,7 +112,7 @@ describe("Free Scan product mapping (Git #1355)", () => {
 
     expect(svc, `services row for '${FREE_SCAN_PRODUCT_SLUG}' must exist`).toBeTruthy();
     // service_type "assessment" is what routes the consent-time Prospect to the
-    // low-privilege "Assessment" role instead of "CustomerUser".
+    // low-privilege `Assessment` role instead of `CustomerUser`.
     expect(svc.serviceType).toBe("assessment");
     // Git #1169: this product is reached only through the marketing /scan
     // consent funnel, never the general public catalog. GET

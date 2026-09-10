@@ -45,6 +45,7 @@ import pg from "pg";
 import { RBAC_CAPABILITIES, type RbacSystem } from "./capabilities";
 import { evaluateCapability, type RbacFeatureMapping } from "./evaluate";
 import { loadRbacEvaluator } from "./load";
+import { LEGACY_ROLE } from "./legacy-ladder";
 import {
   CAPABILITY_COLUMN_ROLE_KEYS,
   LEGACY_CAPABILITY_RULES,
@@ -211,17 +212,50 @@ const expectedRoleKeys = [
 check("the seeded platform roles are exactly the seven rungs plus one role per column", [...roleId.keys()].sort(), expectedRoleKeys);
 
 // ── 1. Pass A — every real user, through the real loader ─────────────────────
+//
+// #2460 — pass A is the one half of this harness that reads the OLD model out of
+// the database, and #2460 retires two of the three columns it reads. Once
+// `2026-09-10-drop-capability-columns-2460.sql` has been run against a database,
+// this pass can no longer be performed there: there is no old model left to compare
+// the rows against, which is precisely what "the cutover happened" means.
+//
+// That is reported, not worked around. Selecting the columns unconditionally would
+// make the whole script crash with a Postgres error on a perfectly healthy
+// post-cutover database, and defaulting the missing ones to `false` would be worse —
+// it would compare the new rows against a fabricated old model and print PASS.
+//
+// Passes B onward are unaffected: they build principal shapes in memory from
+// `LEGACY_CAPABILITY_RULES`, so they keep proving the seeded rows match the
+// transcription for every shape, forever.
+const columnsPresent = (await db.execute(sql`
+  SELECT count(*)::int AS n
+    FROM information_schema.columns
+   WHERE table_name = 'users'
+     AND column_name IN ('can_approve_purchases', 'can_manage_team')
+`)).rows[0] as { n: number };
 
-const users = (await db.execute(sql`
-  SELECT id, role, msp_role, msp_id, tenant_id,
-         can_approve_purchases, can_manage_team, can_approve_changes
-  FROM users ORDER BY id
-`)).rows as Array<{
-  id: number; role: string; msp_role: string | null; msp_id: number | null; tenant_id: number | null;
-  can_approve_purchases: boolean; can_manage_team: boolean; can_approve_changes: boolean;
-}>;
+const oldModelIntact = columnsPresent.n === 2;
 
-if (users.length === 0) fail("no users in the database — pass A would vacuously succeed");
+const users = oldModelIntact
+  ? (await db.execute(sql`
+      SELECT id, role, msp_role, msp_id, tenant_id,
+             can_approve_purchases, can_manage_team, can_approve_changes
+      FROM users ORDER BY id
+    `)).rows as Array<{
+      id: number; role: string; msp_role: string | null; msp_id: number | null; tenant_id: number | null;
+      can_approve_purchases: boolean; can_manage_team: boolean; can_approve_changes: boolean;
+    }>
+  : [];
+
+if (!oldModelIntact) {
+  console.log(
+    `SKIP  pass A — users.can_approve_purchases / can_manage_team have been dropped (#2460), ` +
+    `so there is no old model in this database to compare the rows against. ` +
+    `The last real run before the drop is recorded on #2460. Passes below still run.`,
+  );
+} else if (users.length === 0) {
+  fail("no users in the database — pass A would vacuously succeed");
+}
 
 for (const row of users) {
   const user: LegacyUserRow = {
@@ -266,7 +300,9 @@ for (const row of users) {
     fail(`${subject} — holds ${heldRungs.length} MSP rung(s), expected exactly ${expectedRung ?? "none"}`);
   }
 }
-console.log(`PASS  pass A — ${users.length} real users × ${RBAC_CAPABILITIES.length} capabilities, through the real loader`);
+if (oldModelIntact) {
+  console.log(`PASS  pass A — ${users.length} real users × ${RBAC_CAPABILITIES.length} capabilities, through the real loader`);
+}
 
 // ── 2. Pass B — every possible principal shape, against the real seeded rows ──
 
@@ -289,7 +325,7 @@ function rolesFor(system: RbacSystem, rung: LegacyRole | undefined, user: Legacy
   const held: string[] = [];
   if (rung) held.push(roleId.get(`${system}:${rung}`)!);
   if (system === "msp") {
-    if (user.canApprovePurchases && rung === "MSPOperator") {
+    if (user.canApprovePurchases && rung === LEGACY_ROLE.mspOperator) {
       held.push(roleId.get(`msp:${CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases}`)!);
     }
   } else {
@@ -299,7 +335,7 @@ function rolesFor(system: RbacSystem, rung: LegacyRole | undefined, user: Legacy
   return held;
 }
 
-// The eight rung shapes: the seven MSP_ROLES values held normally, plus the
+// The eight rung shapes: the seven legacy role values held normally, plus the
 // legacy `role = 'admin'` promotion, which #1696 insists be carried across
 // deliberately. Its msp_role is set to the LOWEST rung on purpose — if the
 // promotion were being dropped, this shape is where it would show.

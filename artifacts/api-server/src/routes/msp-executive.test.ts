@@ -24,7 +24,7 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = "msp-executive-test-secret";
 process.env["JWT_SECRET"] = JWT_SECRET;
 
-function mspToken(mspId: number | null, mspRole: "MSPOperator" | "MSPAdmin" | "CustomerUser" = "MSPOperator"): string {
+function mspToken(mspId: number | null, mspRole: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customerUser = LEGACY_ROLE.mspOperator): string {
   return jwt.sign(
     { id: 1, email: "staff@test.com", role: "client", mspRole, mspId },
     JWT_SECRET,
@@ -68,6 +68,7 @@ vi.mock("../lib/partner-qbr-generator.ts", () => ({
 }));
 
 import router from "./msp-executive";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 function makeApp() {
   const app = express();
@@ -111,7 +112,7 @@ describe("GET /msp/executive", () => {
   it("rejects roles below MSPOperator", async () => {
     const res = await request(makeApp())
       .get("/msp/executive")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "CustomerUser")}`);
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.customerUser)}`);
     expect(res.status).toBe(403);
   });
 
@@ -140,7 +141,7 @@ describe("GET /msp/executive/qbr", () => {
   it("requires MSPAdmin+ (403 for a plain MSPOperator)", async () => {
     const res = await request(makeApp())
       .get("/msp/executive/qbr")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPOperator")}`);
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspOperator)}`);
     expect(res.status).toBe(403);
   });
 
@@ -148,7 +149,7 @@ describe("GET /msp/executive/qbr", () => {
     getCurrentPartnerQbr.mockResolvedValueOnce(readyQbr);
     const res = await request(makeApp())
       .get("/msp/executive/qbr")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`);
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspAdmin)}`);
 
     expect(res.status).toBe(200);
     expect(res.body.qbr.status).toBe("ready");
@@ -161,7 +162,7 @@ describe("POST /msp/executive/qbr/generate", () => {
   it("requires MSPAdmin+ (403 for a plain MSPOperator)", async () => {
     const res = await request(makeApp())
       .post("/msp/executive/qbr/generate")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPOperator")}`)
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspOperator)}`)
       .send({});
     expect(res.status).toBe(403);
   });
@@ -170,7 +171,7 @@ describe("POST /msp/executive/qbr/generate", () => {
     getOrGeneratePartnerQbr.mockResolvedValueOnce(readyQbr);
     const res = await request(makeApp())
       .post("/msp/executive/qbr/generate")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`)
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspAdmin)}`)
       .send({ force: true });
 
     expect(res.status).toBe(200);
@@ -182,7 +183,7 @@ describe("POST /msp/executive/qbr/generate", () => {
     getOrGeneratePartnerQbr.mockResolvedValueOnce(null);
     const res = await request(makeApp())
       .post("/msp/executive/qbr/generate")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`)
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspAdmin)}`)
       .send({});
     expect(res.status).toBe(422);
   });
@@ -191,7 +192,7 @@ describe("POST /msp/executive/qbr/generate", () => {
     getOrGeneratePartnerQbr.mockResolvedValueOnce({ ...readyQbr, status: "failed", htmlContent: "", errorMessage: "boom" });
     const res = await request(makeApp())
       .post("/msp/executive/qbr/generate")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`)
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspAdmin)}`)
       .send({});
     expect(res.status).toBe(502);
     expect(res.body.error).toBe("boom");

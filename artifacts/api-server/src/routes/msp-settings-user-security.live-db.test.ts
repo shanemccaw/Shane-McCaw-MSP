@@ -34,6 +34,7 @@ import {
   mspAuditLogsTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const JWT_SECRET = "test-msp-settings-user-security-live-secret";
 process.env.JWT_SECRET = JWT_SECRET;
@@ -63,7 +64,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         .values({
           email: `admin-${suffix}@example.com`,
           role: "client",
-          mspRole: "MSPAdmin",
+          mspRole: LEGACY_ROLE.mspAdmin,
           mspId,
         })
         .returning({ id: usersTable.id });
@@ -74,7 +75,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         .values({
           email: `target-${suffix}@example.com`,
           role: "client",
-          mspRole: "MSPOperator",
+          mspRole: LEGACY_ROLE.mspOperator,
           mspId,
           mfaEnforced: false,
         })
@@ -82,7 +83,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       targetUserId = target.id;
 
       adminToken = jwt.sign(
-        { id: adminUserId, email: `admin-${suffix}@example.com`, role: "client", mspRole: "MSPAdmin", mspId },
+        { id: adminUserId, email: `admin-${suffix}@example.com`, role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId },
         JWT_SECRET,
         { expiresIn: "1h" },
       );
@@ -216,7 +217,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           .returning({ id: mspsTable.id });
         const [otherUser] = await db
           .insert(usersTable)
-          .values({ email: `other-${suffix}@example.com`, role: "client", mspRole: "MSPOperator", mspId: otherMsp.id })
+          .values({ email: `other-${suffix}@example.com`, role: "client", mspRole: LEGACY_ROLE.mspOperator, mspId: otherMsp.id })
           .returning({ id: usersTable.id });
 
         try {

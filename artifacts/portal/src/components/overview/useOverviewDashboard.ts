@@ -17,7 +17,7 @@ export interface OverviewDashboardState {
 /**
  * The real `GET /api/portal/dashboard` read backing Customer Home's Overview
  * page (#2921, contract pack §2). `requireAuth`, not `requireRole
- * ("CustomerUser")` — the route's own header comment (portal-customer-
+ * (`CustomerUser`)` — the route's own header comment (portal-customer-
  * engines.ts:402-411) — so this also serves Assessment/Free-tier callers.
  */
 export function useOverviewDashboard(): OverviewDashboardState {

@@ -28,6 +28,7 @@ import { createNotification } from "./notification-center";
 import { extractRoadmapFeatureIds, hasRoadmapFeatureIdsColumn } from "./m365-roadmap-mc-link";
 import { extractAdvisoryDateText, hasAdvisoryDateTextColumn } from "./m365-message-center-date-quality";
 import { logger } from "./logger";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "integration.azure" });
 
@@ -196,7 +197,7 @@ async function notifyMspAdminsOfNewMessages(mspId: number, messages: GraphServic
     .where(and(
       eq(usersTable.mspId, mspId),
       eq(usersTable.isActive, true),
-      or(eq(usersTable.mspRole, "MSPAdmin"), eq(usersTable.mspRole, "MSPOperator")),
+      or(eq(usersTable.mspRole, LEGACY_ROLE.mspAdmin), eq(usersTable.mspRole, LEGACY_ROLE.mspOperator)),
     ));
 
   if (admins.length === 0) return;

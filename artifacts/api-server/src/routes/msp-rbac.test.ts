@@ -28,7 +28,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { RequestHandler } from "express";
-import { LADDER_CAPABILITY_KEYS, LEGACY_ROLE_ORDER } from "@workspace/db/rbac/legacy-ladder";
+import { LADDER_CAPABILITY_KEYS, LEGACY_ROLE, LEGACY_ROLE_ORDER } from "@workspace/db/rbac/legacy-ladder";
 
 process.env.JWT_SECRET = "msp-rbac-test-secret-xyz-abc";
 
@@ -219,7 +219,7 @@ describe("requireCapability() HTTP fence", () => {
   });
 
   it("PlatformAdmin can access platform-only route", async () => {
-    const token = makeToken({ id: 1, email: "pa@x.com", role: "admin", mspRole: "PlatformAdmin" });
+    const token = makeToken({ id: 1, email: "pa@x.com", role: "admin", mspRole: LEGACY_ROLE.platformAdmin });
     assert.equal((await get("/test/platform-only", token)).status, 200);
   });
 
@@ -229,12 +229,12 @@ describe("requireCapability() HTTP fence", () => {
   });
 
   it("MSPAdmin is blocked from platform-only route (403)", async () => {
-    const token = makeToken({ id: 2, email: "msp@x.com", role: "client", mspRole: "MSPAdmin", mspId: 1 });
+    const token = makeToken({ id: 2, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 });
     assert.equal((await get("/test/platform-only", token)).status, 403);
   });
 
   it("MSPOperator is blocked from MSPAdmin-required route (403)", async () => {
-    const token = makeToken({ id: 3, email: "op@x.com", role: "client", mspRole: "MSPOperator", mspId: 1 });
+    const token = makeToken({ id: 3, email: "op@x.com", role: "client", mspRole: LEGACY_ROLE.mspOperator, mspId: 1 });
     assert.equal((await get("/test/msp-admin", token)).status, 403);
   });
 
@@ -244,7 +244,7 @@ describe("requireCapability() HTTP fence", () => {
   });
 
   it("MSPAdmin can access MSPAdmin-required route", async () => {
-    const token = makeToken({ id: 5, email: "msp@x.com", role: "client", mspRole: "MSPAdmin", mspId: 1 });
+    const token = makeToken({ id: 5, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 });
     assert.equal((await get("/test/msp-admin", token)).status, 200);
   });
 });
@@ -262,7 +262,7 @@ describe("Assessment role fence", () => {
   });
 
   it("CustomerUser passes the CustomerUser-floored route (200) — control", async () => {
-    const token = makeToken({ id: 7, email: "cu@x.com", role: "client", mspRole: "CustomerUser", customerId: 20 });
+    const token = makeToken({ id: 7, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 20 });
     assert.equal((await get("/test/customer-floor", token)).status, 200);
   });
 
@@ -296,20 +296,20 @@ describe("named shared-engine surface isolation", () => {
 
   for (const engine of engines) {
     it(`MSPAdmin (mspId=1) can access ${engine} engine within own MSP`, async () => {
-      const token = makeToken({ id: 2, email: "msp@x.com", role: "client", mspRole: "MSPAdmin", mspId: 1 });
+      const token = makeToken({ id: 2, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 });
       const { status } = await get(`/test/msps/1/engines/${engine}`, token);
       assert.equal(status, 200);
     });
 
     it(`MSPAdmin (mspId=1) is blocked from ${engine} engine in mspId=2 (403)`, async () => {
-      const token = makeToken({ id: 2, email: "msp@x.com", role: "client", mspRole: "MSPAdmin", mspId: 1 });
+      const token = makeToken({ id: 2, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 });
       const { status } = await get(`/test/msps/2/engines/${engine}`, token);
       assert.equal(status, 403);
     });
   }
 
   it("PlatformAdmin can access all engine surfaces across all tenants", async () => {
-    const token = makeToken({ id: 1, email: "pa@x.com", role: "admin", mspRole: "PlatformAdmin" });
+    const token = makeToken({ id: 1, email: "pa@x.com", role: "admin", mspRole: LEGACY_ROLE.platformAdmin });
     for (const engine of engines) {
       const { status } = await get(`/test/msps/999/engines/${engine}`, token);
       assert.equal(status, 200);
@@ -321,27 +321,27 @@ describe("named shared-engine surface isolation", () => {
 
 describe("requireMspScope() tenant fence", () => {
   it("PlatformAdmin can access any mspId (cross-tenant bypass)", async () => {
-    const token = makeToken({ id: 1, email: "pa@x.com", role: "admin", mspRole: "PlatformAdmin" });
+    const token = makeToken({ id: 1, email: "pa@x.com", role: "admin", mspRole: LEGACY_ROLE.platformAdmin });
     assert.equal((await get("/test/msps/999/data", token)).status, 200);
   });
 
   it("MSPAdmin (mspId=1) can access own mspId=1", async () => {
-    const token = makeToken({ id: 2, email: "msp@x.com", role: "client", mspRole: "MSPAdmin", mspId: 1 });
+    const token = makeToken({ id: 2, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 });
     assert.equal((await get("/test/msps/1/data", token)).status, 200);
   });
 
   it("MSPAdmin (mspId=1) is blocked from mspId=2 — cross-tenant denied (403)", async () => {
-    const token = makeToken({ id: 2, email: "msp@x.com", role: "client", mspRole: "MSPAdmin", mspId: 1 });
+    const token = makeToken({ id: 2, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 });
     assert.equal((await get("/test/msps/2/data", token)).status, 403);
   });
 
   it("MSPOperator (mspId=5) is blocked from mspId=6 — shared-engine surface fence", async () => {
-    const token = makeToken({ id: 3, email: "op@x.com", role: "client", mspRole: "MSPOperator", mspId: 5 });
+    const token = makeToken({ id: 3, email: "op@x.com", role: "client", mspRole: LEGACY_ROLE.mspOperator, mspId: 5 });
     assert.equal((await get("/test/msps/6/data", token)).status, 403);
   });
 
   it("CustomerUser (no mspId claim) cannot access any MSP data (403)", async () => {
-    const token = makeToken({ id: 4, email: "cu@x.com", role: "client", mspRole: "CustomerUser", customerId: 99 });
+    const token = makeToken({ id: 4, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 99 });
     assert.equal((await get("/test/msps/1/data", token)).status, 403);
   });
 
@@ -355,23 +355,23 @@ describe("requireMspScope() tenant fence", () => {
 
 describe("requireCustomerScope() customer fence", () => {
   it("PlatformAdmin bypasses customer scope check", async () => {
-    const token = makeToken({ id: 1, email: "pa@x.com", role: "admin", mspRole: "PlatformAdmin" });
+    const token = makeToken({ id: 1, email: "pa@x.com", role: "admin", mspRole: LEGACY_ROLE.platformAdmin });
     assert.equal((await get("/test/customers/777/data", token)).status, 200);
   });
 
   it("CustomerUser (customerId=10) can access own customer route", async () => {
-    const token = makeToken({ id: 2, email: "cu@x.com", role: "client", mspRole: "CustomerUser", customerId: 10 });
+    const token = makeToken({ id: 2, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 10 });
     assert.equal((await get("/test/customers/10/data", token)).status, 200);
   });
 
   it("CustomerUser (customerId=10) is blocked from customerId=11 (403)", async () => {
-    const token = makeToken({ id: 2, email: "cu@x.com", role: "client", mspRole: "CustomerUser", customerId: 10 });
+    const token = makeToken({ id: 2, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 10 });
     assert.equal((await get("/test/customers/11/data", token)).status, 403);
   });
 
   it("MSPAdmin (mspId=1) can access customer that belongs to their MSP (DB confirms)", async () => {
     customerRows = [{ id: 42 }]; // DB returns customer 42 belongs to mspId=1
-    const token = makeToken({ id: 3, email: "msp@x.com", role: "client", mspRole: "MSPAdmin", mspId: 1 });
+    const token = makeToken({ id: 3, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 });
     const { status } = await get("/test/customers/42/data", token);
     customerRows = [];
     assert.equal(status, 200);
@@ -379,18 +379,18 @@ describe("requireCustomerScope() customer fence", () => {
 
   it("MSPAdmin (mspId=1) is blocked from customer belonging to mspId=2 (403)", async () => {
     customerRows = []; // DB returns empty — customer 99 does not belong to mspId=1
-    const token = makeToken({ id: 3, email: "msp@x.com", role: "client", mspRole: "MSPAdmin", mspId: 1 });
+    const token = makeToken({ id: 3, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 });
     assert.equal((await get("/test/customers/99/data", token)).status, 403);
   });
 
   it("MSPOperator (mspId=2) is blocked from customer in a different MSP (403)", async () => {
     customerRows = []; // DB confirms customer 10 does not belong to mspId=2
-    const token = makeToken({ id: 4, email: "op@x.com", role: "client", mspRole: "MSPOperator", mspId: 2 });
+    const token = makeToken({ id: 4, email: "op@x.com", role: "client", mspRole: LEGACY_ROLE.mspOperator, mspId: 2 });
     assert.equal((await get("/test/customers/10/data", token)).status, 403);
   });
 
   it("MSPAdmin with no mspId claim is blocked (403 — missing claim)", async () => {
-    const token = makeToken({ id: 5, email: "noscope@x.com", role: "client", mspRole: "MSPAdmin" });
+    const token = makeToken({ id: 5, email: "noscope@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin });
     assert.equal((await get("/test/customers/1/data", token)).status, 403);
   });
 });

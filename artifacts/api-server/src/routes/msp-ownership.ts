@@ -60,13 +60,14 @@ import {
   type WireMspOwnershipBook,
 } from "../lib/msp-ownership-book.ts";
 import { logger } from "../lib/logger";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
 
 /** MSP-scoped roles that carry `mspId` — see `users_role_scope_check`. */
-const MSP_SCOPED_ROLES = ["MSPAdmin", "MSPOperator", "ServiceAccount"] as const;
+const MSP_SCOPED_ROLES = [LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspOperator, LEGACY_ROLE.serviceAccount] as const;
 
 router.get(
   "/msp/ownership/mine",
@@ -87,7 +88,7 @@ router.get(
           and(
             eq(usersTable.isActive, true),
             or(
-              eq(usersTable.mspRole, "PlatformAdmin"),
+              eq(usersTable.mspRole, LEGACY_ROLE.platformAdmin),
               and(eq(usersTable.mspId, mspId), inArray(usersTable.mspRole, MSP_SCOPED_ROLES)),
             ),
           ),
@@ -220,7 +221,7 @@ async function isMspPersonOfThisMsp(personId: string, mspId: number): Promise<bo
         eq(usersTable.id, Number(match[1])),
         eq(usersTable.mspId, mspId),
         eq(usersTable.isActive, true),
-        or(eq(usersTable.mspRole, "MSPAdmin"), eq(usersTable.mspRole, "MSPOperator")),
+        or(eq(usersTable.mspRole, LEGACY_ROLE.mspAdmin), eq(usersTable.mspRole, LEGACY_ROLE.mspOperator)),
       ),
     )
     .limit(1);

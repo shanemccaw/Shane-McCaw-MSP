@@ -57,7 +57,7 @@ vi.mock("@workspace/db", () => ({
 
 vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: (_role: string) => (req: Request, _res: Response, next: NextFunction) => {
-    req.user = { id: 1, email: "admin@msp.test", role: "client", mspRole: "MSPAdmin", mspId: 42 };
+    req.user = { id: 1, email: "admin@msp.test", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 42 };
     next();
   },
 }));
@@ -96,6 +96,7 @@ vi.mock("stripe", () => ({
 }));
 
 import router, { downgradeBlockReason } from "./msp-plan-self-service.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 function makeApp() {
   const app = express();

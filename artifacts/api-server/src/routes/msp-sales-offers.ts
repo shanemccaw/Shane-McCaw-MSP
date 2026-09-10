@@ -36,7 +36,7 @@ import {
 import { eq, and, desc, asc, inArray } from "drizzle-orm";
 import { requireCapability, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth";
 import { userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
-import { LADDER } from "@workspace/db/rbac/legacy-ladder";
+import { LADDER, LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import { requirePlanFeature } from "../lib/msp-entitlement";
 import {
   runSalesOfferEngineForTenant,
@@ -139,7 +139,7 @@ router.get("/msp/sales-offers/sse", async (req: Request, res: Response): Promise
     return;
   }
 
-  const mspId = user.role === "admin" || user.mspRole === "PlatformAdmin"
+  const mspId = user.role === "admin" || user.mspRole === LEGACY_ROLE.platformAdmin
     ? (req.query["mspId"] ? parseInt(String(req.query["mspId"]), 10) : null)
     : (user.mspId ?? null);
 

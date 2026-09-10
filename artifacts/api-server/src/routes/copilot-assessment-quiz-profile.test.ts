@@ -95,6 +95,7 @@ vi.mock("../lib/logger.ts", () => {
 });
 
 import router from "./copilot-assessment-quiz-profile.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const JWT_SECRET = "test-secret";
 process.env.JWT_SECRET = JWT_SECRET;
@@ -265,7 +266,7 @@ describe("tenant scoping and validation (#237)", () => {
 
   it("rejects a token with no customer identity", async () => {
     const noCustomer = jwt.sign(
-      { id: 1, email: "staff@msp.test", role: "client", mspRole: "MSPAdmin", mspId: 42 },
+      { id: 1, email: "staff@msp.test", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 42 },
       JWT_SECRET,
       { expiresIn: "1h" },
     );

@@ -25,6 +25,7 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import express, { type IRouter } from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // #2876 — the one `await import("./portal-checkout")` this file needs is paid
 // for exactly once, in the beforeAll below, NOT inside a test body. When it sat
@@ -58,7 +59,7 @@ const customerToken = jwt.sign(
     id: 1,
     email: "customer@example.com",
     role: "client",
-    mspRole: "CustomerUser",
+    mspRole: LEGACY_ROLE.customerUser,
     customerId: CUSTOMER_ID,
     mspId: MSP_ID,
   },

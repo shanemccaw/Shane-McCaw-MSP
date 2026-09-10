@@ -2,6 +2,10 @@ import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, big
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { mspsTable, tenantsTable } from "./msp";
+// #2460 — the seven legacy role values, from the migration's own compatibility shim.
+// PURE (no schema imports), so this cannot form the msp.ts <-> index.ts cycle the
+// note above usersTable warns about.
+import { LEGACY_ROLE_ORDER, type LegacyRole } from "../rbac/legacy-ladder";
 
 export interface WizardOption {
   id: string;
@@ -34,8 +38,25 @@ export interface WizardStep {
 // Defined here (not in ./msp) because usersTable's enum use below is eager and
 // the msp.ts ↔ index.ts circular import would TDZ-crash on a cross-module read.
 
-export const MSP_ROLES = ["PlatformAdmin", "MSPAdmin", "MSPOperator", "CustomerUser", "ServiceAccount", "Free", "Assessment"] as const;
-export type MspRole = typeof MSP_ROLES[number];
+// #2460 — the flat role enum and its `MspRole` alias are RETIRED here.
+// #1696's migration step 5.
+//
+// This was a flat, ordered enum that four different axes had been jammed into
+// (account type, tenancy, entitlement, permission), and `requireAuth.ts` compared
+// two of its indexes to decide every route gate. That comparison is gone (#2458
+// moved the decision onto `msp_feature_role_mapping`; #2460 deleted `ROLE_ORDER`
+// and `roleIndex()`), so what is left here is a column holding one of seven values.
+//
+// The seven values now live in exactly one place — `LEGACY_ROLE_ORDER` in
+// `../rbac/legacy-ladder`, the migration's own compatibility shim, which #2457's
+// seed and its parity check are both computed from. The column's enum is taken from
+// there rather than re-declared, so the type, the seeded rows and the transcription
+// cannot disagree.
+//
+// This import is safe despite the TDZ hazard noted below for `usersTable`'s eager
+// enum use: `../rbac/legacy-ladder` is PURE — it imports nothing from the schema —
+// so there is no cycle to resolve.
+export type MspRole = LegacyRole;
 
 // The SINGLE users table (Tenant/User Refactor Phase 0, #92/#93): auth identity
 // plus everything the retired msp_users 1:1 extension row used to carry.
@@ -82,34 +103,39 @@ export const usersTable = pgTable("users", {
   pinnedNavItems: jsonb("pinned_nav_items").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   // ── absorbed from msp_users (Phase 0) ──────────────────────────────────────
-  mspRole: text("msp_role", { enum: MSP_ROLES }).notNull().default("Free"),
+  mspRole: text("msp_role", { enum: LEGACY_ROLE_ORDER }).notNull().default("Free"),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "restrict" }),
   tenantId: integer("tenant_id").references(() => tenantsTable.id, { onDelete: "restrict" }),
   isActive: boolean("is_active").notNull().default(true),
-  // Grants a non-MSPAdmin team member permission to approve/reject pending
-  // purchase-charge approvals for their MSP. MSPAdmin can always approve
-  // regardless of this flag. Checked live (not cached in the JWT).
-  canApprovePurchases: boolean("can_approve_purchases").notNull().default(false),
-  // Grants a customer-tier team member (CustomerUser) permission to manage
-  // their own company's team roster via /portal/team — invite/suspend
-  // teammates, force password/MFA resets, unlock accounts, issue emergency
-  // MFA bypass codes. There is deliberately no "CustomerAdmin" role in
-  // MSP_ROLES (all customer employees share CustomerUser), so this per-user
-  // capability flag is the elevated-customer distinction, mirroring
-  // canApprovePurchases above. MSPAdmin/MSPOperator/PlatformAdmin acting on a
-  // customer's team bypass this — they gate on role, not this flag. Checked
-  // live in the route handler, NOT cached in the JWT (Git #1142).
-  canManageTeam: boolean("can_manage_team").notNull().default(false),
+  // #2460 — `can_approve_purchases` and `can_manage_team` are RETIRED.
+  //
+  // They were per-user boolean capability columns, and #1696 records exactly why
+  // they existed: the role ladder could not express a sideways permission, so each
+  // one was bolted on beside the model rather than into it. A column can never be
+  // "granted to everyone holding the Engineer role", which is the wall the redesign
+  // exists to get past.
+  //
+  // Both are now rows. #2457 created one role per column and granted it to exactly
+  // the users who carried it — `msp_roles.key = 'cap.purchases.approve'` and
+  // `customer_roles.key = 'cap.team.manage'` — and the `msp:purchases.approve` /
+  // `customer:team.manage` feature→role mappings reproduce the rules that read
+  // them, asymmetries included. Every reader moved onto that model in #2460;
+  // `lib/db/migrations/manual/2026-09-10-drop-capability-columns-2460.sql` drops the
+  // columns and is deliberately left for a human to run (it is destructive, and its
+  // own header carries the evidence and a rollback).
+  //
+  // `can_approve_changes` below is NOT retired with them. #2460's contract names two
+  // columns; the third (#1496) is newer than #1696's diagnosis and is transcribed,
+  // seeded and mapped identically, so retiring it is the same small change whenever
+  // that is asked for — but it is not this issue's scope, on a security path.
+  //
   // Grants a customer-tier team member (CustomerUser) permission to APPROVE or
   // REJECT a Change Request against their own live tenant — the authority the
-  // Change Control approval model (Git #1496) is built on. Deliberately NOT
-  // canApprovePurchases (spend) or canManageTeam (roster): approving a
-  // configuration change to a live tenant is a distinct authority, and
-  // overloading either of those would grant it to people nobody granted it to
-  // (see routes/portal-change-control.ts's header). Same shape as the two flags
-  // above: per-user, customer-tier only, MSP staff/PlatformAdmin gate on role
-  // instead. Checked LIVE in the route handler, never cached in the JWT, so a
-  // revoke takes effect immediately.
+  // Change Control approval model (Git #1496) is built on. Deliberately its own
+  // authority: approving a configuration change to a live tenant is distinct from
+  // spend or roster, and overloading either of those would grant it to people nobody
+  // granted it to (see routes/portal-change-control.ts's header). Checked LIVE in
+  // the route handler, never cached in the JWT, so a revoke takes effect immediately.
   canApproveChanges: boolean("can_approve_changes").notNull().default(false),
   // Requires an active MFA enrollment to log in. False by default so existing
   // users are never silently locked out; opted in explicitly via the
@@ -132,7 +158,7 @@ export const usersTable = pgTable("users", {
   // their chain" escalation, which #1519 itself correctly declined to fake).
   // Self-referencing, same-tenant by convention (enforced in the route, not a
   // DB constraint, same as other cross-row invariants in this table). Null
-  // until someone with canManageTeam sets it via
+  // until someone holding `customer:team.manage` sets it via
   // PATCH /portal/team/:userId/manager — there is no Graph-sourced sync
   // populating this automatically; that would be a separate integration
   // decision (new Graph manager-read scope/consent) out of scope here. A

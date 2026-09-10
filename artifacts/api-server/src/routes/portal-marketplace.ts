@@ -38,6 +38,7 @@ import { db, servicesTable, type MspRole } from "@workspace/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "growth.marketplace" });
 
@@ -60,7 +61,7 @@ export const CUSTOMER_SERVICE_TYPES = [
 function effectiveRole(req: Request): MspRole | undefined {
   const user = req.user as { role?: string; mspRole?: MspRole } | undefined;
   if (!user) return undefined;
-  if (user.role === "admin") return "PlatformAdmin";
+  if (user.role === "admin") return LEGACY_ROLE.platformAdmin;
   return user.mspRole;
 }
 

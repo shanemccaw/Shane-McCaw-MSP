@@ -41,6 +41,7 @@ vi.mock("../lib/audit", () => ({
 }));
 
 import router from "./admin-rbac";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();
 app.use(express.json());
@@ -50,7 +51,7 @@ const JWT_SECRET = "admin-rbac-test-secret";
 process.env.JWT_SECRET = JWT_SECRET;
 
 function adminToken(): string {
-  return jwt.sign({ id: 1, email: "pa@platform.com", name: "Platform Admin", role: "admin", mspRole: "PlatformAdmin" }, JWT_SECRET, {
+  return jwt.sign({ id: 1, email: "pa@platform.com", name: "Platform Admin", role: "admin", mspRole: LEGACY_ROLE.platformAdmin }, JWT_SECRET, {
     expiresIn: "15m",
   });
 }

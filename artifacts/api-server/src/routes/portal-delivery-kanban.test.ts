@@ -80,6 +80,7 @@ import portalDeliveryKanbanRouter from "./portal-delivery-kanban.ts";
 import { db } from "@workspace/db";
 import { fireWorkflowForDefinition } from "../lib/workflow-executor.ts";
 import { executeMonitoringPackage } from "../lib/monitor-executor.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -91,7 +92,7 @@ function adminToken(): string {
 }
 
 function customerToken(): string {
-  return jwt.sign({ id: 2, email: "customer@test.com", role: "client", mspRole: "CustomerUser", mspId: 1 }, JWT_SECRET, { expiresIn: "1h" });
+  return jwt.sign({ id: 2, email: "customer@test.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 1 }, JWT_SECRET, { expiresIn: "1h" });
 }
 
 const app = express();

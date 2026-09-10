@@ -4,6 +4,7 @@ import { eq, and, count, desc, gte, lte, isNotNull, lt, ne, ilike, or, type SQL 
 import { requireCapability, requireMspScope } from "../middlewares/requireAuth.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 import { logger } from "../lib/logger.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
@@ -99,7 +100,7 @@ router.post(
     try {
       await db.insert(mspAuditLogsTable).values({
         actorUserId: actorId,
-        actorRole: req.user!.mspRole ?? "MSPAdmin",
+        actorRole: req.user!.mspRole ?? LEGACY_ROLE.mspAdmin,
         mspId,
         customerId,
         actionType: "IMPERSONATION_TOKEN_ISSUED",

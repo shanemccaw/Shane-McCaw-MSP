@@ -15,6 +15,7 @@
 import type { Request } from "express";
 import { db, mspsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 /**
  * Resolve the MSP ID for the calling user.
@@ -28,7 +29,7 @@ import { eq } from "drizzle-orm";
 export async function resolveMspId(req: Request): Promise<number | null> {
   const user = req.user!;
 
-  if (user.role === "admin" || user.mspRole === "PlatformAdmin") {
+  if (user.role === "admin" || user.mspRole === LEGACY_ROLE.platformAdmin) {
     const q = req.query as Record<string, unknown>;
 
     // 1. Explicit numeric ?mspId=

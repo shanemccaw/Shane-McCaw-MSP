@@ -81,6 +81,7 @@ import { createAuditLog } from "../lib/audit.ts";
 import { resolveOrCreateDirectTenant, provisionProspectAccount } from "../lib/direct-tenant-provisioning.ts";
 import { getReadConsentRequirementForProduct, buildSessionReadConsentUrl } from "../lib/read-consent-flow.ts";
 import { logger } from "../lib/logger.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "auth" });
 
 const router: IRouter = Router();
@@ -856,7 +857,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       // Resolve packageKey + serviceType via services.type_attributes->>'packageKey'.
       // serviceType picks the Prospect's role: assessment products get the low-
       // privilege "Assessment" role (promoted to CustomerUser on payment); anything
-      // else gets "CustomerUser" directly (a passwordless account can't log in until
+      // else gets `CustomerUser` directly (a passwordless account can't log in until
       // setup, so this grants no premature access).
       let serviceType: string | null = null;
       if (productSlug) {
@@ -897,7 +898,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
           company: sessionCompany,
           industry: sessionIndustry,
           tenantId: tenant,
-          role: serviceType === "assessment" ? "Assessment" : "CustomerUser",
+          role: serviceType === "assessment" ? LEGACY_ROLE.assessment : LEGACY_ROLE.customerUser,
         });
         if (prospect) {
           clientId = prospect.userId;
@@ -942,7 +943,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         email: inviteRecord.invitedEmail,
         fullName: inviteRecord.invitedName,
         tenantId: tenant,
-        role: "CustomerUser",
+        role: LEGACY_ROLE.customerUser,
       });
       if (prospect) {
         clientId = prospect.userId;

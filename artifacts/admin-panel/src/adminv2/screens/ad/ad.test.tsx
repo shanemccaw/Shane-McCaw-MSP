@@ -16,6 +16,7 @@ import { AdCanvas } from "./AdCanvas";
 import { AdExplorerTree } from "./AdExplorerTree";
 import { resetAdNameCacheForTest } from "./adNameCache";
 import type { AdTree } from "./adTypes";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const fetchWithAuth = vi.fn();
 const openDoc = vi.fn();
@@ -45,12 +46,12 @@ const sampleTree: AdTree = {
           domain: "contoso.onmicrosoft.com",
           tenantId: "8f214d6a-91c2-4c1f-9b77-2a5e0f31c4d0",
           status: "active",
-          users: [{ id: 100, email: "jordan@contoso.com", name: "Jordan Doe", mspRole: "CustomerUser", isActive: true }],
+          users: [{ id: 100, email: "jordan@contoso.com", name: "Jordan Doe", mspRole: LEGACY_ROLE.customerUser, isActive: true }],
         },
       ],
     },
   ],
-  groups: [{ role: "PlatformAdmin", count: 1 }],
+  groups: [{ role: LEGACY_ROLE.platformAdmin, count: 1 }],
   ous: [{ id: 5, name: "Managed Service Providers" }],
 };
 
@@ -102,7 +103,7 @@ describe("registration", () => {
 
     // Group and OU records have no ribbon-level write actions built — the
     // contextual tab is legitimately absent for them, not a bug.
-    expect(spec({ recordId: "PlatformAdmin", kind: "group" })).toBeNull();
+    expect(spec({ recordId: LEGACY_ROLE.platformAdmin, kind: "group" })).toBeNull();
     expect(spec({ recordId: "5", kind: "ou" })).toBeNull();
   });
 
@@ -112,7 +113,7 @@ describe("registration", () => {
     expect(screenModule.peeks?.msp?.("1")).toBeNull();
     expect(screenModule.peeks?.customer?.("10")).toBeNull();
     expect(screenModule.peeks?.user?.("100")).toBeNull();
-    expect(screenModule.peeks?.group?.("PlatformAdmin")).toBeNull();
+    expect(screenModule.peeks?.group?.(LEGACY_ROLE.platformAdmin)).toBeNull();
     expect(screenModule.peeks?.ou?.("5")).toBeNull();
 
     render(<AdExplorerTree />);
@@ -121,7 +122,7 @@ describe("registration", () => {
     expect(screenModule.peeks?.msp?.("1")?.title).toBe("Northline IT");
     expect(screenModule.peeks?.customer?.("10")?.title).toBe("Contoso Ltd");
     expect(screenModule.peeks?.user?.("100")?.title).toBe("Jordan Doe");
-    expect(screenModule.peeks?.group?.("PlatformAdmin")?.title).toBe("PlatformAdmin");
+    expect(screenModule.peeks?.group?.(LEGACY_ROLE.platformAdmin)?.title).toBe(LEGACY_ROLE.platformAdmin);
     expect(screenModule.peeks?.ou?.("5")?.title).toBe("Managed Service Providers");
   });
 });
@@ -183,12 +184,12 @@ describe("AdExplorerTree", () => {
     render(<AdExplorerTree />);
     fireEvent.click(await screen.findByText("Groups"));
 
-    const groupRow = await screen.findByText("PlatformAdmin");
+    const groupRow = await screen.findByText(LEGACY_ROLE.platformAdmin);
     fireEvent.contextMenu(groupRow);
     expect(screen.getByRole("menu", { name: "Actions for PlatformAdmin" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy role name" }));
-    expect(clipboardWrite).toHaveBeenCalledWith("PlatformAdmin");
+    expect(clipboardWrite).toHaveBeenCalledWith(LEGACY_ROLE.platformAdmin);
   });
 
   it("right-clicking an OU row offers Open / Rename / Delete, reusing the same handlers as the row's own icon buttons", async () => {

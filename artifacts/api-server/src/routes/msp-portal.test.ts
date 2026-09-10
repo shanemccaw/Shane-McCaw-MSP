@@ -10,6 +10,7 @@ import request from "supertest";
 import jwt from "jsonwebtoken";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── Module mocks ────────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 
 function makeToken(overrides: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 1, email: "test@msp.com", role: "client", mspRole: "MSPAdmin", mspId: 42, ...overrides },
+    { id: 1, email: "test@msp.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 42, ...overrides },
     JWT_SECRET,
     { expiresIn: "1h" },
   );
@@ -190,7 +191,7 @@ describe("GET /api/msp/dashboard", () => {
     app.use(express.json());
     app.use("/api", router);
 
-    const token = makeToken({ mspRole: "CustomerUser" });
+    const token = makeToken({ mspRole: LEGACY_ROLE.customerUser });
     const res = await request(app)
       .get("/api/msp/dashboard")
       .set("Authorization", `Bearer ${token}`);
@@ -275,7 +276,7 @@ describe("GET /api/msp/portfolio-risk", () => {
     app.use("/api", router);
 
     // MSPAdmin JWT for MSP A (mspId: 42), attempting to override to MSP B (999).
-    const token = makeToken({ mspId: 42, mspRole: "MSPAdmin" });
+    const token = makeToken({ mspId: 42, mspRole: LEGACY_ROLE.mspAdmin });
     const res = await request(app)
       .get("/api/msp/portfolio-risk?mspId=999")
       .set("Authorization", `Bearer ${token}`);
@@ -299,7 +300,7 @@ describe("GET /api/msp/portfolio-risk", () => {
     app.use(express.json());
     app.use("/api", router);
 
-    const token = makeToken({ mspId: 42, mspRole: "MSPAdmin" });
+    const token = makeToken({ mspId: 42, mspRole: LEGACY_ROLE.mspAdmin });
     const res = await request(app)
       .get("/api/msp/portfolio-risk?slug=other-msp-tenant")
       .set("Authorization", `Bearer ${token}`);
@@ -321,7 +322,7 @@ describe("GET /api/msp/portfolio-risk", () => {
     app.use(express.json());
     app.use("/api", router);
 
-    const token = makeToken({ mspId: 42, mspRole: "MSPAdmin" });
+    const token = makeToken({ mspId: 42, mspRole: LEGACY_ROLE.mspAdmin });
     const res = await request(app)
       .get("/api/msp/portfolio-risk")
       .set("Authorization", `Bearer ${token}`);
@@ -348,7 +349,7 @@ describe("GET /api/msp/portfolio-risk", () => {
     app.use(express.json());
     app.use("/api", router);
 
-    const token = makeToken({ mspId: 42, mspRole: "MSPAdmin" });
+    const token = makeToken({ mspId: 42, mspRole: LEGACY_ROLE.mspAdmin });
     const res = await request(app)
       .get("/api/msp/portfolio-risk")
       .set("Authorization", `Bearer ${token}`);
@@ -402,7 +403,7 @@ describe("POST /api/msp/offboarding/request", () => {
     app.use(express.json());
     app.use("/api", router);
 
-    const token = makeToken({ mspRole: "MSPOperator" });
+    const token = makeToken({ mspRole: LEGACY_ROLE.mspOperator });
     const res = await request(app)
       .post("/api/msp/offboarding/request")
       .set("Authorization", `Bearer ${token}`)
@@ -489,7 +490,7 @@ describe("POST /api/msp/offboarding/archive", () => {
     app.use(express.json());
     app.use("/api", router);
 
-    const token = makeToken({ mspRole: "MSPAdmin" });
+    const token = makeToken({ mspRole: LEGACY_ROLE.mspAdmin });
     const res = await request(app)
       .post("/api/msp/offboarding/archive")
       .set("Authorization", `Bearer ${token}`)

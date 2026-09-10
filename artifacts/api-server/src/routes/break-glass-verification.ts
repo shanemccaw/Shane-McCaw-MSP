@@ -51,6 +51,7 @@ import {
   WriteConsentRequiredError,
 } from "../lib/graph";
 import { sendEmailForMspOrThrow } from "../lib/mailer";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const router = Router();
 
@@ -341,7 +342,7 @@ async function purgePendingSecretFromVault(
   }
 }
 
-const effectiveRoleOf = (user: AuthUser) => (user.role === "admin" ? "PlatformAdmin" : user.mspRole);
+const effectiveRoleOf = (user: AuthUser) => (user.role === "admin" ? LEGACY_ROLE.platformAdmin : user.mspRole);
 
 // ── Delegated Graph helpers (auth-code flow — net-new; standard OAuth) ─────────
 async function exchangeCodeForToken(tenantId: string, code: string): Promise<string | null> {
@@ -924,7 +925,7 @@ router.post("/portal/break-glass/:pendingSecretId/admin-override", requireAuth, 
 
     // More powerful than invite → PlatformAdmin / MSPAdmin / MSPOperator only.
     const role = effectiveRoleOf(req.user!);
-    const roleAllowed = role === "PlatformAdmin" || role === "MSPAdmin" || role === "MSPOperator";
+    const roleAllowed = role === LEGACY_ROLE.platformAdmin || role === LEGACY_ROLE.mspAdmin || role === LEGACY_ROLE.mspOperator;
     if (!roleAllowed || !(await assertCustomerAccess(req.user!, ctx.secret.customerId))) {
       return res.status(404).json({ error: "Not found" });
     }

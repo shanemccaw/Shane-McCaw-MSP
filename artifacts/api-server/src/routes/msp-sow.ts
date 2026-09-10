@@ -102,7 +102,7 @@ async function emitMspEvent(
     await db.insert(mspEventStoreTable).values({
       eventType,
       source: "msp-sow",
-      actor: { id: String(actorUserId ?? "system"), role: actorUserId ? ("MSPAdmin" as const) : ("system" as const), type: actorUserId ? ("user" as const) : ("system" as const) },
+      actor: { id: String(actorUserId ?? "system"), role: actorUserId ? LEGACY_ROLE.mspAdmin : ("system" as const), type: actorUserId ? ("user" as const) : ("system" as const) },
       meta: { tenant: { mspId, customerId } },
       payload,
       mspId,
@@ -803,6 +803,7 @@ router.get(
 // Rate-limited to prevent abuse.
 
 import rateLimit from "express-rate-limit";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const publicSignLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

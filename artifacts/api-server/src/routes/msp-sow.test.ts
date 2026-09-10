@@ -168,9 +168,10 @@ vi.mock("../lib/workflow-executor.ts", () => ({
 // ── Import router AFTER all mocks ─────────────────────────────────────────────
 
 import router from "./msp-sow.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── App builder ────────────────────────────────────────────────────────────────
-// User has mspRole: "MSPAdmin" + mspId: 42 so getMspIdFromRequest() returns
+// User has mspRole: `MSPAdmin` + mspId: 42 so getMspIdFromRequest() returns
 // user.mspId directly (no ?mspId= query param needed).
 
 function buildApp() {
@@ -180,7 +181,7 @@ function buildApp() {
     (req as Request & { user: unknown }).user = {
       id: 1,
       role: "client",
-      mspRole: "MSPAdmin",
+      mspRole: LEGACY_ROLE.mspAdmin,
       mspId: 42,
       email: "admin@msp.test",
     };

@@ -26,7 +26,7 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = "portal-engine-history-test-secret";
 process.env["JWT_SECRET"] = JWT_SECRET;
 
-function customerToken(customerId: number | undefined, mspRole: "CustomerUser" | "Free" | "MSPOperator" = "CustomerUser"): string {
+function customerToken(customerId: number | undefined, mspRole: typeof LEGACY_ROLE.customerUser | typeof LEGACY_ROLE.free | typeof LEGACY_ROLE.mspOperator = LEGACY_ROLE.customerUser): string {
   return jwt.sign(
     { id: 1, email: "customer@test.com", role: "client", mspRole, ...(customerId !== undefined ? { customerId } : {}) },
     JWT_SECRET,
@@ -71,6 +71,7 @@ vi.mock("../lib/engine-history", () => ({
 }));
 
 import router from "./portal-engine-history";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 function makeApp() {
   const app = express();
@@ -117,7 +118,7 @@ describe("GET /portal/engines/:key/history", () => {
   it("400s when the session has no customerId", async () => {
     const res = await request(makeApp())
       .get("/portal/engines/health/history")
-      .set("Authorization", `Bearer ${customerToken(undefined, "MSPOperator")}`);
+      .set("Authorization", `Bearer ${customerToken(undefined, LEGACY_ROLE.mspOperator)}`);
     expect(res.status).toBe(400);
   });
 

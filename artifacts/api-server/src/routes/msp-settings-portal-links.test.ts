@@ -132,6 +132,7 @@ vi.mock("../lib/logger.ts", () => {
 import router from "./msp-settings.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { sendEmailFromTemplate } from "../lib/mailer.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const sendEmailFromTemplateMock = vi.mocked(sendEmailFromTemplate);
 
@@ -148,7 +149,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 
 function makeMspAdminToken(mspId: number): string {
   return jwt.sign(
-    { id: 1, email: "admin@msp.test", role: "client", mspRole: "MSPAdmin", mspId },
+    { id: 1, email: "admin@msp.test", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

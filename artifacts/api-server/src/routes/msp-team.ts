@@ -63,6 +63,7 @@ import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { ensureClientSetupToken } from "../lib/client-setup-token.ts";
 import { logger } from "../lib/logger.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -276,7 +277,7 @@ router.post("/msp/customers/:customerId/team/invite", requireCapability("ladder.
       name: name?.trim() || null,
       mspId: targetTenant.mspId,
       tenantId: customerId,
-      mspRole: "CustomerUser",
+      mspRole: LEGACY_ROLE.customerUser,
       isActive: true,
       department: department?.trim() || null,
       jobTitle: jobTitle?.trim() || null,

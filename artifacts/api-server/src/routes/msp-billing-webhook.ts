@@ -34,6 +34,7 @@ import { cascadeMspSubscriptionToCustomers } from "../lib/retention/msp-cascade.
 import { enqueueZohoBooksInvoiceSync } from "../lib/zoho-books.ts";
 import { fireEventRule } from "../lib/alert-engine.ts";
 import { logger } from "../lib/logger.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "billing" });
 
 const router: IRouter = Router();
@@ -484,7 +485,7 @@ async function provisionMspAdminUser(
         email: normalizedEmail,
         role: "client",
         name: name.trim() || undefined,
-        mspRole: "MSPAdmin",
+        mspRole: LEGACY_ROLE.mspAdmin,
         mspId,
         isActive: true,
       })
@@ -496,7 +497,7 @@ async function provisionMspAdminUser(
 
     if (!user) return null;
 
-    if (user.mspId !== mspId || user.mspRole !== "MSPAdmin") {
+    if (user.mspId !== mspId || user.mspRole !== LEGACY_ROLE.mspAdmin) {
       // Pre-existing account that already belongs to some other scope. Left
       // exactly as it was, matching the old "msp_users row already exists →
       // skip" behaviour, but logged loudly: this MSP's checkout completed

@@ -27,7 +27,7 @@
  *
  * #2459 removes role-string COMPARISONS, not the directory's ability to display
  * its own contents. AdminV2 is the platform-admin console: a group named
- * "MSPAdmin" is a real object an administrator browses and assigns, the same way
+ * `MSPAdmin` is a real object an administrator browses and assigns, the same way
  * an AD console shows real group names. What changed is that the list and its
  * semantics are read from the server rather than transcribed — nothing in this
  * module or its callers compares a role name against a literal.

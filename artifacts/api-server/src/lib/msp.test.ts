@@ -11,6 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Request, Response, NextFunction } from "express";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── Mock jsonwebtoken so requireAuth trusts any "Bearer <payload-json>" token ──
 vi.mock("jsonwebtoken", () => ({
@@ -129,7 +130,7 @@ describe("requireCapability()", () => {
 
   it("allows PlatformAdmin where MSPAdmin is required", async () => {
     const { requireCapability } = await import("../middlewares/requireAuth");
-    const user = { id: 1, email: "pa@x.com", role: "admin", mspRole: "PlatformAdmin" };
+    const user = { id: 1, email: "pa@x.com", role: "admin", mspRole: LEGACY_ROLE.platformAdmin };
     const req = mockReq(user);
     const res = mockRes();
     const next = vi.fn();
@@ -142,7 +143,7 @@ describe("requireCapability()", () => {
 
   it("allows MSPAdmin where MSPOperator is required", async () => {
     const { requireCapability } = await import("../middlewares/requireAuth");
-    const user = { id: 2, email: "msp@x.com", role: "client", mspRole: "MSPAdmin" };
+    const user = { id: 2, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin };
     const req = mockReq(user);
     const res = mockRes();
     const next = vi.fn();
@@ -167,7 +168,7 @@ describe("requireCapability()", () => {
 
   it("blocks CustomerUser from MSPAdmin-required route", async () => {
     const { requireCapability } = await import("../middlewares/requireAuth");
-    const user = { id: 4, email: "cu@x.com", role: "client", mspRole: "CustomerUser" };
+    const user = { id: 4, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customerUser };
     const req = mockReq(user);
     const res = mockRes();
     const next = vi.fn();
@@ -199,7 +200,7 @@ describe("requireMspScope()", () => {
   it("PlatformAdmin bypasses mspId scope check", async () => {
     const { requireMspScope } = await import("../middlewares/requireAuth");
     const req = mockReq(
-      { id: 1, email: "pa@x.com", role: "admin", mspRole: "PlatformAdmin" },
+      { id: 1, email: "pa@x.com", role: "admin", mspRole: LEGACY_ROLE.platformAdmin },
       { mspId: "99" }
     );
     const res = mockRes();
@@ -213,7 +214,7 @@ describe("requireMspScope()", () => {
   it("MSPAdmin with wrong mspId gets 403", async () => {
     const { requireMspScope } = await import("../middlewares/requireAuth");
     const req = mockReq(
-      { id: 5, email: "msp@x.com", role: "client", mspRole: "MSPAdmin", mspId: 1 },
+      { id: 5, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 },
       { mspId: "2" }
     );
     const res = mockRes();
@@ -227,7 +228,7 @@ describe("requireMspScope()", () => {
   it("MSPAdmin with matching mspId is allowed", async () => {
     const { requireMspScope } = await import("../middlewares/requireAuth");
     const req = mockReq(
-      { id: 5, email: "msp@x.com", role: "client", mspRole: "MSPAdmin", mspId: 1 },
+      { id: 5, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 },
       { mspId: "1" }
     );
     const res = mockRes();

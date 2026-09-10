@@ -30,7 +30,7 @@ import { reportClientEvent } from "./report-client-event";
  * purpose. #1696's re-measure comment on the artifacts being built now is
  * explicit: *"Neither should ever import a role literal. They consume
  * capabilities, not roles."* A union of literals is exactly what makes
- * `mspRole === "CustomerUser"` compile, and this file had two such comparisons
+ * `mspRole === `CustomerUser`` compile, and this file had two such comparisons
  * (`:476`, `:801`) deciding where an impersonated identity landed — an
  * authorization-shaped rule the server could not see.
  *
@@ -41,7 +41,7 @@ import { reportClientEvent } from "./report-client-event";
  * `*_feature_role_mapping` rows the server's own evaluator reads.
  *
  * The claim itself is still surfaced because it is real, and because #2460 (not
- * this step) is what retires `MSP_ROLES` and the claim with it.
+ * this step) is what retired the role enum and takes the claim with it.
  */
 export type MspRole = string;
 
@@ -179,7 +179,7 @@ interface AuthContextValue extends AuthState {
    * *"hiding a nav item is not access control."* What it buys is that the hint
    * now reads the SAME `*_feature_role_mapping` rows the server's own evaluator
    * reads, so it cannot silently drift from the server the way a hardcoded
-   * `role === "MSPAdmin"` comparison in a component could. The route is still
+   * `role === `MSPAdmin`` comparison in a component could. The route is still
    * the gate, and every route keeps whatever middleware it has.
    *
    * Returns `true` while the context is unresolved, and `true` when the server
@@ -271,7 +271,7 @@ async function exchangeImpersonationToken(
  * Where an impersonated identity lands, per the SERVER (#2459, part of #1696).
  *
  * Both call sites used to run their own copy of
- * `mspRole === "Assessment" ? … : mspRole === "CustomerUser" ? … : …`. Two copies
+ * `mspRole === `Assessment` ? … : mspRole === `CustomerUser` ? … : …`. Two copies
  * of an identity rule in a component is the shape #1696 calls *"a rule that
  * exists nowhere the server can enforce it"*, and duplicating it twice in one
  * file is how such a rule ends up disagreeing with itself. The rule now lives in

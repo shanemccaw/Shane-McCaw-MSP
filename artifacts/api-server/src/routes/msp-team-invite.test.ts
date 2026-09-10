@@ -32,6 +32,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import jwt from "jsonwebtoken";
 import type { AddressInfo } from "node:net";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const TEST_JWT_SECRET = "msp-team-invite-test-secret-xyz";
 process.env.JWT_SECRET = TEST_JWT_SECRET;
@@ -54,7 +55,7 @@ const mspAdminMsp1Token = makeJwt({
   email: "admin@msp1.test",
   role: "client",
   mspId: 1,
-  mspRole: "MSPAdmin",
+  mspRole: LEGACY_ROLE.mspAdmin,
 });
 
 // ── Mock DB state ─────────────────────────────────────────────────────────────

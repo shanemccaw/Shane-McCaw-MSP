@@ -132,6 +132,7 @@ import { broadcastNotification } from "../lib/sse-channels.ts";
 import { listRemediableOffers } from "./portal-mission-control.ts";
 import { generateDocument } from "../lib/document-engine.ts";
 import { runDiagnostics } from "../lib/diagnostics-runner.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -140,7 +141,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 
 function makeToken(overrides: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 5, email: "op@msp.com", role: "client", mspRole: "MSPOperator", mspId: 1, ...overrides },
+    { id: 5, email: "op@msp.com", role: "client", mspRole: LEGACY_ROLE.mspOperator, mspId: 1, ...overrides },
     JWT_SECRET,
     { expiresIn: "1h" },
   );
@@ -149,7 +150,7 @@ function makeToken(overrides: Record<string, unknown> = {}): string {
 function makeCustomerToken(overrides: Record<string, unknown> = {}): string {
   return makeToken({
     id: 10, email: "customer@co.com", role: "client",
-    mspRole: "CustomerUser", mspId: 1, customerId: 42, ...overrides,
+    mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 42, ...overrides,
   });
 }
 
@@ -168,7 +169,7 @@ describe("POST /api/msp/support/chat", () => {
   const mockDbAny = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
   const customerToken = () =>
-    makeToken({ id: 10, email: "customer@co.com", role: "client", mspRole: "CustomerUser", mspId: 1, customerId: 42 });
+    makeToken({ id: 10, email: "customer@co.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 42 });
 
   beforeEach(() => {
     // vi.clearAllMocks() only clears call history, not queued
@@ -275,7 +276,7 @@ describe("POST /api/msp/support/chat", () => {
     const app = makeApp();
     const token = makeToken({
       id: 10, email: "customer@co.com", role: "client",
-      mspRole: "CustomerUser", mspId: 1, customerId: 42,
+      mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 42,
     });
 
     const res = await request(app)
@@ -418,7 +419,7 @@ describe("POST /api/msp/support/chat", () => {
     const app = makeApp();
     const res = await request(app)
       .post("/api/msp/support/chat")
-      .set("Authorization", `Bearer ${makeToken()}`) // default: mspRole "MSPOperator", no customerId
+      .set("Authorization", `Bearer ${makeToken()}`) // default: mspRole LEGACY_ROLE.mspOperator, no customerId
       .send({ messages: [{ role: "user", content: "regenerate the customer's report" }] });
 
     expect(res.status).toBe(200);
@@ -496,7 +497,7 @@ describe("POST /api/msp/support/chat", () => {
     const app = makeApp();
     const res = await request(app)
       .post("/api/msp/support/chat")
-      .set("Authorization", `Bearer ${makeToken()}`) // default: mspRole "MSPOperator", no customerId
+      .set("Authorization", `Bearer ${makeToken()}`) // default: mspRole LEGACY_ROLE.mspOperator, no customerId
       .send({ messages: [{ role: "user", content: "show me the customer's invoices" }] });
 
     expect(res.status).toBe(200);

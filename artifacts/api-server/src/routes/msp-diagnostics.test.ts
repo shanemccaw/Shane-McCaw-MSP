@@ -16,6 +16,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import express from "express";
 import request from "supertest";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── DB mock ───────────────────────────────────────────────────────────────────
 
@@ -186,7 +187,7 @@ vi.mock("../lib/logger", () => ({
 
 vi.mock("jsonwebtoken", () => ({
   default: {
-    verify: vi.fn().mockReturnValue({ mspId: 1, mspRole: "MSPOperator" }),
+    verify: vi.fn().mockReturnValue({ mspId: 1, mspRole: LEGACY_ROLE.mspOperator }),
   },
 }));
 
@@ -197,7 +198,7 @@ vi.mock("../middlewares/requireAuth", () => {
     (req as unknown as Record<string, unknown>).user = {
       id: 42,
       mspId: 1,
-      mspRole: role ?? "MSPOperator",
+      mspRole: role ?? LEGACY_ROLE.mspOperator,
       role: null,
     };
     next();

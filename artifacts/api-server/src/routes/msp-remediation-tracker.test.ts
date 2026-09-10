@@ -110,7 +110,7 @@ vi.mock("../lib/logger", () => {
 const mockAssertCustomerAccess = vi.fn();
 vi.mock("../middlewares/requireAuth", () => ({
   requireCapability: () => (req: any, _res: any, next: () => void) => {
-    req.user = req.user ?? { id: 1, email: "staff@test.com", role: "client", mspRole: "MSPOperator", mspId: 9 };
+    req.user = req.user ?? { id: 1, email: "staff@test.com", role: "client", mspRole: `MSPOperator`, mspId: 9 };
     next();
   },
   assertCustomerAccess: (...args: unknown[]) => mockAssertCustomerAccess(...args),

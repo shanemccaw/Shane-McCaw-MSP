@@ -23,6 +23,7 @@ import { logger } from "./logger";
 const log = logger.child({ channel: "system.core" });
 import { fanOutWebhooks } from "./webhook-delivery.ts";
 import { getRequestContext } from "./request-context.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── Runtime envelope schema ───────────────────────────────────────────────────
 
@@ -233,7 +234,7 @@ export function serviceAccountActor(saId: number): CanonicalEventActor {
  * @param impersonatedMspId - The MSP being acted on behalf of
  */
 export function impersonationActor(adminUserId: number, impersonatedMspId: number): CanonicalEventActor {
-  return { id: adminUserId, role: "PlatformAdmin", type: "user", actingAs: impersonatedMspId };
+  return { id: adminUserId, role: LEGACY_ROLE.platformAdmin, type: "user", actingAs: impersonatedMspId };
 }
 
 // ── Well-known event type constants ──────────────────────────────────────────

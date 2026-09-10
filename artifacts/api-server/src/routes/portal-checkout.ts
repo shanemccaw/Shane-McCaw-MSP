@@ -53,6 +53,7 @@ import { broadcastCustomerOfferChange, broadcastMspOfferChange } from "../lib/ss
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { verifyCaptchaToken } from "../lib/captcha.ts";
 import { provisionDirectMarketingPurchase, DIRECT_MARKETING_CHECKOUT_KIND } from "./portal-checkout-direct.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const router: IRouter = Router();
 
@@ -119,7 +120,7 @@ async function emitMspEvent(
       source: "portal-checkout",
       actor: {
         id: String(actorUserId ?? "system"),
-        role: actorUserId ? ("CustomerUser" as const) : ("system" as const),
+        role: actorUserId ? LEGACY_ROLE.customerUser : ("system" as const),
         type: actorUserId ? ("user" as const) : ("system" as const),
       },
       meta: { tenant: { mspId, customerId } },
@@ -552,7 +553,7 @@ router.post(
         return;
       }
 
-      await emitSowEvent(sow.sowId, "sow.created", actorId, "CustomerUser", {
+      await emitSowEvent(sow.sowId, "sow.created", actorId, LEGACY_ROLE.customerUser, {
         offerId, mspId, customerId, amountCents,
       });
 

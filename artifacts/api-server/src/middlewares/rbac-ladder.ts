@@ -19,7 +19,7 @@
  * Those are the same comparison. #2457 seeded each `ladder.<x>` mapping's allow set
  * by joining the ladder to itself on `idx >= idx`, so the allow set of
  * `ladder.msp-admin` IS `{MSPAdmin, PlatformAdmin}` — `roleIndex(held) >=
- * roleIndex("MSPAdmin")` enumerated as rows instead of evaluated as an array index.
+ * roleIndex(`MSPAdmin`)` enumerated as rows instead of evaluated as an array index.
  * The behaviour is identical by construction; what moved is WHERE the rule lives.
  * Changing who clears `requireCapability("ladder.msp-admin")` is now an UPDATE, not a deploy.
  *
@@ -48,7 +48,7 @@
  * MSP's own row grant its staff the top of the platform ladder. So this module reads
  * `msp_id IS NULL` rows and nothing else, and passes `orgId: null` to the evaluator so
  * a foreign row could not be honoured even if one were somehow returned. #2460 deletes
- * these rows with `MSP_ROLES`; until then they are not tenant-editable.
+ * these rows with the role enum; until then they are not tenant-editable.
  *
  * ── Failing closed, and telling the difference between the two failures ─────
  *

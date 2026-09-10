@@ -28,6 +28,7 @@ import { calculateMspPortfolioRisk } from "../lib/msp-engine.ts";
 import { aggregateMspTelemetry } from "../lib/msp-financial-aggregator.ts";
 import { logger } from "../lib/logger.ts";
 import { syncTenantsAfterStatusWrite } from "../lib/retention/subscription-state.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -81,10 +82,10 @@ router.get(
       if (!row) { apiError(res, 404, ApiErrorCode.NOT_FOUND, "Tenant not found"); return; }
 
       // Tenant isolation: PlatformAdmin (legacy role === "admin" or mspRole ===
-      // "PlatformAdmin") may resolve any slug; everyone else may only resolve a
+      // `PlatformAdmin`) may resolve any slug; everyone else may only resolve a
       // slug whose mspId matches their own session mspId.
       const user = req.user!;
-      const isPlatformAdmin = user.role === "admin" || user.mspRole === "PlatformAdmin";
+      const isPlatformAdmin = user.role === "admin" || user.mspRole === LEGACY_ROLE.platformAdmin;
       if (!isPlatformAdmin && row.id !== user.mspId) {
         apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this tenant is not permitted");
         return;
@@ -422,7 +423,7 @@ router.post(
         source: "msp-portal",
         actor: {
           id: req.user!.id,
-          role: req.user!.mspRole ?? "MSPAdmin",
+          role: req.user!.mspRole ?? LEGACY_ROLE.mspAdmin,
           type: "user",
         },
         meta: { tenant: { mspId, customerId: null } },
@@ -433,7 +434,7 @@ router.post(
       // Audit log
       await db.insert(mspAuditLogsTable).values({
         actorUserId: req.user!.id,
-        actorRole: req.user!.mspRole ?? "MSPAdmin",
+        actorRole: req.user!.mspRole ?? LEGACY_ROLE.mspAdmin,
         mspId,
         actionType: "msp.offboarding.request",
         entityType: "msp",
@@ -564,7 +565,7 @@ router.post(
           source: "msp-portal",
           actor: {
             id: req.user!.id,
-            role: req.user!.mspRole ?? "MSPAdmin",
+            role: req.user!.mspRole ?? LEGACY_ROLE.mspAdmin,
             type: "user",
           },
           meta: { tenant: { mspId, customerId: null } },
@@ -575,7 +576,7 @@ router.post(
 
         await db.insert(mspAuditLogsTable).values({
           actorUserId: req.user!.id,
-          actorRole: req.user!.mspRole ?? "MSPAdmin",
+          actorRole: req.user!.mspRole ?? LEGACY_ROLE.mspAdmin,
           mspId,
           actionType: "msp.offboarding.export",
           entityType: "msp",
@@ -651,7 +652,7 @@ router.post(
         source: "msp-portal",
         actor: {
           id: req.user!.id,
-          role: "PlatformAdmin",
+          role: LEGACY_ROLE.platformAdmin,
           type: "user",
         },
         meta: { tenant: { mspId: targetMspId, customerId: null } },
@@ -661,7 +662,7 @@ router.post(
 
       await db.insert(mspAuditLogsTable).values({
         actorUserId: req.user!.id,
-        actorRole: "PlatformAdmin",
+        actorRole: LEGACY_ROLE.platformAdmin,
         mspId: targetMspId,
         actionType: "msp.offboarding.archive",
         entityType: "msp",
@@ -889,7 +890,7 @@ router.post(
                 customerId: cust.id,
                 eventType: "bundle.package.activated",
                 source: "msp-customers-bulk",
-                actor: { id: actorId, role: "MSPAdmin" as const, type: "user" as const },
+                actor: { id: actorId, role: LEGACY_ROLE.mspAdmin, type: "user" as const },
                 meta: { tenant: { mspId, customerId: cust.id } },
                 payload: {
                   bundleId,
@@ -1030,7 +1031,7 @@ router.post(
 
       await db.insert(mspAuditLogsTable).values({
         actorUserId: req.user!.id,
-        actorRole: req.user!.mspRole ?? "MSPAdmin",
+        actorRole: req.user!.mspRole ?? LEGACY_ROLE.mspAdmin,
         mspId,
         actionType: "customer.create",
         entityType: "customer",
@@ -1301,7 +1302,7 @@ router.patch(
       try {
         await db.insert(mspAuditLogsTable).values({
           actorUserId: req.user!.id,
-          actorRole: req.user!.mspRole ?? "MSPAdmin",
+          actorRole: req.user!.mspRole ?? LEGACY_ROLE.mspAdmin,
           mspId: existing.mspId,
           actionType: "customer.update",
           entityType: "customer",

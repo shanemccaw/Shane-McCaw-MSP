@@ -20,13 +20,14 @@ import jwt from "jsonwebtoken";
 import { db } from "@workspace/db";
 import { sql, eq } from "drizzle-orm";
 import { mspsTable, tenantsTable } from "@workspace/db";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const JWT_SECRET = "test-operator-tasks-live-secret";
 process.env.JWT_SECRET = JWT_SECRET;
 
 function makeToken(overrides: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 1, email: "op@msp.com", role: "client", mspRole: "MSPOperator", mspId: 1, ...overrides },
+    { id: 1, email: "op@msp.com", role: "client", mspRole: LEGACY_ROLE.mspOperator, mspId: 1, ...overrides },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

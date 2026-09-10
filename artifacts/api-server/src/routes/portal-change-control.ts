@@ -142,6 +142,7 @@ import {
 } from "../lib/portal-change-timeline-store";
 import { computeChangeMetrics } from "../lib/portal-change-metrics";
 import { logger } from "../lib/logger";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import {
   CHANGE_CLASSES,
   EMERGENCY_LOOKBACK_DAYS,
@@ -493,8 +494,8 @@ export const CHANGE_CONTROL_FEATURE_KEY = "change_control";
 async function callerCanApproveChanges(req: Request): Promise<boolean> {
   const user = req.user;
   if (!user) return false;
-  const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
-  if (effectiveRole === "MSPAdmin" || effectiveRole === "MSPOperator" || effectiveRole === "PlatformAdmin") {
+  const effectiveRole = user.role === "admin" ? LEGACY_ROLE.platformAdmin : user.mspRole;
+  if (effectiveRole === LEGACY_ROLE.mspAdmin || effectiveRole === LEGACY_ROLE.mspOperator || effectiveRole === LEGACY_ROLE.platformAdmin) {
     return true;
   }
   const [row] = await db
@@ -1085,8 +1086,8 @@ function approverIdentity(req: Request, customerId: number): {
   role: "customer" | "msp";
 } {
   const user = req.user!;
-  const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
-  const isMsp = effectiveRole === "MSPAdmin" || effectiveRole === "MSPOperator" || effectiveRole === "PlatformAdmin";
+  const effectiveRole = user.role === "admin" ? LEGACY_ROLE.platformAdmin : user.mspRole;
+  const isMsp = effectiveRole === LEGACY_ROLE.mspAdmin || effectiveRole === LEGACY_ROLE.mspOperator || effectiveRole === LEGACY_ROLE.platformAdmin;
   return {
     personId: personIdForUser(user.id),
     name: (user.email ?? "").trim() || `User ${user.id}`,

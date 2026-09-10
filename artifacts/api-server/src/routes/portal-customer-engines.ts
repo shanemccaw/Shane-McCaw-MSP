@@ -46,6 +46,7 @@ import { toMaintenanceCandidate, windowOverlapsRange } from "../lib/portal-chang
 import { effectiveDate } from "../lib/portal-message-center";
 import { remediationTerminalState } from "../lib/remediation-tracker-terminal-state";
 import { personIdForUser } from "../lib/portal-ownership";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const router: IRouter = Router();
 
@@ -1081,7 +1082,7 @@ router.post(
 
       await db.insert(mspAuditLogsTable).values({
         actorUserId: userId,
-        actorRole: "CustomerUser",
+        actorRole: LEGACY_ROLE.customerUser,
         mspId: mspId,
         actionType: "customer.offboarding.deactivate",
         entityType: "customer",

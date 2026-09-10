@@ -1,3 +1,4 @@
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 /**
  * portal-ownership.ts — the mapping layer behind `GET /api/portal/ownership`.
  *
@@ -163,7 +164,7 @@ export function personRoleLabel(
   const dept = (department ?? "").trim();
   if (dept) return dept;
   switch ((mspRole ?? "").trim()) {
-    case "CustomerUser":
+    case LEGACY_ROLE.customerUser:
       return "Team member";
     case "Assessment":
       return "Assessment access";
@@ -171,9 +172,9 @@ export function personRoleLabel(
       return "Free account";
     case "ServiceAccount":
       return "Service account";
-    case "MSPAdmin":
+    case LEGACY_ROLE.mspAdmin:
       return "MSP Admin";
-    case "MSPOperator":
+    case LEGACY_ROLE.mspOperator:
       return "MSP Operator";
     default:
       return "Team member";

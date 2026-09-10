@@ -16,7 +16,7 @@
  * exists. Do not add a router here.
  *
  * ── The guard, mirrored from msp-config-state-scope.ts (#1843) ──────────────
- *  - PlatformAdmin (`role === "admin"` or `mspRole === "PlatformAdmin"`) — every
+ *  - PlatformAdmin (`role === "admin"` or `mspRole === `PlatformAdmin``) — every
  *    tenant, unless narrowed via `?mspId=` / `?slug=` (`resolveMspId`).
  *  - MSPAdmin / MSPOperator — the tenants of their own MSP, intersected with
  *    `resolveStaffScopedCustomerIds` when the member is scoped.
@@ -40,11 +40,12 @@ import { resolveTenantScope, type TenantScope } from "./portal-customer-scope.ts
 import { assembleSecurityPlan, HONEST_SCOPE } from "./security-plan-assembly.ts";
 import type { SecurityPlanContent } from "@workspace/db";
 import { logger } from "./logger.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "tenant.portal" });
 
 /** MSP roles allowed to read across customers. NEVER CustomerUser — see header. */
-const MSP_ONLY_ROLES = new Set(["MSPAdmin", "MSPOperator"]);
+const MSP_ONLY_ROLES: ReadonlySet<string> = new Set([LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspOperator]);
 
 /** Every tenant the caller may read Security Plan data for, across customers. */
 export interface SecurityPlanCrossTenantBook {
@@ -64,7 +65,7 @@ export async function resolveSecurityPlanCrossTenantBook(req: Request): Promise<
   const user = req.user as AuthUser | undefined;
   if (!user) return EMPTY_BOOK;
 
-  const isPlatformAdmin = user.role === "admin" || user.mspRole === "PlatformAdmin";
+  const isPlatformAdmin = user.role === "admin" || user.mspRole === LEGACY_ROLE.platformAdmin;
   const isMspStaff = typeof user.mspRole === "string" && MSP_ONLY_ROLES.has(user.mspRole);
   if (!isPlatformAdmin && !isMspStaff) {
     // Includes every customer-facing role (CustomerUser, etc). Fail closed.

@@ -25,7 +25,7 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = "msp-data-rights-test-secret";
 process.env["JWT_SECRET"] = JWT_SECRET;
 
-function mspToken(mspId: number, mspRole: "MSPOperator" | "MSPAdmin" | "PlatformAdmin" | "CustomerUser" = "MSPAdmin"): string {
+function mspToken(mspId: number, mspRole: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.platformAdmin | typeof LEGACY_ROLE.customerUser = LEGACY_ROLE.mspAdmin): string {
   return jwt.sign(
     { id: 7, email: "admin@test.com", name: "Pat Admin", role: "client", mspRole, mspId },
     JWT_SECRET,
@@ -68,6 +68,7 @@ vi.mock("../lib/data-rights", () => ({
 
 import { db } from "@workspace/db";
 import router from "./msp-data-rights";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;
 
@@ -140,7 +141,7 @@ describe("GET /msp/data-rights", () => {
   it("rejects roles below MSPAdmin", async () => {
     const res = await request(makeApp())
       .get("/msp/data-rights")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPOperator")}`);
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspOperator)}`);
     expect(res.status).toBe(403);
   });
 
@@ -151,7 +152,7 @@ describe("GET /msp/data-rights", () => {
 
     const res = await request(makeApp())
       .get("/msp/data-rights")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`);
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspAdmin)}`);
 
     expect(res.status).toBe(200);
     expect(res.body.requests).toHaveLength(3);
@@ -176,7 +177,7 @@ describe("GET /msp/data-rights", () => {
 
     const res = await request(makeApp())
       .get("/msp/data-rights")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`);
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspAdmin)}`);
 
     expect(res.status).toBe(200);
     expect(res.body.requests).toEqual([]);
@@ -189,7 +190,7 @@ describe("GET /msp/data-rights", () => {
 
     const res = await request(makeApp())
       .get("/msp/data-rights")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`);
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspAdmin)}`);
 
     expect(res.status).toBe(200);
     for (const r of res.body.requests) {
@@ -207,7 +208,7 @@ describe("POST /msp/data-rights/customers/:customerId/deletion-request", () => {
   it("rejects roles below MSPAdmin", async () => {
     const res = await request(makeApp())
       .post("/msp/data-rights/customers/1/deletion-request")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPOperator")}`)
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspOperator)}`)
       .send({ userId: 101 });
     expect(res.status).toBe(403);
   });
@@ -216,7 +217,7 @@ describe("POST /msp/data-rights/customers/:customerId/deletion-request", () => {
     mockSelect.mockReturnValueOnce(buildChain([])); // tenantsTable lookup finds nothing -> assertCustomerAccess false
     const res = await request(makeApp())
       .post("/msp/data-rights/customers/1/deletion-request")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`)
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspAdmin)}`)
       .send({ userId: 101 });
     expect(res.status).toBe(403);
   });
@@ -226,7 +227,7 @@ describe("POST /msp/data-rights/customers/:customerId/deletion-request", () => {
     mockSelect.mockReturnValueOnce(buildChain([])); // isCustomerBlockedByStaffScope -> resolveStaffScopedCustomerIds unrestricted
     const res = await request(makeApp())
       .post("/msp/data-rights/customers/1/deletion-request")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`)
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspAdmin)}`)
       .send({});
     expect(res.status).toBe(400);
   });
@@ -237,7 +238,7 @@ describe("POST /msp/data-rights/customers/:customerId/deletion-request", () => {
     mockSelect.mockReturnValueOnce(buildChain([])); // usersTable link lookup: none found
     const res = await request(makeApp())
       .post("/msp/data-rights/customers/1/deletion-request")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`)
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspAdmin)}`)
       .send({ userId: 999 });
     expect(res.status).toBe(404);
     expect(submitAdminInitiatedDeletionRequest).not.toHaveBeenCalled();
@@ -251,7 +252,7 @@ describe("POST /msp/data-rights/customers/:customerId/deletion-request", () => {
 
     const res = await request(makeApp())
       .post("/msp/data-rights/customers/1/deletion-request")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, "MSPAdmin")}`)
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.mspAdmin)}`)
       .send({ userId: 101 });
 
     expect(res.status).toBe(200);

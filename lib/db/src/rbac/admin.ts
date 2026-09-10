@@ -9,7 +9,7 @@
  * feature's allow/deny mapping. It is what AdminV2's re-pointed AD-style UI
  * (#2461) calls, through artifacts/api-server/src/routes/admin-rbac.ts.
  *
- * Nothing here changes what MSP_ROLES/requireRole enforce — #2457 (express
+ * Nothing here changes what the route gates enforce — #2457 (express
  * today's roles as data) and #2458 (move enforcement onto the evaluator) are
  * still pending, exactly as #2455 left them. This module only manages the
  * NEW tables; the ladder keeps deciding real access until #2458 lands.

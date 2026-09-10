@@ -25,6 +25,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { wfRunsTable, usersTable, scriptPackagesTable, activeDirectoryOusTable, type MspRole } from "./index";
+import { LEGACY_ROLE } from "../rbac/legacy-ladder";
 
 // ── MSPs (Managed Service Provider organisations) ─────────────────────────────
 
@@ -568,9 +569,9 @@ export type TenantEngineOverride = typeof tenantEngineOverridesTable.$inferSelec
 export type InsertTenantEngineOverride = typeof tenantEngineOverridesTable.$inferInsert;
 
 // ── MSP User Role Hierarchy ────────────────────────────────────────────────────
-// The role enum (MSP_ROLES/MspRole) and the single users table that carries it
+// The role values (`LEGACY_ROLE_ORDER`/`LegacyRole`) and the single users table
 // live in ./index (Tenant/User Refactor Phase 0 absorbed msp_users into users).
-// MSP_ROLES is defined next to usersTable because its enum use there is eager —
+// The column's enum is applied next to usersTable and its use there is eager —
 // defining it here would TDZ-crash under the msp.ts ↔ index.ts circular import.
 
 // ── MSP Staff Customer Scopes (per-staff-member tenant-access restriction) ──────
@@ -645,7 +646,7 @@ export const mspInvitesTable = pgTable("msp_invites", {
   token: text("token").notNull().unique(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
   invitedEmail: text("invited_email").notNull(),
-  mspRole: text("msp_role", { enum: ["MSPAdmin", "MSPOperator"] }).notNull().default("MSPOperator"),
+  mspRole: text("msp_role", { enum: [LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspOperator] }).notNull().default(LEGACY_ROLE.mspOperator),
   invitedByUserId: integer("invited_by_user_id"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
@@ -3834,7 +3835,7 @@ export const mspSowEventsTable = pgTable("msp_sow_events", {
   sowId: uuid("sow_id").notNull().references(() => mspSowsTable.sowId, { onDelete: "cascade" }),
   eventName: text("event_name").notNull(), // sow.created | sow.sent | sow.signed | sow.charged | sow.paid | sow.failed | sow.expired
   actorUserId: integer("actor_user_id"),
-  actorRole: text("actor_role"),           // "MSPAdmin" | "CustomerUser" | "system"
+  actorRole: text("actor_role"),           // LEGACY_ROLE.mspAdmin | LEGACY_ROLE.customerUser | "system"
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

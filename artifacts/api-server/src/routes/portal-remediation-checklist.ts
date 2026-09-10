@@ -47,9 +47,10 @@ import { buildRaiseChangeRequestInputForChecklistItem } from "../lib/remediation
 import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise";
 import { resolveTenantScope } from "../lib/portal-customer-scope";
 import { declineRemediationChecklistItemToRisk } from "../lib/remediation-tracker-risk-decline";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 /** Roles that represent SHANE / the MSP acting — see portal-remediation-tracker.ts's own note on why the retainer hook is scoped to these only. */
-const RETAINER_MSP_ACTOR_ROLES = new Set(["admin", "PlatformAdmin", "MSPOperator", "MSPAdmin"]);
+const RETAINER_MSP_ACTOR_ROLES = new Set(["admin", LEGACY_ROLE.platformAdmin, LEGACY_ROLE.mspOperator, LEGACY_ROLE.mspAdmin]);
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

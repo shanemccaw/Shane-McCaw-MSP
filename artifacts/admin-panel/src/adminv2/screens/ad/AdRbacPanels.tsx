@@ -12,7 +12,7 @@
  *   the org's own named roles (create/rename/delete) and each catalogued
  *   capability's allow/deny mapping for that org.
  *
- * Neither panel changes what `requireRole`/`MSP_ROLES` actually enforce today
+ * Neither panel changes what the route gates actually enforce today
  * — that cutover is #2457/#2458, still pending. This is the management surface
  * for the new model, built ahead of that cutover per #2461's own contract.
  */

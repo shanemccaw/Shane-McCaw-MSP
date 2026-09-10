@@ -61,6 +61,7 @@ import { getValidRenderersForMetric } from "@workspace/dashboard-registry";
 import { and, eq, inArray } from "drizzle-orm";
 import { requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -116,14 +117,14 @@ function mergeLayout(canvasLayout: DashboardTemplate["canvasLayout"], override: 
  */
 export async function resolveCallerScope(req: Request): Promise<ResolvedScope | { error: string } | null> {
   const user = req.user!;
-  const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+  const effectiveRole = user.role === "admin" ? LEGACY_ROLE.platformAdmin : user.mspRole;
 
-  if (effectiveRole === "CustomerUser" || effectiveRole === "Free" || effectiveRole === "Assessment") {
+  if (effectiveRole === LEGACY_ROLE.customerUser || effectiveRole === LEGACY_ROLE.free || effectiveRole === LEGACY_ROLE.assessment) {
     if (user.customerId == null) return { error: "No customer association on this session" };
     return { templateType: "customer_default", scopeType: "customer", scopeId: user.customerId };
   }
 
-  if (effectiveRole === "MSPOperator" || effectiveRole === "MSPAdmin" || effectiveRole === "PlatformAdmin") {
+  if (effectiveRole === LEGACY_ROLE.mspOperator || effectiveRole === LEGACY_ROLE.mspAdmin || effectiveRole === LEGACY_ROLE.platformAdmin) {
     // `dashboard_overrides.scopeId` for scopeType "msp_user" used to hold an
     // msp_users row id, which this resolved by looking the caller up in that
     // extension table (and erroring when no row existed). With msp_users

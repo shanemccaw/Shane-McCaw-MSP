@@ -47,6 +47,7 @@
 import type { MspRole } from "@workspace/db";
 import type { TenantBillingSource } from "../tenant-billing-rules";
 import type { TenantSubscriptionState } from "./subscription-state";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 /** The machine-readable code the gated response carries. The portal shell keys on it. */
 export const SUBSCRIPTION_GATE_CODE = "subscription_inactive";
@@ -116,7 +117,7 @@ export const SUBSCRIPTION_GATE_ALLOWED_PREFIXES: readonly string[] = [
 ];
 
 /** MSP-side and platform-side principals. The gate is the customer's portal, not theirs. */
-const OPERATOR_ROLES: readonly MspRole[] = ["ServiceAccount", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
+const OPERATOR_ROLES: readonly MspRole[] = [LEGACY_ROLE.serviceAccount, LEGACY_ROLE.mspOperator, LEGACY_ROLE.mspAdmin, LEGACY_ROLE.platformAdmin];
 
 export interface GatePrincipal {
   /** Legacy top-level role claim. `"admin"` is PlatformAdmin, same as everywhere else. */
@@ -154,7 +155,7 @@ export type GateOutcome =
 export function gatedTenantIdFor(principal: GatePrincipal | null | undefined): number | null {
   if (!principal) return null;
   const effectiveRole: MspRole | undefined =
-    principal.role === "admin" ? "PlatformAdmin" : principal.mspRole;
+    principal.role === "admin" ? LEGACY_ROLE.platformAdmin : principal.mspRole;
   if (effectiveRole && OPERATOR_ROLES.includes(effectiveRole)) return null;
   return typeof principal.customerId === "number" ? principal.customerId : null;
 }

@@ -4,6 +4,7 @@ import { eq, and, inArray, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "admin.impersonation" });
 
 const router: IRouter = Router();
@@ -61,7 +62,7 @@ router.post("/admin/msps/:mspId/impersonate", requireAdmin, async (req: Request,
   }
 
   const [mspAdmin] = await db.select({ userId: usersTable.id }).from(usersTable)
-    .where(and(eq(usersTable.mspId, mspId), eq(usersTable.mspRole, "MSPAdmin")))
+    .where(and(eq(usersTable.mspId, mspId), eq(usersTable.mspRole, LEGACY_ROLE.mspAdmin)))
     .limit(1);
   if (!mspAdmin) {
     log.warn(
@@ -122,7 +123,7 @@ router.post("/admin/msps/:mspId/impersonate", requireAdmin, async (req: Request,
 //
 // `ViewAsSwitcher.tsx` used to receive a raw `tier` role string and do three
 // things with it: hardcode the group ordering, hardcode the group labels, and
-// branch `account.tier === "MSPAdmin"` to pick between the two token-generation
+// branch `account.tier === `MSPAdmin`` to pick between the two token-generation
 // endpoints. That last one is the one that mattered — which impersonation
 // mechanism applies to an account is a property of the ACCOUNT, known here, and
 // a component that re-derives it from a role literal is a rule the server cannot
@@ -140,11 +141,11 @@ const VIEW_AS_GROUPS: ReadonlyArray<{
   impersonationScope: "msp" | "user";
 }> = [
   { key: "Assessment", label: "Assessment", impersonationScope: "user" },
-  { key: "CustomerUser", label: "Customer User", impersonationScope: "user" },
+  { key: LEGACY_ROLE.customerUser, label: "Customer User", impersonationScope: "user" },
   // MSPAdmin accounts go through /admin/msps/:mspId/impersonate — the MSP-level
   // token — rather than /admin/impersonate/:userId. Unchanged behaviour; what
   // changed is that the server states it instead of the component inferring it.
-  { key: "MSPAdmin", label: "MSP Admin", impersonationScope: "msp" },
+  { key: LEGACY_ROLE.mspAdmin, label: "MSP Admin", impersonationScope: "msp" },
 ];
 
 router.get("/admin/view-as/accounts", requireAdmin, async (req: Request, res: Response) => {

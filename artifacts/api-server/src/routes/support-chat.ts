@@ -69,6 +69,7 @@ import {
   stripSuggestedReplies,
 } from "../lib/chat-content-blocks.ts";
 import type { ChatMessageContent } from "@workspace/db";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 /**
  * Shane's own MSP. CustomerUser escalations from this MSP route to platform
@@ -463,7 +464,7 @@ function rejectPlatformAdmin(
   user: NonNullable<Request["user"]>,
   res: Response,
 ): boolean {
-  const isPlatformAdmin = user.role === "admin" || user.mspRole === "PlatformAdmin";
+  const isPlatformAdmin = user.role === "admin" || user.mspRole === LEGACY_ROLE.platformAdmin;
   if (isPlatformAdmin) {
     res.status(403).json({
       error: "Support chat isn't available for PlatformAdmin.",
@@ -498,7 +499,7 @@ router.post(
 
     const mspId = await resolveMspId(req);
     const customerId = user.customerId ?? null;
-    const isCustomerUser = user.mspRole === "CustomerUser";
+    const isCustomerUser = user.mspRole === LEGACY_ROLE.customerUser;
 
     // Billing attribution for this chat turn. resolveBillingMspId takes
     // precedence over resolveMspId so an impersonation session bills the
@@ -743,7 +744,7 @@ router.post(
     if (rejectPlatformAdmin(user, res)) return;
 
     const mspId = await resolveMspId(req);
-    const isCustomerUser = user.mspRole === "CustomerUser";
+    const isCustomerUser = user.mspRole === LEGACY_ROLE.customerUser;
 
     await escalateToAdmin({
       question: question ?? "(no question provided)",
@@ -785,7 +786,7 @@ router.post(
   requireAuth,
   async (req: Request, res: Response) => {
     const user = req.user!;
-    if (user.mspRole !== "CustomerUser" || !user.customerId) {
+    if (user.mspRole !== LEGACY_ROLE.customerUser || !user.customerId) {
       res.status(403).json({ error: "Not available for this account" });
       return;
     }
@@ -863,7 +864,7 @@ router.post(
   requireAuth,
   async (req: Request, res: Response) => {
     const user = req.user!;
-    if (user.mspRole !== "CustomerUser" || !user.customerId) {
+    if (user.mspRole !== LEGACY_ROLE.customerUser || !user.customerId) {
       res.status(403).json({ error: "Not available for this account" });
       return;
     }

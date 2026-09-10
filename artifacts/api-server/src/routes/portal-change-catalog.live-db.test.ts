@@ -37,13 +37,14 @@ import {
   crApprovalsTable,
 } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const JWT_SECRET = "test-portal-change-catalog-live-secret";
 process.env.JWT_SECRET = JWT_SECRET;
 
 function makeToken(customerId: number): string {
   return jwt.sign(
-    { id: 1, email: "customer@contoso.com", role: "client", mspRole: "CustomerUser", customerId },
+    { id: 1, email: "customer@contoso.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

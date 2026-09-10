@@ -12,6 +12,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspAuditLogsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, count, ilike, or, gte, lte, inArray, type SQL } from "drizzle-orm";
 import { requireCapability } from "../middlewares/requireAuth.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const router: IRouter = Router();
 
@@ -28,7 +29,7 @@ router.get("/msp/audit", requireCapability("ladder.msp-admin"), async (req: Requ
   const conditions: SQL[] = [];
 
   // Scope by MSP unless PlatformAdmin
-  if (user.role !== "admin" && user.mspRole !== "PlatformAdmin") {
+  if (user.role !== "admin" && user.mspRole !== LEGACY_ROLE.platformAdmin) {
     if (!user.mspId) {
       res.json({ entries: [], total: 0, page, limit });
       return;

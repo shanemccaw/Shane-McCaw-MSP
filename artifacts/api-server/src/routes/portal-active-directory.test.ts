@@ -81,6 +81,7 @@ vi.mock("../lib/portal-customer-scope", () => ({
 
 import { db } from "@workspace/db";
 import router from "./portal-active-directory";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;
 const mockInsert = (db as unknown as { insert: ReturnType<typeof vi.fn> }).insert;
@@ -111,7 +112,7 @@ function tokenFor(user: Record<string, unknown>) {
   return jwt.sign(user, process.env["JWT_SECRET"]!);
 }
 
-const CUSTOMER_TOKEN = tokenFor({ id: 7, email: "a@b.com", role: "client", mspRole: "CustomerUser", customerId: 42 });
+const CUSTOMER_TOKEN = tokenFor({ id: 7, email: "a@b.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 42 });
 const ASSESSMENT_TOKEN = tokenFor({ id: 8, email: "c@d.com", role: "client", mspRole: "Assessment", customerId: 42 });
 
 beforeEach(() => {

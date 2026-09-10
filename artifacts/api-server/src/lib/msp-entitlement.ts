@@ -12,6 +12,7 @@ import type { Request, Response, NextFunction } from "express";
 import { db, servicesTable, mspSubscriptionsTable, tenantsTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
 import { logger } from "./logger.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "tenant.msp-admin" });
 
 export class UpgradeRequiredError extends Error {
@@ -98,7 +99,7 @@ export function requirePlanFeature(feature: string) {
     const mspId = req.user?.mspId;
 
     // PlatformAdmins and legacy admin role bypass tier gating
-    if (req.user?.role === "admin" || req.user?.mspRole === "PlatformAdmin") {
+    if (req.user?.role === "admin" || req.user?.mspRole === LEGACY_ROLE.platformAdmin) {
       next();
       return;
     }
