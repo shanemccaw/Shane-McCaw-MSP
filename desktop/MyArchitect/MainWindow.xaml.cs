@@ -44,6 +44,7 @@ public partial class MainWindow : FluentWindow
     private readonly IBreakGlassService _breakGlassService;
     private readonly IAuthService _authService;
     private readonly IRetainerService _retainerService;
+    private readonly IPoamsService _poamsService;
     private readonly IActivityContextService _activityContextService;
     private readonly IForegroundAppWatcher _foregroundAppWatcher;
 
@@ -78,6 +79,7 @@ public partial class MainWindow : FluentWindow
         _breakGlassService = new BreakGlassService();
         _authService = new AuthService();
         _retainerService = new RetainerService();
+        _poamsService = new PoamsService();
         _authService.SessionChanged += OnAuthSessionChanged;
         _consoleService.CommandExecuted += (s, record) => _consoleHistoryService.Add(record);
 
@@ -240,6 +242,35 @@ public partial class MainWindow : FluentWindow
                         GetRows = BuildRemediationPlanRows,
                     },
                     OnSelect = () => { },
+                },
+            },
+        });
+
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Home, new RibbonGroupSpec
+        {
+            Label = "POA&Ms",
+            Order = 35,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Browse",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Real GET /api/msp/poams, filtered to the active tenant",
+                    Gallery = new GallerySpec
+                    {
+                        Title = "POA&Ms",
+                        Searchable = true,
+                        GetRows = BuildPoamRows,
+                    },
+                    OnSelect = () => { },
+                },
+                new RibbonCommandSpec
+                {
+                    Label = "New POA&M",
+                    Intent = RibbonIntent.Create,
+                    ToolTip = "POST /api/msp/poams — author a new plan for the active tenant",
+                    OnSelect = () => OpenCreatePoamRecord(),
                 },
             },
         });
@@ -832,6 +863,518 @@ public partial class MainWindow : FluentWindow
             onSearchEverything: () => PaletteOverlay.Open());
 
         _shellRegistry.OpenRecord(spec);
+    }
+
+    // ---- POA&Ms (#3481) --------------------------------------------------------------------
+
+    /// <summary>Real rows from GET /api/msp/poams, filtered client-side to the active tenant —
+    /// same approach <see cref="BuildChangeRequestRows"/> already takes against
+    /// GET /api/msp/change-requests (msp-poams.ts's list route has no per-tenant filter either).
+    /// Selecting a row opens the full-panel workspace with real milestone CRUD + a confirm-armed
+    /// cancel action — the same gallery → contextual tab → workspace contract #3493 proved.</summary>
+    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildPoamRows()
+    {
+        var tenant = _tenantService.CurrentTenant;
+        if (tenant == null) return Array.Empty<GalleryRowSpec>();
+
+        System.Collections.Generic.IReadOnlyList<Poam> poams;
+        try
+        {
+            poams = _poamsService.GetPoamsAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            // Real, honest failure — most likely #3501 (no auth/session mechanism yet) or a
+            // 403 (signed in without the ladder.msp-operator role), not a bug in this client.
+            return new[]
+            {
+                new GalleryRowSpec { Id = "error", Name = $"Could not load: {ex.Message}", OnSelect = () => { } },
+            };
+        }
+
+        return poams
+            .Where(p => string.Equals(p.TenantId, tenant.TenantGuid, StringComparison.OrdinalIgnoreCase))
+            .Select(p => new GalleryRowSpec
+            {
+                Id = p.PoamId,
+                Tile = PoamStatusTile(p.Status),
+                Name = p.Title,
+                Sub = $"{PoamStatusLabel(p.Status)} · due {p.ScheduledCompletionDate}",
+                OnSelect = () => OpenPoamRecord(p.PoamId),
+            })
+            .ToList();
+    }
+
+    private static string PoamStatusTile(string status) => status switch
+    {
+        "draft" => "DR",
+        "pending_signature" => "PS",
+        "active" => "AC",
+        "completed" => "CO",
+        "cancelled" => "CX",
+        "converted_to_risk_acceptance" => "CV",
+        _ => "—",
+    };
+
+    private static string PoamStatusLabel(string status) => status switch
+    {
+        "draft" => "Draft",
+        "pending_signature" => "Pending signature",
+        "active" => "Active",
+        "completed" => "Completed",
+        "cancelled" => "Cancelled",
+        "converted_to_risk_acceptance" => "Converted to risk acceptance",
+        _ => status,
+    };
+
+    /// <summary>Real GET /api/msp/poams/:poamId (includes milestones) rendered as the full-panel
+    /// workspace: write-through Edits for the narrative/schedule fields the route allows editing,
+    /// a confirm-armed Cancel action, and the real milestone list. "Add Milestone" is a
+    /// Record-intent contextual-tab command (UI_RULES.md §2) — milestone CRUD is a specific
+    /// record's action, never fixed-tab legal. A terminal plan (cancelled/completed/converted)
+    /// renders read-only — msp-poams.ts's own route refuses further edits on one anyway.</summary>
+    private void OpenPoamRecord(string poamId)
+    {
+        Poam poam;
+        try
+        {
+            poam = _poamsService.GetPoamAsync(poamId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] Could not load {poamId}: {ex.Message}");
+            return;
+        }
+
+        var isTerminal = poam.Status is "cancelled" or "completed" or "converted_to_risk_acceptance";
+        var milestones = poam.Milestones ?? new System.Collections.Generic.List<PoamMilestone>();
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "poam",
+            Id = poam.PoamId,
+            Eyebrow = "POA&M",
+            Title = poam.Title,
+            Sub = $"{poam.TenantName} · {poam.PrimaryDomain}",
+            Facts =
+            {
+                new WorkspaceFact { Label = "Status", Value = PoamStatusLabel(poam.Status) },
+                new WorkspaceFact { Label = "Original due", Value = poam.OriginalScheduledCompletionDate },
+                new WorkspaceFact { Label = "Check", Value = poam.CheckKey ?? "(none)" },
+            },
+            Edits = isTerminal
+                ? new System.Collections.Generic.List<WorkspaceEdit>()
+                : new System.Collections.Generic.List<WorkspaceEdit>
+                {
+                    new WorkspaceEdit
+                    {
+                        Key = "scheduledCompletionDate",
+                        Label = "Scheduled completion (YYYY-MM-DD)",
+                        Value = poam.ScheduledCompletionDate,
+                        OnChange = v => UpdatePoamField(poamId, "scheduledCompletionDate", v),
+                    },
+                    new WorkspaceEdit
+                    {
+                        Key = "interimCompensatingControl",
+                        Label = "Interim compensating control",
+                        Value = poam.InterimCompensatingControl,
+                        OnChange = v => UpdatePoamField(poamId, "interimCompensatingControl", v),
+                    },
+                    new WorkspaceEdit
+                    {
+                        Key = "resourcesRequired",
+                        Label = "Resources required",
+                        Value = poam.ResourcesRequired,
+                        OnChange = v => UpdatePoamField(poamId, "resourcesRequired", v),
+                    },
+                },
+            Body = ("Weakness", poam.WeaknessDescription),
+            List = ("Milestones", milestones
+                .OrderBy(m => m.SortOrder)
+                .ThenBy(m => m.Id)
+                .Select(m => new WorkspaceListRow
+                {
+                    Id = m.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    Name = m.Title,
+                    Sub = $"due {m.DueDate}",
+                    Right = m.Status == "completed" ? "Completed" : "Pending",
+                    OnSelect = () => OpenMilestoneRecord(poamId, m),
+                })
+                .ToList()),
+            Actions = isTerminal
+                ? new System.Collections.Generic.List<WorkspaceAction>()
+                : new System.Collections.Generic.List<WorkspaceAction>
+                {
+                    new WorkspaceAction
+                    {
+                        Label = "Cancel POA&M",
+                        Confirm = true,
+                        Danger = true,
+                        OnSelect = () => CancelPoam(poamId),
+                    },
+                },
+        };
+
+        _shellRegistry.OpenContextual(
+            new TrailEntry("poam", poam.PoamId, poam.Title, () => OpenPoamRecord(poamId)),
+            new ContextualTabSpec
+            {
+                Id = "poam",
+                Label = "POA&M",
+                Groups =
+                {
+                    new RibbonGroupSpec
+                    {
+                        Label = "Milestones",
+                        Large = { new RibbonCommandSpec
+                        {
+                            Label = "Add Milestone",
+                            Intent = RibbonIntent.Record,
+                            OnSelect = () => OpenCreateMilestoneRecord(poamId),
+                        } },
+                    },
+                },
+            },
+            onSearchEverything: () => PaletteOverlay.Open());
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>One write-through field on an open POA&amp;M — PATCH just that key, then
+    /// re-open the record from the server's real, current state (never an optimistic local
+    /// mutation) so a 409 (already cancelled/completed underneath the operator) surfaces
+    /// honestly instead of silently "succeeding" in the UI.</summary>
+    private void UpdatePoamField(string poamId, string key, string value)
+    {
+        try
+        {
+            _poamsService.UpdatePoamAsync(poamId, new System.Collections.Generic.Dictionary<string, object?> { [key] = value }).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] Update failed: {ex.Message}");
+        }
+        OpenPoamRecord(poamId);
+    }
+
+    private void CancelPoam(string poamId)
+    {
+        try
+        {
+            var result = _poamsService.CancelPoamAsync(poamId).GetAwaiter().GetResult();
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] {result.Message}");
+        }
+        catch (Exception ex)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] Cancel failed: {ex.Message}");
+        }
+        OpenPoamRecord(poamId);
+    }
+
+    /// <summary>Home-tab "New POA&amp;M" — real POST against the active tenant. Same gallery-less
+    /// "workspace with locally-collected Edits + a confirm-armed Create Action" shape
+    /// <see cref="OpenLogAdHocHoursRecord"/> already uses, since there is no id to PATCH against
+    /// until the POST actually returns one.</summary>
+    private void OpenCreatePoamRecord()
+    {
+        var tenant = _tenantService.CurrentTenant;
+        if (tenant == null)
+        {
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "poam-new",
+                Id = "blocked",
+                Eyebrow = "POA&M",
+                Title = "New POA&M",
+                Sub = "Select a tenant first",
+            });
+            return;
+        }
+
+        var fields = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["title"] = string.Empty,
+            ["weaknessDescription"] = string.Empty,
+            ["primaryDomain"] = string.Empty,
+            ["scheduledCompletionDate"] = string.Empty,
+            ["interimCompensatingControl"] = string.Empty,
+            ["resourcesRequired"] = string.Empty,
+            ["status"] = "draft",
+        };
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "poam-new",
+            Id = "new",
+            Eyebrow = "POA&M",
+            Title = "New POA&M",
+            Sub = tenant.Name,
+            Edits =
+            {
+                new WorkspaceEdit { Key = "title", Label = "Title", Value = string.Empty, OnChange = v => fields["title"] = v },
+                new WorkspaceEdit { Key = "weaknessDescription", Label = "Weakness description", Value = string.Empty, OnChange = v => fields["weaknessDescription"] = v },
+                new WorkspaceEdit { Key = "primaryDomain", Label = "Primary domain", Value = string.Empty, OnChange = v => fields["primaryDomain"] = v },
+                new WorkspaceEdit { Key = "scheduledCompletionDate", Label = "Scheduled completion (YYYY-MM-DD)", Value = string.Empty, OnChange = v => fields["scheduledCompletionDate"] = v },
+                new WorkspaceEdit { Key = "interimCompensatingControl", Label = "Interim compensating control", Value = string.Empty, OnChange = v => fields["interimCompensatingControl"] = v },
+                new WorkspaceEdit { Key = "resourcesRequired", Label = "Resources required", Value = string.Empty, OnChange = v => fields["resourcesRequired"] = v },
+                new WorkspaceEdit
+                {
+                    Key = "status",
+                    Label = "Status",
+                    Value = "draft",
+                    Options = new() { "draft", "pending_signature" },
+                    OnChange = v => fields["status"] = v,
+                },
+            },
+            Actions =
+            {
+                new WorkspaceAction
+                {
+                    Label = "Create POA&M",
+                    Confirm = true,
+                    OnSelect = () => SubmitCreatePoam(tenant, fields),
+                },
+            },
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    /// <summary>Real POST — validates the fields the server's own <c>createPoamSchema</c>
+    /// requires non-empty (title, weaknessDescription, a valid YYYY-MM-DD
+    /// scheduledCompletionDate, interimCompensatingControl, resourcesRequired) client-side
+    /// before sending, same discipline <see cref="SubmitAdHocHours"/> already applies.</summary>
+    private void SubmitCreatePoam(Tenant tenant, System.Collections.Generic.Dictionary<string, string> fields)
+    {
+        var dateOk = System.Text.RegularExpressions.Regex.IsMatch(fields["scheduledCompletionDate"], @"^\d{4}-\d{2}-\d{2}$");
+        string? missing = string.IsNullOrWhiteSpace(fields["title"]) ? "Title"
+            : string.IsNullOrWhiteSpace(fields["weaknessDescription"]) ? "Weakness description"
+            : !dateOk ? "Scheduled completion (must be YYYY-MM-DD)"
+            : string.IsNullOrWhiteSpace(fields["interimCompensatingControl"]) ? "Interim compensating control"
+            : string.IsNullOrWhiteSpace(fields["resourcesRequired"]) ? "Resources required"
+            : null;
+
+        if (missing != null)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] {missing} is required — nothing created.");
+            return;
+        }
+
+        ShowDocument(ConsolePanel);
+        ConsolePanel.AppendExternal($"[POA&M] Creating \"{fields["title"]}\" for {tenant.Name}…");
+
+        try
+        {
+            var result = _poamsService.CreatePoamAsync(
+                tenant.TenantGuid,
+                tenant.Name,
+                fields["primaryDomain"],
+                fields["title"],
+                fields["weaknessDescription"],
+                fields["scheduledCompletionDate"],
+                fields["interimCompensatingControl"],
+                fields["resourcesRequired"],
+                fields["status"]).GetAwaiter().GetResult();
+
+            ConsolePanel.AppendExternal($"[POA&M] {result.Message} · {result.PoamId}");
+            OpenPoamRecord(result.PoamId);
+        }
+        catch (Exception ex)
+        {
+            ConsolePanel.AppendExternal($"[POA&M] Create failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Contextual-tab "Add Milestone" (Record intent — UI_RULES.md §2). Real POST
+    /// against the open POA&amp;M; on success reopens the parent record so the new milestone
+    /// shows in the real, server-returned list rather than an optimistically-inserted local row.</summary>
+    private void OpenCreateMilestoneRecord(string poamId)
+    {
+        var fields = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["title"] = string.Empty,
+            ["description"] = string.Empty,
+            ["dueDate"] = string.Empty,
+        };
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "poam-milestone-new",
+            Id = "new",
+            Eyebrow = "POA&M Milestone",
+            Title = "New Milestone",
+            Sub = poamId,
+            Edits =
+            {
+                new WorkspaceEdit { Key = "title", Label = "Title", Value = string.Empty, OnChange = v => fields["title"] = v },
+                new WorkspaceEdit { Key = "description", Label = "Description", Value = string.Empty, OnChange = v => fields["description"] = v },
+                new WorkspaceEdit { Key = "dueDate", Label = "Due (YYYY-MM-DD)", Value = string.Empty, OnChange = v => fields["dueDate"] = v },
+            },
+            Actions =
+            {
+                new WorkspaceAction
+                {
+                    Label = "Add Milestone",
+                    Confirm = true,
+                    OnSelect = () => SubmitCreateMilestone(poamId, fields),
+                },
+            },
+        };
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    private void SubmitCreateMilestone(string poamId, System.Collections.Generic.Dictionary<string, string> fields)
+    {
+        var dateOk = System.Text.RegularExpressions.Regex.IsMatch(fields["dueDate"], @"^\d{4}-\d{2}-\d{2}$");
+        string? missing = string.IsNullOrWhiteSpace(fields["title"]) ? "Title"
+            : !dateOk ? "Due date (must be YYYY-MM-DD)"
+            : null;
+
+        if (missing != null)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] {missing} is required — milestone not added.");
+            return;
+        }
+
+        try
+        {
+            var result = _poamsService.CreateMilestoneAsync(poamId, fields["title"], Nullify(fields["description"]), fields["dueDate"]).GetAwaiter().GetResult();
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] {result.Message} · milestone #{result.Id}");
+        }
+        catch (Exception ex)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] Add milestone failed: {ex.Message}");
+        }
+
+        OpenPoamRecord(poamId);
+    }
+
+    /// <summary>Real milestone detail — write-through Edits + Mark Complete while
+    /// <c>pending</c> (msp-poams.ts refuses any further edit once <c>completed</c> — see the
+    /// route's own write-once discipline), Delete always available. Every mutation reopens the
+    /// parent POA&amp;M record rather than the milestone itself, since that's where the real,
+    /// current milestone list lives.</summary>
+    private void OpenMilestoneRecord(string poamId, PoamMilestone milestone)
+    {
+        var isPending = milestone.Status == "pending";
+
+        var spec = new RecordWorkspaceSpec
+        {
+            Kind = "poam-milestone",
+            Id = milestone.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Eyebrow = "POA&M Milestone",
+            Title = milestone.Title,
+            Sub = poamId,
+            Facts =
+            {
+                new WorkspaceFact { Label = "Status", Value = milestone.Status == "completed" ? "Completed" : "Pending" },
+                new WorkspaceFact { Label = "Due", Value = milestone.DueDate },
+            },
+            Edits = isPending
+                ? new System.Collections.Generic.List<WorkspaceEdit>
+                {
+                    new WorkspaceEdit
+                    {
+                        Key = "title",
+                        Label = "Title",
+                        Value = milestone.Title,
+                        OnChange = v => UpdateMilestoneField(poamId, milestone.Id, "title", v),
+                    },
+                    new WorkspaceEdit
+                    {
+                        Key = "description",
+                        Label = "Description",
+                        Value = milestone.Description ?? string.Empty,
+                        OnChange = v => UpdateMilestoneField(poamId, milestone.Id, "description", v),
+                    },
+                    new WorkspaceEdit
+                    {
+                        Key = "dueDate",
+                        Label = "Due (YYYY-MM-DD)",
+                        Value = milestone.DueDate,
+                        OnChange = v => UpdateMilestoneField(poamId, milestone.Id, "dueDate", v),
+                    },
+                }
+                : new System.Collections.Generic.List<WorkspaceEdit>(),
+            Body = !string.IsNullOrEmpty(milestone.Description) ? ("Description", milestone.Description) : null,
+            Actions =
+            {
+                new WorkspaceAction
+                {
+                    Label = "Delete",
+                    Confirm = true,
+                    Danger = true,
+                    OnSelect = () => DeleteMilestone(poamId, milestone.Id),
+                },
+            },
+        };
+
+        if (isPending)
+        {
+            spec.Actions.Insert(0, new WorkspaceAction
+            {
+                Label = "Mark Complete",
+                Confirm = true,
+                OnSelect = () => MarkMilestoneComplete(poamId, milestone.Id),
+            });
+        }
+
+        _shellRegistry.OpenRecord(spec);
+    }
+
+    private void UpdateMilestoneField(string poamId, int milestoneId, string key, string value)
+    {
+        try
+        {
+            _poamsService.UpdateMilestoneAsync(poamId, milestoneId, new System.Collections.Generic.Dictionary<string, object?> { [key] = value }).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] Milestone update failed: {ex.Message}");
+        }
+        OpenPoamRecord(poamId);
+    }
+
+    private void MarkMilestoneComplete(string poamId, int milestoneId)
+    {
+        try
+        {
+            var result = _poamsService.UpdateMilestoneAsync(poamId, milestoneId, new System.Collections.Generic.Dictionary<string, object?> { ["status"] = "completed" }).GetAwaiter().GetResult();
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] {result.Message}");
+        }
+        catch (Exception ex)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] Mark complete failed: {ex.Message}");
+        }
+        OpenPoamRecord(poamId);
+    }
+
+    private void DeleteMilestone(string poamId, int milestoneId)
+    {
+        try
+        {
+            var result = _poamsService.DeleteMilestoneAsync(poamId, milestoneId).GetAwaiter().GetResult();
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] {result.Message}");
+        }
+        catch (Exception ex)
+        {
+            ShowDocument(ConsolePanel);
+            ConsolePanel.AppendExternal($"[POA&M] Delete failed: {ex.Message}");
+        }
+        OpenPoamRecord(poamId);
     }
 
     /// <summary>The ad-hoc half of #3464's real hour-logging scope — work not tied to a
@@ -1944,6 +2487,7 @@ public partial class MainWindow : FluentWindow
         _remediationTrackerService.AuthToken = token;
         _retainerService.AuthToken = token;
         _runbooksService.AuthToken = token;
+        _poamsService.AuthToken = token;
         TelemetryDashboardView.SetAuthToken(token);
         SowAssessmentDashboardView.SetAuthToken(token);
         EvidenceGalleryPanel.SetAuthToken(token);
