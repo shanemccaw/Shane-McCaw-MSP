@@ -1131,11 +1131,14 @@
                               VerticalAlignment="Stretch"
                               ShowsPreview="False"/>
 
-                <!-- ── Build Queue column: Dispatch above the existing Build Queue Panel ──
+                <!-- ── Build Queue column: the existing Build Queue Panel ──
                      Git #1872 — AI Batter Up (#1710) and Batter Up (#1709) moved out of this
                      column entirely into their own title-bar-launched document tabs (see
                      MainWindow.BatterUpTabs.cs); #1834's build-set rollup, docked at the top
                      of BuildQueuePanel, already occupies the space they vacated.
+                     Git #3553 — Dispatch (Git #1779) moved out of this column too, from a
+                     permanently-docked slot into a Ctrl+D modal dialog (DispatchDialog.xaml),
+                     genuinely freeing this space rather than just hiding it while still reserved.
                      Git #1831 - Margin="0,0,8,0" pulls the whole column (and its outer
                      scrollbar) 8px in from the literal window right edge, which the
                      scrollbar previously rendered flush against - confirmed via
@@ -1144,7 +1147,6 @@
                      multi-monitor setup a slightly-off click used to pass straight
                      through onto the adjacent monitor; now it lands on this panel. -->
                 <DockPanel Grid.Column="5" LastChildFill="True" Margin="0,0,8,0">
-                    <ctrl:DispatchPanel x:Name="DispatchPanel" DockPanel.Dock="Top"/>
                     <ctrl:BuildQueuePanel x:Name="BuildQueuePanel"/>
                 </DockPanel>
 

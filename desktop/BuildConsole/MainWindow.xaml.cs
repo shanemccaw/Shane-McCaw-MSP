@@ -57,6 +57,14 @@ namespace BuildConsole
         private BuildConsole.Services.BuildQueuePostgresClient? _queueDb;
         public BuildConsole.Services.BuildQueuePostgresClient? QueueDb => _queueDb;
 
+        // ── Git #3553: Dispatch — one instance for the app's whole lifetime (was x:Name'd in
+        // MainWindow.xaml, DockPanel.Dock="Top"; now created here in code and re-parented into a
+        // fresh DispatchDialog on every Ctrl+D). Identical field name so every existing
+        // DispatchPanel.* call site (Initialize/Dispatched/RecheckPendingBuildCommentsAsync) is
+        // untouched below.
+        private readonly Controls.DispatchPanel DispatchPanel = new();
+        private DispatchDialog? _dispatchDialog;
+
         // ── Build completion sound (mute toggle: _Sound menu > Mute Completion Sound) ──
         private readonly BuildConsole.Services.BuildCompletionSoundService _buildSound = new();
 
@@ -1536,6 +1544,29 @@ namespace BuildConsole
             BtnMaximizeRestore.ToolTip = maximized ? "Restore Down" : "Maximize";
         }
 
+        /// <summary>Git #3553 — opens (or refocuses) the modal Dispatch dialog. Re-parents the
+        /// single, app-lifetime DispatchPanel instance into a fresh DispatchDialog each call;
+        /// ShowDialog() blocks reentry naturally (Ctrl+D pressed again while the dialog is
+        /// already open just reactivates it instead of creating a second one).</summary>
+        private void OpenDispatchDialog()
+        {
+            if (_dispatchDialog != null)
+            {
+                _dispatchDialog.Activate();
+                return;
+            }
+
+            _dispatchDialog = new DispatchDialog(DispatchPanel) { Owner = this };
+            try
+            {
+                _dispatchDialog.ShowDialog();
+            }
+            finally
+            {
+                _dispatchDialog = null;
+            }
+        }
+
         // ── Window Preview Key Handlers for Ctrl+K and Ctrl+Tab ─────────────────
         private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
         {
@@ -1555,6 +1586,16 @@ namespace BuildConsole
                 e.Handled = true;
                 SailorDuckLayer?.SummonMascot();
                 ToastEngine.Success("Sailor Duck Mascot", "Quack! Ahoy Captain Shane! ⚓ (Ctrl+Shift+D)");
+                return;
+            }
+
+            // Git #3553 — Ctrl+D (no Shift, distinct from the Ctrl+Shift+D mascot chord above):
+            // opens the Dispatch dialog from anywhere in the app, not just when its own control
+            // has focus.
+            if (e.Key == Key.D && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
+            {
+                e.Handled = true;
+                OpenDispatchDialog();
                 return;
             }
 

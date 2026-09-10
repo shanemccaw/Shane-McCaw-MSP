@@ -1,0 +1,26 @@
+<Window x:Class="BuildConsole.DispatchDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Dispatch" SizeToContent="WidthAndHeight"
+        MinWidth="320"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="{StaticResource BaseBrush}"
+        KeyDown="Window_KeyDown">
+
+    <!--
+        Git #3553 — DispatchPanel (Git #1779) used to sit permanently DockPanel.Dock="Top"
+        above the Build Queue panel in MainWindow.xaml, occupying real vertical space at all
+        times. It's now hosted here, in a modal dialog opened via Ctrl+D, instead — this window
+        is just the frame; ContentHost below has the SAME DispatchPanel instance MainWindow has
+        always owned (created once, Initialize'd once) re-parented into it on each open, so every
+        real behavior — issue-number dispatch, the "already tracked" message, "Dispatch anyway"
+        (Git #1966), the auto-restart countdown, and the #2716 pending-BUILD:-comment retry
+        state — carries over unchanged. Nothing about DispatchPanel's own logic changed; only its
+        container did.
+    -->
+    <Border BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1" CornerRadius="8">
+        <ContentControl x:Name="ContentHost"/>
+    </Border>
+</Window>

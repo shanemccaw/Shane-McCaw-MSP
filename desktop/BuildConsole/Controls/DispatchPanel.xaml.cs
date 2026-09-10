@@ -64,7 +64,27 @@ namespace BuildConsole.Controls
         public DispatchPanel()
         {
             InitializeComponent();
+            this.Loaded += DispatchPanel_Loaded;
             this.Unloaded += DispatchPanel_Unloaded;
+        }
+
+        /// <summary>Git #3553 — this panel now lives inside a modal <see cref="DispatchDialog"/>
+        /// opened via Ctrl+D rather than staying permanently docked, so it's added to and removed
+        /// from a visual tree on every open/close instead of once at app startup. Unloaded (below)
+        /// stops the auto-restart countdown timer each time the dialog closes; restart it here each
+        /// time the panel is reattached, mirroring the same start-up block <see cref="Initialize"/>
+        /// already runs for the very first attach.</summary>
+        private void DispatchPanel_Loaded(object sender, RoutedEventArgs e)
+        {
+            TxtIssueNumber.Focus();
+
+            if (_autoRestart != null && _countdownTimer == null)
+            {
+                _countdownTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                _countdownTimer.Tick += CountdownTimer_Tick;
+                _countdownTimer.Start();
+                CountdownTimer_Tick(null, EventArgs.Empty); // Force immediate refresh
+            }
         }
 
         /// <summary>Mirrors BatterUpPanel.Initialize's shape — called once from MainWindow.
