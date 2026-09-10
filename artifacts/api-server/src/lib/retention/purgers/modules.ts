@@ -508,6 +508,31 @@ export const directoryPurger: TenantDataPurgerDeclaration = {
 // before the delete, so the audit line says exactly how many attributions were blanked.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RBAC (#2455) — customer-scoped roles and the capability→role mappings hanging off
+// them (#3353, filed by the #2859 coverage sweep). Both tables are `tenants.id`
+// integer FKs with a real `ON DELETE CASCADE` onto `tenants`, but the tenant ROW
+// itself deliberately survives the purge (see `tenants.tenant_id` in coverage.ts's
+// exemption map, forced by `record_deletions.tenant_id` being `ON DELETE RESTRICT`)
+// — so that cascade never fires and these rows need their own declared target like
+// every other tenant-scoped table. Confirmed against #2455's own design: a
+// customer-scoped role/mapping row is this customer's data, same as every other
+// module here, not platform state — the `tenant_id IS NULL` rows are the platform
+// defaults every tenant inherits and are untouched by a scoped DELETE.
+// `customer_user_roles` (the role↔user junction) carries no tenant_id/customer_id
+// of its own and needs no target here — it purges via its own real
+// `ON DELETE CASCADE` FK onto `customer_roles.id` the moment the role row goes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const rbacPurger: TenantDataPurgerDeclaration = {
+  key: "rbac",
+  displayName: "Customer roles & capability mappings",
+  targets: [
+    { table: "customer_roles", column: "tenant_id", keySpace: "customerId" },
+    { table: "customer_feature_role_mapping", column: "tenant_id", keySpace: "customerId" },
+  ],
+};
+
 export const identityPurger: TenantDataPurgerDeclaration = {
   key: "identity",
   displayName: "User accounts & credentials",
@@ -571,6 +596,7 @@ export const ALL_TENANT_DATA_PURGER_DECLARATIONS: TenantDataPurgerDeclaration[] 
   messageCentrePurger,
   platformOpsPurger,
   directoryPurger,
+  rbacPurger,
   // Last in the array AND declared `phase: "identity"`. The phase is what actually
   // enforces it — see `orderedTenantDataPurgers()`; the array position is just so the
   // file reads in the order it runs.
