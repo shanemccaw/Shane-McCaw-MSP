@@ -339,11 +339,15 @@ namespace BuildConsole.Controls
         }
 
         private readonly List<QueueGraphNode> _currentGraphNodes = new();
-        // Git #1815 — RenderQueue fully rebuilds QueueCardsHost.Children every call, so
-        // without remembering which node Keys were already on screen, every card would
-        // re-fade-in on every poll tick. Persist the set across renders and only animate
-        // a card whose Key genuinely wasn't present last render.
+        // Git #1815 — RenderQueue re-renders the card list on every poll tick whose queue
+        // changed and rebuilds any card whose content changed, so without remembering which
+        // node Keys were already on screen, a rebuilt card would re-fade-in. Persist the set
+        // across renders and only animate a card whose Key genuinely wasn't present last render.
         private HashSet<int> _knownQueueCardKeys = new();
+        // Git #3698 — every element RenderQueue puts in QueueCardsHost (cards, build-set
+        // containers, the offline banner), pooled across renders by identity + everything it
+        // displays. See the comment at RenderQueue's step 5.
+        private readonly KeyedCardPool _queueCards = new();
         private bool _hasRenderedQueueOnce = false;
         private int _currentMaxLanes = 1;
 
@@ -2359,6 +2363,8 @@ namespace BuildConsole.Controls
             if (isBroadUnsearchedView)
             {
                 QueueGraphContainer.Visibility = Visibility.Collapsed;
+                // Git #3698 — stop every pooled card's Forever mascot clocks, then drop them.
+                _queueCards.RetireAll();
                 QueueCardsHost.Children.Clear();
                 QueueGraphCanvas.Children.Clear();
                 _currentGraphNodes.Clear();
@@ -2379,7 +2385,10 @@ namespace BuildConsole.Controls
             }
 
             QueueGraphContainer.Visibility = Visibility.Visible;
-            QueueCardsHost.Children.Clear();
+            // Git #3698 — no QueueCardsHost.Children.Clear() here any more: this render acquires
+            // its elements from _queueCards and places them at the end (see step 5).
+            _queueCards.BeginPass();
+            var hostChildren = new List<UIElement>();
             _currentGraphNodes.Clear();
 
             // Git #1815 — snapshot what was known before this rebuild, then start a fresh
@@ -2389,23 +2398,27 @@ namespace BuildConsole.Controls
 
             if (_queueIsStale)
             {
-                var staleBanner = new Border
+                string staleText = $"⚠ Offline — showing cached queue from {_queueCachedAtUtc?.ToLocalTime():MMM d, h:mm tt}";
+                hostChildren.Add(_queueCards.Acquire("offline-banner", staleText, () =>
                 {
-                    Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFA, 0xB3, 0x87)),
-                    BorderBrush = (Brush)Application.Current.FindResource("PeachBrush"),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(8, 4, 8, 4),
-                    Margin = new Thickness(0, 0, 0, 6)
-                };
-                staleBanner.Child = new TextBlock
-                {
-                    Text = $"⚠ Offline — showing cached queue from {_queueCachedAtUtc?.ToLocalTime():MMM d, h:mm tt}",
-                    FontSize = 10.5,
-                    Foreground = (Brush)Application.Current.FindResource("PeachBrush"),
-                    TextWrapping = TextWrapping.Wrap
-                };
-                QueueCardsHost.Children.Add(staleBanner);
+                    var staleBanner = new Border
+                    {
+                        Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFA, 0xB3, 0x87)),
+                        BorderBrush = (Brush)Application.Current.FindResource("PeachBrush"),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(4),
+                        Padding = new Thickness(8, 4, 8, 4),
+                        Margin = new Thickness(0, 0, 0, 6)
+                    };
+                    staleBanner.Child = new TextBlock
+                    {
+                        Text = staleText,
+                        FontSize = 10.5,
+                        Foreground = (Brush)Application.Current.FindResource("PeachBrush"),
+                        TextWrapping = TextWrapping.Wrap
+                    };
+                    return staleBanner;
+                }, out _));
             }
 
             List<MainWindow.PersistedQueueDisplayItem> pendingRestart;
@@ -2516,6 +2529,7 @@ namespace BuildConsole.Controls
 
             if (_currentGraphNodes.Count == 0)
             {
+                FinishQueueCardPass(hostChildren, null);
                 QueueGraphCanvas.Children.Clear();
                 UpdateCritterLoungeVisibility();
                 return;
@@ -2646,97 +2660,53 @@ namespace BuildConsole.Controls
             // [ungrouped items][buildSet A items][buildSet B items]... (see step 4
             // above), so a header only needs to fire once per transition INTO a
             // non-null BuildSet — restart/ungrouped nodes never re-trigger it.
+            //
+            // Git #3698 — this used to QueueCardsHost.Children.Clear() and rebuild every card on
+            // every call: each poll tick whose queue signature changed, every Git Board refresh
+            // (ApplyOpenIssueSet), every Ask Shane poll (ApplyAskShaneSet), every blocker-title
+            // fetch. Every card's mascot starts a RepeatBehavior.Forever float, plus a Forever
+            // glow shimmer on a running/blocked card, and nothing ever stopped them: a discarded
+            // card's clocks kept ticking every frame until a GC happened to collect it, so every
+            // render added one or two more live clocks per card, growing with the queue. Same
+            // class #3689 fixed for the Build Matrix
+            // drawer's 8 slots, here across the whole queue. Every element now comes from
+            // _queueCards (KeyedCardPool, the identity-keyed form of #3689's KeyedSlotCardHost): a
+            // card whose QueueCardKey (everything it draws) is unchanged is last render's element,
+            // mascot still floating; only a changed card is rebuilt; and every element the pool
+            // drops has its owned clocks stopped before it goes.
             string? lastRenderedSet = null;
-            StackPanel? currentSetPanel = null;
+            List<UIElement>? currentSetChildren = null;
+            var setPanels = new List<(Panel Panel, List<UIElement> Children)>();
+            var newCards = new List<Border>();
+            HashSet<int>? pausedIds = null;
             foreach (var node in _currentGraphNodes)
             {
                 if (node.BuildSet != lastRenderedSet)
                 {
                     if (node.BuildSet != null)
                     {
+                        string setName = node.BuildSet;
                         // Git #1636 — Shane: "waiting on his priority build set... he wants a
                         // critter + distinct border" so a set he's actually waiting on reads
                         // differently at a glance from the rest while he tinkers elsewhere.
-                        bool isPriority = Services.BuildSetPriorityStore.IsPriority(node.BuildSet);
+                        bool isPriority = Services.BuildSetPriorityStore.IsPriority(setName);
                         // "Build Only This Set" — see Services.BuildSetExclusiveStore. Exclusive
                         // styling wins over Priority's when both happen to be set on the same
                         // build set, since exclusive is the stronger, dispatch-affecting state.
-                        bool isExclusive = Services.BuildSetExclusiveStore.IsExclusive(node.BuildSet);
+                        bool isExclusive = Services.BuildSetExclusiveStore.IsExclusive(setName);
+                        var accentBrush = GetBuildSetBrush(setName);
 
-                        var setContainer = new Border
-                        {
-                            BorderBrush = isExclusive
-                                ? (Brush)Application.Current.FindResource("RedBrush")
-                                : isPriority
-                                    ? (Brush)Application.Current.FindResource("PeachBrush")
-                                    : (Brush)Application.Current.FindResource("MauveBrush"),
-                            BorderThickness = new Thickness(isExclusive || isPriority ? 2.5 : 1),
-                            CornerRadius = new CornerRadius(6),
-                            Background = isExclusive
-                                ? new SolidColorBrush(Color.FromArgb(0x16, 0xF3, 0x8B, 0xA8))
-                                : isPriority
-                                    ? new SolidColorBrush(Color.FromArgb(0x16, 0xFA, 0xB3, 0x87))
-                                    : new SolidColorBrush(Color.FromArgb(0x0A, 0xCB, 0xA6, 0xF7)),
-                            Margin = new Thickness(0, 8, 0, 8),
-                            Padding = new Thickness(8, 6, 8, 6),
-                            HorizontalAlignment = HorizontalAlignment.Stretch,
-                            ContextMenu = BuildBuildSetHeaderContextMenu(node.BuildSet, isPriority)
-                        };
-                        var setPanel = new StackPanel { Orientation = Orientation.Vertical };
-                        setContainer.Child = setPanel;
-
-                        var accentBrush = GetBuildSetBrush(node.BuildSet);
-                        var headerLabel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 2, 2, 6) };
-                        headerLabel.Children.Add(new TextBlock
-                        {
-                            Text = "▤ ",
-                            FontSize = 11,
-                            Foreground = accentBrush,
-                            VerticalAlignment = VerticalAlignment.Center
-                        });
-                        headerLabel.Children.Add(new TextBlock
-                        {
-                            Text = node.BuildSet.ToUpper(),
-                            FontSize = 11,
-                            FontWeight = FontWeights.Bold,
-                            Foreground = accentBrush,
-                            VerticalAlignment = VerticalAlignment.Center,
-                            ToolTip = $"Build Set \"{node.BuildSet}\" — merges + restarts together as one wave"
-                        });
-                        if (isExclusive)
-                        {
-                            headerLabel.Children.Add(new TextBlock
-                            {
-                                Text = " 🔒",
-                                FontSize = 12,
-                                FontWeight = FontWeights.Bold,
-                                Foreground = (Brush)Application.Current.FindResource("RedBrush"),
-                                VerticalAlignment = VerticalAlignment.Center,
-                                ToolTip = $"Exclusive — the queue holds every other build set until every build in \"{node.BuildSet}\" finishes."
-                            });
-                        }
-                        else if (isPriority)
-                        {
-                            // Reuses the same "⭐" glyph IssueChompAnimation's milestone parade
-                            // already decorates a marching mascot with — not a new asset.
-                            headerLabel.Children.Add(new TextBlock
-                            {
-                                Text = " ⭐",
-                                FontSize = 12,
-                                FontWeight = FontWeights.Bold,
-                                Foreground = (Brush)Application.Current.FindResource("PeachBrush"),
-                                VerticalAlignment = VerticalAlignment.Center,
-                                ToolTip = $"Priority — a persistent notification fires the moment every build in \"{node.BuildSet}\" finishes."
-                            });
-                        }
-                        setPanel.Children.Add(headerLabel);
-
-                        QueueCardsHost.Children.Add(setContainer);
-                        currentSetPanel = setPanel;
+                        var setContainer = _queueCards.Acquire(("set", setName),
+                            new BuildSetContainerKey(setName, isPriority, isExclusive, accentBrush.ToString()),
+                            () => BuildBuildSetContainer(setName, isPriority, isExclusive, accentBrush), out _);
+                        var parts = (BuildSetContainerParts)setContainer.Tag;
+                        hostChildren.Add(setContainer);
+                        currentSetChildren = new List<UIElement> { parts.Header };
+                        setPanels.Add((parts.Panel, currentSetChildren));
                     }
                     else
                     {
-                        currentSetPanel = null;
+                        currentSetChildren = null;
                     }
                     lastRenderedSet = node.BuildSet;
                 }
@@ -2748,15 +2718,23 @@ namespace BuildConsole.Controls
                 // real graph line/dot but no card next to it — exactly that "ghost" look. One
                 // bad card must never orphan the rest of the render.
                 Border? cardElement = null;
+                bool reused = false;
                 try
                 {
                     if (node.Status == "restart" && node.RestartItem != null)
                     {
-                        cardElement = BuildRestartCard(node.RestartItem);
+                        var restartItem = node.RestartItem;
+                        cardElement = _queueCards.Acquire(("restart", node.Key),
+                            new RestartCardKey(restartItem.Title, restartItem.GithubNumber),
+                            () => BuildRestartCard(restartItem), out reused);
                     }
                     else if (node.Item != null)
                     {
-                        cardElement = BuildQueueCard(node);
+                        pausedIds ??= new HashSet<int>(BuildConsoleSettings.Load().PausedBuildIds);
+                        var cardNode = node;
+                        cardElement = _queueCards.Acquire(("item", node.Item.Id), QueueCardKeyFor(node, pausedIds),
+                            () => BuildQueueCard(cardNode), out reused);
+                        if (reused) RefreshReusedQueueCard(cardElement, node);
                     }
                 }
                 catch (Exception ex)
@@ -2771,22 +2749,24 @@ namespace BuildConsole.Controls
                     thisRenderQueueCardKeys.Add(node.Key);
                     bool isNewCard = _hasRenderedQueueOnce && !previousKnownQueueCardKeys.Contains(node.Key);
 
-                    if (currentSetPanel != null)
+                    if (currentSetChildren != null)
                     {
                         cardElement.Margin = new Thickness(0, 2, 0, 2);
-                        currentSetPanel.Children.Add(cardElement);
+                        currentSetChildren.Add(cardElement);
                     }
                     else
                     {
-                        QueueCardsHost.Children.Add(cardElement);
+                        hostChildren.Add(cardElement);
                     }
 
-                    if (isNewCard)
-                    {
-                        AnimateNewQueueCardIn(cardElement);
-                    }
+                    // Grown in once it's actually in the tree (after FinishQueueCardPass below), and
+                    // never re-run on a pooled card that is already on screen.
+                    if (isNewCard && !reused) newCards.Add(cardElement);
                 }
             }
+
+            FinishQueueCardPass(hostChildren, setPanels);
+            foreach (var card in newCards) AnimateNewQueueCardIn(card);
 
             _knownQueueCardKeys = thisRenderQueueCardKeys;
             _hasRenderedQueueOnce = true;
@@ -2794,6 +2774,159 @@ namespace BuildConsole.Controls
             // ── 6. Trigger Canvas Redraw on Layout ──
             Dispatcher.InvokeAsync(RedrawQueueGraph, DispatcherPriority.Loaded);
             UpdateCritterLoungeVisibility();
+        }
+
+        /// <summary>Git #3698 — everything <see cref="BuildQueueCard"/> draws for one queue row, so equal
+        /// keys on two renders mean an identical card and the pooled one (mascot clocks and all) is kept.
+        /// ItemJson is the whole row, which also keeps every value the card's own click handlers act on
+        /// current. Anything BuildQueueCard starts reading has to be added here too, or a change to it
+        /// won't reach a card that is otherwise unchanged.</summary>
+        private sealed record QueueCardKey(
+            string ItemJson,
+            bool IsBlocked,
+            bool IsWaitingForInput,
+            bool IsAskingShane,
+            InteractiveInputState? InteractiveState,
+            bool IsSelected,
+            bool IsPaused,
+            int DownstreamBlocks,
+            bool IsTopBottleneck,
+            string BlockerGhosts,
+            string BlocksRow,
+            string? EpicChip,
+            bool HasLog);
+
+        /// <summary>Git #3698 — everything <see cref="BuildRestartCard"/> draws.</summary>
+        private sealed record RestartCardKey(string Title, int? GithubNumber);
+
+        /// <summary>Git #3698 — everything <see cref="BuildBuildSetContainer"/> draws.</summary>
+        private sealed record BuildSetContainerKey(string Name, bool IsPriority, bool IsExclusive, string Accent);
+
+        /// <summary>Git #3698 — a build-set container's inner list and header, carried on its Tag so a
+        /// pooled container's cards can be re-synced without rebuilding the header.</summary>
+        private sealed record BuildSetContainerParts(StackPanel Panel, UIElement Header);
+
+        private QueueCardKey QueueCardKeyFor(QueueGraphNode node, HashSet<int> pausedIds)
+        {
+            var item = node.Item!;
+            _downstreamBlockCounts.TryGetValue(item.Id, out var blockCount);
+            string blocksRow = item.GithubNumber.HasValue && _reverseBlocks.TryGetValue(item.GithubNumber.Value, out var blockedItems)
+                ? string.Join(";", blockedItems.Select(b => $"{b.Id}|{b.GithubNumber}|{b.Title}"))
+                : "";
+            var epic = item.GithubNumber.HasValue ? ResolveEpicForIssue?.Invoke(item.GithubNumber.Value) : null;
+            return new QueueCardKey(
+                System.Text.Json.JsonSerializer.Serialize(item),
+                node.IsBlocked,
+                node.IsWaitingForInput,
+                node.IsAskingShane,
+                _watcher?.GetInteractiveState(item.Id),
+                _selectedQueueItemId == item.Id,
+                pausedIds.Contains(item.Id),
+                blockCount,
+                blockCount > 0 && blockCount == _maxDownstreamBlockCount && _maxDownstreamBlockCount > 1,
+                string.Join(";", LiveBlockedBy(node).Select(BlockerGhostKey)),
+                blocksRow,
+                epic == null ? null : $"{epic.Id}|{epic.GithubNumber}|{epic.Title}",
+                Services.BuildLogExistenceCache.HasLog(item.Id));
+        }
+
+        /// <summary>Git #3698 — places this render's pooled elements (the top level, then each build-set
+        /// container's own list) and retires every element the render didn't use, stopping its clocks.</summary>
+        private void FinishQueueCardPass(List<UIElement> hostChildren, List<(Panel Panel, List<UIElement> Children)>? setPanels)
+        {
+            KeyedCardPool.SyncChildren(QueueCardsHost, hostChildren);
+            if (setPanels != null)
+                foreach (var (panel, children) in setPanels) KeyedCardPool.SyncChildren(panel, children);
+            _queueCards.EndPass();
+        }
+
+        /// <summary>Git #3698 — a pooled card is only rebuilt when its <see cref="QueueCardKey"/> changes,
+        /// but its Tag, tooltip and context menu are read at click/hover time rather than drawn, and the
+        /// menu reads live watcher state (a session id a running build reveals after its card was built).
+        /// Refresh those every render, as fresh as the old full rebuild left them — except while the
+        /// tooltip or menu is open, which a replacement would close under the pointer.</summary>
+        private void RefreshReusedQueueCard(Border card, QueueGraphNode node)
+        {
+            var item = node.Item!;
+            card.Tag = item;
+            if (card.ToolTip is not ToolTip { IsOpen: true }) SetQueueCardTooltip(card, item);
+            if (card.ContextMenu is not { IsOpen: true }) card.ContextMenu = BuildCardContextMenu(item, node);
+        }
+
+        /// <summary>A build set's group container: accent border (exclusive/priority styling), the header
+        /// label, and the inner list the set's own cards go in. Git #3698 — pooled by RenderQueue under
+        /// <see cref="BuildSetContainerKey"/>; its Tag carries <see cref="BuildSetContainerParts"/>.</summary>
+        private Border BuildBuildSetContainer(string buildSetName, bool isPriority, bool isExclusive, Brush accentBrush)
+        {
+            var setContainer = new Border
+            {
+                BorderBrush = isExclusive
+                    ? (Brush)Application.Current.FindResource("RedBrush")
+                    : isPriority
+                        ? (Brush)Application.Current.FindResource("PeachBrush")
+                        : (Brush)Application.Current.FindResource("MauveBrush"),
+                BorderThickness = new Thickness(isExclusive || isPriority ? 2.5 : 1),
+                CornerRadius = new CornerRadius(6),
+                Background = isExclusive
+                    ? new SolidColorBrush(Color.FromArgb(0x16, 0xF3, 0x8B, 0xA8))
+                    : isPriority
+                        ? new SolidColorBrush(Color.FromArgb(0x16, 0xFA, 0xB3, 0x87))
+                        : new SolidColorBrush(Color.FromArgb(0x0A, 0xCB, 0xA6, 0xF7)),
+                Margin = new Thickness(0, 8, 0, 8),
+                Padding = new Thickness(8, 6, 8, 6),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                ContextMenu = BuildBuildSetHeaderContextMenu(buildSetName, isPriority)
+            };
+            var setPanel = new StackPanel { Orientation = Orientation.Vertical };
+            setContainer.Child = setPanel;
+
+            var headerLabel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 2, 2, 6) };
+            headerLabel.Children.Add(new TextBlock
+            {
+                Text = "▤ ",
+                FontSize = 11,
+                Foreground = accentBrush,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            headerLabel.Children.Add(new TextBlock
+            {
+                Text = buildSetName.ToUpper(),
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Foreground = accentBrush,
+                VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = $"Build Set \"{buildSetName}\" — merges + restarts together as one wave"
+            });
+            if (isExclusive)
+            {
+                headerLabel.Children.Add(new TextBlock
+                {
+                    Text = " 🔒",
+                    FontSize = 12,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)Application.Current.FindResource("RedBrush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = $"Exclusive — the queue holds every other build set until every build in \"{buildSetName}\" finishes."
+                });
+            }
+            else if (isPriority)
+            {
+                // Reuses the same "⭐" glyph IssueChompAnimation's milestone parade
+                // already decorates a marching mascot with — not a new asset.
+                headerLabel.Children.Add(new TextBlock
+                {
+                    Text = " ⭐",
+                    FontSize = 12,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)Application.Current.FindResource("PeachBrush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = $"Priority — a persistent notification fires the moment every build in \"{buildSetName}\" finishes."
+                });
+            }
+            setPanel.Children.Add(headerLabel);
+
+            setContainer.Tag = new BuildSetContainerParts(setPanel, headerLabel);
+            return setContainer;
         }
 
         /// <summary>
@@ -4371,7 +4504,9 @@ namespace BuildConsole.Controls
 
             card.MouseLeftButtonDown += (s, e) =>
             {
-                SelectNode(node);
+                // Git #3698 — a pooled card outlives the render that built it; select the node it
+                // belongs to now.
+                SelectNode(_currentGraphNodes.FirstOrDefault(n => ReferenceEquals(n.CardElement, card)) ?? node);
             };
 
             var mainStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
@@ -5281,6 +5416,29 @@ namespace BuildConsole.Controls
         /// whether this ghost has a real sibling card in the same render to draw a line to.</summary>
         private readonly record struct BlockerGhostTag(int IssueNumber, bool IsLiveQueueNode);
 
+        /// <summary>Git #3698 — what <see cref="BuildBlockerGhostCard"/> draws for one blocker, shared by
+        /// the card itself and by <see cref="BlockerGhostKey"/> (part of a pooled card's
+        /// <see cref="QueueCardKey"/>) so the two can never disagree about when a ghost card changed.</summary>
+        private (QueueGraphNode? LiveNode, string Title, string StatusText, Color StatusColor) BlockerGhostInputs(int blockerNumber)
+        {
+            var liveNode = FindLiveNodeForBlocker(blockerNumber);
+            if (liveNode != null)
+            {
+                var (liveStatusText, liveStatusColor) = GhostStatusLabel(liveNode);
+                return (liveNode, liveNode.Title, liveStatusText, liveStatusColor);
+            }
+
+            string? cachedTitle;
+            lock (_issueTitleCache) { _issueTitleCache.TryGetValue(blockerNumber, out cachedTitle); }
+            return (null, cachedTitle ?? "", "○ OPEN", Color.FromRgb(0xF3, 0x8B, 0xA8));
+        }
+
+        private string BlockerGhostKey(int blockerNumber)
+        {
+            var (liveNode, title, statusText, statusColor) = BlockerGhostInputs(blockerNumber);
+            return $"{blockerNumber}|{liveNode != null}|{liveNode?.Item?.Id}|{title}|{statusText}|{statusColor}";
+        }
+
         /// <summary>Git #2062 — a blocked build's declared blocker rendered as a real, dimmed
         /// ghost/placeholder card (not plain "waiting on #N" text). Always built from real data:
         /// if the blocker is itself another node in this same queue render (<see cref="_currentGraphNodes"/>),
@@ -5298,25 +5456,8 @@ namespace BuildConsole.Controls
         /// apart at a glance.</summary>
         private Border BuildBlockerGhostCard(int blockerNumber)
         {
-            var liveNode = FindLiveNodeForBlocker(blockerNumber);
+            var (liveNode, title, statusText, statusColor) = BlockerGhostInputs(blockerNumber);
             bool isLive = liveNode != null;
-
-            string title;
-            string statusText;
-            Color statusColor;
-            if (liveNode != null)
-            {
-                title = liveNode.Title;
-                (statusText, statusColor) = GhostStatusLabel(liveNode);
-            }
-            else
-            {
-                string? cachedTitle;
-                lock (_issueTitleCache) { _issueTitleCache.TryGetValue(blockerNumber, out cachedTitle); }
-                title = cachedTitle ?? "";
-                statusText = "○ OPEN";
-                statusColor = Color.FromRgb(0xF3, 0x8B, 0xA8);
-            }
 
             var card = new Border
             {
@@ -7410,7 +7551,9 @@ namespace BuildConsole.Controls
                 RepeatBehavior = RepeatBehavior.Forever,
                 EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
             };
-            floatTrans.BeginAnimation(TranslateTransform.YProperty, floatAnim);
+            // Git #3698 — an owned clock, so whoever discards this card can really stop it
+            // (BeginAnimation's clock ticks on every frame until a GC collects the card).
+            KeyedSlotCardHost.BeginOwnedAnimation(container, floatTrans, TranslateTransform.YProperty, floatAnim);
 
             int variant = Math.Abs((item.GithubNumber ?? item.Id) % 15);
             FrameworkElement critter = isBlocked
@@ -7466,7 +7609,7 @@ namespace BuildConsole.Controls
                     RepeatBehavior = RepeatBehavior.Forever,
                     EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
                 };
-                glow.BeginAnimation(DropShadowEffect.OpacityProperty, shimmer);
+                KeyedSlotCardHost.BeginOwnedAnimation(container, glow, DropShadowEffect.OpacityProperty, shimmer);
             }
 
             if (isBlocked)
@@ -7569,7 +7712,9 @@ namespace BuildConsole.Controls
                 RepeatBehavior = RepeatBehavior.Forever,
                 EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
             };
-            floatTrans.BeginAnimation(TranslateTransform.YProperty, floatAnim);
+            // Git #3698 — an owned clock, so whoever discards this card can really stop it
+            // (BeginAnimation's clock ticks on every frame until a GC collects the card).
+            KeyedSlotCardHost.BeginOwnedAnimation(container, floatTrans, TranslateTransform.YProperty, floatAnim);
 
             int variant = Math.Abs(seed % 15);
             FrameworkElement critter = isBlocked
@@ -7625,7 +7770,7 @@ namespace BuildConsole.Controls
                     RepeatBehavior = RepeatBehavior.Forever,
                     EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
                 };
-                glow.BeginAnimation(DropShadowEffect.OpacityProperty, shimmer);
+                KeyedSlotCardHost.BeginOwnedAnimation(container, glow, DropShadowEffect.OpacityProperty, shimmer);
 
                 var lockBadge = new Border
                 {

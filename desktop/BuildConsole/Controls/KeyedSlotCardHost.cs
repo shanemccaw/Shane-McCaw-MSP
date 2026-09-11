@@ -81,26 +81,59 @@ namespace BuildConsole.Controls
         /// every frame until a GC happens to collect it — while <c>Controller.Stop()</c> ends it at once.
         /// </summary>
         public static void BeginOwnedAnimation(UIElement card, DependencyProperty property, AnimationTimeline animation)
+            => BeginOwnedAnimation(card, card, property, animation);
+
+        /// <summary>
+        /// Git #3698 — the same owned clock, for an animation whose target isn't the owning element
+        /// itself (a queue-card mascot's <c>TranslateTransform</c> float, its <c>DropShadowEffect</c>
+        /// shimmer). The clock is recorded on <paramref name="owner"/>, so
+        /// <see cref="StopOwnedAnimations"/> over any subtree containing the owner stops it.
+        /// </summary>
+        public static void BeginOwnedAnimation(UIElement owner, IAnimatable target, DependencyProperty property, AnimationTimeline animation)
         {
             var clock = animation.CreateClock();
-            card.ApplyAnimationClock(property, clock);
-            if (card.GetValue(OwnedClocksProperty) is not List<OwnedClock> owned)
-                card.SetValue(OwnedClocksProperty, owned = new List<OwnedClock>());
-            owned.Add(new OwnedClock(property, clock));
+            target.ApplyAnimationClock(property, clock);
+            if (owner.GetValue(OwnedClocksProperty) is not List<OwnedClock> owned)
+                owner.SetValue(OwnedClocksProperty, owned = new List<OwnedClock>());
+            owned.Add(new OwnedClock(target, property, clock));
         }
 
-        private static void StopAnimations(UIElement card)
+        /// <summary>
+        /// Git #3698 — stops every owned clock on <paramref name="root"/> and on its whole logical
+        /// subtree (a queue card's clocks live on its mascot, several levels down). A subtree whose
+        /// root <paramref name="spare"/> returns true for is skipped — a card still in use that
+        /// happens to sit inside a container being discarded. Returns how many clocks it stopped.
+        /// </summary>
+        public static int StopOwnedAnimations(DependencyObject root, Func<DependencyObject, bool>? spare = null)
         {
-            if (card.GetValue(OwnedClocksProperty) is not List<OwnedClock> owned) return;
-            foreach (var (property, clock) in owned)
+            int stopped = 0;
+            var pending = new Stack<DependencyObject>();
+            pending.Push(root);
+            while (pending.Count > 0)
+            {
+                var element = pending.Pop();
+                if (spare != null && !ReferenceEquals(element, root) && spare(element)) continue;
+                stopped += StopAnimations(element);
+                foreach (var child in LogicalTreeHelper.GetChildren(element))
+                    if (child is DependencyObject d) pending.Push(d);
+            }
+            return stopped;
+        }
+
+        private static int StopAnimations(DependencyObject element)
+        {
+            if (element.GetValue(OwnedClocksProperty) is not List<OwnedClock> owned) return 0;
+            int stopped = owned.Count;
+            foreach (var (target, property, clock) in owned)
             {
                 clock.Controller?.Stop();
-                card.ApplyAnimationClock(property, null);
+                target.ApplyAnimationClock(property, null);
             }
             owned.Clear();
+            return stopped;
         }
 
-        private sealed record OwnedClock(DependencyProperty Property, AnimationClock Clock);
+        private sealed record OwnedClock(IAnimatable Target, DependencyProperty Property, AnimationClock Clock);
 
         private static readonly DependencyProperty OwnedClocksProperty = DependencyProperty.RegisterAttached(
             "OwnedClocks", typeof(List<OwnedClock>), typeof(KeyedSlotCardHost));
