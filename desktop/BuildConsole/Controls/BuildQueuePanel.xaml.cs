@@ -142,6 +142,13 @@ namespace BuildConsole.Controls
 
         private bool _isPinned = true;
 
+        // Git #3701 — right-pointing while expanded (panel is on the right side of the
+        // window, so collapsing it pushes it off to the right); left-pointing while
+        // collapsed (re-expanding pulls it back in from the right). Mirrors #3606's
+        // left-sidebar chevron convention, mirrored for the opposite side.
+        private const string CollapseArrowGlyph = "";
+        private const string ExpandArrowGlyph = "";
+
         private int _refreshGeneration;
         private BuildTrackerApiClient? _api;
         private Services.QueueWatcherService? _watcher;
@@ -7694,10 +7701,17 @@ namespace BuildConsole.Controls
             }
         }
 
-        private void BtnPinQueue_Click(object sender, RoutedEventArgs e)
+        private void BtnPinQueue_Click(object sender, RoutedEventArgs e) => TogglePin();
+
+        // Git #3701 — the new always-visible header chevron (left of QueueDot) drives the
+        // exact same toggle as the overflow-menu's BtnPinQueue, kept in sync via TogglePin().
+        private void BtnCollapseQueue_Click(object sender, RoutedEventArgs e) => TogglePin();
+
+        private void TogglePin()
         {
             _isPinned = !_isPinned;
             PinQueueIcon.Text = _isPinned ? "📌" : "📍";
+            CollapseQueueIcon.Text = _isPinned ? CollapseArrowGlyph : ExpandArrowGlyph;
             PinToggled?.Invoke(this, _isPinned);
         }
 

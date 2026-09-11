@@ -2011,6 +2011,16 @@ namespace BuildConsole.Controls
             // Git #863 — refresh icon only makes sense on the Git Board.
             BtnRefreshGitBoard.Visibility = view == "Issues" ? Visibility.Visible : Visibility.Collapsed;
 
+            // Git #3701 — both BtnNewItem ("+") and BtnCollapseAll ("↓") are dead in the
+            // Chats context (New Chat now has its own #3676 inline-picker entry points;
+            // Collapse All's real Chats-tree logic still works but Shane reports it "does
+            // nothing" from his perspective and wants it gone there). Hide them only for
+            // Chats — Issues/Explorer still use BtnNewItem, and CollapseAll_Click still
+            // has real working branches for other views.
+            var hideForChats = view == "Chats" ? Visibility.Collapsed : Visibility.Visible;
+            BtnNewItem.Visibility = hideForChats;
+            BtnCollapseAll.Visibility = hideForChats;
+
             if (view == "Explorer" && ExplorerTree.Items.Count == 0)
             {
                 LoadWorkspaceExplorer(RootWorkspacePath);

@@ -49,6 +49,7 @@
                                 Style="{StaticResource IconButton}"
                                 ToolTip="New Chat"
                                 Padding="4"
+                                Visibility="Collapsed"
                                 Click="BtnNewItem_Click">
                             <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
                         </Button>
@@ -60,9 +61,11 @@
                                 Click="BtnRefreshGitBoard_Click">
                             <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
                         </Button>
-                        <Button Style="{StaticResource IconButton}"
+                        <Button x:Name="BtnCollapseAll"
+                                Style="{StaticResource IconButton}"
                                 ToolTip="Collapse All"
                                 Padding="4"
+                                Visibility="Collapsed"
                                 Click="CollapseAll_Click">
                             <TextBlock Text="&#xE74B;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
                         </Button>

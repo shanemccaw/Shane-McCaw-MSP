@@ -74,6 +74,26 @@
                     Padding="10,8">
                 <DockPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Git #3701 — real, always-visible collapse/expand arrow for this
+                             (right-side) panel, mirroring #3606's left-chevron convention on
+                             the left sidebar's BtnPinSidebar. This panel sits on the right, so
+                             the arrow points the opposite way: right while expanded (click
+                             collapses it off to the right), left while collapsed (click
+                             re-expands it back in from the right). Drives the exact same
+                             _isPinned/PinToggled mechanism BtnPinQueue (still in the overflow
+                             menu) already used — TogglePin() is the one shared implementation. -->
+                        <Button x:Name="BtnCollapseQueue"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Collapse / Expand Panel"
+                                Padding="4"
+                                Margin="0,0,4,0"
+                                Click="BtnCollapseQueue_Click">
+                            <TextBlock x:Name="CollapseQueueIcon"
+                                       Text="&#xE76C;"
+                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontSize="13"
+                                       VerticalAlignment="Center"/>
+                        </Button>
                         <Ellipse x:Name="QueueDot"
                                  Width="8" Height="8"
                                  Fill="{StaticResource BlueBrush}"
