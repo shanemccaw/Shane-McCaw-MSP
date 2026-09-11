@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <script src="./lucide-local.js"></script>
+  <style>
+    body{margin:0;background:#0d1117}
+    .om-scroll{scrollbar-width:auto;scrollbar-color:#2e3742 transparent}
+    .om-scroll::-webkit-scrollbar{width:13px;height:13px}
+    .om-scroll::-webkit-scrollbar-track{background:transparent}
+    .om-scroll::-webkit-scrollbar-thumb{background:#2e3742;border:3px solid #0f141b;border-radius:8px;min-height:52px}
+    .om-scroll::-webkit-scrollbar-thumb:hover{background:#3d4856}
+    input,button{font-family:inherit}
+  </style>
+</helmet>
+<div style="width:280px;height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <div style="height:36px;flex:none;display:flex;align-items:center;padding:0 14px;border-bottom:1px solid #30363d;width:100%;box-sizing:border-box">
+    <span style="font-size:14px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#8b949e;white-space:nowrap">Chats</span>
+  </div>
+  <div class="om-scroll" style="flex:1;overflow-y:auto;padding:8px;min-height:0;width:280px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px">
+    <div style="position:relative;flex:none">
+      <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);display:inline-flex;width:12px;height:12px;color:#576069"><i data-lucide="locate" width="12" height="12"></i></span>
+      <input value="{{ chatsFindQ }}" readonly="{{ true }}" placeholder="Git # → the chat that ran it…" title="Enter opens Chat Finder in the tool belt" style="width:100%;height:28px;background:#0d1117;border:1px solid #262c36;border-radius:7px;color:#e6edf3;font-size:10.5px;padding:0 26px;outline:none;font-family:Consolas,ui-monospace,Menlo,monospace;box-sizing:border-box">
+      <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:8px;color:#3f4756;font-family:Consolas,ui-monospace,Menlo,monospace;border:1px solid #262c36;border-radius:4px;padding:1px 4px">↵</span>
+    </div>
+    <button style="flex:none;height:30px;border-radius:7px;border:1px solid #3d4856;background:#1e3a5f;color:#cfe4fb;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px" style-hover="background:#25497a;border-color:#4d648a"><span style="display:inline-flex;width:13px;height:13px"><i data-lucide="plus" width="13" height="13"></i></span><span>New Chat</span><span style="display:inline-flex;width:11px;height:11px;transform:rotate(180deg)"><i data-lucide="chevron-down" width="11" height="11"></i></span></button>
+    <div style="flex:none;background:#0e1420;border:1px solid #262c36;border-radius:8px;overflow:hidden">
+      <div style="padding:8px 10px 6px;font-size:9.5px;color:#8b949e;line-height:1.45;border-bottom:1px solid #1a1f27">Which feature is this chat about? The chat gets filed under it, so builds and issues from the conversation land in the right place.</div>
+      <sc-for list="{{ newChatAnchors }}" as="na" hint-placeholder-count="6">
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;cursor:pointer;border-bottom:1px solid #1a1f27" style-hover="background:#161b22">
+          <span style="{{ na.pillStyle }}">{{ na.pillLabel }}</span>
+          <span style="font-size:10px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">{{ na.label }}</span>
+        </div>
+      </sc-for>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer" style-hover="background:#161b22">
+        <span style="width:7px;height:7px;border-radius:99px;flex:none;border:1px dashed #4d5566"></span>
+        <span style="font-size:11px;font-weight:600;color:#8b949e;flex:1">No feature yet — decide later</span>
+      </div>
+    </div>
+    <sc-for list="{{ epics }}" as="ce" hint-placeholder-count="4">
+      <div style="{{ ce.boxStyle }}">
+        <div style="{{ ce.headStyle }}">
+          <div style="{{ ce.tileStyle }}"><span style="display:inline-flex;width:12px;height:12px"><i data-lucide="message-square" width="12" height="12"></i></span></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="{{ ce.numPillStyle }}">#{{ ce.num }}</span>
+              <span style="font-size:10px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ce.name }}</span>
+            </div>
+            <div style="font-size:8.5px;color:#576069;margin-top:1px;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ce.sub }}</div>
+          </div>
+          <span style="{{ ce.chevStyle }}"><i data-lucide="chevron-right" width="12" height="12"></i></span>
+        </div>
+        <sc-if value="{{ ce.hasProg }}" hint-placeholder-val="{{ true }}">
+          <div style="{{ ce.progTrackStyle }}" title="Closed issues out of all issues on this epic">
+            <span style="{{ ce.progBarStyle }}"><span style="{{ ce.progFillStyle }}"></span></span>
+            <span style="{{ ce.progLabelStyle }}">{{ ce.progLabel }}</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ ce.open }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:7px 8px 8px 12px;display:flex;flex-direction:column;gap:6px;position:relative">
+            <div style="{{ ce.railStyle }}"></div>
+            <sc-for list="{{ ce.rows }}" as="cc" hint-placeholder-count="3">
+              <sc-if value="{{ cc.divider }}" hint-placeholder-val="{{ false }}"><div style="{{ cc.divStyle }}">{{ cc.divLabel }}</div></sc-if>
+              <sc-if value="{{ cc.row }}" hint-placeholder-val="{{ true }}">
+                <div style="{{ cc.wrapStyle }}">
+                  <div style="{{ cc.rowStyle }}" style-hover="border-color:#3a4258">
+                    <span style="{{ cc.dotStyle }}"></span>
+                    <span style="{{ cc.nameStyle }}">{{ cc.name }}</span>
+                    <span style="display:inline-flex;flex-direction:column;gap:2px;align-items:flex-end;flex:none">
+                      <span style="{{ cc.ctxLabelStyle }}">{{ cc.ctx }}</span>
+                      <span style="width:34px;height:3px;border-radius:99px;background:#0d1117;overflow:hidden"><span style="{{ cc.ctxFillStyle }}"></span></span>
+                    </span>
+                  </div>
+                </div>
+              </sc-if>
+            </sc-for>
+            <button style="{{ ce.newChatStyle }}" style-hover="filter:brightness(1.3)">+ Continue in a new chat</button>
+          </div>
+        </sc-if>
+      </div>
+    </sc-for>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:280,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    const run = () => { if (window.lucide) { window.lucide.createIcons(); return true; } return false; };
+    if (!run()) { this._it = setInterval(() => { if (run()) clearInterval(this._it); }, 200); }
+  }
+  componentDidUpdate() { if (window.lucide) window.lucide.createIcons(); }
+  componentWillUnmount() { if (this._it) clearInterval(this._it); }
+
+  renderVals() {
+    // Static sample data mirroring the live app's Chats panel (BuildConsole Shell).
+    const RAW = [
+      {num:1202, name:'Build Console', c:'#e2984a', open:true, pct:100,
+        chats:[
+          {name:'[#1202] Build Console', ctx:22, last:'Just now'},
+          {name:'[#1202] Build Console', ctx:64, last:'8m ago'},
+          {name:'[#1202] Build Console', ctx:100, last:'Yesterday'},
+          {name:'[#1202] Build Console', ctx:100, last:'Aug 24'}
+        ]},
+      {num:1485, name:'Portal', c:'#79b3c8', open:false, pct:75,
+        chats:[
+          {name:'[#1485] Portal', ctx:41, last:'22m ago'},
+          {name:'[#1485] Portal', ctx:100, last:'Aug 28'}
+        ], sub:{num:1494, name:'Microsoft Changes', chats:[
+          {name:'[#1494] Microsoft Changes', ctx:55, last:'2h ago'}
+        ]}},
+      {num:1096, name:'Application Core', c:'#7c8cf0', open:false, pct:25,
+        chats:[
+          {name:'[#1096] Application Core', ctx:78, last:'1h ago'},
+          {name:'[#1096] Application Core', ctx:100, last:'Aug 22'}
+        ]},
+      {num:1095, name:'Admin Panel', c:'#c8a86a', open:false, pct:null,
+        chats:[{name:'[#1095] Admin Panel', ctx:34, last:'3d ago'}]},
+      {num:1571, name:'Portal Admin', c:'#37b8b0', open:false, pct:0,
+        chats:[{name:'[#1571] Portal Admin', ctx:12, last:'4d ago'}]},
+      {num:1281, name:'GATE: v1.1 Release', c:'#c084fc', open:false, pct:0,
+        chats:[{name:'[#1281] GATE: v1.1 Release', ctx:18, last:'Yesterday'}]}
+    ];
+
+    const mkRow = (ch, ep, sub) => {
+      const full = ch.ctx >= 100;
+      return {
+        row:true,
+        wrapStyle:(sub ? 'margin-left:12px;' : '') + 'background:#0e1420;border:1px solid ' + (full ? '#1d232c' : ep.c + '38') + ';border-radius:8px;overflow:hidden' + (full ? ';opacity:.62' : ''),
+        rowStyle:'display:flex;align-items:center;gap:6px;padding:6px 8px;cursor:pointer;background:' + ep.c + (full ? '08' : '14'),
+        dotStyle:'width:6px;height:6px;border-radius:99px;flex:none;background:' + (full ? '#3a4258' : ep.c),
+        nameStyle:'flex:1;min-width:0;font-size:11px;font-weight:600;color:' + (full ? '#7d8896' : '#dbe1e6') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis',
+        name:ch.name,
+        ctx:(full ? '900k' : Math.round(ch.ctx * 9) + 'k') + ' / 900k ctx',
+        ctxLabelStyle:'font-size:8px;font-weight:800;white-space:nowrap;font-family:Consolas,ui-monospace,Menlo,monospace;color:' + (full ? '#c08a84' : ch.ctx >= 70 ? '#c9ab72' : '#7fb08a'),
+        ctxFillStyle:'display:block;height:100%;border-radius:99px;width:' + Math.min(100, ch.ctx) + '%;background:' + (full ? '#c08a84' : ch.ctx >= 70 ? '#c8a86a' : '#7fb08a')
+      };
+    };
+
+    const epics = RAW.map(ep => {
+      let rows = ep.chats.map(ch => mkRow(ch, ep, false));
+      if (ep.sub) {
+        rows.push({divider:true, divLabel:'SUB-EPIC #' + ep.sub.num + ' · ' + ep.sub.name.toUpperCase(), divStyle:'font-size:8px;font-weight:800;letter-spacing:.09em;color:' + ep.c + 'aa;padding:4px 2px 0;font-family:Consolas,ui-monospace,Menlo,monospace'});
+        rows = rows.concat(ep.sub.chats.map(ch => mkRow(ch, ep, true)));
+      }
+      const allChats = ep.chats.concat(ep.sub ? ep.sub.chats : []);
+      const barCol = ep.pct >= 100 ? '#7fb08a' : ep.pct >= 50 ? '#c8a86a' : ep.c;
+      return {
+        num:ep.num, name:ep.name, open:ep.open, rows,
+        sub:allChats.length + (allChats.length === 1 ? ' chat' : ' chats') + ' · last ' + allChats[0].last,
+        boxStyle:'background:#12161d;border:1px solid #262c36;border-radius:9px;overflow:hidden',
+        headStyle:'display:flex;align-items:center;gap:8px;padding:8px 9px;cursor:pointer;background:' + ep.c + '0d',
+        numPillStyle:'flex:none;display:inline-flex;align-items:center;padding:1px 8px;border-radius:99px;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:14px;font-weight:800;letter-spacing:-.01em;background:' + ep.c + '1c;border:1px solid ' + ep.c + '4d;color:' + ep.c + 'd9',
+        tileStyle:'width:24px;height:24px;flex:none;border-radius:6px;display:flex;align-items:center;justify-content:center;background:' + ep.c + '1f;border:1px solid ' + ep.c + '55;color:' + ep.c,
+        hasProg:ep.pct !== null, progLabel:ep.pct + '%',
+        progTrackStyle:'display:flex;align-items:center;gap:7px;padding:0 9px 8px',
+        progBarStyle:'flex:1;height:3px;border-radius:99px;background:#0d1117;overflow:hidden',
+        progFillStyle:'display:block;height:100%;border-radius:99px;width:' + ep.pct + '%;background:' + barCol,
+        progLabelStyle:'flex:none;font-size:8px;font-weight:800;font-family:Consolas,ui-monospace,Menlo,monospace;color:' + barCol,
+        chevStyle:'display:inline-flex;width:12px;height:12px;color:#576069;flex:none;transform:rotate(' + (ep.open ? 90 : 0) + 'deg)',
+        railStyle:'position:absolute;left:5px;top:8px;bottom:8px;width:2px;border-radius:99px;background:' + ep.c + '2b',
+        newChatStyle:'height:22px;border-radius:6px;background:none;border:1px dashed ' + ep.c + '45;color:' + ep.c + ';font-size:9.5px;font-weight:700;cursor:pointer;width:100%'
+      };
+    });
+
+    const FEAT_STATE = {
+      focus:{label:'FOCUS', c:'#c084fc', bg:'rgba(163,116,234,.16)', bd:'rgba(163,116,234,.5)'},
+      active:{label:'ACTIVE', c:'#7fb08a', bg:'rgba(95,158,109,.14)', bd:'rgba(95,158,109,.45)'}
+    };
+    const ANCHOR_EPICS = [
+      {num:1202, label:'EPIC: Build Console', state:'focus'},
+      {num:1485, label:'EPIC: MyArchitect', state:'active'},
+      {num:1096, label:'EPIC: Admin Panel', state:'active'},
+      {num:1281, label:'GATE: v1.1 Release', state:'active'}
+    ];
+    const newChatAnchors = ANCHOR_EPICS.map(f => {
+      const st = FEAT_STATE[f.state];
+      return {label:f.label,
+        pillLabel:'#' + f.num,
+        pillStyle:'align-self:flex-start;flex:none;display:inline-flex;align-items:center;padding:1px 7px;border-radius:99px;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:11px;font-weight:800;letter-spacing:-.01em;background:' + st.c + '29;border:1px solid ' + st.c + '66;color:' + st.c};
+    });
+
+    return { chatsFindQ:'', epics, newChatAnchors };
+  }
+}
+
+</script>
+</body>
+</html>
