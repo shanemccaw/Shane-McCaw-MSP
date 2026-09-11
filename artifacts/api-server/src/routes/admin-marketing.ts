@@ -3510,61 +3510,6 @@ Return JSON:
   }
 });
 
-// ─── AI Money Tasks (revenue-focused task generation) ─────────────────────────
-
-router.post("/admin/marketing/generate/money-tasks", requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const icpCtx = await buildICPContext();
-    const hotLeads = await db.select({ name: leadsTable.name, company: leadsTable.company, score: leadsTable.score })
-      .from(leadsTable).where(gte(leadsTable.score, 40)).orderBy(desc(leadsTable.score)).limit(5);
-
-    const prompt = `You are a revenue-focused advisor for a Microsoft 365 consulting firm.
-${icpCtx}
-Hot leads right now: ${hotLeads.map(l => `${l.name} (${l.company ?? "?"}, score ${l.score})`).join("; ") || "none yet"}
-
-Generate 5-7 revenue-generating tasks (tasks that directly lead to income). Each task should be specific, actionable, and completable today or this week.
-
-Respond with ONLY a raw JSON array — no prose, no markdown fences. Schema:
-[{"title":"string","description":"string"}]`;
-
-    // Prefill assistant turn with "[" to force JSON array output (no prose preamble)
-    const msg = await anthropic.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 800,
-      messages: [
-        { role: "user", content: prompt },
-        { role: "assistant", content: "[" },
-      ],
-    });
-    const continuation = msg.content[0]?.type === "text" ? msg.content[0].text : "]";
-    const raw = "[" + continuation;
-    const aiTasks = parseAiJson(raw, z.array(z.object({ title: z.string(), description: z.string() })));
-
-    // Get current max order for money_task column
-    const [maxOrderRow] = await db.select({ maxOrder: sql<number>`COALESCE(MAX(${marketingTasksTable.order}), 0)` })
-      .from(marketingTasksTable).where(eq(marketingTasksTable.status, "money_task"));
-    let nextOrder = Number(maxOrderRow?.maxOrder ?? 0) + 1;
-
-    // Insert each task into the DB with status='money_task' and return persisted rows
-    const insertedTasks: (typeof marketingTasksTable.$inferSelect)[] = [];
-    for (const t of aiTasks) {
-      const [inserted] = await db.insert(marketingTasksTable).values({
-        title: t.title,
-        description: t.description,
-        status: "money_task",
-        order: nextOrder++,
-      }).returning();
-      if (inserted) insertedTasks.push(inserted);
-    }
-
-    res.json(insertedTasks);
-  } catch (e) {
-    if (e instanceof AiResponseError) { req.log.warn({ err: e }, "AI parse failed on /generate/money-tasks"); res.json(aiErrorResponse(e)); return; }
-    req.log.error({ err: e }, "POST /admin/marketing/generate/money-tasks failed");
-    res.status(500).json({ error: String(e) });
-  }
-});
-
 // ─── AI Analytics Insights ────────────────────────────────────────────────────
 
 // Legacy alias — kept so any cached clients that hit the old path still work
