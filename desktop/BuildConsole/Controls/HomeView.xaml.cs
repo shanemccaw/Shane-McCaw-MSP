@@ -48,7 +48,6 @@ namespace BuildConsole.Controls
         public event EventHandler? BuildWatchRequested;
         public event EventHandler? TestRunnerRequested;
         public event EventHandler? ReplitRequested;
-        public event EventHandler? ImmersiveFocusRequested;
         public event EventHandler? DeployRequested;
         public event EventHandler? GitBoardRequested;
         public event EventHandler? SettingsRequested;
@@ -169,7 +168,6 @@ namespace BuildConsole.Controls
                 double targetWidth = Math.Max(0, Math.Min(260, (260.0 * pct) / 100.0));
                 FocusProgressBar.Width = targetWidth;
 
-                BtnImmersiveResume.Visibility = Visibility.Visible;
                 BtnMilestoneDetail.Visibility = Visibility.Visible;
             }
             else
@@ -181,8 +179,6 @@ namespace BuildConsole.Controls
                 FocusPointsText.Text = "0 pts";
                 StatPointsValue.Text = "0";
                 StatMilestonePercent.Text = "--";
-
-                BtnImmersiveResume.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -688,7 +684,6 @@ namespace BuildConsole.Controls
         private void BtnQuickBuildWatch_Click(object sender, RoutedEventArgs e) => BuildWatchRequested?.Invoke(this, EventArgs.Empty);
         private void BtnQuickTestRunner_Click(object sender, RoutedEventArgs e) => TestRunnerRequested?.Invoke(this, EventArgs.Empty);
         private void BtnQuickReplit_Click(object sender, RoutedEventArgs e) => ReplitRequested?.Invoke(this, EventArgs.Empty);
-        private void BtnImmersiveResume_Click(object sender, RoutedEventArgs e) => ImmersiveFocusRequested?.Invoke(this, EventArgs.Empty);
         private void BtnMilestoneDetail_Click(object sender, RoutedEventArgs e)
         {
             if (FocusModeService.Instance.ActiveMilestoneNumber is int num)

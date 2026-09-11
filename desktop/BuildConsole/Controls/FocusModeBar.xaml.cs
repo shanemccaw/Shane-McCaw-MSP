@@ -25,8 +25,6 @@ namespace BuildConsole.Controls
         public event Action<int>? MilestoneOpenRequested;
         /// <summary>The achievements chip was clicked — show the earned list.</summary>
         public event Action? AchievementsRequested;
-        /// <summary>The ⛶ Immersive button was clicked — MainWindow engages the full-screen immersive view.</summary>
-        public event Action? ImmersiveRequested;
         /// <summary>An in-progress chat chip was clicked in the bar — open/switch to that chat tab.</summary>
         public event Action<PersistedInProgressChat>? InProgressChatActivated;
         /// <summary>Git #2663 — "Replace with active tab" was chosen on an in-progress chip:

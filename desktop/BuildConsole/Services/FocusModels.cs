@@ -32,8 +32,10 @@ namespace BuildConsole.Services
 
     /// <summary>One bounded, low-commitment thing to do — always scoped to the ACTIVE
     /// milestone (never an off-milestone side quest, by design). Backed by a real open
-    /// issue. Surfaced only by <c>FocusImmersiveView</c>'s empty state (#1874 removed the
-    /// downtime band this originally fed).</summary>
+    /// issue. (#1874 removed the downtime band this originally fed; #3568 removed the
+    /// Immersive view that later consumed it — currently unused, kept as-is per #3568's
+    /// own explicit scope, which left every FocusModeService member other than the
+    /// Immersive-only ones untouched.)</summary>
     public class FocusSuggestion
     {
         public int IssueNumber { get; set; }
@@ -113,10 +115,6 @@ namespace BuildConsole.Services
         public int? ActiveMilestoneNumber { get; set; }
         public string ActiveMilestoneTitle { get; set; } = "";
         public bool IsActive { get; set; }
-        /// <summary>Whether the dedicated full-screen immersive Focus view was engaged when the app last
-        /// closed — restored on next launch (only if <see cref="IsActive"/>) so a focus session resumes
-        /// exactly where it was left, matching Shane's "get me back right where I was" ask.</summary>
-        public bool ImmersiveActive { get; set; }
         public int Points { get; set; }
         public List<FocusAchievement> Achievements { get; set; } = new();
         public List<FocusClosedSample> ClosedSamples { get; set; } = new();
@@ -127,7 +125,7 @@ namespace BuildConsole.Services
         /// "inbox zero" achievement only on a real &gt;0 -&gt; 0 transition.</summary>
         public Dictionary<int, int> TodoBaseline { get; set; } = new();
         /// <summary>Chats marked as In Progress (e.g. LinkedIn posts, ad-hoc tasks, side chats)
-        /// that remain quickly accessible in Focus and Focus Immersive modes.</summary>
+        /// that remain quickly accessible while in Focus mode.</summary>
         public List<PersistedInProgressChat> InProgressChats { get; set; } = new();
     }
 }

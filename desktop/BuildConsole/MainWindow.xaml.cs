@@ -3832,7 +3832,6 @@ namespace BuildConsole
             home.BuildWatchRequested += (s, e) => ToggleBuildWatch();
             home.TestRunnerRequested += (s, e) => EnsureTestRunnerWindow(background: false).Show();
             home.ReplitRequested += (s, e) => OpenOrFocusReplitWorkspaceTabInternal();
-            home.ImmersiveFocusRequested += (s, e) => BuildConsole.Services.FocusModeService.Instance.EnterImmersive();
             home.DeployRequested += async (s, e) => await TriggerUpdateAsync(forceDeploy: true);
             home.GitBoardRequested += (s, e) => ActivityBar.SelectGitBoard();
             home.SettingsRequested += (s, e) => OpenSettingsTab();
@@ -4117,32 +4116,6 @@ namespace BuildConsole
             }
             catch { }
             return Guid.NewGuid().ToString();
-        }
-
-        public FrameworkElement BuildChatWebViewWrapped(BuildConsole.Services.BoardChat chat)
-        {
-            var wv = BuildChatWebView(chat);
-            return CreateChatContextWrapper(wv);
-        }
-
-        /// <summary>
-        /// Local #47 — resolve the Claude chat linked to a child issue and return a
-        /// ready-to-host chat WebView2 wrapper for the immersive Focus view's OWN centre panel.
-        /// Returns null (and toasts) when no chat is linked yet, so the immersive view can
-        /// fall back to its own calm empty state. Crucially this does NOT touch the normal
-        /// tab bar and does NOT exit immersive mode — that exit-then-open-in-main-tabs
-        /// behaviour (via OpenChatForIssue) was the whole bug this fixes.
-        /// </summary>
-        public FrameworkElement? BuildImmersiveChatView(int githubNumber)
-        {
-            var chat = LeftSidebar.FindChatForIssue(githubNumber);
-            if (chat == null)
-            {
-                ToastEngine.Warning("Open Chat", $"No chat linked to #{githubNumber} yet.");
-                return null;
-            }
-            var wv = BuildChatWebView(chat);
-            return CreateChatContextWrapper(wv);
         }
 
         /// <summary>Git #874 — "Where you left off" click: reconstruct the BoardChat identity from the persisted snapshot and open/focus it through the same OpenChatTab path (dedupes on ConversationId).</summary>

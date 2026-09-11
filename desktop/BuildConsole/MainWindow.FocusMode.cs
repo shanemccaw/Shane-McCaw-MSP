@@ -28,7 +28,6 @@ namespace BuildConsole
                 _focusBar = new FocusModeBar();
                 _focusBar.MilestoneOpenRequested += OnFocusMilestoneOpen;
                 _focusBar.AchievementsRequested += OnFocusAchievementsRequested;
-                _focusBar.ImmersiveRequested += () => FocusModeService.Instance.EnterImmersive();
                 _focusBar.InProgressChatActivated += item =>
                 {
                     var boardChat = LeftSidebar.FindChatByConversationId(item.ConversationId) ?? new BuildConsole.Services.BoardChat
@@ -61,11 +60,6 @@ namespace BuildConsole
                     Dispatcher.Invoke(() => ToastEngine.Success($"{a.Emoji} {a.Title}", a.Detail));
 
                 FocusModeService.Instance.Start();
-
-                // Wire the dedicated immersive full-screen view on top of everything above (runs AFTER
-                // Start() so the service's persisted state — including whether immersive was engaged — is
-                // already loaded and can be restored).
-                InitFocusImmersive();
 
                 ActivityLog.Log("focus-mode", "Focus Mode wired into the shell");
             }

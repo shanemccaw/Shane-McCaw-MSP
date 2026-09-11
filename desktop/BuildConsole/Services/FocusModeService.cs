@@ -22,9 +22,10 @@ namespace BuildConsole.Services
     /// detection, and the context capture/auto-restore behind it were removed. Shane never
     /// used it and it had no close affordance, appearing exactly when all 8 build slots
     /// were busy — the moment he had the least screen to spare. <see cref="Suggestions"/>
-    /// / <see cref="RecomputeSuggestions"/> survive, kept alive purely as the data source
-    /// for <c>FocusImmersiveView</c>'s own empty-state suggestion chips — a different
-    /// surface Shane didn't ask to remove.)
+    /// / <see cref="RecomputeSuggestions"/> originally survived that removal purely as the
+    /// data source for the Immersive view's own empty-state suggestion chips; #3568 removed
+    /// Immersive itself but left this member untouched per that issue's own explicit scope
+    /// — currently unconsumed.)
     ///
     /// Everything is single-window: this raises events; MainWindow / FocusModeBar react
     /// inside the existing multi-pane shell. Nothing here opens a window.
@@ -70,17 +71,12 @@ namespace BuildConsole.Services
         public int Points => _state.Points;
         public IReadOnlyList<FocusMilestone> Milestones => _milestones;
         public IReadOnlyList<FocusAchievement> Achievements => _state.Achievements;
-        /// <summary>On-milestone quick-task suggestions. No longer used by the (removed) downtime band —
-        /// kept purely as the data source for <c>FocusImmersiveView.ShowEmptyState</c>'s own suggestion
-        /// chips (#1874). Recomputed on <see cref="Activate"/> and every <see cref="UpdateBoardSnapshot"/>.</summary>
+        /// <summary>On-milestone quick-task suggestions. No longer used by the (removed) downtime band
+        /// (#1874) or by the (removed, #3568) Immersive view's empty state — currently unconsumed, kept
+        /// per #3568's explicit scope. Recomputed on <see cref="Activate"/> and every
+        /// <see cref="UpdateBoardSnapshot"/>.</summary>
         public IReadOnlyList<FocusSuggestion> Suggestions { get; private set; } = new List<FocusSuggestion>();
         public FocusProgress Progress { get; private set; } = new();
-
-        /// <summary>Whether the dedicated full-screen immersive Focus view is engaged right now (a real
-        /// window-covering takeover, distinct from <see cref="IsActive"/> which is just "a milestone is
-        /// focused / panels are filtered"). You can be focused without being immersive (the bar shows);
-        /// immersive requires a focused milestone to zoom into.</summary>
-        public bool ImmersiveActive => _state.IsActive && _state.ImmersiveActive && _state.ActiveMilestoneNumber.HasValue;
 
         /// <summary>The active "Epic" (focus milestone)'s real child issues — every board issue under the
         /// active milestone, ordered the way the immersive view lists them: real GitHub epics first (they
@@ -148,9 +144,6 @@ namespace BuildConsole.Services
         public event Action? FilterChanged;
         /// <summary>A real achievement was just unlocked — pop a tasteful toast.</summary>
         public event Action<FocusAchievement>? AchievementUnlocked;
-        /// <summary>The immersive full-screen view was engaged / dismissed — MainWindow shows or hides the
-        /// window-covering overlay in response.</summary>
-        public event Action? ImmersiveChanged;
         /// <summary>Fired when the in-progress chat list is toggled/updated.</summary>
         public event Action? InProgressChatsChanged;
         /// <summary>N real issue(s) just closed under the active milestone (a positive closed-count delta vs
@@ -217,51 +210,10 @@ namespace BuildConsole.Services
             _state.IsActive = false;
             // keep ActiveMilestoneNumber/Title as the "last focused" for quick re-entry;
             // IsActive is the switch panels read.
-            bool wasImmersive = _state.ImmersiveActive;
-            _state.ImmersiveActive = false; // can't be immersive in an epic you're no longer focused on
             ActivityLog.Log("focus-mode", $"milestone deactivated (was '{was}') — all panels unfiltered");
             Save();
-            if (wasImmersive) ImmersiveChanged?.Invoke();
             RaiseFilterChanged();
             RaiseStateChanged();
-        }
-
-        // ================================================================
-        // Immersive full-screen view (the dedicated zoom-in on the Epic)
-        // ================================================================
-
-        /// <summary>Engage the dedicated full-screen immersive view — the window-covering "video-game-esque"
-        /// zoom onto the one Epic being worked. No-op unless a milestone is actually focused (there's nothing
-        /// to be immersive about otherwise). MainWindow shows the overlay on <see cref="ImmersiveChanged"/>.</summary>
-        public void EnterImmersive()
-        {
-            if (!IsActive)
-            {
-                ActivityLog.Log("focus-mode", "enter-immersive ignored — no milestone is focused to zoom into");
-                return;
-            }
-            if (_state.ImmersiveActive) return;
-            _state.ImmersiveActive = true;
-            ActivityLog.Log("focus-mode", $"entered immersive view — full-screen zoom on '{_state.ActiveMilestoneTitle}' (#{_state.ActiveMilestoneNumber})");
-            Save();
-            ImmersiveChanged?.Invoke();
-        }
-
-        /// <summary>Dismiss the immersive view, dropping back to the normal multi-pane shell. The milestone
-        /// stays focused (the bar remains) — this only collapses the full-screen takeover.</summary>
-        public void ExitImmersive()
-        {
-            if (!_state.ImmersiveActive) return;
-            _state.ImmersiveActive = false;
-            ActivityLog.Log("focus-mode", "exited immersive view — back to the normal shell (milestone still focused)");
-            Save();
-            ImmersiveChanged?.Invoke();
-        }
-
-        /// <summary>Toggle the immersive view (the Ctrl+Shift+F hotkey and the bar's ⛶ button use this).</summary>
-        public void ToggleImmersive()
-        {
-            if (ImmersiveActive) ExitImmersive(); else EnterImmersive();
         }
 
         // ================================================================
@@ -528,7 +480,8 @@ namespace BuildConsole.Services
 
         // ================================================================
         // Quick-task suggestions — real on-milestone data, no downtime tie-in (#1874).
-        // Kept solely as the data source for FocusImmersiveView's empty-state chips.
+        // Originally the data source for the Immersive view's empty-state chips; that
+        // view was removed in #3568, which left this member untouched per its own scope.
         // ================================================================
 
         private void RecomputeSuggestions()

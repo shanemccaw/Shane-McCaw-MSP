@@ -257,10 +257,6 @@
                                                    FontSize="11" Foreground="{StaticResource Subtext0Brush}"
                                                    VerticalAlignment="Center"/>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                            <Button x:Name="BtnImmersiveResume" Content="⛶ Immersive"
-                                                    Style="{StaticResource PrimaryButton}" Height="24" Padding="10,0"
-                                                    FontSize="11" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0"
-                                                    Click="BtnImmersiveResume_Click" ToolTip="Enter immersive distraction-free view"/>
                                             <Button x:Name="BtnMilestoneDetail" Content="View Tab"
                                                     Style="{StaticResource SecondaryButton}" Height="24" Padding="8,0"
                                                     FontSize="11" Cursor="Hand" Click="BtnMilestoneDetail_Click"/>

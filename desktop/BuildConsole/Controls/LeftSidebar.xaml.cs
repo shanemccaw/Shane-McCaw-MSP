@@ -718,7 +718,7 @@ namespace BuildConsole.Controls
             // Git #2540 — nothing told the Chats panel to re-render when Focus gets
             // engaged/disengaged, so it kept showing the pre-Focus legacy all-epics view
             // (or vice versa) until some unrelated trigger happened to repaint it. Same
-            // subscribe/unsubscribe pattern FocusImmersiveView/HomeView already use.
+            // subscribe/unsubscribe pattern HomeView already uses.
             try { FocusModeService.Instance.StateChanged += OnFocusStateChanged; } catch { }
 
             Unloaded += (_, _) =>
@@ -2191,11 +2191,9 @@ namespace BuildConsole.Controls
             // the focus-filtered render drew nothing. Detect that stale-focus state here
             // — using the real, just-built tree milestone set — and auto-release Focus so
             // the board falls back to showing everything instead of blanking. Guarded on
-            // a non-empty `_milestones` (never fire on a cold/failed fetch) and left
-            // alone while the immersive full-screen view is up (don't yank it out from
-            // under Shane mid-celebration; the next refresh releases it once he exits).
+            // a non-empty `_milestones` (never fire on a cold/failed fetch).
             var focusSvc = BuildConsole.Services.FocusModeService.Instance;
-            if (focusSvc.IsActive && !focusSvc.ImmersiveActive && _milestones.Count > 0
+            if (focusSvc.IsActive && _milestones.Count > 0
                 && !_milestones.Any(m => focusSvc.IsMilestoneInFocus(m.GithubNumber, m.Title)))
             {
                 ActivityLog.Log("focus-mode",
