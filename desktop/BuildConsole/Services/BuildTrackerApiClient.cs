@@ -70,6 +70,15 @@ namespace BuildConsole.Services
         /// own NOT NULL DEFAULT already guarantees for every real row.</summary>
         public string? RepoOwner { get; set; }
         public string? RepoName { get; set; }
+        /// <summary>Git #3607 — soft-archive (matches bt_chats' existing archived/archivedAt pattern):
+        /// true once <see cref="FalseDoneReconciler"/>'s auto-archive pass confirmed this terminal
+        /// 'canceled' row's real GitHub issue is closed, or that it has no real GitHub issue at all (a
+        /// "local #N" build). NOT a delete — the row stays real and queryable; this only flags it out
+        /// of the default Canceled board view. Null/false (the DB default) for every pre-existing row
+        /// and for a query that didn't select this optional trailing column (see MapRow's #1384
+        /// fixed-ordinal contract).</summary>
+        public bool Archived { get; set; }
+        public DateTimeOffset? ArchivedAt { get; set; }
         /// <summary>Real "owner/repo" this queue row belongs to — what <see cref="BuildConsoleSettings.IsRepoPaused"/>
         /// is checked against for the per-repo pause control (#3583).</summary>
         public string OwnerRepo =>

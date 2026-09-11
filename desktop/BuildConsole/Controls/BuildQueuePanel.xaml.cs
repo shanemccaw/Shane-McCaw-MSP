@@ -1623,8 +1623,11 @@ namespace BuildConsole.Controls
                 "Done"     => items.Where(i => i.Status == "done" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
                 // Git #3599 — exclusive to a GENUINE cancel now; a self-blocked "⏳ WAITING" row
                 // (IsWaitingSelfBlocked) moved to the working filters above per the real decision
-                // on this issue.
-                "Canceled" => items.Where(i => i.Status == "canceled" && !IsWaitingSelfBlocked(i) && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
+                // on this issue. Git #3607 — also excludes a row FalseDoneReconciler has soft-archived
+                // (closed-issue or no-issue-at-all canceled rows); it stays a real row in the DB, just
+                // out of this default view. #3611 (blocked by this issue) adds a dedicated "Archive"
+                // filter that surfaces exactly these via `i.Archived`.
+                "Canceled" => items.Where(i => i.Status == "canceled" && !i.Archived && !IsWaitingSelfBlocked(i) && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
                 _          => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             };
 

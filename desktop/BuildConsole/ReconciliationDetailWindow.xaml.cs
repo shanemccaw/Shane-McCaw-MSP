@@ -61,11 +61,14 @@ namespace BuildConsole
             int reset = notices.Count(n => n.Kind == ReconciliationActionKind.FalseDoneReset
                                         || n.Kind == ReconciliationActionKind.BlockedReset);
             int cleared = notices.Count(n => n.Kind == ReconciliationActionKind.StaleCanceledResolved);
+            int archived = notices.Count(n => n.Kind == ReconciliationActionKind.CanceledArchivedClosedIssue
+                                            || n.Kind == ReconciliationActionKind.CanceledArchivedNoIssue);
 
             var parts = new List<string>();
             if (reverted > 0) parts.Add($"{reverted} reverted to verifying");
             if (reset > 0) parts.Add($"{reset} reset for re-dispatch");
             if (cleared > 0) parts.Add($"{cleared} stale canceled cleared (issue closed)");
+            if (archived > 0) parts.Add($"{archived} canceled row(s) archived");
 
             string tail = parts.Count > 0 ? " — " + string.Join(", ", parts) + "." : ".";
             return $"{notices.Count} build{(notices.Count == 1 ? "" : "s")} were auto-reconciled by the "

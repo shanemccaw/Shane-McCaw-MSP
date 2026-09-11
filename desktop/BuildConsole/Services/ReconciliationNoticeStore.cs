@@ -22,6 +22,10 @@ namespace BuildConsole.Services
         FalseDoneReset,
         /// <summary>Shape C (#3521): a stale 'canceled' row whose GitHub issue is now CLOSED (resolved on GitHub, often weeks ago) → moved 'canceled' → 'superseded' so it drops out of the active Canceled list instead of lingering as if it were current, actionable canceled work.</summary>
         StaleCanceledResolved,
+        /// <summary>Shape D, Rule A (#3607): a terminal 'canceled' row with a real GitHub issue confirmed CLOSED (bt_issue_mirror, live-checked when the mirror is missing/stale) → soft-archived (archived=true), NOT deleted — drops out of the default Canceled board view, row stays queryable.</summary>
+        CanceledArchivedClosedIssue,
+        /// <summary>Shape D, Rule B (#3607): a terminal 'canceled' row with NO real GitHub issue at all (null or the Git #1645 negative "local #N" sentinel) → soft-archived directly, no GitHub-side check possible.</summary>
+        CanceledArchivedNoIssue,
     }
 
     /// <summary>
@@ -55,6 +59,8 @@ namespace BuildConsole.Services
             ReconciliationActionKind.FalseDoneReset => "reset for re-dispatch",
             ReconciliationActionKind.BlockedReset => "reset for re-dispatch (BLOCKED)",
             ReconciliationActionKind.StaleCanceledResolved => "cleared (issue closed)",
+            ReconciliationActionKind.CanceledArchivedClosedIssue => "archived (issue closed)",
+            ReconciliationActionKind.CanceledArchivedNoIssue => "archived (no linked issue)",
             _ => "reconciled",
         };
     }

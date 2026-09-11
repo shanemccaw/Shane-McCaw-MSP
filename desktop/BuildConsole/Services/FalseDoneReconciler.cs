@@ -131,6 +131,43 @@ namespace BuildConsole.Services
                 }
             }
 
+            // ── Shape D (Git #3607): terminal 'canceled' rows with no real pruning mechanism ─────────────
+            // Two independent rules, both a SOFT ARCHIVE (bt_build_queue.archived/archived_at, matching
+            // bt_chats' existing exact pattern) rather than a delete — the row and its full history stay
+            // real and queryable; this only drops it out of the default Canceled board view. Deliberately
+            // run here, BEFORE the open-issue snapshot fetch below (and its several fail-closed early
+            // returns for Shape B/C) — neither rule below depends on that fetch, so a snapshot hiccup must
+            // never also suppress this independent pass.
+            //   • Rule B (no real GitHub issue at all — null, or the Git #1645 negative "local #N"
+            //     sentinel): archived directly, nothing to check.
+            //   • Rule A (a real GitHub issue, confirmed CLOSED): prefers bt_issue_mirror; falls back to a
+            //     live single-issue check when the mirror has no record or looks stale, per the issue's
+            //     own explicit rule. Never archives on ambiguous/missing state data.
+            // Overlaps in scope, not in effect, with Shape C below (Git #3521, which already flips a
+            // canceled+github-linked+closed-issue row to status='superseded' off the open-issue snapshot):
+            // Shape C runs later in this same pass and will usually already have claimed anything Rule A
+            // would also catch (its row no longer matches status='canceled' by the time Rule A's own query
+            // below runs) — Rule A is not dead code, it is the mirror-preferred, snapshot-independent net
+            // for whatever Shape C's approach misses, and both write through the same idempotent
+            // status='canceled' guard so there is no double-processing risk either way.
+            try
+            {
+                reconciled += await ArchiveCanceledNoIssueRowsAsync(db, log, actions);
+            }
+            catch (Exception ex)
+            {
+                log($"Git #3607 canceled-archive (Rule B, no issue): FAILED reading candidate rows: {ex.Message}");
+            }
+
+            try
+            {
+                reconciled += await ArchiveCanceledClosedIssueRowsAsync(db, gh, log, actions);
+            }
+            catch (Exception ex)
+            {
+                log($"Git #3607 canceled-archive (Rule A, closed issue): FAILED reading candidate rows: {ex.Message}");
+            }
+
             // ── Shape B (Git #3513): rows at 'done' whose real GitHub issue is still OPEN ───────────────
             // A verifying row whose issue is open is the CORRECT waiting state, so this considers 'done'
             // rows only. Skip a row already handled by Shape A above (its bookend said BLOCKED).
@@ -284,6 +321,126 @@ namespace BuildConsole.Services
             }
 
             return new ReconciliationResult(reconciled, actions);
+        }
+
+        /// <summary>Git #3607, Rule B — how long a bt_issue_mirror record is trusted before Rule A falls
+        /// back to a live check instead. Matches the existing 30-minute staleness convention this
+        /// codebase already uses elsewhere (<see cref="UsageAutomationService.StaleAfter"/>) — the
+        /// mirror's own incremental sync runs on a 5-minute persisted interval when healthy, so 30
+        /// minutes comfortably covers a normal cycle or two before treating a record as untrustworthy.</summary>
+        private static readonly TimeSpan MirrorStaleAfter = TimeSpan.FromMinutes(30);
+
+        /// <summary>
+        /// Git #3607, Rule B — every terminal 'canceled' row with NO real GitHub issue at all is
+        /// soft-archived directly; there is nothing to check on GitHub. Idempotent via
+        /// <see cref="BuildQueuePostgresClient.ArchiveCanceledQueueRowAsync"/>'s own guard.
+        /// </summary>
+        private static async Task<int> ArchiveCanceledNoIssueRowsAsync(BuildQueuePostgresClient db, Action<string> log, List<ReconciliationNotice> actions)
+        {
+            var ids = await db.GetCanceledUnarchivedNoIssueRowIdsAsync();
+            int count = 0;
+            foreach (var id in ids)
+            {
+                try
+                {
+                    int changed = await db.ArchiveCanceledQueueRowAsync(id);
+                    if (changed == 0) continue; // already moved on (concurrent watcher/refresh) — nothing to do
+                    count++;
+                    string reason = $"Queue row {id} was 'canceled' with no real GitHub issue at all (null, or the " +
+                        "Git #1645 negative \"local #N\" sentinel) — nothing to check on GitHub, archived directly " +
+                        "(soft, not deleted; row stays queryable).";
+                    log("Git #3607 canceled-archive (Rule B, no issue): " + reason);
+                    actions.Add(new ReconciliationNotice
+                    {
+                        IssueNumber = 0,
+                        QueueRowId = id,
+                        PreviousStatus = "canceled",
+                        Kind = ReconciliationActionKind.CanceledArchivedNoIssue,
+                        BoardMovedToBacklog = false,
+                        Reason = reason,
+                    });
+                }
+                catch (Exception ex)
+                {
+                    log($"Git #3607 canceled-archive (Rule B, no issue): FAILED for row {id}: {ex.Message}");
+                }
+            }
+            return count;
+        }
+
+        /// <summary>
+        /// Git #3607, Rule A — every terminal 'canceled' row with a real GitHub issue number is checked
+        /// against that issue's real state and soft-archived only on a CONFIRMED close. Prefers
+        /// <see cref="GitHubIssueMirror"/> when it has a fresh-enough record; falls back to a real live
+        /// single-issue check (<see cref="GitHubApiClient.GetIssueAsync"/>) when the mirror has no record
+        /// or is older than <see cref="MirrorStaleAfter"/>. Never archives on ambiguous or missing state
+        /// data — a mirror miss AND a failed/not-found live check simply leaves the row alone, logged.
+        /// </summary>
+        private static async Task<int> ArchiveCanceledClosedIssueRowsAsync(BuildQueuePostgresClient db, GitHubApiClient gh, Action<string> log, List<ReconciliationNotice> actions)
+        {
+            var rows = await db.GetCanceledUnarchivedWithIssueRowsAsync();
+            if (rows.Count == 0) return 0;
+
+            var mirrored = await GitHubIssueMirror.GetManyAsync(rows.Select(r => r.GithubNumber).Distinct().ToList());
+            var nowUtc = DateTime.UtcNow;
+            int count = 0;
+
+            foreach (var row in rows)
+            {
+                try
+                {
+                    bool closed;
+                    string source;
+
+                    if (mirrored.TryGetValue(row.GithubNumber, out var mirror) && (nowUtc - mirror.LastSyncedAt) <= MirrorStaleAfter)
+                    {
+                        closed = mirror.IsClosed;
+                        source = $"bt_issue_mirror (synced {mirror.LastSyncedAt:u})";
+                    }
+                    else if (gh != null)
+                    {
+                        // Mirror missing or stale (the mirror's own real, known coverage/freshness gaps) —
+                        // fall back to a live check rather than guessing or skipping silently.
+                        var live = await gh.GetIssueAsync(row.GithubNumber);
+                        if (live == null)
+                        {
+                            log($"Git #3607 canceled-archive (Rule A): #{row.GithubNumber} — mirror missing/stale AND live check failed/not-found; leaving row {row.Id} alone (never archive on ambiguous data).");
+                            continue;
+                        }
+                        closed = string.Equals(live.State, "closed", StringComparison.OrdinalIgnoreCase);
+                        source = "live GitHub check (mirror missing/stale)";
+                    }
+                    else
+                    {
+                        log($"Git #3607 canceled-archive (Rule A): #{row.GithubNumber} — mirror missing/stale and no GitHub client available; leaving row {row.Id} alone (never archive on ambiguous data).");
+                        continue;
+                    }
+
+                    if (!closed)
+                        continue; // confirmed open, or genuinely undetermined — never archived
+
+                    int changed = await db.ArchiveCanceledQueueRowAsync(row.Id);
+                    if (changed == 0) continue; // already moved on — e.g. Shape C already superseded this exact row
+                    count++;
+                    string archiveReason = $"Queue row {row.Id} (#{row.GithubNumber}) was 'canceled' and GH #{row.GithubNumber} " +
+                        $"is confirmed CLOSED via {source} — archived (soft, not deleted; row stays queryable).";
+                    log("Git #3607 canceled-archive (Rule A, closed issue): " + archiveReason);
+                    actions.Add(new ReconciliationNotice
+                    {
+                        IssueNumber = row.GithubNumber,
+                        QueueRowId = row.Id,
+                        PreviousStatus = "canceled",
+                        Kind = ReconciliationActionKind.CanceledArchivedClosedIssue,
+                        BoardMovedToBacklog = false,
+                        Reason = archiveReason,
+                    });
+                }
+                catch (Exception ex)
+                {
+                    log($"Git #3607 canceled-archive (Rule A, closed issue): FAILED for row {row.Id} (#{row.GithubNumber}): {ex.Message}");
+                }
+            }
+            return count;
         }
 
         /// <summary>

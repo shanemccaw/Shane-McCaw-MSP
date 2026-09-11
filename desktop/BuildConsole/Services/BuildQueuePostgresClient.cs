@@ -213,15 +213,18 @@ namespace BuildConsole.Services
         /// </summary>
         public async Task<List<QueueItem>> GetQueueAsync()
         {
-            // Git #2119 — superseded_by_id is appended LAST (ordinal 21), read by MapRow
-            // via its FieldCount>21 guard. Only this display query needs it; every other
-            // SELECT feeding MapRow can safely omit it (see MapRow's ordinal note).
+            // Git #2119/#3583/#3607 — optional trailing ordinals, strictly append-only per the
+            // #1384 fixed-ordinal contract (MapRow reads each by a fixed absolute ordinal, so a
+            // later one can only be added by also selecting every earlier one, in the SAME order,
+            // even where this specific query has no other use for it): superseded_by_id (21),
+            // repo_owner (22), repo_name (23), then Git #3607's new archived (24) / archived_at (25)
+            // — needed here so the board's Canceled filter can read QueueItem.Archived.
             const string sql = @"
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
                        originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at,
-                       superseded_by_id
+                       superseded_by_id, repo_owner, repo_name, archived, archived_at
                 FROM bt_build_queue
                 ORDER BY created_at ASC";
 
@@ -1283,6 +1286,77 @@ namespace BuildConsole.Services
                    SET status = @superseded, updated_at = NOW()
                  WHERE id = @id AND status = 'canceled'", conn);
             cmd.Parameters.AddWithValue("@superseded", SupersededStatus);
+            cmd.Parameters.AddWithValue("@id", id);
+            return await cmd.ExecuteNonQueryAsync();
+        }
+
+        // ── Canceled auto-archive (Git #3607) ──────────────────────────────────────
+        /// <summary>
+        /// Git #3607, Rule A — every terminal <c>canceled</c>, not-yet-archived row that DOES carry a
+        /// real GitHub issue number, for <see cref="Services.FalseDoneReconciler"/> to check each one's
+        /// real issue state against. "Real" excludes the Git #1645 negative sentinel a <c>--notGit</c>
+        /// local build stores in this same column (confirmed live: rows 186-225 in this repo's own
+        /// queue carry <c>github_number</c> -6 through -13 for "local #6".."local #13" — Rule B below
+        /// covers those, not this). Deliberately does NOT filter on <c>exit_code</c>: the issue's own
+        /// rule 7 is explicit that a genuine 🚫 CANCELED failure and a self-blocked ⏳ WAITING row
+        /// (exit_code=0, see <c>IsWaitingSelfBlocked</c>) are archived identically once their real
+        /// issue is confirmed closed — no carve-out.
+        /// </summary>
+        public async Task<List<(int Id, int GithubNumber)>> GetCanceledUnarchivedWithIssueRowsAsync()
+        {
+            var rows = new List<(int, int)>();
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT id, github_number
+                  FROM bt_build_queue
+                 WHERE status = 'canceled'
+                   AND archived = FALSE
+                   AND github_number IS NOT NULL
+                   AND github_number > 0", conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                rows.Add((reader.GetInt32(0), reader.GetInt32(1)));
+            return rows;
+        }
+
+        /// <summary>
+        /// Git #3607, Rule B — every terminal <c>canceled</c>, not-yet-archived row that has NO real
+        /// GitHub issue to check at all: either <c>github_number IS NULL</c>, or the Git #1645 negative
+        /// sentinel a <c>--notGit</c> local build stores there (confirmed live: "local #6".."local
+        /// #13" carry -6..-13 — the exact rows Shane's own screenshot showed sitting indefinitely).
+        /// Archived directly by the reconciler, no GitHub-side check needed or possible.
+        /// </summary>
+        public async Task<List<int>> GetCanceledUnarchivedNoIssueRowIdsAsync()
+        {
+            var ids = new List<int>();
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT id
+                  FROM bt_build_queue
+                 WHERE status = 'canceled'
+                   AND archived = FALSE
+                   AND (github_number IS NULL OR github_number <= 0)", conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                ids.Add(reader.GetInt32(0));
+            return ids;
+        }
+
+        /// <summary>
+        /// Git #3607 — the soft-archive write for either rule above: sets <c>archived = TRUE</c>,
+        /// <c>archived_at = NOW()</c>. Never a delete — the row and its full history stay real and
+        /// queryable; this only flags it out of the default Canceled board view. Guarded
+        /// <c>status = 'canceled' AND archived = FALSE</c> so it is idempotent and can never re-archive
+        /// (or silently no-op an archive of) a row a concurrent pass already moved on. Returns rows
+        /// changed (0 or 1) so the caller only logs/counts a real action.
+        /// </summary>
+        public async Task<int> ArchiveCanceledQueueRowAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET archived = TRUE, archived_at = NOW(), updated_at = NOW()
+                 WHERE id = @id AND status = 'canceled' AND archived = FALSE", conn);
             cmd.Parameters.AddWithValue("@id", id);
             return await cmd.ExecuteNonQueryAsync();
         }
@@ -2393,6 +2467,11 @@ namespace BuildConsole.Services
                 // never a reused one, so a reader without these columns just leaves them null.
                 RepoOwner         = r.FieldCount > 22 && !r.IsDBNull(22) ? r.GetString(22) : null,
                 RepoName          = r.FieldCount > 23 && !r.IsDBNull(23) ? r.GetString(23) : null,
+                // Git #3607 — optional trailing ordinals 24/25, present only on GetQueueAsync's
+                // display query (which also selects repo_owner/repo_name at 22/23 so the ordinal
+                // sequence stays unambiguous — see that query's own comment).
+                Archived          = r.FieldCount > 24 && !r.IsDBNull(24) && r.GetBoolean(24),
+                ArchivedAt        = r.FieldCount > 25 && !r.IsDBNull(25) ? r.GetFieldValue<DateTimeOffset>(25) : (DateTimeOffset?)null,
             };
         }
 
