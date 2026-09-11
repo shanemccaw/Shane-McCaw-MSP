@@ -3369,6 +3369,42 @@ export const pendingApprovalsTable = pgTable("pending_approvals", {
 export type InsertPendingApproval = typeof pendingApprovalsTable.$inferInsert;
 export type PendingApproval = typeof pendingApprovalsTable.$inferSelect;
 
+// ── Pending Script Hand-offs (#3565) ────────────────────────────────────────────
+// The `generate_script` workflow node no longer calls Anthropic directly. It
+// pauses the run (same `pauseForApproval` sentinel + `wf_runs.status =
+// "awaiting_approval"` mechanism approval_gate / break_glass_verification_gate
+// already use — see workflow-executor.ts resumeWorkflowRun()) and creates one of
+// these rows so Shane can generate + tenant-verify the script himself (in Claude
+// Code, against his real tenant) before it's considered done. `context` carries
+// the run's payload snapshot at pause time so resumeWorkflowRun() has it back.
+export const pendingScriptHandoffsTable = pgTable("pending_script_handoffs", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull().references(() => wfRunsTable.id, { onDelete: "cascade" }),
+  nodeId: text("node_id").notNull(),
+  sourceMode: text("source_mode", { enum: ["service", "document"] }).notNull(),
+  targetId: integer("target_id").notNull(),
+  // Resolved service name / document title at pause time, so the admin banner
+  // and pending-handoffs list can show something readable without a re-query.
+  targetLabel: text("target_label"),
+  customInstructions: text("custom_instructions"),
+  outputMode: text("output_mode", { enum: ["auto", "single", "package"] }).notNull().default("auto"),
+  status: text("status", { enum: ["pending", "completed", "cancelled"] }).notNull().default("pending"),
+  context: jsonb("context").$type<Record<string, unknown>>().notNull().default({}),
+  // Set on completion — the script/package Shane actually saved to the Script
+  // Library (via the existing manual POST /admin/ps-scripts[/packages] routes)
+  // to close out this hand-off. Exactly one of the two is set.
+  scriptId: uuid("script_id").references(() => powershellScriptsTable.id),
+  packageId: uuid("package_id").references(() => scriptPackagesTable.id),
+  resultTitle: text("result_title"),
+  completedBy: text("completed_by"),
+  completedAt: timestamp("completed_at"),
+  decisionNote: text("decision_note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertPendingScriptHandoff = typeof pendingScriptHandoffsTable.$inferInsert;
+export type PendingScriptHandoff = typeof pendingScriptHandoffsTable.$inferSelect;
+
 // ── Workflow Node Output Samples ──────────────────────────────────────────────
 // One row per (definition, node). Captured after every successful execution
 // (real run or dry-run Test Run). Used by the Config Panel variable-picker so
