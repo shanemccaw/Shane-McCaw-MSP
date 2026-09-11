@@ -53,6 +53,7 @@ namespace BuildConsole
         public BuildConsole.Services.BuildTrackerApiClient? BuildTrackerApi => _buildTrackerApi;
         private BuildConsole.Services.QueueWatcherService? _queueWatcher;
         private BuildConsole.Services.SessionLimitAutoRestartService? _sessionLimitAutoRestart;
+        private BuildConsole.Services.WaitingRowAutoRequeueService? _waitingRowAutoRequeue;
         public BuildConsole.Services.QueueWatcherService? QueueWatcher => _queueWatcher;
         private BuildConsole.Services.BuildQueuePostgresClient? _queueDb;
         public BuildConsole.Services.BuildQueuePostgresClient? QueueDb => _queueDb;
@@ -623,9 +624,19 @@ namespace BuildConsole
                         try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
                     });
 
+                    // Git #3661 — periodic sweep that live-checks every self-blocked "⏳ WAITING"
+                    // row's real declared blockers and auto-requeues once all are confirmed closed.
+                    // Mirrors #3573's cadence/logging pattern; see WaitingRowAutoRequeueService.
+                    _waitingRowAutoRequeue = new BuildConsole.Services.WaitingRowAutoRequeueService(_queueDb);
+                    _waitingRowAutoRequeue.AutoRequeued += count => Dispatcher.BeginInvoke(() =>
+                    {
+                        try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
+                    });
+
                     if (!BuildConsole.Services.AppMode.IsAgent)
                     {
                         _ = _sessionLimitAutoRestart.StartAsync();
+                        _ = _waitingRowAutoRequeue.StartAsync();
                         _queueWatcher.Start();
                         StartTestTriggerPoll();
 

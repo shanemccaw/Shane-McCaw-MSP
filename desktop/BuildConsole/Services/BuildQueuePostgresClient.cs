@@ -2766,6 +2766,126 @@ namespace BuildConsole.Services
             return item;
         }
 
+        // ── Git #3661 — self-blocked "⏳ WAITING" auto-requeue sweep ────────────────
+
+        /// <summary>
+        /// Every row currently sitting self-blocked "⏳ WAITING" (Git #3599/#3620's own
+        /// definition — see <c>BuildQueuePanel.IsWaitingSelfBlocked</c>: <c>status='canceled'
+        /// AND exit_code=0</c>, a supervisory self-cancel, not a genuine abort) that also
+        /// declares at least one real blocker. A canceled/exit-0 row with NO declared
+        /// blocker isn't this sweep's concern — nothing here would ever release it.
+        /// </summary>
+        public async Task<List<QueueItem>> GetWaitingSelfBlockedAsync()
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT id, title, prompt, model, effort, cwd,
+                       github_number, blocked_by_number, blocked_by_numbers,
+                       status, exit_code, session_id, resume_session_id,
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
+                FROM bt_build_queue
+                WHERE status = 'canceled' AND exit_code = 0
+                  AND (blocked_by_number IS NOT NULL
+                       OR (blocked_by_numbers IS NOT NULL AND array_length(blocked_by_numbers, 1) > 0))
+                ORDER BY created_at ASC", conn);
+            var items = new List<QueueItem>();
+            await using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                    items.Add(MapRow(reader));
+            }
+            await PopulateAssociatedIssueNumbersAsync(items, conn);
+            return items.Where(i => EffectiveBlockers(i).Count > 0).ToList();
+        }
+
+        /// <summary>
+        /// Flips ONE self-blocked "⏳ WAITING" row back to 'queued' so the very next
+        /// <see cref="GetNextAsync"/> tick picks it up as a normal claim candidate —
+        /// resume_session_id is preserved (this is a resume, not a fresh restart, same
+        /// discipline as <see cref="RequeueLimitPausedAsync"/>/<see cref="RecoverStalledSessionLimitRowAsync"/>).
+        /// Re-checks the row is still genuinely in the self-blocked-WAITING shape at
+        /// update time (defensive against a concurrent manual action in between the sweep's
+        /// read and this write); returns false if it no longer matches.
+        /// </summary>
+        public async Task<bool> RequeueWaitingRowAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status            = 'queued',
+                       claimed_at        = NULL,
+                       resume_session_id = COALESCE(resume_session_id, session_id),
+                       updated_at        = NOW(),
+                       build_pid            = NULL,
+                       build_pid_started_at = NULL
+                 WHERE id = @id AND status = 'canceled' AND exit_code = 0", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            return await cmd.ExecuteNonQueryAsync() > 0;
+        }
+
+        /// <summary>Git #3661 — one self-blocked "⏳ WAITING" row the sweep auto-requeued, plus
+        /// exactly which of its declared blockers it confirmed closed.</summary>
+        public sealed record WaitingRequeueResult(QueueItem Item, List<int> ClearedBlockers);
+
+        /// <summary>
+        /// Git #3661 — the periodic auto-requeue sweep's real decision logic: for every row
+        /// currently self-blocked "⏳ WAITING" (<see cref="GetWaitingSelfBlockedAsync"/>), live-check
+        /// whether EVERY declared blocker is now genuinely closed — the exact same "closed" definition
+        /// <see cref="EvaluateCandidatesAsync"/> (GetNextAsync's own claim check) already uses: GitHub
+        /// reports it closed, OR it's still open on GitHub but a verified DONE bookend on origin/main
+        /// proves the work actually landed (Git #2225). A row with ANY blocker that's neither is left
+        /// alone untouched.
+        ///
+        /// Fails closed exactly like the claim path (Git #1600): if the live open-issue snapshot can't
+        /// be fetched at all, nothing is requeued this tick and every row is reported unrequeued —
+        /// never guess a blocker is closed from stale/missing data.
+        /// </summary>
+        /// <param name="liveOpenIssuesFetcher">Test seam — defaults to a real live `gh issue list
+        /// --state open` snapshot (GitHubIssuesService), identical to GetNextAsync's own default.</param>
+        public async Task<(List<WaitingRequeueResult> Requeued, int Scanned, bool GitHubReachable)> SweepAutoRequeueWaitingAsync(
+            Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher = null)
+        {
+            var waiting = await GetWaitingSelfBlockedAsync();
+            if (waiting.Count == 0) return (new List<WaitingRequeueResult>(), 0, true);
+
+            var live = await (liveOpenIssuesFetcher != null
+                ? liveOpenIssuesFetcher()
+                : GitHubIssuesService.TryGetOpenIssueNumbersAsync());
+            if (!live.Success)
+            {
+                ActivityLog.Log("auto-requeue",
+                    $"Git #3661: couldn't reach GitHub to re-check {waiting.Count} self-blocked WAITING row(s) ({live.Error}) — leaving all of them alone this tick (fail closed, same stance as the claim path).");
+                return (new List<WaitingRequeueResult>(), waiting.Count, false);
+            }
+
+            // Git #2225 — a blocker still open on GitHub can still be satisfied by a verified DONE
+            // bookend; compute this ONCE for every still-open blocker across all waiting rows, exactly
+            // as EvaluateCandidatesAsync does for the claim path.
+            var stillOpenAcrossAll = waiting.SelectMany(EffectiveBlockers)
+                .Where(b => live.OpenNumbers.Contains(b)).Distinct().ToList();
+            var satisfiedByDoneBookend = new HashSet<int>();
+            if (stillOpenAcrossAll.Count > 0)
+            {
+                try { satisfiedByDoneBookend = await DoneBookendVerifier.GetSatisfiedAsync(stillOpenAcrossAll); }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("auto-requeue", $"Git #3661: DONE-bookend blocker check threw ({ex.Message}) — treating all still-open blockers as unsatisfied this tick (fail closed).");
+                }
+            }
+
+            var requeued = new List<WaitingRequeueResult>();
+            foreach (var item in waiting)
+            {
+                var blockers = EffectiveBlockers(item);
+                var stillOpen = blockers.Where(b => live.OpenNumbers.Contains(b) && !satisfiedByDoneBookend.Contains(b)).ToList();
+                if (stillOpen.Count > 0) continue; // real blocker(s) not yet confirmed closed — leave alone
+
+                bool ok = await RequeueWaitingRowAsync(item.Id);
+                if (ok) requeued.Add(new WaitingRequeueResult(item, blockers));
+            }
+            return (requeued, waiting.Count, true);
+        }
+
         // ── Helpers ───────────────────────────────────────────────────────────────
 
         private async Task<NpgsqlConnection> OpenAsync()
