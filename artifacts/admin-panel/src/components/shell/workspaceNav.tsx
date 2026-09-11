@@ -10,7 +10,6 @@ import {
   BarChart3,
   MessageSquare,
   Sparkles,
-  Presentation,
   Terminal,
   PlayCircle,
   Megaphone,
@@ -245,7 +244,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         id: "ai-tools", label: "AI Tools", defaultOpen: true,
         items: [
           { id: "cmd-prompts", label: "AI Prompts", path: "/command/prompts", icon: Sparkles },
-          { id: "cmd-presentations", label: "Presentations", path: "/command/presentations", icon: Presentation },
         ],
       },
       {

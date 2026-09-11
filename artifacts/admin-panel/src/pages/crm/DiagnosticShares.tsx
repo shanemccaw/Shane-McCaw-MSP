@@ -116,8 +116,7 @@ function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: 
 function shareUrl(share: ResultShare): string {
   if (share.shareKind === "document") {
     // Document shares are served by the msp-portal artifact (mounted at
-    // /portal on this same origin — same convention as PresentationsPage's
-    // /portal/presentation/:token links), not this CRM app.
+    // /portal on this same origin), not this CRM app.
     return `${window.location.origin}/portal/shared-documents/${share.shareToken}`;
   }
   return `${window.location.origin}/crm/shared-results/${share.shareToken}`;

@@ -3,7 +3,6 @@ import AnalyticsPage from "@/pages/Analytics";
 import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
 import RunningScriptsPage from "@/pages/RunningScriptsPage";
 import PromptCenterPage from "@/pages/PromptCenter";
-import PresentationsPage from "@/pages/workspaces/command/PresentationsPage";
 
 const MarketingCommandCenterPage = lazy(() => import("@/pages/MarketingCommandCenter"));
 
@@ -22,7 +21,6 @@ function getContent(section: string): ReactNode {
         <MarketingCommandCenterPage />
       </Suspense>
     );
-    case "presentations":    return <PresentationsPage />;
     default:                 return <PromptCenterPage />;
   }
 }
