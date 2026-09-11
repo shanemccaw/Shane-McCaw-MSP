@@ -22,13 +22,18 @@
  * holds out of `msp_user_roles` / `customer_user_roles`. That would be wrong today,
  * and quietly so.
  *
- * Those tables have exactly two writers: #2457's one-time seed, and the AdminV2 admin
- * CRUD (`routes/admin-rbac.ts`, #2461). **Nothing writes a rung row when a user is
- * created, and nothing rewrites one when `users.msp_role` changes.** So a user created
- * after the seed holds no rung role at all, and a user re-roled through `msp-settings`
- * still holds their old rung. Deciding the RUNG half from those rows would silently
- * deny every new user — a real regression, and one that would present as an unrelated
- * 403.
+ * When this was written, those tables had exactly two writers: #2457's one-time seed
+ * and the AdminV2 admin CRUD (`routes/admin-rbac.ts`, #2461). Nothing wrote a rung row
+ * when a user was created or re-roled, so deciding the RUNG half from them would have
+ * silently denied every new user.
+ *
+ * #3408 fixed the maintenance: triggers on `users` now keep the rung rows in step with
+ * `role`/`msp_role` (2026-09-10-rbac-user-roles-maintained-3408.sql). The rung is STILL
+ * taken from the claim here, deliberately, for two reasons that outlive that fix. An
+ * environment the #3408 migration has not reached yet (Replit/Staging until release,
+ * #1630) still holds the stale snapshot. And moving from the claim to live rows changes
+ * when a demotion or promotion takes effect, which is a decision #2458's header leaves
+ * to the claim's retirement, not to a maintenance fix.
  *
  * So the two halves are resolved from two different places, deliberately, and this is
  * exactly the split #2458 already made for the ladder:
@@ -47,8 +52,8 @@
  * could only ever widen the decision beyond what the claim says the caller is, which
  * on an authorization path is the wrong direction to be wrong in.
  *
- * The stale-rung-row problem itself is real and is filed separately — it is a defect
- * in the model's maintenance, not something this reader should paper over.
+ * The stale-rung-row problem itself was filed as #3408 and fixed in the model's
+ * maintenance (the `users` triggers above), not papered over here.
  *
  * ── Failing closed ─────────────────────────────────────────────────────────
  *
@@ -212,8 +217,9 @@ export async function userHasCapability(
  *
  * The allowed roles are split the same way `resolveRoleIds` splits a principal's, and
  * for the same reason. A RUNG in the allow set means "everyone whose `users.msp_role`
- * is that rung", resolved from the column — reading rung membership from
- * `*_user_roles` would silently omit every user created since the seed. A NON-rung
+ * is that rung", resolved from the column — the column is the rung's source of truth,
+ * and in an environment #3408's sync migration has not reached, reading rung membership
+ * from `*_user_roles` would silently omit every user created since the seed. A NON-rung
  * role is resolved from the live grant rows, which is where those grants actually live.
  *
  * Returns null — NOT an empty list — when the model cannot be read, so a caller can

@@ -180,10 +180,9 @@ export async function readRoleMembers(system: RbacSystem, roleIds: readonly stri
 /**
  * Every user id whose `users.msp_role` is one of these rungs.
  *
- * Rung membership is read from the COLUMN, not from `*_user_roles`. See
- * ./rbac-capability.ts's header: those membership rows are a one-time seed with no
- * writer on user creation, so a user created since would be missing from a rung
- * lookup against them.
+ * Rung membership is read from the COLUMN, not from `*_user_roles`. The column is
+ * the rung's source of truth. #3408's `users` triggers keep the rows in step with it,
+ * but only where that migration has run. See ./rbac-capability.ts's header.
  */
 export async function readUsersWithRung(rungs: readonly LegacyRole[]): Promise<number[]> {
   if (rungs.length === 0) return [];

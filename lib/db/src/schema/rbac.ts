@@ -151,6 +151,12 @@ export type InsertMspRoleRow = typeof mspRolesTable.$inferInsert;
  * Same-org-or-platform scoping is enforced by a trigger, not a constraint: it is a
  * cross-row invariant (users.msp_id vs msp_roles.msp_id) and CHECK cannot see
  * another table.
+ *
+ * #3408 — the platform-scoped rung rows here and in `customer_user_roles`, plus
+ * `cap.changes.approve` and the below-MSPOperator revoke of `cap.purchases.approve`,
+ * are maintained by triggers on `users` (`rbac_sync_user_roles`,
+ * lib/db/migrations/manual/2026-09-10-rbac-user-roles-maintained-3408.sql). No
+ * application code writes a rung row; a users INSERT/UPDATE does.
  */
 export const mspUserRolesTable = pgTable("msp_user_roles", {
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),

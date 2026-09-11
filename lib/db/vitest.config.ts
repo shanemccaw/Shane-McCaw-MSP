@@ -28,6 +28,10 @@ export default defineConfig({
       // create-list-rename-delete, cross-org refusal, uncatalogued-capability
       // refusal. Runs against DATABASE_URL, everything rolled back.
       "src/rbac/admin.test.ts",
+      // #3408 — the `users` → *_user_roles triggers: a created or re-roled user's
+      // rung and capability-role memberships follow the row. Runs against
+      // DATABASE_URL, everything rolled back.
+      "src/rbac/user-role-sync.test.ts",
     ],
   },
 });

@@ -51,6 +51,7 @@ import {
   LEGACY_CAPABILITY_RULES,
   LEGACY_ROLE_ORDER,
   effectiveLegacyRole,
+  isLegacyRole,
   legacyDecision,
   type LegacyRole,
   type LegacyUserRow,
@@ -398,6 +399,72 @@ for (const capability of RBAC_CAPABILITIES) {
     orgId: 1,
   });
   compare("unrecognised msp_role", "shape unrecognised msp_role", capability.system, capability.key, legacyDecision(strayUser, capability.system, capability.key), decision.allowed);
+}
+
+// ── 2b. Maintenance — every real user's rows agree with the rule that keeps them (#3408) ──
+//
+// Passes A and B prove the SEEDED rows reproduce the old model. Neither can see the
+// failure #3408 was filed for: a user created or re-roled after the seed, whose rows
+// were simply never written. Pass A would even skip it once the #2460 columns drop.
+// This pass needs no old model — it reads each user's own source columns, derives the
+// expected memberships in TypeScript (`effectiveLegacyRole`, not the SQL function under
+// test), and compares them with the rows actually held.
+
+const syncTriggers = (await db.execute(sql`
+  SELECT tgname FROM pg_trigger
+   WHERE tgrelid = 'users'::regclass AND NOT tgisinternal
+     AND tgname IN ('users_rbac_sync_on_insert', 'users_rbac_sync_on_update')
+   ORDER BY tgname
+`)).rows as Array<{ tgname: string }>;
+check(
+  "the #3408 users → *_user_roles sync triggers are installed",
+  syncTriggers.map((r) => r.tgname),
+  ["users_rbac_sync_on_insert", "users_rbac_sync_on_update"],
+);
+
+const memberships = (await db.execute(sql`
+  SELECT u.id, u.role, u.msp_role, u.can_approve_changes,
+         COALESCE((SELECT array_agg(r.key ORDER BY r.key) FROM msp_user_roles ur
+                     JOIN msp_roles r ON r.id = ur.role_id
+                    WHERE ur.user_id = u.id AND r.msp_id IS NULL), '{}') AS msp_keys,
+         COALESCE((SELECT array_agg(r.key ORDER BY r.key) FROM customer_user_roles ur
+                     JOIN customer_roles r ON r.id = ur.role_id
+                    WHERE ur.user_id = u.id AND r.tenant_id IS NULL), '{}') AS customer_keys
+    FROM users u ORDER BY u.id
+`)).rows as Array<{
+  id: number; role: string; msp_role: string | null; can_approve_changes: boolean;
+  msp_keys: string[]; customer_keys: string[];
+}>;
+
+// The rungs on which holding cap.purchases.approve matches the old column: the one
+// branch it granted on, and the two above it where it is inert.
+const PURCHASE_APPROVER_RUNGS: readonly LegacyRole[] = [LEGACY_ROLE.mspOperator, LEGACY_ROLE.mspAdmin, LEGACY_ROLE.platformAdmin];
+
+const failuresBeforeMaintenance = failures;
+if (memberships.length === 0) fail("no users in the database — the maintenance pass would vacuously succeed");
+for (const row of memberships) {
+  const rung = effectiveLegacyRole({ role: row.role, mspRole: row.msp_role });
+  const subject = `user ${row.id} (${row.role}/${row.msp_role ?? "—"})`;
+  const expectedRungs = rung ? [rung] : [];
+
+  for (const [system, keys] of [["msp", row.msp_keys], ["customer", row.customer_keys]] as const) {
+    const heldRungs = keys.filter((key) => isLegacyRole(key));
+    if (JSON.stringify(heldRungs) !== JSON.stringify(expectedRungs)) {
+      fail(`${subject} — holds ${system} rung(s) [${heldRungs.join(", ")}], expected ${rung ?? "none"} (#3408 drift)`);
+    }
+  }
+
+  const holdsChangeApprover = row.customer_keys.includes(CAPABILITY_COLUMN_ROLE_KEYS.approveChanges);
+  if (holdsChangeApprover !== row.can_approve_changes) {
+    fail(`${subject} — can_approve_changes=${row.can_approve_changes} but ${holdsChangeApprover ? "holds" : "lacks"} ${CAPABILITY_COLUMN_ROLE_KEYS.approveChanges} (#3408 drift)`);
+  }
+
+  if (row.msp_keys.includes(CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases) && !(rung && PURCHASE_APPROVER_RUNGS.includes(rung))) {
+    fail(`${subject} — holds ${CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases} on rung ${rung ?? "none"}, below MSPOperator (#3408)`);
+  }
+}
+if (failures === failuresBeforeMaintenance) {
+  console.log(`PASS  maintenance pass — ${memberships.length} real users hold exactly the rows their users columns imply, in both systems`);
 }
 
 // ── 3. Every registered divergence must still be real ────────────────────────

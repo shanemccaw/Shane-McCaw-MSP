@@ -50,8 +50,10 @@
 -- Re-running this file is safe and brings the data back into agreement with the
 -- `users` table: stale ladder grants are deleted before current ones are
 -- inserted, and a capability role is revoked from anyone whose column no longer
--- grants it. Re-run it after changing anyone's role by hand; #2458 is what makes
--- the two stay in sync automatically.
+-- grants it. #3408's triggers on `users`
+-- (2026-09-10-rbac-user-roles-maintained-3408.sql) keep the rung and
+-- cap.changes.approve rows in sync automatically from then on. Before that
+-- migration, nothing did, and this note wrongly credited #2458.
 --
 -- Verified by: pnpm --filter @workspace/db run check-rbac-parity
 --   — old decision (lib/db/src/rbac/legacy-ladder.ts, transcribed from the live
