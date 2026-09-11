@@ -47,6 +47,7 @@ import { effectiveDate } from "../lib/portal-message-center";
 import { remediationTerminalState } from "../lib/remediation-tracker-terminal-state";
 import { personIdForUser } from "../lib/portal-ownership";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { WEEKLY_ASSESSMENT_RESCAN_NAME, WEEKLY_RETARGETING_RESCAN_NAME } from "../lib/weekly-rescan-populations";
 
 const router: IRouter = Router();
 
@@ -275,17 +276,17 @@ router.get(
 // Customer-facing summary of the Monitoring Engine's rescan state: last scan
 // date, next scheduled run, and a plain-language coverage label. Sourced
 // entirely from real execution data — `msp_diagnostic_runs` for the scan
-// itself, and the real `wf_triggers.next_run_at` row for the seeded
-// "__system__: Weekly Copilot Assessment Rescan" schedule (#1058) — no
+// itself, and the real `wf_triggers.next_run_at` row for whichever seeded
+// weekly rescan covers the tenant (#1058; split by paid-assessment purchase
+// in #3609, see lib/weekly-rescan-populations.ts) — no
 // internal engine names, check keys, or raw per-check failure breakdown are
 // ever returned, matching this file's existing sla-status/scope-status
 // discipline. Deliberately does NOT touch the rescan add-on purchase/checkout
 // flow (`assessment-flow-rescan-addon.ts`) — that is owned by the SOW/billing
 // pipeline; this route only reads whether the tenant is currently eligible
-// for the free weekly schedule (Assessment-tier, active user, Graph consent
-// granted — the same predicate `seed-system-workflows.ts`'s fan-out query
-// uses), never writes to it.
-const RESCAN_WORKFLOW_NAME = "__system__: Weekly Copilot Assessment Rescan";
+// for the free weekly schedule (Free-tier, active user, Graph consent
+// granted — the same predicate the seeded fan-out queries use), never
+// writes to it.
 const COMPLETED_RESCAN_RUN_STATUSES = ["completed", "partial"] as const;
 
 type CoverageStatus = { status: "ok"; label: string; checksOk: number; checksTotal: number } | { status: "not_available"; reason: string };
@@ -358,21 +359,35 @@ router.get(
         .limit(1);
       const consentGranted = tenantRow?.consent?.graph?.status === "granted";
 
-      const [eligibleUser] = await db
+      const eligibleUsers = await db
         .select({ id: usersTable.id })
         .from(usersTable)
-        .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.mspRole, LEGACY_ROLE.free), eq(usersTable.isActive, true)))
-        .limit(1);
+        .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.mspRole, LEGACY_ROLE.free), eq(usersTable.isActive, true)));
 
-      const enrolledInWeeklyRescan = consentGranted && eligibleUser != null;
+      const enrolledInWeeklyRescan = consentGranted && eligibleUsers.length > 0;
 
       let nextScheduledRun: NextRunStatus = { status: "not_available", reason: "not_enrolled" };
       if (enrolledInWeeklyRescan) {
+        // #3609 — an active paid assessment moves the tenant from the Monday
+        // retargeting rescan to the Sunday assessment rescan.
+        const [paidAssessment] = await db
+          .select({ id: clientServicesTable.id })
+          .from(clientServicesTable)
+          .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
+          .where(and(
+            inArray(clientServicesTable.clientUserId, eligibleUsers.map((u) => u.id)),
+            eq(clientServicesTable.status, "active"),
+            eq(servicesTable.serviceType, "assessment"),
+            eq(servicesTable.isFreeOffering, false),
+          ))
+          .limit(1);
+        const rescanWorkflowName = paidAssessment ? WEEKLY_ASSESSMENT_RESCAN_NAME : WEEKLY_RETARGETING_RESCAN_NAME;
+
         const [trigger] = await db
           .select({ nextRunAt: wfTriggersTable.nextRunAt, enabled: wfTriggersTable.enabled })
           .from(wfTriggersTable)
           .innerJoin(wfDefinitionsTable, eq(wfDefinitionsTable.id, wfTriggersTable.definitionId))
-          .where(and(eq(wfDefinitionsTable.name, RESCAN_WORKFLOW_NAME), eq(wfTriggersTable.type, "schedule")))
+          .where(and(eq(wfDefinitionsTable.name, rescanWorkflowName), eq(wfTriggersTable.type, "schedule")))
           .limit(1);
 
         nextScheduledRun = trigger?.enabled && trigger.nextRunAt

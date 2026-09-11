@@ -16,6 +16,13 @@ import { pool } from "@workspace/db";
 import { logger } from "./logger";
 const log = logger.child({ channel: "workflow.run" });
 import { computeNextCronRun } from "./workflow-executor";
+import {
+  WEEKLY_RETARGETING_RESCAN_NAME,
+  WEEKLY_RETARGETING_RESCAN_QUERY,
+  WEEKLY_ASSESSMENT_RESCAN_NAME,
+  WEEKLY_ASSESSMENT_RESCAN_QUERY,
+  LEGACY_WEEKLY_RESCAN_QUERIES,
+} from "./weekly-rescan-populations";
 
 interface SystemWorkflowSeed {
   name: string;
@@ -31,6 +38,12 @@ interface SystemWorkflowSeed {
   /** Schedule triggers only: per-record fan-out over a SELECT (see triggerScheduledWorkflows). */
   fanOutMode?: "per_record" | "batched";
   fanOutQuery?: string;
+  /**
+   * Earlier seeded values of fanOutQuery. An existing trigger whose query still
+   * equals one of these is rewritten to fanOutQuery on startup (the trigger insert
+   * below only runs when no trigger exists, so it never updates one).
+   */
+  legacyFanOutQueries?: readonly string[];
   graph: {
     nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>;
     edges: Array<{ id: string; source: string; target: string; sourceHandle?: string }>;
@@ -225,12 +238,15 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
   },
   // ── Weekly Retargeting Rescan — Free/Assessment Tenants (#166, sub-issue of #161) ──
   {
-    name: "__system__: Weekly Retargeting Rescan — Free/Assessment Tenants",
+    name: WEEKLY_RETARGETING_RESCAN_NAME,
     description:
-      "Weekly schedule-triggered rescan for Free/Assessment-tier tenants (mspRole), so " +
-      "retargeting/upgrade messaging always has fresh telemetry instead of a stale " +
-      "one-time snapshot from consent time. Per-record fan-out: the trigger's " +
-      "fan_out_query selects every active users row with mspRole = 'Free' (the one pre-payment tier; #3590 folded 'Assessment' into it) " +
+      "Weekly schedule-triggered rescan for Free-tier tenants (mspRole) that have not bought " +
+      "an assessment, so retargeting/upgrade messaging always has fresh telemetry instead of a " +
+      "stale one-time snapshot from consent time. Per-record fan-out: the trigger's " +
+      "fan_out_query selects every active users row with mspRole = 'Free' (the one pre-payment " +
+      "tier; #3590 folded 'Assessment' into it) that holds NO active paid assessment purchase — " +
+      "those users are the Sunday 'Weekly Copilot Assessment Rescan' audience instead (#3609; " +
+      "the two populations are disjoint so no tenant is scanned twice a week) — " +
       "whose tenant's Graph consent is still 'granted' (not revoked/pending/declined), and " +
       "fires one run per row carrying clientId (users.id), tenantId (Azure AD tenant GUID), " +
       "and packageKey. packageKey is the same 'core:security-baseline' fallback the " +
@@ -247,15 +263,8 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     cron: "0 3 * * 1", // Every Monday at 03:00 server time
     triggerEnabled: true,
     fanOutMode: "per_record",
-    fanOutQuery:
-      "SELECT u.id AS \"clientId\", t.tenant_id AS \"tenantId\", " +
-      "COALESCE(s.type_attributes->>'packageKey', 'core:security-baseline') AS \"packageKey\" " +
-      "FROM users u " +
-      "JOIN tenants t ON t.id = u.tenant_id " +
-      "LEFT JOIN client_services cs ON cs.client_user_id = u.id AND cs.status = 'active' " +
-      "LEFT JOIN services s ON s.id = cs.service_id " +
-      "WHERE u.msp_role = 'Free' AND u.is_active = true " +
-      "AND t.consent->'graph'->>'status' = 'granted'",
+    fanOutQuery: WEEKLY_RETARGETING_RESCAN_QUERY,
+    legacyFanOutQueries: LEGACY_WEEKLY_RESCAN_QUERIES,
     graph: {
       nodes: [
         {
@@ -361,20 +370,22 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
   },
   // ── Weekly Copilot Assessment Rescan — Assessment-tier Tenants (Git #1058, part of #454) ──
   {
-    name: "__system__: Weekly Copilot Assessment Rescan",
+    name: WEEKLY_ASSESSMENT_RESCAN_NAME,
     description:
-      "Weekly schedule-triggered rescan for Assessment-tier (paid) customers only, so the " +
+      "Weekly schedule-triggered rescan for customers holding an active paid assessment only, so the " +
       "assessment dashboard can eventually show real score drift over time instead of a " +
       "single stale snapshot from purchase time. Reuses the exact same monitor_execute_package " +
       "scan engine runDiagnostics() calls internally (diagnostics-runner.ts -> monitor-executor.ts) " +
       "— no new scan logic, no new backend engine, just the schedule + tenant filter wrapped " +
       "around it, same discipline as 'Weekly Retargeting Rescan' below (which this is cloned " +
-      "from and does NOT modify). Per-record fan-out: the trigger's fan_out_query resolves each " +
-      "Assessment-tier customer's REAL purchased package by joining client_services -> services " +
-      "on the active purchase (type_attributes->>'packageKey'), falling back to " +
-      "'core:security-baseline' only when no active purchase resolves. Sunday 03:00 schedule, " +
-      "distinct from the retargeting workflow's Monday slot, and scoped to mspRole = 'Free' " +
-      "(was 'Assessment' until #3590 folded it into Free as the one pre-payment tier). " +
+      "from and does NOT modify). Per-record fan-out: the trigger's fan_out_query takes each " +
+      "active mspRole = 'Free' user holding an ACTIVE PAID assessment purchase (client_services -> " +
+      "services.service_type = 'assessment' AND NOT is_free_offering) and resolves that purchase's " +
+      "REAL package (type_attributes->>'packageKey'), falling back to 'core:security-baseline' " +
+      "when the purchased service carries none. Sunday 03:00 schedule, distinct from the " +
+      "retargeting workflow's Monday slot. The audience used to be mspRole = 'Assessment'; #3590 " +
+      "folded that into Free, which made this query identical to the retargeting one, so #3609 " +
+      "re-keyed it on the purchase and made the retargeting rescan exclude these users. " +
       "Deliberately passive: no remediation work, no alerting beyond the standard rescan-complete " +
       "notification, and does NOT touch msp_subscriptions or any billing/monitoring_tier config — " +
       "this is a pure Workflow Engine definition.",
@@ -382,15 +393,8 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     cron: "0 3 * * 0", // Every Sunday at 03:00 server time
     triggerEnabled: true,
     fanOutMode: "per_record",
-    fanOutQuery:
-      "SELECT u.id AS \"clientId\", t.tenant_id AS \"tenantId\", " +
-      "COALESCE(s.type_attributes->>'packageKey', 'core:security-baseline') AS \"packageKey\" " +
-      "FROM users u " +
-      "JOIN tenants t ON t.id = u.tenant_id " +
-      "LEFT JOIN client_services cs ON cs.client_user_id = u.id AND cs.status = 'active' " +
-      "LEFT JOIN services s ON s.id = cs.service_id " +
-      "WHERE u.msp_role = 'Free' AND u.is_active = true " +
-      "AND t.consent->'graph'->>'status' = 'granted'",
+    fanOutQuery: WEEKLY_ASSESSMENT_RESCAN_QUERY,
+    legacyFanOutQueries: LEGACY_WEEKLY_RESCAN_QUERIES,
     graph: {
       nodes: [
         {
@@ -3991,6 +3995,21 @@ export async function seedSystemWorkflows(): Promise<void> {
           );
         }
         log.info({ defId, name: seed.name, triggerType: seed.triggerType }, "seed-system-workflows: trigger created");
+      } else if (seed.fanOutQuery && seed.legacyFanOutQueries?.length) {
+        // 4. Converge an existing trigger's fan_out_query onto the current seed —
+        // only while it still holds a previously seeded value, so a hand-edited
+        // query is never overwritten. No-ops once converged.
+        const patched = await pool.query(
+          `UPDATE wf_triggers
+              SET config = jsonb_set(config, '{fan_out_query}', to_jsonb($2::text))
+           WHERE definition_id = $1
+             AND type = 'schedule'
+             AND config->>'fan_out_query' = ANY($3::text[])`,
+          [defId, seed.fanOutQuery, [...seed.legacyFanOutQueries]],
+        );
+        if (patched.rowCount) {
+          log.info({ defId, name: seed.name, rows: patched.rowCount }, "seed-system-workflows: rewrote legacy fan_out_query");
+        }
       }
     }
 
