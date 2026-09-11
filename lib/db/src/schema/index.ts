@@ -1749,10 +1749,12 @@ export type VisitorIdentity = typeof visitorIdentitiesTable.$inferSelect;
 
 // ── Site Analytics ─────────────────────────────────────────────────────────────
 // RETIRED (issue #123) — analytics_sessions/pageviews/site_events are no longer
-// written to (routes/analytics.ts was deleted); the Drizzle definitions and
-// tables themselves are left in place undropped because admin-marketing.ts's
-// dashboard metrics still read them and repointing that is out of this issue's
-// scope — see PLATFORM_BUILD.md's #123 entry for the full audit trail.
+// written to (routes/analytics.ts was deleted). admin-marketing.ts's KPI/analytics/
+// campaign-badge endpoints were repointed off these tables to honest zero/empty
+// values (Git #3625) — the whole Marketing admin tool is slated for a GA4-backed
+// rebuild (#3437, not yet scheduled) which will build real replacements. The
+// Drizzle definitions and tables themselves are still left in place undropped —
+// see #3610 for the drop itself and its remaining live-reader audit.
 export const analyticsSessionsTable = pgTable("analytics_sessions", {
   sessionId: text("session_id").primaryKey(),
   entryPage: text("entry_page").notNull().default("/"),

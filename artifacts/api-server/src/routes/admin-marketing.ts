@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import {
   db, leadsTable, leadStagingTable, recommendedLeadsTable, outreachTemplatesTable,
   marketingTasksTable, campaignsTable, campaignAssetsTable,
-  analyticsSessionsTable, analyticsSiteEventsTable, servicesTable,
+  servicesTable,
   settingsTable, quizPainSignalConfigTable, emailEventsTable, seoRankingsTable,
   leadIntentEventsTable, followUpEventsTable, offersTable, landingPagesTable,
   clientServicesTable, heroHeadlinesTable,
@@ -149,19 +149,19 @@ router.get("/admin/marketing/kpi", requireAdmin, async (_req: Request, res: Resp
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const [visitorsToday, leadsThisWeek, activeCampaigns, conversionEvents] = await Promise.all([
-      db.select({ cnt: count() }).from(analyticsSessionsTable).where(gte(analyticsSessionsTable.startedAt, todayStart)),
+    const [leadsThisWeek, activeCampaigns] = await Promise.all([
       db.select({ cnt: count() }).from(leadsTable).where(gte(leadsTable.createdAt, weekAgo)),
       db.select({ cnt: count() }).from(campaignsTable).where(eq(campaignsTable.status, "active")),
-      db.select({ cnt: count() }).from(analyticsSiteEventsTable)
-        .where(and(eq(analyticsSiteEventsTable.eventType, "cta_click"), gte(analyticsSiteEventsTable.createdAt, weekAgo))),
     ]);
 
-    const visitors = Number(visitorsToday[0]?.cnt ?? 0);
+    // visitorsToday / conversionRate used to read analytics_sessions / analytics_site_events,
+    // which have had zero rows and zero writers since #123 deleted the ingestion route (Git #3625).
+    // The whole Marketing admin tool is slated for a GA4-backed rebuild (#3437, not yet scheduled) —
+    // returning honest zeros here until that lands rather than querying dead tables.
+    const visitors = 0;
     const leads = Number(leadsThisWeek[0]?.cnt ?? 0);
     const campaigns = Number(activeCampaigns[0]?.cnt ?? 0);
-    const conversions = Number(conversionEvents[0]?.cnt ?? 0);
-    const conversionRate = visitors > 0 ? ((conversions / visitors) * 100).toFixed(1) : "0.0";
+    const conversionRate = "0.0";
 
     const [hotLeadsCount, intentEventsToday, followUpsDue, offersCount, revenueThisMonth, convertedLeadsThisWeek, avgServicePrice] = await Promise.all([
       db.select({ cnt: count() }).from(leadsTable).where(gte(leadsTable.score, 70)),
@@ -1777,33 +1777,18 @@ router.get("/admin/marketing/analytics", requireAdmin, async (req: Request, res:
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const [dailyVisitors, topPages, trafficSources, conversionFunnel, campaignPerf] = await Promise.all([
-      db.execute(sql`
-        SELECT DATE(started_at) as day, COUNT(*) as visitors
-        FROM analytics_sessions
-        WHERE started_at >= ${sevenDaysAgo}
-        GROUP BY DATE(started_at) ORDER BY day
-      `),
-      db.execute(sql`
-        SELECT page, COUNT(*) as views
-        FROM analytics_pageviews
-        WHERE entered_at >= ${thirtyDaysAgo}
-        GROUP BY page ORDER BY views DESC LIMIT 10
-      `),
+    // dailyVisitors / topPages / trafficSources / the visitor+contact-page-view legs of
+    // conversionFunnel used to read analytics_sessions / analytics_pageviews, which have had
+    // zero rows and zero writers since #123 deleted the ingestion route (Git #3625). The whole
+    // Marketing admin tool is slated for a GA4-backed rebuild (#3437, not yet scheduled) —
+    // returning honest empty/zero values here until that lands rather than querying dead tables.
+    const dailyVisitorsData: { day: string; visitors: number }[] = [];
+    const topPagesData: { page: string; views: number }[] = [];
+    const trafficSourcesData: { source: string; sessions: number }[] = [];
+
+    const [leadCounts, campaignPerf] = await Promise.all([
       db.execute(sql`
         SELECT
-          COALESCE(utm_source, CASE WHEN referrer IS NULL OR referrer = '' THEN 'Direct' ELSE 'Referral' END) as source,
-          COUNT(*) as sessions
-        FROM analytics_sessions
-        WHERE started_at >= ${thirtyDaysAgo}
-        GROUP BY source ORDER BY sessions DESC LIMIT 8
-      `),
-      db.execute(sql`
-        SELECT
-          (SELECT COUNT(*) FROM analytics_sessions WHERE started_at >= ${thirtyDaysAgo}) as visitors,
-          (SELECT COUNT(DISTINCT s.session_id) FROM analytics_sessions s
-           JOIN analytics_pageviews p ON p.session_id = s.session_id
-           WHERE s.started_at >= ${thirtyDaysAgo} AND p.page LIKE '/contact%') as contact_page_views,
           (SELECT COUNT(*) FROM leads WHERE created_at >= ${thirtyDaysAgo}) as leads,
           (SELECT COUNT(*) FROM leads WHERE status = 'converted' AND created_at >= ${thirtyDaysAgo}) as converted
       `),
@@ -1824,29 +1809,23 @@ router.get("/admin/marketing/analytics", requireAdmin, async (req: Request, res:
       `),
     ]);
 
-    type DayRow = { day: string; visitors: string };
-    type PageRow = { page: string; views: string };
-    type SourceRow = { source: string; sessions: string };
-    type FunnelRow = { visitors: string; contact_page_views: string; leads: string; converted: string };
+    type LeadCountRow = { leads: string; converted: string };
     type CampaignRow = { id: number; name: string; status: string; asset_count: string; leads_generated: string; revenue_attributed: string };
 
-    const rawDaily = (dailyVisitors as unknown as { rows: DayRow[] }).rows ?? [];
-    const rawPages = (topPages as unknown as { rows: PageRow[] }).rows ?? [];
-    const rawSources = (trafficSources as unknown as { rows: SourceRow[] }).rows ?? [];
-    const rawFunnel = ((conversionFunnel as unknown as { rows: FunnelRow[] }).rows ?? [])[0];
+    const rawLeadCounts = ((leadCounts as unknown as { rows: LeadCountRow[] }).rows ?? [])[0];
     const rawCampaigns = (campaignPerf as unknown as { rows: CampaignRow[] }).rows ?? [];
 
-    const funnelData = rawFunnel ? [
-      { stage: "Visitors", value: Number(rawFunnel.visitors) },
-      { stage: "Contact Page", value: Number(rawFunnel.contact_page_views) },
-      { stage: "Leads", value: Number(rawFunnel.leads) },
-      { stage: "Converted", value: Number(rawFunnel.converted) },
+    const funnelData = rawLeadCounts ? [
+      { stage: "Visitors", value: 0 },
+      { stage: "Contact Page", value: 0 },
+      { stage: "Leads", value: Number(rawLeadCounts.leads) },
+      { stage: "Converted", value: Number(rawLeadCounts.converted) },
     ] : [];
 
     res.json({
-      dailyVisitors: rawDaily.map(r => ({ day: String(r.day).slice(0, 10), visitors: Number(r.visitors) })),
-      topPages: rawPages.map(r => ({ page: String(r.page), views: Number(r.views) })),
-      trafficSources: rawSources.map(r => ({ source: String(r.source), sessions: Number(r.sessions) })),
+      dailyVisitors: dailyVisitorsData,
+      topPages: topPagesData,
+      trafficSources: trafficSourcesData,
       conversionFunnel: funnelData,
       campaignPerformance: rawCampaigns.map(r => {
         const leads = Number(r.leads_generated);
@@ -3519,29 +3498,22 @@ router.get("/admin/marketing/analytics/insights", requireAdmin, async (_req: Req
   try {
     const now = new Date();
     const monthAgo = new Date(now.getTime() - 30 * 86400000);
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(todayStart.getTime() - 86400000);
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
 
-    const [campaignPerf, leadStats, taskStats, topLPs, todaySessions, avgDailySessions, hotLeads] = await Promise.all([
+    const [campaignPerf, leadStats, taskStats, topLPs, hotLeads] = await Promise.all([
       db.select({ name: campaignsTable.name, leads: campaignsTable.leadsGenerated, revenue: campaignsTable.revenueAttributed }).from(campaignsTable).where(eq(campaignsTable.status, "active")).limit(5),
       db.select({ count: count() }).from(leadsTable).where(gte(leadsTable.createdAt, monthAgo)),
       db.select({ status: marketingTasksTable.status, count: count() }).from(marketingTasksTable).groupBy(marketingTasksTable.status),
       db.select({ slug: landingPagesTable.slug, title: landingPagesTable.title }).from(landingPagesTable).where(eq(landingPagesTable.published, true)).limit(5),
-      // Today's sessions for hot-traffic spike detection
-      db.select({ cnt: count() }).from(analyticsSessionsTable).where(gte(analyticsSessionsTable.startedAt, todayStart)),
-      // 7-day average daily sessions (yesterday and earlier to compare)
-      db.select({ cnt: count() }).from(analyticsSessionsTable).where(and(gte(analyticsSessionsTable.startedAt, sevenDaysAgo), lt(analyticsSessionsTable.startedAt, todayStart))),
       db.select({ cnt: count() }).from(leadsTable).where(gte(leadsTable.score, 70)),
     ]);
 
-    // Hot-traffic spike: today vs 7-day average
-    const todayCount = Number(todaySessions[0]?.cnt ?? 0);
-    const avgDaily = Number(avgDailySessions[0]?.cnt ?? 0) / 7;
-    const trafficSpike = avgDaily > 0 && todayCount > avgDaily * 2;
-    const trafficSpikeNote = trafficSpike
-      ? `⚠ Hot traffic spike: ${todayCount} sessions today vs ${avgDaily.toFixed(0)} daily avg — high-intent visitors likely. Push your best offer now.`
-      : null;
+    // Hot-traffic spike detection used to compare analytics_sessions counts (today vs 7-day
+    // avg), which has had zero rows and zero writers since #123 deleted the ingestion route
+    // (Git #3625). The whole Marketing admin tool is slated for a GA4-backed rebuild (#3437,
+    // not yet scheduled) — reporting "no spike" honestly here until that lands rather than
+    // querying a dead table.
+    const trafficSpike = false;
+    const trafficSpikeNote: string | null = null;
 
     const icpCtx = await buildICPContext();
     const prompt = `You are analyzing marketing performance for a Microsoft 365 consulting business.
@@ -3619,8 +3591,6 @@ router.post("/admin/leads", requireAdmin, async (req: Request, res: Response) =>
 
 router.get("/admin/marketing/active-campaign-badges", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const cutoff = new Date(Date.now() - 5 * 60 * 1000);
-
     const rows = await db
       .select({
         id: campaignsTable.id,
@@ -3634,39 +3604,12 @@ router.get("/admin/marketing/active-campaign-badges", requireAdmin, async (_req:
       ))
       .where(eq(campaignsTable.status, "active"));
 
-    if (rows.length === 0) { res.json([]); return; }
-
-    const perPage = await Promise.all(
-      rows.map(async (r) => {
-        try {
-          const pattern = `%/landing-pages/${r.slug}%`;
-          const result = await db.execute(sql`
-            SELECT COUNT(DISTINCT ap.session_id)::text AS cnt
-            FROM analytics_pageviews ap
-            JOIN analytics_sessions s ON s.session_id = ap.session_id
-            WHERE s.last_seen_at >= ${cutoff}
-            AND ap.page LIKE ${pattern}
-          `);
-          const qrows = (result as unknown as { rows: { cnt: string }[] }).rows ?? [];
-          const cnt = parseInt(qrows[0]?.cnt ?? "0", 10);
-          return { id: r.id, name: r.name, slug: r.slug, liveCount: isNaN(cnt) ? 0 : cnt };
-        } catch {
-          return { id: r.id, name: r.name, slug: r.slug, liveCount: 0 };
-        }
-      })
-    );
-
-    const byId = new Map<number, { id: number; name: string; slug: string; liveCount: number }>();
-    for (const r of perPage) {
-      const existing = byId.get(r.id);
-      if (existing) {
-        existing.liveCount += r.liveCount;
-      } else {
-        byId.set(r.id, { ...r });
-      }
-    }
-
-    res.json(Array.from(byId.values()));
+    // liveCount used to be a live count of recent sessions against analytics_pageviews /
+    // analytics_sessions, which have had zero rows and zero writers since #123 deleted the
+    // ingestion route (Git #3625). The whole Marketing admin tool is slated for a GA4-backed
+    // rebuild (#3437, not yet scheduled) — returning honest 0 here until that lands rather
+    // than querying dead tables.
+    res.json(rows.map(r => ({ id: r.id, name: r.name, slug: r.slug, liveCount: 0 })));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -3678,8 +3621,6 @@ router.get("/admin/marketing/active-campaign-badges", requireAdmin, async (_req:
 // (Bearer JWT), so the client must use fetchWithAuth rather than EventSource.
 
 async function fetchCampaignBadgesData(): Promise<{ id: number; name: string; slug: string; liveCount: number }[]> {
-  const cutoff = new Date(Date.now() - 5 * 60 * 1000);
-
   const rows = await db
     .select({
       id: campaignsTable.id,
@@ -3693,39 +3634,12 @@ async function fetchCampaignBadgesData(): Promise<{ id: number; name: string; sl
     ))
     .where(eq(campaignsTable.status, "active"));
 
-  if (rows.length === 0) return [];
-
-  const perPage = await Promise.all(
-    rows.map(async (r) => {
-      try {
-        const pattern = `%/landing-pages/${r.slug}%`;
-        const result = await db.execute(sql`
-          SELECT COUNT(DISTINCT ap.session_id)::text AS cnt
-          FROM analytics_pageviews ap
-          JOIN analytics_sessions s ON s.session_id = ap.session_id
-          WHERE s.last_seen_at >= ${cutoff}
-          AND ap.page LIKE ${pattern}
-        `);
-        const qrows = (result as unknown as { rows: { cnt: string }[] }).rows ?? [];
-        const cnt = parseInt(qrows[0]?.cnt ?? "0", 10);
-        return { id: r.id, name: r.name, slug: r.slug, liveCount: isNaN(cnt) ? 0 : cnt };
-      } catch {
-        return { id: r.id, name: r.name, slug: r.slug, liveCount: 0 };
-      }
-    })
-  );
-
-  const byId = new Map<number, { id: number; name: string; slug: string; liveCount: number }>();
-  for (const r of perPage) {
-    const existing = byId.get(r.id);
-    if (existing) {
-      existing.liveCount += r.liveCount;
-    } else {
-      byId.set(r.id, { ...r });
-    }
-  }
-
-  return Array.from(byId.values());
+  // liveCount used to be a live count of recent sessions against analytics_pageviews /
+  // analytics_sessions, which have had zero rows and zero writers since #123 deleted the
+  // ingestion route (Git #3625). The whole Marketing admin tool is slated for a GA4-backed
+  // rebuild (#3437, not yet scheduled) — returning honest 0 here until that lands rather
+  // than querying dead tables.
+  return rows.map(r => ({ id: r.id, name: r.name, slug: r.slug, liveCount: 0 }));
 }
 
 router.get("/admin/marketing/campaign-badges-stream", requireAdmin, (req: Request, res: Response) => {
