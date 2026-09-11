@@ -26,6 +26,7 @@ import { getAiBalance } from "../lib/ai-billing.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { calculateMspPortfolioRisk } from "../lib/msp-engine.ts";
 import { aggregateMspTelemetry } from "../lib/msp-financial-aggregator.ts";
+import { fetchCustomerDirectoryMetrics } from "../lib/msp-customer-directory-metrics.ts";
 import { logger } from "../lib/logger.ts";
 import { syncTenantsAfterStatusWrite } from "../lib/retention/subscription-state.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
@@ -1054,6 +1055,12 @@ router.post(
 // ── GET /api/msp/customers ─────────────────────────────────────────────────────
 // Paginated customer list scoped to the authenticated MSP.
 // Query params: page (1-based), limit, search (name/domain), status
+//
+// Additive (Git #3666): each row also carries seats/people/lastScanAt/openSignals
+// — the real per-tenant directory metrics the MSP Console's "Managed Tenants" root
+// screen needs (confirmed missing by #3665's audit; the design's own directory
+// screen had no backing route, only a static mock array). See
+// msp-customer-directory-metrics.ts for what each figure is sourced from and why.
 
 router.get(
   "/msp/customers",
@@ -1119,8 +1126,16 @@ router.get(
           .offset(offset),
       ]);
 
+      const directoryMetrics = await fetchCustomerDirectoryMetrics(
+        customers.map((c) => ({ id: c.id, tenantId: c.tenantId })),
+      );
+      const customersWithDirectoryMetrics = customers.map((c) => ({
+        ...c,
+        ...(directoryMetrics.get(c.id) ?? { seats: null, people: null, lastScanAt: null, openSignals: 0 }),
+      }));
+
       res.json({
-        customers,
+        customers: customersWithDirectoryMetrics,
         total: Number(total),
         page,
         pageSize: limit,
