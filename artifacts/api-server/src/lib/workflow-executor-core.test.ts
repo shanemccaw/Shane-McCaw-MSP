@@ -687,6 +687,159 @@ describe("unknown node type — live path", () => {
 });
 
 // =============================================================================
+// Git #3596 — dry-run false "unknown node type" regression coverage
+//
+// These 7 node types each have a real, intentional `if (dryRun) {...}` branch
+// written inside their live case body, but were missing from either
+// STRUCTURAL_TYPES or makeDryRunOutput()'s switch — so dry-run never reached
+// that branch and fell through to the "unknown node type" error instead.
+// =============================================================================
+
+describe("approval_gate — dry-run reaches its real inline branch", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("approval_gate", { approverRole: "billing" }));
+    await executeWorkflowRun(1, { dryRun: true });
+  });
+
+  it("output.dryRun is true", () => {
+    expect(capturedOutput().dryRun).toBe(true);
+  });
+
+  it("output.approved is true", () => {
+    expect(capturedOutput().approved).toBe(true);
+  });
+
+  it("output.approverRole reflects node.data", () => {
+    expect(capturedOutput().approverRole).toBe("billing");
+  });
+
+  it("node status is ok, not error", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+describe("break_glass_verification_gate — dry-run reaches its real inline branch", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("break_glass_verification_gate", {}));
+    await executeWorkflowRun(1, { dryRun: true });
+  });
+
+  it("output.dryRun is true", () => {
+    expect(capturedOutput().dryRun).toBe(true);
+  });
+
+  it("output.revealed is false", () => {
+    expect(capturedOutput().revealed).toBe(false);
+  });
+
+  it("node status is ok, not error", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+describe("monitor_get_package — dry-run", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("monitor_get_package", { packageKey: "core-security" }));
+    await executeWorkflowRun(1, { dryRun: true });
+  });
+
+  it("output.dryRun is true", () => {
+    expect(capturedOutput().dryRun).toBe(true);
+  });
+
+  it("output.packageKey reflects node.data", () => {
+    expect(capturedOutput().packageKey).toBe("core-security");
+  });
+
+  it("node status is ok, not error", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+describe("monitor_execute_package — dry-run", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("monitor_execute_package", { packageKey: "core-security", tenantId: "contoso.onmicrosoft.com" }));
+    await executeWorkflowRun(1, { dryRun: true });
+  });
+
+  it("output.dryRun is true", () => {
+    expect(capturedOutput().dryRun).toBe(true);
+  });
+
+  it("output.runStatus is completed", () => {
+    expect(capturedOutput().runStatus).toBe("completed");
+  });
+
+  it("node status is ok, not error", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+describe("config_snapshot_collect — dry-run", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("config_snapshot_collect", { tenantId: "5" }));
+    await executeWorkflowRun(1, { dryRun: true });
+  });
+
+  it("output.dryRun is true", () => {
+    expect(capturedOutput().dryRun).toBe(true);
+  });
+
+  it("output.skipped is true — never touches a real customer tenant", () => {
+    expect(capturedOutput().skipped).toBe(true);
+  });
+
+  it("node status is ok, not error", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+describe("execute_monitor_check — dry-run", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("execute_monitor_check", {}));
+    await executeWorkflowRun(1, { dryRun: true });
+  });
+
+  it("output.dryRun is true", () => {
+    expect(capturedOutput().dryRun).toBe(true);
+  });
+
+  it("output.skipped is true", () => {
+    expect(capturedOutput().skipped).toBe(true);
+  });
+
+  it("node status is ok, not error", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+describe("remediation_pointed_verify — dry-run", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("remediation_pointed_verify", {}));
+    await executeWorkflowRun(1, { dryRun: true });
+  });
+
+  it("output.dryRun is true", () => {
+    expect(capturedOutput().dryRun).toBe(true);
+  });
+
+  it("output.skipped is true", () => {
+    expect(capturedOutput().skipped).toBe(true);
+  });
+
+  it("node status is ok, not error", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+// =============================================================================
 // msp_dunning_advance — live path (no overdue subscriptions)
 // =============================================================================
 
