@@ -433,6 +433,7 @@ router.get(
         return;
       }
       const limit = Math.min(Number(req.query["limit"] ?? 50), 100);
+      const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
       const defId = req.query["definitionId"] ? String(req.query["definitionId"]) : undefined;
 
       const conditions = mspId
@@ -443,29 +444,39 @@ router.get(
           ? [eq(mspReportRunsTable.definitionId, defId)]
           : [];
 
-      const runs = await db
-        .select({
-          id: mspReportRunsTable.id,
-          runId: mspReportRunsTable.runId,
-          definitionId: mspReportRunsTable.definitionId,
-          mspId: mspReportRunsTable.mspId,
-          customerId: mspReportRunsTable.customerId,
-          title: mspReportRunsTable.title,
-          docType: mspReportRunsTable.docType,
-          status: mspReportRunsTable.status,
-          pdfSizeBytes: mspReportRunsTable.pdfSizeBytes,
-          deliveredAt: mspReportRunsTable.deliveredAt,
-          deliveryEmail: mspReportRunsTable.deliveryEmail,
-          errorMessage: mspReportRunsTable.errorMessage,
-          generatedAt: mspReportRunsTable.generatedAt,
-          createdAt: mspReportRunsTable.createdAt,
-        })
-        .from(mspReportRunsTable)
-        .where(conditions.length > 0 ? and(...(conditions as [ReturnType<typeof eq>, ...ReturnType<typeof eq>[]])) : undefined)
-        .orderBy(desc(mspReportRunsTable.createdAt))
-        .limit(limit);
+      const whereClause =
+        conditions.length > 0 ? and(...(conditions as [ReturnType<typeof eq>, ...ReturnType<typeof eq>[]])) : undefined;
 
-      res.json({ runs, total: runs.length });
+      const [runs, [{ count: total }]] = await Promise.all([
+        db
+          .select({
+            id: mspReportRunsTable.id,
+            runId: mspReportRunsTable.runId,
+            definitionId: mspReportRunsTable.definitionId,
+            mspId: mspReportRunsTable.mspId,
+            customerId: mspReportRunsTable.customerId,
+            title: mspReportRunsTable.title,
+            docType: mspReportRunsTable.docType,
+            status: mspReportRunsTable.status,
+            pdfSizeBytes: mspReportRunsTable.pdfSizeBytes,
+            deliveredAt: mspReportRunsTable.deliveredAt,
+            deliveryEmail: mspReportRunsTable.deliveryEmail,
+            errorMessage: mspReportRunsTable.errorMessage,
+            generatedAt: mspReportRunsTable.generatedAt,
+            createdAt: mspReportRunsTable.createdAt,
+          })
+          .from(mspReportRunsTable)
+          .where(whereClause)
+          .orderBy(desc(mspReportRunsTable.createdAt))
+          .limit(limit)
+          .offset(offset),
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(mspReportRunsTable)
+          .where(whereClause),
+      ]);
+
+      res.json({ runs, total, hasMore: offset + runs.length < total });
     } catch (err) {
       log.error({ err }, "msp-reports: GET runs failed");
       res.status(500).json({ error: "Failed to fetch runs" });
