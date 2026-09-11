@@ -19,7 +19,7 @@
  * Run: pnpm --filter @workspace/api-server run test
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import request from "supertest";
@@ -111,6 +111,10 @@ function buildChain(rows: unknown[]) {
 
 import { db } from "@workspace/db";
 import { transitionOfferState } from "../lib/sales-offer-engine";
+import { registerMspOfferSSEClient } from "../lib/sse-channels";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
+import jwt from "jsonwebtoken";
 
 const mockDb = db as unknown as MockDb;
 
@@ -211,5 +215,71 @@ describe("PATCH /api/msp/sales-offers/:id/state", () => {
 
     expect(res.status).toBe(400);
     expect(transitionOfferState).not.toHaveBeenCalled();
+  });
+});
+
+// ── Tests: GET /api/msp/sales-offers/sse ───────────────────────────────────────
+//
+// #3545 — this route can't use requireCapability (EventSource sends no
+// Authorization header), so it verifies its own ?token= JWT and used to hand-roll
+// its own PlatformAdmin ?mspId= override instead of calling the shared resolver.
+// That let a PlatformAdmin subscribe to another MSP's real-time offer stream via
+// GET /msp/sales-offers/sse?mspId=<other>, the same class already fixed in
+// #2731/#3387. Covers: the query-param override is ignored entirely, resolution
+// goes through resolveMspIdStrict(req) exactly like every other route in this
+// file, and req.user is populated from the verified token first so that helper
+// has session context to read.
+
+describe("GET /api/msp/sales-offers/sse", () => {
+  const JWT_SECRET = "test-secret";
+  const ORIGINAL_ENV = process.env;
+
+  beforeEach(() => {
+    process.env = { ...ORIGINAL_ENV, JWT_SECRET };
+    vi.mocked(userClearsLadderCapability).mockResolvedValue({ kind: "allow" } as never);
+  });
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  function getSseHandler(router: express.Router) {
+    const layer = router.stack.find(
+      (l) => (l as { route?: { path?: string } }).route?.path === "/msp/sales-offers/sse",
+    ) as unknown as { route: { stack: Array<{ handle: (req: Request, res: Response) => Promise<void> }> } };
+    return layer.route.stack[layer.route.stack.length - 1]!.handle;
+  }
+
+  it("#3545 — a PlatformAdmin's ?mspId= is ignored; mspId is resolved strictly from the session", async () => {
+    vi.useFakeTimers();
+    try {
+      const { default: mspSalesOffersRouter } = await import("./msp-sales-offers");
+      const handler = getSseHandler(mspSalesOffersRouter);
+
+      const token = jwt.sign(
+        { id: 1, email: "admin@test.com", role: "admin", mspRole: "PlatformAdmin", mspId: 5 },
+        JWT_SECRET,
+      );
+      const req = { query: { token, mspId: "999" } } as unknown as Request;
+      const res = {
+        status: vi.fn().mockReturnThis(),
+        json: vi.fn(),
+        setHeader: vi.fn(),
+        flushHeaders: vi.fn(),
+        write: vi.fn(),
+      } as unknown as Response;
+
+      await handler(req, res);
+
+      expect(resolveMspIdStrict).toHaveBeenCalledWith(req);
+      expect(req.user?.mspId).toBe(5); // req.user is populated from the verified token
+      // MSP_ID (10) is resolveMspIdStrict's mocked return value, not the ?mspId=999 override.
+      expect(registerMspOfferSSEClient).toHaveBeenCalledWith(MSP_ID, res, expect.any(Function));
+      expect(registerMspOfferSSEClient).not.toHaveBeenCalledWith(999, expect.anything(), expect.anything());
+      expect(res.status).not.toHaveBeenCalledWith(400);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 });

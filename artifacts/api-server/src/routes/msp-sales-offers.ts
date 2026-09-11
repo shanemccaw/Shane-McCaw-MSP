@@ -39,7 +39,7 @@ import {
 import { eq, and, desc, asc, inArray } from "drizzle-orm";
 import { requireCapability, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth";
 import { userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
-import { LADDER, LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { LADDER } from "@workspace/db/rbac/legacy-ladder";
 import { requirePlanFeature } from "../lib/msp-entitlement";
 import {
   runSalesOfferEngineForTenant,
@@ -122,6 +122,10 @@ router.get("/msp/sales-offers/sse", async (req: Request, res: Response): Promise
     res.status(401).json({ error: "Invalid or expired token" });
     return;
   }
+  // EventSource never runs through requireAuth, so req.user is otherwise never
+  // populated on this route — set it so resolveMspIdStrict(req) below (and any
+  // future shared helper) sees the same session context every other route does.
+  req.user = user;
 
   // #2458 — this route cannot use the requireCapability middleware (EventSource sets
   // no Authorization header, so it verifies the ?token= JWT itself), and it had grown
@@ -139,9 +143,7 @@ router.get("/msp/sales-offers/sse", async (req: Request, res: Response): Promise
     return;
   }
 
-  const mspId = user.role === "admin" || user.mspRole === LEGACY_ROLE.platformAdmin
-    ? (req.query["mspId"] ? parseInt(String(req.query["mspId"]), 10) : null)
-    : (user.mspId ?? null);
+  const mspId = resolveMspIdStrict(req);
 
   if (!mspId || isNaN(mspId)) {
     res.status(400).json({ error: "mspId required" });
