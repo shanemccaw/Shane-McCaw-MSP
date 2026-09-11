@@ -38,6 +38,13 @@ namespace BuildConsole.Services
         /// <summary>"Main" or "Tinker" — see <see cref="RepoRegistryEntry.Tiers"/>.</summary>
         public string Tier { get; set; } = Tiers.Main;
 
+        /// <summary>Git #3583 (Feature #3578) — real per-repo pause, independent of the existing
+        /// global Active/Pause toggle (<see cref="BuildConsoleSettings.QueuePaused"/>). When true,
+        /// <see cref="BuildQueuePostgresClient"/>'s claim path never claims a queued item belonging
+        /// to this repo — every other configured repo's queue is completely unaffected. Defaults to
+        /// false (running) for every repo, same default posture as the global toggle.</summary>
+        public bool IsPaused { get; set; } = false;
+
         public static class Tiers
         {
             public const string Main = "Main";
@@ -810,6 +817,33 @@ namespace BuildConsole.Services
 
         /// <summary>Real query surface — every repo tagged <see cref="RepoRegistryEntry.Tiers.Tinker"/>.</summary>
         public List<RepoRegistryEntry> GetTinkerTierRepos() => ConfiguredRepos.Where(r => r.IsTinkerTier).ToList();
+
+        /// <summary>
+        /// Git #3583 — real, current per-repo pause state for <paramref name="ownerRepo"/> ("owner/repo",
+        /// case-insensitive). A repo not present in <see cref="ConfiguredRepos"/> at all (shouldn't
+        /// normally happen — every real queue row's repo should be registered via #3581) is treated as
+        /// NOT paused, the same safe default as an unregistered repo simply running normally.
+        /// </summary>
+        public bool IsRepoPaused(string ownerRepo) =>
+            ConfiguredRepos.Any(r => string.Equals(r.OwnerRepo, ownerRepo, StringComparison.OrdinalIgnoreCase) && r.IsPaused);
+
+        /// <summary>
+        /// Git #3583 — flips one repo's real per-repo pause flag and persists it. No-op (returns false)
+        /// when <paramref name="ownerRepo"/> isn't a real registered entry — callers (the Settings Repos
+        /// tab toggle) only ever act on a row that's actually in the list, so this is a defensive guard,
+        /// not the normal path. Returns true when the flag was actually changed and saved.
+        /// </summary>
+        public bool SetRepoPaused(string ownerRepo, bool paused)
+        {
+            var entry = ConfiguredRepos.FirstOrDefault(r => string.Equals(r.OwnerRepo, ownerRepo, StringComparison.OrdinalIgnoreCase));
+            if (entry == null || entry.IsPaused == paused) return false;
+            entry.IsPaused = paused;
+            Save();
+            ActivityLog.Log("watcher", paused
+                ? $"Repo \"{ownerRepo}\" PAUSED — its queued items will not be claimed until resumed. Other repos are unaffected."
+                : $"Repo \"{ownerRepo}\" RESUMED — its queued items will be claimed normally again.");
+            return true;
+        }
 
         /// <summary>The real GitHub Projects v2 board node id the Batter Up / AI Batter Up panels
         /// read and write against (<see cref="GitHubApiClient.GetBatterUpIssuesAsync"/> and friends).

@@ -61,6 +61,19 @@ namespace BuildConsole.Services
         /// there forever showing stale active status while the resumed work runs under a disconnected
         /// new entry. Null for every ordinary row.</summary>
         public int? SupersededById { get; set; }
+        /// <summary>Git #3583 (Feature #3578, Multi-Repo Support) — this row's real repo, threaded
+        /// from <c>bt_build_queue.repo_owner</c>/<c>repo_name</c> (added additively by #3579's
+        /// migration, defaulted to the single repo for every pre-existing row). Null when the
+        /// selecting query didn't request these optional trailing columns (see MapRow's #1384
+        /// fixed-ordinal contract) — <see cref="OwnerRepo"/> falls back to
+        /// <see cref="RepoIdentity"/>'s default in that case, exactly matching what the DB column's
+        /// own NOT NULL DEFAULT already guarantees for every real row.</summary>
+        public string? RepoOwner { get; set; }
+        public string? RepoName { get; set; }
+        /// <summary>Real "owner/repo" this queue row belongs to — what <see cref="BuildConsoleSettings.IsRepoPaused"/>
+        /// is checked against for the per-repo pause control (#3583).</summary>
+        public string OwnerRepo =>
+            $"{(string.IsNullOrWhiteSpace(RepoOwner) ? RepoIdentity.DefaultOwner : RepoOwner)}/{(string.IsNullOrWhiteSpace(RepoName) ? RepoIdentity.DefaultName : RepoName)}";
     }
 
     /// <summary>Matches POST /admin/simulator/deploy/console's real `{ ok, command, output }` response shape.</summary>

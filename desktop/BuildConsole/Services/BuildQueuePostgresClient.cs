@@ -272,7 +272,8 @@ namespace BuildConsole.Services
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
-                       originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at,
+                       superseded_by_id, repo_owner, repo_name
                 FROM bt_build_queue
                 WHERE status = 'queued'
                 ORDER BY created_at ASC";
@@ -316,7 +317,8 @@ namespace BuildConsole.Services
         {
             // Step 1 — fetch all queued rows (cheapest scan; the queue is tiny),
             // minus manually-paused ids.
-            var pausedIds = BuildConsoleSettings.Load().PausedBuildIds;
+            var settingsSnapshot = BuildConsoleSettings.Load();
+            var pausedIds = settingsSnapshot.PausedBuildIds;
             var candidates = new List<QueueItem>();
             var heldReasons = new Dictionary<int, string>();
 
@@ -355,6 +357,20 @@ namespace BuildConsole.Services
                 {
                     var item = MapRow(reader);
                     if (pausedIds.Contains(item.Id)) continue;
+
+                    // Git #3583 — per-repo pause (Feature #3578), independent of the existing global
+                    // Active/Pause toggle (BuildConsoleSettings.QueuePaused / QueueWatcherService.SetPaused):
+                    // a repo tagged paused in the #3581 Settings repo registry never has its queued items
+                    // claimed, while every other repo's queue continues exactly as before. Real, honest
+                    // interaction with global pause: global pause is checked/enforced entirely separately
+                    // (TickAsync never even calls GetNextAsync while IsPaused), so this never "double
+                    // negates" — a repo-paused item held here is simply never reached by the global check
+                    // at all, and an item NOT repo-paused is still held by global pause exactly as before.
+                    if (settingsSnapshot.IsRepoPaused(item.OwnerRepo))
+                    {
+                        heldReasons[item.Id] = $"holding — repo \"{item.OwnerRepo}\" is paused (Settings > Repos)";
+                        continue;
+                    }
 
                     if (exclusiveSet != null &&
                         !string.Equals((item.BuildSet ?? "").Trim(), exclusiveSet, StringComparison.OrdinalIgnoreCase))
@@ -545,7 +561,8 @@ namespace BuildConsole.Services
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
-                          originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at";
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at,
+                          superseded_by_id, repo_owner, repo_name";
 
             var claimed = new List<QueueItem>();
             await using (var reader = await claimCmd.ExecuteReaderAsync())
@@ -2331,10 +2348,15 @@ namespace BuildConsole.Services
             // github_number, blocked_by_number, blocked_by_numbers,
             // status, exit_code, session_id, resume_session_id,
             // originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
-            // Git #2119 — superseded_by_id is an OPTIONAL trailing ordinal (21): only GetQueueAsync's
-            // display query selects it. Every other SELECT stops at build_pid_started_at (FieldCount==21),
-            // so the FieldCount>21 guard below leaves SupersededById null for them rather than throwing —
-            // no need to thread the new column through all ~13 SELECTs (the #1384 fixed-ordinal minefield).
+            // Git #2119 — superseded_by_id is an OPTIONAL trailing ordinal (21): GetQueueAsync's
+            // display query and (as of #3583) the claim-candidate queries select it. Every other
+            // SELECT stops at build_pid_started_at (FieldCount==21), so the FieldCount>21 guard below
+            // leaves SupersededById null for them rather than throwing — no need to thread the new
+            // column through all ~13 SELECTs (the #1384 fixed-ordinal minefield).
+            // Git #3583 — repo_owner/repo_name are OPTIONAL trailing ordinals (22/23), selected only
+            // by SelectClaimCandidatesAsync's fetch + GetNextAsync's claim RETURNING (the per-repo
+            // pause control needs each candidate's real repo). Same discipline: a brand-new ordinal,
+            // never a reused one.
             var blockedByNumbersRaw = r.IsDBNull(8) ? null : r.GetValue(8) as int[];
             return new QueueItem
             {
@@ -2361,9 +2383,16 @@ namespace BuildConsole.Services
                 Account           = r.IsDBNull(18) ? null : r.GetString(18),
                 BuildPid          = r.IsDBNull(19) ? null : r.GetInt32(19),
                 BuildPidStartedAt = r.IsDBNull(20) ? null : r.GetFieldValue<DateTimeOffset>(20),
-                // Git #2119 — optional trailing ordinal (see the note above): present only on
-                // GetQueueAsync's display query.
+                // Git #2119 — optional trailing ordinal (see the note above): present on
+                // GetQueueAsync's display query AND (as of #3583) the claim-candidate queries.
                 SupersededById    = r.FieldCount > 21 && !r.IsDBNull(21) ? r.GetInt32(21) : null,
+                // Git #3583 — optional trailing ordinals 22/23, present only on the queries that
+                // select them (SelectClaimCandidatesAsync's fetch + GetNextAsync's claim RETURNING —
+                // see #3579's own comment above re: bt_build_queue's real columns-only repo dimension).
+                // Same #1384 fixed-ordinal discipline as SupersededById just above: a NEW ordinal,
+                // never a reused one, so a reader without these columns just leaves them null.
+                RepoOwner         = r.FieldCount > 22 && !r.IsDBNull(22) ? r.GetString(22) : null,
+                RepoName          = r.FieldCount > 23 && !r.IsDBNull(23) ? r.GetString(23) : null,
             };
         }
 

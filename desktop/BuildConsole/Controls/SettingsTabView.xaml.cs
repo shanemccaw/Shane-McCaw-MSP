@@ -1367,6 +1367,7 @@ namespace BuildConsole.Controls
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
                 var tierBrush = repo.IsMainTier ? (Brush)FindResource("GreenBrush") : (Brush)FindResource("PeachBrush");
                 var tierBadge = new Border
@@ -1392,11 +1393,54 @@ namespace BuildConsole.Controls
                     Foreground = (Brush)FindResource("TextBrush")
                 };
 
-                var labelWrap = new StackPanel { Orientation = Orientation.Horizontal };
-                labelWrap.Children.Add(tierBadge);
-                labelWrap.Children.Add(label);
-                Grid.SetColumn(labelWrap, 0);
-                row.Children.Add(labelWrap);
+                if (repo.IsPaused)
+                {
+                    var pausedBadge = new Border
+                    {
+                        Background = (Brush)FindResource("RedBrush"), CornerRadius = new CornerRadius(4),
+                        Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(0, 0, 8, 0),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    pausedBadge.Child = new TextBlock
+                    {
+                        Text = "PAUSED", FontSize = 9.5, FontWeight = FontWeights.Bold,
+                        Foreground = (Brush)FindResource("CrustBrush")
+                    };
+                    tierBadge.Margin = new Thickness(0, 0, 0, 0);
+                    var badgeWrap = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 8, 0) };
+                    badgeWrap.Children.Add(tierBadge);
+                    badgeWrap.Children.Add(pausedBadge);
+                    var labelWrapPaused = new StackPanel { Orientation = Orientation.Horizontal };
+                    labelWrapPaused.Children.Add(badgeWrap);
+                    labelWrapPaused.Children.Add(label);
+                    Grid.SetColumn(labelWrapPaused, 0);
+                    row.Children.Add(labelWrapPaused);
+                }
+                else
+                {
+                    var labelWrap = new StackPanel { Orientation = Orientation.Horizontal };
+                    labelWrap.Children.Add(tierBadge);
+                    labelWrap.Children.Add(label);
+                    Grid.SetColumn(labelWrap, 0);
+                    row.Children.Add(labelWrap);
+                }
+
+                // Git #3583 (Feature #3578) — real per-repo pause toggle, independent of the
+                // existing global Active/Pause toggle. Wherever #3582's Batter Up repo badge/
+                // grouping eventually lands, this Settings Repos row is the real, already-landed
+                // per-repo control surface in the meantime.
+                var pauseBtn = new Button
+                {
+                    Content = repo.IsPaused ? "▶ Resume" : "⏸ Pause",
+                    FontSize = 10, Style = (Style)FindResource("IconButton"),
+                    Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(4, 0, 0, 0), Tag = i,
+                    ToolTip = repo.IsPaused
+                        ? "Resume automatic dispatch for this repo — its queued items will be claimed again"
+                        : "Pause automatic dispatch for this repo only — other repos' queues are unaffected"
+                };
+                pauseBtn.Click += BtnToggleRepoPause_Click;
+                Grid.SetColumn(pauseBtn, 2);
+                row.Children.Add(pauseBtn);
 
                 var removeBtn = new Button
                 {
@@ -1405,7 +1449,7 @@ namespace BuildConsole.Controls
                     ToolTip = "Remove this repo from the registry"
                 };
                 removeBtn.Click += BtnRemoveRepo_Click;
-                Grid.SetColumn(removeBtn, 2);
+                Grid.SetColumn(removeBtn, 3);
                 row.Children.Add(removeBtn);
 
                 ReposSettingsList.Children.Add(row);
@@ -1421,6 +1465,26 @@ namespace BuildConsole.Controls
 
             settings.ConfiguredRepos.RemoveAll(r => r.OwnerRepo == repos[index].OwnerRepo);
             settings.Save();
+            RenderReposSettingsList();
+        }
+
+        /// <summary>
+        /// Git #3583 (Feature #3578) — real per-repo pause toggle: flips one repo's
+        /// <see cref="RepoRegistryEntry.IsPaused"/> and persists it via
+        /// <see cref="BuildConsoleSettings.SetRepoPaused"/>, which the claim path
+        /// (<see cref="BuildQueuePostgresClient"/>'s SelectClaimCandidatesAsync) reads fresh on
+        /// every tick — no restart needed, exactly like the existing global pause toggle. Only this
+        /// one repo's queued items stop being claimed; every other configured repo is unaffected.
+        /// </summary>
+        private void BtnToggleRepoPause_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not int index) return;
+            var settings = BuildConsoleSettings.Load();
+            var repos = settings.GetAllConfiguredRepos();
+            if (index < 0 || index >= repos.Count) return;
+
+            var repo = repos[index];
+            settings.SetRepoPaused(repo.OwnerRepo, !repo.IsPaused);
             RenderReposSettingsList();
         }
 
