@@ -205,6 +205,18 @@ namespace BuildConsole.Controls
         /// a restart (e.g. a set renamed/reused between sessions). Keyed by the normalized build
         /// set key (case-insensitive, matching <see cref="_expandedRollupSets"/>).</summary>
         private readonly Dictionary<string, HashSet<int>> _sentVerifyingByBuildSet = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Git #3616 — the real, per-issue answer to "does this Verifying item's own
+        /// build-journal bookend actually check out as a genuine, git-verified DONE on
+        /// origin/main" (<see cref="DoneBookendVerifier.GetSatisfiedAsync"/>), refreshed
+        /// opportunistically off every <see cref="RenderBuildSetRollup"/> call rather than a
+        /// timer. A `Verifying` local status has always only meant "the build session finished
+        /// and is pending verification" — never "verification actually happened" — so the
+        /// rollup's own "landed" send must not trust that status alone. Fails CLOSED like the
+        /// verifier itself: an issue absent from this cache (not yet checked, or the last check
+        /// came back unsatisfied) is treated as NOT verified — i.e. never eligible to be reported
+        /// "landed" — until a real positive lands here.</summary>
+        private readonly Dictionary<int, bool> _verifyingBookendSatisfied = new();
+        private bool _verifyingBookendRefreshInFlight;
         private const string UngroupedBuildSetKey = "Ungrouped";
         /// <summary>Git #3336 — each real build-set key's resolved top Epic(s), computed from its
         /// members' real GithubNumbers via <see cref="EpicResolver"/> right before every
@@ -3038,6 +3050,60 @@ namespace BuildConsole.Controls
             return alreadySent == null ? verifying : verifying.Where(n => !alreadySent.Contains(n)).ToList();
         }
 
+        /// <summary>Git #3616 — splits a candidate "not-yet-sent Verifying" list into what's
+        /// actually eligible to be reported "landed" (a real, cached, git-verified DONE bookend —
+        /// see <see cref="_verifyingBookendSatisfied"/>) versus what still genuinely "needs
+        /// attention" (Verifying locally, but no verified bookend behind that yet). Absence from
+        /// the cache fails closed to "needs attention", never to "landed".</summary>
+        private (List<int> Landed, List<int> NeedsAttention) SplitByBookendVerification(List<int> candidates)
+        {
+            var landed = new List<int>();
+            var needsAttention = new List<int>();
+            foreach (var n in candidates)
+            {
+                if (_verifyingBookendSatisfied.TryGetValue(n, out var satisfied) && satisfied) landed.Add(n);
+                else needsAttention.Add(n);
+            }
+            return (landed, needsAttention);
+        }
+
+        /// <summary>Git #3616 — kicks a real, background (never-blocking) <see
+        /// cref="DoneBookendVerifier.GetSatisfiedAsync"/> check for every Verifying issue number
+        /// currently on screen, so the rollup's "landed"/"needs attention" split reflects a
+        /// genuine, recently-checked answer instead of guesswork. Safe to call on every render:
+        /// the verifier's own per-issue 30s cache means a number checked recently resolves as a
+        /// cheap dictionary hit, not a fresh `git` shell. Re-renders once (only if something
+        /// actually changed) so a fresh positive shows up without Shane needing to touch anything.</summary>
+        private async Task RefreshVerifyingBookendSatisfactionAsync(List<int> verifyingNumbers)
+        {
+            if (_verifyingBookendRefreshInFlight || verifyingNumbers.Count == 0) return;
+            _verifyingBookendRefreshInFlight = true;
+            try
+            {
+                var satisfied = await DoneBookendVerifier.GetSatisfiedAsync(verifyingNumbers);
+                bool changed = false;
+                foreach (var n in verifyingNumbers)
+                {
+                    bool isSatisfied = satisfied.Contains(n);
+                    if (!_verifyingBookendSatisfied.TryGetValue(n, out var prev) || prev != isSatisfied)
+                    {
+                        _verifyingBookendSatisfied[n] = isSatisfied;
+                        changed = true;
+                    }
+                }
+                if (changed) RenderBuildSetRollup(_lastItems);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("build-queue.rollup-send-to-chat",
+                    $"Git #3616: bookend-verification refresh failed (fail closed — affected item(s) stay 'needs attention'): {ex.Message}");
+            }
+            finally
+            {
+                _verifyingBookendRefreshInFlight = false;
+            }
+        }
+
         /// <summary>Git #3336 — a real, bold Epic-group header above a block of build-set rollup
         /// rows. Git #3605 extends this with an aggregate "✈" send button, next to the header
         /// text, that sums the real not-yet-sent Verifying items across every member build set
@@ -3045,8 +3111,17 @@ namespace BuildConsole.Controls
         /// sends them all as one combined landed-list through the same
         /// SendBuildSetVerifyingRequested pipeline the per-set button (Git #1893/#1932) already
         /// uses — absent (not disabled) when the aggregate is empty, uniformly across a clean
-        /// single-Epic group, "(mixed Epics)", and "No Epic" alike.</summary>
-        private UIElement BuildEpicGroupHeader(BuildSetEpicGroupKey key, Dictionary<string, List<int>> unsentByBuildSet)
+        /// single-Epic group, "(mixed Epics)", and "No Epic" alike.
+        ///
+        /// Git #3616 — <paramref name="unsentByBuildSet"/> now carries ONLY items whose bookend
+        /// already checked out via <see cref="DoneBookendVerifier"/> (the send button offers
+        /// exactly what's real to report "landed"); <paramref name="needsAttentionByBuildSet"/>
+        /// carries the rest — still Verifying, no verified bookend yet — surfaced as a distinct,
+        /// honestly-labeled "⚠ needs attention" pill instead of being silently folded into the
+        /// landed count or silently dropped. The header renders whenever either total is
+        /// non-zero, so a group with only needs-attention items (no verified landed items yet)
+        /// still shows that pill rather than disappearing.</summary>
+        private UIElement BuildEpicGroupHeader(BuildSetEpicGroupKey key, Dictionary<string, List<int>> unsentByBuildSet, Dictionary<string, List<int>> needsAttentionByBuildSet)
         {
             var headerText = new TextBlock
             {
@@ -3058,7 +3133,8 @@ namespace BuildConsole.Controls
             };
 
             int totalUnsent = unsentByBuildSet.Sum(kv => kv.Value.Count);
-            if (totalUnsent == 0)
+            int totalNeedsAttention = needsAttentionByBuildSet.Sum(kv => kv.Value.Count);
+            if (totalUnsent == 0 && totalNeedsAttention == 0)
             {
                 headerText.Margin = new Thickness(2, 10, 0, 4);
                 return headerText;
@@ -3067,20 +3143,38 @@ namespace BuildConsole.Controls
             var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 10, 0, 4) };
             headerRow.Children.Add(headerText);
 
-            var sendButton = new Button
+            Button? sendButton = null;
+            if (totalUnsent > 0)
             {
-                Content = "✈",
-                FontSize = 12,
-                Padding = new Thickness(5, 1, 5, 2),
-                Margin = new Thickness(6, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Cursor = Cursors.Hand,
-                Background = Brushes.Transparent,
-                BorderThickness = new Thickness(0),
-                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
-                ToolTip = $"Send {totalUnsent} not-yet-sent verifying item(s) across all {unsentByBuildSet.Count} build set(s) under \"{key.Label}\" as one combined landed-list to the active chat"
-            };
-            headerRow.Children.Add(sendButton);
+                sendButton = new Button
+                {
+                    Content = "✈",
+                    FontSize = 12,
+                    Padding = new Thickness(5, 1, 5, 2),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Cursor = Cursors.Hand,
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
+                    Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                    ToolTip = $"Send {totalUnsent} verified, not-yet-sent landed item(s) across all {unsentByBuildSet.Count} build set(s) under \"{key.Label}\" as one combined landed-list to the active chat"
+                };
+                headerRow.Children.Add(sendButton);
+            }
+
+            if (totalNeedsAttention > 0)
+            {
+                var allNeedsAttentionNumbers = needsAttentionByBuildSet.Values.SelectMany(v => v).OrderBy(n => n).ToList();
+                headerRow.Children.Add(new TextBlock
+                {
+                    Text = $"⚠ {totalNeedsAttention} needs attention",
+                    FontSize = 10,
+                    Margin = new Thickness(8, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)Application.Current.FindResource("YellowBrush"),
+                    ToolTip = $"Verifying, but no verified DONE bookend yet — not reported as landed: {string.Join(", ", allNeedsAttentionNumbers.Select(FormatIssueRef))}"
+                });
+            }
 
             var statusText = new TextBlock
             {
@@ -3094,53 +3188,77 @@ namespace BuildConsole.Controls
             wrapper.Children.Add(headerRow);
             wrapper.Children.Add(statusText);
 
-            sendButton.Click += (s, e) =>
+            if (sendButton != null)
             {
-                // Git #3605 — snapshot the aggregate at click time, same discipline as the per-set
-                // button (BuildRollupRow) snapshotting its own unsentVerifying before invoking the
-                // async send, so a re-render mid-flight can't change what this send marks sent.
-                var snapshot = unsentByBuildSet.ToDictionary(kv => kv.Key, kv => kv.Value.ToList(), StringComparer.OrdinalIgnoreCase);
-                var allNumbers = snapshot.Values.SelectMany(v => v).ToList();
-                string text = string.Join("\n", allNumbers.Select(n => $"Git {FormatIssueRef(n)} — landed"));
-                ActivityLog.Log("build-queue.rollup-send-to-chat", $"epic-aggregate-send-clicked: {key.Label}, {allNumbers.Count} not-yet-sent verifying item(s) across {snapshot.Count} build set(s)");
-                SendBuildSetVerifyingRequested?.Invoke(this, new SendBuildSetVerifyingEventArgs(key.Label, text, (msg, isError) =>
+                sendButton.Click += async (s, e) =>
                 {
-                    bool justSent = false;
-                    if (!isError)
+                    // Git #3605 — snapshot the aggregate at click time, same discipline as the
+                    // per-set button (BuildRollupRow) snapshotting its own unsentVerifying before
+                    // invoking the async send, so a re-render mid-flight can't change what this
+                    // send marks sent.
+                    var snapshot = unsentByBuildSet.ToDictionary(kv => kv.Key, kv => kv.Value.ToList(), StringComparer.OrdinalIgnoreCase);
+                    var allNumbers = snapshot.Values.SelectMany(v => v).ToList();
+
+                    // Git #3616 — a final, authoritative re-check right at send time (not just the
+                    // render-time cache) so a click can never send on a stale answer, even if the
+                    // background refresh hasn't caught up to a bookend that just stopped verifying
+                    // (e.g. a superseding push). DoneBookendVerifier's own per-issue cache makes
+                    // this cheap when nothing has changed.
+                    var reverified = await DoneBookendVerifier.GetSatisfiedAsync(allNumbers);
+                    var toSend = allNumbers.Where(n => reverified.Contains(n)).ToList();
+                    var heldBack = allNumbers.Where(n => !reverified.Contains(n)).ToList();
+                    if (toSend.Count == 0)
                     {
-                        // Mark every real (buildSet, issue) pair in the snapshot sent — across
-                        // every affected build set, not just one — so both this aggregate button
-                        // and each individual set's own airplane correctly read "already sent"
-                        // afterward, with no double-offering.
-                        foreach (var kv in snapshot)
-                        {
-                            if (!_sentVerifyingByBuildSet.TryGetValue(kv.Key, out var sent))
-                            {
-                                sent = new HashSet<int>();
-                                _sentVerifyingByBuildSet[kv.Key] = sent;
-                            }
-                            foreach (var n in kv.Value) sent.Add(n);
-                        }
-                        justSent = true;
+                        statusText.Text = $"Nothing sent — {heldBack.Count} item(s) still need attention (no verified DONE bookend yet): {string.Join(", ", heldBack.Select(FormatIssueRef))}";
+                        statusText.Foreground = (Brush)Application.Current.FindResource("YellowBrush");
+                        statusText.Visibility = Visibility.Visible;
+                        return;
                     }
-                    statusText.Text = msg;
-                    statusText.Foreground = isError
-                        ? (Brush)Application.Current.FindResource("RedBrush")
-                        : (Brush)Application.Current.FindResource("GreenBrush");
-                    statusText.Visibility = Visibility.Visible;
-                    // Same deferred-rebuild pattern as the per-set button: let Shane see the
-                    // outcome message before RenderBuildSetRollup rebuilds this header out from
-                    // under statusText.
-                    var hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-                    hideTimer.Tick += (ts, te) =>
+
+                    string text = string.Join("\n", toSend.Select(n => $"Git {FormatIssueRef(n)} — landed"));
+                    ActivityLog.Log("build-queue.rollup-send-to-chat", $"epic-aggregate-send-clicked: {key.Label}, {toSend.Count} verified landed item(s) across {snapshot.Count} build set(s)" + (heldBack.Count > 0 ? $", {heldBack.Count} held back as needs-attention" : ""));
+                    SendBuildSetVerifyingRequested?.Invoke(this, new SendBuildSetVerifyingEventArgs(key.Label, text, (msg, isError) =>
                     {
-                        hideTimer.Stop();
-                        if (justSent) RenderBuildSetRollup(_lastItems);
-                        else statusText.Visibility = Visibility.Collapsed;
-                    };
-                    hideTimer.Start();
-                }));
-            };
+                        bool justSent = false;
+                        if (!isError)
+                        {
+                            // Mark only the genuinely-sent (buildSet, issue) pairs sent — never the
+                            // held-back needs-attention ones — across every affected build set, so
+                            // both this aggregate button and each individual set's own airplane
+                            // correctly read "already sent" afterward, with no double-offering and
+                            // no falsely-marked-sent needs-attention item.
+                            foreach (var kv in snapshot)
+                            {
+                                var actuallySent = kv.Value.Where(n => reverified.Contains(n)).ToList();
+                                if (actuallySent.Count == 0) continue;
+                                if (!_sentVerifyingByBuildSet.TryGetValue(kv.Key, out var sent))
+                                {
+                                    sent = new HashSet<int>();
+                                    _sentVerifyingByBuildSet[kv.Key] = sent;
+                                }
+                                foreach (var n in actuallySent) sent.Add(n);
+                            }
+                            justSent = true;
+                        }
+                        statusText.Text = heldBack.Count > 0 ? $"{msg} ({heldBack.Count} still need attention: {string.Join(", ", heldBack.Select(FormatIssueRef))})" : msg;
+                        statusText.Foreground = isError
+                            ? (Brush)Application.Current.FindResource("RedBrush")
+                            : (Brush)Application.Current.FindResource("GreenBrush");
+                        statusText.Visibility = Visibility.Visible;
+                        // Same deferred-rebuild pattern as the per-set button: let Shane see the
+                        // outcome message before RenderBuildSetRollup rebuilds this header out from
+                        // under statusText.
+                        var hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+                        hideTimer.Tick += (ts, te) =>
+                        {
+                            hideTimer.Stop();
+                            if (justSent) RenderBuildSetRollup(_lastItems);
+                            else statusText.Visibility = Visibility.Collapsed;
+                        };
+                        hideTimer.Start();
+                    }));
+                };
+            }
 
             return wrapper;
         }
@@ -3175,12 +3293,26 @@ namespace BuildConsole.Controls
                     bucketOrder.Add(key);
                 }
                 int refNum = item.GithubNumber ?? item.Id;
+                // Git #3616 — confirmed by direct read: this chain is exact-string-match against
+                // VerifyingStatus ("verifying"), and "canceled" is a distinct literal
+                // (BuildQueuePostgresClient.IsTerminalStatus lists them separately) that matches
+                // none of the three branches below — a canceled row falls through to `else
+                // continue` and never reaches counts.verifying (or any bucket at all). No gap
+                // found here; left as confirmed-correct rather than changed.
                 if (item.Status is "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus) counts.upNext.Add(refNum);
                 else if (item.Status == "running") counts.running.Add(refNum);
                 else if (item.Status == BuildQueuePostgresClient.VerifyingStatus) counts.verifying.Add(refNum);
                 else continue;
                 counts.members.Add(item);
             }
+
+            // Git #3616 — opportunistically refresh the real bookend-verification cache for every
+            // Verifying issue number on screen, in the background, before anything below decides
+            // what's eligible to be reported "landed". Never blocks this (synchronous) render;
+            // a not-yet-checked or not-yet-verified item simply reads as "needs attention" until
+            // this completes and triggers one re-render.
+            var allVerifyingNumbers = buckets.Values.SelectMany(b => b.verifying).Distinct().ToList();
+            if (allVerifyingNumbers.Count > 0) _ = RefreshVerifyingBookendSatisfactionAsync(allVerifyingNumbers);
 
             // Git #2695 — keep the real UNFILTERED any-activity set (pre-#2693 behavior) separate
             // from the activity-filtered set below. The section's own visibility (header + chips)
@@ -3246,13 +3378,20 @@ namespace BuildConsole.Controls
                 // uses below, summed across every member build set under this Epic group, so the
                 // aggregate header button offers exactly what the sum of the individual per-set
                 // buttons would offer — no double-offering, nothing invented.
+                // Git #3616 — further split by real bookend verification: only genuinely-verified
+                // items are eligible for the aggregate "landed" send; the rest are counted
+                // separately as "needs attention" so the header can surface them honestly instead
+                // of silently folding them into (or dropping them from) the landed total.
                 var unsentByBuildSet = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+                var needsAttentionByBuildSet = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
                 foreach (var key in epicGroup)
                 {
                     var unsent = GetUnsentVerifying(key, buckets[key].verifying);
-                    if (unsent.Count > 0) unsentByBuildSet[key] = unsent;
+                    var (landed, needsAttention) = SplitByBookendVerification(unsent);
+                    if (landed.Count > 0) unsentByBuildSet[key] = landed;
+                    if (needsAttention.Count > 0) needsAttentionByBuildSet[key] = needsAttention;
                 }
-                BuildSetRollupList.Children.Add(BuildEpicGroupHeader(epicGroup.Key, unsentByBuildSet));
+                BuildSetRollupList.Children.Add(BuildEpicGroupHeader(epicGroup.Key, unsentByBuildSet, needsAttentionByBuildSet));
                 foreach (var key in epicGroup)
                 {
                     var counts = buckets[key];
@@ -3336,6 +3475,7 @@ namespace BuildConsole.Controls
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var summaryText = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
             summaryText.Inlines.Add(new System.Windows.Documents.Run($"{buildSetKey} — ") { FontWeight = FontWeights.SemiBold, Foreground = accentBrush });
@@ -3361,13 +3501,22 @@ namespace BuildConsole.Controls
             // (Git #3605 factored this out so the epic-level aggregate header button can reuse it.)
             var unsentVerifying = GetUnsentVerifying(buildSetKey, verifying);
 
+            // Git #3616 — a Verifying item is only eligible for the "landed" send once its own
+            // build-journal bookend genuinely checks out (DoneBookendVerifier). Split the
+            // not-yet-sent set accordingly: `landedEligible` is what the send button offers;
+            // `needsAttention` is the rest — still Verifying, no verified bookend yet — which
+            // must be surfaced honestly rather than silently sent or silently hidden.
+            var (landedEligible, needsAttention) = SplitByBookendVerification(unsentVerifying);
+
             // Git #1893/#1932 — "send this set's not-yet-sent Verifying items as a landed-list to
             // the active chat" button. Only rendered when there's something real and NEW to send
             // (#1893 requirement 3, extended by #1932: a build set with zero unsent Verifying
             // items doesn't offer a broken/empty/re-send) — rather than rendering a disabled
-            // button, it's simply absent.
+            // button, it's simply absent. Git #3616: gated on `landedEligible`, not the raw
+            // `unsentVerifying` count, so the button never offers to send an item that hasn't
+            // actually verified DONE yet.
             Button? sendButton = null;
-            if (unsentVerifying.Count > 0)
+            if (landedEligible.Count > 0)
             {
                 sendButton = new Button
                 {
@@ -3380,10 +3529,29 @@ namespace BuildConsole.Controls
                     Background = Brushes.Transparent,
                     BorderThickness = new Thickness(0),
                     Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
-                    ToolTip = $"Send {buildSetKey}'s {unsentVerifying.Count} not-yet-sent verifying item(s) as a landed-list to the active chat"
+                    ToolTip = $"Send {buildSetKey}'s {landedEligible.Count} verified, not-yet-sent landed item(s) as a landed-list to the active chat"
                 };
                 Grid.SetColumn(sendButton, 1);
                 headerGrid.Children.Add(sendButton);
+            }
+
+            // Git #3616 — a distinct, honestly-labeled "needs attention" pill for Verifying items
+            // whose bookend hasn't checked out yet. Always visible when non-empty, independent of
+            // whether the send button is also showing, so Shane sees these exist even if he never
+            // clicks send.
+            if (needsAttention.Count > 0)
+            {
+                var needsAttentionPill = new TextBlock
+                {
+                    Text = $"⚠ {needsAttention.Count}",
+                    FontSize = 10,
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)Application.Current.FindResource("YellowBrush"),
+                    ToolTip = $"{needsAttention.Count} Verifying item(s) with no verified DONE bookend yet — not reported as landed: {string.Join(", ", needsAttention.Select(FormatIssueRef))}"
+                };
+                Grid.SetColumn(needsAttentionPill, 2);
+                headerGrid.Children.Add(needsAttentionPill);
             }
 
             var chevron = new ToggleButton
@@ -3395,7 +3563,7 @@ namespace BuildConsole.Controls
                 Margin = new Thickness(6, 0, 0, 0),
                 ToolTip = "Expand for the full per-category breakdown"
             };
-            Grid.SetColumn(chevron, 2);
+            Grid.SetColumn(chevron, 3);
             headerGrid.Children.Add(chevron);
 
             headerBorder.Child = headerGrid;
@@ -3416,14 +3584,29 @@ namespace BuildConsole.Controls
 
             if (sendButton != null)
             {
-                sendButton.Click += (s, e) =>
+                sendButton.Click += async (s, e) =>
                 {
                     // Git #1932 — snapshot the not-yet-sent set at click time; the closure below
                     // marks exactly these as sent on success, never the row's full `verifying`
                     // list (which may include items an earlier send already reported).
-                    var toSend = unsentVerifying;
+                    // Git #3616 — a final, authoritative DoneBookendVerifier re-check right at
+                    // send time (not just the render-time cache that gated the button's own
+                    // visibility) so a click can never send on a stale answer. Cheap when nothing
+                    // changed — DoneBookendVerifier caches per-issue for 30s.
+                    var candidates = unsentVerifying;
+                    var reverified = await DoneBookendVerifier.GetSatisfiedAsync(candidates);
+                    var toSend = candidates.Where(n => reverified.Contains(n)).ToList();
+                    var heldBack = candidates.Where(n => !reverified.Contains(n)).ToList();
+                    if (toSend.Count == 0)
+                    {
+                        statusText.Text = $"Nothing sent — {heldBack.Count} item(s) still need attention (no verified DONE bookend yet): {string.Join(", ", heldBack.Select(FormatIssueRef))}";
+                        statusText.Foreground = (Brush)Application.Current.FindResource("YellowBrush");
+                        statusText.Visibility = Visibility.Visible;
+                        return;
+                    }
+
                     string text = string.Join("\n", toSend.Select(n => $"Git {FormatIssueRef(n)} — landed"));
-                    ActivityLog.Log("build-queue.rollup-send-to-chat", $"send-clicked: {buildSetKey}, {toSend.Count} not-yet-sent verifying item(s)");
+                    ActivityLog.Log("build-queue.rollup-send-to-chat", $"send-clicked: {buildSetKey}, {toSend.Count} verified landed item(s)" + (heldBack.Count > 0 ? $", {heldBack.Count} held back as needs-attention" : ""));
                     SendBuildSetVerifyingRequested?.Invoke(this, new SendBuildSetVerifyingEventArgs(buildSetKey, text, (msg, isError) =>
                     {
                         bool justSent = false;
@@ -3433,7 +3616,10 @@ namespace BuildConsole.Controls
                             // deferred to the re-render below), so the button's visibility on the
                             // NEXT render is already correct even if something else triggers a
                             // rebuild before this row's own timer fires. A failed send marks
-                            // nothing, leaving the button visible/re-sendable.
+                            // nothing, leaving the button visible/re-sendable. Git #3616: only
+                            // `toSend` (bookend-verified) is ever marked sent — a held-back
+                            // needs-attention item stays unsent so it's offered again once it
+                            // actually verifies.
                             if (!_sentVerifyingByBuildSet.TryGetValue(buildSetKey, out var sent))
                             {
                                 sent = new HashSet<int>();
@@ -3442,7 +3628,7 @@ namespace BuildConsole.Controls
                             foreach (var n in toSend) sent.Add(n);
                             justSent = true;
                         }
-                        statusText.Text = msg;
+                        statusText.Text = heldBack.Count > 0 ? $"{msg} ({heldBack.Count} still need attention: {string.Join(", ", heldBack.Select(FormatIssueRef))})" : msg;
                         statusText.Foreground = isError
                             ? (Brush)Application.Current.FindResource("RedBrush")
                             : (Brush)Application.Current.FindResource("GreenBrush");
