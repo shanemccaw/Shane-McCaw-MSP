@@ -167,6 +167,17 @@ namespace BuildConsole.Controls
         private bool _autoRecheckInFlight;
         private string _filter = "Running";
         private readonly HashSet<int> _manuallyHiddenQueueIds = new();
+        /// <summary>Git #3612 — the "Done" filter previously had no cap at all and rendered
+        /// every historical done row unconditionally (1,894 real rows in the queue DB as of
+        /// this fix), freezing the app. Default cap on the number of done rows rendered per
+        /// pass; see <see cref="ApplyDoneRecencyCap"/> and <see cref="QueueDoneCapToggleLink_Click"/>.</summary>
+        private const int DoneFilterDefaultCap = 150;
+        /// <summary>Git #3612 — explicit, deliberate override set by the done-cap banner's
+        /// "Show all" link. Reset to false whenever the filter changes away from "Done" so a
+        /// stale "show all" doesn't silently carry over the next time Done is reselected.</summary>
+        private bool _showAllDone;
+        private int _doneFilterTotalCount;
+        private int _doneFilterShownCount;
         /// <summary>Git #1834 — set by clicking a row in the build-set rollup summary;
         /// drills the queue graph below down to just that build set. Composes (AND) with
         /// <see cref="_filter"/> and the search box rather than overriding either — see
@@ -1569,8 +1580,42 @@ namespace BuildConsole.Controls
             // Git #1834 — build-set drill-down from the rollup summary. Composes with the
             // status filter above (AND, not override) and with the search box, which
             // filters this method's own result again inside RenderQueue.
-            if (_buildSetFilter == null) return statusFiltered;
-            return statusFiltered.Where(i => string.Equals(NormalizeBuildSetKey(i.BuildSet), _buildSetFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+            List<QueueItem> result = _buildSetFilter == null
+                ? statusFiltered
+                : statusFiltered.Where(i => string.Equals(NormalizeBuildSetKey(i.BuildSet), _buildSetFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            // Git #3612 — cap applied LAST, after status + build-set narrowing, so a
+            // build-set drill-down into Done (already small) is never capped away, and the
+            // banner's total/shown counts always describe exactly what's about to render.
+            if (_filter == "Done") result = ApplyDoneRecencyCap(result);
+            return result;
+        }
+
+        /// <summary>Git #3612 — real fix for the confirmed full-app freeze: the "Done" filter had
+        /// zero cap anywhere and rendered every historical done row synchronously on the UI
+        /// thread in one pass. At real scale (1,894 real done rows in the queue DB as of this
+        /// fix) that's thousands of full card + ghost-blocker-resolution builds in one tick.
+        /// Caps to the <see cref="DoneFilterDefaultCap"/> most-recently-completed rows (by real
+        /// <see cref="QueueItem.UpdatedAt"/> — the same "done {time}" timestamp already shown on
+        /// the Completed tile — falling back to Id ordering for the rare row with no timestamp)
+        /// unless <see cref="_showAllDone"/> was explicitly set via the banner's "Show all" link.
+        /// Records the real total/shown counts RenderQueue's banner reports.</summary>
+        private List<QueueItem> ApplyDoneRecencyCap(List<QueueItem> doneItems)
+        {
+            _doneFilterTotalCount = doneItems.Count;
+            if (_showAllDone || doneItems.Count <= DoneFilterDefaultCap)
+            {
+                _doneFilterShownCount = doneItems.Count;
+                return doneItems;
+            }
+
+            var capped = doneItems
+                .OrderByDescending(i => i.UpdatedAt ?? DateTimeOffset.MinValue)
+                .ThenByDescending(i => i.Id)
+                .Take(DoneFilterDefaultCap)
+                .ToList();
+            _doneFilterShownCount = capped.Count;
+            return capped;
         }
 
         /// <summary>Git #1834 — the rollup's bucket key for a QueueItem.BuildSet: a null/blank
@@ -1665,6 +1710,9 @@ namespace BuildConsole.Controls
         {
             if (QueueFilterCombo.SelectedItem is not ComboBoxItem selected) return;
             _filter = selected.Tag as string ?? "Running";
+            // Git #3612 — a stale "show all" from a previous Done visit must never silently
+            // carry over; each fresh visit to Done starts back at the safe capped default.
+            if (_filter != "Done") _showAllDone = false;
             if (QueueGraphContainer == null) return;
 
             if (_filter == "Tests") RenderTestsTree();
@@ -1878,6 +1926,38 @@ namespace BuildConsole.Controls
             return item != null ? BuildItemNode(item) : null;
         }
 
+        /// <summary>Git #3612 — shows/hides and words the done-cap banner from the real
+        /// counts <see cref="ApplyDoneRecencyCap"/> recorded on the ApplyFilter call that fed
+        /// the items RenderQueue is about to draw. Only relevant to the "Done" filter; hidden
+        /// for every other filter, and hidden for "Done" too once the total no longer exceeds
+        /// the cap (nothing to expand).</summary>
+        private void UpdateDoneCapBanner()
+        {
+            if (_filter != "Done" || _doneFilterTotalCount <= DoneFilterDefaultCap)
+            {
+                QueueDoneCapBanner.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            QueueDoneCapBanner.Visibility = Visibility.Visible;
+            if (_showAllDone)
+            {
+                QueueDoneCapText.Text = $"Showing all {_doneFilterTotalCount:N0} done builds.";
+                QueueDoneCapToggleLink.Text = "Show recent only";
+            }
+            else
+            {
+                QueueDoneCapText.Text = $"Showing the {_doneFilterShownCount:N0} most recently completed of {_doneFilterTotalCount:N0} done builds.";
+                QueueDoneCapToggleLink.Text = "Show all (may be slow)";
+            }
+        }
+
+        private void QueueDoneCapToggleLink_Click(object sender, MouseButtonEventArgs e)
+        {
+            _showAllDone = !_showAllDone;
+            RenderQueue(ApplyFilter(_lastItems));
+        }
+
         // ══════════════════════════════════════════════════════════════════════════
         // ── Visual Queue DAG with Canvas-Based Connectors (#860 Reference) ────────
         // ══════════════════════════════════════════════════════════════════════════
@@ -1924,6 +2004,7 @@ namespace BuildConsole.Controls
                 return;
             }
             QueueBroadFilterPlaceholderText.Visibility = Visibility.Collapsed;
+            UpdateDoneCapBanner();
 
             if (searching)
             {

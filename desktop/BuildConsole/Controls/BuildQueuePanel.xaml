@@ -643,6 +643,27 @@
                                        TextWrapping="Wrap"
                                        VerticalAlignment="Top"
                                        Visibility="Collapsed"/>
+                            <!-- Git #3612 — the "Done" filter had no cap and rendered every
+                                 historical done row unconditionally, freezing the app at real
+                                 scale. This banner surfaces the real capped/total counts and
+                                 gives an explicit, deliberate way past the default cap — see
+                                 ApplyDoneRecencyCap / QueueDoneCapToggleLink_Click. -->
+                            <DockPanel x:Name="QueueDoneCapBanner"
+                                       Margin="12,0,12,8"
+                                       Visibility="Collapsed">
+                                <TextBlock x:Name="QueueDoneCapToggleLink"
+                                           DockPanel.Dock="Right"
+                                           FontSize="10.5"
+                                           Foreground="{StaticResource BlueBrush}"
+                                           Cursor="Hand"
+                                           TextDecorations="Underline"
+                                           HorizontalAlignment="Right"
+                                           MouseLeftButtonDown="QueueDoneCapToggleLink_Click"/>
+                                <TextBlock x:Name="QueueDoneCapText"
+                                           FontSize="10.5"
+                                           Foreground="{StaticResource Subtext1Brush}"
+                                           TextWrapping="Wrap"/>
+                            </DockPanel>
                         </StackPanel>
                     </Border>
 
