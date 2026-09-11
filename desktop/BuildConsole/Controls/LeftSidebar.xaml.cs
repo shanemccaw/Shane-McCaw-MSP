@@ -315,11 +315,29 @@ namespace BuildConsole.Controls
 
         private bool _isPinned = true;
 
+        // Git #3606 — real Segoe MDL2 collapse-arrow glyphs, not the pin emoji pair.
+        // Expanded state points left (click collapses the panel to the left);
+        // collapsed state points right (click re-expands it).
+        private const string CollapseArrowGlyph = "";
+        private const string ExpandArrowGlyph = "";
+
         private void BtnPinSidebar_Click(object sender, RoutedEventArgs e)
         {
             _isPinned = !_isPinned;
-            PinSidebarIcon.Text = _isPinned ? "📌" : "📍";
+            PinSidebarIcon.Text = _isPinned ? CollapseArrowGlyph : ExpandArrowGlyph;
             PinToggled?.Invoke(this, _isPinned);
+        }
+
+        /// <summary>Git #3606 — keeps the collapse-arrow icon / _isPinned flag in sync
+        /// when the panel's real width changes via a means other than this button
+        /// itself (e.g. MainWindow dragging SidebarSplitter back open/closed by hand,
+        /// now that the splitter is never hidden). Does not raise PinToggled — the
+        /// caller already owns the width change, this only syncs the icon/flag to
+        /// match it.</summary>
+        public void SyncPinState(bool isPinned)
+        {
+            _isPinned = isPinned;
+            PinSidebarIcon.Text = _isPinned ? CollapseArrowGlyph : ExpandArrowGlyph;
         }
 
         /// <summary>
@@ -628,7 +646,7 @@ namespace BuildConsole.Controls
         public void ExpandPanel()
         {
             _isPinned = true;
-            PinSidebarIcon.Text = "📌";
+            PinSidebarIcon.Text = CollapseArrowGlyph;
         }
 
         private BuildTrackerApiClient? _api;

@@ -833,12 +833,16 @@
                 <!-- ── Left Sidebar ── -->
                 <ctrl:LeftSidebar x:Name="LeftSidebar" Grid.Column="1"/>
 
-                <!-- Splitter: sidebar ↔ center -->
+                <!-- Splitter: sidebar ↔ center. Git #3606 — never hidden regardless of
+                     collapsed/expanded state, so a collapsed panel can always be dragged
+                     back open; DragCompleted keeps LeftSidebar's collapse-arrow icon in
+                     sync with whatever width the drag actually left it at. -->
                 <GridSplitter x:Name="SidebarSplitter"
                               Grid.Column="2"
                               HorizontalAlignment="Stretch"
                               VerticalAlignment="Stretch"
-                              ShowsPreview="False"/>
+                              ShowsPreview="False"
+                              DragCompleted="SidebarSplitter_DragCompleted"/>
 
                 <!-- ── CENTER AREA: editor tabs + bottom panel ── -->
                 <Grid Grid.Column="3">

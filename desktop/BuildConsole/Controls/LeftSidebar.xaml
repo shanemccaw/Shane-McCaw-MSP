@@ -68,11 +68,11 @@
                         </Button>
                         <Button x:Name="BtnPinSidebar"
                                 Style="{StaticResource IconButton}"
-                                ToolTip="Pin / Collapse Panel"
+                                ToolTip="Collapse / Expand Panel"
                                 Padding="4"
                                 Margin="2,0,0,0"
                                 Click="BtnPinSidebar_Click">
-                            <TextBlock x:Name="PinSidebarIcon" Text="📌" FontSize="11" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="PinSidebarIcon" Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
                         </Button>
                     </StackPanel>
                 </DockPanel>

@@ -1273,8 +1273,11 @@ namespace BuildConsole
             // Panel Pin / Unpin handlers
             LeftSidebar.PinToggled += (s, isPinned) =>
             {
+                // Git #3606 — SidebarSplitter is never hidden here anymore, matching
+                // BuildQueuePanel.PinToggled right below: the splitter stays visible
+                // and draggable regardless of collapsed state, so a collapsed panel
+                // can always be dragged back open.
                 ColSidebar.Width = isPinned ? new GridLength(260) : new GridLength(0);
-                SidebarSplitter.Visibility = isPinned ? Visibility.Visible : Visibility.Collapsed;
             };
 
             BuildQueuePanel.PinToggled += (s, isPinned) =>
@@ -6749,18 +6752,19 @@ namespace BuildConsole
             if (view == "Settings")
                 OpenSettingsTab();
 
-            // VS Code behavior: clicking the already-active icon collapses the sidebar
+            // VS Code behavior: clicking the already-active icon collapses the sidebar.
+            // Git #3606 — SidebarSplitter is never hidden here either; it stays visible
+            // and draggable regardless of collapsed state (same fix as PinToggled above).
             if (ColSidebar.Width.Value > 0 && LeftSidebar.GetCurrentView() == view)
             {
                 ColSidebar.Width = new GridLength(0);
-                SidebarSplitter.Visibility = Visibility.Collapsed;
+                LeftSidebar.SyncPinState(false);
             }
             else
             {
                 if (ColSidebar.Width.Value == 0)
                 {
                     ColSidebar.Width = new GridLength(DefaultSidebarWidth);
-                    SidebarSplitter.Visibility = Visibility.Visible;
                     LeftSidebar.ExpandPanel();
                 }
                 LeftSidebar.SwitchView(view);
@@ -7170,12 +7174,22 @@ namespace BuildConsole
             ToastEngine.Success("Drained", $"{released} build{(released == 1 ? "" : "s")} released back to the queue at full model. Conservation Cap turned off.");
         }
 
+        // Git #3606 — dragging SidebarSplitter can re-expand a collapsed sidebar (or
+        // manually collapse an expanded one) now that the splitter is never hidden;
+        // sync LeftSidebar's collapse-arrow icon / _isPinned flag to the real resulting
+        // width so the icon never drifts out of sync with what a manual drag just did.
+        private void SidebarSplitter_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+        {
+            LeftSidebar.SyncPinState(ColSidebar.Width.Value > 0);
+        }
+
         // ── Menu: View ────────────────────────────────────────────────────────
         private void ToggleSidebar_Click(object sender, RoutedEventArgs e)
         {
             ColSidebar.Width = ColSidebar.Width.Value > 0
                 ? new GridLength(0)
                 : new GridLength(DefaultSidebarWidth);
+            LeftSidebar.SyncPinState(ColSidebar.Width.Value > 0);
         }
 
         private void ToggleQueuePanel_Click(object sender, RoutedEventArgs e)
@@ -7262,6 +7276,7 @@ namespace BuildConsole
 
             BuildQueuePanel.Visibility = Visibility.Visible;
             LeftSidebar.Visibility     = Visibility.Visible;
+            LeftSidebar.ExpandPanel();
         }
 
         // ── Menu: View → Zoom ─────────────────────────────────────────────────
