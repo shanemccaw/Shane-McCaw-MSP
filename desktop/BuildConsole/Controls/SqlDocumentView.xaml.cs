@@ -63,12 +63,63 @@ namespace BuildConsole.Controls
             CloseRequested?.Invoke(this, EventArgs.Empty);
         }
 
+        /// <summary>Git #3705 — the currently selected DatabaseRegistry key this tab's queries run against.</summary>
+        private string _selectedDatabaseKey = DatabaseRegistry.DefaultKey;
+
         public SqlDocumentView()
         {
             InitializeComponent();
             LoadSqlHighlighting();
             // Placeholder starter text preserved from the old EditorTextBox (Git #939).
             QueryEditor.Text = "-- Write your SQL query here\nSELECT *\nFROM public.users\nLIMIT 100;";
+            LoadDatabaseRegistry();
+        }
+
+        /// <summary>
+        /// Git #3705 — populates the database dropdown from the real, extensible
+        /// <see cref="DatabaseRegistry"/>, defaulting to Product (matching the SQL Runner's
+        /// pre-#3705 behavior). Never invents a fallback database on a resolution failure —
+        /// the reachability dot/status just reports the real state honestly.
+        /// </summary>
+        private void LoadDatabaseRegistry()
+        {
+            DatabaseSelector.ItemsSource = DatabaseRegistry.Entries;
+            var defaultEntry = DatabaseRegistry.FindByKey(DatabaseRegistry.DefaultKey) ?? DatabaseRegistry.Entries.FirstOrDefault();
+            DatabaseSelector.SelectedItem = defaultEntry;
+            _selectedDatabaseKey = defaultEntry?.Key ?? DatabaseRegistry.DefaultKey;
+            UpdateDatabaseReachabilityIndicator();
+        }
+
+        private void DatabaseSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (DatabaseSelector.SelectedItem is DatabaseRegistry.DatabaseRegistryEntry entry)
+            {
+                _selectedDatabaseKey = entry.Key;
+                UpdateDatabaseReachabilityIndicator();
+            }
+        }
+
+        /// <summary>
+        /// Git #3705 — real, honest pre-check shown as a green/red dot + tooltip on the
+        /// selector, so an unreachable database (missing env var, missing env file) is
+        /// visible BEFORE Execute is clicked, rather than only surfacing as a query failure.
+        /// This never silently switches to a different database — it just reports the truth
+        /// about the one currently selected.
+        /// </summary>
+        private void UpdateDatabaseReachabilityIndicator()
+        {
+            var result = LocalSqlExecutor.CheckReachable(_selectedDatabaseKey);
+            if (result.IsReachable)
+            {
+                DatabaseReachabilityDot.Fill = (Brush)FindResource("GreenBrush");
+                DatabaseSelector.ToolTip = "Which real database this tab's queries run against";
+            }
+            else
+            {
+                DatabaseReachabilityDot.Fill = (Brush)FindResource("RedBrush");
+                DatabaseSelector.ToolTip = result.Error ?? "This database is unavailable.";
+                ExecStatus.Text = result.Error ?? "Selected database is unavailable.";
+            }
         }
 
         /// <summary>
@@ -139,13 +190,16 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            ExecStatus.Text = "Executing…";
+            var selectedEntry = DatabaseSelector.SelectedItem as DatabaseRegistry.DatabaseRegistryEntry;
+            ExecStatus.Text = $"Executing against {(selectedEntry != null ? selectedEntry.DisplayName : "the selected database")}…";
             try
             {
                 // Git #939 — rewrite bare INSERT/UPDATE/DELETE statements to RETURNING *
                 // so the affected rows come back as a real result set (below).
                 var toRun = AddReturningToWrites(query);
-                var statements = await LocalSqlExecutor.ExecuteAsync(_api, toRun);
+                // Git #3705 — real database switcher: run against whichever named database
+                // is currently selected, not a single fixed connection.
+                var statements = await LocalSqlExecutor.ExecuteAsync(_api, toRun, _selectedDatabaseKey);
                 RenderResults(statements);
             }
             catch (Exception ex)

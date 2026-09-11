@@ -86,6 +86,31 @@
                             Margin="0,0,8,0"
                             Visibility="Collapsed"
                             Click="CloseInline_Click"/>
+
+                    <!-- Git #3705 — real database switcher, defaults to Product -->
+                    <Border CornerRadius="6"
+                            Background="{StaticResource MantleBrush}"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="1"
+                            Margin="8,0,0,0"
+                            Padding="2">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse x:Name="DatabaseReachabilityDot"
+                                     Width="8" Height="8"
+                                     Margin="8,0,4,0"
+                                     Fill="{StaticResource GreenBrush}"
+                                     VerticalAlignment="Center"/>
+                            <ComboBox x:Name="DatabaseSelector"
+                                      MinWidth="170"
+                                      Padding="6,3"
+                                      FontSize="11"
+                                      BorderThickness="0"
+                                      Background="Transparent"
+                                      DisplayMemberPath="DisplayName"
+                                      ToolTip="Which real database this tab's queries run against"
+                                      SelectionChanged="DatabaseSelector_SelectionChanged"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <TextBlock x:Name="ExecStatus"

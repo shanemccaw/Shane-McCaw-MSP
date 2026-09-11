@@ -39,57 +39,87 @@ namespace BuildConsole.Services
             return env;
         }
 
-        private static string? GetConnectionString()
+        private static string? GetConnectionString(string databaseKey)
         {
-            var config = BuildTrackerConfig.Load();
-            string? raw = null;
-            if (!string.IsNullOrWhiteSpace(config.DatabaseUrl))
-                raw = config.DatabaseUrl;
-            else
+            // Git #3705 — the "product" key keeps the exact pre-#3705 resolution order
+            // (config override first, then .env.local's DATABASE_URL=) so existing callers
+            // that don't pass a key see byte-identical behavior. Any other registry key
+            // (BuildConsole, shanes-life, a future repo's DB) resolves straight through
+            // DatabaseRegistry against its own real env file — never falls back to "product"
+            // on failure, since that would silently run a query against the wrong database.
+            if (string.Equals(databaseKey, DatabaseRegistry.DefaultKey, StringComparison.OrdinalIgnoreCase))
             {
-                // Git #1985 — was `?? ""`, which resolves .env.local against the process cwd
-                // instead of the repo root. That's not just "misses the file" — it could pick up
-                // an UNRELATED .env.local sitting in whatever directory this process happened to
-                // start in and execute SQL against the wrong database's connection string. Fail
-                // closed: a null repo root means "we don't know the connection string" here, same
-                // as any other unresolved-config case below (returns null, caller reports it).
-                var repoRoot = BuildTrackerConfig.FindRepoRoot();
-                var envLocal = string.IsNullOrWhiteSpace(repoRoot) ? null : Path.Combine(repoRoot, ".env.local");
-                if (envLocal != null && File.Exists(envLocal))
-                {
-                    foreach (var line in File.ReadAllLines(envLocal))
-                    {
-                        var trimmed = line.Trim();
-                        if (trimmed.StartsWith('#') || !trimmed.StartsWith("DATABASE_URL=", StringComparison.OrdinalIgnoreCase))
-                            continue;
-                        var url = trimmed.Substring("DATABASE_URL=".Length).Trim().Trim('"').Trim('\'');
-                        if (!string.IsNullOrWhiteSpace(url))
-                        {
-                            raw = url;
-                            break;
-                        }
-                    }
-                }
+                var config = BuildTrackerConfig.Load();
+                if (!string.IsNullOrWhiteSpace(config.DatabaseUrl))
+                    return BuildQueuePostgresClient.ParseConnectionString(config.DatabaseUrl);
             }
 
-            if (raw != null)
+            var entry = DatabaseRegistry.FindByKey(databaseKey) ?? DatabaseRegistry.FindByKey(DatabaseRegistry.DefaultKey);
+            if (entry == null) return null;
+
+            // Git #1985 — a null repo root means "we don't know the connection string" here,
+            // never resolved against the process cwd (could pick up an unrelated env file).
+            var repoRoot = BuildTrackerConfig.FindRepoRoot();
+            var resolved = DatabaseRegistry.Resolve(entry, repoRoot);
+            if (!resolved.IsReachable || string.IsNullOrWhiteSpace(resolved.ConnectionString))
+                return null;
+
+            return BuildQueuePostgresClient.ParseConnectionString(resolved.ConnectionString);
+        }
+
+        /// <summary>
+        /// Git #3705 — honest, pre-execution reachability check for <paramref name="databaseKey"/>
+        /// (a <see cref="DatabaseRegistry"/> key), for the SQL Runner dropdown to show BEFORE a
+        /// query is run. Only meaningful for the Dev target environment — Staging/Production
+        /// always go through the existing HTTP api-server path regardless of database key.
+        /// </summary>
+        public static DatabaseRegistry.ResolveResult CheckReachable(string databaseKey)
+        {
+            var entry = DatabaseRegistry.FindByKey(databaseKey);
+            if (entry == null)
             {
-                return BuildQueuePostgresClient.ParseConnectionString(raw);
+                return new DatabaseRegistry.ResolveResult
+                {
+                    IsReachable = false,
+                    Error = $"Unknown database key \"{databaseKey}\"."
+                };
             }
-            return null;
+
+            if (string.Equals(databaseKey, DatabaseRegistry.DefaultKey, StringComparison.OrdinalIgnoreCase))
+            {
+                var config = BuildTrackerConfig.Load();
+                if (!string.IsNullOrWhiteSpace(config.DatabaseUrl))
+                    return new DatabaseRegistry.ResolveResult { IsReachable = true, ConnectionString = config.DatabaseUrl };
+            }
+
+            var repoRoot = BuildTrackerConfig.FindRepoRoot();
+            return DatabaseRegistry.Resolve(entry, repoRoot);
         }
 
         public static async Task<List<SqlStatementResult>> ExecuteAsync(BuildTrackerApiClient api, string sql)
+            => await ExecuteAsync(api, sql, DatabaseRegistry.DefaultKey);
+
+        /// <summary>
+        /// Git #3705 — <paramref name="databaseKey"/> selects which real, named database
+        /// (see <see cref="DatabaseRegistry"/>) a Dev-environment query runs against. Only
+        /// applies to the Dev target environment: Staging/Production still always go through
+        /// the existing HTTP api-server path (<see cref="BuildTrackerApiClient.ExecuteSqlAsync"/>),
+        /// which only ever serves the product database — there is no Staging/Production
+        /// equivalent of BuildConsole's or shanes-life's own database to switch to there.
+        /// </summary>
+        public static async Task<List<SqlStatementResult>> ExecuteAsync(BuildTrackerApiClient api, string sql, string databaseKey)
         {
             var env = GetCurrentTargetEnvironment();
             if (env == TargetEnvironment.Dev)
             {
-                var connStr = GetConnectionString();
+                var connStr = GetConnectionString(databaseKey);
                 if (string.IsNullOrWhiteSpace(connStr))
                 {
+                    var entry = DatabaseRegistry.FindByKey(databaseKey);
+                    var reachability = entry != null ? DatabaseRegistry.Resolve(entry, BuildTrackerConfig.FindRepoRoot()) : null;
+                    var detail = reachability?.Error ?? "No connection string found for the selected database.";
                     throw new InvalidOperationException(
-                        "No DATABASE_URL found for Dev environment — set databaseUrl in scripts/build-queue-watcher.config.json " +
-                        "or add DATABASE_URL=<connection string> to .env.local at the repo root.");
+                        $"{entry?.DisplayName ?? databaseKey} is unavailable — {detail}");
                 }
                 return await ExecuteSqlDirectlyAsync(connStr, sql);
             }
