@@ -248,7 +248,7 @@ router.post(
       }
 
       if (svc.fulfillmentTypeKey) {
-        await resolveFulfillment({
+        const fulfillmentResult = await resolveFulfillment({
           fulfillmentTypeKey: svc.fulfillmentTypeKey,
           idempotencyKey: `msp_staff_purchase:offer:${offerId}:free`,
           trigger: "purchase",
@@ -259,6 +259,14 @@ router.post(
             initiatedBy: "msp_staff", staffUserId: actorId, staffEmail: actorEmail,
           },
         });
+        // Same visibility discipline as portal-checkout.ts:930-955 — an
+        // "unknown_type" result (no fulfillment_types row for this key, e.g.
+        // "assessment"/"retainer" — see #3404) must be at least visible in
+        // logs, not silently discarded.
+        log.info(
+          { result: fulfillmentResult, offerId, customerId, serviceId: svc.id },
+          "msp-marketplace-purchase: resolveFulfillment completed (free path)",
+        );
       }
 
       await createAuditLog({
@@ -445,7 +453,7 @@ router.post(
       }
 
       if (svc.fulfillmentTypeKey) {
-        await resolveFulfillment({
+        const fulfillmentResult = await resolveFulfillment({
           fulfillmentTypeKey: svc.fulfillmentTypeKey,
           idempotencyKey: `msp_staff_purchase:offer:${offerId}:${subscriptionId ?? stripePaymentIntentId}`,
           trigger: "purchase",
@@ -460,6 +468,16 @@ router.post(
             initiatedBy: "msp_staff", staffUserId: actorId, staffEmail: actorEmail,
           },
         });
+        // Same visibility discipline as portal-checkout.ts:930-955 — an
+        // "unknown_type" result (no fulfillment_types row for this key, e.g.
+        // "assessment"/"retainer" — see #3404) must be at least visible in
+        // logs, not silently discarded. The charge has already succeeded by
+        // this point, so this is reporting only, never a reason to fail the
+        // request.
+        log.info(
+          { result: fulfillmentResult, offerId, customerId, serviceId: svc.id },
+          "msp-marketplace-purchase: resolveFulfillment completed (paid path)",
+        );
       }
 
       await createAuditLog({

@@ -22,6 +22,8 @@
  *   - 422 for a consultation-priced (priceCents null) item
  *   - free ($0): skips Stripe, records an accepted sales offer, resolveFulfillment called
  *   - paid (add_on): Stripe PaymentIntent charged to the MSP's card, sales offer recorded accepted
+ *   - resolveFulfillment's return value is captured and logged on both paths, so an
+ *     "unknown_type" result (no fulfillment_types row for the key) is visible (#3404)
  *
  * Run: pnpm --filter @workspace/api-server run test -- msp-marketplace-purchase
  */
@@ -48,11 +50,13 @@ const {
   mockDbInsert,
   mockResolveFulfillment,
   mockCreateAuditLog,
+  mockLogInfo,
 } = vi.hoisted(() => ({
   mockDbSelect: vi.fn(),
   mockDbInsert: vi.fn(),
   mockResolveFulfillment: vi.fn(),
   mockCreateAuditLog: vi.fn(),
+  mockLogInfo: vi.fn(),
 }));
 
 vi.mock("@workspace/db", () => ({
@@ -93,7 +97,7 @@ vi.mock("../lib/tenant-billing-state", () => ({
 vi.mock("../lib/request-context.ts", () => ({ enrichRequestContext: vi.fn() }));
 
 vi.mock("../lib/logger", () => {
-  const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
+  const stub = { info: mockLogInfo, error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
@@ -332,6 +336,56 @@ describe("POST /msp/customers/:customerId/marketplace/checkout", () => {
     expect(piCall["amount"]).toBe(7_000); // 70% default wholesale margin of 10_000
     expect(mockResolveFulfillment).toHaveBeenCalledOnce();
     expect(mockCreateAuditLog).toHaveBeenCalledOnce();
+  });
+
+  // #3404 — resolveFulfillment's return value was previously discarded at both
+  // call sites in this file, so an "unknown_type" result (no fulfillment_types
+  // row for the catalog item's fulfillmentTypeKey, e.g. "assessment") never
+  // surfaced anywhere. Assert the result is now captured and logged, the same
+  // visibility portal-checkout.ts already gives this outcome.
+  describe("resolveFulfillment result visibility (#3404)", () => {
+    it("logs an unknown_type result on the free path instead of discarding it", async () => {
+      queueScopingSelects();
+      mockDbSelect.mockReturnValueOnce(selectChain([freeService]));
+      mockDbInsert.mockReturnValueOnce(insertChain([{ id: 501 }])); // salesOffersTable insert
+      mockResolveFulfillment.mockResolvedValueOnce({
+        status: "unknown_type", fulfillmentTypeKey: "assessment", idempotencyKey: "x",
+      });
+
+      const app = await makeApp();
+      const res = await request(app)
+        .post(`/api/msp/customers/${CUSTOMER_ID}/marketplace/checkout`)
+        .set("Authorization", `Bearer ${mspToken()}`)
+        .send({ serviceId: SERVICE_ID });
+
+      expect(res.status).toBe(201);
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        expect.objectContaining({ result: expect.objectContaining({ status: "unknown_type" }) }),
+        expect.stringContaining("resolveFulfillment completed"),
+      );
+    });
+
+    it("logs an unknown_type result on the paid path instead of discarding it", async () => {
+      queueScopingSelects();
+      mockDbSelect.mockReturnValueOnce(selectChain([addOnService]));
+      mockDbSelect.mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // mspSubscriptionsTable
+      mockDbInsert.mockReturnValueOnce(insertChain([{ id: 502 }])); // salesOffersTable insert
+      mockResolveFulfillment.mockResolvedValueOnce({
+        status: "unknown_type", fulfillmentTypeKey: "assessment", idempotencyKey: "y",
+      });
+
+      const app = await makeApp();
+      const res = await request(app)
+        .post(`/api/msp/customers/${CUSTOMER_ID}/marketplace/checkout`)
+        .set("Authorization", `Bearer ${mspToken()}`)
+        .send({ serviceId: SERVICE_ID });
+
+      expect(res.status).toBe(201);
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        expect.objectContaining({ result: expect.objectContaining({ status: "unknown_type" }) }),
+        expect.stringContaining("resolveFulfillment completed"),
+      );
+    });
   });
 
   // #3400 — a failed charge must not leave a permanently "accepted" sales
