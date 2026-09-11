@@ -1252,6 +1252,126 @@ namespace BuildConsole.Services
             return result;
         }
 
+        // ── Git #3704: resumable, chunked CLOSED-issue walk for the mirror's backfill ──
+
+        /// <summary>Git #3704 — ONE page of the repo's real CLOSED issues, plus the cursor needed to
+        /// resume from exactly where this page ended. The unit
+        /// <see cref="Services.GitHubIssueMirror.MaybeBackfillClosedIssuesAsync"/> walks a bounded
+        /// number of these per chunk, persisting <see cref="EndCursor"/> between chunks.</summary>
+        public class ClosedIssuePage
+        {
+            public List<GitBoardIssue> Issues { get; } = new();
+            /// <summary>GraphQL's opaque cursor for the LAST node on this page — pass it back as
+            /// <c>afterCursor</c> to continue. Null when the page came back empty.</summary>
+            public string? EndCursor { get; set; }
+            public bool HasNextPage { get; set; }
+        }
+
+        /// <summary>
+        /// Git #3704 — fetches ONE page of the repo's real CLOSED issues so the mirror's closed-issue
+        /// backfill can walk the historical set in small, resumable, rate-limit-conscious chunks.
+        ///
+        /// Why a page at a time rather than <see cref="ListBoardIssuesAsync"/>(All): that method walks
+        /// every page in one unbroken burst. On this repo that is ~37 pages, and each page's nested
+        /// <c>subIssues(first: 50)</c> / <c>labels(first: 20)</c> connections make it an expensive
+        /// GraphQL request (GitHub scores a page at roughly (100 + 100×50 + 100×20) / 100 ≈ 71 points),
+        /// so an unthrottled full walk lands ~2,600 points in well under a minute — squarely into
+        /// GitHub's SECONDARY (points-per-minute) rate limit. That is the real failure that caused
+        /// #3359's backfill to be gutted into a no-op, which is the root cause #3704 exists to fix.
+        /// Handing the caller one page plus a cursor lets it spread the same total cost over minutes
+        /// and resume across process restarts, instead of choosing between one damaging burst and no
+        /// backfill at all.
+        ///
+        /// Ordering is <c>CREATED_AT ASC</c> deliberately: the historical closed set is effectively
+        /// immutable at its head, so a cursor taken mid-walk stays meaningful across chunks. (The one
+        /// real drift case — an OLD issue closing mid-walk, which inserts behind the cursor — is
+        /// covered twice over: the incremental <c>since=</c> pass records that closure within minutes,
+        /// and the backfill's own <see cref="GetIssueStateCountAsync"/> reconciliation restarts the
+        /// walk whenever the mirrored closed count falls short of GitHub's real one.)
+        ///
+        /// Returns the page RAW — no parent/milestone-inheritance post-processing. That reconciliation
+        /// genuinely needs the whole open+closed graph at once, which a single page never has; the
+        /// mirror does it in SQL across the full table once the walk completes.
+        /// </summary>
+        public async Task<ClosedIssuePage> ListClosedIssuesPageAsync(string? afterCursor)
+        {
+            string afterArg = string.IsNullOrEmpty(afterCursor) ? "null" : $"\"{afterCursor}\"";
+            string query = $@"query {{
+  repository(owner: ""{Owner}"", name: ""{Repo}"") {{
+    issues(first: {PageSize}, after: {afterArg}, states: [CLOSED], orderBy: {{field: CREATED_AT, direction: ASC}}) {{
+      pageInfo {{ hasNextPage endCursor }}
+      nodes {{
+        number title state url body databaseId createdAt closedAt
+        labels(first: 20) {{ nodes {{ name }} }}
+        milestone {{ title number }}
+        parent {{ number milestone {{ number }} }}
+        subIssuesSummary {{ total completed percentCompleted }}
+        subIssues(first: 50) {{ nodes {{ number }} }}
+      }}
+    }}
+  }}
+}}";
+
+            var conn = await PostGraphQLIssuesAsync(query);
+            var page = new ClosedIssuePage
+            {
+                EndCursor = conn?.PageInfo?.EndCursor,
+                HasNextPage = conn?.PageInfo?.HasNextPage == true && !string.IsNullOrEmpty(conn.PageInfo.EndCursor),
+            };
+            if (conn?.Nodes == null) return page;
+
+            foreach (var n in conn.Nodes)
+            {
+                var childNums = n.SubIssues?.Nodes?.Select(s => s.Number).Where(num => num > 0).ToList() ?? new List<int>();
+                page.Issues.Add(new GitBoardIssue
+                {
+                    Number = n.Number,
+                    Title = n.Title ?? "",
+                    State = n.State ?? "CLOSED",
+                    HtmlUrl = n.Url ?? "",
+                    Body = n.Body ?? "",
+                    CreatedAt = n.CreatedAt,
+                    ClosedAt = n.ClosedAt,
+                    Labels = n.Labels?.Nodes?.Select(l => new GitHubLabel { Name = l.Name }).ToList() ?? new List<GitHubLabel>(),
+                    MilestoneTitle = n.Milestone?.Title,
+                    MilestoneNumber = n.Milestone?.Number,
+                    ParentNumber = n.Parent?.Number,
+                    ParentMilestoneNumber = n.Parent?.Milestone?.Number,
+                    SubIssueCount = Math.Max(n.SubIssuesSummary?.Total ?? 0, childNums.Count),
+                    SubIssueCompleted = n.SubIssuesSummary?.Completed ?? 0,
+                    SubIssuePercent = n.SubIssuesSummary?.PercentCompleted ?? 0,
+                    ChildIssueNumbers = childNums,
+                    DatabaseId = n.DatabaseId,
+                });
+            }
+            return page;
+        }
+
+        /// <summary>
+        /// Git #3704 — GitHub's own authoritative count of issues in <paramref name="state"/>, in ONE
+        /// minimal GraphQL request (<c>first: 1</c>, no nested connections — a 1-point query). This is
+        /// what makes the closed-issue backfill cheap in the steady state: once the walk has completed,
+        /// the daily re-check is this single call compared against the mirror's own
+        /// <c>SELECT count(*) … WHERE state='closed'</c>, and the whole ~37-page walk is skipped
+        /// entirely unless the two genuinely disagree.
+        /// </summary>
+        public async Task<int> GetIssueStateCountAsync(GitHubIssueState state)
+        {
+            string states = state switch
+            {
+                GitHubIssueState.Open => "[OPEN]",
+                GitHubIssueState.Closed => "[CLOSED]",
+                _ => "[OPEN, CLOSED]",
+            };
+            string query = $@"query {{
+  repository(owner: ""{Owner}"", name: ""{Repo}"") {{
+    issues(first: 1, states: {states}) {{ totalCount pageInfo {{ hasNextPage endCursor }} nodes {{ number }} }}
+  }}
+}}";
+            var conn = await PostGraphQLIssuesAsync(query);
+            return conn?.TotalCount ?? 0;
+        }
+
         // ── Git #1709: real "Batter Up" project-board status via GraphQL ────────────
         // Same project/field CLAUDE.md's "AI Batter Up" routing mutation already writes
         // to — just read here instead of written, and a different option (plain "Batter
@@ -2314,6 +2434,11 @@ namespace BuildConsole.Services
         {
             public PageInfoData? PageInfo { get; set; }
             public List<IssueNodeData> Nodes { get; set; } = new();
+            /// <summary>Git #3704 — GraphQL's own real <c>totalCount</c> for this connection. Only
+            /// requested by <see cref="GitHubApiClient.GetIssueStateCountAsync"/> (the one-point
+            /// reconciliation probe the closed-issue backfill uses to decide whether a re-walk is
+            /// needed at all); every other query in this file omits it, in which case it stays 0.</summary>
+            public int TotalCount { get; set; }
         }
         private class PageInfoData
         {
