@@ -3,7 +3,7 @@
  *
  * GET /api/msp/audit
  *   Query params:
- *     page, limit, search, actionType, mspId (PlatformAdmin), outcome, from, to
+ *     page, limit, search, actionType, mspId (PlatformAdmin), customerId, outcome, from, to
  *
  * PlatformAdmin sees all entries. MSP users see only their own MSP's entries.
  */
@@ -39,6 +39,13 @@ router.get("/msp/audit", requireCapability("ladder.msp-admin"), async (req: Requ
     const mspId = parseInt(p(req.query["mspId"] as string | undefined), 10);
     if (!isNaN(mspId)) {
       conditions.push(eq(mspAuditLogsTable.mspId, mspId));
+    }
+  }
+
+  if (req.query["customerId"]) {
+    const customerId = parseInt(p(req.query["customerId"] as string | undefined), 10);
+    if (!isNaN(customerId)) {
+      conditions.push(eq(mspAuditLogsTable.customerId, customerId));
     }
   }
 

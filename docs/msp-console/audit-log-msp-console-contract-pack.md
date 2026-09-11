@@ -75,9 +75,16 @@ same as a real `PlatformAdmin`.
 | `search` | One `OR` across four columns, each `ilike '%<val>%'`: `actionType`, `entityType`, `entityLabel`, `actorRole` (`:68-75`) — **does not search `entityId`, `metadata`, or the actor's real name/email** (those aren't columns on this table at all for the latter two — see §1.4) | `:66-76` |
 | `page` / `limit` | `page` floors at 1; `limit` clamped `[1, 100]`, default `30` (`:24-25`) — no zod schema on this route at all, unlike every write-side sibling in this module family; validation is hand-rolled via the local `p()` helper and `parseInt` | `:18-26` |
 
-No query param does cross-tenant/cross-MSP filtering beyond what §1.1 already fixed — there is no
+**Update (Git #3671):** a `customerId` filter param now exists — exact match on
+`mspAuditLogsTable.customerId`, AND'd with whatever MSP-scoping §1.1 already applies (so an
+`MSPAdmin` supplying `?customerId=` still only ever sees their own MSP's rows narrowed further to
+that customer; `PlatformAdmin` can combine it with `?mspId=`). This closed the gap the rest of this
+section originally documented — the paragraph below is left for historical record of the prior
+state this pack captured before #3671.
+
+~~No query param does cross-tenant/cross-MSP filtering beyond what §1.1 already fixed — there is no
 `customerId` filter param today even though the table carries a `customerId` column (§1.4);
-narrowing to one customer's rows would currently require client-side filtering of the page.
+narrowing to one customer's rows would currently require client-side filtering of the page.~~
 
 ### 1.3 Query shape (`:78-102`)
 
