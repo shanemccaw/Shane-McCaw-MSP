@@ -21,6 +21,10 @@ import jwt from "jsonwebtoken";
 
 const JWT_SECRET = "portal-offers-test-secret";
 process.env["JWT_SECRET"] = JWT_SECRET;
+// portal-offers.ts pulls in document-engine-sow → the Anthropic AI integration
+// client, which throws at module load if these are unset (Git #3589).
+process.env["AI_INTEGRATIONS_ANTHROPIC_BASE_URL"] = "https://anthropic.test";
+process.env["AI_INTEGRATIONS_ANTHROPIC_API_KEY"] = "test-anthropic-key";
 
 const CUSTOMER_ID = 42;
 const OTHER_CUSTOMER_ID = 99;
