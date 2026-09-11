@@ -111,7 +111,7 @@ convention every other single-customer `/api/msp/*` route in this codebase uses.
 | `customerName` | `string \| null` | null if no tenant row | `186` | `tenants.customer_name` |
 | `customerStatus` | `string \| null` (tenant status enum, §2) | null if no tenant row | `187` | `tenants.status` |
 | `telemetryStatus` | `"in_progress" \| "completed"` | never null | `182`, `188` | derived: `"in_progress"` iff `tenants.status === "onboarding"`, else `"completed"` |
-| `scores` | `Record<string, number>` | never null, always carries 6 named keys | `189-197` | derived from `tenant_engine_snapshots`, see §1a — **`governance` is a phantom key, §3** |
+| `scores` | `Record<string, number>` | never null, always carries 5 named keys | `189-196` | derived from `tenant_engine_snapshots`, see §1a — **`governance` phantom key removed, §3** |
 | `results.status` | `"running" \| "complete"` | never null | `199` | `telemetryStatus === "in_progress" ? "running" : "complete"` |
 | `results.runId` | `string \| null` | null if zero snapshots | `93`, `200` | first non-null `tenant_engine_snapshots.run_id` seen, newest-first |
 | `results.generatedAt` | `string \| null` (ISO) | null if zero snapshots | `94`, `201` | first non-null `tenant_engine_snapshots.captured_at`, newest-first |
@@ -137,11 +137,11 @@ Each pillar entry: `breakdown` (a jsonb array on the row) is walked once to buil
 literal, not derived from anything (matches the customer route's own hardcoded `"complete"`,
 `portal-customer-engines.ts:511`).
 
-`scores` itself (`:189-197`) is built as six named defaults (`security`, `health`, `governance`,
+`scores` itself (`:189-196`) is built as five named defaults (`security`, `health`,
 `drift`, `sla`, `scope_creep`, each `?? 0`) with the real `scores` map spread over the top
-(`...scores`) — so any engine key beyond those six that actually has a snapshot rides along too,
-keyed by its own real `engine_key` string. Byte-identical shape to `portal-customer-engines.ts:
-862-870`.
+(`...scores`) — so any engine key beyond those five that actually has a snapshot rides along too,
+keyed by its own real `engine_key` string (including a real `governance` engine, if one is ever
+registered — see §3). Byte-identical shape to `portal-customer-engines.ts: 861-869`.
 
 ### 1b. `results.summary.priorityItems` derivation (`:128-174`)
 
@@ -188,8 +188,9 @@ REAL_ENGINE_KEYS = [
   "priority", "pricing", "health", "security", "drift", "forecasting",
   "crm", "msp", "sla", "scope_creep", "monitoring", "sales_offer",
 ]
-// "governance" is NOT in this list. See §3 — the response's own `scores.governance`
-// default can never be replaced by a real value from any engine that exists today.
+// "governance" is NOT in this list. See §3 — the hardcoded `scores.governance` default
+// was removed for exactly this reason (Git #3621); a real `governance` value can still
+// ride along via `...scores` the day an engine keyed "governance" is ever registered.
 ```
 
 `engine_key` and `severity` are both plain `text` columns with no DB-level CHECK constraint
@@ -198,7 +199,7 @@ validation, such as it is, lives entirely in application code.
 
 ---
 
-## 3. FINDING — `scores.governance` is a phantom key; no engine ever writes it
+## 3. RESOLVED (Git #3621) — `scores.governance` was a phantom key; no engine ever wrote it
 
 **Live-confirmed, not inferred.** `writeEngineSnapshot()` (`engine-registry.ts:324-403`) is the
 only function anywhere in `artifacts/api-server/src` that inserts into
@@ -208,21 +209,30 @@ only caller passes `def.key` (`engine-registry.ts:482`) from the registered `ENG
 `REAL_ENGINE_KEYS`. **`"governance"` is not one of them** — grepped for any literal
 `engineKey: "governance"` anywhere in the route/lib tree: zero hits.
 
-`msp-customer-scores.ts:190` (and its identical twin, `portal-customer-engines.ts:864`) both
+`msp-customer-scores.ts:190` (and its identical twin, `portal-customer-engines.ts:864`) used to
 hardcode `governance: scores.governance ?? 0` as one of six named defaults in the response. Since
-no engine can ever produce a `tenant_engine_snapshots` row with `engine_key = 'governance'`, that
-default is not "0 until a scan runs" — it is **permanently and structurally 0**, indistinguishable
+no engine could ever produce a `tenant_engine_snapshots` row with `engine_key = 'governance'`, that
+default was not "0 until a scan runs" — it was **permanently and structurally 0**, indistinguishable
 on the wire from a real, scored, healthy governance pillar. A consumer building a scorecard UI
-against this field (customer-side or MSP-side) would show a governance tile that can never move,
-with no way to tell "no engine scores this yet" from "this tenant scores perfectly on governance."
+against this field (customer-side or MSP-side) would have shown a governance tile that could never
+move, with no way to tell "no engine scores this yet" from "this tenant scores perfectly on
+governance."
 
-This predates #3558/#3619 — it was copied verbatim from the already-live customer route
+This predated #3558/#3619 — it was copied verbatim from the already-live customer route
 (`portal-customer-engines.ts:864`, itself unchanged since at least the #315/#327 history that
-route's own comments reference) into the new MSP mirror, so it is not a defect this Feature's own
-build introduced, but it is a real, live, user-facing gap this audit could not avoid surfacing
-while extracting the six-key `scores` contract. **Filed as its own issue, parented under Feature
-#3557 per this build's standing rules — see the DONE bookend for the issue number.** Labeled
-`bug` (not `security`).
+route's own comments reference) into the new MSP mirror, so it was not a defect this Feature's own
+build introduced, but it was a real, live, user-facing gap this audit could not avoid surfacing
+while extracting the six-key `scores` contract. Filed as its own issue (#3621), parented under
+Feature #3557 per this build's standing rules. Labeled `bug` (not `security`).
+
+**Fix applied (#3621):** the hardcoded `governance` default was dropped from both call sites —
+`msp-customer-scores.ts` and `portal-customer-engines.ts` now build `scores` from five named
+defaults (`security`, `health`, `drift`, `sla`, `scope_creep`), still spreading the real `scores`
+map over the top. No live consumer read this specific field (grepped `artifacts/portal/src` and
+`artifacts/msp-console/src` — the only other `governance` hits are the unrelated Remediation
+Tracker pillar-score model, which has its own separate data source, not `tenant_engine_snapshots`).
+If a real governance-scoring engine is ever registered in `ENGINE_DEFS` with `engineKey:
+"governance"`, its value rides along automatically via `...scores` — no route change needed.
 
 ---
 

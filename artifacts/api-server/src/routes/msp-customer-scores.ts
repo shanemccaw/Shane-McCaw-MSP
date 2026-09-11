@@ -189,7 +189,6 @@ router.get(
         scores: {
           security: scores.security ?? 0,
           health: scores.health ?? 0,
-          governance: scores.governance ?? 0,
           drift: scores.drift ?? 0,
           sla: scores.sla ?? 0,
           scope_creep: scores.scope_creep ?? 0,
