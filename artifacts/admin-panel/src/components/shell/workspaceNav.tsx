@@ -11,7 +11,6 @@ import {
   MessageSquare,
   Sparkles,
   Terminal,
-  PlayCircle,
   Megaphone,
   Bot,
   Search,
@@ -250,7 +249,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         id: "scripts", label: "Scripts", defaultOpen: true,
         items: [
           { id: "cmd-scripts", label: "M365 Scripts", path: "/command/scripts", icon: Terminal },
-          { id: "cmd-running-scripts", label: "Running Scripts", path: "/command/running-scripts", icon: PlayCircle },
         ],
       },
       {

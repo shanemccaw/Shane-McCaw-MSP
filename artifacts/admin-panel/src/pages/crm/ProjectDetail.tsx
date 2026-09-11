@@ -275,14 +275,10 @@ function DraggableCard({
               )}
               {hasCustomerUpload && (
                 <span
-                  title="Customer submitted script results — click to view in Running Scripts"
+                  title="Customer submitted script results"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (clientUserId) {
-                      setLocation(`/command/running-scripts?customerId=${clientUserId}`);
-                    } else {
-                      onCardClick(task);
-                    }
+                    onCardClick(task);
                   }}
                   className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border bg-teal-500/15 text-teal-400 border-teal-500/25 cursor-pointer hover:bg-teal-500/25 transition-colors"
                 >
