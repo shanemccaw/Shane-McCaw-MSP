@@ -414,9 +414,22 @@
                             <Button x:Name="BtnGitCommitAndPush" Grid.Column="1" Content="✓⬆ Commit &amp; Push" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Margin="4,0,0,0" ToolTip="Stage checked files (if any), commit, then push" Click="BtnGitCommitAndPush_Click"/>
                         </Grid>
 
+                        <!-- Git #3673 — status/error text now WRAPS and the Border grows in
+                             height to fit it, instead of clipping/running off the edge
+                             horizontally (real problem confirmed via Shane's screenshot). -->
                         <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,4" Margin="0,0,0,6">
-                            <TextBlock x:Name="GitStatusSummaryText" Text="SOURCE CONTROL" FontSize="11" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="GitStatusSummaryText" Text="SOURCE CONTROL" FontSize="11"
+                                       TextWrapping="Wrap" TextAlignment="Center"
+                                       Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Stretch"/>
                         </Border>
+
+                        <!-- Git #3673 — shown only when a push fails and is classified as a
+                             real rejection (branch behind origin/main); one-click retry that
+                             runs `git pull` then re-attempts the push (BtnGitPullThenPush_Click). -->
+                        <Button x:Name="BtnGitPullThenPush" Content="⬇⬆ Pull then Push" Style="{StaticResource PrimaryButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,6" Visibility="Collapsed"
+                                ToolTip="Pull origin/main, then retry the push"
+                                Click="BtnGitPullThenPush_Click"/>
                     </StackPanel>
 
                     <!-- Git #860 (Git panel Phase 2) — ONE scrollable panel for Changes.

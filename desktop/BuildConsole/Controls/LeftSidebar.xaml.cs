@@ -8187,7 +8187,23 @@ namespace BuildConsole.Controls
         /// message is shown in <see cref="GitStatusSummaryText"/> — with the full raw
         /// output on its ToolTip. Returns true only on a genuine zero-exit result.
         /// </summary>
+        /// <summary>
+        /// Git #3673 — the full result of a git mutation, so callers that need to classify
+        /// *why* it failed (e.g. a push rejection) can inspect the real stdout/stderr
+        /// instead of just the bool RunGitCommand returns.
+        /// </summary>
+        private readonly struct GitCommandResult
+        {
+            public bool Success { get; init; }
+            public int ExitCode { get; init; }
+            public string Stdout { get; init; }
+            public string Stderr { get; init; }
+        }
+
         private async System.Threading.Tasks.Task<bool> RunGitCommand(string args)
+            => (await RunGitCommandCore(args)).Success;
+
+        private async System.Threading.Tasks.Task<GitCommandResult> RunGitCommandCore(string args)
         {
             GitStatusSummaryText.Text = $"RUNNING: git {args}...";
             GitStatusSummaryText.ToolTip = null;
@@ -8233,7 +8249,7 @@ namespace BuildConsole.Controls
             {
                 GitStatusSummaryText.Text = $"✗ git {args} — {launchError}";
                 try { ActivityLog.Log("git-panel.error", $"git {args} could not run: {launchError}"); } catch { }
-                return false;
+                return new GitCommandResult { Success = false, ExitCode = exitCode, Stdout = stdout, Stderr = stderr };
             }
 
             if (exitCode == 0)
@@ -8246,14 +8262,14 @@ namespace BuildConsole.Controls
                     ? $"✓ git {args} succeeded"
                     : $"✓ {ok}";
                 try { ActivityLog.Log("git-panel.ok", $"git {args} succeeded (exit 0)"); } catch { }
-                return true;
+                return new GitCommandResult { Success = true, ExitCode = exitCode, Stdout = stdout, Stderr = stderr };
             }
 
             string err = BestGitLine(stderr, stdout);
             if (string.IsNullOrEmpty(err)) err = $"exit code {exitCode}";
             GitStatusSummaryText.Text = $"✗ git {args} failed — {err}";
             try { ActivityLog.Log("git-panel.error", $"git {args} failed (exit {exitCode}): {err}"); } catch { }
-            return false;
+            return new GitCommandResult { Success = false, ExitCode = exitCode, Stdout = stdout, Stderr = stderr };
         }
 
         /// <summary>
@@ -8333,7 +8349,75 @@ namespace BuildConsole.Controls
                 await RunGitCommand($"add \"{path}\"");
             }
         }
-        private void BtnGitPush_Click(object sender, RoutedEventArgs e) => _ = RunGitCommand("push");
+        /// <summary>
+        /// Git #3673 — real, specific classification of a push failure: does the real
+        /// stdout/stderr match a genuine "your branch is behind, push rejected" shape
+        /// (`! [rejected]`, `failed to push some refs`, `(fetch first)`, `(non-fast-forward)`)
+        /// rather than any other failure (auth, network, hook, etc.)? Only this class gets
+        /// the "Pull then Push" retry offered — other failures are still shown in full via
+        /// the same (now non-clipping) status container, per the issue's point 5.
+        /// </summary>
+        private static bool IsPushRejection(string stdout, string stderr)
+        {
+            string combined = $"{stdout}\n{stderr}";
+            return combined.IndexOf("! [rejected]", StringComparison.OrdinalIgnoreCase) >= 0
+                || combined.IndexOf("failed to push some refs", StringComparison.OrdinalIgnoreCase) >= 0
+                || combined.IndexOf("(fetch first)", StringComparison.OrdinalIgnoreCase) >= 0
+                || combined.IndexOf("(non-fast-forward)", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        /// <summary>
+        /// Git #3673 — runs `git push` via the same RunGitCommandCore pipeline, then
+        /// classifies a real failure: a genuine push rejection (branch behind origin) gets a
+        /// clear, plain-language message plus the "Pull then Push" retry button revealed;
+        /// any other failure (auth, network, hook, ...) shows the real, full, non-truncated
+        /// git error via GitStatusSummaryText as before, and the retry button stays hidden.
+        /// A success hides the retry button.
+        /// </summary>
+        private async System.Threading.Tasks.Task<bool> RunGitPushAsync()
+        {
+            var result = await RunGitCommandCore("push");
+
+            if (result.Success)
+            {
+                BtnGitPullThenPush.Visibility = Visibility.Collapsed;
+                return true;
+            }
+
+            if (IsPushRejection(result.Stdout, result.Stderr))
+            {
+                GitStatusSummaryText.Text =
+                    "⚠ Push rejected — your branch is behind origin/main. Pull, then push again.";
+                // Full raw git output stays on the ToolTip (set by RunGitCommandCore) so the
+                // real reason is still available, just not what's shown by default.
+                BtnGitPullThenPush.Visibility = Visibility.Visible;
+                try { ActivityLog.Log("git-panel.push-rejected", "git push rejected — offering Pull then Push retry"); } catch { }
+            }
+            else
+            {
+                BtnGitPullThenPush.Visibility = Visibility.Collapsed;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Git #3673 — one-click retry for a classified push rejection: real `git pull`
+        /// (the same command BtnGitPull_Click already uses) followed by a fresh push attempt.
+        /// A pull that fails (e.g. a genuine merge conflict) is shown honestly via the normal
+        /// RunGitCommand error path and the push is NOT attempted — no silent conflict swallow.
+        /// </summary>
+        private async void BtnGitPullThenPush_Click(object sender, RoutedEventArgs e)
+        {
+            BtnGitPullThenPush.Visibility = Visibility.Collapsed;
+
+            bool pulled = await RunGitCommand("pull");
+            if (!pulled) return;
+
+            await RunGitPushAsync();
+        }
+
+        private void BtnGitPush_Click(object sender, RoutedEventArgs e) => _ = RunGitPushAsync();
         private void BtnGitPull_Click(object sender, RoutedEventArgs e) => _ = RunGitCommand("pull");
 
         /// <summary>Git #3622 — the command palette's "Git Pull" quick action runs the
@@ -8404,7 +8488,7 @@ namespace BuildConsole.Controls
             bool committed = await DoGitCommitAsync();
             if (!committed) return;
 
-            await RunGitCommand("push");
+            await RunGitPushAsync();
         }
 
         private void GitCommitMsgBox_KeyDown(object sender, KeyEventArgs e)
