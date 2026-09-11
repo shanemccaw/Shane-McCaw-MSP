@@ -33,12 +33,16 @@
  *     #3366 migration) rather than inventing a new status. If the rule is
  *     still firing on the next evaluation cycle, a fresh "open" incident is
  *     correctly reopened — acknowledging does not suppress a real recurrence.
- *   - msp_diagnostic_findings: genuinely has NO resolution mechanism anywhere
- *     in this codebase — individual finding rows are immutable historical
- *     scan output with no status column and no per-finding lifecycle. Per
- *     this issue's own instruction, that gap is flagged as a separate finding
- *     (see the issue comment) rather than invented here; acknowledging a
- *     "finding-*" alert id returns 400 with that context.
+ *   - msp_diagnostic_findings: flagged separately as Git #3399 rather than
+ *     invented ad hoc here — genuinely had NO resolution mechanism anywhere in
+ *     this codebase (individual finding rows are immutable historical scan
+ *     output). #3399 decided: its own acknowledged_at/acknowledged_by_user_id
+ *     columns (mirroring policy_rule_incidents.resolved_by_user_id's shape),
+ *     NOT routed through remediation_tracker_steps' customer-facing decision
+ *     lifecycle — see the schema comment on those columns
+ *     (lib/db/src/schema/msp.ts) for the full reasoning. GET below excludes
+ *     acknowledged findings from the feed; a fresh scan's re-raised finding is
+ *     a brand new row and starts unacknowledged again.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -50,7 +54,7 @@ import {
   policyRuleIncidentsTable,
   policyRulesTable,
 } from "@workspace/db";
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq, and, inArray, desc, isNull } from "drizzle-orm";
 import { requireCapability, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
@@ -212,6 +216,10 @@ router.get("/msp/alerts", requireCapability("ladder.msp-operator"), async (req: 
             eq(mspDiagnosticFindingsTable.mspId, mspId),
             inArray(mspDiagnosticFindingsTable.runId, latestRunIds),
             inArray(mspDiagnosticFindingsTable.severity, ["warning", "critical"]),
+            // Git #3399 — a manually acknowledged finding drops out of the feed,
+            // same as a resolved policy incident. A fresh scan's re-raised
+            // finding is a brand new row (fresh finding_id) and is unaffected.
+            isNull(mspDiagnosticFindingsTable.acknowledgedAt),
           ),
         );
 
@@ -274,19 +282,68 @@ router.post("/msp/alerts/:alertId/acknowledge", requireCapability("ladder.msp-op
 
     const alertId = String(req.params["alertId"] ?? "");
     const incidentMatch = /^incident-(\d+)$/.exec(alertId);
-    const findingMatch = /^finding-/.exec(alertId);
+    // finding-<uuid> — the id GET /msp/alerts builds from findingId, a uuid,
+    // not the numeric row id (see mspDiagnosticFindingsTable.findingId).
+    const findingMatch = /^finding-([0-9a-f-]{36})$/i.exec(alertId);
 
     if (findingMatch) {
-      // Real audit finding (see file header): msp_diagnostic_findings has no
-      // resolution mechanism anywhere in this codebase to drive. Flagged as
-      // its own issue rather than invented here — do not build a parallel
-      // status for it in this handler.
-      apiError(
-        res,
-        400,
-        ApiErrorCode.VALIDATION,
-        "Diagnostic findings have no per-item acknowledge mechanism yet — see the linked Git issue filed from #3366's audit.",
-      );
+      // Git #3399 — real acknowledge mechanism, added after the #3366 audit
+      // found none existed. See the file header + the schema comment on
+      // mspDiagnosticFindingsTable.acknowledgedAt for why this is the finding's
+      // own column rather than routed through remediation_tracker_steps.
+      const findingUuid = findingMatch[1]!;
+
+      const [finding] = await db
+        .select({
+          id: mspDiagnosticFindingsTable.id,
+          findingId: mspDiagnosticFindingsTable.findingId,
+          mspId: mspDiagnosticFindingsTable.mspId,
+          customerId: mspDiagnosticFindingsTable.customerId,
+          checkKey: mspDiagnosticFindingsTable.checkKey,
+          acknowledgedAt: mspDiagnosticFindingsTable.acknowledgedAt,
+        })
+        .from(mspDiagnosticFindingsTable)
+        .where(eq(mspDiagnosticFindingsTable.findingId, findingUuid))
+        .limit(1);
+
+      if (!finding || finding.mspId !== mspId) {
+        // Same 404 whether the row doesn't exist or belongs to another MSP —
+        // never confirm cross-MSP existence to the caller.
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Alert not found");
+        return;
+      }
+
+      if (finding.customerId !== null && (await isCustomerBlockedByStaffScope(req.user!, finding.customerId))) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Alert not found");
+        return;
+      }
+
+      if (finding.acknowledgedAt !== null) {
+        // Idempotent — acknowledging an already-acknowledged finding is a
+        // no-op success, not an error, matching the incident branch below.
+        res.json({ id: `finding-${finding.findingId}`, status: "acknowledged", acknowledgedAt: finding.acknowledgedAt });
+        return;
+      }
+
+      const [updated] = await db
+        .update(mspDiagnosticFindingsTable)
+        .set({ acknowledgedAt: new Date(), acknowledgedByUserId: req.user!.id })
+        .where(eq(mspDiagnosticFindingsTable.id, finding.id))
+        .returning();
+
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: req.user!.role,
+        actionType: "msp_alerts.finding.acknowledged",
+        entityType: "msp_diagnostic_finding",
+        entityId: finding.id,
+        metadata: { mspId, customerId: finding.customerId, checkKey: finding.checkKey },
+      });
+
+      log.info({ findingId: finding.findingId, mspId, userId: req.user!.id }, "msp-alerts: finding manually acknowledged");
+
+      res.json({ id: `finding-${updated!.findingId}`, status: "acknowledged", acknowledgedAt: updated!.acknowledgedAt });
       return;
     }
 

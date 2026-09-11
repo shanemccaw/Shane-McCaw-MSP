@@ -3692,6 +3692,27 @@ export const mspDiagnosticFindingsTable = pgTable("msp_diagnostic_findings", {
   // is "policy". Null for every baseline finding — there is no policy behind those.
   standingPolicyId: integer("standing_policy_id").references(() => standingPoliciesTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // #3399 — Git #1571's MSP Console Alerts feed audit (#3366) found this table
+  // had NO per-item resolution mechanism at all, unlike policy_rule_incidents'
+  // real status column. A finding row is immutable historical scan output tied
+  // to one run_id (a fresh run writes fresh rows with fresh finding_ids, it
+  // never updates an old one) — so this is deliberately NOT a status enum with
+  // transitions the way policy_rule_incidents.status is; there is nothing for
+  // this row to transition to or from, only one real fact to record: did an
+  // MSP operator dismiss THIS finding instance from the alerts feed. Mirrors
+  // policy_rule_incidents.resolved_by_user_id's shape (nullable timestamp +
+  // nullable user id, both null until acted on) rather than routing through
+  // remediation_tracker_steps' status vocabulary (the issue's other option) —
+  // that table's REMEDIATION_TRACKER_STEP_STATUS is a customer-facing decision
+  // lifecycle keyed by stepId (only ~30 steps, each mapping to a subset of
+  // check keys) with real side effects (accepted_risk spawns a signed
+  // msp_risk_decisions row); reusing it just to silence an alert would both
+  // misrepresent that lifecycle and leave every finding whose check_key maps
+  // to no tracker step (the majority) with no mechanism at all. A fresh scan's
+  // re-raised finding is a new row and starts unacknowledged again — matching
+  // the incident table's own "still firing → reopens" behavior.
+  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+  acknowledgedByUserId: integer("acknowledged_by_user_id"),
 }, (t) => [
   index("msp_diagnostic_findings_run_id_idx").on(t.runId),
   index("msp_diagnostic_findings_customer_id_idx").on(t.customerId),
