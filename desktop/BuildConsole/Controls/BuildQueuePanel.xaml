@@ -476,32 +476,35 @@
                              distinct from "Running" above (which folds VerifyingStatus
                              into the broader "in motion" bucket): filters to exactly
                              status == VerifyingStatus, same single-status pattern as
-                             Crashed/Parked/Done/Canceled below. -->
+                             Parked/Done/Canceled below. -->
                         <ComboBoxItem Content="Verifying"    Tag="Verifying"/>
                         <!-- Git #1638 — the Park staging area: never shown under
                              Running/Queued (that's the whole point of a
                              staging spot the watcher can't pick up), only here. -->
-                        <!-- Git #1877 — the orphaned-by-crash set, same criteria the
-                             existing recovery banner already uses (status=="failed" &&
-                             ExitCode==-2), just as a findable filtered view. -->
-                        <ComboBoxItem Content="Crashed"              Tag="Crashed"/>
                         <ComboBoxItem Content="Parked"               Tag="Parked"/>
-                        <!-- Git #1989 — Conservation Cap: a build parked because it
-                             exceeded Sonnet High while the toggle was on. Deliberately
-                             its OWN filter, distinct from the #1638 "Parked" staging
-                             area above (a different concept — see AccountCapPolicy's
-                             CappedStatus doc comment) — must stay visible/findable, not
-                             buried, per Shane's own requirement on #1989. -->
-                        <ComboBoxItem Content="Capped"               Tag="Capped"/>
                         <!-- Git #1638 — "Send to Builder" launches tracked purely
                              for dedup/visibility/log-capture; never claimable by the
                              watcher, never in the 8-slot Build Watch grid. -->
                         <ComboBoxItem Content="External"             Tag="External"/>
                         <ComboBoxItem Content="Done"                 Tag="Done"/>
                         <ComboBoxItem Content="Canceled"             Tag="Canceled"/>
-                        <ComboBoxItem Content="Tests"                Tag="Tests"/>
+                        <!-- Git #3611 — dedicated filter for #3607's soft-archived canceled rows
+                             (closed-issue or no-issue-at-all), findable directly instead of only
+                             reachable via "All". -->
+                        <ComboBoxItem Content="Archive"              Tag="Archive"/>
                         <ComboBoxItem Content="All"                  Tag="All"/>
                     </ComboBox>
+                    <!-- Git #3611 — removed the dedicated "Crashed" and "Capped" tabs: both are
+                         active things waiting on Shane (a crash waiting to be restarted, a cap
+                         waiting to be drained/overridden), not abandoned work worth tucking into
+                         a rarely-checked separate tab. Both now surface directly in Queued/
+                         "Running & Queued" with their own real, distinct pill (see ApplyFilter,
+                         IsCrashed, and BuildQueueCard's CRASHED/CAPPED pill branches). Also
+                         removed the "Tests" tab (confirmed by Shane it's essentially always
+                         empty in real use) — its RenderTestsTree wasn't actually a queue-item
+                         filter at all (no QueueItem is ever "marked Tests"; it rendered an
+                         unrelated static index of test-manifests/ files), so there was no
+                         Tests-tagged item to fold into the normal view instead. -->
 
                     <!-- Git #950 - Shane: "Add a search box so I can search direct
                          Git numbers." Substring filter on GithubNumber; layers on top

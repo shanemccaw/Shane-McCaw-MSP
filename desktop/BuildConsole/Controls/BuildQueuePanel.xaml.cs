@@ -1052,7 +1052,7 @@ namespace BuildConsole.Controls
                 if (signature != _lastQueueSignature)
                 {
                     _lastQueueSignature = signature;
-                    if (_filter != "Tests") RenderQueue(_lastItems);
+                    RenderQueue(_lastItems);
                     // Git #3336 — resolve each build set's real top Epic(s) from the local mirror
                     // BEFORE rendering, so the rollup below can nest under a real Epic header.
                     _buildSetEpics = await ResolveBuildSetEpicsAsync(_lastItems);
@@ -1060,7 +1060,6 @@ namespace BuildConsole.Controls
                     // queue, not just whatever status the combo/DAG is currently showing).
                     RenderBuildSetRollup(_lastItems);
                 }
-                if (_filter == "Tests") RenderTestsTree();
                 UpdateQueueStatusCounts();
                 UpdateOrphanRecoveryBanner();
                 CappedCountChanged?.Invoke(this, _lastItems.Count(i => i.Status == Services.AccountCapPolicy.CappedStatus));
@@ -1155,13 +1154,13 @@ namespace BuildConsole.Controls
         private void UpdateOrphanRecoveryBanner()
         {
             if (OrphanRecoveryBanner == null) return;
-            int count = _lastItems.Count(i => i.Status == "failed" && i.ExitCode == -2);
+            int count = _lastItems.Count(IsCrashed);
             if (count == 0)
             {
                 OrphanRecoveryBanner.Visibility = Visibility.Collapsed;
                 return;
             }
-            int resumable = _lastItems.Count(i => i.Status == "failed" && i.ExitCode == -2 && !string.IsNullOrEmpty(i.SessionId));
+            int resumable = _lastItems.Count(i => IsCrashed(i) && !string.IsNullOrEmpty(i.SessionId));
             OrphanRecoveryText.Text = $"{count} build{(count == 1 ? "" : "s")} orphaned by a crash/restart" +
                 (resumable > 0 ? $" ({resumable} resumable)" : "");
             OrphanRecoveryBanner.Visibility = Visibility.Visible;
@@ -1194,7 +1193,7 @@ namespace BuildConsole.Controls
                 ToastEngine.Warning("Recover Builds", "The build-queue database isn't connected, so nothing can be recovered.");
                 return;
             }
-            var orphaned = _lastItems.Where(i => i.Status == "failed" && i.ExitCode == -2).ToList();
+            var orphaned = _lastItems.Where(IsCrashed).ToList();
             if (orphaned.Count == 0)
             {
                 ToastEngine.Info("Recover Builds", "No crashed/orphaned builds to recover.");
@@ -1255,7 +1254,7 @@ namespace BuildConsole.Controls
         private async void DismissAllOrphans_Click(object sender, RoutedEventArgs e)
         {
             if (_db == null) return;
-            var orphaned = _lastItems.Where(i => i.Status == "failed" && i.ExitCode == -2).ToList();
+            var orphaned = _lastItems.Where(IsCrashed).ToList();
             if (orphaned.Count == 0) return;
 
             int dismissed = 0, failed = 0;
@@ -1333,7 +1332,7 @@ namespace BuildConsole.Controls
             _openIssues = open;
             _openIssuesRefreshedUtc = DateTime.UtcNow;
             UpdateQueueStatusCounts();
-            try { if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(_lastItems); } catch { }
+            try { if (QueueGraphContainer != null) RenderQueue(_lastItems); } catch { }
         }
 
         /// <summary>
@@ -1621,30 +1620,26 @@ namespace BuildConsole.Controls
                 // mid-run, not a dead/canceled one, so it belongs in the normal working filters
                 // alongside Queued/RunningAndQueued, not tucked away exclusively under "All" or
                 // the dedicated "Canceled" tab (see IsWaitingSelfBlocked).
-                "Queued"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus || IsWaitingSelfBlocked(i))).ToList(),
+                // Git #3611 — same treatment for a crashed row (IsCrashed) and a capped row
+                // (AccountCapPolicy.CappedStatus): both are active things waiting on Shane, not
+                // abandoned work, so removing their dedicated Crashed/Capped tabs means they need
+                // to land here instead of disappearing except under "All".
+                "Queued"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus or Services.AccountCapPolicy.CappedStatus || IsWaitingSelfBlocked(i) || IsCrashed(i))).ToList(),
                 // Git #1894 — combined view added back as a third option alongside the split
                 // Running/Queued (Git #1829), reusing that pre-#1829 combined "Active" criteria
                 // verbatim: queued + running + LimitPausedStatus + VerifyingStatus.
                 // Git #3599 — same WAITING inclusion as "Queued" above.
-                "RunningAndQueued" => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or Services.SessionLimitAutoRestartService.LimitPausedStatus or BuildQueuePostgresClient.VerifyingStatus || IsWaitingSelfBlocked(i))).ToList(),
+                // Git #3611 — same crashed/capped inclusion as "Queued" above.
+                "RunningAndQueued" => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or Services.SessionLimitAutoRestartService.LimitPausedStatus or BuildQueuePostgresClient.VerifyingStatus or Services.AccountCapPolicy.CappedStatus || IsWaitingSelfBlocked(i) || IsCrashed(i))).ToList(),
                 // Git #1927 — standalone Verifying filter: exactly status == VerifyingStatus,
                 // distinct from "Running" above (which folds VerifyingStatus into its broader
                 // "in motion" bucket) so a build that's done executing and just waiting on
                 // real GitHub-issue verification (Git #1469) is findable on its own.
                 "Verifying" => items.Where(i => i.Status == BuildQueuePostgresClient.VerifyingStatus && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
-                // Git #1877 — the orphaned-by-crash set: the exact same criteria
-                // UpdateOrphanRecoveryBanner/BtnRecoverOrphans_Click already use
-                // (status=="failed" && ExitCode==-2), just as a findable filtered view
-                // rather than only a banner. Doesn't replace the banner/bulk-recover.
-                "Crashed"  => items.Where(i => i.Status == "failed" && i.ExitCode == -2 && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
                 // Git #1638 — the Park staging area: a "parked" row is deliberately excluded from
                 // Running/Queued above (the watcher's claim query never picks it up either — that's
                 // the whole point of a staging spot), so it needs its own filter to be findable at all.
                 "Parked"   => items.Where(i => i.Status == "parked" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
-                // Git #1989 — Conservation Cap: parked because it exceeded Sonnet High while the
-                // toggle was on. Its own filter, distinct from "Parked" above (a different, unrelated
-                // staging concept) — must stay findable, not buried.
-                "Capped"   => items.Where(i => i.Status == Services.AccountCapPolicy.CappedStatus && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
                 // Git #1638 — "Send to Builder" tracking rows: never claimable, never in the 8-slot
                 // grid, but still real rows that should be findable rather than lost.
                 "External" => items.Where(i => i.Status == "external" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
@@ -1653,9 +1648,13 @@ namespace BuildConsole.Controls
                 // (IsWaitingSelfBlocked) moved to the working filters above per the real decision
                 // on this issue. Git #3607 — also excludes a row FalseDoneReconciler has soft-archived
                 // (closed-issue or no-issue-at-all canceled rows); it stays a real row in the DB, just
-                // out of this default view. #3611 (blocked by this issue) adds a dedicated "Archive"
-                // filter that surfaces exactly these via `i.Archived`.
+                // out of this default view. Git #3611 adds the dedicated "Archive" filter right below
+                // that surfaces exactly these via `i.Archived`.
                 "Canceled" => items.Where(i => i.Status == "canceled" && !i.Archived && !IsWaitingSelfBlocked(i) && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
+                // Git #3611 — dedicated Archive filter: exactly the rows #3607's soft-archive
+                // reconciler flagged (closed-issue or no-issue-at-all canceled rows). Previously
+                // only reachable via "All"; this makes them directly findable.
+                "Archive"  => items.Where(i => i.Archived && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
                 _          => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             };
 
@@ -1732,7 +1731,7 @@ namespace BuildConsole.Controls
 
         public void ReapplyFocusFilter()
         {
-            try { if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(_lastItems); } catch { }
+            try { if (QueueGraphContainer != null) RenderQueue(_lastItems); } catch { }
             try { RenderInFlightGrouped(_lastInFlightIssues); } catch { }
         }
 
@@ -1754,11 +1753,16 @@ namespace BuildConsole.Controls
                 // the "Queued" filter bucket (see ApplyFilter), not "Canceled" — must match here or
                 // revealing one would switch to a filter that doesn't actually show it.
                 "canceled" when IsWaitingSelfBlocked(item)                                            => "Queued",
-                "failed" when item.ExitCode == -2                                                     => "Crashed",
+                // Git #3611 — Crashed/Capped no longer have dedicated tabs; both now render inside
+                // the same "Queued" bucket ApplyFilter puts them in (via IsCrashed/CappedStatus).
+                "failed" when IsCrashed(item)                                                         => "Queued",
                 "parked"              => "Parked",
-                Services.AccountCapPolicy.CappedStatus => "Capped",
+                Services.AccountCapPolicy.CappedStatus => "Queued",
                 "external"            => "External",
                 "done"                => "Done",
+                // Git #3611 — an archived canceled row no longer shows under "Canceled" (ApplyFilter
+                // excludes i.Archived there); reveal it under the real "Archive" filter instead.
+                "canceled" when item.Archived                                                         => "Archive",
                 "canceled"            => "Canceled",
                 _                     => "All",
             };
@@ -1777,7 +1781,7 @@ namespace BuildConsole.Controls
             if (QueueSearchBox != null && !string.IsNullOrEmpty(QueueSearchBox.Text))
                 QueueSearchBox.Text = "";
 
-            if (QueueGraphContainer != null && _filter != "Tests")
+            if (QueueGraphContainer != null)
                 RenderQueue(_lastItems);
 
             var node = _currentGraphNodes.FirstOrDefault(n => n.Item?.Id == id);
@@ -1797,8 +1801,7 @@ namespace BuildConsole.Controls
             if (_filter != "Done") _showAllDone = false;
             if (QueueGraphContainer == null) return;
 
-            if (_filter == "Tests") RenderTestsTree();
-            else RenderQueue(_lastItems);
+            RenderQueue(_lastItems);
         }
 
         private string _queueSearch = "";
@@ -1841,7 +1844,7 @@ namespace BuildConsole.Controls
         /// of "hidden by filter" search miss no longer exists — nothing left to warn about here.</summary>
         private void RunQueueSearch()
         {
-            if (QueueGraphContainer == null || _filter == "Tests") return;
+            if (QueueGraphContainer == null) return;
             RenderQueue(_lastItems);
         }
 
@@ -1989,6 +1992,15 @@ namespace BuildConsole.Controls
         /// the graph dot, <see cref="ApplyFilter"/>'s filter buckets, and <see cref="RevealQueueItem"/>'s
         /// navigation target can never disagree about which bucket a given row falls in.</summary>
         private static bool IsWaitingSelfBlocked(QueueItem item) => item.Status == "canceled" && item.ExitCode == 0;
+
+        /// <summary>Git #1877/#3611 — the orphaned-by-crash set: same criteria
+        /// UpdateOrphanRecoveryBanner/BtnRecoverOrphans_Click already use (status=="failed" &&
+        /// ExitCode==-2). Single source of truth so <see cref="ApplyFilter"/>'s Queued/
+        /// RunningAndQueued buckets, <see cref="RevealQueueItem"/>'s navigation target, and
+        /// <see cref="BuildQueueCard"/>'s CRASHED pill can never disagree about which rows are
+        /// crashed (Git #3611 removed the dedicated "Crashed" tab that used to be the one place
+        /// this criteria lived).</summary>
+        private static bool IsCrashed(QueueItem item) => item.Status == "failed" && item.ExitCode == -2;
 
         /// <summary>Git #3599 — resolves a declared blocker's live queue node against the FULL,
         /// unfiltered queue, not just whatever the currently-active status filter rendered into
@@ -2224,9 +2236,10 @@ namespace BuildConsole.Controls
                 {
                     "Running"  => "Nothing running.",
                     "Queued"   => "Nothing queued.",
-                    "Crashed"  => "Nothing crashed.",
                     "Done"     => "Nothing done yet.",
                     "Canceled" => "Nothing canceled.",
+                    // Git #3611 — the new dedicated Archive filter.
+                    "Archive"  => "Nothing archived.",
                     _          => "Queue is empty.",
                 };
             // Git #1834 — the build-set drill-down composes with the filter above rather than
@@ -3925,14 +3938,14 @@ namespace BuildConsole.Controls
         private void ToggleBuildSetFilter(string buildSetKey)
         {
             _buildSetFilter = string.Equals(_buildSetFilter, buildSetKey, StringComparison.OrdinalIgnoreCase) ? null : buildSetKey;
-            if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(_lastItems);
+            if (QueueGraphContainer != null) RenderQueue(_lastItems);
             RenderBuildSetRollup(_lastItems);
         }
 
         private void BuildSetRollupClear_Click(object sender, MouseButtonEventArgs e)
         {
             _buildSetFilter = null;
-            if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(_lastItems);
+            if (QueueGraphContainer != null) RenderQueue(_lastItems);
             RenderBuildSetRollup(_lastItems);
         }
 
@@ -4224,6 +4237,32 @@ namespace BuildConsole.Controls
                     VerticalAlignment = VerticalAlignment.Center
                 };
             }
+            else if (IsCrashed(item))
+            {
+                // Git #3611 — distinct from the generic "✕ FAILED" pill below: this is
+                // specifically the orphaned-by-crash subset (Git #1877's own criteria,
+                // status=="failed" && ExitCode==-2), now surfaced directly in Queued/
+                // "Running & Queued" instead of a dedicated (and rarely-checked) "Crashed"
+                // tab — needs its own real, distinct pill so it doesn't read as an ordinary
+                // failure Shane can ignore.
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x16, 0x16)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0x8A, 0x50)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "💥 CRASHED",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x8A, 0x50)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Orphaned by a crash — waiting to be manually restarted. Right-click for Restart/Recover, or use the ♻ Recover All banner."
+                };
+            }
             else if (item.Status == "failed")
             {
                 statusPill = new Border
@@ -4295,7 +4334,10 @@ namespace BuildConsole.Controls
                 // launched. Peach, not the neutral gray "parked" (#1638) above — a
                 // deliberately different, more attention-getting color, since this is
                 // real headroom Shane may want to spend via Run at Full Model or Drain,
-                // not a passive staging spot he chose himself.
+                // not a passive staging spot he chose himself. Git #3611 — this pill
+                // already existed and needed no changes; what changed is where a capped
+                // row is now findable (Queued/RunningAndQueued in ApplyFilter) now that
+                // the dedicated "Capped" tab is gone.
                 statusPill = new Border
                 {
                     Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x20, 0x1A)),
@@ -6037,7 +6079,7 @@ namespace BuildConsole.Controls
                             var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
                             var resumed = await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, item.SessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
                             // Git #2120 — resolve the orphaned ORIGINAL (failed, exit_code -2) so it
-                            // stops satisfying UpdateOrphanRecoveryBanner/Crashed-filter's ExitCode==-2
+                            // stops satisfying UpdateOrphanRecoveryBanner/IsCrashed's ExitCode==-2
                             // test forever after being recovered. Same shape as #2119's Reply fix, but
                             // via the orphan-specific transition since MarkSupersededByReplyAsync's
                             // guard deliberately leaves a real `failed` row untouched.
@@ -6245,122 +6287,12 @@ namespace BuildConsole.Controls
             return win.ShowDialog() == true ? result : null;
         }
 
-        private static readonly Dictionary<string, (string Icon, string Hex)> TestStatusStyle = new()
-        {
-            ["passed"] = ("✅", "#7FAE91"),
-            ["failed"] = ("✕", "#E57A7A"),
-            ["none"]   = ("•", "#8F8C88"),
-        };
-
-        private void RenderTestsTree()
-        {
-            QueueGraphCanvas.Children.Clear();
-            QueueCardsHost.Children.Clear();
-            _currentGraphNodes.Clear();
-
-            string? repoRoot = BuildTrackerConfig.FindRepoRoot();
-            if (repoRoot == null)
-            {
-                QueueGraphContainer.Visibility = Visibility.Collapsed;
-                QueueEmptyText.Text = "No repo root found — can't locate test-manifests/test-results.";
-                QueueEmptyText.Visibility = Visibility.Visible;
-                return;
-            }
-
-            string manifestsDir = Path.Combine(repoRoot, "test-manifests");
-            string resultsDir = Path.Combine(repoRoot, "test-results");
-
-            var manifestFiles = Directory.Exists(manifestsDir)
-                ? Directory.GetFiles(manifestsDir, "*.json")
-                    .Where(f => !string.Equals(Path.GetFileName(f), "_regression-suite.json", StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(f => f)
-                    .ToList()
-                : new List<string>();
-
-            QueueGraphContainer.Visibility = Visibility.Visible;
-            QueueEmptyText.Visibility = manifestFiles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-            QueueEmptyText.Text = "No test manifests found in test-manifests/.";
-
-            var latestResultFileByIssue = new Dictionary<int, string>();
-            if (Directory.Exists(resultsDir))
-            {
-                foreach (var file in Directory.GetFiles(resultsDir, "*.json"))
-                {
-                    string name = Path.GetFileNameWithoutExtension(file);
-                    int dash = name.IndexOf('-');
-                    if (dash <= 0 || !int.TryParse(name.Substring(0, dash), out int issueNum)) continue;
-                    if (!latestResultFileByIssue.TryGetValue(issueNum, out var existing) || string.CompareOrdinal(file, existing) > 0)
-                        latestResultFileByIssue[issueNum] = file;
-                }
-            }
-
-            foreach (var manifestPath in manifestFiles)
-            {
-                var manifest = TestManifest.LoadFromFile(manifestPath);
-                if (manifest == null) continue;
-
-                string status = "none";
-                string subtitle = "no runs yet";
-
-                if (latestResultFileByIssue.TryGetValue(manifest.Issue, out var resultPath))
-                {
-                    try
-                    {
-                        var runResult = System.Text.Json.JsonSerializer.Deserialize<ManifestRunResult>(File.ReadAllText(resultPath));
-                        if (runResult != null && runResult.Steps.Count > 0)
-                        {
-                            int passed = runResult.Steps.Count(s => s.Passed);
-                            status = runResult.AllPassed ? "passed" : "failed";
-                            subtitle = $"{passed}/{runResult.Steps.Count} passed — {runResult.StartedAt:MM/dd HH:mm} ({runResult.Mode})";
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        subtitle = $"couldn't read last result: {ex.Message}";
-                    }
-                }
-
-                var (icon, hex) = TestStatusStyle[status];
-                var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-
-                var border = new Border
-                {
-                    Background = (Brush)Application.Current.FindResource("BaseBrush"),
-                    BorderBrush = (Brush)Application.Current.FindResource("Surface0Brush"),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(5),
-                    Padding = new Thickness(8, 6, 8, 6),
-                    Margin = new Thickness(0, 2, 0, 3)
-                };
-
-                var panel = new StackPanel();
-                var topRow = new StackPanel { Orientation = Orientation.Horizontal };
-                topRow.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = brush, VerticalAlignment = VerticalAlignment.Center });
-                topRow.Children.Add(new TextBlock
-                {
-                    Text = $"#{manifest.Issue} — {manifest.Feature}",
-                    FontSize = 12,
-                    Foreground = (Brush)Application.Current.FindResource("TextBrush"),
-                    FontWeight = FontWeights.SemiBold,
-                    VerticalAlignment = VerticalAlignment.Center,
-                });
-                panel.Children.Add(topRow);
-
-                panel.Children.Add(new TextBlock
-                {
-                    Text = subtitle,
-                    FontSize = 10,
-                    FontStyle = FontStyles.Italic,
-                    Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
-                    Margin = new Thickness(16, 2, 0, 0)
-                });
-
-                border.Child = panel;
-                QueueCardsHost.Children.Add(border);
-            }
-
-            UpdateCritterLoungeVisibility();
-        }
+        // Git #3611 — removed RenderTestsTree()/TestStatusStyle along with the dedicated "Tests"
+        // tab: it was never actually a queue-item filter (no QueueItem is ever "marked Tests")
+        // — it rendered an unrelated static index of test-manifests/ files against test-results/,
+        // decoupled from _lastItems entirely. Confirmed by Shane it's essentially always empty in
+        // real use; since there's no real Tests-tagged queue item, there was nothing to fold into
+        // the normal Queued/RunningAndQueued view the way Crashed/Capped were.
 
         private void TriggerBackgroundIssueTitleQueries()
         {

@@ -840,8 +840,9 @@ namespace BuildConsole.Services
         /// Git #1989 — Conservation Cap park. Called from LaunchItem when the toggle is on
         /// and the item's model/effort exceeds Sonnet High: marks the DB row
         /// AccountCapPolicy.CappedStatus (never re-claimed by GetNextAsync's
-        /// WHERE status='queued'; still visible in the Build Queue panel's "Capped"
-        /// filter) instead of launching it. Direct-DB only, same constraint as the
+        /// WHERE status='queued'; still visible in the Build Queue panel — Git #3611 folded
+        /// this into the normal Queued/RunningAndQueued view once the dedicated "Capped"
+        /// filter tab was removed) instead of launching it. Direct-DB only, same constraint as the
         /// removed #1418 hold path — HTTP-fallback mode has no way to write a status
         /// other than what the API server's own endpoints support, so a capped build in
         /// that mode is marked launch-failed instead of silently vanishing (never picked

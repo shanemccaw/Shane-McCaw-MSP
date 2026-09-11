@@ -2439,7 +2439,10 @@ namespace BuildConsole.Services
         }
 
         /// <summary>All rows currently parked at <see cref="AccountCapPolicy.CappedStatus"/> —
-        /// drives the BuildQueuePanel "Capped" filter/count and MainWindow's Drain-button count.</summary>
+        /// drives MainWindow's Drain-button count. Git #3611 — BuildQueuePanel no longer has a
+        /// dedicated "Capped" filter tab; a capped row now shows directly in Queued/
+        /// RunningAndQueued (ApplyFilter, client-side over the already-loaded queue), which
+        /// doesn't call this DB method.</summary>
         public async Task<List<QueueItem>> GetCappedAsync()
         {
             await using var conn = await OpenAsync();
