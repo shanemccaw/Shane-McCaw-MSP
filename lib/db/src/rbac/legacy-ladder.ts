@@ -333,14 +333,16 @@ export const LEGACY_CAPABILITY_RULES: readonly LegacyCapabilityRule[] = Object.f
   ...LEGACY_ROLE_ORDER.map((role): LegacyCapabilityRule => ({
     system: "msp",
     key: ladderCapabilityKey(role),
-    source: "artifacts/api-server/src/middlewares/requireAuth.ts:80-93, 205-223",
+    source:
+      "artifacts/api-server/src/middlewares/requireAuth.ts:115-123, 135-138 as of 3dddd4b26^ (ROLE_ORDER, roleIndex, pre-#2460)",
     decide: (user) => legacyRequireRole(user, role),
   })),
 
   {
     system: "msp",
     key: "purchases.approve",
-    source: "artifacts/api-server/src/routes/msp-v1.ts:337-351",
+    source:
+      "artifacts/api-server/src/routes/msp-v1.ts:336-350 as of 2868efa79^ (decision authorization block, pre-#2460)",
     /**
      * *"MSPAdmin and PlatformAdmin (legacy role: admin) can always decide.
      * MSPOperator needs canApprovePurchases = true."*
