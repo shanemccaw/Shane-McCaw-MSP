@@ -15,7 +15,7 @@
                              GroupName="ActivityBar"
                              Style="{StaticResource ActivityBarButton}"
                              IsChecked="True"
-                             Checked="Btn_Checked" Tag="Chats"
+                             Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="Chats"
                              ToolTip="Chats">
                     <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                 </RadioButton>
@@ -23,7 +23,7 @@
                 <RadioButton x:Name="BtnExplorer"
                              GroupName="ActivityBar"
                              Style="{StaticResource ActivityBarButton}"
-                             Checked="Btn_Checked" Tag="Explorer"
+                             Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="Explorer"
                              ToolTip="Explorer">
                     <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                 </RadioButton>
@@ -31,7 +31,7 @@
                 <RadioButton x:Name="BtnSearch"
                              GroupName="ActivityBar"
                              Style="{StaticResource ActivityBarButton}"
-                             Checked="Btn_Checked" Tag="Search"
+                             Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="Search"
                              ToolTip="Search">
                     <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                 </RadioButton>
@@ -39,7 +39,7 @@
                 <RadioButton x:Name="BtnGit"
                              GroupName="ActivityBar"
                              Style="{StaticResource ActivityBarButton}"
-                             Checked="Btn_Checked" Tag="Git"
+                             Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="Git"
                              ToolTip="Source Control">
                     <!-- Git #867's emoji fallback is gone — Segoe MDL2/Fluent genuinely
                          has no branch/git glyph (confirmed against Microsoft's own icon
@@ -57,7 +57,7 @@
                 <RadioButton x:Name="BtnIssues"
                              GroupName="ActivityBar"
                              Style="{StaticResource ActivityBarButton}"
-                             Checked="Btn_Checked" Tag="Issues"
+                             Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="Issues"
                              ToolTip="Git Milestones, Epics &amp; Issues Tracker">
                     <TextBlock Text="🎯" FontSize="16"/>
                 </RadioButton>
@@ -65,7 +65,7 @@
                 <RadioButton x:Name="BtnAutomation"
                              GroupName="ActivityBar"
                              Style="{StaticResource ActivityBarButton}"
-                             Checked="Btn_Checked" Tag="Automation"
+                             Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="Automation"
                              ToolTip="UI Automation Suite">
                     <!-- Play glyph (E768) with a Bug glyph (EBE8) badged into the
                          corner — both real, verified Segoe MDL2 Assets glyphs — for
@@ -83,7 +83,7 @@
                 <RadioButton x:Name="BtnGraphApi"
                              GroupName="ActivityBar"
                              Style="{StaticResource ActivityBarButton}"
-                             Checked="Btn_Checked" Tag="GraphApi"
+                             Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="GraphApi"
                              ToolTip="Microsoft Graph API Panel">
                     <TextBlock Text="&#xE9A1;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{StaticResource BlueBrush}"/>
                 </RadioButton>
@@ -281,7 +281,7 @@
                 <RadioButton x:Name="BtnSettings"
                              GroupName="ActivityBar"
                              Style="{StaticResource ActivityBarButton}"
-                             Checked="Btn_Checked" Tag="Settings"
+                             Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="Settings"
                              ToolTip="Settings">
                     <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                 </RadioButton>

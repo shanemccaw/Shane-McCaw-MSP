@@ -55,6 +55,18 @@ namespace BuildConsole.Controls
                 ActiveViewChanged?.Invoke(this, rb.Tag?.ToString() ?? "Chats");
         }
 
+        /// <summary>Git #3602 — additive fix for the re-click case. WPF's RadioButton.Checked
+        /// only fires on a real unchecked→checked transition, so clicking the already-active
+        /// icon again (e.g. to reopen the panel after it was collapsed) never re-fires
+        /// Checked/ActiveViewChanged. Firing ActiveViewChanged directly here when the click
+        /// lands on an already-checked RadioButton restores that case without touching the
+        /// normal "switch to a different icon" path, which still goes through Btn_Checked.</summary>
+        private void Btn_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (sender is RadioButton { IsChecked: true } rb)
+                ActiveViewChanged?.Invoke(this, rb.Tag?.ToString() ?? "Chats");
+        }
+
         /// <summary>Git #937 — toggles the always-on-top Sticky Notes floaty.</summary>
         private void BtnStickyNotes_Click(object sender, RoutedEventArgs e) =>
             StickyNotesToggleRequested?.Invoke(this, EventArgs.Empty);
