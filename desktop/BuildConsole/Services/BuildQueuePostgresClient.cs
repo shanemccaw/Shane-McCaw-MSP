@@ -2240,7 +2240,9 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// Manual "Recover Session-Limit Builds" — the BuildQueuePanel button that scans
+        /// Log-sweep session-limit recovery — used by
+        /// <see cref="SessionLimitAutoRestartService"/>'s automatic periodic sweep
+        /// (Git #3573; previously a manual BuildQueuePanel button) that scans
         /// recent stdout logs for a session-limit hit (see
         /// <see cref="SessionLimitAutoRestartService.ManualRecoverFromLogsAsync"/>) and
         /// requeues whatever row it finds, no matter what status the row landed in

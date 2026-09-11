@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -74,6 +75,19 @@ namespace BuildConsole.Services
         private DateTime? _restartAtLocal;
         /// <summary>The LOCAL time the session limit resets at, or null when nothing is armed.</summary>
         private DateTime? _resetAtLocal;
+
+        /// <summary>
+        /// Git #3573 — the periodic fallback sweep's cadence. Matches the established
+        /// "every 5 minutes" background-poll convention already used elsewhere in this
+        /// app (e.g. <see cref="GitHubIssueMirror"/>'s live ALL walk) rather than
+        /// inventing a new interval; a log-tail scan is cheap enough to run this often
+        /// without being the 5-10s UI-refresh cadence a log sweep doesn't need.
+        /// </summary>
+        private static readonly TimeSpan PeriodicSweepInterval = TimeSpan.FromMinutes(5);
+        /// <summary>Same window the old manual "Recover Session-Limit Builds" button used — how far back the sweep looks at build logs.</summary>
+        private static readonly TimeSpan PeriodicSweepWindow = TimeSpan.FromHours(1);
+        private Timer? _periodicSweepTimer;
+        private int _periodicSweepRunning; // 0/1 guard so a slow scan can't overlap the next tick
 
         public SessionLimitAutoRestartService(BuildQueuePostgresClient? db, Action resumeQueue)
         {
@@ -239,21 +253,26 @@ namespace BuildConsole.Services
             if (count > 0) { try { LimitPausedResumed?.Invoke(count); } catch { } }
         }
 
-        // ── Manual recovery (Build Queue panel button) ──────────────────────────
+        // ── Log-sweep fallback recovery (was a manual button; now periodic — Git #3573) ──
 
         /// <summary>
-        /// "Recover Session-Limit Builds" — manual counterpart to the live detection in
-        /// QueueWatcherService. That live path only flags a build while its process is
-        /// still attached to the watcher; if a build died some other way (app restart,
-        /// a manual kill, a variant of the limit message the live regex saw but the
-        /// reap loop didn't get to before exit) the row can be left sitting
-        /// failed/canceled/held with the limit message as the last thing it ever
-        /// printed, and nothing ever resumes it. This sweeps every build's raw stdout
-        /// log file touched in the last <paramref name="window"/>, re-detects the same
-        /// "hit your session limit · resets …" shape via <see cref="TryDetectLimitMessage"/>,
-        /// and requeues (resume, not restart-from-scratch) whatever it finds — same
-        /// resume_session_id preservation as the automatic path, just triggered by hand
-        /// instead of waiting on the reset timer.
+        /// Log-sweep fallback counterpart to the live detection in QueueWatcherService.
+        /// That live path only flags a build while its process is still attached to the
+        /// watcher; if a build died some other way (app restart, a manual kill, a
+        /// variant of the limit message the live regex saw but the reap loop didn't get
+        /// to before exit) the row can be left sitting failed/canceled/held with the
+        /// limit message as the last thing it ever printed, and nothing ever resumes
+        /// it. This sweeps every build's raw stdout log file touched in the last
+        /// <paramref name="window"/>, re-detects the same "hit your session limit ·
+        /// resets …" shape via <see cref="TryDetectLimitMessage"/>, and requeues
+        /// (resume, not restart-from-scratch) whatever it finds — same
+        /// resume_session_id preservation as the automatic path.
+        ///
+        /// Originally triggered only by a "Recover Session-Limit Builds" button in the
+        /// Build Queue panel; as of Git #3573 <see cref="StartPeriodicSweep"/> calls this
+        /// same method on its own timer instead, so it now also runs with zero manual
+        /// action. The button and its click handler are gone — this method itself is
+        /// unchanged, just scheduled differently.
         /// </summary>
         public async Task<(List<QueueItem> Resumed, int Scanned)> ManualRecoverFromLogsAsync(TimeSpan window)
         {
@@ -333,6 +352,54 @@ namespace BuildConsole.Services
             return (resumed, scanned);
         }
 
+        // ── Git #3573 — automatic periodic sweep (replaces the manual button) ───
+
+        /// <summary>
+        /// Starts the periodic fallback sweep: re-runs <see cref="ManualRecoverFromLogsAsync"/>
+        /// on its own, every <see cref="PeriodicSweepInterval"/>, exactly as the old manual
+        /// "Recover Session-Limit Builds" button did on click. This is scheduling only — the
+        /// detection/scan/requeue logic itself is untouched and unduplicated; it catches
+        /// whatever the live DetectSessionLimit path (still fully intact, elsewhere in this
+        /// file) misses, without Shane ever having to click anything. Called once from
+        /// <see cref="StartAsync"/>; idempotent (disposes any previous timer first) so it's
+        /// safe even if StartAsync is ever invoked more than once.
+        /// </summary>
+        private void StartPeriodicSweep()
+        {
+            lock (_gate)
+            {
+                _periodicSweepTimer?.Dispose();
+                _periodicSweepTimer = new Timer(_ => { _ = RunPeriodicSweepAsync(); }, null, PeriodicSweepInterval, PeriodicSweepInterval);
+            }
+            ActivityLog.Log("session-limit", $"Automatic session-limit recovery sweep armed — scanning the last {PeriodicSweepWindow.TotalMinutes:0} min of build logs every {PeriodicSweepInterval.TotalMinutes:0} min.");
+        }
+
+        private async Task RunPeriodicSweepAsync()
+        {
+            // Guard against overlap if a scan ever runs long on a slow disk — skip this
+            // tick rather than pile up concurrent scans of the same log directory.
+            if (Interlocked.Exchange(ref _periodicSweepRunning, 1) == 1) return;
+            try
+            {
+                var (resumed, scanned) = await ManualRecoverFromLogsAsync(PeriodicSweepWindow);
+                if (resumed.Count > 0)
+                {
+                    var titles = string.Join(", ", resumed.Take(4).Select(i => $"#{i.Id} {i.Title}"));
+                    if (resumed.Count > 4) titles += $", +{resumed.Count - 4} more";
+                    ActivityLog.Log("session-limit", $"Automatic sweep: re-queued {resumed.Count} of {scanned} scanned build log(s) for resume — {titles}.");
+                    try { LimitPausedResumed?.Invoke(resumed.Count); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("session-limit", $"Automatic sweep failed: {ex.Message} — will retry on the next {PeriodicSweepInterval.TotalMinutes:0}-minute tick.");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _periodicSweepRunning, 0);
+            }
+        }
+
         /// <summary>Reads at most the last <paramref name="maxBytes"/> bytes of a file that's still being actively written to (shared read/write access, same as the log tailer).</summary>
         private static string ReadTail(string path, int maxBytes)
         {
@@ -351,6 +418,11 @@ namespace BuildConsole.Services
         /// </summary>
         public async Task StartAsync()
         {
+            // Git #3573 — arm the automatic fallback sweep unconditionally, before any of
+            // the bootstrap/re-arm branches below (some of which return early) so it's
+            // never skipped regardless of which path this run takes.
+            StartPeriodicSweep();
+
             var settings = BuildConsoleSettings.Load();
 
             // One-shot bootstrap for the first set (see FirstSetIssueNumbers): their
@@ -425,7 +497,13 @@ namespace BuildConsole.Services
 
         public void Dispose()
         {
-            lock (_gate) { _timer?.Dispose(); _timer = null; }
+            lock (_gate)
+            {
+                _timer?.Dispose();
+                _timer = null;
+                _periodicSweepTimer?.Dispose();
+                _periodicSweepTimer = null;
+            }
         }
     }
 }
