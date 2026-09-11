@@ -45,7 +45,7 @@ function makeChain(rows: unknown[]) {
 // selectResults / insertResults / updateResult are filled per-test via helpers.
 // The mock reads from these arrays in call-order.
 
-const { mockDb, mockState } = vi.hoisted(() => {
+const { mockDb, mockState, mockStripeSessionCreate } = vi.hoisted(() => {
   const mockState = {
     selectResults: [] as unknown[][],
     insertResults: [] as unknown[][],
@@ -59,7 +59,16 @@ const { mockDb, mockState } = vi.hoisted(() => {
     update: vi.fn(),
   };
 
-  return { mockDb, mockState };
+  // Shared across every `new Stripe(key)` instantiation the route makes, so a test
+  // can inspect the real params a checkout.sessions.create() call was made with —
+  // an inline `vi.fn()` per Stripe mock instance (the old shape) can't be reached
+  // from the test body at all.
+  const mockStripeSessionCreate = vi.fn().mockResolvedValue({
+    id: "cs_test",
+    url: "https://checkout.stripe.com/pay/cs_test",
+  });
+
+  return { mockDb, mockState, mockStripeSessionCreate };
 });
 
 // ── Module mocks ───────────────────────────────────────────────────────────────
@@ -75,7 +84,7 @@ vi.mock("@workspace/db", () => ({
   mspsTable:                  { id: "id", name: "name", slug: "slug" },
   tenantsTable:               { id: "id", mspId: "msp_id", tenantId: "tenant_id" },
   salesOffersTable:           { id: "id", state: "state", mspId: "msp_id", serviceId: "service_id", tenantId: "tenant_id", title: "title", adjustedPriceCents: "adjusted_price_cents" },
-  servicesTable:              { id: "id", name: "name", description: "description", serviceClass: "service_class", allowFreeCheckout: "allow_free_checkout", trialPeriodDays: "trial_period_days" },
+  servicesTable:              { id: "id", name: "name", description: "description", serviceClass: "service_class", billingType: "billing_type", allowFreeCheckout: "allow_free_checkout", trialPeriodDays: "trial_period_days" },
   mspEventStoreTable:         { eventType: "event_type" },
   fulfillmentQueueTable:      { id: "id", sourceType: "source_type", sourceId: "source_id", deliveryStatus: "delivery_status" },
 }));
@@ -134,7 +143,7 @@ vi.mock("stripe", () => {
     return {
       checkout: {
         sessions: {
-          create: vi.fn().mockResolvedValue({ id: "cs_test", url: "https://checkout.stripe.com/pay/cs_test" }),
+          create: mockStripeSessionCreate,
         },
       },
       paymentIntents: {
@@ -276,6 +285,37 @@ describe("POST /msp/offers/:offerId/accept", () => {
     expect(res.status).toBe(200);
     expect(res.body.outcome).toBe("checkout_required");
     expect(res.body.checkoutUrl).toContain("stripe.com");
+  });
+
+  // #3634 — a real live catalog shape: retainer items carry serviceClass="retainer"
+  // (not "subscription") but billingType="recurring_monthly". Must route through a
+  // real Stripe subscription-mode Checkout Session, not the one-time "payment" mode
+  // branch — same trap #3403 fixed for msp-marketplace-purchase.ts, plus a second,
+  // deeper bug this file had on its own: even a service already correctly flagged
+  // serviceClass="subscription" never got a subscription-mode session because
+  // `sessionParams["mode"]` was force-reset to "payment" immediately after being set.
+  it("#3634: retainer (serviceClass=retainer, billingType=recurring_monthly) creates a subscription-mode Checkout Session with a recurring line item", async () => {
+    const app = buildApp();
+
+    queueSelect(
+      [{ id: 3, state: "sent", mspId: 42, serviceId: 30, tenantId: null, title: "vCISO Retainer", adjustedPriceCents: 450000 }],
+      [{ name: "vCISO Retainer", description: "Monthly vCISO engagement", serviceClass: "retainer", billingType: "recurring_monthly", allowFreeCheckout: false, trialPeriodDays: 14 }],
+      // MSP lookup for success_url
+      [{ name: "Contoso MSP", slug: "contoso" }],
+    );
+
+    const res = await request(app).post("/msp/offers/3/accept").send({});
+    expect(res.status).toBe(200);
+    expect(res.body.outcome).toBe("checkout_required");
+    expect(res.body.checkoutUrl).toContain("stripe.com");
+
+    expect(mockStripeSessionCreate).toHaveBeenCalledOnce();
+    const sessionParams = mockStripeSessionCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(sessionParams["mode"]).toBe("subscription");
+    expect(sessionParams["subscription_data"]).toEqual({ trial_period_days: 14 });
+    const lineItems = sessionParams["line_items"] as Array<{ price_data: Record<string, unknown> }>;
+    expect(lineItems[0]?.price_data["recurring"]).toEqual({ interval: "month" });
+    expect(lineItems[0]?.price_data["unit_amount"]).toBe(450000);
   });
 
   it("free-activates a $0 offer with allowFreeCheckout", async () => {

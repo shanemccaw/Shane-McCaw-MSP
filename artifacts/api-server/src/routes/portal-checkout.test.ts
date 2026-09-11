@@ -77,12 +77,14 @@ const {
   mockDbUpdate,
   mockResolveFulfillment,
   mockStripeSessionCreate,
+  mockRecordTenantSubscription,
 } = vi.hoisted(() => ({
   mockDbSelect: vi.fn(),
   mockDbInsert: vi.fn(),
   mockDbUpdate: vi.fn(),
   mockResolveFulfillment: vi.fn(),
   mockStripeSessionCreate: vi.fn(),
+  mockRecordTenantSubscription: vi.fn(async () => ({ id: 1 })),
 }));
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -102,6 +104,7 @@ vi.mock("@workspace/db", () => ({
   },
   servicesTable: {
     id: "id", name: "name", description: "description", serviceClass: "service_class",
+    billingType: "billing_type",
     fulfillmentTypeKey: "fulfillment_type_key", allowFreeCheckout: "allow_free_checkout",
     trialPeriodDays: "trial_period_days",
     internalCostCents: "internal_cost_cents",
@@ -146,6 +149,10 @@ vi.mock("drizzle-orm", () => ({
 
 vi.mock("../lib/resolve-fulfillment", () => ({
   resolveFulfillment: mockResolveFulfillment,
+}));
+
+vi.mock("../lib/tenant-billing-state", () => ({
+  recordTenantSubscription: (...args: unknown[]) => mockRecordTenantSubscription(...(args as [])),
 }));
 
 vi.mock("../lib/sales-offer-engine", () => ({
@@ -250,6 +257,12 @@ const addOnService = {
   trialPeriodDays: null,
 };
 const subscriptionService = { ...addOnService, serviceClass: "subscription", fulfillmentTypeKey: "bundle_subscription", trialPeriodDays: 7 };
+// #3634 — a real live catalog shape: retainer items carry serviceClass="retainer"
+// (not "subscription") but billingType="recurring_monthly". Must route through the
+// Stripe Subscription branch, not the one-time PaymentIntent branch, same trap #3403
+// fixed for msp-marketplace-purchase.ts.
+const retainerOffer = { ...baseSentOffer, id: 6, adjustedPriceCents: 450_000, trialPeriodDays: null };
+const retainerService = { ...addOnService, serviceClass: "retainer", billingType: "recurring_monthly", fulfillmentTypeKey: "retainer", trialPeriodDays: null };
 const freeService = { ...addOnService, serviceClass: "add_on", fulfillmentTypeKey: "assessment", allowFreeCheckout: true };
 const projectService = { ...addOnService, serviceClass: "project", fulfillmentTypeKey: "retainer" };
 
@@ -443,6 +456,49 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     const subCall = mockStripeSubscriptionsCreate.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(subCall["customer"]).toBe("cus_test");
     expect(subCall["trial_period_days"]).toBe(7);
+  });
+
+  it("2c. #3634: paid retainer (serviceClass=retainer, billingType=recurring_monthly) creates a real Stripe Subscription and records it via recordTenantSubscription", async () => {
+    mockDbSelect
+      .mockReturnValueOnce(selectChain([retainerOffer]))        // offer
+      .mockReturnValueOnce(selectChain([retainerService]))      // service
+      .mockReturnValueOnce(selectChain([{ customCustomerAgreement: null }])) // parent MSP custom agreement
+      .mockReturnValueOnce(selectChain([]))                     // platform agreements
+      .mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // msp subscription
+    mockDbUpdate.mockReturnValueOnce(updateChain());
+    // Real Stripe Subscription objects always carry `items.data[]` — shape the mock
+    // like the real API response so the route's `stripeSub.items?.data?.[0]?.price?.id`
+    // read exercises the real field, not just the `?? null` fallback.
+    mockStripeSubscriptionsCreate.mockResolvedValueOnce({
+      id: "sub_retainer_test",
+      status: "active",
+      cancel_at_period_end: false,
+      items: { data: [{ price: { id: "price_retainer_test" } }] },
+    });
+
+    const app = await makeApp();
+    const res = await request(app)
+      .post("/api/portal/offers/6/checkout")
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.outcome).toBe("payment_processed");
+    expect(res.body.subscriptionId).toBe("sub_retainer_test");
+    expect(mockStripeSubscriptionsCreate).toHaveBeenCalledOnce();
+    expect(mockStripePaymentIntentsCreate).not.toHaveBeenCalled();
+    expect(mockRecordTenantSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: CUSTOMER_ID,
+        mspId: MSP_ID,
+        billingParty: "msp",
+        source: "checkout",
+        status: "active",
+        stripeSubscriptionId: "sub_retainer_test",
+        stripePriceId: "price_retainer_test",
+        stripeCustomerId: "cus_test",
+      }),
+    );
   });
 
   // ── Branch 3: $0 free assessment ─────────────────────────────────────────

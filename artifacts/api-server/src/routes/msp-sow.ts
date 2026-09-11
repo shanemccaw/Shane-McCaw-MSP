@@ -162,6 +162,7 @@ router.post(
 
     // Resolve service to determine checkout path
     let serviceClass: "project" | "add_on" | "subscription" | null = null;
+    let billingType: "one_time" | "recurring_monthly" | null = null;
     let serviceName = offer.title;
     let serviceDescription: string | null = null;
     let trialPeriodDays: number | null = null;
@@ -173,6 +174,7 @@ router.post(
           name: servicesTable.name,
           description: servicesTable.description,
           serviceClass: servicesTable.serviceClass,
+          billingType: servicesTable.billingType,
           deliveryType: servicesTable.deliveryType,
           allowFreeCheckout: servicesTable.allowFreeCheckout,
           trialPeriodDays: servicesTable.trialPeriodDays,
@@ -184,6 +186,7 @@ router.post(
 
       if (svc) {
         serviceClass = (svc.serviceClass as "project" | "add_on" | "subscription" | null) ?? "add_on";
+        billingType = (svc.billingType as "one_time" | "recurring_monthly" | null) ?? null;
         serviceName = svc.name;
         serviceDescription = svc.description ?? null;
         trialPeriodDays = svc.trialPeriodDays ?? null;
@@ -344,7 +347,15 @@ router.post(
     const portalBase = `${baseUrl}/portal`;
 
     try {
-      const mode = serviceClass === "subscription" ? "subscription" : "payment";
+      // #3634 — serviceClass narrowly checked for "subscription", but retainer
+      // catalog items carry serviceClass="retainer" with billingType="recurring_monthly"
+      // and fell through to the one-time "payment" mode below. Widened to match the
+      // working pattern already proven in portal-checkout-direct.ts:164 and applied to
+      // msp-marketplace-purchase.ts / portal-checkout.ts in #3403/#3634 — a recurring
+      // item is anything billed recurring_monthly OR flagged as serviceClass
+      // "subscription", not only the latter.
+      const isRecurring = serviceClass === "subscription" || billingType === "recurring_monthly";
+      const mode: "subscription" | "payment" = isRecurring ? "subscription" : "payment";
       const sessionParams: Record<string, unknown> = {
         mode,
         customer_email: req.user!.email,
@@ -356,31 +367,28 @@ router.post(
         },
         success_url: `${portalBase}/customer-home?offer_accepted=1`,
         cancel_url: `${portalBase}/customer-home?offer_cancelled=1`,
+        // #3634 — this used to be set unconditionally to "payment" right after being
+        // classified as "subscription" above (comment: "Fall back to payment mode if
+        // no Stripe price ID available"), which meant NO purchase through this branch —
+        // retainer or otherwise — ever actually created a real Stripe Subscription. A
+        // price_data.recurring line item is legal without a pre-created Stripe Price
+        // object (the same inline price_data + recurring pattern already proven in
+        // portal-checkout-direct.ts:205-238), so there was never a real need for the
+        // fallback. trial_period_days lives on subscription_data, not inside recurring
+        // — Stripe's Checkout Session API has no `recurring.trial_period_days` field.
+        ...(mode === "subscription" && trialPeriodDays && trialPeriodDays > 0
+          ? { subscription_data: { trial_period_days: trialPeriodDays } }
+          : {}),
+        line_items: [{
+          price_data: {
+            currency: "usd",
+            product_data: { name: serviceName, ...(serviceDescription ? { description: serviceDescription } : {}) },
+            unit_amount: amountCents,
+            ...(mode === "subscription" ? { recurring: { interval: "month" as const } } : {}),
+          },
+          quantity: 1,
+        }],
       };
-
-      if (mode === "payment") {
-        sessionParams["line_items"] = [{
-          price_data: {
-            currency: "usd",
-            product_data: { name: serviceName, description: serviceDescription ?? undefined },
-            unit_amount: amountCents,
-          },
-          quantity: 1,
-        }];
-      } else {
-        // subscription mode: need a price ID from the catalog
-        // Fall back to payment mode if no Stripe price ID available
-        sessionParams["mode"] = "payment";
-        sessionParams["line_items"] = [{
-          price_data: {
-            currency: "usd",
-            product_data: { name: serviceName },
-            unit_amount: amountCents,
-            ...(trialPeriodDays ? { recurring: { interval: "month" } } : {}),
-          },
-          quantity: 1,
-        }];
-      }
 
       const session = await stripe.checkout.sessions.create(sessionParams as Parameters<typeof stripe.checkout.sessions.create>[0]);
 

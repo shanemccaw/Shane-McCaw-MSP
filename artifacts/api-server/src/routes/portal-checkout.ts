@@ -46,6 +46,7 @@ import { requireCapability } from "../middlewares/requireAuth.ts";
 import { getStripeKey, getMspDefaultPaymentMethod } from "../lib/stripe.ts";
 import { resolveFulfillment } from "../lib/resolve-fulfillment.ts";
 import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
+import { recordTenantSubscription } from "../lib/tenant-billing-state.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "billing" });
 import { transitionOfferState } from "../lib/sales-offer-engine.ts";
@@ -237,6 +238,7 @@ router.post(
 
     // ── Resolve service metadata ──────────────────────────────────────────────
     let serviceClass: "project" | "add_on" | "subscription" = "add_on";
+    let billingType: "one_time" | "recurring_monthly" | null = null;
     let fulfillmentTypeKey: string | null = null;
     let serviceName = offerRow.title;
     let serviceDescription: string | null = null;
@@ -251,6 +253,7 @@ router.post(
           name: servicesTable.name,
           description: servicesTable.description,
           serviceClass: servicesTable.serviceClass,
+          billingType: servicesTable.billingType,
           fulfillmentTypeKey: servicesTable.fulfillmentTypeKey,
           allowFreeCheckout: servicesTable.allowFreeCheckout,
           trialPeriodDays: servicesTable.trialPeriodDays,
@@ -263,6 +266,7 @@ router.post(
 
       if (svc) {
         serviceClass = (svc.serviceClass as "project" | "add_on" | "subscription" | null) ?? "add_on";
+        billingType = (svc.billingType as "one_time" | "recurring_monthly" | null) ?? null;
         fulfillmentTypeKey = svc.fulfillmentTypeKey ?? null;
         serviceName = svc.name;
         serviceDescription = svc.description ?? null;
@@ -651,8 +655,17 @@ router.post(
       // 4. Enforce Charge Target: Always charge MSP's saved stripeCustomerId for wholesaleCostCents
       let subscriptionId: string | null = null;
       let stripePaymentIntentId: string | null = null;
+      let stripeSubStatus: "active" | "trialing" | null = null;
+      let stripeSubPeriod: { start: Date | null; end: Date | null; cancelAtPeriodEnd: boolean } | null = null;
+      let stripeSubPriceId: string | null = null;
 
-      if (serviceClass === "subscription") {
+      // #3634 — serviceClass narrowly checked for "subscription", but retainer
+      // catalog items carry serviceClass="retainer" with billingType="recurring_monthly"
+      // and fell through to the one-time PaymentIntent branch below. Widened to match
+      // the working pattern already proven in portal-checkout-direct.ts:164 and applied
+      // to msp-marketplace-purchase.ts in #3403 — a recurring item is anything billed
+      // recurring_monthly OR flagged as serviceClass "subscription", not only the latter.
+      if (serviceClass === "subscription" || billingType === "recurring_monthly") {
         // Create product for subscription first
         const product = await stripe.products.create({
           name: serviceName,
@@ -679,6 +692,18 @@ router.post(
         }
 
         subscriptionId = stripeSub.id;
+        stripeSubStatus = stripeSub.status;
+        stripeSubPriceId = stripeSub.items?.data?.[0]?.price?.id ?? null;
+
+        const rawStripeSub = stripeSub as unknown as {
+          current_period_start?: number;
+          current_period_end?: number;
+        };
+        stripeSubPeriod = {
+          start: rawStripeSub.current_period_start ? new Date(rawStripeSub.current_period_start * 1000) : null,
+          end: rawStripeSub.current_period_end ? new Date(rawStripeSub.current_period_end * 1000) : null,
+          cancelAtPeriodEnd: stripeSub.cancel_at_period_end ?? false,
+        };
       } else {
         const pi = await stripe.paymentIntents.create({
           amount: wholesaleCostCents,
@@ -702,6 +727,44 @@ router.post(
         }
 
         stripePaymentIntentId = pi.id;
+      }
+
+      // #3634 — RECORD IT (Git #2847). Gate on the actual Stripe outcome
+      // (subscriptionId/stripeSubStatus/stripeSubPeriod are only ever set together,
+      // inside the widened branch above), not a re-derived serviceClass check — the
+      // same trap #3403 flagged: a second narrow serviceClass === "subscription" check
+      // here would silently undo the widening above for retainer items even though the
+      // Subscription branch ran and a real Stripe Subscription was created. Until this
+      // landed, this route created a real Stripe Subscription and then recorded it in
+      // no table at all — the same per-customer billing-state gap #2847 closed for
+      // msp-marketplace-purchase.ts, unwired here. Non-fatal on failure: the money has
+      // already moved and fulfillment is about to run, so throwing here would fail a
+      // request that actually succeeded.
+      if (subscriptionId && stripeSubStatus && stripeSubPeriod) {
+        try {
+          await recordTenantSubscription({
+            tenantId: customerId,
+            mspId: targetMspId,
+            billingParty: "msp",
+            source: "checkout",
+            status: stripeSubStatus === "trialing" ? "trialing" : "active",
+            serviceId: offerRow.serviceId ?? null,
+            planName: serviceName,
+            stripeCustomerId,
+            stripeSubscriptionId: subscriptionId,
+            stripePriceId: stripeSubPriceId,
+            billingInterval: "month",
+            unitAmountCents: wholesaleCostCents,
+            currentPeriodStart: stripeSubPeriod.start,
+            currentPeriodEnd: stripeSubPeriod.end,
+            cancelAtPeriodEnd: stripeSubPeriod.cancelAtPeriodEnd,
+          });
+        } catch (err) {
+          log.error(
+            { err, customerId, targetMspId, subscriptionId },
+            "portal-checkout: failed to record tenant_subscriptions row (charge succeeded; billing state not updated)",
+          );
+        }
       }
 
       // 5. Mark purchase orders / fulfillment queue entries with wholesaleChargedCents and customerQuoteCents
