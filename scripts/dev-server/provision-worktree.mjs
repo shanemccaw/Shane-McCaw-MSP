@@ -5,19 +5,32 @@
 // edits the shared checkout the dev server runs from. Short path by convention
 // (deep Design/_ds/... tree + long root overruns Windows MAX_PATH).
 //
-//   node scripts/dev-server/provision-worktree.mjs <name> [--path <dir>] [--base <ref>] [--link] [--owner-pid <n>] [--json]
+//   node scripts/dev-server/provision-worktree.mjs <name> [--path <dir>] [--base <ref>] [--link] [--owner-pid <n>] [--repo <owner/repo>] [--json]
 //
 //   <name>        branch/worktree label (e.g. "1210-checkout-fix")
 //   --path        worktree dir (default: C:\wt\<name> on Windows)
-//   --base        base ref (default: config.baseRef, i.e. origin/main)
+//   --base        base ref (default: config.baseRef, i.e. origin/main; ignored — see
+//                 --repo below — for a secondary repo, whose real default branch may
+//                 not be "main")
 //   --link        junction node_modules + lib/*/dist so you can build immediately
-//                 (shared, NOT re-installed — one copy, zero re-download; Git #1372)
+//                 (shared, NOT re-installed — one copy, zero re-download; Git #1372).
+//                 No-op for a secondary (--repo) checkout — that monorepo-specific
+//                 dependency/shared-store machinery doesn't apply to a different repo.
 //   --owner-pid   pid of the long-lived process that owns this build (BuildConsole
 //                 or the shell). The cleanup sweep retains the worktree while this
 //                 pid is alive, so a live mid-build worktree is never swept out from
 //                 under a running session. Defaults to this process's PARENT pid
 //                 (process.ppid) — i.e. whoever launched the provisioner — never the
 //                 provisioner's own short-lived pid.
+//   --repo        Git #3584 (Feature #3578, Multi-Repo Support) — real "owner/repo"
+//                 this worktree's build actually targets (from the claimed queue
+//                 item's own repo column, #3579's schema). Omitted, empty, or equal
+//                 to this repo's own real owner/repo: unchanged default behavior —
+//                 worktree off THIS repo's mainRepoRoot. Any other real configured
+//                 repo (a #3581 Settings "Tinker" entry): resolved via repo-clone.mjs
+//                 to a dedicated, persistent secondary clone, and the worktree (and
+//                 every git operation inside it — commit, push, `origin`) is added
+//                 from THAT clone instead, so it genuinely targets the right remote.
 //   --json        emit a single machine-readable JSON result object and nothing else
 //                 (for BuildConsole to parse).
 //
@@ -33,6 +46,7 @@ import { loadConfig, isWindows } from "./config.mjs";
 import { git, resolveCommit, shortSha, listWorktrees } from "./git.mjs";
 import { linkDeps, buildLibDist, copyEnvFiles } from "./link-deps.mjs";
 import { scanSharedStore, repairSharedStore } from "./store-doctor.mjs";
+import { resolveRepoCheckout, resolveDefaultBaseRef } from "./repo-clone.mjs";
 import {
   registerWorktree,
   getWorktreeRecord,
@@ -51,6 +65,7 @@ function parse(argv) {
     else if (t === "--path") a.path = argv[++i];
     else if (t === "--base") a.base = argv[++i];
     else if (t === "--owner-pid") a.ownerPid = Number(argv[++i]);
+    else if (t === "--repo") a.repo = argv[++i];
     else a._.push(t);
   }
   return a;
@@ -62,22 +77,38 @@ function parse(argv) {
  *
  * @returns {{ ok, name, path, branch, base, baseCommit, linked, reused, recordId, error? }}
  */
-export function provisionWorktree({ name, path: wantPath, base: wantBase, link = false, ownerPid } = {}) {
+export function provisionWorktree({ name, path: wantPath, base: wantBase, link = false, ownerPid, repo: wantOwnerRepo, repoCloneUrl } = {}) {
   if (!name) return { ok: false, error: "name is required" };
 
   const config = loadConfig();
-  const repo = config.mainRepoRoot;
-  const base = wantBase || config.baseRef;
+
+  // Git #3584 — resolve the REAL checkout this worktree is added from: the main
+  // repo (default, zero behavior change) or a dedicated secondary clone for any
+  // other real configured repo (a #3581 Settings "Tinker" entry). Every
+  // subsequent git operation below (and everything the caller does INSIDE the
+  // resulting worktree — commit, `git push`, `origin`) naturally targets the
+  // right remote because it's the worktree's own inherited git config, not a
+  // separately-tracked value. `repoCloneUrl` is a testability-only override
+  // (see repo-clone.mjs) — real callers (BuildConsole, the CLI) never set it.
+  let checkout;
+  try {
+    checkout = resolveRepoCheckout(config, wantOwnerRepo, { cloneUrl: repoCloneUrl });
+  } catch (e) {
+    return { ok: false, error: `repo resolution failed: ${e.message}` };
+  }
+  const { repoRoot: repo, ownerRepo, isMain } = checkout;
+
+  const base = wantBase || (isMain ? config.baseRef : resolveDefaultBaseRef(repo));
   const branch = `agent/${name}`;
   const wtPath =
     wantPath ||
-    (isWindows() ? path.join("C:\\wt", name) : path.join(path.dirname(repo), `wt-${name}`));
+    (isWindows() ? path.join("C:\\wt", name) : path.join(path.dirname(config.mainRepoRoot), `wt-${name}`));
   // The owner is the long-lived launcher, NOT the provisioner (which exits at once).
   const creatorPid = Number.isFinite(ownerPid) && ownerPid > 0 ? ownerPid : process.ppid;
 
   const baseCommit = resolveCommit(repo, base);
   if (!baseCommit) {
-    return { ok: false, error: `base ref '${base}' does not resolve. Try: git fetch origin main` };
+    return { ok: false, error: `base ref '${base}' does not resolve in ${repo}. Try: git -C "${repo}" fetch origin` };
   }
 
   // Git #1988 — check the SHARED store this worktree is about to junction into, so a
@@ -92,33 +123,39 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
   // already proven safe — see the matching fix in worktree-lifecycle.mjs's
   // post-removal canary for the full rationale). Still never silent: both the
   // pre-repair poisoning and the repair outcome ride on storeHealth.
+  //
+  // Git #3584 — this shared pnpm store belongs to THIS (main) repo's monorepo
+  // tooling; a secondary-repo checkout never junctions into it (see `link`
+  // handling below), so there is nothing real to scan or repair for one.
   let storeHealth = null;
-  try {
-    const scan = scanSharedStore(repo);
-    storeHealth = {
-      clean: scan.clean,
-      foreign: scan.foreignLinks.length,
-      dangling: scan.danglingLinks.length,
-      poisonedBins: scan.poisonedBins.length,
-    };
-    if (!scan.clean) {
-      let repairRes = null;
-      try {
-        repairRes = repairSharedStore(repo, scan);
-      } catch (e) {
-        repairRes = { error: e.message };
-      }
-      const rescan = scanSharedStore(repo);
-      storeHealth.autoRepair = {
-        repairedLinks: repairRes?.repairedLinks?.length ?? 0,
-        repairedBins: repairRes?.repairedBins?.length ?? 0,
-        unrepairable: repairRes?.unrepairable?.length ?? 0,
-        error: repairRes?.error ?? null,
-        cleanAfterRepair: rescan.clean,
+  if (isMain) {
+    try {
+      const scan = scanSharedStore(repo);
+      storeHealth = {
+        clean: scan.clean,
+        foreign: scan.foreignLinks.length,
+        dangling: scan.danglingLinks.length,
+        poisonedBins: scan.poisonedBins.length,
       };
+      if (!scan.clean) {
+        let repairRes = null;
+        try {
+          repairRes = repairSharedStore(repo, scan);
+        } catch (e) {
+          repairRes = { error: e.message };
+        }
+        const rescan = scanSharedStore(repo);
+        storeHealth.autoRepair = {
+          repairedLinks: repairRes?.repairedLinks?.length ?? 0,
+          repairedBins: repairRes?.repairedBins?.length ?? 0,
+          unrepairable: repairRes?.unrepairable?.length ?? 0,
+          error: repairRes?.error ?? null,
+          cleanAfterRepair: rescan.clean,
+        };
+      }
+    } catch (e) {
+      storeHealth = { error: e.message };
     }
-  } catch (e) {
-    storeHealth = { error: e.message };
   }
 
   // --- Idempotency: if the path already exists, reuse it if it is a real worktree. ---
@@ -137,6 +174,8 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
           baseRef: base,
           baseCommit,
           creatorPid,
+          repoRoot: repo,
+          ownerRepo,
         });
       // Git #1971 — re-activating a reused worktree clears any keep-for-debug retention (and
       // its on-disk marker) left by a prior failure or session-limit park. The worktree is
@@ -147,6 +186,8 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
         status: "active",
         keepForDebug: false,
         debugReason: null,
+        repoRoot: repo,
+        ownerRepo,
       });
       try { rmSync(path.join(wtPath, ".stale-worktree.json"), { force: true }); } catch {}
       // Env files (#1633): unconditional, not gated behind --link, and idempotent --
@@ -161,11 +202,13 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
       // failure with a blank reason ("Worktree provisioning FAILED ... : ."), so every
       // queued build failed before claude.exe was ever started. envFiles is returned on
       // the result instead; only main()'s human-readable (non --json) path prints it.
-      const envResult = copyEnvFiles(repo, wtPath);
+      // Git #3584 — .env/.env.local carry THIS repo's own DB creds/secrets; copying them
+      // into a secondary (Tinker) repo's checkout would be actively wrong, not just unused.
+      const envResult = isMain ? copyEnvFiles(repo, wtPath) : null;
       // Git #1958 — even on the reuse path, surface any prior-session work that a sweep
       // rescued under this same name but the reused checkout doesn't contain, so a resumed
       // session is never silently handed a clean tree over discarded work.
-      const orphanedReuse = findOrphanedRescueBranches(config, name, wtPath);
+      const orphanedReuse = findOrphanedRescueBranches(config, name, wtPath, repo);
       const priorWorkRescued = orphanedReuse.length
         ? (writeReprovisionMarker(config, wtPath, orphanedReuse), orphanedReuse.map((o) => o.branch))
         : null;
@@ -182,6 +225,8 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
         envFiles: envResult,
         storeHealth,
         priorWorkRescued,
+        ownerRepo,
+        isMain,
       };
     }
     // Git #2720 (the confirmed real cause of #2118's "empty unprovisioned worktree"
@@ -226,10 +271,14 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
   }
 
   // --- Link deps (junctions) so the worktree can build immediately with a SHARED
-  //     node_modules — no per-worktree install, no re-download (Git #1372). ---
+  //     node_modules — no per-worktree install, no re-download (Git #1372).
+  //     Git #3584 — this whole pnpm-workspace junction/dist-build mechanism is
+  //     THIS (main) repo's monorepo tooling; a secondary-repo checkout has its own
+  //     independent dependency tree (or none at all) and never junctions into it,
+  //     regardless of whether the caller asked for --link. ---
   let linked = false;
   let libsBuilt = null;
-  if (link) {
+  if (link && isMain) {
     try {
       const created = linkDeps(repo, wtPath);
       linked = created.length;
@@ -246,10 +295,12 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
   // --- Copy local env files (#1633): unconditional, NOT gated behind --link. A
   //     worktree checks out tracked files only, and .env/.env.local/.env.*.local are
   //     git-ignored, so without this step no worktree can ever reach the database.
-  //     Best-effort like linkDeps -- a missing source file is logged, not fatal. ---
+  //     Best-effort like linkDeps -- a missing source file is logged, not fatal.
+  //     Git #3584 — these carry THIS repo's own DB creds/secrets; a secondary
+  //     (Tinker) repo checkout never gets them copied in. ---
   // Git #1646 — see the matching comment on the reused-worktree branch above: no
   // console output here, envFiles rides on the returned result instead.
-  const envResult = copyEnvFiles(repo, wtPath);
+  const envResult = isMain ? copyEnvFiles(repo, wtPath) : null;
 
   // --- Register in the lifecycle tracker (the fix for the swept-live-worktree bug). ---
   const rec = registerWorktree(config, {
@@ -259,13 +310,15 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
     baseRef: base,
     baseCommit,
     creatorPid,
+    repoRoot: repo,
+    ownerRepo,
   });
 
   // Git #1958 — a FRESH create for a name that already has `rescued/<name>-*` branches is
   // the exact #1550 shape: a prior worktree was swept/removed (its branch deleted), and this
   // resume re-created the branch off a newer origin/main, orphaning the earlier work. Drop a
   // visible marker + report it so the resumed session doesn't trust its clean checkout.
-  const orphanedFresh = findOrphanedRescueBranches(config, name, wtPath);
+  const orphanedFresh = findOrphanedRescueBranches(config, name, wtPath, repo);
   const priorWorkRescued = orphanedFresh.length
     ? (writeReprovisionMarker(config, wtPath, orphanedFresh), orphanedFresh.map((o) => o.branch))
     : null;
@@ -284,6 +337,8 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
     storeHealth,
     libsBuilt,
     priorWorkRescued,
+    ownerRepo,
+    isMain,
   };
 }
 
@@ -324,7 +379,7 @@ function main() {
   const a = parse(process.argv.slice(2));
   const name = a._[0];
   if (!name) {
-    const msg = "usage: node scripts/dev-server/provision-worktree.mjs <name> [--path <dir>] [--base <ref>] [--link] [--owner-pid <n>] [--json]";
+    const msg = "usage: node scripts/dev-server/provision-worktree.mjs <name> [--path <dir>] [--base <ref>] [--link] [--owner-pid <n>] [--repo <owner/repo>] [--json]";
     if (a.json) console.log(JSON.stringify({ ok: false, error: msg }));
     else console.error(msg);
     process.exit(1);
@@ -336,6 +391,7 @@ function main() {
     base: a.base,
     link: a.link,
     ownerPid: a.ownerPid,
+    repo: a.repo,
   });
 
   if (a.json) {
@@ -363,6 +419,7 @@ function main() {
 
   console.log(res.reused ? `Reused existing worktree` : `Created worktree`);
   console.log(`  path   : ${res.path}`);
+  console.log(`  repo   : ${res.ownerRepo}${res.isMain ? "" : " (secondary/Tinker repo — Git #3584)"}`);
   console.log(`  branch : ${res.branch}`);
   console.log(`  base   : ${res.base} @ ${shortSha(res.baseCommit)}`);
   console.log(`  owner  : pid ${Number.isFinite(a.ownerPid) && a.ownerPid > 0 ? a.ownerPid : process.ppid}`);
@@ -384,9 +441,16 @@ function main() {
     }
   }
   console.log("");
-  console.log(`Work in ${res.path}. When your build is committed there, publish it to the dev server with:`);
-  console.log(`  cd ${res.path}`);
-  console.log(`  node scripts/dev-server/request-restart.mjs --agent ${name}`);
+  if (res.isMain) {
+    console.log(`Work in ${res.path}. When your build is committed there, publish it to the dev server with:`);
+    console.log(`  cd ${res.path}`);
+    console.log(`  node scripts/dev-server/request-restart.mjs --agent ${name}`);
+  } else {
+    // Git #3584 — request-restart.mjs merges into THIS repo's own local dev-server
+    // checkout; a secondary repo has no such shared dev server to merge into. Its
+    // own commits, pushed to its own `origin`, are the whole deliverable.
+    console.log(`Work in ${res.path}. This is a secondary (${res.ownerRepo}) checkout — commit and \`git push origin <branch>\` directly; there is no local dev-server merge-back for it.`);
+  }
   console.log(`And clean up when done:`);
   console.log(`  node scripts/dev-server/cleanup-worktree.mjs ${name}`);
 }

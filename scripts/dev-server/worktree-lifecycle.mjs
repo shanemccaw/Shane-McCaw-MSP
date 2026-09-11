@@ -137,6 +137,13 @@ export function registerWorktree(config, info) {
     status: info.status || "active", // "active" | "completed" | "failed" | "abandoned" | "stale"
     keepForDebug: !!info.keepForDebug,
     debugReason: info.debugReason || null,
+    // Git #3584 (Feature #3578, Multi-Repo Support) — the REAL local checkout this
+    // worktree was added from (main repo, or a secondary/Tinker clone), and the real
+    // "owner/repo" it targets. Absent/null on every record from before this field
+    // existed — every removal/rescue call site below falls back to
+    // config.mainRepoRoot in that case, exactly matching prior (single-repo) behavior.
+    repoRoot: info.repoRoot || null,
+    ownerRepo: info.ownerRepo || null,
   };
   const targetFile = path.join(config.worktreesDir, `${id}.json`);
   writeAtomic(targetFile, record);
@@ -245,13 +252,19 @@ export function markWorktreeStale(config, nameOrPath, { reason = "build error / 
  * was swept/removed. A resumed build that re-provisions a fresh worktree off a newer
  * origin/main needs to know they exist so it never silently trusts a clean `git status`.
  *
+ * Git #3584 — `repoRoot` is the REAL checkout this worktree actually belongs to
+ * (the main repo, or a secondary/Tinker clone per repo-clone.mjs); rescue
+ * branches for a secondary-repo worktree live in ITS OWN clone, never in the
+ * main repo. Defaults to `config.mainRepoRoot` for back-compat with every
+ * existing call site/record that predates the multi-repo dimension.
+ *
  * @returns {Array<{ branch: string, tip: string }>}
  */
-export function findOrphanedRescueBranches(config, name, wtPath) {
+export function findOrphanedRescueBranches(config, name, wtPath, repoRoot = config.mainRepoRoot) {
   try {
     const safe = sanitizeId(name);
     const prefix = `rescued/${safe}-`;
-    const r = git(config.mainRepoRoot, [
+    const r = git(repoRoot, [
       "for-each-ref",
       "--format=%(refname:short) %(objectname)",
       `refs/heads/${prefix}*`,
@@ -269,7 +282,7 @@ export function findOrphanedRescueBranches(config, name, wtPath) {
       if (!branch.startsWith(prefix) || !tip) continue;
       // Orphaned only if the new worktree HEAD does not already contain the rescued tip
       // (a resumed session that already cherry-picked/merged it shouldn't be re-warned).
-      const reachable = head ? isAncestor(config.mainRepoRoot, tip, head) : false;
+      const reachable = head ? isAncestor(repoRoot, tip, head) : false;
       if (!reachable) out.push({ branch, tip });
     }
     return out;
@@ -349,9 +362,14 @@ export function writeReprovisionMarker(config, wtPath, orphaned) {
  * two can never disagree about what counts as work. BuildConsole's own untracked markers
  * (stale / re-provision) are bookkeeping, never real work, and are filtered out.
  *
+ * Git #3584 — `repoRoot` is the worktree's OWN real checkout (main repo, or a
+ * secondary/Tinker clone); the base ref this compares "unpushed" against must
+ * resolve there, not always the main repo. Defaults to `config.mainRepoRoot`
+ * for back-compat.
+ *
  * @returns {{ dirty: boolean, unpushed: boolean, hasWork: boolean, head: string|null }}
  */
-export function detectWorktreeWork(config, wtPath) {
+export function detectWorktreeWork(config, wtPath, repoRoot = config.mainRepoRoot) {
   if (!existsSync(wtPath) || !isGitRepo(wtPath)) {
     return { dirty: false, unpushed: false, hasWork: false, head: null };
   }
@@ -364,12 +382,11 @@ export function detectWorktreeWork(config, wtPath) {
     .filter((l) => !l.endsWith(STALE_MARKER_NAME) && !l.endsWith(REPROVISION_MARKER_NAME));
   const dirty = status.code === 0 && dirtyLines.length > 0;
 
-  // Unpushed commits: the branch tip isn't yet an ancestor of the base ref (origin/main).
-  // If the base can't be resolved, err toward "has work" rather than discarding.
+  // Unpushed commits: the branch tip isn't yet an ancestor of the base ref (origin/main
+  // of the worktree's OWN real repo). If the base can't be resolved, err toward "has
+  // work" rather than discarding.
   const head = revParse(wtPath, "HEAD");
-  const base =
-    resolveCommit(config.mainRepoRoot, config.baseRef) ||
-    revParse(config.mainRepoRoot, config.baseRef);
+  const base = resolveCommit(repoRoot, config.baseRef) || revParse(repoRoot, config.baseRef);
   const unpushed = head ? (base ? !isAncestor(wtPath, head, base) : true) : false;
 
   return { dirty, unpushed, hasWork: dirty || unpushed, head };
@@ -381,7 +398,10 @@ export function preserveWorktreeWork(config, wtPath, rec) {
       return { preserved: false, reason: "path gone or not a git worktree" };
     }
 
-    const { dirty, unpushed } = detectWorktreeWork(config, wtPath);
+    // Git #3584 — resolve against the worktree's OWN real repo (main, or its
+    // secondary/Tinker clone), not always the main repo.
+    const repoRoot = rec?.repoRoot || config.mainRepoRoot;
+    const { dirty, unpushed } = detectWorktreeWork(config, wtPath, repoRoot);
 
     if (!dirty && !unpushed) {
       return { preserved: false, reason: "nothing to preserve (clean tree, branch already on origin/main)" };
@@ -397,14 +417,16 @@ export function preserveWorktreeWork(config, wtPath, rec) {
       if (c.code === 0) wip = revParse(wtPath, "HEAD");
     }
 
-    // 2. Stamp a durable rescue branch at the (post-WIP) tip so branch-delete can't orphan it.
+    // 2. Stamp a durable rescue branch at the (post-WIP) tip so branch-delete can't orphan
+    //    it — in the worktree's OWN repo (Git #3584), never the main repo for a
+    //    secondary/Tinker worktree's rescued commits.
     const tip = revParse(wtPath, "HEAD");
     let rescueBranch = null;
     if (tip) {
       const safe = sanitizeId(rec?.name || path.basename(wtPath));
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
       const ref = `refs/heads/rescued/${safe}-${ts}`;
-      const u = git(config.mainRepoRoot, ["update-ref", ref, tip]);
+      const u = git(repoRoot, ["update-ref", ref, tip]);
       if (u.code === 0) rescueBranch = ref.replace("refs/heads/", "");
     }
 
@@ -451,6 +473,11 @@ export function preserveWorktreeWork(config, wtPath, rec) {
 export function removeWorktreeSafe(config, nameOrPath, { reason = "completed build", force = true, deleteBranch: shouldDeleteBranch = true } = {}) {
   const rec = getWorktreeRecord(config, nameOrPath);
   const wtPath = rec ? rec.path : path.resolve(nameOrPath);
+  // Git #3584 — the worktree's OWN real checkout (main repo, or its secondary/Tinker
+  // clone); every git operation below (worktree remove, prune, branch delete) must run
+  // there, not always against the main repo. Falls back to config.mainRepoRoot for a
+  // record that predates this field — exactly today's (single-repo) behavior.
+  const repoRoot = rec?.repoRoot || config.mainRepoRoot;
   const normTarget = normalizePath(wtPath);
   const normMain = normalizePath(config.mainRepoRoot);
   const normServer = normalizePath(config.serverWorktree);
@@ -498,13 +525,13 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
   // Git worktree remove
   let gitRemoveOk = false;
   try {
-    const r = removeWorktree(config.mainRepoRoot, wtPath, { force: true });
+    const r = removeWorktree(repoRoot, wtPath, { force: true });
     gitRemoveOk = r.code === 0;
   } catch {}
 
   // Prune git worktrees
   try {
-    pruneWorktrees(config.mainRepoRoot);
+    pruneWorktrees(repoRoot);
   } catch {}
 
   // Filesystem cleanup if directory remains
@@ -529,7 +556,7 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
   const branchName = rec?.branch;
   if (shouldDeleteBranch && branchName && branchName !== "main" && branchName !== "master" && branchName !== config.serverBranch) {
     try {
-      const res = deleteBranch(config.mainRepoRoot, branchName, { force: true });
+      const res = deleteBranch(repoRoot, branchName, { force: true });
       if (res.code === 0) branchDeleted = branchName;
     } catch {}
   }

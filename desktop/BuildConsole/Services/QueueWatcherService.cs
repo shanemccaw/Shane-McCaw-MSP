@@ -119,6 +119,14 @@ namespace BuildConsole.Services
             /// <summary>Git #1371 — the worktree's provisioning name/id (agent/&lt;name&gt; branch,
             /// C:\wt\&lt;name&gt; path) used to merge-back / mark-stale / clean it up.</summary>
             public string? WorktreeName;
+            /// <summary>Git #3584 (Feature #3578, Multi-Repo Support) — this build's real target repo
+            /// ("owner/repo") and whether it's the app's own Main repo. False only for a genuinely
+            /// different configured (Tinker) repo, whose worktree is a checkout of that repo's OWN
+            /// secondary clone (see provision-worktree.mjs's --repo resolution) — such a build has no
+            /// local dev-server merge-back to run (there is no shared dev server for a different repo),
+            /// gated at the merge-back call site below.</summary>
+            public string? OwnerRepo;
+            public bool IsMainRepo = true;
 
             /// <summary>Git #1792 — the per-build Windows Job Object this build's process (and every
             /// process it spawns, including detached node.exe grandchildren) is assigned to at launch.
@@ -1433,6 +1441,11 @@ namespace BuildConsole.Services
                 BuildSetMember = string.IsNullOrWhiteSpace(item.BuildSet) ? null : (item.GithubNumber?.ToString() ?? item.Id.ToString()),
                 WorktreePath = worktreePath,
                 WorktreeName = worktreeName,
+                // Git #3584 — reconstruct the same repo identity a fresh launch would have resolved,
+                // so an adopted build's merge-back gating (Main vs. secondary/Tinker) matches reality
+                // instead of defaulting to "Main" for a re-attached Tinker-repo build.
+                OwnerRepo = item.OwnerRepo,
+                IsMainRepo = string.Equals(item.OwnerRepo, BuildConsoleSettings.Load().GitHubOwnerRepo, StringComparison.OrdinalIgnoreCase),
                 // Seed from the DB's already-persisted early session id (#826); the replay confirms
                 // or overwrites it from the real stream-json.
                 SessionId = string.IsNullOrWhiteSpace(item.SessionId) ? null : item.SessionId,
@@ -1638,7 +1651,10 @@ namespace BuildConsole.Services
                 try
                 {
                     string name = ComposeWorktreeName(item);
-                    await WorktreeProvisionService.ProvisionWorktreeAsync(name, launcherPid, link: true);
+                    // Git #3584 — pre-warm against the SAME resolved repo LaunchItem will actually
+                    // provision against; otherwise a Tinker-repo item pre-warms the wrong (main)
+                    // checkout and LaunchItem's real call just re-does the work cold anyway.
+                    await WorktreeProvisionService.ProvisionWorktreeAsync(name, launcherPid, link: true, ownerRepo: item.OwnerRepo);
                 }
                 catch (Exception ex)
                 {
@@ -1825,8 +1841,20 @@ namespace BuildConsole.Services
                         }
                         else if (exitCode == 0 && !string.IsNullOrWhiteSpace(wtPath))
                         {
-                            var setEnv = BuildSetEnvFor(entry);
-                            _ = WorktreeProvisionService.MergeBackAsync(wtPath!, wtName, setEnv);
+                            // Git #3584 — merge-back publishes into THIS repo's own local dev-server
+                            // checkout; a secondary (Tinker) repo has no such shared dev server to
+                            // merge into — its commits, already pushed to its OWN real remote by the
+                            // build itself, are the whole deliverable. Skipping here is not a shortcut:
+                            // there is genuinely nothing to merge back for a different repo.
+                            if (entry.IsMainRepo)
+                            {
+                                var setEnv = BuildSetEnvFor(entry);
+                                _ = WorktreeProvisionService.MergeBackAsync(wtPath!, wtName, setEnv);
+                            }
+                            else
+                            {
+                                ActivityLog.Log("watcher", $"Queue #{id} ({entry.Title}) targeted repo \"{entry.OwnerRepo}\" — no dev-server merge-back (that mechanism is Main-repo only). The build's own commits/push to its real repo are the deliverable.");
+                            }
                         }
                         else if (exitCode != 0)
                         {
@@ -2053,7 +2081,23 @@ namespace BuildConsole.Services
                 ? $" (this build also tracks GitHub issue #{item.GithubNumber.Value}, but that is NOT the progress id — use {item.Id}.)"
                 : string.Empty;
 
-            string preamble =
+            // Git #3584 (Feature #3578, Multi-Repo Support) — state this build's real target repo
+            // explicitly, so the dispatched session never silently assumes it's working in
+            // Shane-McCaw-MSP when the claimed item's own repo column (#3579's schema) says
+            // otherwise. Cheap for the (default) Main-repo case; the whole point for a Tinker one.
+            var appSettings = BuildConsoleSettings.Load();
+            string ownerRepo = string.IsNullOrWhiteSpace(item.OwnerRepo) ? appSettings.GitHubOwnerRepo : item.OwnerRepo;
+            bool isMainRepo = string.Equals(ownerRepo, appSettings.GitHubOwnerRepo, StringComparison.OrdinalIgnoreCase);
+            string repoLine = isMainRepo
+                ? $"[Target repo] {ownerRepo} (Main — the repo this BuildConsole runs from).\n\n"
+                : $"[Target repo — Git #3584] This build's worktree is a checkout of a DIFFERENT real repo: " +
+                  $"{ownerRepo} (a Tinker-tier repo per Settings > Repos), NOT Shane-McCaw-MSP. Your `origin` " +
+                  $"remote, every commit, and every push in this worktree already target {ownerRepo} — do not " +
+                  $"assume Shane-McCaw-MSP paths/conventions apply unless {ownerRepo} genuinely shares them. " +
+                  "The same worktree isolation, commit/push discipline, and bookend rigor apply here exactly " +
+                  "as they would for a Main-repo build — no shortcut path for a Tinker repo.\n\n";
+
+            string preamble = repoLine +
                 "[BuildConsole — progress reporting for THIS build]\n" +
                 $"Your buildId for progress reporting is {item.Id}. Whenever you report a milestone — " +
                 $"`node scripts/report-progress.mjs {item.Id} <step> <total> \"<phase>\"` or " +
@@ -2183,6 +2227,11 @@ namespace BuildConsole.Services
             // the shared checkout, which would reinstate the exact collision this prevents).
             string workDir;
             string? worktreePath = null, worktreeName = null;
+            // Git #3584 — this build's real resolved repo, populated below when worktree isolation
+            // actually provisions one; stays at the safe "Main repo" default otherwise (--cwd override
+            // or isolation off both mean this launch never went through repo resolution at all).
+            string? resolvedOwnerRepo = item.OwnerRepo;
+            bool resolvedIsMain = true;
             if (!string.IsNullOrWhiteSpace(item.Cwd) && Directory.Exists(item.Cwd))
             {
                 workDir = item.Cwd;
@@ -2191,7 +2240,11 @@ namespace BuildConsole.Services
             {
                 worktreeName = ComposeWorktreeName(item);
                 int launcherPid = Process.GetCurrentProcess().Id;
-                var prov = await WorktreeProvisionService.ProvisionWorktreeAsync(worktreeName, launcherPid, link: true);
+                // Git #3584 (Feature #3578, Multi-Repo Support) — resolve THIS claimed item's own
+                // real repo (item.OwnerRepo, threaded from #3579's bt_build_queue.repo_owner/
+                // repo_name), not always the app's own hardcoded repo. Null/default (every existing
+                // Main-repo build) is unchanged behavior.
+                var prov = await WorktreeProvisionService.ProvisionWorktreeAsync(worktreeName, launcherPid, link: true, ownerRepo: item.OwnerRepo);
                 if (!prov.Ok || string.IsNullOrWhiteSpace(prov.Path))
                 {
                     ActivityLog.Log("watcher", $"Worktree provisioning FAILED for queue #{item.Id} ({item.Title}): {prov.Error}. Build NOT launched — worktree isolation is enforced. (Set EnforceWorktreeIsolation=false in %AppData%\\BuildConsole\\settings.json to run in the shared checkout instead.)");
@@ -2200,6 +2253,8 @@ namespace BuildConsole.Services
                 }
                 workDir = prov.Path!;
                 worktreePath = prov.Path;
+                resolvedOwnerRepo = prov.OwnerRepo ?? item.OwnerRepo;
+                resolvedIsMain = prov.IsMain;
 
                 // Git #2084 — a poisoned shared store this worktree just junctioned into was
                 // previously invisible at launch. Stash the warning for this queue item so
@@ -2407,6 +2462,8 @@ namespace BuildConsole.Services
                 BuildSetMember = string.IsNullOrWhiteSpace(item.BuildSet) ? null : (item.GithubNumber?.ToString() ?? item.Id.ToString()),
                 WorktreePath = worktreePath,
                 WorktreeName = worktreeName,
+                OwnerRepo = resolvedOwnerRepo,
+                IsMainRepo = resolvedIsMain,
             };
 
             // Git #2103 — the actual dispatch call site: this is the moment a queue item's

@@ -55,6 +55,16 @@ namespace BuildConsole.Services
         /// <summary>Git #2084 — the shared-store health scan this provision performed. Null only if
         /// the child process's JSON genuinely omitted the field (a foreign/legacy output shape).</summary>
         public StoreHealthInfo? StoreHealth { get; set; }
+        /// <summary>Git #3584 (Feature #3578, Multi-Repo Support) — the real "owner/repo" this
+        /// worktree was actually provisioned against (provision-worktree.mjs's resolved default when
+        /// no --repo was requested, or the real secondary repo it resolved). Null only for a foreign/
+        /// legacy output shape that omitted it.</summary>
+        public string? OwnerRepo { get; set; }
+        /// <summary>Git #3584 — true when this worktree is a checkout of the app's own Main repo
+        /// (today's default, unchanged behavior); false for a genuinely different configured (Tinker)
+        /// repo's dedicated secondary clone. Defaults true so a foreign/legacy result shape that
+        /// omits this field is read as "Main repo" — the only value every prior call site assumed.</summary>
+        public bool IsMain { get; set; } = true;
     }
 
     /// <summary>
@@ -91,12 +101,20 @@ namespace BuildConsole.Services
         /// <paramref name="name"/>, junctioning a shared node_modules when <paramref name="link"/>
         /// is set (#1372 — no per-worktree install/download). The worktree is registered to
         /// <paramref name="ownerPid"/> so the cleanup sweep never removes it while that process
-        /// is alive.</summary>
-        public static Task<WorktreeProvisionResult> ProvisionWorktreeAsync(string name, int ownerPid, bool link = true)
+        /// is alive.
+        /// <para>Git #3584 (Feature #3578, Multi-Repo Support) — <paramref name="ownerRepo"/> is the
+        /// claimed queue item's own real "owner/repo" (<see cref="QueueItem.OwnerRepo"/>, threaded
+        /// from #3579's schema). Null/empty, or equal to this app's own configured repo, is the
+        /// existing default (worktree off THIS repo's mainRepoRoot) — zero behavior change for every
+        /// build that doesn't target a different repo. Any other real configured repo resolves to a
+        /// dedicated secondary clone (provision-worktree.mjs's --repo), so the worktree — and every
+        /// git operation inside it — genuinely targets the correct remote.</para></summary>
+        public static Task<WorktreeProvisionResult> ProvisionWorktreeAsync(string name, int ownerPid, bool link = true, string? ownerRepo = null)
         {
-            string args = $"\"{{script}}\" \"{name}\" --owner-pid {ownerPid} --json";
-            if (link) args = $"\"{{script}}\" \"{name}\" --link --owner-pid {ownerPid} --json";
-            return RunProvisionAsync(args, $"Provision worktree '{name}'");
+            string repoFlag = string.IsNullOrWhiteSpace(ownerRepo) ? "" : $" --repo \"{ownerRepo}\"";
+            string args = $"\"{{script}}\" \"{name}\" --owner-pid {ownerPid}{repoFlag} --json";
+            if (link) args = $"\"{{script}}\" \"{name}\" --link --owner-pid {ownerPid}{repoFlag} --json";
+            return RunProvisionAsync(args, $"Provision worktree '{name}'" + (string.IsNullOrWhiteSpace(ownerRepo) ? "" : $" (repo: {ownerRepo})"));
         }
 
         /// <summary>Re-point an already-provisioned worktree's owner pid (e.g. from the launcher's
@@ -162,6 +180,9 @@ namespace BuildConsole.Services
                     if (root.TryGetProperty("branch", out var b) && b.ValueKind == JsonValueKind.String) res.Branch = b.GetString();
                     if (root.TryGetProperty("reused", out var r) && r.ValueKind != JsonValueKind.Null) res.Reused = r.ValueKind == JsonValueKind.True;
                     if (root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String) res.Error = e.GetString();
+                    // Git #3584 — the real repo this worktree actually resolved to.
+                    if (root.TryGetProperty("ownerRepo", out var orp) && orp.ValueKind == JsonValueKind.String) res.OwnerRepo = orp.GetString();
+                    if (root.TryGetProperty("isMain", out var im) && im.ValueKind != JsonValueKind.Null) res.IsMain = im.ValueKind == JsonValueKind.True;
                     // Git #1958 — capture the rescued-branch list so a re-provision over prior
                     // work is durably visible in the activity log, not just in the worktree marker.
                     if (root.TryGetProperty("priorWorkRescued", out var pw) && pw.ValueKind == JsonValueKind.Array)
@@ -207,7 +228,7 @@ namespace BuildConsole.Services
                 // to sum; flag it loudly (WARN-shaped wording) so a future regression is obvious.
                 string slow = (!res.Reused && sw.ElapsedMilliseconds >= 15000) ? " ⚠ SLOW fresh worktree add" : "";
                 if (res.Ok)
-                    ActivityLog.Log(LogChannel, $"{actionDescription}: ok (path={res.Path}, reused={res.Reused}) in {sw.ElapsedMilliseconds}ms.{slow}");
+                    ActivityLog.Log(LogChannel, $"{actionDescription}: ok (path={res.Path}, reused={res.Reused}, repo={res.OwnerRepo ?? "(default)"}{(res.IsMain ? "" : " [SECONDARY/Tinker]")}) in {sw.ElapsedMilliseconds}ms.{slow}");
                 else
                     ActivityLog.Log(LogChannel, $"{actionDescription}: FAILED in {sw.ElapsedMilliseconds}ms — {res.Error}");
                 // Git #1958 — a re-provision over prior work is a data-loss-adjacent event: the
