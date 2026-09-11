@@ -69,11 +69,17 @@ curl -s -X POST \
 
 Returns `202 Accepted` with `{ok: true, dlqId, newRunId, status: "pending"}`.
 
-The server:
-1. Increments `attemptCount` and sets `lastAttemptAt` atomically.
-2. Re-dispatches the original payload to the event handler.
-3. On success, marks the row `resolvedAt = now`, `resolution = "replayed"`.
-4. On failure, the row remains unresolved and `attemptCount` increments again.
+The server (`replayDlqItem`, `artifacts/api-server/src/lib/portal-workflow-engine.ts:836-869`):
+1. Does **not** touch `attemptCount` or `lastAttemptAt` — neither field is updated by replay.
+2. Does **not** re-dispatch the original payload to the original run. It creates a brand-new
+   workflow run via `createRun({ workflowKey, tenantContext, inputPayload })` from the DLQ row's
+   stored payload, and fires that new run asynchronously (`executeRunAsync(newRunId)`) — the
+   original failed run is never itself re-executed.
+3. Immediately marks the DLQ row `resolvedAt = now`, `resolution = "replayed"` — this happens
+   right after the new run is created, not conditioned on that new run's eventual success or
+   failure.
+4. If the new run later fails, that failure surfaces as a new DLQ item (if the workflow enqueues
+   one), not as a change to this DLQ row's `attemptCount` — this row is already resolved.
 
 ### 4. Discard a non-recoverable item
 
