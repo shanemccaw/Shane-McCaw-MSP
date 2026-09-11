@@ -81,6 +81,7 @@ function pkg(over: Partial<MonitoringPackageRow> & { key: string }): MonitoringP
     description: null,
     engines: [],
     status: "active",
+    kind: "scan_bundle",
     platformCostCents: 0,
     requiredPlanFeature: null,
     createdAt: "2026-08-01T00:00:00.000Z",

@@ -241,19 +241,22 @@ end`;
 // #1770 — the real gap: the run route above already accepts a packageKey
 // override (has since before this route existed), but nothing listed the real
 // catalog an operator could pick from, so the AdminV2 AD screen's "Run scan"
-// button could never offer a choice. Lists real, active monitoring_packages
-// rows with a real check count, ordered by label for a deterministic,
-// readable picker.
+// button could never offer a choice. Lists real, active, runnable
+// monitoring_packages rows with a real check count, ordered by label for a
+// deterministic, readable picker.
 //
-// `HAVING count(...) > 0` deliberately excludes active rows with zero linked
-// checks — confirmed (live query against local DATABASE_URL) to be exactly
-// the ten `cat-*` rows lib/db/migrations/manual/2026-07-19-customer-dashboard-
-// category-tabs.sql seeded into this SAME table for the customer dashboard's
-// category tabs, not a diagnostics scan bundle: empty `engines`, zero rows in
+// `kind = 'scan_bundle'` (Git #3453) is the real discriminator: 10 `active`
+// rows (the `cat-*` keys) are `kind = 'dashboard_category'` —
+// lib/db/migrations/manual/2026-07-19-customer-dashboard-category-tabs.sql
+// seeded them into this SAME table for the customer dashboard's category
+// tabs, not a diagnostics scan bundle: empty `engines`, zero rows in
 // monitoring_package_checks, and no code anywhere references their keys.
 // Surfacing them here would let an operator "run" a scan that does nothing.
-// Filed as a real finding, #3453 (parented under #1571), rather than
-// silently working around it.
+// `HAVING count(...) > 0` is kept as a second, independent guard — a real
+// scan_bundle package that is temporarily linked to zero checks still
+// shouldn't be offered — but the `kind` filter is now the primary, load-
+// bearing one so this route no longer has to re-derive "runnable" from a
+// check-count join alone.
 
 router.get(
   "/msp/monitoring-packages",
@@ -268,7 +271,7 @@ router.get(
         })
         .from(monitoringPackagesTable)
         .leftJoin(monitoringPackageChecksTable, eq(monitoringPackageChecksTable.packageKey, monitoringPackagesTable.key))
-        .where(eq(monitoringPackagesTable.status, "active"))
+        .where(and(eq(monitoringPackagesTable.status, "active"), eq(monitoringPackagesTable.kind, "scan_bundle")))
         .groupBy(monitoringPackagesTable.key, monitoringPackagesTable.label)
         .having(sql`count(${monitoringPackageChecksTable.id}) > 0`)
         .orderBy(monitoringPackagesTable.label);

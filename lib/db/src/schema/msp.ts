@@ -2226,6 +2226,15 @@ export const monitorChecksTable = pgTable("monitor_checks", {
 export type MonitorCheck = typeof monitorChecksTable.$inferSelect;
 export type InsertMonitorCheck = typeof monitorChecksTable.$inferInsert;
 
+/**
+ * `scan_bundle` — a real, executable diagnostics package: `executeMonitoringPackage`
+ * resolves it through `loadOrderedPackageChecks` and it collects live data.
+ * `dashboard_category` — a row that exists only so the customer-dashboard category-tab
+ * feature (`2026-07-19-customer-dashboard-category-tabs.sql`) had a key to reuse; it has
+ * no linked checks and is never resolved by a scan. See Git #3453.
+ */
+export const MONITORING_PACKAGE_KIND = ["scan_bundle", "dashboard_category"] as const;
+
 export const monitoringPackagesTable = pgTable("monitoring_packages", {
   id: serial("id").primaryKey(),
   packageId: uuid("package_id").notNull().unique().defaultRandom(),
@@ -2234,6 +2243,13 @@ export const monitoringPackagesTable = pgTable("monitoring_packages", {
   description: text("description"),
   engines: jsonb("engines").$type<string[]>().notNull().default([]),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
+  /**
+   * Discriminates a real, runnable scan bundle from a row that only carries a
+   * pillar/category key for the customer-dashboard tabs feature. Added by Git #3453
+   * so a "list active monitoring packages" consumer never has to re-derive
+   * "runnable" from a `monitoring_package_checks` count join.
+   */
+  kind: text("kind", { enum: MONITORING_PACKAGE_KIND }).notNull().default("scan_bundle"),
   /** Platform-set cost to the MSP per assigned tenant per month (in cents). 0 = no charge. */
   platformCostCents: integer("platform_cost_cents").notNull().default(0),
   /** Which plan tier is required to include this package in a Sales Bundle. null = all tiers. */

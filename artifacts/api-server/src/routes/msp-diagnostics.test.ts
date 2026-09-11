@@ -145,7 +145,7 @@ vi.mock("@workspace/db", () => {
     industryBenchmarkReferenceTable: {},
     monitorChecksTable: {},
     scriptModulesTable: {},
-    monitoringPackagesTable: { key: "key", label: "label", status: "status" },
+    monitoringPackagesTable: { key: "key", label: "label", status: "status", kind: "kind" },
     monitoringPackageChecksTable: { id: "id", packageKey: "package_key" },
   };
 });
