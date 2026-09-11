@@ -4,6 +4,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
 using BuildConsole.Services;
 
 namespace BuildConsole
@@ -123,8 +126,10 @@ namespace BuildConsole
                 : $"Ask Shane — {items.Count} items need your decision";
         }
 
-        /// <summary>Ask #4 — click-through. A single item navigates directly; several show a small
-        /// menu naming each one, click one to navigate to it.</summary>
+        /// <summary>Ask #4 — click-through. A single item navigates directly (nothing to group
+        /// with only one real item); several open the Git #3710 Epic-grouped panel instead of the
+        /// old flat <c>ContextMenu</c> — "tells me nothing" once there are several real items in
+        /// it, per Shane's own words on that issue.</summary>
         private void BtnAskShane_Click(object sender, RoutedEventArgs e)
         {
             if (_askShaneItems.Count == 0) return;
@@ -135,16 +140,221 @@ namespace BuildConsole
                 return;
             }
 
-            var menu = new ContextMenu();
-            foreach (var item in _askShaneItems.OrderByDescending(i => i.Number))
+            ShowAskShanePanel();
+        }
+
+        /// <summary>Git #3710 — one real, resolved Epic group and the "Ask Shane" items under it,
+        /// for the panel below. <see cref="EpicNumber"/> is null for the real "No Epic" bucket (an
+        /// item whose issue has no resolvable Epic ancestor) — never a fake/placeholder Epic.</summary>
+        private readonly struct AskShaneEpicGroup
+        {
+            public int SortRank { get; init; }
+            public int? EpicNumber { get; init; }
+            public string Label { get; init; }
+            public List<AskShaneItem> Items { get; init; }
+        }
+
+        /// <summary>Git #3710 — replaces the old flat <c>ContextMenu</c> (one <c>MenuItem</c> per
+        /// item, each opening the raw GitHub issue page) with a real popup panel: the open "Ask
+        /// Shane" items grouped by their resolved Epic — reusing the exact same real
+        /// <see cref="Controls.BuildQueuePanel.ResolveEpicForIssue"/> path (wired to
+        /// <c>LeftSidebar.GetEpicForIssueNumber</c>, see <c>MainWindow.xaml.cs</c>'s own wiring)
+        /// the Build Queue card's own Epic chip (Git #2795) already uses — no second epic-resolution
+        /// mechanism invented here. Each item gets a real "✈" airplane button, the same visual/
+        /// interaction convention as the Build Queue rollup's own aggregate send button (Git
+        /// #1893/#1932/#3605): on click it sends the item's real question/decision text (its issue
+        /// body plus its most recent comment — not just the title) into the active Claude chat via
+        /// the shared <see cref="SendTextToActiveClaudeChatAsync"/> primitive, instead of opening
+        /// GitHub at all. Clicking the row itself (not the airplane) keeps the existing real
+        /// navigate-to-item behavior (<see cref="NavigateToAskShaneItem"/>) so nothing that worked
+        /// before is lost, only the flat dropdown presentation.</summary>
+        private void ShowAskShanePanel()
+        {
+            var resolveEpic = BuildQueuePanel?.ResolveEpicForIssue;
+            var groups = _askShaneItems
+                .GroupBy(item =>
+                {
+                    var epic = resolveEpic?.Invoke(item.Number);
+                    return epic != null && !string.IsNullOrWhiteSpace(epic.Title)
+                        ? (SortRank: 0, EpicNumber: (int?)epic.GithubNumber, Label: epic.GithubNumber.HasValue ? $"#{epic.GithubNumber} — {epic.Title}" : epic.Title)
+                        : (SortRank: 1, EpicNumber: (int?)null, Label: "No Epic");
+                })
+                .Select(g => new AskShaneEpicGroup
+                {
+                    SortRank = g.Key.SortRank,
+                    EpicNumber = g.Key.EpicNumber,
+                    Label = g.Key.Label,
+                    Items = g.OrderByDescending(i => i.Number).ToList(),
+                })
+                .OrderBy(g => g.SortRank)
+                .ThenBy(g => g.Label, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var root = new StackPanel { Margin = new Thickness(10, 8, 10, 8) };
+            root.Children.Add(new TextBlock
             {
-                var captured = item;
-                var mi = new MenuItem { Header = $"#{captured.Number} — {captured.Title}" };
-                mi.Click += (_, _) => NavigateToAskShaneItem(captured);
-                menu.Items.Add(mi);
+                Text = $"Ask Shane — {_askShaneItems.Count} item(s) need your decision",
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                Margin = new Thickness(0, 0, 0, 6),
+            });
+
+            foreach (var group in groups)
+            {
+                root.Children.Add(new TextBlock
+                {
+                    Text = group.Label,
+                    FontSize = 10.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                    Margin = new Thickness(0, 8, 0, 3),
+                });
+
+                foreach (var item in group.Items)
+                {
+                    root.Children.Add(BuildAskShanePanelRow(item));
+                }
             }
-            menu.PlacementTarget = BtnAskShane;
-            menu.IsOpen = true;
+
+            var border = new Border
+            {
+                Background = (Brush)Application.Current.FindResource("MantleBrush"),
+                BorderBrush = (Brush)Application.Current.FindResource("Surface1Brush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                MinWidth = 320,
+                MaxWidth = 460,
+                MaxHeight = 480,
+            };
+            border.Child = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = root,
+            };
+
+            var popup = new Popup
+            {
+                PlacementTarget = BtnAskShane,
+                Placement = PlacementMode.Bottom,
+                StaysOpen = false,
+                AllowsTransparency = true,
+                Child = border,
+            };
+            popup.IsOpen = true;
+        }
+
+        /// <summary>Git #3710 — one real row in the Epic-grouped panel: the item's number/title
+        /// (click navigates, same as the old menu item did) plus a real "✈" send button.</summary>
+        private UIElement BuildAskShanePanelRow(AskShaneItem item)
+        {
+            var row = new Grid { Margin = new Thickness(0, 1, 0, 1) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var text = new TextBlock
+            {
+                Text = $"#{item.Number} — {item.Title}",
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Cursor = Cursors.Hand,
+                ToolTip = "Click to open/reveal this item",
+            };
+            text.MouseLeftButtonDown += (_, e) =>
+            {
+                e.Handled = true;
+                NavigateToAskShaneItem(item);
+            };
+            Grid.SetColumn(text, 0);
+            row.Children.Add(text);
+
+            var statusText = new TextBlock
+            {
+                FontSize = 9.5,
+                Margin = new Thickness(0, 1, 0, 3),
+                TextWrapping = TextWrapping.Wrap,
+                Visibility = Visibility.Collapsed,
+            };
+
+            var sendButton = new Button
+            {
+                Content = "✈",
+                FontSize = 12,
+                Padding = new Thickness(5, 1, 5, 2),
+                Margin = new Thickness(6, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Top,
+                Cursor = Cursors.Hand,
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                ToolTip = $"Send #{item.Number}'s real question/decision text to the active chat",
+            };
+            sendButton.Click += async (_, e) =>
+            {
+                e.Handled = true;
+                sendButton.IsEnabled = false;
+                await SendAskShaneItemToChatAsync(item, (msg, isError) =>
+                {
+                    statusText.Text = msg;
+                    statusText.Foreground = isError
+                        ? (Brush)Application.Current.FindResource("RedBrush")
+                        : (Brush)Application.Current.FindResource("GreenBrush");
+                    statusText.Visibility = Visibility.Visible;
+                });
+                sendButton.IsEnabled = true;
+            };
+            Grid.SetColumn(sendButton, 1);
+            row.Children.Add(sendButton);
+
+            var wrapper = new StackPanel();
+            wrapper.Children.Add(row);
+            wrapper.Children.Add(statusText);
+            return wrapper;
+        }
+
+        /// <summary>Git #3710 — the real send: fetches the item's actual issue body and most recent
+        /// comment (never just the title — that's the whole point Shane asked for) and routes the
+        /// combined text through the exact same shared <see cref="SendTextToActiveClaudeChatAsync"/>
+        /// primitive the Build Queue rollup airplane and SQL Runner's "Send to Chat" already use —
+        /// no second send-to-chat mechanism.</summary>
+        private async Task SendAskShaneItemToChatAsync(AskShaneItem item, Action<string, bool> showMessage)
+        {
+            try
+            {
+                var settings = BuildConsoleSettings.Load();
+                if (!settings.HasGitHubPat)
+                {
+                    showMessage("No GitHub PAT configured — can't fetch this item's real question text.", true);
+                    return;
+                }
+
+                var gh = new GitHubApiClient(settings.GitHubPat);
+                var detail = await gh.GetIssueAsync(item.Number);
+                var comments = await gh.GetIssueCommentsAsync(item.Number);
+                string? latestComment = comments.Count > 0 ? comments[^1].Body : null;
+
+                var sb = new System.Text.StringBuilder();
+                sb.Append($"#{item.Number} — {item.Title}");
+                if (detail != null && !string.IsNullOrWhiteSpace(detail.Body))
+                    sb.Append("\n\n").Append(detail.Body.Trim());
+                if (!string.IsNullOrWhiteSpace(latestComment))
+                    sb.Append("\n\n---\nLatest comment:\n").Append(latestComment!.Trim());
+
+                await SendTextToActiveClaudeChatAsync(
+                    sb.ToString(),
+                    showMessage: showMessage,
+                    onInserted: null,
+                    logChannel: "ask-shane.send-to-chat",
+                    whatSingular: "Ask Shane question");
+                ActivityLog.Log("ask-shane", $"#{item.Number} — sent real question text to active chat.");
+            }
+            catch (Exception ex)
+            {
+                showMessage("Couldn't fetch this item's real question text — send failed.", true);
+                ActivityLog.Log("ask-shane", $"#{item.Number} — send-to-chat fetch failed: {ex.Message}");
+            }
         }
 
         /// <summary>Ask #4 — reuses #3599's <see cref="Controls.BuildQueuePanel.RevealQueueItem"/>
