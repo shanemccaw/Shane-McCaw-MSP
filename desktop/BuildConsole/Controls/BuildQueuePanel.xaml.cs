@@ -1165,24 +1165,6 @@ namespace BuildConsole.Controls
         /// own reset-timer restart, for a build that died some other way and never got
         /// flagged/parked by the live watcher path.
         /// </summary>
-        // Git #2136 — opens the Board Reconcile cleanup/migration window: every local
-        // Verifying/Parked/Crashed/limit-paused row against its REAL current GitHub board Status,
-        // so a stale local row (the #1867 pattern) can be migrated to the matching board column or
-        // dismissed. Non-modal (owned) so Shane can keep working the queue while reviewing.
-        private void BtnBoardReconcile_Click(object sender, RoutedEventArgs e)
-        {
-            if (_db == null)
-            {
-                ToastEngine.Warning("Board Reconcile", "No direct DB connection — can't read local workflow rows.");
-                return;
-            }
-            var win = new BuildConsole.StaleStateReconcileWindow(_db)
-            {
-                Owner = Window.GetWindow(this),
-            };
-            win.Show();
-        }
-
         private async void BtnRecoverSessionLimit_Click(object sender, RoutedEventArgs e)
         {
             if (_sessionLimitAutoRestart == null)
