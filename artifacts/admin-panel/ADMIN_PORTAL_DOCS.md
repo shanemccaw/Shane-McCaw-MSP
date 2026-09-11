@@ -350,7 +350,14 @@ Four cards: **Unique Visitors**, **Page Views**, **Avg. Time on Page**, **Bounce
 
 ### 3.1 Clients
 
-**Route:** `/crm/clients` · **Component:** `src/pages/crm/Clients.tsx`
+> **REMOVED in #3424 (Decommission legacy Clients/CRM admin-panel suite).**
+> `src/pages/crm/Clients.tsx` is deleted per Shane — this whole cluster predated
+> real architecture (built during the RunBook-era very first pass). `/crm/clients`
+> redirects to `/pipeline/clients` (now the pipeline workspace's default tab, since
+> the "Clients" nav leaf under Accounts is also removed). The description below is
+> retained as history of what the page did.
+
+**Route:** `/crm/clients` (redirect) · **Component:** deleted
 
 Master list of all client accounts.
 
@@ -360,7 +367,7 @@ Master list of all client accounts.
 | **New Client button** | Opens a slide-in form with fields: Name, Email, Phone, Company. Submits via `POST /api/admin/clients`. |
 | **Export CSV button** | Downloads all clients as a CSV file. |
 | **Client rows** | Each row shows: Name/Email, Company, Quiz Score badge, Quiz Tier badge, AI Risk Level, AI Opportunity Level, active project count, last activity date, SharePoint site indicator. Clicking navigates to `/crm/clients/:id`. |
-| **M365 Profile Wizard button** (per row) | Opens the [M365 Profile Wizard](#84-m365-profile-wizard) dialog for that client. |
+| **M365 Profile Wizard button** (per row) | Opened the M365 Profile Wizard dialog for that client (also removed in #3424 — see §8.4). |
 | **Delete button** (per row) | Shows a preview dialog listing how many projects, invoices, contracts, messages, and services will be affected. Warns if there is an active Stripe subscription. Requires confirmation before deletion. |
 | **Unread email badge** | The client row shows an unread message count if there are linked unread M365 emails. Clicking the badge opens an assign-email picker. |
 
@@ -368,7 +375,18 @@ Master list of all client accounts.
 
 ### 3.2 Client Detail
 
-**Route:** `/crm/clients/:id` · **Component:** `src/pages/crm/ClientDetail.tsx`
+> **REMOVED in #3424 (Decommission legacy Clients/CRM admin-panel suite).**
+> `src/pages/crm/ClientDetail.tsx` and `src/pages/crm/ClientM365HealthTab.tsx` are
+> deleted. `/crm/clients/:id` now redirects to `/pipeline/clients` — a live deep
+> link (the App Registration expiry alert email, and the AI next-best-actions
+> prompt's suggested link format) still points at this path, so it stays a
+> redirect rather than a bare 404, same reasoning as `/crm/leads/:id` in #135. The
+> "Kanban Bucket Preview" section this page had was inline JSX reading locally
+> computed task data — it did **not** import the real `KanbanCardModal` component,
+> so its removal has no effect on the real board in `ProjectDetail.tsx`. The
+> description below is retained as history of what the page did.
+
+**Route:** `/crm/clients/:id` (redirect) · **Component:** deleted
 
 Full 360° view of a single client.
 
@@ -385,7 +403,7 @@ Client name, email, company, and avatar initial. Links back to `/crm/clients`.
 | Phone | Text input — phone number. |
 | Company | Text input — company name. |
 | Address, City, State | Text inputs for postal address. |
-| **Save button** | Persists changes via `PUT /api/admin/clients/:id`. |
+| **Save button** | Persisted changes via `PUT /api/admin/clients/:id`. |
 
 #### Tabs
 
@@ -393,13 +411,13 @@ Client name, email, company, and avatar initial. Links back to `/crm/clients`.
 |---|---|
 | **Overview** | Summary cards: active projects, open tasks, total projects, quiz score. Recent tasks list (status, priority, due date) and recent emails (subject, sender, preview). |
 | **Projects** | Project cards with title, status badge, phase, progress bar, type, dates, and task counts. **Create Project** button opens an inline form. |
-| **M365 Profile** | Displays the client's stored M365 intelligence profile (license SKUs, security settings, Copilot readiness, etc.). **Edit M365 Profile** button opens the [M365 Profile Wizard](#84-m365-profile-wizard). |
+| **M365 Profile** | Displayed the client's stored M365 intelligence profile (license SKUs, security settings, Copilot readiness, etc.). **Edit M365 Profile** button opened the M365 Profile Wizard (also removed in #3424 — see §8.4). |
 | **Azure Credentials** | Lists the client's registered Azure credential entries (used by Script Runner). Each entry shows display name, credential type, Key Vault secret name. **Add Credential** form with: Display Name, Tenant ID, Client ID, Credential Type (secret / certificate), Key Vault Secret Name. |
 | **Quiz History** | All quiz submissions linked to this client. Shows score, tier, quiz type, category score breakdown, and AI "What This Means" text. |
 
 #### M365 Link button
 
-Opens the client's SharePoint site or M365 admin profile in a new tab if `sharepointSiteUrl` is set.
+Opened the client's SharePoint site or M365 admin profile in a new tab if `sharepointSiteUrl` is set.
 
 ---
 
@@ -553,7 +571,13 @@ Each row: Name, Email, Company, Quiz Type badge, Tier badge, Score, Contacted st
 
 ### 3.7 M365 Intelligence
 
-**Route:** `/crm/m365-intelligence` · **Component:** `src/pages/crm/M365Intelligence.tsx`
+> **REMOVED in #3422 (Remove M365 Intelligence page from Admin Panel).**
+> `src/pages/crm/M365Intelligence.tsx` is deleted; this doc section was left
+> unupdated at the time and is corrected here as part of #3424 (found while
+> updating the adjacent Clients/Client Detail sections above). The description
+> below is retained as history of what the page did.
+
+**Route:** `/crm/m365-intelligence` (removed) · **Component:** deleted
 
 Aggregated Microsoft 365 readiness dashboard across all clients.
 
@@ -564,8 +588,8 @@ Aggregated Microsoft 365 readiness dashboard across all clients.
 | **Score filter** | Dropdown: All / 1 / 2 / 3 / 4 / 5 (readiness score). |
 | **Score badges** | Colour-coded: 5 = green (Ready), 4 = blue, 3 = yellow, 2 = orange, 1 = red (Not Ready). |
 | **Blocker column** | Shows the first failing prerequisite (e.g. "No Copilot licenses", "MFA not enforced"). |
-| **View Profile link** | Links to that client's detail page (M365 Profile tab). |
-| **M365 Profile Wizard button** | Opens the [M365 Profile Wizard](#84-m365-profile-wizard) for that client to update their profile data. |
+| **View Profile link** | Linked to that client's detail page (M365 Profile tab, also removed — see §3.2). |
+| **M365 Profile Wizard button** | Opened the M365 Profile Wizard for that client to update their profile data (also removed in #3424 — see §8.4). |
 
 ---
 
@@ -1372,9 +1396,15 @@ Bulk-creates or bulk-updates asset library records from JSON. There is no file p
 
 ### 8.4 M365 Profile Wizard
 
-**Component:** `src/components/M365ProfileWizard.tsx`
+> **REMOVED in #3424 (Decommission legacy Clients/CRM admin-panel suite).**
+> `src/components/M365ProfileWizard.tsx` is deleted — its only caller was
+> `Clients.tsx` (also removed), and its remaining callers (Client Detail's M365
+> Profile tab, M365 Intelligence) were already gone via this same build and
+> #3422 respectively. The description below is retained as history.
 
-Multi-step form for capturing or updating a client's Microsoft 365 environment profile. Used on the Clients list, Client Detail (M365 Profile tab), and M365 Intelligence page.
+**Component:** deleted (was `src/components/M365ProfileWizard.tsx`)
+
+Multi-step form for capturing or updating a client's Microsoft 365 environment profile. Was used on the Clients list, Client Detail (M365 Profile tab), and M365 Intelligence page — all now removed.
 
 The wizard is organised into six thematic steps:
 

@@ -260,24 +260,21 @@ export const WORKSPACES: WorkspaceDef[] = [
     description: "Leads, clients & opportunities",
     icon: Users,
     prefix: "/pipeline",
-    extraPrefixes: ["/crm/clients/"],
     // #135 (Decommission Legacy CRM Phase A): the local-CRM "Leads" and
     // "Opportunities" leaves were removed with their pages, and the Zoho CRM
     // group below is now the pipeline's front door — hence the default path.
     // "/crm/leads/" and "/crm/opportunities/" also left extraPrefixes: both are
     // plain redirects now, so no tab is ever opened on them.
+    // #3424 (Decommission legacy Clients/CRM admin-panel suite): the "Accounts"
+    // section (its sole leaf, "Clients") and the "/crm/clients/" extraPrefixes
+    // entry were removed the same way — ClientDetail.tsx is deleted and
+    // /crm/clients/:id is now a plain redirect, so no tab ever opens on it.
     defaultPath: "/pipeline/zoho-leads",
     sections: [
       {
         id: "leads", label: "Leads", defaultOpen: true,
         items: [
           { id: "pipe-chat-queue", label: "Chat Queue", path: "/pipeline/chat-queue", icon: MessageSquare },
-        ],
-      },
-      {
-        id: "accounts", label: "Accounts", defaultOpen: true,
-        items: [
-          { id: "pipe-clients", label: "Clients", path: "/pipeline/clients", icon: Building2 },
         ],
       },
       {
@@ -322,7 +319,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         items: [
           { id: "del-projects", label: "Projects", path: "/delivery/projects", icon: FolderKanban },
           { id: "del-engagement", label: "Engagement Projects", path: "/delivery/engagement-projects", icon: Layers },
-          { id: "del-clients", label: "Clients", path: "/delivery/clients", icon: Building2 },
         ],
       },
       {
@@ -489,9 +485,9 @@ export const WORKSPACES: WorkspaceDef[] = [
 // ─── Detail-page tab metadata (routes that are not tree leaves) ───────────────
 
 const DETAIL_PREFIXES: Array<{ prefix: string; workspaceId: string; label: string; icon: LucideIcon }> = [
-  // "/crm/leads/" and "/crm/opportunities/" removed in #135 — their detail pages
-  // are deleted and the routes are redirects, so they never open a tab.
-  { prefix: "/crm/clients/", workspaceId: "pipeline", label: "Client", icon: Building2 },
+  // "/crm/leads/" and "/crm/opportunities/" removed in #135, "/crm/clients/"
+  // removed in #3424 — their detail pages are deleted and the routes are
+  // redirects, so they never open a tab.
   { prefix: "/crm/projects/", workspaceId: "delivery", label: "Project", icon: FolderKanban },
   { prefix: "/crm/invoices/", workspaceId: "finance", label: "Invoice", icon: Receipt },
   { prefix: "/crm/purchases/", workspaceId: "finance", label: "Purchase", icon: CreditCard },

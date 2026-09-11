@@ -1,6 +1,5 @@
 import { type ReactNode } from "react";
 import ProjectsPage from "@/pages/crm/Projects";
-import ClientsPage from "@/pages/crm/Clients";
 import EngagementProjectsPage from "@/pages/EngagementProjects";
 import TenantSignalsPage from "@/pages/TenantSignals";
 import SignalRulesPage from "@/pages/SignalRules";
@@ -26,7 +25,6 @@ function getContent(section: string): ReactNode {
     if ((ENGINE_KEYS as readonly string[]).includes(key)) return <EnginePanel engineKey={key} />;
   }
   switch (section) {
-    case "clients":              return <ClientsPage />;
     case "engagement-projects":  return <EngagementProjectsPage />;
     case "tenant-signals":       return <TenantSignalsPage />;
     case "signal-rules":         return <SignalRulesPage />;

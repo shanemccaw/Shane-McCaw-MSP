@@ -19,7 +19,6 @@ import SystemWorkspace from "@/pages/workspaces/SystemWorkspace";
 import WorkflowsWorkspace from "@/pages/workspaces/WorkflowsWorkspace";
 
 // ─── Detail pages (open without workspace layout) ─────────────────────────────
-import ClientDetailPage from "@/pages/crm/ClientDetail";
 import ProjectDetailPage from "@/pages/crm/ProjectDetail";
 import InvoiceDetailPage from "@/pages/crm/InvoiceDetail";
 import PurchaseDetailPage from "@/pages/crm/PurchaseDetail";
@@ -292,9 +291,16 @@ function Router() {
           resolve, so both land on the superseding Zoho list page. */}
       <Route path="/crm/leads/:id"><Redirect to="/pipeline/zoho-leads" /></Route>
       <Route path="/crm/opportunities/:id"><Redirect to="/pipeline/zoho-deals" /></Route>
-      <Route path="/crm/clients/:id">
-        <AdminRoute><ClientDetailPage /></AdminRoute>
-      </Route>
+      {/* #3424 (Decommission legacy Clients/CRM admin-panel suite): ClientDetailPage
+          is deleted. Kept as a redirect rather than removed outright — same reasoning
+          as /crm/leads/:id and /crm/opportunities/:id above — because a live deep
+          link still points here: admin-clients.ts's App Registration expiry alert
+          email builds `/admin-panel/crm/clients/:id` links, and the AI next-best-actions
+          prompt (ai-next-best-actions.ts) still suggests that link format for
+          entityType "client". Both now land on the client list instead of a specific
+          client (no detail page exists to land on); see the #3424 finding filed under
+          #1095 for the context-loss tradeoff this accepts. */}
+      <Route path="/crm/clients/:id"><Redirect to="/pipeline/clients" /></Route>
       <Route path="/crm/projects/:id">
         <AdminRoute><ProjectDetailPage /></AdminRoute>
       </Route>
