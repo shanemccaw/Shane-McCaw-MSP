@@ -937,9 +937,17 @@ namespace BuildConsole.Controls
             // subscribe/unsubscribe pattern HomeView already uses.
             try { FocusModeService.Instance.StateChanged += OnFocusStateChanged; } catch { }
 
+            // Git #3663 — the epic progress bar's own local-mirror-only data source: an initial load
+            // (cold-start-safe — LoadEpicProgressMirrorCacheAsync fails closed to null on a never-synced
+            // mirror) plus a subscription so a completed mirror sync refreshes the bars, zero live
+            // GitHub calls involved either way.
+            _ = LoadEpicProgressMirrorCacheAsync();
+            GitHubIssueMirror.SyncCompleted += OnEpicProgressMirrorSyncCompleted;
+
             Unloaded += (_, _) =>
             {
                 try { FocusModeService.Instance.StateChanged -= OnFocusStateChanged; } catch { }
+                try { GitHubIssueMirror.SyncCompleted -= OnEpicProgressMirrorSyncCompleted; } catch { }
             };
         }
 
@@ -2884,6 +2892,43 @@ namespace BuildConsole.Controls
         /// hasn't succeeded yet (falls back to GitHub's native one-level subIssuesSummary counts).</summary>
         private List<GitBoardIssue>? _lastAllIssuesForRollups;
 
+        /// <summary>Git #3663 — the Chats panel's per-epic progress bar's OWN ALL-states (open+closed)
+        /// snapshot, loaded exclusively from the local <c>bt_issue_mirror</c> table
+        /// (<see cref="GitHubIssueMirror.TryGetBoardIssuesAsync"/>, openOnly:false) — deliberately kept
+        /// separate from <see cref="_lastAllIssuesForRollups"/> above, which is populated from a LIVE
+        /// GitHub fetch and backs the Git Board tree's own rollup pills (out of #3663's scope; untouched).
+        /// Null until the first local-mirror load completes (or the mirror has never synced at all) — see
+        /// <see cref="EpicProgress"/>'s own honest (0,0) fail-closed behavior for that case.</summary>
+        private List<GitBoardIssue>? _epicProgressMirrorIssues;
+
+        /// <summary>Git #3663 — loads/reloads <see cref="_epicProgressMirrorIssues"/> from the local
+        /// mirror ONLY (zero live GitHub calls — <see cref="GitHubIssueMirror.TryGetBoardIssuesAsync"/>
+        /// itself fails closed to null on a never-synced mirror or any DB error). Re-renders the Chats
+        /// tree afterward so already-drawn progress bars pick up the freshly-loaded/refreshed rollup,
+        /// but only once chats have actually been populated at least once (matches the guard
+        /// <see cref="OnFocusStateChanged"/> already uses for the same reason).</summary>
+        private async System.Threading.Tasks.Task LoadEpicProgressMirrorCacheAsync()
+        {
+            try
+            {
+                var issues = await GitHubIssueMirror.TryGetBoardIssuesAsync(openOnly: false);
+                _epicProgressMirrorIssues = issues;
+                if (_lastBoardChats.Count > 0) RenderChatsTree();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("issue-mirror", $"LoadEpicProgressMirrorCacheAsync failed ({ex.Message}) — epic progress bars stay hidden until the next sync.");
+            }
+        }
+
+        /// <summary>Git #3663 — fired from whatever background context the mirror sync runs on (the
+        /// watcher tick), never the UI thread; marshal to the Dispatcher (same pattern as
+        /// AiBatterUpPanel/BatterUpPanel's own SyncCompleted wiring) before reloading/re-rendering.</summary>
+        private void OnEpicProgressMirrorSyncCompleted()
+        {
+            Dispatcher.InvokeAsync(async () => await LoadEpicProgressMirrorCacheAsync());
+        }
+
         /// <summary>Git #921 (Epic #803) — the board's own last real open-issue fetch, so a detail tab can resolve a clicked/linked issue number (its title, epic-ness, To-Do status, linked epic) without a second GitHub round-trip. Read-only view; mutation stays inside BuildBoardFromGitHub.</summary>
         public IReadOnlyList<GitBoardIssue> CurrentBoardIssues => _lastBoardIssues;
 
@@ -3880,25 +3925,38 @@ namespace BuildConsole.Controls
                 || (it.GithubNumber.HasValue && issueNums.Contains(it.GithubNumber.Value))).ToList();
         }
 
-        /// <summary>Epic progress from its real sub-issues: (done, total). Git #2743 — total/done now
-        /// come from the same shared <see cref="ResolveRollup"/> #2739 built for the tree pills: the
-        /// full transitive Epic→Feature→Issue leaf rollup (real work only, no Epic/Feature placeholder
-        /// counted as "1") when the ALL-states set is available, not GitHub's native one-level
-        /// SubIssueCount this previously read directly. Falls back to counting cached children by
-        /// ParentNumber only when the epic isn't found on the board at all. (0,0) hides the bar.</summary>
+        /// <summary>Epic progress from its real sub-issues: (done, total). Git #3663 — replaced
+        /// entirely: the data source is now <see cref="_epicProgressMirrorIssues"/>, the LOCAL
+        /// <c>bt_issue_mirror</c>-only ALL-states snapshot, never the live-GitHub-populated
+        /// <see cref="_lastAllIssuesForRollups"/> <see cref="ResolveRollup"/> reads (that path stays
+        /// unchanged for the Git Board tree pills/GATE fraction/detail tabs — out of this issue's scope).
+        /// Computes the same real transitive Epic→Feature→Issue leaf rollup
+        /// (<see cref="GitBoardIssueFilters.ComputeTransitiveLeafRollup"/>, real work only, no
+        /// Epic/Feature placeholder counted as "1") straight off local data, so it renders correctly and
+        /// instantly on a cold app start with zero live GitHub calls.
+        /// Honest fail-closed, per this issue's own real decision: (0,0) — which hides the bar — when the
+        /// mirror cache hasn't loaded yet, or the epic genuinely isn't present in it (never synced).
+        /// Deliberately NO fallback to GitHub's native one-level SubIssueCount/direct-ParentNumber-kids
+        /// counting anymore — that was exactly the "Features never close, so the fallback numbers are
+        /// badly, persistently misleading" bug this issue reports.
+        /// Known real, separate, and confirmed gap — filed as its own sibling issue under #1202 (see
+        /// build-journal/3663.md for the real number):
+        /// <c>bt_issue_mirror</c>'s closed-issue history is only ever populated going forward (the initial
+        /// full walk fetches OPEN issues only, and Git #3359 deliberately skipped a full ALL-states
+        /// historical backfill to avoid tripping GitHub's rate limits) — confirmed live via the exact same
+        /// filter this method applies: #1096's own real (placeholder-excluded) leaf rollup computes as
+        /// 27/46 from the local mirror today, vs. GitHub's live-authoritative "58/77", so an
+        /// epic with substantial OLD closed history reads LOWER here than GitHub's live truth until that
+        /// backfill gap is closed. Still strictly better than the fallback it replaces: it can never
+        /// mistake a Feature-container for "done," and it only ever undercounts — it never fabricates.</summary>
         private (int done, int total) EpicProgress(int? epicGithubNumber)
         {
             if (!epicGithubNumber.HasValue) return (0, 0);
-            int epicNum = epicGithubNumber.Value;
-            var epicIssue = _lastBoardIssues.FirstOrDefault(i => i.Number == epicNum);
-            if (epicIssue != null)
-            {
-                var (total, completed, _) = ResolveRollup(epicIssue);
-                if (total > 0) return (completed, total);
-            }
-            var kids = _lastBoardIssues.Where(i => i.ParentNumber == epicNum).ToList();
-            if (kids.Count == 0) return (0, 0);
-            return (kids.Count(k => k.IsClosed), kids.Count);
+            if (_epicProgressMirrorIssues == null) return (0, 0);
+            var epicIssue = _epicProgressMirrorIssues.FirstOrDefault(i => i.Number == epicGithubNumber.Value);
+            if (epicIssue == null) return (0, 0);
+            var (total, completed) = GitBoardIssueFilters.ComputeTransitiveLeafRollup(epicIssue, _epicProgressMirrorIssues, selfRootEpicNumber: epicIssue.Number);
+            return (completed, total);
         }
 
         /// <summary>Human "2h ago" style relative time for a chat's last-updated stamp.</summary>
