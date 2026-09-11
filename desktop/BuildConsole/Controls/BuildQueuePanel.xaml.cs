@@ -972,16 +972,17 @@ namespace BuildConsole.Controls
         /// build's "Blocks:" row is correct even when what it blocks sits under a different
         /// filter. Same reasoning as <see cref="FindLiveNodeForBlocker"/> (#3599).
         ///
-        /// Gated on the blocked item still being "queued" (mirrors the exact gate the forward
-        /// ghost-card row already uses at its own call site): once a blocked item lands, its
-        /// blocker relationship is moot and it drops off this list on the next refresh, even
-        /// if the underlying GitHub dependency edge is still technically declared.</summary>
+        /// Git #3626 — previously gated on the blocked item still being "queued" (mirroring
+        /// the forward ghost-card row's own now-removed status gate). Per Shane's explicit
+        /// real widening, that gate is gone: no status restriction applies in either
+        /// direction. A candidate naturally drops off this list once <see cref="LiveBlockedBy"/>
+        /// no longer reports a genuinely-open blocker for it (its blocker closed, or its own
+        /// declared blocked_by data cleared) — real data does the filtering, not raw status.</summary>
         private Dictionary<int, List<QueueItem>> ComputeReverseBlocks(List<QueueItem> allItems)
         {
             var result = new Dictionary<int, List<QueueItem>>();
             foreach (var candidate in allItems)
             {
-                if (candidate.Status != "queued") continue;
                 var node = BuildItemNode(candidate);
                 foreach (var blockerNumber in LiveBlockedBy(node))
                 {
@@ -1303,39 +1304,21 @@ namespace BuildConsole.Controls
         /// (_openIssues == null, cold start) blocked-ness is UNKNOWN, so we fail safe to
         /// the old declared-blocker behaviour rather than assert a confident "runnable".
         ///
-        /// Git #3624 — no longer gated to the raw "queued" status. #3585 was claimed and
-        /// ran (status: Verifying) while its declared blockers were still genuinely open —
-        /// the exact incident #3623 investigates on the claim side — and its card showed a
-        /// generic "🔎 VERIFYING" pill instead of "🔒 BLOCKED", because this check bailed
-        /// out before ever looking at the live open-issue set. Eligible statuses are the
-        /// three the real evidence covers: <c>queued</c> (a genuine claim candidate),
-        /// <see cref="BuildQueuePostgresClient.VerifyingStatus"/> (claimed/ran anyway, per
-        /// #3623's incident class), and a supervisory self-cancel pending re-dispatch
-        /// (<see cref="IsWaitingSelfBlocked"/> — "canceled" + ExitCode == 0, which
-        /// auto-requeues rather than sitting abandoned). Any OTHER status — done, failed, a
-        /// genuine abandoned cancel, superseded, parked, capped, external, limit-paused —
-        /// is excluded on purpose: those are either terminal (blocked-ness is moot once work
-        /// is finished/abandoned) or a deliberate, orthogonal staging state whose own label
-        /// (📥 PARKED, CAPPED, 🚀 EXTERNAL, ⏸ LIMIT) already says something more specific
-        /// than "waiting on a dependency" and shouldn't be overridden by it.
+        /// Git #3624 previously gated this to a fixed set of raw statuses (queued,
+        /// Verifying, self-blocked canceled/WAITING). Git #3626 removes that gate
+        /// entirely, per Shane's explicit real widening: a genuine, currently-open
+        /// `blocked_by` edge must surface regardless of the item's own raw status —
+        /// nothing about a real blocking relationship is ever hidden behind a status
+        /// check. The only thing that actually stops a row from reading BLOCKED now is
+        /// real data: no declared blockers, or the declared blocker(s) are no longer in
+        /// the live open-issue set.
         /// </summary>
         private bool IsGenuinelyBlocked(QueueItem item, List<int> cleanBlockers)
         {
-            if (!IsBlockedEligibleStatus(item)) return false;
             if (cleanBlockers.Count == 0) return false;
             if (_openIssues == null) return true; // cold start: provisional-blocked
             return cleanBlockers.Any(b => _openIssues.Contains(b));
         }
-
-        /// <summary>Git #3624 — the raw statuses eligible for the 🔒 BLOCKED treatment at all,
-        /// shared by <see cref="IsGenuinelyBlocked"/> (drives the card's headline pill/border)
-        /// and the ghost-card render gate in <see cref="BuildQueueCard"/> (drives whether the
-        /// real BuildBlockerGhostCard(s) render inline) — kept as one source of truth so the
-        /// two can never disagree about which rows are even in scope for "blocked".</summary>
-        private static bool IsBlockedEligibleStatus(QueueItem item) =>
-            item.Status == "queued"
-            || item.Status == BuildQueuePostgresClient.VerifyingStatus
-            || IsWaitingSelfBlocked(item);
 
         /// <summary>
         /// Git #1862 — forwarded by MainWindow off every Git Board refresh (the same free
@@ -4446,10 +4429,10 @@ namespace BuildConsole.Controls
             else if (item.Status == "queued")
             {
                 // Git #3514 — a genuinely queued, non-blocked row is a real claim candidate.
-                // Git #3624 — the "🔒 BLOCKED" case for a queued row is now handled by the
-                // shared `else if (isBlocked)` branch above (which fires for ANY eligible
-                // status, not just queued — see IsBlockedEligibleStatus), so reaching this
-                // branch at all already means isBlocked is false; no ternary needed here.
+                // Git #3624/#3626 — the "🔒 BLOCKED" case for a queued row is now handled by
+                // the shared `else if (isBlocked)` branch above (which fires for ANY status
+                // at all — #3626 removed the eligible-status gate entirely), so reaching this
+                // branch already means isBlocked is false; no ternary needed here.
                 statusPill = new Border
                 {
                     Background = new SolidColorBrush(Color.FromRgb(0x21, 0x22, 0x34)),
@@ -4675,11 +4658,12 @@ namespace BuildConsole.Controls
             // real open blocked_by data too; include it here the same way #3599
             // already folded it into the Queued/Running filter views.
             // Git #3624 — extended to a genuinely-blocked Verifying row (#3585's incident:
-            // claimed and ran anyway, still shows a real open blocker) via the same
-            // IsBlockedEligibleStatus source of truth the headline pill now uses, so the
-            // card's own "🔒 BLOCKED" label is never shown without the ghost card(s)
+            // claimed and ran anyway, still shows a real open blocker).
+            // Git #3626 — status gate removed entirely: a real, currently-open blocked_by
+            // edge now renders its ghost card(s) regardless of this item's own raw status,
+            // so the card's "🔒 BLOCKED" label is never shown without the ghost card(s)
             // naming which real issue(s) it's waiting on.
-            if (LiveBlockedBy(node).Count > 0 && IsBlockedEligibleStatus(item))
+            if (LiveBlockedBy(node).Count > 0)
             {
                 foreach (var blockerNumber in LiveBlockedBy(node))
                 {
