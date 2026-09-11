@@ -120,6 +120,10 @@ namespace BuildConsole.Services
         public string Title { get; set; } = "";
         public string Status { get; set; } = "";
         public int? GithubNumber { get; set; }
+
+        /// <summary>Git #3692 — the epic's real, settable Claude Design URL (bt_epics.design_url).
+        /// Null/empty when not set; the pill above the progress bar only renders when this has a value.</summary>
+        public string? DesignUrl { get; set; }
     }
 
     public class BoardChat

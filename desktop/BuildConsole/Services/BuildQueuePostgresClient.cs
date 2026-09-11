@@ -3096,7 +3096,7 @@ namespace BuildConsole.Services
             // Git #3579 — bt_epics is now repo-scoped; the Chats panel's epic list stays
             // scoped to this repo (defaulted) so a second repo's epics can't silently mix in.
             const string sqlEpics = @"
-                SELECT id, title, status, github_number
+                SELECT id, title, status, github_number, design_url
                 FROM bt_epics
                 WHERE repo_owner = @owner AND repo_name = @repo
                 ORDER BY title ASC";
@@ -3112,7 +3112,8 @@ namespace BuildConsole.Services
                         Id = reader.GetInt32(0),
                         Title = reader.IsDBNull(1) ? "" : reader.GetString(1),
                         Status = reader.IsDBNull(2) ? "" : reader.GetString(2),
-                        GithubNumber = reader.IsDBNull(3) ? null : reader.GetInt32(3)
+                        GithubNumber = reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                        DesignUrl = reader.IsDBNull(4) ? null : reader.GetString(4)
                     });
                 }
             }
@@ -3254,6 +3255,31 @@ namespace BuildConsole.Services
             int rows = await cmd.ExecuteNonQueryAsync();
             if (rows == 0)
                 throw new InvalidOperationException($"Chat '{conversationId}' not found — cannot rename.");
+        }
+
+        /// <summary>
+        /// Git #3692 — sets (or clears, when <paramref name="url"/> is null/blank) the real
+        /// "Claude Design URL" pill value for an epic, keyed by its real github_number (the
+        /// table's existing natural key, same as every other per-epic fact). Repo-scoped the
+        /// same way the rest of bt_epics lookups are post-#3579.
+        /// </summary>
+        public async Task SetEpicDesignUrlAsync(int githubNumber, string? url)
+        {
+            var normalized = string.IsNullOrWhiteSpace(url) ? null : url.Trim();
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_epics
+                   SET design_url = @url,
+                       updated_at = NOW()
+                 WHERE repo_owner = @owner AND repo_name = @repo AND github_number = @githubNumber", conn);
+            cmd.Parameters.Add(new NpgsqlParameter("@url", NpgsqlDbType.Text)
+                { Value = normalized is null ? (object)DBNull.Value : normalized });
+            cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+            cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
+            cmd.Parameters.AddWithValue("@githubNumber", githubNumber);
+            int rows = await cmd.ExecuteNonQueryAsync();
+            if (rows == 0)
+                throw new InvalidOperationException($"Epic #{githubNumber} not found in bt_epics — cannot set design URL.");
         }
 
         private async Task<DateTime?> SetChatArchivedAsync(string conversationId, bool archived)

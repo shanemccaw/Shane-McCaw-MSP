@@ -3557,6 +3557,10 @@ namespace BuildConsole.Controls
             public int? GithubNumber;
             public List<BoardChat> Chats = new();
             public List<ChatEpicGroup> SubEpics = new();
+
+            /// <summary>Git #3692 — this epic's real, settable Claude Design URL (bt_epics.design_url).
+            /// Null when not set; the pill above the progress bar only renders when this has a value.</summary>
+            public string? DesignUrl;
         }
 
         private void RenderChatsTree()
@@ -3719,7 +3723,7 @@ namespace BuildConsole.Controls
                 foreach (var epic in milestoneEpics)
                 {
                     var epicChats = chatsByEpicGithub.TryGetValue(epic.Number, out var cs) ? cs : new List<BoardChat>();
-                    groups.Add(new ChatEpicGroup { Title = epic.Title, GithubNumber = epic.Number, Chats = epicChats });
+                    groups.Add(new ChatEpicGroup { Title = epic.Title, GithubNumber = epic.Number, Chats = epicChats, DesignUrl = GetEpicByGithubNumber(epic.Number)?.DesignUrl });
                 }
                 // Most-recently-active epics first; zero-chat epics fall to the bottom (by title).
                 groups.Sort((a, b) =>
@@ -3750,7 +3754,7 @@ namespace BuildConsole.Controls
                     }
                     epicById.TryGetValue(grp.Key, out var epic);
                     var title = epic != null ? epic.Title : $"Epic #{grp.Key}";
-                    groups.Add(new ChatEpicGroup { Title = title, GithubNumber = epic?.GithubNumber, Chats = chatsInGroup });
+                    groups.Add(new ChatEpicGroup { Title = title, GithubNumber = epic?.GithubNumber, Chats = chatsInGroup, DesignUrl = epic?.DesignUrl });
                 }
                 if (hiddenClosedEpics > 0)
                     ActivityLog.Log("git-board.chats",
@@ -3808,13 +3812,13 @@ namespace BuildConsole.Controls
                                     || (c.Title ?? "").Contains(search, StringComparison.OrdinalIgnoreCase))
                         .ToList();
                     if (subLeaves.Count == 0 && !(milestoneMode && (!searching || epicMatches || subMatches))) continue;
-                    visibleSubEpics.Add(new ChatEpicGroup { Title = sub.Title, GithubNumber = sub.GithubNumber, Chats = subLeaves });
+                    visibleSubEpics.Add(new ChatEpicGroup { Title = sub.Title, GithubNumber = sub.GithubNumber, Chats = subLeaves, DesignUrl = sub.DesignUrl });
                 }
 
                 // Git #2534 — in milestone mode a zero-chat epic still renders (so its "New Chat"
                 // button is reachable): keep it unless a search is active that it doesn't match.
                 if (leaves.Count == 0 && visibleSubEpics.Count == 0 && !(milestoneMode && (!searching || epicMatches))) continue;
-                visibleGroups.Add(new ChatEpicGroup { Title = g.Title, GithubNumber = g.GithubNumber, Chats = leaves, SubEpics = visibleSubEpics });
+                visibleGroups.Add(new ChatEpicGroup { Title = g.Title, GithubNumber = g.GithubNumber, Chats = leaves, SubEpics = visibleSubEpics, DesignUrl = g.DesignUrl });
                 var allLeaves = leaves.Concat(visibleSubEpics.SelectMany(s => s.Chats)).ToList();
                 shown += allLeaves.Count;
                 var s2 = GroupBuildStats(allLeaves);
@@ -3990,7 +3994,62 @@ namespace BuildConsole.Controls
             });
             headerRow.Children.Add(textCol); // last (undocked) child fills remaining width
             header.Child = headerRow;
+
+            // ── Right-click: "Set Claude Design URL..." (Git #3692) — only meaningful for a
+            // real epic (keyed by its github_number, bt_epics' existing natural key); the
+            // synthetic "Unlinked" bucket has none and gets no menu.
+            if (group.GithubNumber.HasValue)
+            {
+                var headerCm = new ContextMenu();
+                var miDesignUrl = new MenuItem { Header = "🎨 Set Claude Design URL..." };
+                miDesignUrl.Click += (_, _) => ShowSetEpicDesignUrlDialog(group.GithubNumber.Value, group.Title, group.DesignUrl);
+                headerCm.Items.Add(miDesignUrl);
+                header.ContextMenu = headerCm;
+            }
+
             cardStack.Children.Add(header);
+
+            // ── Claude Design URL pill (Git #3692) — only rendered when set; matches #3675's
+            // #num pill visual convention (rounded, accent-tinted border/background). Clicking
+            // opens the real URL in the system default browser, a genuine new tab.
+            if (!string.IsNullOrWhiteSpace(group.DesignUrl))
+            {
+                var designPillRow = new DockPanel { Margin = new Thickness(9, 0, 9, 8) };
+                var designPill = new Border
+                {
+                    CornerRadius = new CornerRadius(99),
+                    Padding = new Thickness(8, 2, 8, 2),
+                    Background = Tint(accentColor, 0x1c),
+                    BorderBrush = Tint(accentColor, 0x4d),
+                    BorderThickness = new Thickness(1),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    ToolTip = group.DesignUrl,
+                    Child = new TextBlock
+                    {
+                        Text = "🎨 Design",
+                        FontFamily = new FontFamily("Consolas"),
+                        FontSize = 10.5,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = Tint(accentColor, 0xd9),
+                    },
+                };
+                string designUrl = group.DesignUrl!;
+                designPill.MouseLeftButtonUp += (_, e) =>
+                {
+                    e.Handled = true;
+                    try
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(designUrl) { UseShellExecute = true });
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Claude Design URL", $"Failed to open URL: {ex.Message}");
+                    }
+                };
+                designPillRow.Children.Add(designPill);
+                cardStack.Children.Add(designPillRow);
+            }
 
             // ── Progress bar: real transitive-leaf rollup (EpicProgress / Git #3663) ──
             var (done, total) = EpicProgress(group.GithubNumber);
@@ -4099,6 +4158,108 @@ namespace BuildConsole.Controls
             };
 
             return card;
+        }
+
+        /// <summary>
+        /// Git #3692 — "Set Claude Design URL..." dialog from the epic header's right-click menu.
+        /// Prefilled with the epic's current real <c>bt_epics.design_url</c> if one's already set,
+        /// empty otherwise. Save writes the trimmed URL; Clear blanks the field then saves, which
+        /// removes the pill. Follows the same plain-Window Save/Cancel dialog shape as the chat
+        /// rename dialog above, with one added Clear button.
+        /// </summary>
+        private void ShowSetEpicDesignUrlDialog(int githubNumber, string epicTitle, string? currentUrl)
+        {
+            if (_db == null)
+            {
+                ToastEngine.Error("Claude Design URL", "No database connection — cannot set the Design URL right now.");
+                return;
+            }
+
+            var inputWin = new Window
+            {
+                Title = "Set Claude Design URL",
+                Width = 440,
+                Height = 160,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = Application.Current.MainWindow,
+                Background = GetBrush("BaseBrush"),
+                BorderBrush = GetBrush("Surface0Brush"),
+                BorderThickness = new Thickness(1),
+                ResizeMode = ResizeMode.NoResize
+            };
+
+            var grid = new Grid { Margin = new Thickness(14) };
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var label = new TextBlock
+            {
+                Text = $"Claude Design URL for #{githubNumber} — {epicTitle}:",
+                Foreground = GetBrush("TextBrush"),
+                Margin = new Thickness(0, 0, 0, 8),
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+            };
+            Grid.SetRow(label, 0);
+            grid.Children.Add(label);
+
+            var txtInput = new TextBox
+            {
+                Text = currentUrl ?? "",
+                Background = GetBrush("MantleBrush"),
+                Foreground = GetBrush("TextBrush"),
+                BorderBrush = GetBrush("Surface0Brush"),
+                CaretBrush = GetBrush("TextBrush"),
+                Padding = new Thickness(6, 4, 6, 4),
+                Margin = new Thickness(0, 0, 0, 12)
+            };
+            txtInput.SelectAll();
+            Grid.SetRow(txtInput, 1);
+            grid.Children.Add(txtInput);
+
+            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var btnClear = new Button { Content = "Clear", Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(0, 0, 8, 0) };
+            var btnCancel = new Button { Content = "Cancel", Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(0, 0, 8, 0) };
+            var btnSave = new Button { Content = "Save", Style = (Style)FindResource("PrimaryButton"), Padding = new Thickness(12, 4, 12, 4) };
+
+            btnClear.Click += (s2, e2) => { txtInput.Text = ""; inputWin.DialogResult = true; };
+            btnCancel.Click += (s2, e2) => inputWin.DialogResult = false;
+            btnSave.Click += (s2, e2) => inputWin.DialogResult = true;
+
+            buttonPanel.Children.Add(btnClear);
+            buttonPanel.Children.Add(btnCancel);
+            buttonPanel.Children.Add(btnSave);
+            Grid.SetRow(buttonPanel, 2);
+            grid.Children.Add(buttonPanel);
+
+            inputWin.Content = grid;
+            txtInput.Focus();
+
+            if (inputWin.ShowDialog() != true) return;
+
+            var newUrl = txtInput.Text?.Trim() ?? "";
+            SaveEpicDesignUrlAsync(githubNumber, string.IsNullOrEmpty(newUrl) ? null : newUrl);
+        }
+
+        private async void SaveEpicDesignUrlAsync(int githubNumber, string? newUrl)
+        {
+            if (_db == null) return;
+            try
+            {
+                await _db.SetEpicDesignUrlAsync(githubNumber, newUrl);
+                var epic = GetEpicByGithubNumber(githubNumber);
+                if (epic != null) epic.DesignUrl = newUrl;
+                _lastBoardSignature = null;
+                PopulateChatsTree();
+                ToastEngine.Success("Claude Design URL", string.IsNullOrEmpty(newUrl)
+                    ? $"Cleared the Design URL for #{githubNumber}."
+                    : $"Design URL set for #{githubNumber}.");
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Error("Claude Design URL", $"Failed to save: {ex.Message}");
+            }
         }
 
         /// <summary>Top-of-panel at-a-glance strip: total chats, in-progress, waiting-on-you.</summary>
