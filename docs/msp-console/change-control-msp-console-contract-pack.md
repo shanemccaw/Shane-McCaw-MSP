@@ -44,7 +44,7 @@ migrated, mounted schema with nothing in it yet.
 
 ---
 
-## 1. The live surface — eight routers, all mounted, none consumed
+## 1. The live surface — eight routers, all mounted, none consumed, plus one shared evidence router
 
 All eight are imported and `router.use()`-mounted in `artifacts/api-server/src/routes/index.ts`
 (imports `:267-281`, `router.use` calls `:553-567`):
@@ -78,6 +78,13 @@ check, not exact match — see `#middlewares/requireAuth.ts:81-89` `ROLE_ORDER =
 required" }` if null. Every route floors at `MSPOperator` **except** the two Standard Change
 Catalog governance actions, which floor at `MSPAdmin` (§3). There is no `:mspId` in any URL on any
 of these eight routers — every one is session-scoped to the caller's own MSP.
+
+**A ninth router, `msp-evidence-attachments.ts` (`#3503`), is also mounted** (import
+`routes/index.ts:278`, `router.use` at `:561`) and carries two Change Control routes, plus a
+third shared file-serving route also used to view this evidence — see §7a. It is not counted
+among "the eight" above because three of its five routes belong to Remediation Tracker
+(`/msp/customers/:customerId/remediation-tracker/steps/:stepId/evidence`, out of scope for this
+pack), not Change Control — it is a shared router, not a tenth dedicated Change Control router.
 
 **Error-envelope shape is inconsistent across the surface — a real, current fact, not a
 recommendation.** `msp-changes.ts` and `msp-change-catalog.ts` and the three calendar/dependency
@@ -474,6 +481,34 @@ unattributed drift").
 change can be rolled back (this one is '${status}')` ``) — Design must render these as opaque
 server messages, not map them to fixed icon/state per value.
 
+### 7a. Execution evidence — `msp-evidence-attachments.ts` (`#3503`), not this file
+
+**Real, mounted, and cited by the dc.html note at `cc.exec` (dc.html:2814: `wire: "POST
+/msp/change-control/executions/:id/evidence"`) — but it lives in a separate, shared router, not
+`msp-change-executions.ts`.** An execution can carry captured screenshots: images only (`jpg`,
+`jpeg`, `png`, `gif`, `webp`, `bmp`), 20 MB max, with an optional caption and capture time.
+
+| Route | Behaviour |
+|---|---|
+| `POST /msp/change-control/executions/:id/evidence` | `requireAuth` + `requireCapability("ladder.msp-operator")`. Multipart `file` field (`runUpload`, `:230-295`). Resolves `mspId` from session (`mspContext`, `:107-114`), looks up the execution via `getExecution(mspId, executionId)` (the same store §7 uses) — `404` if not found for this MSP. `cr_executions` carries `tenantId` (the M365 tenant GUID), not the portal `customerId` `evidence_attachments` is keyed on, so the route joins `tenantsTable` on `tenantId` to resolve the real portal customer first (`:255-267`) — `500` if no portal customer is found for that tenant. On success, `recordEvidenceAttachment` (`evidence-attachments-store.ts:43-69`) inserts a row with `source: "change_control"`, `sourceRefId: execution.id`. Returns `201 { attachment: WireEvidenceAttachment }`. |
+| `GET /msp/change-control/executions/:id/evidence` | Same auth/scoping and `getExecution` lookup. Returns `200 { attachments: WireEvidenceAttachment[] }`, newest-`capturedAt`-first (`listEvidenceAttachments`, `evidence-attachments-store.ts:72-88`). |
+| `GET /msp/evidence-attachments/:id/file` | Shared file-serving route (not change-control-specific — also serves Remediation Tracker evidence). `requireAuth` + `requireCapability("ladder.msp-operator")`, scoped by `mspId` (`getEvidenceAttachment`, `:91-98`) — `404` if the row doesn't exist or belongs to a different MSP, or if the file is missing on disk. Never a public static mount; this is the only way evidence bytes are served back. |
+
+**`WireEvidenceAttachment`** (verbatim, `evidence-attachments-store.ts:100-114`): `id, source,
+sourceRefId, url, originalFilename, contentType, fileSizeBytes, caption, width, height,
+capturedAt, uploadedByPersonId, createdAt`. `url` is server-generated
+(`` `/api/msp/evidence-attachments/${id}/file` ``), never a client-supplied path.
+`EvidenceAttachmentSource` is a two-value union — `"change_control" | "remediation_tracker"`
+(`lib/db/src/schema/msp.ts`) — only `"change_control"` rows are reachable from this pack's
+surface.
+
+**Error envelope on all three routes is the bare `{ error: string }` shape**, same inconsistency
+class already noted for `msp-change-executions.ts` in §1 — this router uses no `ApiErrorCode`
+either.
+
+**This router is called from zero UI**, same as the other eight (§1) — the dc.html note is the
+only reference to it anywhere in a design/wire artifact at pack time.
+
 ---
 
 ## 8. `msp-change-pir.ts` — Post-Implementation Review (`#1502`)
@@ -589,6 +624,7 @@ pass, which is exactly what this pack exists to hand forward accurately.
 | Freeze / maintenance calendars | `artifacts/api-server/src/routes/msp-change-freeze-windows.ts`, `artifacts/api-server/src/routes/msp-change-maintenance-windows.ts`, `artifacts/api-server/src/lib/portal-change-freeze(-store).ts`, `artifacts/api-server/src/lib/portal-change-maintenance(-store).ts` |
 | CR dependencies | `artifacts/api-server/src/routes/msp-change-dependencies.ts`, `artifacts/api-server/src/lib/portal-change-dependencies-store.ts` |
 | Execution record, rollback | `artifacts/api-server/src/routes/msp-change-executions.ts`, `artifacts/api-server/src/lib/msp-change-execution(-store).ts` |
+| Execution evidence (screenshots) — shared with Remediation Tracker | `artifacts/api-server/src/routes/msp-evidence-attachments.ts`, `artifacts/api-server/src/lib/evidence-attachments-store.ts` |
 | Post-Implementation Review | `artifacts/api-server/src/routes/msp-change-pir.ts`, `artifacts/api-server/src/lib/msp-change-pir(-store).ts` |
 | Approval model (shared with customer portal) | `artifacts/api-server/src/lib/portal-change-approvals(-store).ts` |
 | Rejection model (shared, NOT reached from MSP `PATCH`) | `artifacts/api-server/src/lib/portal-change-rejection.ts` |
