@@ -14,6 +14,7 @@
                 <ResourceDictionary Source="Themes/DarkTheme.xaml"/>
                 <ResourceDictionary Source="Resources/Icons.xaml"/>
                 <ResourceDictionary Source="Resources/ChatPaneBrushes.xaml"/>
+                <ResourceDictionary Source="Resources/ChatsPanelBrushes.xaml"/>
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

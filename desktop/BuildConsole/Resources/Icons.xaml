@@ -19,6 +19,15 @@
 
     <PathGeometry x:Key="Icon.ChevronDown" Figures="M6 9 L12 15 L18 9"/>
 
+    <!-- Git #3675 (Chats panel epic-card restyle) — Lucide "message-square" glyph
+         (design_handoff_chats_panel README "Assets"): a rounded speech-bubble rect
+         with its tail, same arc-based PathGeometry Figures technique as Icon.Square
+         above rather than porting the source SVG's cubic-Bezier "d" verbatim. Used
+         as the epic card's 24x24 icon tile (see LeftSidebar.xaml.cs BuildEpicSection);
+         its chevron reuses Icon.ChevronDown rotated -90/0deg for collapsed/expanded,
+         matching the mockup's chevron-right rotated 0/90deg. -->
+    <PathGeometry x:Key="Icon.MessageSquare" Figures="M21 15 A2 2 0 0 1 19 17 L7 17 L3 21 L3 5 A2 2 0 0 1 5 3 L19 3 A2 2 0 0 1 21 5 Z"/>
+
     <!-- Full ellipse (not a PathGeometry arc, which degenerates when start==end) —
          a StrokeDashArray applied at each usage site (same proven technique as the
          existing dashed-ring spinner in BuildWatchWindow.xaml.cs) leaves the visible gap. -->

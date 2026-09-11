@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using Ellipse = System.Windows.Shapes.Ellipse;
+using XamlPath = System.Windows.Shapes.Path;
 using System.Windows.Threading;
 using BuildConsole.Services;
 using System.Text.Json;
@@ -1176,6 +1177,52 @@ namespace BuildConsole.Controls
             foreach (char c in area) h = (h * 31 + c) & 0x7fffffff;
             return AreaBrushKeys[h % AreaBrushKeys.Length];
         }
+
+        /// <summary>Git #3675 — real per-epic accent colors for the Chats panel's epic cards, per
+        /// design_handoff_chats_panel/README.md "Epic accent colors": the handoff names these exact
+        /// hex values against this repo's own real, standing epics (#1202/#1485/#1096/#1095/#1571/#1281
+        /// — the same six area epics CLAUDE.md's own "file every finding" fallback table routes to), so
+        /// they're used directly rather than reinterpreted. Any other real epic the Chats panel renders
+        /// (there are many beyond these six) falls back to a stable hash over a small curated palette —
+        /// same "keeps its color session to session" contract <see cref="AreaBrushKey"/> already used,
+        /// just literal design-system hex instead of theme brush keys.</summary>
+        private static readonly Dictionary<int, string> KnownEpicAccentHex = new()
+        {
+            { 1202, "#E2984A" }, // Build Console
+            { 1485, "#79B3C8" }, // Portal
+            { 1096, "#7C8CF0" }, // Application Core
+            { 1095, "#C8A86A" }, // Admin Panel
+            { 1571, "#37B8B0" }, // Portal Admin
+            { 1281, "#C084FC" }, // GATE: v1.1 Release
+        };
+
+        private static readonly string[] FallbackEpicAccentHex =
+        {
+            "#E2984A", "#79B3C8", "#7C8CF0", "#C8A86A", "#37B8B0", "#C084FC",
+            "#7FB08A", "#89B4FA", "#F38BA8", "#94E2D5",
+        };
+
+        private static Color EpicAccentColor(int? githubNumber, string title)
+        {
+            string hex;
+            if (githubNumber.HasValue && KnownEpicAccentHex.TryGetValue(githubNumber.Value, out var known))
+            {
+                hex = known;
+            }
+            else
+            {
+                string key = githubNumber.HasValue ? githubNumber.Value.ToString() : title;
+                int h = 0;
+                foreach (char c in key) h = (h * 31 + c) & 0x7fffffff;
+                hex = FallbackEpicAccentHex[h % FallbackEpicAccentHex.Length];
+            }
+            return (Color)ColorConverter.ConvertFromString(hex);
+        }
+
+        /// <summary>An alpha-tinted brush over an accent color — the same "hex + alpha suffix" tinting
+        /// technique the design handoff's own prototype uses (e.g. <c>ep.c + '1c'</c>) for card/pill/tile
+        /// fills and borders, reproduced here as real ARGB since WPF brushes don't take a hex-suffix alpha.</summary>
+        private static SolidColorBrush Tint(Color c, byte alpha) => new SolidColorBrush(Color.FromArgb(alpha, c.R, c.G, c.B));
 
         /// <summary>Git #869 — enumerates test-manifests/**/*.json for the in-panel list, replacing the old OpenFileDialog. Called on Automation view-load and from the refresh button.
         /// Recursive as of the #960 area/feature-slug folder migration — entries are paths relative to manifestsDir (not bare filenames) so Path.Combine in ManifestFilesTree_SelectedItemChanged still resolves,
@@ -3497,6 +3544,21 @@ namespace BuildConsole.Controls
             return linkedNumbers.All(n => IsIssueConfirmedClosed(n, openGithubNumbers));
         }
 
+        /// <summary>Git #3675 — one epic's chats for the Chats panel card list, plus any real
+        /// sub-epic groups nested under it (an epic present in this same render whose
+        /// <see cref="GitBoardIssue.ParentNumber"/> resolves to this epic's own <see cref="GithubNumber"/> —
+        /// e.g. #1494 Microsoft Changes under #1485 Portal, per the design handoff's
+        /// "SUB-EPIC #1494 · MICROSOFT CHANGES" divider). Only a genuine ParentNumber match against
+        /// another group actually present in this render is nested; nothing is invented, and an epic
+        /// whose parent isn't independently present here stays a normal top-level card.</summary>
+        private sealed class ChatEpicGroup
+        {
+            public string Title = "";
+            public int? GithubNumber;
+            public List<BoardChat> Chats = new();
+            public List<ChatEpicGroup> SubEpics = new();
+        }
+
         private void RenderChatsTree()
         {
             if (ChatsHost == null) return;
@@ -3637,7 +3699,7 @@ namespace BuildConsole.Controls
             int hiddenClosedEpics = 0, hiddenClosedChats = 0;
 
             // Build (title, chats) groups.
-            var groups = new List<(string Title, int? GithubNumber, List<BoardChat> Chats)>();
+            var groups = new List<ChatEpicGroup>();
             if (milestoneMode)
             {
                 // Git #2534 — list EVERY open epic in the active milestone from the live board
@@ -3657,7 +3719,7 @@ namespace BuildConsole.Controls
                 foreach (var epic in milestoneEpics)
                 {
                     var epicChats = chatsByEpicGithub.TryGetValue(epic.Number, out var cs) ? cs : new List<BoardChat>();
-                    groups.Add((epic.Title, epic.Number, epicChats));
+                    groups.Add(new ChatEpicGroup { Title = epic.Title, GithubNumber = epic.Number, Chats = epicChats });
                 }
                 // Most-recently-active epics first; zero-chat epics fall to the bottom (by title).
                 groups.Sort((a, b) =>
@@ -3688,35 +3750,76 @@ namespace BuildConsole.Controls
                     }
                     epicById.TryGetValue(grp.Key, out var epic);
                     var title = epic != null ? epic.Title : $"Epic #{grp.Key}";
-                    groups.Add((title, epic?.GithubNumber, chatsInGroup));
+                    groups.Add(new ChatEpicGroup { Title = title, GithubNumber = epic?.GithubNumber, Chats = chatsInGroup });
                 }
                 if (hiddenClosedEpics > 0)
                     ActivityLog.Log("git-board.chats",
                         $"closed-epic filter hid {hiddenClosedEpics} closed epic(s) and their {hiddenClosedChats} nested chat(s) from the Chats panel (#839 convention)");
                 groups.Sort((a, b) => string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase));
                 if (unlinked.Count > 0)
-                    groups.Add(("Unlinked", null, unlinked.OrderByDescending(c => c.UpdatedAt).ToList()));
+                    groups.Add(new ChatEpicGroup { Title = "Unlinked", GithubNumber = null, Chats = unlinked.OrderByDescending(c => c.UpdatedAt).ToList() });
             }
 
-            // Apply the search filter per group, keeping only groups with visible chats,
-            // and tally the global "in progress / waiting on you" counts for the summary strip.
-            var visibleGroups = new List<(string Title, int? GithubNumber, List<BoardChat> Chats)>();
-            int shown = 0, totalInProgress = 0, totalWaiting = 0;
-            foreach (var (title, githubNumber, chats) in groups)
+            // Git #3675 — real sub-epic nesting: an epic group whose own GitHub issue has a
+            // ParentNumber that matches ANOTHER group's GithubNumber actually present in this
+            // render gets folded under that parent (rendered with the design's sub-epic divider)
+            // instead of as its own top-level card. Fail-open per the rest of this method: with
+            // no live board issue data, or no ParentNumber match, every group stays top-level
+            // exactly as before.
+            if (_lastBoardIssues.Count > 0)
             {
-                bool epicMatches = searching && title.Contains(search, StringComparison.OrdinalIgnoreCase);
-                var leaves = chats
+                var byGithubNumber = groups.Where(g => g.GithubNumber.HasValue)
+                    .GroupBy(g => g.GithubNumber!.Value).ToDictionary(g => g.Key, g => g.First());
+                var nested = new List<ChatEpicGroup>();
+                foreach (var g in groups)
+                {
+                    if (!g.GithubNumber.HasValue) continue;
+                    var boardIssue = _lastBoardIssues.FirstOrDefault(i => i.Number == g.GithubNumber.Value);
+                    if (boardIssue?.ParentNumber is int parentNum
+                        && byGithubNumber.TryGetValue(parentNum, out var parentGroup)
+                        && !ReferenceEquals(parentGroup, g))
+                    {
+                        parentGroup.SubEpics.Add(g);
+                        nested.Add(g);
+                    }
+                }
+                foreach (var g in nested) groups.Remove(g);
+            }
+
+            // Apply the search filter per group (and each real sub-epic within it), keeping only
+            // groups with visible chats, and tally the global "in progress / waiting on you"
+            // counts for the summary strip.
+            var visibleGroups = new List<ChatEpicGroup>();
+            int shown = 0, totalInProgress = 0, totalWaiting = 0;
+            foreach (var g in groups)
+            {
+                bool epicMatches = searching && g.Title.Contains(search, StringComparison.OrdinalIgnoreCase);
+                var leaves = g.Chats
                     .Where(c => !searching || epicMatches
                                 || (c.Title ?? "").Contains(search, StringComparison.OrdinalIgnoreCase))
                     .ToList();
+
+                var visibleSubEpics = new List<ChatEpicGroup>();
+                foreach (var sub in g.SubEpics)
+                {
+                    bool subMatches = searching && sub.Title.Contains(search, StringComparison.OrdinalIgnoreCase);
+                    var subLeaves = sub.Chats
+                        .Where(c => !searching || epicMatches || subMatches
+                                    || (c.Title ?? "").Contains(search, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    if (subLeaves.Count == 0 && !(milestoneMode && (!searching || epicMatches || subMatches))) continue;
+                    visibleSubEpics.Add(new ChatEpicGroup { Title = sub.Title, GithubNumber = sub.GithubNumber, Chats = subLeaves });
+                }
+
                 // Git #2534 — in milestone mode a zero-chat epic still renders (so its "New Chat"
                 // button is reachable): keep it unless a search is active that it doesn't match.
-                if (leaves.Count == 0 && !(milestoneMode && (!searching || epicMatches))) continue;
-                visibleGroups.Add((title, githubNumber, leaves));
-                shown += leaves.Count;
-                var s = GroupBuildStats(leaves);
-                totalInProgress += s.inProgress;
-                totalWaiting += s.waiting;
+                if (leaves.Count == 0 && visibleSubEpics.Count == 0 && !(milestoneMode && (!searching || epicMatches))) continue;
+                visibleGroups.Add(new ChatEpicGroup { Title = g.Title, GithubNumber = g.GithubNumber, Chats = leaves, SubEpics = visibleSubEpics });
+                var allLeaves = leaves.Concat(visibleSubEpics.SelectMany(s => s.Chats)).ToList();
+                shown += allLeaves.Count;
+                var s2 = GroupBuildStats(allLeaves);
+                totalInProgress += s2.inProgress;
+                totalWaiting += s2.waiting;
             }
 
             // Top summary strip — the at-a-glance "what am I working on" answer. Shown whenever
@@ -3725,13 +3828,10 @@ namespace BuildConsole.Controls
             if (shown > 0 || otherAccountInProgress > 0)
                 ChatsHost.Children.Add(BuildChatsSummaryStrip(shown, visibleGroups.Count, totalInProgress, totalWaiting, otherAccountInProgress, otherAccount));
 
-            // One collapsible card section per epic group (colour-coded, same stable-hash
-            // convention #984's areas use so an epic keeps its colour session to session).
-            foreach (var (title, githubNumber, chats) in visibleGroups)
-            {
-                string brushKey = AreaBrushKey(title);
-                ChatsHost.Children.Add(BuildEpicSection(title, githubNumber, chats, brushKey, forceExpanded: searching, openGithubNumbers));
-            }
+            // One collapsible card section per epic group — real per-epic accent colors
+            // (EpicAccentColor) and full visual restyle per design_handoff_chats_panel (Git #3675).
+            foreach (var g in visibleGroups)
+                ChatsHost.Children.Add(BuildEpicSection(g, forceExpanded: searching, openGithubNumbers));
 
             // Git #2534 — in milestone mode a section list with only zero-chat epics is NOT the
             // "no chats" empty state (each epic is actionable via its New Chat button), so key
@@ -3748,130 +3848,257 @@ namespace BuildConsole.Controls
             }
         }
 
-        /// <summary>Chats redesign (mirrors #984's MakeAreaHeader) — a colour-coded
-        /// epic row: an 8×8 rounded colour chip, the epic title in that epic's accent
-        /// colour, and a muted chat-count badge (e.g. "War Room  (6)"). The title is
-        /// registered for #932's explicit-MaxWidth trimming.</summary>
         /// <summary>Remembered expand/collapse state for epic sections in the Chats card list.</summary>
         private readonly HashSet<string> _expandedEpicKeys = new();
 
-        /// <summary>
-        /// Chats redesign (Build-Queue-style cards) — one epic SECTION: a clickable header
-        /// card (colour chip, title, #issue, chat count, an epic progress bar over its
-        /// sub-issues, and in-progress / running / waiting counters + last-active time) with
-        /// a collapsible body of per-chat cards. Collapsed by default; a search force-expands
-        /// matching sections; expansion state is remembered in <see cref="_expandedEpicKeys"/>.
+        /// <summary>Git #3675 — one epic CARD, restyled to match design_handoff_chats_panel's real
+        /// visual spec: a bordered card (real epic accent color throughout — icon tile, #num pill,
+        /// progress fill — via <see cref="EpicAccentColor"/>/<see cref="Tint"/>), header row
+        /// (message-square tile, #num pill, uppercase name, "N chats · last X" subtitle, rotating
+        /// chevron), a real transitive-leaf progress bar (<see cref="EpicProgress"/>), and — expanded
+        /// — a rail-lined list of chat rows plus any real sub-epic divider groups
+        /// (<see cref="ChatEpicGroup.SubEpics"/>), ending in the dashed "+ Continue in a new chat"
+        /// button. Collapsed by default; a search force-expands matching sections; expansion state is
+        /// remembered in <see cref="_expandedEpicKeys"/> exactly as before — only the visuals changed.
+        /// The real in-progress/running/waiting-on-you stat chips (not part of the design handoff, but
+        /// real functional signal Shane relies on) are kept, restyled to sit under the progress bar.
         /// </summary>
-        private FrameworkElement BuildEpicSection(string title, int? githubNumber, List<BoardChat> chats, string brushKey, bool forceExpanded, HashSet<int>? openGithubNumbers)
+        private FrameworkElement BuildEpicSection(ChatEpicGroup group, bool forceExpanded, HashSet<int>? openGithubNumbers)
         {
-            var accent = GetBrush(brushKey);
-            string epicKey = "epic:" + title;
+            var accentColor = EpicAccentColor(group.GithubNumber, group.Title);
+            var accentBrush = new SolidColorBrush(accentColor);
+            string epicKey = "epic:" + group.Title;
+            var allChats = group.Chats.Concat(group.SubEpics.SelectMany(s => s.Chats)).ToList();
             // Git #2534 — a zero-chat epic starts expanded so its "New Chat" button is visible
             // without a first click (it's the only actionable thing in the section).
-            bool expanded = forceExpanded || _expandedEpicKeys.Contains(epicKey) || chats.Count == 0;
+            bool expanded = forceExpanded || _expandedEpicKeys.Contains(epicKey) || allChats.Count == 0;
 
-            var section = new StackPanel { Margin = new Thickness(0, 0, 0, 6) };
+            var card = new Border
+            {
+                Background = GetBrush("ChatsPanel.CardBg"),
+                BorderBrush = GetBrush("ChatsPanel.BorderDefault"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(9),
+                ClipToBounds = true,
+                Margin = new Thickness(0, 0, 0, 10),
+            };
+            var cardStack = new StackPanel();
+            card.Child = cardStack;
 
+            // ── Header row: icon tile · #num pill + name · subtitle · chevron ──
             var header = new Border
             {
-                Background = GetBrush("Surface0Brush"),
-                CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(8, 6, 8, 6),
+                Background = Tint(accentColor, 0x0d),
+                Padding = new Thickness(9, 8, 9, 8),
                 Cursor = System.Windows.Input.Cursors.Hand,
             };
-            var hStack = new StackPanel();
+            var headerRow = new DockPanel();
 
-            var topRow = new DockPanel();
-            var chevron = new TextBlock { Text = expanded ? "▾" : "▸", FontSize = 10, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
-            DockPanel.SetDock(chevron, Dock.Left);
-            topRow.Children.Add(chevron);
-            var chip = new Border { Width = 9, Height = 9, CornerRadius = new CornerRadius(2), Background = accent, Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center };
-            DockPanel.SetDock(chip, Dock.Left);
-            topRow.Children.Add(chip);
-            var countBadge = new TextBlock { Text = chats.Count.ToString(), FontSize = 10.5, Foreground = GetBrush("Subtext0Brush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0), ToolTip = $"{chats.Count} chat(s)" };
-            DockPanel.SetDock(countBadge, Dock.Right);
-            topRow.Children.Add(countBadge);
-            // Git #3662 — the "<N> open" pill (Git #2534) was removed per Shane's request; the
-            // epic's real open-sub-issue count is still tracked in _lastBoardIssues/EpicProgress
-            // below, this was display-only removal.
-            if (githubNumber.HasValue)
+            var tile = new Border
             {
-                var numTb = new TextBlock { Text = $"#{githubNumber.Value}", FontSize = 10.5, Foreground = GetBrush("Subtext0Brush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
-                DockPanel.SetDock(numTb, Dock.Right);
-                topRow.Children.Add(numTb);
-            }
-            var titleTb = new TextBlock { Text = title, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = accent, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-            topRow.Children.Add(titleTb); // last child fills remaining width
-            hStack.Children.Add(topRow);
+                Width = 24,
+                Height = 24,
+                CornerRadius = new CornerRadius(6),
+                Background = Tint(accentColor, 0x1f),
+                BorderBrush = Tint(accentColor, 0x55),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new XamlPath
+                {
+                    Data = (Geometry)FindResource("Icon.MessageSquare"),
+                    Stroke = accentBrush,
+                    StrokeThickness = 2,
+                    StrokeStartLineCap = PenLineCap.Round,
+                    StrokeEndLineCap = PenLineCap.Round,
+                    StrokeLineJoin = PenLineJoin.Round,
+                    Width = 12,
+                    Height = 12,
+                    Stretch = Stretch.Uniform,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
+            };
+            DockPanel.SetDock(tile, Dock.Left);
+            headerRow.Children.Add(tile);
 
-            // Epic progress bar over its real sub-issues.
-            var (done, total) = EpicProgress(githubNumber);
+            var chevron = new XamlPath
+            {
+                Data = (Geometry)FindResource("Icon.ChevronDown"),
+                Stroke = GetBrush("ChatsPanel.Text4"),
+                StrokeThickness = 2,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round,
+                StrokeLineJoin = PenLineJoin.Round,
+                Width = 12,
+                Height = 12,
+                Stretch = Stretch.Uniform,
+                Margin = new Thickness(6, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = new RotateTransform(expanded ? 0 : -90),
+            };
+            DockPanel.SetDock(chevron, Dock.Right);
+            headerRow.Children.Add(chevron);
+
+            var textCol = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
+            if (group.GithubNumber.HasValue)
+            {
+                nameRow.Children.Add(new Border
+                {
+                    CornerRadius = new CornerRadius(99),
+                    Padding = new Thickness(8, 1, 8, 1),
+                    Background = Tint(accentColor, 0x1c),
+                    BorderBrush = Tint(accentColor, 0x4d),
+                    BorderThickness = new Thickness(1),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Child = new TextBlock
+                    {
+                        Text = $"#{group.GithubNumber.Value}",
+                        FontFamily = new FontFamily("Consolas"),
+                        FontSize = 12,
+                        FontWeight = FontWeights.ExtraBold,
+                        Foreground = Tint(accentColor, 0xd9),
+                    },
+                });
+            }
+            nameRow.Children.Add(new TextBlock
+            {
+                Text = group.Title.ToUpperInvariant(),
+                FontSize = 10,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = GetBrush("ChatsPanel.Text3"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(group.GithubNumber.HasValue ? 6 : 0, 0, 0, 0),
+            });
+            textCol.Children.Add(nameRow);
+
+            DateTime? lastActive = allChats.Count > 0 ? allChats.Max(c => c.UpdatedAt) : null;
+            string subtitle = allChats.Count == 0
+                ? "No chats yet"
+                : $"{allChats.Count} chat{(allChats.Count == 1 ? "" : "s")}" + (lastActive.HasValue ? $" · last {RelativeTime(lastActive)}" : "");
+            textCol.Children.Add(new TextBlock
+            {
+                Text = subtitle,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 8.5,
+                Foreground = GetBrush("ChatsPanel.Text4"),
+                Margin = new Thickness(0, 1, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            headerRow.Children.Add(textCol); // last (undocked) child fills remaining width
+            header.Child = headerRow;
+            cardStack.Children.Add(header);
+
+            // ── Progress bar: real transitive-leaf rollup (EpicProgress / Git #3663) ──
+            var (done, total) = EpicProgress(group.GithubNumber);
             if (total > 0)
             {
                 double frac = Math.Max(0.0, Math.Min(1.0, (double)done / total));
+                var barBrush = frac >= 1.0 ? GetBrush("ChatsPanel.Green")
+                    : frac >= 0.5 ? GetBrush("ChatsPanel.AmberFill")
+                    : accentBrush;
                 var fillGrid = new Grid();
                 fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(frac, GridUnitType.Star) });
                 fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - frac, GridUnitType.Star) });
-                var fill = new Border { CornerRadius = new CornerRadius(3), Background = accent };
+                var fill = new Border { CornerRadius = new CornerRadius(99), Background = barBrush };
                 Grid.SetColumn(fill, 0);
                 fillGrid.Children.Add(fill);
-                hStack.Children.Add(new Border { Height = 5, CornerRadius = new CornerRadius(3), Background = new SolidColorBrush(Color.FromRgb(0x45, 0x47, 0x5A)), Margin = new Thickness(0, 6, 0, 0), Child = fillGrid });
-                hStack.Children.Add(new TextBlock { Text = $"{done}/{total} issues done", FontSize = 9.5, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 2, 0, 0) });
+                var track = new Border { Height = 3, CornerRadius = new CornerRadius(99), Background = GetBrush("ChatsPanel.TrackBg"), Child = fillGrid };
+
+                var progRow = new DockPanel { Margin = new Thickness(9, 0, 9, 8), ToolTip = "Closed issues out of all issues on this epic (real transitive leaf rollup)" };
+                var pctLabel = new TextBlock { Text = $"{Math.Round(frac * 100)}%", FontFamily = new FontFamily("Consolas"), FontSize = 8, FontWeight = FontWeights.ExtraBold, Foreground = barBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0, 0, 0) };
+                DockPanel.SetDock(pctLabel, Dock.Right);
+                progRow.Children.Add(pctLabel);
+                progRow.Children.Add(track);
+                cardStack.Children.Add(progRow);
             }
 
-            // Status counters + last-active. (chats may be empty in milestone mode — guard Max.)
-            var stats = GroupBuildStats(chats);
-            DateTime? lastActive = chats.Count > 0 ? chats.Max(c => c.UpdatedAt) : null;
-            var counters = new WrapPanel { Margin = new Thickness(0, 5, 0, 0) };
+            // Real in-progress/running/waiting-on-you stat chips — not part of the design handoff,
+            // but real functional signal Shane relies on; kept, restyled to the new token palette.
+            var stats = GroupBuildStats(allChats);
+            var counters = new WrapPanel { Margin = new Thickness(9, total > 0 ? 0 : 4, 9, 8) };
             void AddCounter(string text, string bk, string tip) => counters.Children.Add(new TextBlock { Text = text, FontSize = 10, Foreground = GetBrush(bk), Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = tip });
             if (stats.inProgress > 0) AddCounter($"⚡ {stats.inProgress} in progress", "YellowBrush", $"{stats.inProgress} chat(s) marked In Progress");
             if (stats.running > 0) AddCounter($"▶ {stats.running} running", "BlueBrush", $"{stats.running} linked build(s) running");
             if (stats.waiting > 0) AddCounter($"⏳ {stats.waiting} waiting", "PeachBrush", $"{stats.waiting} item(s) need you (failed/blocked builds or Shane To-Do issues)");
-            if (lastActive.HasValue) AddCounter($"🕒 {RelativeTime(lastActive)}", "Subtext0Brush", (lastActive.Value.Kind == DateTimeKind.Utc ? lastActive.Value.ToLocalTime() : lastActive.Value).ToString("f"));
-            if (counters.Children.Count > 0) hStack.Children.Add(counters);
+            if (counters.Children.Count > 0) cardStack.Children.Add(counters);
 
-            header.Child = hStack;
-
-            var body = new StackPanel { Margin = new Thickness(2, 5, 0, 0), Visibility = expanded ? Visibility.Visible : Visibility.Collapsed };
-            foreach (var chat in chats) body.Children.Add(BuildChatCard(chat, brushKey, openGithubNumbers));
+            // ── Expanded body: rail line, chat rows, real sub-epic dividers, "+ Continue" ──
+            var body = new StackPanel { Visibility = expanded ? Visibility.Visible : Visibility.Collapsed };
+            var bodyGrid = new Grid { Margin = new Thickness(0, 7, 0, 8) };
+            var rail = new Border
+            {
+                Width = 2,
+                CornerRadius = new CornerRadius(99),
+                Background = Tint(accentColor, 0x2b),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(5, 4, 0, 4),
+            };
+            bodyGrid.Children.Add(rail);
+            var rowsPanel = new StackPanel { Margin = new Thickness(12, 0, 8, 0) };
+            foreach (var chat in group.Chats)
+                rowsPanel.Children.Add(BuildChatCard(chat, accentColor, openGithubNumbers, indented: false));
+            foreach (var sub in group.SubEpics)
+            {
+                rowsPanel.Children.Add(new TextBlock
+                {
+                    Text = $"SUB-EPIC {(sub.GithubNumber.HasValue ? $"#{sub.GithubNumber.Value} · " : "")}{sub.Title.ToUpperInvariant()}",
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 8,
+                    FontWeight = FontWeights.ExtraBold,
+                    Foreground = Tint(accentColor, 0xaa),
+                    Margin = new Thickness(2, 4, 0, 0),
+                });
+                foreach (var chat in sub.Chats)
+                    rowsPanel.Children.Add(BuildChatCard(chat, accentColor, openGithubNumbers, indented: true));
+            }
 
             // Git #2534 — every real epic section gets a "New Chat" affordance (req 4/5): a
             // zero-chat epic reads "+ New Chat", one with chats reads "+ Continue in a new chat".
             // Both start a new chat pre-associated to THIS epic (epic_id set on create by the
             // same LinkChatToIssueAsync write path via AssociateChatWithIssueAsync).
-            if (githubNumber.HasValue)
+            if (group.GithubNumber.HasValue)
             {
-                string newChatLabel = chats.Count == 0 ? "+ New Chat" : "+ Continue in a new chat";
-                var newChatBtn = new Border
+                string newChatLabel = allChats.Count == 0 ? "+ New Chat" : "+ Continue in a new chat";
+                var newChatBtn = new Grid
                 {
-                    Background = GetBrush("MantleBrush"),
-                    BorderBrush = accent,
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(5),
-                    Padding = new Thickness(8, 5, 8, 5),
-                    Margin = new Thickness(0, 2, 0, 4),
+                    Height = 22,
+                    Margin = new Thickness(0, 6, 0, 2),
                     Cursor = System.Windows.Input.Cursors.Hand,
                     HorizontalAlignment = HorizontalAlignment.Stretch,
-                    ToolTip = $"Start a new chat pre-associated to #{githubNumber.Value} — {title}",
-                    Child = new TextBlock { Text = newChatLabel, FontSize = 11.5, Foreground = accent, HorizontalAlignment = HorizontalAlignment.Center, FontWeight = FontWeights.SemiBold },
+                    ToolTip = $"Start a new chat pre-associated to #{group.GithubNumber.Value} — {group.Title}",
                 };
-                int capturedNumber = githubNumber.Value;
-                string capturedTitle = title;
+                newChatBtn.Children.Add(new System.Windows.Shapes.Rectangle
+                {
+                    RadiusX = 6,
+                    RadiusY = 6,
+                    Stroke = Tint(accentColor, 0x45),
+                    StrokeThickness = 1,
+                    StrokeDashArray = new DoubleCollection(new[] { 3.0, 2.0 }),
+                    Fill = Brushes.Transparent,
+                });
+                newChatBtn.Children.Add(new TextBlock { Text = newChatLabel, FontSize = 9.5, FontWeight = FontWeights.Bold, Foreground = accentBrush, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+                int capturedNumber = group.GithubNumber.Value;
+                string capturedTitle = group.Title;
                 newChatBtn.MouseLeftButtonUp += (s, e) => { e.Handled = true; StartNewEpicChat(capturedNumber, capturedTitle); };
-                body.Children.Add(newChatBtn);
+                rowsPanel.Children.Add(newChatBtn);
             }
+            bodyGrid.Children.Add(rowsPanel);
+            body.Children.Add(bodyGrid);
+            cardStack.Children.Add(body);
 
             header.MouseLeftButtonUp += (s, e) =>
             {
                 bool nowExpanded = body.Visibility != Visibility.Visible;
                 body.Visibility = nowExpanded ? Visibility.Visible : Visibility.Collapsed;
-                chevron.Text = nowExpanded ? "▾" : "▸";
+                chevron.RenderTransform = new RotateTransform(nowExpanded ? 0 : -90);
                 if (nowExpanded) _expandedEpicKeys.Add(epicKey); else _expandedEpicKeys.Remove(epicKey);
             };
 
-            section.Children.Add(header);
-            section.Children.Add(body);
-            return section;
+            return card;
         }
 
         /// <summary>Top-of-panel at-a-glance strip: total chats, in-progress, waiting-on-you.</summary>
@@ -3980,37 +4207,57 @@ namespace BuildConsole.Controls
             return _lastBoardChats.FirstOrDefault(c => string.Equals(c.ConversationId, conversationId, StringComparison.OrdinalIgnoreCase));
         }
 
-        /// <summary>Chats redesign (mirrors #984's MakeLeafHeader) — a chat leaf with a
-        /// thin epic-coloured left bar + the chat title in muted Subtext1Brush. Title
-        /// registered for #932's MaxWidth trim. Retains #828's "Assign to Epic..."
-        /// right-click, now sourcing its epic list from the cached <see cref="_chatEpicById"/>
-        /// instead of the fetch's board.Epics (identical data, no second round-trip).</summary>
-        private Border BuildChatCard(BoardChat chat, string brushKey, HashSet<int>? openGithubNumbers)
+        /// <summary>Git #3675 — the real context-usage ceiling the design handoff's chat-row readout
+        /// ("576k / 900k ctx") is measured against: Shane's real, confirmed 900k-of-1M safety margin,
+        /// the same value <see cref="ChatDocumentContainer"/>'s own <c>ContextBudget</c> already uses.
+        /// Real data only — <see cref="Services.ChatContextMeterStore.Get"/> returns null for a chat
+        /// with no recorded reading yet, and the row simply omits the ctx block rather than fabricate one.</summary>
+        private const double ChatContextBudget = 900_000;
+
+        /// <summary>Git #3675 — a chat ROW, restyled to match design_handoff_chats_panel's real visual
+        /// spec: a real per-epic-accent-tinted card (background/border per the chat's real
+        /// <see cref="Services.ChatContextMeterStore"/> reading), a status dot, the chat's real title, and
+        /// a right-aligned context-usage readout + mini bar (green/amber/red by the real 900k/1M
+        /// threshold) — reduced-opacity "ghosted" once a chat's real usage hits the ceiling, per Shane's
+        /// real "still fully clickable, not archived/removed, just visually deprioritized" spec. A chat
+        /// with no recorded context reading yet falls back to the prior relative-time readout rather than
+        /// fabricating a context value. <paramref name="indented"/> applies the sub-epic row indent.
+        /// Retains #828's "Assign to Epic..." right-click and every other real context-menu action
+        /// unchanged below — this restyle only touches the visual shell.</summary>
+        private Border BuildChatCard(BoardChat chat, Color accentColor, HashSet<int>? openGithubNumbers, bool indented)
         {
             bool inProgress = BuildConsole.Services.FocusModeService.Instance.IsChatInProgressForAccount(chat.ConversationId, BuildConsole.Services.BuildConsoleSettings.CurrentAccountLabel());
-            var accent = GetBrush(brushKey);
+            var accentBrush = new SolidColorBrush(accentColor);
 
-            // Card shell (a highlighted border when marked In Progress).
+            var ctxEntry = BuildConsole.Services.ChatContextMeterStore.Get(chat.ConversationId);
+            double? ctxTokens = ctxEntry?.EstTokens;
+            bool ctxFull = ctxTokens.HasValue && ctxTokens.Value >= ChatContextBudget;
+
+            Brush BorderForState() => ctxFull ? GetBrush("ChatsPanel.BorderSubtle") : Tint(accentColor, 0x38);
+
+            // Card shell — background/border per the design's real context-usage ghosting, not the
+            // old "highlighted when In Progress" treatment (In Progress is still shown, as the lead dot).
             var card = new Border
             {
-                Background = GetBrush("MantleBrush"),
-                BorderBrush = inProgress ? GetBrush("YellowBrush") : GetBrush("Surface0Brush"),
+                Background = GetBrush("ChatsPanel.RowBg"),
+                BorderBrush = BorderForState(),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(5),
-                Margin = new Thickness(0, 0, 0, 4),
+                CornerRadius = new CornerRadius(8),
+                ClipToBounds = true,
+                Opacity = ctxFull ? 0.62 : 1.0,
+                Margin = new Thickness(indented ? 12 : 0, 0, 0, 4),
                 Tag = chat,
                 Cursor = System.Windows.Input.Cursors.Hand,
             };
 
-            var outer = new DockPanel { LastChildFill = true };
-            var bar = new Border { Width = 3, Background = accent, CornerRadius = new CornerRadius(5, 0, 0, 5) };
-            DockPanel.SetDock(bar, Dock.Left);
-            outer.Children.Add(bar);
+            var cardContent = new StackPanel();
 
-            var content = new StackPanel { Margin = new Thickness(7, 5, 7, 5) };
+            var rowSurface = new Border
+            {
+                Background = Tint(accentColor, ctxFull ? (byte)0x08 : (byte)0x14),
+                Padding = new Thickness(8, 6, 8, 6),
+            };
 
-            // Row 1: [icons] [title *] [relative time] — the star column + trimming keep it
-            // inside the panel width (the old tree's overflow is gone by construction).
             var titleRow = new Grid();
             titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -4020,38 +4267,66 @@ namespace BuildConsole.Controls
             if (inProgress)
                 icons.Children.Add(new TextBlock { Text = "⚡", FontSize = 11, Foreground = GetBrush("YellowBrush"), Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = "Marked as In Progress (quickly accessible in Focus mode)" });
             if (chat.Archived)
-                icons.Children.Add(new TextBlock { Text = "🗄", FontSize = 11, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = chat.ArchivedAt.HasValue ? $"Archived {chat.ArchivedAt.Value.ToLocalTime():MMM d, h:mm tt} — right-click to Unarchive" : "Archived — right-click to Unarchive" });
+                icons.Children.Add(new TextBlock { Text = "🗄", FontSize = 11, Foreground = GetBrush("ChatsPanel.Text4"), Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = chat.ArchivedAt.HasValue ? $"Archived {chat.ArchivedAt.Value.ToLocalTime():MMM d, h:mm tt} — right-click to Unarchive" : "Archived — right-click to Unarchive" });
+            icons.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = ctxFull ? GetBrush("ChatsPanel.GhostedDot") : accentBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
             Grid.SetColumn(icons, 0);
             titleRow.Children.Add(icons);
 
             var titleBlock = new TextBlock
             {
                 Text = string.IsNullOrWhiteSpace(chat.Title) ? "(untitled chat)" : chat.Title,
-                FontSize = 12.5,
+                FontSize = 11,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = chat.Archived ? GetBrush("Subtext0Brush") : (inProgress ? GetBrush("YellowBrush") : GetBrush("TextBrush")),
-                FontWeight = inProgress ? FontWeights.SemiBold : FontWeights.Normal,
+                Foreground = ctxFull ? GetBrush("ChatsPanel.GhostedText") : (inProgress ? GetBrush("YellowBrush") : GetBrush("ChatsPanel.Text2")),
+                FontWeight = FontWeights.SemiBold,
                 TextTrimming = TextTrimming.CharacterEllipsis,
+                Margin = new Thickness(0, 0, 6, 0),
             };
             Grid.SetColumn(titleBlock, 1);
             titleRow.Children.Add(titleBlock);
 
-            var timeBlock = new TextBlock
+            if (ctxTokens.HasValue)
             {
-                Text = RelativeTime(chat.UpdatedAt),
-                FontSize = 9.5,
-                Foreground = GetBrush("Subtext0Brush"),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0, 0, 0),
-                ToolTip = chat.UpdatedAt.HasValue ? (chat.UpdatedAt.Value.Kind == DateTimeKind.Utc ? chat.UpdatedAt.Value.ToLocalTime() : chat.UpdatedAt.Value).ToString("f") : null,
-            };
-            Grid.SetColumn(timeBlock, 2);
-            titleRow.Children.Add(timeBlock);
-            content.Children.Add(titleRow);
+                // Real context-usage readout — "576k / 900k ctx" + a 34x3px mini bar, per the
+                // design's real green(<70%)/amber(70–99%)/red(100%) thresholds.
+                double frac = Math.Max(0.0, Math.Min(1.0, ctxTokens.Value / ChatContextBudget));
+                Brush ctxColor = ctxFull ? GetBrush("ChatsPanel.Red") : frac >= 0.70 ? GetBrush("ChatsPanel.AmberText") : GetBrush("ChatsPanel.Green");
+                Brush ctxFillColor = ctxFull ? GetBrush("ChatsPanel.Red") : frac >= 0.70 ? GetBrush("ChatsPanel.AmberFill") : GetBrush("ChatsPanel.Green");
+                string displayK = ctxFull ? "900k" : $"{Math.Round(ctxTokens.Value / 1000.0):0}k";
 
-            // Row 2: compact linked-issue pills + build-status badges, WRAPPING so they never
-            // push the card past the panel edge.
-            var chips = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+                var ctxCol = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+                ctxCol.Children.Add(new TextBlock { Text = $"{displayK} / 900k ctx", FontFamily = new FontFamily("Consolas"), FontSize = 8, FontWeight = FontWeights.ExtraBold, Foreground = ctxColor, HorizontalAlignment = HorizontalAlignment.Right });
+                var ctxFillGrid = new Grid();
+                ctxFillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(frac, GridUnitType.Star) });
+                ctxFillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - frac, GridUnitType.Star) });
+                var ctxFillBar = new Border { CornerRadius = new CornerRadius(99), Background = ctxFillColor };
+                Grid.SetColumn(ctxFillBar, 0);
+                ctxFillGrid.Children.Add(ctxFillBar);
+                ctxCol.Children.Add(new Border { Width = 34, Height = 3, CornerRadius = new CornerRadius(99), Background = GetBrush("ChatsPanel.TrackBg"), Margin = new Thickness(0, 2, 0, 0), Child = ctxFillGrid });
+                Grid.SetColumn(ctxCol, 2);
+                titleRow.Children.Add(ctxCol);
+            }
+            else
+            {
+                // No real context reading recorded yet for this chat — the prior relative-time
+                // readout, never a fabricated context value.
+                var timeBlock = new TextBlock
+                {
+                    Text = RelativeTime(chat.UpdatedAt),
+                    FontSize = 9,
+                    Foreground = GetBrush("ChatsPanel.Text4"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = chat.UpdatedAt.HasValue ? (chat.UpdatedAt.Value.Kind == DateTimeKind.Utc ? chat.UpdatedAt.Value.ToLocalTime() : chat.UpdatedAt.Value).ToString("f") : null,
+                };
+                Grid.SetColumn(timeBlock, 2);
+                titleRow.Children.Add(timeBlock);
+            }
+            rowSurface.Child = titleRow;
+            cardContent.Children.Add(rowSurface);
+
+            // Build-status badges (real, existing functionality — not part of the design handoff,
+            // which covers colors/type/spacing only — kept, restyled minimally to sit under the row).
+            var chips = new WrapPanel { Margin = new Thickness(8, 4, 8, 6) };
 
             // Git #3595 — the AssociatedIssueNumbers pill block (number + title + status
             // dot) was removed from here per issue #3595. Display removal only: the
@@ -4151,9 +4426,8 @@ namespace BuildConsole.Controls
                 chips.Children.Add(buildSp);
             }
 
-            if (chips.Children.Count > 0) content.Children.Add(chips);
-            outer.Children.Add(content);
-            card.Child = outer;
+            if (chips.Children.Count > 0) cardContent.Children.Add(chips);
+            card.Child = cardContent;
 
             // Click the card to open its chat (same issue-number resolution the old
             // TreeView selection used); hover highlights it.
@@ -4164,8 +4438,8 @@ namespace BuildConsole.Controls
                 int? gh = chat.IssueGithubNumber ?? resolvedEpic?.GithubNumber;
                 ChatSelected?.Invoke(this, (chat, gh));
             };
-            card.MouseEnter += (s, e) => card.Background = GetBrush("Surface0Brush");
-            card.MouseLeave += (s, e) => card.Background = GetBrush("MantleBrush");
+            card.MouseEnter += (s, e) => card.BorderBrush = GetBrush("ChatsPanel.RowHoverBorder");
+            card.MouseLeave += (s, e) => card.BorderBrush = BorderForState();
 
             var cm = new ContextMenu();
 

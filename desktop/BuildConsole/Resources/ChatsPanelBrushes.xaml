@@ -1,0 +1,40 @@
+<!--
+    Git #3675 — real design tokens for the Chats panel's epic-card / chat-row visual
+    restyle (design_handoff_chats_panel/README.md "Design tokens"). Literal hex values
+    from the handoff, used directly per its own instruction ("use those values directly,
+    don't reinterpret") rather than mapped onto the app's existing Catppuccin theme
+    brushes, which don't carry equivalents at this exact fidelity. Same established
+    pattern as Resources/ChatPaneBrushes.xaml for the Build Watch chat pane's own handoff.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Surfaces -->
+    <SolidColorBrush x:Key="ChatsPanel.PanelBg" Color="#161B22"/>
+    <SolidColorBrush x:Key="ChatsPanel.CardBg" Color="#12161D"/>
+    <SolidColorBrush x:Key="ChatsPanel.RowBg" Color="#0E1420"/>
+    <SolidColorBrush x:Key="ChatsPanel.TrackBg" Color="#0D1117"/>
+
+    <!-- Borders -->
+    <SolidColorBrush x:Key="ChatsPanel.BorderStrong" Color="#30363D"/>
+    <SolidColorBrush x:Key="ChatsPanel.BorderDefault" Color="#262C36"/>
+    <SolidColorBrush x:Key="ChatsPanel.BorderSubtle" Color="#1D232C"/>
+    <SolidColorBrush x:Key="ChatsPanel.DividerBorder" Color="#1A1F27"/>
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="ChatsPanel.Text1" Color="#E6EDF3"/>
+    <SolidColorBrush x:Key="ChatsPanel.Text2" Color="#DBE1E6"/>
+    <SolidColorBrush x:Key="ChatsPanel.Text3" Color="#8B949E"/>
+    <SolidColorBrush x:Key="ChatsPanel.Text4" Color="#576069"/>
+    <SolidColorBrush x:Key="ChatsPanel.Text5" Color="#3F4756"/>
+    <SolidColorBrush x:Key="ChatsPanel.GhostedText" Color="#7D8896"/>
+    <SolidColorBrush x:Key="ChatsPanel.GhostedDot" Color="#3A4258"/>
+    <SolidColorBrush x:Key="ChatsPanel.RowHoverBorder" Color="#3A4258"/>
+
+    <!-- State colors (context-usage / progress-bar fills+labels) -->
+    <SolidColorBrush x:Key="ChatsPanel.Green" Color="#7FB08A"/>
+    <SolidColorBrush x:Key="ChatsPanel.AmberFill" Color="#C8A86A"/>
+    <SolidColorBrush x:Key="ChatsPanel.AmberText" Color="#C9AB72"/>
+    <SolidColorBrush x:Key="ChatsPanel.Red" Color="#C08A84"/>
+
+</ResourceDictionary>
