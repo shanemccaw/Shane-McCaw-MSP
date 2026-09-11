@@ -31,7 +31,7 @@ where a claim needed direct verification rather than trusting the pack's own pro
 | # | Screen | Screen ID | Real data source | Matching pack | Status | Note |
 |---|---|---|---|---|---|---|
 | 1 | Managed Tenants | `sel.kind==="root"` | `tenantData` static mock array (dc.html:1562-1567); no `wire:` claim | none | **No backend/pack** | No pack, and no real route (`artifacts/api-server/src/routes/*.ts` grepped directly), documents a "list all customers in book" endpoint returning per-tenant seats/people/lastScan/openSignals. Genuine, unbuilt gap. |
-| 2 | Tenant Overview | `page==="overview"` | Client-side rollup of 9 real domains (dc.html:3121-3189): `crs`, `rosters`, `bgSecrets`, `rbds`, `runbooks`/`holdWindows`, `slaTimers`/`slaBreaches`/`scopeDetections`, `sopRuns`, `hubDocs`, `drActivity`, `webhooks`. Zero `wire:` claims of its own (it's a pure aggregation screen). | 8 of 9 sources map to real packs (change-control, risk-register, runbooks, scope-and-sla, sops, documents, data-rights-and-privacy, msp-console-webhooks) | **Stale** | The "Break-glass credentials unclaimed" tile and row (dc.html:3151,3167, sourced from `bgSecrets`) has no matching pack anywhere — same root cause as row 17 (Break-glass), see there. |
+| 2 | Tenant Overview | `page==="overview"` | Client-side rollup of 9 real domains (dc.html:3121-3189): `crs`, `rosters`, `bgSecrets`, `rbds`, `runbooks`/`holdWindows`, `slaTimers`/`slaBreaches`/`scopeDetections`, `sopRuns`, `hubDocs`, `drActivity`, `webhooks`. Zero `wire:` claims of its own (it's a pure aggregation screen). | 9 of 9 sources map to real packs (change-control, risk-register, runbooks, scope-and-sla, sops, documents, data-rights-and-privacy, msp-console-webhooks, break-glass) | **Current** (was **Stale**, fixed by #3668) | The "Break-glass credentials unclaimed" tile and row (dc.html:3151,3167, sourced from `bgSecrets`) previously had no matching pack anywhere — same root cause as row 17, resolved together by `break-glass-msp-console-contract-pack.md` (#3668). |
 | 3 | Signals | `page==="signals"` | **Confirmed unbuilt placeholder.** Resolves only to `pageMeta.signals` (dc.html:2008-2011), rendered by the generic `isFrames`/`frames` template (dc.html:639-649) — dashed-border boxes with an icon/name/note, no real rows, no data binding, no `wire:` string anywhere. | none | **No backend/pack (design placeholder)** | **Refutes the issue's own stated premise.** The issue asserts Signals "draws from Scope-Creep/SLA data... not the newly-built Tenant Scores backend." Neither is true: the per-tenant Signals nav screen has **no real render block at all** — `isSla`/`mspSel==="sla"` (the screen the scope-creep formula at dc.html:3652 actually belongs to) is a wholly separate, MSP-wide "Scope & SLA" Operations page (row 30), never reached via `page==="signals"`. The two are never true together. `tenantScores`/`GET /msp/customers/:id/scores` (dc.html:3059-3117) also isn't on this screen — it's inside `isTenantHome` (the tenant-record landing page reached with no `page` selected at all, a third, distinct screen from both Signals and "Tenant Overview"). This is a real, first-order finding: the per-tenant Signals screen simply hasn't been designed yet. |
 | 4 | Diagnostics | `page==="diag"` | `this.diagRuns[tIdx]`/`this.diagFindings[tIdx]`, wire dc.html:3834-3870 | `diagnostics-msp-console-contract-pack.md` | **Current** | Exact match incl. the severity-sort-by-text bug (pack:570-575) and 50%-coverage CIO-narrative gate (pack:270,308-315). |
 | 5 | Remediation | `page==="rem"` | `remBundle.checklist/.fix/.bypass/.steps`, wire dc.html:3894-3949 | `remediation-tracking-msp-console-contract-pack.md` | **Current** | Exact match incl. the design's own gap note (checklist accepts `accepted_risk`, s1-s30 tracker 400s on it) — already documented in the pack as a known real discrepancy (pack §4, "Filed §7.1"). |
@@ -46,7 +46,7 @@ where a claim needed direct verification rather than trusting the pack's own pro
 | 14 | Runbooks | `run` | runbook/hold-window data, wire dc.html:3210-3265 | `runbooks-msp-console-contract-pack.md` | **Current** | Matches incl. one-customer-per-call constraint and unbuilt author/reorder/record-outcome actions. |
 | 15 | Data rights | `dr` | DR activity feed, wire dc.html:2917-2940 | `data-rights-and-privacy-msp-console-contract-pack.md` | **Current** | Matches field-for-field; `retention-queue` pack confirmed to be a genuinely different module, not this screen's "manual fulfillment" note. |
 | 16 | Team | `team` | roster + danger-drawer, wire dc.html:2617-2621,5017 | `team-management-and-invitations-msp-console-contract-pack.md` | **Current** | Correctly targets `/api/msp/team/...` (`msp-team.ts`), not the similarly-named but structurally different `/msp/settings/users/...` in `account-security-msp-console-contract-pack.md` — a real, confirmed near-miss worth flagging for implementers. |
-| 17 | Break-glass | `bg` | pending-secret data, wire dc.html:2872,2888,2895-2897 | **none** | **No pack (backend is real & Current)** | Verified directly against `artifacts/api-server/src/routes/msp-break-glass.ts` + `break-glass-verification.ts` — every claim (routes, `ELIGIBLE_ROLE_TEMPLATE_IDS` GUID, 409/502/503 error shapes) is real and accurate. **No contract pack exists anywhere in `docs/msp-console/` for this module** — a documentation gap in the pack set, not a design defect. Same root cause as row 2's Overview stale finding. |
+| 17 | Break-glass | `bg` | pending-secret data, wire dc.html:2872,2888,2895-2897 | `break-glass-msp-console-contract-pack.md` | **Current** (was **No pack**, fixed by #3668) | Verified directly against `artifacts/api-server/src/routes/msp-break-glass.ts` + `break-glass-verification.ts` — every claim (routes, `ELIGIBLE_ROLE_TEMPLATE_IDS` GUID, 409/502/503 error shapes) is real and accurate. The pack-set gap this row and row 2 shared is closed by `break-glass-msp-console-contract-pack.md` (#3668), which also surfaces one real, non-blocking observation: the screen's `bginvite` drawer eyebrow cites the customer/portal-side invite route, not an MSP-scoped one — functionally correct (identical auth), just worth a wiring session knowing. |
 | 18 | Launch Control | `lc` | action catalog + audit log, wire dc.html:3980-4004 | `msp-launch-control-contract-pack.md` | **Current** | Matches incl. identical 6-gate error sequence and 123-catalog/102-template unlinked counts. |
 | 19 | Webhooks | `wh` | webhook + delivery data, wire dc.html:4027-4075 | `msp-console-webhooks-contract-pack.md` | **Current** | The `/api/portal/webhooks/:id` PATCH citation (dc.html:4075) is confirmed **correct, not an error** — a real, documented cross-surface behavior (the customer-portal route silently clears MSP-disable-tracking columns on any `isActive` touch, pack §4). Worth flagging to product as a real UX edge case, not a design bug. |
 | 20 | Contracts | `contracts` | **Confirmed unbuilt placeholder** (`pageMeta.contracts`, dc.html:2003-2007, same `isFrames` skeleton as Signals). No `page==="contracts"` block exists anywhere in the file. | none (fragments in `offers-and-sow-acceptance` and `scope-and-sla` packs, none matching) | **No backend/pack (design placeholder)** | No unified "contracts" backend exists. Real SOW routes exist but are flagged "live, zero UI callers" in their own pack; "retainer" is only ever a tag, never a terms record; "SLA terms by severity" has no real match (`sla_policies` is a breach-detection table with 0 live rows, not a contract-terms document). |
@@ -65,17 +65,19 @@ where a claim needed direct verification rather than trusting the pack's own pro
 
 ## Summary
 
-- **Current: 22 of 32 screens** (69%) — genuinely match a real, existing pack. This
-  module is largely well-documented relative to its real backend.
-- **Stale: 4** — rows 2 (Overview, break-glass tile), 11 (cc.exec, missing evidence
-  router), 23 (tenant Audit log, missing customerId filter). Row 2 and row 17 share one
-  root cause (no break-glass pack exists at all).
-- **No backend/pack: 6** — rows 1 (Managed Tenants directory), 3 (Signals — confirmed
+- **Current: 24 of 32 screens** (75%, up from 22/32 at audit time — rows 2 and 17
+  fixed by #3668's new `break-glass-msp-console-contract-pack.md`). This module is
+  largely well-documented relative to its real backend.
+- **Stale: 2** — rows 11 (cc.exec, missing evidence router), 23 (tenant Audit log,
+  missing customerId filter). (Row 2's break-glass-tile staleness, originally listed
+  here alongside these two, is resolved — see row 2's own entry.)
+- **No backend/pack: 5** — rows 1 (Managed Tenants directory), 3 (Signals — confirmed
   unbuilt design placeholder, refutes the issue's own stated premise about its data
-  source), 17 (Break-glass — pack-only gap, backend itself is real and correct), 20
-  (Contracts — unbuilt design placeholder, no unified backend), 22 (Billing — unbuilt
-  design placeholder, already tracked as #2609/#2608), 24 (MSP settings — pack-only
-  gap, `msp-settings-contract-pack.md` is a false match by filename).
+  source), 20 (Contracts — unbuilt design placeholder, no unified backend), 22
+  (Billing — unbuilt design placeholder, already tracked as #2609/#2608), 24 (MSP
+  settings — pack-only gap, `msp-settings-contract-pack.md` is a false match by
+  filename). (Row 17, Break-glass, originally listed here as a pack-only gap, is
+  resolved — see row 17's own entry.)
 
 ## Findings filed
 
