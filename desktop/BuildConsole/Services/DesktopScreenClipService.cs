@@ -165,6 +165,20 @@ namespace BuildConsole.Services
             return path;
         }
 
+        /// <summary>Git #3657 (Shot Vault) — puts an EXISTING shot already on disk back on the
+        /// clipboard, reusing the exact same multi-format write <see cref="Capture"/> itself uses
+        /// rather than a second clipboard implementation. Reads the file into memory first (not
+        /// <c>new Bitmap(filePath)</c>) so no file handle is held open against a shot the vault UI
+        /// might be re-rendering/decoding at the same moment. Callers (the vault UI) are expected to
+        /// catch and toast — this throws on a missing/corrupt file rather than failing silently.</summary>
+        public static void CopyFileToClipboard(string filePath)
+        {
+            byte[] bytes = File.ReadAllBytes(filePath);
+            using var ms = new MemoryStream(bytes);
+            using var bmp = new Bitmap(ms);
+            CopyToClipboard(bmp);
+        }
+
         private static void CopyToClipboard(Bitmap bmp)
         {
             // Put the image on the clipboard in a way that survives a REAL paste (Paint, Office,

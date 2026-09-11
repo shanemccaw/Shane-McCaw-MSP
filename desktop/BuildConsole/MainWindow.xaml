@@ -525,6 +525,15 @@
                                 Padding="6,4">
                             <TextBlock Text="&#xE7A8;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource BlueBrush}"/>
                         </Button>
+                        <!-- Git #3657 (sub-issue of Epic #1202) - Shot Vault: browse the real shots
+                             screen clip already saves to disk, grouped into runs, with search/tags/Copy. -->
+                        <Button x:Name="BtnShotVault"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Shot Vault - browse captured screen clips"
+                                Click="ShotVault_Click"
+                                Padding="6,4">
+                            <TextBlock Text="&#xEB9F;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource BlueBrush}"/>
+                        </Button>
                         <!-- Git #1872 - Batter Up and AI Batter Up moved out of the queue column
                              into their own document tabs (MainWindow.BatterUpTabs.cs); these two
                              buttons open/focus them and carry a live count fed by each panel's

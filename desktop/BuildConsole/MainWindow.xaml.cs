@@ -1503,6 +1503,25 @@ namespace BuildConsole
 
         private void ScreenClip_Click(object sender, RoutedEventArgs e) => DesktopScreenClipService.Capture();
 
+        // ── Git #3657 (sub-issue of Epic #1202) — Shot Vault window ─────────────────────────────
+        // Same reused-across-the-app's-lifetime pattern as EnsureTestHistoryWindow: a new one is
+        // only created if none exists yet or Shane closed the last one.
+        private ShotVaultWindow? _shotVaultWindow;
+
+        private void ShotVault_Click(object sender, RoutedEventArgs e)
+        {
+            if (_shotVaultWindow == null)
+            {
+                _shotVaultWindow = new ShotVaultWindow();
+                _shotVaultWindow.Closed += (_, _) => _shotVaultWindow = null;
+                _shotVaultWindow.Show();
+            }
+            else
+            {
+                _shotVaultWindow.Activate();
+            }
+        }
+
         protected override void OnClosed(EventArgs e)
         {
             // Git #1866 — release the global PrintScreen hotkey and detach the message hook.
