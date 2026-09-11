@@ -2,7 +2,7 @@
   "issue": 3038,
   "feature": "Remediation Tracking: the findings-derived checklist (#3038, Feature #1489) -- the 'Your findings' and 'Fixed outside change control' tabs of the real customer-facing '/remediation-tracking' page in artifacts/portal, wiring §1b-1e of docs/portal/remediation-tracking-contract-pack.md: GET/PUT /api/portal/remediation/checklist(/:checkKey), POST .../checklist/:checkKey/raise-change, GET /api/portal/remediation/fix-routes, POST /api/portal/remediation/fix-routes/:checkKey/reveal, and GET /api/portal/remediation/bypass-resolutions. No fixture module: every row on screen comes from these endpoints. The page's third tab, the 28-step programme (§1a/§1f/§1g), is #3037/#3039's scope -- see test-manifests/portal/remediation-tracking.json for that coverage; this file is this build's own findings-derived slice of the same page.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "4c67ee825",
+  "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
     "WHAT THIS COVERS: the three real GET reads (checklist/fix-routes/bypass-resolutions) answering 200 with the shapes the page's hooks consume, and the accepted_risk write guard on the checklist's own PUT — a bare `status: \"accepted_risk\"` is rejected 400 (#2827/#2869; the route's real, signed exit is POST .../decline-to-risk, not covered by this manifest since it creates a permanent msp_risk_decisions row). A real writable status (not_started) round-trips 200 against a stable monitor_checks key so the write path is proven without leaving persistent tracker state behind on re-run.",

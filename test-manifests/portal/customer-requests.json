@@ -2,7 +2,7 @@
   "issue": 1158,
   "feature": "Portal: customer-facing ticket submission + in-portal thread view via Zoho Desk (#1045)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "2826d82f8",
+  "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
     "Covers the four new customer-scoped routes in portal-customer-requests.ts (mounted in routes/index.ts): POST /api/portal/customer/requests (open a request -> enqueueEscalationTicket, same Zoho Desk write path as ShaneBot's escalation), GET /api/portal/customer/requests (list the caller's own tickets), GET /api/portal/customer/requests/:ticketId (detail + conversation thread, ownership-enforced), POST /api/portal/customer/requests/:ticketId/reply (public comment, ownership-enforced).",

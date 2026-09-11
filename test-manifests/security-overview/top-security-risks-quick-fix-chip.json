@@ -2,7 +2,7 @@
   "issue": 1113,
   "feature": "Security Intelligence Overview (/security-overview) Top Security Risks widget now renders a non-functional 'QUICK FIX' chip (data-testid='finding-quick-fix-chip') next to findings whose title/checkLabel text matches a known write-action domain keyword (users/sign-in, MFA, licensing, groups, teams, SharePoint/OneDrive). Prep for Launch Control write-action integration (#1068-1075/#1077, part of epic #1045) — purely visual, no click handler, not a real per-finding link to a write_action_catalog row (schema investigation in the issue's own comment found no clean join key exists today).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING_1113_FIX_COMMIT",
+  "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
     "The chip is a client-side, presentational-only text heuristic (TopSecurityRisks.tsx's hasLikelyWriteAction()) — NOT driven by server data, no guaranteed match against any specific tenant's real finding content. This manifest only asserts the structural/always-true parts, not a guaranteed chip.",

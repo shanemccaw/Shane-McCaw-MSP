@@ -2,7 +2,7 @@
   "issue": 1749,
   "feature": "Pillar pages (#1485/#1621, screen 12) — the six real pillar landing pages in artifacts/portal, wired to the already-built GET /api/portal/pillars (pillar-summary-stats.ts). Real design landed in Design/portal/design_handoff_full_site/screens/Pillar Pages.dc.html; pages live at artifacts/portal/src/pages/pillar.tsx, route /pillars/:pillar, reached from the shell's PillarTabStrip. Scope: pillar summary cards + scores only — the design's full per-check 'block' breakdown and the click-a-finding-for-full-breakdown + SOP/Runbook remediation offer are a real, separate follow-up (#1621's own open architecture questions).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
     "shaneapp://runTest was not reachable from this build session (the mcp shane-msp tool set exposed to this session carries no runTest/executeSql tool this time, and the local dev-server process was also down on port 8080 at build time) — this manifest is written and registered but NOT live-executed this session. Real verification performed instead: `tsc -p tsconfig.json --noEmit` clean, and `vite build` clean, on artifacts/portal.",

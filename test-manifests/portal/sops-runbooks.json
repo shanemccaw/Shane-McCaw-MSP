@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal (artifacts/portal) -- SOPs & Runbooks (/sops, /runbooks), wired to real data (#2994, carried forward from #1730/#1493/#1488). Design: Design/portal/design_handoff_full_site/screens/SOPs.dc.html. Real endpoints: GET/POST /api/portal/sops, GET /api/portal/sop-runs, POST /api/portal/sops/:sopId/custom-steps (routes/portal-sops.ts, requireRole('Customer')), and GET /api/portal/runbooks + the hold-window writes (routes/portal-runbooks.ts, requireRole('Assessment')) via the pre-existing, previously-unconsumed useRunbooks.ts/useHoldBadge.ts hooks. No fixture data anywhere -- a genuinely empty runbooks/holds table for this tenant renders the design's own honest-empty copy, not a fabricated row.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "407b696db",
+  "lastVerifiedAgainstCommit": "0231b1938",
   "notes": [
     "artifacts/msp-portal (the old '/portal-v2/*' surface, including test-manifests/portal/portal-v2-sops.json) was retired for artifacts/portal in f40438cdc (#1921). This manifest covers the REPLACEMENT pages at the new, un-slugged routes /portal/sops and /portal/runbooks -- it is not an update of portal-v2-sops.json, which tests a page that no longer exists in the tree.",
     "Real login (#2991, Feature #1648) landed in artifacts/portal concurrently with this build -- /portal/login, data-testid login-email/login-password/login-submit, POST /api/auth/login under the hood. The uiSteps below drive that real form rather than asserting only the unauthenticated RequireAuth gate. The testbed account (TEST_PORTAL_EMAIL) has no MFA enrolled, so login navigates straight to '/' with no MFA phase.",

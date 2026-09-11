@@ -2,7 +2,7 @@
   "issue": 3523,
   "feature": "Webhooks (#1597) — the real Webhooks page in artifacts/portal, wired to the already-built webhooks.ts endpoints (docs/webhooks-contract-pack.md). Real design landed in Design/portal/design_handoff_full_site/screens/Webhooks.dc.html; page lives at artifacts/portal/src/pages/webhooks.tsx, route /webhooks. Design's own copy (and sync-record.md:64) settle #3523's own decision ask: 'Reveal' is dropped — the full secret is shown only once, at creation and at rotation.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "da30bd989",
+  "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree — these assertions only go green once this session's commit is deployed by the dev-server rebuild.",

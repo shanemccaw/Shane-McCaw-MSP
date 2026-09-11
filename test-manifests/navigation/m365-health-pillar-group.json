@@ -2,7 +2,7 @@
   "issue": 1152,
   "feature": "Left nav: distinguish \"M365 Health\" (the overall rollup page) from \"Health\" (the pillar, ex-Architecture) by nesting the 6 pillar items under an \"M365 Health\" collapsible group in app-shell.tsx, instead of both sitting flat with near-identical labels.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
     "Selectors: every sidebar nav item now carries a stable data-testid derived from its href (`sidebar-nav-<href-without-slashes>`), e.g. `sidebar-nav-m365-health` for the parent and `sidebar-nav-architecture` for the pillar formerly labeled the same 'Health' -- the point of this fix is that these are no longer flat siblings sharing a near-identical label.",

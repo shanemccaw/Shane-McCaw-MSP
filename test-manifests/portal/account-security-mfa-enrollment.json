@@ -2,7 +2,7 @@
   "issue": 2995,
   "feature": "Account security - the real artifacts/portal '/account-security' page (src/pages/account-security.tsx), part of #1595. This manifest covers #2995's own scope specifically: the Multifactor methods section (TOTP/SMS/passkey self-service enrollment), all real per `artifacts/api-server/src/routes/mfa.ts` (setup/verify-setup/DELETE for TOTP and SMS, registration-options/verify-registration/DELETE for passkey via @simplewebauthn/browser). The page itself and its data-rights wiring (export/deletion-request) are #2996's own scope (test-manifests/portal/account-security-data-rights.json) - not duplicated here. Change-password is #1675's own open scope - not covered here either.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "2f37bf1e0",
+  "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
     "WHAT THIS COVERS: every MFA enrollment endpoint's auth gate, the non-mutating half of TOTP setup (returns a real secret+QR, enrolls nothing until verify-setup), and a real UI walk of all three method cards through a real login (artifacts/portal now has a real login page as of #2991 - Auth Core - so this manifest uses it directly rather than only asserting the honest sign-in-required gate the way #2996's manifest still does).",

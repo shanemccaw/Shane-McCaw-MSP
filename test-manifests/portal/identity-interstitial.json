@@ -1,7 +1,7 @@
 {
   "feature": "Identity interstitial (Git #1296): a non-Customer role (PlatformAdmin, MSPAdmin, MSPOperator, ServiceAccount) logging in through the customer-facing /portal/ login now lands on a new identity interstitial instead of straight to /dashboard. It offers two choices -- log out and go sign in at /admin-panel/, or accept and continue into /portal-v2 with tenant impersonation available. Customer is unaffected and still lands straight on /portal-v2. TenantSwitcherFloaty and ImpersonationBanner are now also mounted on PortalV2Shell.tsx (previously only on the legacy app-shell.tsx).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
     "ENV VARS required: DEPLOY_URL, TEST_ADMIN_EMAIL/TEST_ADMIN_PASSWORD (PlatformAdmin -- the non-Customer account driving the primary assertions), TEST_CUSTOMER_EMAIL/TEST_CUSTOMER_PASSWORD (Customer -- the negative control proving the interstitial does not appear for that role).",

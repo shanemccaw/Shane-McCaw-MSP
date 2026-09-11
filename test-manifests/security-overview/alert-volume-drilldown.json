@@ -2,7 +2,7 @@
   "issue": 1111,
   "feature": "Security Intelligence: Daily Alert Volume drill-down (part of epic #1045). AlertVolumeCard.tsx (/security-overview page) previously showed only aggregate fired/resolved counts per day. Clicking a day bar now opens a Dialog listing the real per-signal (label + direction) breakdown for that day, sourced from the same GET /api/portal/engines/security/history signalDeltas the aggregate counts were already built from (engine_score_signal_deltas via tenant_engine_snapshots, signalKey/label resolved through signal_rule_groups). No new backend endpoint or query — the label/signalKey fields were already returned by the route, just discarded during per-day aggregation in useSecurityOverviewLive.ts's bucketSignalDeltas().",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "31786a3b22428d7c86de21a169bb9fc6a624db6b",
+  "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
     "REAL DATA CONFIRMED (shaneapp://executeSql, 2026-08-17): the testbed tenant (customer_id=1) has real engine_score_signal_deltas rows for engine_key='security' dated 2026-08-15 (within the default 7d chart window, since today is 2026-08-17), including signal_key='security:lacks_defender', direction='fired', which resolves via signal_rule_groups to the real label 'Lacks Defender for Office 365 Conditions' — D1 pins on this exact known signalKey/label pair (same JSONPath filter-expression pattern hero-pillar-score.json's D1 already uses) rather than an array index, since delta ordering across ~19 same-day signals isn't stable.",

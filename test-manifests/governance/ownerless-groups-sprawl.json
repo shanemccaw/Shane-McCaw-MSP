@@ -2,7 +2,7 @@
   "issue": 1119,
   "feature": "Governance page (/governance) Group & Collaboration Sprawl now surfaces the real governance:ownerless-groups check (signal.governance.ownerless-groups) as a registered dashboard metric ('Ownerless Groups'), distinct from the existing 'Ownerless Teams' row -- previously never registered in lib/dashboard-registry/src/metrics.ts, so only the raw ownerlessGroupCount property name was ever visible anywhere it surfaced.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING_1119_FIX_COMMIT",
+  "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
     "WIRING: new metric governance.ownerlessGroupCount (sourceType monitor_profile, sourceKey governance:ownerless-groups) registered in lib/dashboard-registry/src/metrics.ts. governance.tsx's METRIC_KEYS now includes it so useTopicHealthLive resolves it via POST /api/dashboard/resolve. GroupSprawl.tsx's SPRAWL_ROWS gained an 'Ownerless Groups' row right after 'Ownerless Teams'.",
