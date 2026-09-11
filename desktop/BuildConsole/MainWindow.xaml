@@ -171,6 +171,110 @@
                                 <MenuItem Header="Open Log Viewer" Click="OpenLogViewer_Click"/>
                             </MenuItem>
 
+                            <!-- Git #3703 — Account/Location/Auto/Conservation/Drain moved here from
+                                 the old always-expanded TopBarSummaryBorder toolbar element (Git
+                                 #3593), into a real compact top-level menu item next to Terminal
+                                 instead of a wide inline toolbar Border. Same real child
+                                 items/handlers, unchanged — this is a re-hosting, not a behavior
+                                 change. The usage%/reset-countdown text that TopBarSummaryText used to
+                                 always display is no longer permanently visible, so it's surfaced as
+                                 this MenuItem's own live ToolTip instead (kept in sync by
+                                 RefreshTopBarSummaryUi in MainWindow.xaml.cs, same real trigger points
+                                 as before). -->
+                            <MenuItem x:Name="MiOptionsMenu" Header="_Options"
+                                      ToolTip="Primary · Home · Auto Off · Conservation Off">
+                                <!-- Git #1419 - global Primary/Secondary account toggle. -->
+                                <MenuItem x:Name="MiAccountToggle" Click="MiAccountToggle_Click">
+                                    <MenuItem.Header>
+                                        <Border x:Name="TopAccountToggleBorder"
+                                                Background="{StaticResource Surface0Brush}"
+                                                BorderBrush="{StaticResource Surface1Brush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Padding="7,2">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="Account:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                <TextBlock x:Name="TopAccountToggleText" Text="Primary" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </MenuItem.Header>
+                                </MenuItem>
+                                <!-- Git #1986 — Home/Rental location toggle. Manual switch ONLY: never
+                                     auto-detected. Drives BUILD_NETWORK on launched builds, the network
+                                     header flag, the .pnpmfile.cjs metered-install refusal, and the
+                                     version-update deploy's one-shot metered override. -->
+                                <MenuItem x:Name="MiLocationToggle" Click="MiLocationToggle_Click">
+                                    <MenuItem.Header>
+                                        <Border x:Name="TopLocationToggleBorder"
+                                                Background="{StaticResource Surface0Brush}"
+                                                BorderBrush="{StaticResource Surface1Brush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Padding="7,2">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="Location:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                <TextBlock x:Name="TopLocationToggleText" Text="Home" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </MenuItem.Header>
+                                </MenuItem>
+                                <!-- Git #2003 — usage-meter automation master toggle. -->
+                                <MenuItem x:Name="MiAutomationToggle" Click="MiAutomationToggle_Click">
+                                    <MenuItem.Header>
+                                        <Border x:Name="TopAutomationToggleBorder"
+                                                Background="{StaticResource Surface0Brush}"
+                                                BorderBrush="{StaticResource Surface1Brush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Padding="7,2">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="Auto:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                <TextBlock x:Name="TopAutomationToggleText" Text="Off" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="TopAutomationStatusText" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </MenuItem.Header>
+                                </MenuItem>
+                                <!-- Git #1989 — Conservation Cap toggle. The adjacent text carries the
+                                     primary account's real weekly usage percent + reset countdown (fed
+                                     from UsageMeter_StatusChanged). -->
+                                <MenuItem x:Name="MiConservationToggle" Click="MiConservationToggle_Click">
+                                    <MenuItem.Header>
+                                        <Border x:Name="TopConservationToggleBorder"
+                                                Background="{StaticResource Surface0Brush}"
+                                                BorderBrush="{StaticResource Surface1Brush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Padding="7,2">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="Conservation:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                <TextBlock x:Name="TopConservationToggleText" Text="Off" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="TopConservationUsageText" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </MenuItem.Header>
+                                </MenuItem>
+                                <Separator/>
+                                <!-- Git #1989 — Drain: releases EVERY currently-capped build back to the
+                                     queue at its original model/effort in one action, and turns the
+                                     Conservation toggle off. Confirms with the real count before acting
+                                     (BtnDrainCapped_Click) — same handler signature as MenuItem.Click, no
+                                     wrapper needed. -->
+                                <MenuItem x:Name="MiDrainCapped"
+                                          ToolTip="Drain: release every capped build back to the queue at its full original model, and turn Conservation off"
+                                          Click="BtnDrainCapped_Click">
+                                    <MenuItem.Header>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Drain" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                                                       Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock x:Name="TopDrainCappedCount" Text="0" FontSize="10.5" FontWeight="SemiBold"
+                                                       Margin="4,0,0,0" VerticalAlignment="Center"
+                                                       Foreground="{StaticResource Subtext0Brush}"/>
+                                        </StackPanel>
+                                    </MenuItem.Header>
+                                </MenuItem>
+                            </MenuItem>
+
                         </Menu>
                     </StackPanel>
 
@@ -377,136 +481,6 @@
                                 <TextBlock Text="⚡" FontSize="11" Foreground="{StaticResource YellowBrush}" VerticalAlignment="Center" Margin="0,0,3,0"/>
                                 <TextBlock x:Name="TopShaneAppIndicatorText" Text="RUNNING" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
-                        </Border>
-                        <!-- Git #3593 — Account/Location/Auto/Conservation/Drain consolidated into
-                             ONE clickable summary control + a real dropdown, replacing five
-                             always-visible top-bar controls. The collapsed summary itself IS the
-                             click target — there is no separate button next to it (confirmed with
-                             Shane 2026-09-11). Clicking it opens TopBarSummaryMenu, whose items
-                             wrap the exact same underlying handlers/state the five old controls
-                             used (TopAccountToggle_Click, TopLocationToggle_Click,
-                             TopAutomationToggle_Click, TopConservationToggle_Click,
-                             BtnDrainCapped_Click) — this is a presentation consolidation only, no
-                             behavior change to any of the five settings themselves. The individual
-                             x:Name'd Borders/TextBlocks below are unchanged from before #3593 (same
-                             names, same RefreshTop*Ui code-behind writing to them) — they've only
-                             moved from the always-visible top bar into MenuItem headers inside the
-                             dropdown. TopBarSummaryText is repainted by the new
-                             RefreshTopBarSummaryUi aggregator (called from each RefreshTop*Ui
-                             method) so the collapsed line always reflects real current state,
-                             including the usage%/reset-countdown text. Same "⋯" overflow-menu
-                             mechanism as BuildQueuePanel (Git #3444): a Border has no Click event,
-                             so the menu is opened programmatically on MouseLeftButtonUp
-                             (TopBarSummary_Click) rather than relying on ContextMenu's native
-                             right-click-only behavior. -->
-                        <Border x:Name="TopBarSummaryBorder"
-                                Background="{StaticResource Surface0Brush}"
-                                BorderBrush="{StaticResource Surface1Brush}"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="7,2"
-                                Margin="0,0,6,0"
-                                Cursor="Hand"
-                                ToolTip="Account / Location / Auto / Conservation / Drain — click for options"
-                                MouseLeftButtonUp="TopBarSummary_Click">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock x:Name="TopBarSummaryText" Text="Primary · Home · Auto Off · Conservation Off" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                                <TextBlock Text="&#xE70D;" FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" FontSize="9" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="5,0,0,0"/>
-                            </StackPanel>
-                            <Border.ContextMenu>
-                                <ContextMenu x:Name="TopBarSummaryMenu" Placement="Bottom">
-                                    <!-- Git #1419 - global Primary/Secondary account toggle. -->
-                                    <MenuItem x:Name="MiAccountToggle" Click="MiAccountToggle_Click">
-                                        <MenuItem.Header>
-                                            <Border x:Name="TopAccountToggleBorder"
-                                                    Background="{StaticResource Surface0Brush}"
-                                                    BorderBrush="{StaticResource Surface1Brush}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="4"
-                                                    Padding="7,2">
-                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <TextBlock Text="Account:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                    <TextBlock x:Name="TopAccountToggleText" Text="Primary" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                                                </StackPanel>
-                                            </Border>
-                                        </MenuItem.Header>
-                                    </MenuItem>
-                                    <!-- Git #1986 — Home/Rental location toggle. Manual switch ONLY: never
-                                         auto-detected. Drives BUILD_NETWORK on launched builds, the network
-                                         header flag, the .pnpmfile.cjs metered-install refusal, and the
-                                         version-update deploy's one-shot metered override. -->
-                                    <MenuItem x:Name="MiLocationToggle" Click="MiLocationToggle_Click">
-                                        <MenuItem.Header>
-                                            <Border x:Name="TopLocationToggleBorder"
-                                                    Background="{StaticResource Surface0Brush}"
-                                                    BorderBrush="{StaticResource Surface1Brush}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="4"
-                                                    Padding="7,2">
-                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <TextBlock Text="Location:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                    <TextBlock x:Name="TopLocationToggleText" Text="Home" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                                                </StackPanel>
-                                            </Border>
-                                        </MenuItem.Header>
-                                    </MenuItem>
-                                    <!-- Git #2003 — usage-meter automation master toggle. -->
-                                    <MenuItem x:Name="MiAutomationToggle" Click="MiAutomationToggle_Click">
-                                        <MenuItem.Header>
-                                            <Border x:Name="TopAutomationToggleBorder"
-                                                    Background="{StaticResource Surface0Brush}"
-                                                    BorderBrush="{StaticResource Surface1Brush}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="4"
-                                                    Padding="7,2">
-                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <TextBlock Text="Auto:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                    <TextBlock x:Name="TopAutomationToggleText" Text="Off" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                                                    <TextBlock x:Name="TopAutomationStatusText" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                                                </StackPanel>
-                                            </Border>
-                                        </MenuItem.Header>
-                                    </MenuItem>
-                                    <!-- Git #1989 — Conservation Cap toggle. The adjacent text carries the
-                                         primary account's real weekly usage percent + reset countdown (fed
-                                         from UsageMeter_StatusChanged). -->
-                                    <MenuItem x:Name="MiConservationToggle" Click="MiConservationToggle_Click">
-                                        <MenuItem.Header>
-                                            <Border x:Name="TopConservationToggleBorder"
-                                                    Background="{StaticResource Surface0Brush}"
-                                                    BorderBrush="{StaticResource Surface1Brush}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="4"
-                                                    Padding="7,2">
-                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <TextBlock Text="Conservation:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                    <TextBlock x:Name="TopConservationToggleText" Text="Off" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                                                    <TextBlock x:Name="TopConservationUsageText" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                                                </StackPanel>
-                                            </Border>
-                                        </MenuItem.Header>
-                                    </MenuItem>
-                                    <Separator/>
-                                    <!-- Git #1989 — Drain: releases EVERY currently-capped build back to the
-                                         queue at its original model/effort in one action, and turns the
-                                         Conservation toggle off. Confirms with the real count before acting
-                                         (BtnDrainCapped_Click) — same handler signature as MenuItem.Click, no
-                                         wrapper needed. -->
-                                    <MenuItem x:Name="MiDrainCapped"
-                                              ToolTip="Drain: release every capped build back to the queue at its full original model, and turn Conservation off"
-                                              Click="BtnDrainCapped_Click">
-                                        <MenuItem.Header>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="Drain" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource Subtext0Brush}"/>
-                                                <TextBlock x:Name="TopDrainCappedCount" Text="0" FontSize="10.5" FontWeight="SemiBold"
-                                                           Margin="4,0,0,0" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource Subtext0Brush}"/>
-                                            </StackPanel>
-                                        </MenuItem.Header>
-                                    </MenuItem>
-                                </ContextMenu>
-                            </Border.ContextMenu>
                         </Border>
                         <!-- Git #1866 - thin vertical separator ("|") between the account toggle
                              and the right-hand icon group, per Shane's request. -->

@@ -6773,31 +6773,18 @@ namespace BuildConsole
         // and EditBuildPromptDialog's own initial selector state) falls back to. The
         // per-build Account selector from #1416 remains a real, explicit override —
         // this toggle only changes what NEW builds default to going forward.
-        // Git #3593 — Account/Location/Auto/Conservation/Drain were five always-visible
-        // top-bar controls; they're now one clickable summary (TopBarSummaryBorder) whose
-        // click opens this real dropdown, same "⋯" overflow-menu mechanism BuildQueuePanel
-        // already uses (Git #3444): a Border has no Click event and a ContextMenu doesn't
-        // open on a normal left-click by default, so it's opened programmatically here.
-        private void TopBarSummary_Click(object sender, MouseButtonEventArgs e)
-        {
-            if (sender is Border b && b.ContextMenu != null)
-            {
-                b.ContextMenu.PlacementTarget = b;
-                b.ContextMenu.IsOpen = true;
-            }
-        }
-
-        /// <summary>Git #3593 — composes the five real current-state strings (Account, Location,
-        /// Auto, Conservation, and the Conservation usage%/reset-countdown text) that used to be
-        /// five separate always-visible controls into the one collapsed summary line. Called from
-        /// each of the underlying RefreshTop*Ui methods (and from UsageMeter_StatusChanged, whose
-        /// TopConservationUsageText update also feeds this) so the summary never goes stale
-        /// relative to whichever individual control last changed.</summary>
+        /// <summary>Git #3703 — composes the same five real current-state strings (Account,
+        /// Location, Auto, Conservation, and the Conservation usage%/reset-countdown text) that
+        /// used to paint the always-visible TopBarSummaryText (Git #3593) into the live ToolTip of
+        /// the new "_Options" MenuItem instead, since the summary is no longer permanently visible
+        /// in the toolbar. Called from each of the underlying RefreshTop*Ui methods (and from
+        /// UsageMeter_StatusChanged, whose TopConservationUsageText update also feeds this) so the
+        /// tooltip never goes stale relative to whichever individual control last changed.</summary>
         private void RefreshTopBarSummaryUi()
         {
-            if (TopBarSummaryText == null) return; // called before InitializeComponent in edge paths
+            if (MiOptionsMenu == null) return; // called before InitializeComponent in edge paths
             string usage = string.IsNullOrEmpty(TopConservationUsageText?.Text) ? "" : $" ({TopConservationUsageText.Text})";
-            TopBarSummaryText.Text =
+            MiOptionsMenu.ToolTip =
                 $"{TopAccountToggleText.Text} · {TopLocationToggleText.Text} · Auto {TopAutomationToggleText.Text} · Conservation {TopConservationToggleText.Text}{usage}";
         }
 
