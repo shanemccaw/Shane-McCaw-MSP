@@ -21,6 +21,22 @@ const bulkReplaySchema = z.object({
   dlqIds: z.array(z.string()),
 });
 
+/**
+ * A parked item can only be re-run when the portal workflow engine put it
+ * there — `replayDlqItem` reads `payload.workflowKey` and throws without it.
+ * Mirrors `admin-dlq.ts`'s `isReplayable()`; see that file's header comment
+ * for why not everything in `msp_dlq_store` is replayable (Git #3446).
+ */
+function isReplayable(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  const key = (payload as Record<string, unknown>)["workflowKey"];
+  return typeof key === "string" && key.length > 0;
+}
+
+const NOT_REPLAYABLE_MESSAGE =
+  "This job did not come from a portal workflow run, so there is nothing to re-run. " +
+  "Fix the cause, then mark it handled.";
+
 // GET /api/msp/dlq
 // List DLQ entries for active MSP
 router.get(
@@ -59,7 +75,7 @@ router.get(
         .where(eq(mspDlqStoreTable.mspId, mspId))
         .orderBy(desc(mspDlqStoreTable.createdAt));
 
-      res.json(rows);
+      res.json(rows.map((r) => ({ ...r, replayable: isReplayable(r.payload) })));
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/dlq failed");
       const msg = err instanceof Error ? err.message : String(err);
@@ -98,6 +114,11 @@ router.post(
 
       if (existing.resolvedAt) {
         apiError(res, 409, ApiErrorCode.CONFLICT, "DLQ item is already resolved");
+        return;
+      }
+
+      if (!isReplayable(existing.payload)) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, NOT_REPLAYABLE_MESSAGE);
         return;
       }
 
@@ -212,7 +233,7 @@ router.post(
 
       // Verify items belong to this MSP
       const items = await db
-        .select({ dlqId: mspDlqStoreTable.dlqId })
+        .select({ dlqId: mspDlqStoreTable.dlqId, payload: mspDlqStoreTable.payload })
         .from(mspDlqStoreTable)
         .where(
           and(
@@ -221,14 +242,16 @@ router.post(
           )
         );
 
-      const validIds = items.map((i) => i.dlqId);
-      if (validIds.length === 0) {
+      if (items.length === 0) {
         res.json({ replayedCount: 0, messages: [] });
         return;
       }
 
       const results = await Promise.all(
-        validIds.map(async (id) => {
+        items.map(async ({ dlqId: id, payload }) => {
+          if (!isReplayable(payload)) {
+            return { dlqId: id, success: false, error: NOT_REPLAYABLE_MESSAGE };
+          }
           try {
             const newRunId = await replayDlqItem(id);
             return { dlqId: id, success: true, newRunId };
