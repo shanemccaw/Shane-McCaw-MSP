@@ -223,6 +223,20 @@ async function resolveCallerCustomerId(user: AuthUser): Promise<number | null> {
   return row?.customerId ?? null;
 }
 
+// #3388 — `severity` is a plain `text` column (`ok|info|warning|critical`, no DB
+// enum/CHECK constraint), so a bare `.orderBy(mspDiagnosticFindingsTable.severity)`
+// sorts alphabetically: critical, info, ok, warning — putting `warning` dead last,
+// after `ok`, instead of grouped near `critical` where real severity ranks it.
+// This CASE expression maps each value to its real rank so findings sort
+// critical → warning → info → ok.
+const findingSeverityRank = sql`case ${mspDiagnosticFindingsTable.severity}
+  when 'critical' then 0
+  when 'warning' then 1
+  when 'info' then 2
+  when 'ok' then 3
+  else 4
+end`;
+
 // ── GET /api/msp/monitoring-packages ───────────────────────────────────────────
 // #1770 — the real gap: the run route above already accepts a packageKey
 // override (has since before this route existed), but nothing listed the real
@@ -576,7 +590,7 @@ router.get(
         .select()
         .from(mspDiagnosticFindingsTable)
         .where(eq(mspDiagnosticFindingsTable.runId, runId))
-        .orderBy(mspDiagnosticFindingsTable.severity);
+        .orderBy(findingSeverityRank);
 
       // #379 — each failing finding carries its own triage verdict, computed on
       // read from that finding's own real error text. Additive: every existing
@@ -755,7 +769,7 @@ router.get(
           eq(mspDiagnosticFindingsTable.runId, latestRun.runId),
           eq(mspDiagnosticFindingsTable.checkStatus, "requires_script"),
         ))
-        .orderBy(mspDiagnosticFindingsTable.severity);
+        .orderBy(findingSeverityRank);
 
       if (findings.length === 0) { res.json({ runId: latestRun.runId, scripts: [] }); return; }
 
@@ -940,7 +954,7 @@ router.get(
         })
         .from(mspDiagnosticFindingsTable)
         .where(eq(mspDiagnosticFindingsTable.runId, latestRun.runId))
-        .orderBy(mspDiagnosticFindingsTable.severity);
+        .orderBy(findingSeverityRank);
 
       res.json({ run: latestRun, findings });
     } catch (err) {
@@ -1144,7 +1158,7 @@ router.get(
           // check above.
           eq(mspDiagnosticFindingsTable.customerId, customerId),
         ))
-        .orderBy(mspDiagnosticFindingsTable.severity);
+        .orderBy(findingSeverityRank);
 
       res.json({ run, findings });
     } catch (err) {
@@ -1214,7 +1228,7 @@ router.get(
         })
         .from(mspDiagnosticFindingsTable)
         .where(eq(mspDiagnosticFindingsTable.runId, latestRun.runId))
-        .orderBy(mspDiagnosticFindingsTable.severity);
+        .orderBy(findingSeverityRank);
 
       let status = "healthy";
       let hasWarning = false;
