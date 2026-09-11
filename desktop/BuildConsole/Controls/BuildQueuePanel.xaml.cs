@@ -1969,10 +1969,12 @@ namespace BuildConsole.Controls
         /// counts <see cref="ApplyDoneRecencyCap"/> recorded on the ApplyFilter call that fed
         /// the items RenderQueue is about to draw. Only relevant to the "Done" filter; hidden
         /// for every other filter, and hidden for "Done" too once the total no longer exceeds
-        /// the cap (nothing to expand).</summary>
-        private void UpdateDoneCapBanner()
+        /// the cap (nothing to expand). Also hidden while a search is active — Git #3613 has
+        /// an active search bypass ApplyFilter entirely, so _doneFilterTotalCount/ShownCount
+        /// would otherwise be stale leftovers from the last non-search render.</summary>
+        private void UpdateDoneCapBanner(bool searching)
         {
-            if (_filter != "Done" || _doneFilterTotalCount <= DoneFilterDefaultCap)
+            if (searching || _filter != "Done" || _doneFilterTotalCount <= DoneFilterDefaultCap)
             {
                 QueueDoneCapBanner.Visibility = Visibility.Collapsed;
                 return;
@@ -1994,7 +1996,12 @@ namespace BuildConsole.Controls
         private void QueueDoneCapToggleLink_Click(object sender, MouseButtonEventArgs e)
         {
             _showAllDone = !_showAllDone;
-            RenderQueue(ApplyFilter(_lastItems));
+            // Git #3613 changed RenderQueue's contract to take the RAW _lastItems and run
+            // ApplyFilter internally — every call site passes _lastItems directly now, this
+            // one included. Passing an already-ApplyFilter'd list here double-applies the
+            // Done cap (ApplyDoneRecencyCap would run twice, the second time over an
+            // already-capped 150-item list, silently corrupting _doneFilterTotalCount).
+            RenderQueue(_lastItems);
         }
 
         // ══════════════════════════════════════════════════════════════════════════
@@ -2043,7 +2050,7 @@ namespace BuildConsole.Controls
                 return;
             }
             QueueBroadFilterPlaceholderText.Visibility = Visibility.Collapsed;
-            UpdateDoneCapBanner();
+            UpdateDoneCapBanner(searching);
 
             if (searching)
             {
