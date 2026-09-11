@@ -1,0 +1,28 @@
+/* ============================================================
+   SPACING, RADIUS & LAYOUT TOKENS — Shane McCaw MSP
+   Base unit 0.25rem (4px). Radius differs by surface:
+   apps/portal use a tight 0.375rem; the marketing site rounds
+   cards to 1rem (rounded-2xl) and pills to full.
+   ============================================================ */
+:root {
+  --spacing: 0.25rem;   /* 4px base step */
+
+  /* Radius — app/portal default */
+  --radius: 0.375rem;                        /* 6px  — inputs, buttons, small cards */
+  --radius-sm: calc(var(--radius) - 2px);    /* 4px  */
+  --radius-md: var(--radius);                /* 6px  */
+  --radius-lg: calc(var(--radius) + 2px);    /* 8px  */
+  --radius-xl: 0.75rem;                       /* 12px — marketing buttons, panels */
+  --radius-2xl: 1rem;                         /* 16px — marketing cards */
+  --radius-3xl: 1.5rem;                       /* 24px — marketing CTA blocks */
+  --radius-full: 9999px;                      /* pills, badges, avatars */
+
+  /* Content widths */
+  --container-max: 80rem;   /* 1280px — max-w-7xl page container */
+  --container-prose: 42rem; /* article / prose column */
+
+  /* Fixed chrome heights */
+  --header-h: 5rem;         /* 80px desktop header (h-20) */
+  --header-h-mobile: 4rem;  /* 64px */
+  --sidebar-w: 16rem;       /* 256px portal sidebar */
+}
