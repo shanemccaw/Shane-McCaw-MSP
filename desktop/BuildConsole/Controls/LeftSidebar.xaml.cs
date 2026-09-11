@@ -445,6 +445,204 @@ namespace BuildConsole.Controls
             _ = LoadPinnedQuestionsAsync();
         }
 
+        #region Git #3676 — Chats panel "New Chat" inline picker (replaces NewChatEpicDialog for this flow)
+
+        // Same sample palette the design handoff README documents under "Epic accent colors" —
+        // cycled deterministically by GitHub issue number since there's no real per-epic accent
+        // color column in bt_epics. Purely a visual accent choice, not fabricated business data.
+        private static readonly string[] NewChatAccentPalette = { "#E2984A", "#79B3C8", "#7C8CF0", "#C8A86A", "#37B8B0", "#C084FC" };
+
+        /// <summary>Git #3676 — toggles the inline epic/gate picker panel below the Chats
+        /// panel's own "New Chat" button (flips the chevron, per the design handoff's "New Chat
+        /// dropdown" section) instead of launching the NewChatEpicDialog modal.</summary>
+        private void BtnNewChatPicker_Click(object sender, RoutedEventArgs e)
+        {
+            bool opening = NewChatPickerPanel.Visibility != Visibility.Visible;
+            if (opening)
+            {
+                PopulateNewChatPickerHost();
+                NewChatPickerPanel.Visibility = Visibility.Visible;
+                NewChatChevronRotate.Angle = 180;
+            }
+            else
+            {
+                NewChatPickerPanel.Visibility = Visibility.Collapsed;
+                NewChatChevronRotate.Angle = 0;
+            }
+        }
+
+        private void CloseNewChatPicker()
+        {
+            NewChatPickerPanel.Visibility = Visibility.Collapsed;
+            NewChatChevronRotate.Angle = 0;
+        }
+
+        /// <summary>Git #3676 — real epic/gate anchor rows, one per real open epic currently
+        /// known to the app (<see cref="_chatEpicById"/> — the same real source the epic-header
+        /// list itself renders from, filtered to OPEN epics by the server already), plus the
+        /// "No feature yet — decide later" closing row.</summary>
+        private void PopulateNewChatPickerHost()
+        {
+            if (NewChatPickerHost == null) return;
+            NewChatPickerHost.Children.Clear();
+
+            NewChatPickerHost.Children.Add(new Border
+            {
+                Padding = new Thickness(10, 8, 10, 8),
+                BorderBrush = HexBrush("#1A1F27"),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Child = new TextBlock
+                {
+                    Text = "Which feature is this chat about? The chat gets filed under it, so builds and issues from the conversation land in the right place.",
+                    FontSize = 9.5,
+                    Foreground = HexBrush("#8B949E"),
+                    TextWrapping = TextWrapping.Wrap
+                }
+            });
+
+            var epics = _chatEpicById.Values
+                .Where(ep => ep.GithubNumber.HasValue)
+                .OrderBy(ep => ep.Title, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var epic in epics)
+            {
+                int number = epic.GithubNumber!.Value;
+                string rawTitle = epic.Title ?? $"Epic #{number}";
+                string accent = NewChatAccentPalette[((number % NewChatAccentPalette.Length) + NewChatAccentPalette.Length) % NewChatAccentPalette.Length];
+                string label = (rawTitle.StartsWith("GATE:", StringComparison.OrdinalIgnoreCase) ||
+                                 rawTitle.StartsWith("EPIC:", StringComparison.OrdinalIgnoreCase))
+                    ? rawTitle.ToUpperInvariant()
+                    : $"EPIC: {rawTitle}".ToUpperInvariant();
+
+                var row = BuildNewChatAnchorRow(number, accent, label);
+                row.MouseLeftButtonUp += (s, e) =>
+                {
+                    CloseNewChatPicker();
+                    StartNewEpicChat(number, rawTitle);
+                };
+                NewChatPickerHost.Children.Add(row);
+            }
+
+            var decideLaterRow = BuildNewChatDecideLaterRow();
+            decideLaterRow.MouseLeftButtonUp += (s, e) =>
+            {
+                CloseNewChatPicker();
+                StartNewUnassociatedChat();
+            };
+            NewChatPickerHost.Children.Add(decideLaterRow);
+        }
+
+        private static SolidColorBrush HexBrush(string hex) => new((Color)ColorConverter.ConvertFromString(hex));
+
+        private Border BuildNewChatAnchorRow(int number, string accentHex, string label)
+        {
+            var accent = (Color)ColorConverter.ConvertFromString(accentHex);
+            var pill = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(0x33, accent.R, accent.G, accent.B)),
+                BorderBrush = new SolidColorBrush(accent),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(99),
+                Padding = new Thickness(6, 1, 6, 1),
+                Margin = new Thickness(0, 0, 8, 0),
+                Child = new TextBlock
+                {
+                    Text = $"#{number}",
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 11,
+                    FontWeight = FontWeights.ExtraBold,
+                    Foreground = new SolidColorBrush(accent)
+                }
+            };
+            var labelBlock = new TextBlock
+            {
+                Text = label,
+                FontSize = 10,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = HexBrush("#8B949E"),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var stack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            stack.Children.Add(pill);
+            stack.Children.Add(labelBlock);
+
+            var row = new Border
+            {
+                Padding = new Thickness(10, 7, 10, 7),
+                BorderBrush = HexBrush("#1A1F27"),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Background = Brushes.Transparent,
+                Child = stack
+            };
+            row.MouseEnter += (s, e) => row.Background = HexBrush("#161B22");
+            row.MouseLeave += (s, e) => row.Background = Brushes.Transparent;
+            return row;
+        }
+
+        private Border BuildNewChatDecideLaterRow()
+        {
+            var dot = new Ellipse
+            {
+                Width = 10,
+                Height = 10,
+                Stroke = HexBrush("#576069"),
+                StrokeThickness = 1,
+                StrokeDashArray = new DoubleCollection { 2, 2 },
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            var text = new TextBlock
+            {
+                Text = "No feature yet — decide later",
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = HexBrush("#8B949E"),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var stack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            stack.Children.Add(dot);
+            stack.Children.Add(text);
+
+            var row = new Border
+            {
+                Padding = new Thickness(10, 7, 10, 7),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Background = Brushes.Transparent,
+                Child = stack
+            };
+            row.MouseEnter += (s, e) => row.Background = HexBrush("#161B22");
+            row.MouseLeave += (s, e) => row.Background = Brushes.Transparent;
+            return row;
+        }
+
+        /// <summary>Git #3676 — the "No feature yet — decide later" row's real write path: opens
+        /// a new chat the same way an unlinked chat is created today (associateIssueNumber:
+        /// null, so it lands in the "Unlinked" bucket, same as <see cref="StartNewEpicChat"/>'s
+        /// EpicChatRequested path but with no epic association).</summary>
+        private void StartNewUnassociatedChat()
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            if (!settings.HasEpicChatProjectUrl)
+            {
+                ActivityLog.Log("git-board.chat", "new unassociated chat aborted — no New Chat Project URL configured (Git #3676)");
+                ToastEngine.Warning("New Chat", "Set a \"New Chat Project URL\" in the Settings tab first.");
+                return;
+            }
+            var baseUrl = settings.EpicChatProjectUrl.Trim();
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out _))
+            {
+                ActivityLog.Log("git-board.chat", $"new unassociated chat aborted — invalid New Chat Project URL '{baseUrl}' (Git #3676)");
+                ToastEngine.Warning("New Chat", "The configured New Chat Project URL isn't a valid URL.");
+                return;
+            }
+            var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, 0, label: "New Chat");
+            ActivityLog.Log("git-board.chat", $"new unassociated chat from Chats panel -> {baseUrl} (Git #3676)");
+            EpicChatRequested?.Invoke(this, (fullUrl, "New Chat", true, null, "", "New Chat"));
+        }
+
+        #endregion
+
         #region Git #2104 — Pinned Questions (Phase 1 of #2036)
         // One card per OPEN chat_pinned_questions row, rendered directly above the Chats tree
         // (PinnedQuestionsSection/-Host in LeftSidebar.xaml). Detection (#2105) doesn't exist

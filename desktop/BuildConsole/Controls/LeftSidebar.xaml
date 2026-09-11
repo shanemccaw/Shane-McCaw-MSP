@@ -157,6 +157,54 @@
                                       Foreground="{StaticResource Subtext1Brush}"
                                       Checked="ChatShowArchived_Changed"
                                       Unchecked="ChatShowArchived_Changed"/>
+
+                            <!-- Git #3676 — the Chats panel's own real "New Chat" flow. Clicking
+                                 flips the chevron and reveals an inline panel below the button
+                                 (not a popover/modal) listing every real open epic/gate to file
+                                 the chat under — replaces the NewChatEpicDialog modal for this
+                                 flow. See design_handoff_chats_panel/README.md "New Chat dropdown". -->
+                            <Button x:Name="BtnNewChatPicker"
+                                    Height="30"
+                                    Margin="0,8,0,0"
+                                    HorizontalAlignment="Stretch"
+                                    Cursor="Hand"
+                                    Click="BtnNewChatPicker_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="#25497A" CornerRadius="7">
+                                            <ContentPresenter Margin="10,0" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <Grid>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="+" FontSize="13" FontWeight="Bold" Foreground="#CFE4FB" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <TextBlock Text="New Chat" FontSize="11" FontWeight="Bold" Foreground="#CFE4FB" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="NewChatChevronGlyph"
+                                               Text="&#xE70D;"
+                                               FontFamily="Segoe MDL2 Assets"
+                                               FontSize="11"
+                                               Foreground="#CFE4FB"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center"
+                                               RenderTransformOrigin="0.5,0.5">
+                                        <TextBlock.RenderTransform>
+                                            <RotateTransform x:Name="NewChatChevronRotate" Angle="0"/>
+                                        </TextBlock.RenderTransform>
+                                    </TextBlock>
+                                </Grid>
+                            </Button>
+
+                            <Border x:Name="NewChatPickerPanel"
+                                    Visibility="Collapsed"
+                                    Background="#0E1420"
+                                    BorderBrush="#262C36"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Margin="0,6,0,0">
+                                <StackPanel x:Name="NewChatPickerHost"/>
+                            </Border>
                         </StackPanel>
                     </Border>
 
