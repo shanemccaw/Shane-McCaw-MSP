@@ -338,10 +338,9 @@ function Router() {
           local-CRM pages, so these legacy redirects now target the Zoho pages
           that superseded them (#83). */}
       <Route path="/crm/leads"><Redirect to="/pipeline/zoho-leads" /></Route>
-      <Route path="/crm/quiz-leads"><Redirect to="/pipeline/quiz-leads" /></Route>
+      <Route path="/crm/quiz-leads"><Redirect to="/pipeline/zoho-leads" /></Route>
       <Route path="/crm/opportunities"><Redirect to="/pipeline/zoho-deals" /></Route>
       <Route path="/crm/clients"><Redirect to="/pipeline/clients" /></Route>
-      <Route path="/crm/m365-intelligence"><Redirect to="/pipeline/m365-intelligence" /></Route>
 
       <Route path="/crm/projects"><Redirect to="/delivery/projects" /></Route>
       <Route path="/engagement-projects"><Redirect to="/delivery/engagement-projects" /></Route>

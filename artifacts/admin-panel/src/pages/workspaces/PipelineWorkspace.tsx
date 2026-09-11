@@ -1,9 +1,6 @@
 import { type ReactNode } from "react";
-import QuizLeadsPage from "@/pages/crm/QuizLeads";
 import ChatQueuePage from "@/pages/crm/ChatQueue";
 import ClientsPage from "@/pages/crm/Clients";
-import M365IntelligencePage from "@/pages/crm/M365Intelligence";
-import DiagnosticSharesPage from "@/pages/crm/DiagnosticShares";
 // Zoho CRM (#83). As of #135 (Decommission Legacy CRM Phase A) these have fully
 // replaced the local-DB Leads/Opportunities pages, which are deleted — Zoho Leads
 // is now this workspace's default section.
@@ -22,11 +19,8 @@ import EngageBaySettingsPage from "@/pages/crm/engagebay/EngageBaySettings";
 
 function getContent(section: string): ReactNode {
   switch (section) {
-    case "quiz-leads":          return <QuizLeadsPage />;
     case "chat-queue":          return <ChatQueuePage />;
     case "clients":             return <ClientsPage />;
-    case "m365-intelligence":   return <M365IntelligencePage />;
-    case "diagnostic-shares":   return <DiagnosticSharesPage />;
     case "zoho-leads":          return <ZohoLeadsPage />;
     case "zoho-deals":          return <ZohoDealsPage />;
     case "zoho-contacts":       return <ZohoContactsPage />;

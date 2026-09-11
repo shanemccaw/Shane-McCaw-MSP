@@ -11,7 +11,6 @@ import {
   MessageSquare,
   Sparkles,
   Terminal,
-  PlayCircle,
   Megaphone,
   Bot,
   Search,
@@ -22,11 +21,8 @@ import {
   Link2,
   Plug,
   UserPlus,
-  HelpCircle,
   Target,
   Building2,
-  BrainCircuit,
-  Share2,
   FolderKanban,
   Layers,
   Activity,
@@ -250,7 +246,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         id: "scripts", label: "Scripts", defaultOpen: true,
         items: [
           { id: "cmd-scripts", label: "M365 Scripts", path: "/command/scripts", icon: Terminal },
-          { id: "cmd-running-scripts", label: "Running Scripts", path: "/command/running-scripts", icon: PlayCircle },
         ],
       },
       {
@@ -276,7 +271,6 @@ export const WORKSPACES: WorkspaceDef[] = [
       {
         id: "leads", label: "Leads", defaultOpen: true,
         items: [
-          { id: "pipe-quiz-leads", label: "Quiz Leads", path: "/pipeline/quiz-leads", icon: HelpCircle },
           { id: "pipe-chat-queue", label: "Chat Queue", path: "/pipeline/chat-queue", icon: MessageSquare },
         ],
       },
@@ -284,13 +278,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         id: "accounts", label: "Accounts", defaultOpen: true,
         items: [
           { id: "pipe-clients", label: "Clients", path: "/pipeline/clients", icon: Building2 },
-        ],
-      },
-      {
-        id: "intelligence", label: "Intelligence", defaultOpen: true,
-        items: [
-          { id: "pipe-m365", label: "M365 Intelligence", path: "/pipeline/m365-intelligence", icon: BrainCircuit },
-          { id: "pipe-diagnostic-shares", label: "Diagnostic Shares", path: "/pipeline/diagnostic-shares", icon: Share2 },
         ],
       },
       {
