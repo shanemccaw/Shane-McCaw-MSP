@@ -54,8 +54,19 @@ public sealed class RibbonCommandSpec
     public required RibbonIntent Intent { get; init; }
     public required Action OnSelect { get; init; }
     public string? ToolTip { get; init; }
-    /// <summary>Optional live count badge — the one place a badge is allowed (UI_RULES.md §8).</summary>
+
+    /// <summary>Optional live count badge — the one place a badge is allowed (UI_RULES.md §8).
+    /// Synchronous source for a count that costs nothing to compute in place. Exactly one of
+    /// <see cref="LiveCount"/> or <see cref="LiveCountAsync"/> is set.</summary>
     public Func<int>? LiveCount { get; init; }
+
+    /// <summary>#3564 — async count source. A count backed by a network call sets this instead of
+    /// <see cref="LiveCount"/> so recomputing it — on every <see cref="ShellRegistry.RefreshLiveCounts"/>
+    /// (fired on each real SSE push, #3490, as well as every fixed-tab (re)registration) — never
+    /// blocks the UI thread with a synchronous <c>.GetAwaiter().GetResult()</c>. The renderer shows
+    /// the plain label first, then relabels in place once the real count lands.</summary>
+    public Func<Task<int>>? LiveCountAsync { get; init; }
+
     public Brush? Accent { get; init; }
     /// <summary>When set, the command renders as a dropdown gallery instead of firing OnSelect directly.</summary>
     public GallerySpec? Gallery { get; init; }

@@ -107,8 +107,32 @@ public sealed class FixedRibbonRenderer
             Size = size,
             ToolTip = cmd.ToolTip ?? cmd.Label,
         };
+        if (cmd.LiveCountAsync is { } liveCountAsync)
+        {
+            PopulateLiveCountAsync(btn, cmd, liveCountAsync);
+        }
         btn.Click += (_, _) => cmd.OnSelect();
         return btn;
+    }
+
+    // #3564 — async count source (a network-backed live-count badge) loads without a synchronous
+    // .GetAwaiter().GetResult() freezing the UI thread on every ShellRegistry.RefreshLiveCounts
+    // (fired on each real SSE push, plus every fixed-tab (re)registration). async void is
+    // deliberate and safe here for the same reason as BuildGalleryButton's PopulateAsync below:
+    // the whole body is guarded, nothing escapes as an unhandled async void crash. The underlying
+    // count methods already catch-and-return-0 on failure (their own honest "couldn't reach it
+    // right now" contract), so the catch here is a defensive backstop, not the primary guard.
+    private static async void PopulateLiveCountAsync(Button btn, RibbonCommandSpec cmd, Func<System.Threading.Tasks.Task<int>> liveCountAsync)
+    {
+        try
+        {
+            var count = await liveCountAsync().ConfigureAwait(true);
+            btn.Header = $"{cmd.Label} ({count})";
+        }
+        catch
+        {
+            // Leave the plain label — a transient failure here shouldn't relabel the button.
+        }
     }
 
     private static FrameworkElement BuildGalleryButton(RibbonCommandSpec cmd, GallerySpec gallery, RibbonControlSize size)
@@ -199,8 +223,14 @@ public sealed class FixedRibbonRenderer
             RenderRows(rows);
         }
 
+        // #3564 — deferred to first real dropdown-open, not fetched here at button-construction
+        // time. RenderAllFixedTabs rebuilds every fixed-tab button on every ShellRegistry.Changed
+        // (every RegisterFixedTabGroup call at startup, plus every real SSE push, #3490) — eagerly
+        // calling Populate() here fired one real HTTP request per registered gallery on every one
+        // of those rebuilds, whether or not the operator ever opened the dropdown. Populate() is
+        // still synchronous-safe to call from DropDownOpened (a real user action) — it now just
+        // isn't called until then.
         dropDown.DropDownOpened += (_, _) => Populate();
-        Populate();
         return dropDown;
     }
 

@@ -136,7 +136,7 @@ public partial class MainWindow : FluentWindow
                 await OpenPortalTabAsync(_tenantService.CurrentTenant, portalType);
             }
         };
-        LeftReferencePanelControl.VipLookupRequested += upn => RunVipLookup(upn);
+        LeftReferencePanelControl.VipLookupRequested += upn => { _ = RunVipLookupAsync(upn); };
 
         InitializeShell();
         InitializeStatusBar();
@@ -284,7 +284,7 @@ public partial class MainWindow : FluentWindow
                     {
                         Title = "POA&Ms",
                         Searchable = true,
-                        GetRows = BuildPoamRows,
+                        GetRowsAsync = BuildPoamRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -313,7 +313,7 @@ public partial class MainWindow : FluentWindow
                     {
                         Title = "CAB Meetings",
                         Searchable = true,
-                        GetRows = BuildCabMeetingRows,
+                        GetRowsAsync = BuildCabMeetingRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -384,7 +384,7 @@ public partial class MainWindow : FluentWindow
                     {
                         Title = "Script Library",
                         Searchable = true,
-                        GetRows = BuildScriptLibraryRows,
+                        GetRowsAsync = BuildScriptLibraryRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -406,7 +406,7 @@ public partial class MainWindow : FluentWindow
                     {
                         Title = "Runbooks",
                         Searchable = true,
-                        GetRows = BuildRunbookRows,
+                        GetRowsAsync = BuildRunbookRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -419,7 +419,7 @@ public partial class MainWindow : FluentWindow
                     {
                         Title = "Hold Windows",
                         Searchable = true,
-                        GetRows = BuildHoldWindowRows,
+                        GetRowsAsync = BuildHoldWindowRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -449,7 +449,7 @@ public partial class MainWindow : FluentWindow
                     {
                         Title = "Document Hub",
                         Searchable = true,
-                        GetRows = BuildDocumentHubRows,
+                        GetRowsAsync = BuildDocumentHubRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -493,7 +493,7 @@ public partial class MainWindow : FluentWindow
                     Label = "Pending Requests",
                     Intent = RibbonIntent.Open,
                     ToolTip = "Cross-tenant pending break-glass credential deliveries (GET /api/msp/break-glass, #3480)",
-                    OnSelect = () => OpenBreakGlassPendingList(),
+                    OnSelect = () => { _ = OpenBreakGlassPendingListAsync(); },
                 },
             },
         });
@@ -512,7 +512,7 @@ public partial class MainWindow : FluentWindow
                     Label = "Audit Log",
                     Intent = RibbonIntent.Open,
                     ToolTip = "Filterable platform audit trail — tenant / action type (GET /api/msp/audit, #3489)",
-                    OnSelect = () => OpenAuditLog(new Models.AuditLogFilter()),
+                    OnSelect = () => { _ = OpenAuditLogAsync(new Models.AuditLogFilter()); },
                 },
             },
         });
@@ -532,7 +532,7 @@ public partial class MainWindow : FluentWindow
                     Label = "Tenant Consent",
                     Intent = RibbonIntent.Open,
                     ToolTip = "Admin/write/SharePoint consent status across your MSP book (GET /api/msp/consent, #3485)",
-                    OnSelect = () => OpenConsentStatusList(),
+                    OnSelect = () => { _ = OpenConsentStatusListAsync(); },
                 },
             },
         });
@@ -565,7 +565,7 @@ public partial class MainWindow : FluentWindow
                     Label = "Open Requests",
                     Intent = RibbonIntent.Open,
                     ToolTip = "Every ticket under your MSP's Zoho Desk org — customer requests + chat escalations (GET /api/msp/support/requests, #3488)",
-                    OnSelect = () => OpenSupportTicketsList(),
+                    OnSelect = () => { _ = OpenSupportTicketsListAsync(); },
                 },
             },
         });
@@ -581,12 +581,12 @@ public partial class MainWindow : FluentWindow
                     Label = "Breaches",
                     Intent = RibbonIntent.Open,
                     ToolTip = "Unresolved SLA breaches across the book (GET /api/msp/sla/breaches)",
-                    LiveCount = () => CountOpenSlaBreaches(),
+                    LiveCountAsync = () => CountOpenSlaBreachesAsync(),
                     Gallery = new GallerySpec
                     {
                         Title = "SLA Breaches",
                         Searchable = true,
-                        GetRows = BuildSlaBreachRows,
+                        GetRowsAsync = BuildSlaBreachRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -595,12 +595,12 @@ public partial class MainWindow : FluentWindow
                     Label = "Escalations",
                     Intent = RibbonIntent.Open,
                     ToolTip = "Open SLA escalations (GET /api/msp/sla/escalations)",
-                    LiveCount = () => CountOpenSlaEscalations(),
+                    LiveCountAsync = () => CountOpenSlaEscalationsAsync(),
                     Gallery = new GallerySpec
                     {
                         Title = "SLA Escalations",
                         Searchable = true,
-                        GetRows = BuildSlaEscalationRows,
+                        GetRowsAsync = BuildSlaEscalationRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -613,7 +613,7 @@ public partial class MainWindow : FluentWindow
                     {
                         Title = "SLA Compliance",
                         Searchable = true,
-                        GetRows = BuildSlaComplianceRows,
+                        GetRowsAsync = BuildSlaComplianceRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -626,7 +626,7 @@ public partial class MainWindow : FluentWindow
                     {
                         Title = "SLA Policies",
                         Searchable = true,
-                        GetRows = BuildSlaPolicyRows,
+                        GetRowsAsync = BuildSlaPolicyRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -639,7 +639,7 @@ public partial class MainWindow : FluentWindow
                     {
                         Title = "M365 Uptime",
                         Searchable = false,
-                        GetRows = BuildM365SlaRows,
+                        GetRowsAsync = BuildM365SlaRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -657,12 +657,12 @@ public partial class MainWindow : FluentWindow
                     Label = "Open Tasks",
                     Intent = RibbonIntent.Open,
                     ToolTip = "Virtual queue — unresolved SLA breaches + scope-creep violations, deep-linked to the Admin Panel (GET /api/msp/operator-tasks, live via SSE #3490)",
-                    LiveCount = () => CountOpenOperatorTasks(),
+                    LiveCountAsync = () => CountOpenOperatorTasksAsync(),
                     Gallery = new GallerySpec
                     {
                         Title = "Task Queue",
                         Searchable = true,
-                        GetRows = BuildOperatorTaskRows,
+                        GetRowsAsync = BuildOperatorTaskRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -680,12 +680,12 @@ public partial class MainWindow : FluentWindow
                     Label = "Alerts",
                     Intent = RibbonIntent.Open,
                     ToolTip = "Real GET /api/msp/alerts (#3483) — cross-tenant triage feed, merged from open policy incidents and each customer's latest diagnostic findings",
-                    LiveCount = () => GetOpenAlertsCount(),
+                    LiveCountAsync = () => GetOpenAlertsCountAsync(),
                     Gallery = new GallerySpec
                     {
                         Title = "Alerts",
                         Searchable = true,
-                        GetRows = BuildAlertRows,
+                        GetRowsAsync = BuildAlertRowsAsync,
                     },
                     OnSelect = () => { },
                 },
@@ -695,11 +695,13 @@ public partial class MainWindow : FluentWindow
 
     // ---- Task Queue (#3490) — real msp-sla.ts operator-tasks galleries ------------------------
 
-    private int CountOpenOperatorTasks()
+    private async System.Threading.Tasks.Task<int> CountOpenOperatorTasksAsync()
     {
         try
         {
-            return _taskQueueService.GetTasksAsync().GetAwaiter().GetResult().Count;
+            // #3564 — awaited, not .GetAwaiter().GetResult(): a LiveCount recompute fires on every
+            // fixed-tab render and every real SSE push (#3490); blocking here froze the whole ribbon.
+            return (await _taskQueueService.GetTasksAsync().ConfigureAwait(true)).Count;
         }
         catch
         {
@@ -709,12 +711,14 @@ public partial class MainWindow : FluentWindow
         }
     }
 
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildOperatorTaskRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildOperatorTaskRowsAsync()
     {
         System.Collections.Generic.IReadOnlyList<Models.OperatorTask> tasks;
         try
         {
-            tasks = _taskQueueService.GetTasksAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the task-queue call is in flight.
+            tasks = await _taskQueueService.GetTasksAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -773,12 +777,14 @@ public partial class MainWindow : FluentWindow
     /// record workspace. A <c>configured: false</c> response (no Zoho Desk connection yet) renders
     /// as a real, honest state rather than an error or an empty list indistinguishable from "zero
     /// tickets." On an auth or transport failure the record states the honest reason.</summary>
-    private void OpenSupportTicketsList()
+    private async System.Threading.Tasks.Task OpenSupportTicketsListAsync()
     {
         SupportRequestsList result;
         try
         {
-            result = _supportTicketsService.GetRequestsAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the request returned.
+            result = await _supportTicketsService.GetRequestsAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -825,7 +831,7 @@ public partial class MainWindow : FluentWindow
                     Name = t.Subject,
                     Sub = $"{(string.IsNullOrEmpty(t.TicketNumber) ? $"#{t.Id}" : $"#{t.TicketNumber}")} · {t.Status ?? t.StatusType ?? "?"}",
                     Right = t.ModifiedTime,
-                    OnSelect = () => OpenSupportTicketRecord(t.Id, t.Subject),
+                    OnSelect = () => { _ = OpenSupportTicketRecordAsync(t.Id, t.Subject); },
                 }).ToList()),
         };
 
@@ -836,12 +842,14 @@ public partial class MainWindow : FluentWindow
     /// with its full operator-visible conversation thread (private notes included) and a
     /// write-through reply action — public (customer-visible) or internal-only, per the route's
     /// own <c>isPublic</c> flag. Not confirm-armed: a reply/note isn't destructive.</summary>
-    private void OpenSupportTicketRecord(string ticketId, string? subjectHint)
+    private async System.Threading.Tasks.Task OpenSupportTicketRecordAsync(string ticketId, string? subjectHint)
     {
         SupportTicketDetail? detail;
         try
         {
-            detail = _supportTicketsService.GetTicketDetailAsync(ticketId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the request returned.
+            detail = await _supportTicketsService.GetTicketDetailAsync(ticketId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -911,12 +919,12 @@ public partial class MainWindow : FluentWindow
         spec.Actions.Add(new WorkspaceAction
         {
             Label = "Send reply to customer",
-            OnSelect = () => RunSupportTicketReply(request.Id, request.Subject, () => replyMessage, isPublic: true),
+            OnSelect = () => { _ = RunSupportTicketReplyAsync(request.Id, request.Subject, () => replyMessage, isPublic: true); },
         });
         spec.Actions.Add(new WorkspaceAction
         {
             Label = "Add internal note",
-            OnSelect = () => RunSupportTicketReply(request.Id, request.Subject, () => replyMessage, isPublic: false),
+            OnSelect = () => { _ = RunSupportTicketReplyAsync(request.Id, request.Subject, () => replyMessage, isPublic: false); },
         });
         if (!string.IsNullOrEmpty(request.WebUrl))
         {
@@ -929,12 +937,12 @@ public partial class MainWindow : FluentWindow
         spec.Actions.Add(new WorkspaceAction
         {
             Label = "Back to Open Requests",
-            OnSelect = () => OpenSupportTicketsList(),
+            OnSelect = () => { _ = OpenSupportTicketsListAsync(); },
         });
 
         _shellRegistry.OpenContextual(
             new TrailEntry("support-ticket", request.Id, request.Subject,
-                () => OpenSupportTicketRecord(request.Id, request.Subject)),
+                () => { _ = OpenSupportTicketRecordAsync(request.Id, request.Subject); }),
             new ContextualTabSpec
             {
                 Id = "support-ticket",
@@ -961,7 +969,7 @@ public partial class MainWindow : FluentWindow
     /// <summary>Performs the real POST .../reply with the operator-supplied message, then reopens
     /// the ticket record so the new reply/note shows in the conversation immediately. Message is
     /// validated client-side first to avoid a guaranteed 400.</summary>
-    private void RunSupportTicketReply(string ticketId, string? subjectHint, Func<string> messageGetter, bool isPublic)
+    private async System.Threading.Tasks.Task RunSupportTicketReplyAsync(string ticketId, string? subjectHint, Func<string> messageGetter, bool isPublic)
     {
         var message = (messageGetter() ?? string.Empty).Trim();
         if (string.IsNullOrEmpty(message))
@@ -974,14 +982,16 @@ public partial class MainWindow : FluentWindow
                 Title = subjectHint ?? $"Ticket #{ticketId}",
                 Sub = "Nothing sent",
                 Body = ("Reply", "Enter a message before sending."),
-                Actions = { new WorkspaceAction { Label = "Back to ticket", OnSelect = () => OpenSupportTicketRecord(ticketId, subjectHint) } },
+                Actions = { new WorkspaceAction { Label = "Back to ticket", OnSelect = () => { _ = OpenSupportTicketRecordAsync(ticketId, subjectHint); } } },
             });
             return;
         }
 
         try
         {
-            var result = _supportTicketsService.ReplyAsync(ticketId, message, isPublic).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the reply POST returned.
+            var result = await _supportTicketsService.ReplyAsync(ticketId, message, isPublic).ConfigureAwait(true);
             ConsolePanel.AppendExternal($"[Support Tickets] {result.Message}");
         }
         catch (Exception ex)
@@ -994,12 +1004,12 @@ public partial class MainWindow : FluentWindow
                 Title = subjectHint ?? $"Ticket #{ticketId}",
                 Sub = "Failed",
                 Body = ("Server response", DescribeSupportTicketsError(ex)),
-                Actions = { new WorkspaceAction { Label = "Back to ticket", OnSelect = () => OpenSupportTicketRecord(ticketId, subjectHint) } },
+                Actions = { new WorkspaceAction { Label = "Back to ticket", OnSelect = () => { _ = OpenSupportTicketRecordAsync(ticketId, subjectHint); } } },
             });
             return;
         }
 
-        OpenSupportTicketRecord(ticketId, subjectHint);
+        await OpenSupportTicketRecordAsync(ticketId, subjectHint).ConfigureAwait(true);
     }
 
     /// <summary>Best-effort human message from a <see cref="SupportTicketsServiceException"/> (which
@@ -1013,11 +1023,13 @@ public partial class MainWindow : FluentWindow
 
     // ---- SLA (#3487) — real msp-sla.ts + msp-m365-sla.ts clients, full-panel workspaces -------
 
-    private int CountOpenSlaBreaches()
+    private async System.Threading.Tasks.Task<int> CountOpenSlaBreachesAsync()
     {
         try
         {
-            return _slaService.GetBreachesAsync().GetAwaiter().GetResult().Count;
+            // #3564 — awaited, not .GetAwaiter().GetResult(): a LiveCount recompute fires on every
+            // fixed-tab render; blocking here froze the whole ribbon.
+            return (await _slaService.GetBreachesAsync().ConfigureAwait(true)).Count;
         }
         catch
         {
@@ -1027,11 +1039,11 @@ public partial class MainWindow : FluentWindow
         }
     }
 
-    private int CountOpenSlaEscalations()
+    private async System.Threading.Tasks.Task<int> CountOpenSlaEscalationsAsync()
     {
         try
         {
-            return _slaService.GetEscalationsAsync().GetAwaiter().GetResult().Count;
+            return (await _slaService.GetEscalationsAsync().ConfigureAwait(true)).Count;
         }
         catch
         {
@@ -1039,12 +1051,14 @@ public partial class MainWindow : FluentWindow
         }
     }
 
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildSlaBreachRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildSlaBreachRowsAsync()
     {
         System.Collections.Generic.IReadOnlyList<Models.SlaBreach> breaches;
         try
         {
-            breaches = _slaService.GetBreachesAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the SLA breaches call is in flight.
+            breaches = await _slaService.GetBreachesAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1099,7 +1113,7 @@ public partial class MainWindow : FluentWindow
                     {
                         Label = "Resolve Timer",
                         Confirm = true,
-                        OnSelect = () => ResolveSlaTimer(breach.TimerId),
+                        OnSelect = () => { _ = ResolveSlaTimerAsync(breach.TimerId); },
                     },
                 },
         };
@@ -1111,11 +1125,13 @@ public partial class MainWindow : FluentWindow
     /// breach's Resolve (there is no per-breach resolve endpoint; the timer is the resolvable
     /// unit). Re-opens the breach record afterward so the workspace reflects the real
     /// resolvedAt the server just set.</summary>
-    private void ResolveSlaTimer(string timerId)
+    private async System.Threading.Tasks.Task ResolveSlaTimerAsync(string timerId)
     {
         try
         {
-            _slaService.ResolveTimerAsync(timerId, null).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the resolve POST returned.
+            await _slaService.ResolveTimerAsync(timerId, null).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1124,17 +1140,19 @@ public partial class MainWindow : FluentWindow
             return;
         }
 
-        var refreshed = _slaService.GetBreachesAsync().GetAwaiter().GetResult()
+        var refreshed = (await _slaService.GetBreachesAsync().ConfigureAwait(true))
             .FirstOrDefault(b => b.TimerId == timerId);
         if (refreshed != null) OpenSlaBreachRecord(refreshed);
     }
 
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildSlaEscalationRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildSlaEscalationRowsAsync()
     {
         System.Collections.Generic.IReadOnlyList<Models.SlaEscalation> escalations;
         try
         {
-            escalations = _slaService.GetEscalationsAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the SLA escalations call is in flight.
+            escalations = await _slaService.GetEscalationsAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1185,12 +1203,14 @@ public partial class MainWindow : FluentWindow
         _shellRegistry.OpenRecord(spec);
     }
 
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildSlaComplianceRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildSlaComplianceRowsAsync()
     {
         System.Collections.Generic.IReadOnlyList<Models.SlaComplianceRecord> records;
         try
         {
-            records = _slaService.GetComplianceAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the SLA compliance call is in flight.
+            records = await _slaService.GetComplianceAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1244,12 +1264,14 @@ public partial class MainWindow : FluentWindow
         _shellRegistry.OpenRecord(spec);
     }
 
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildSlaPolicyRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildSlaPolicyRowsAsync()
     {
         System.Collections.Generic.IReadOnlyList<Models.SlaPolicy> policies;
         try
         {
-            policies = _slaService.GetPoliciesAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the SLA policies call is in flight.
+            policies = await _slaService.GetPoliciesAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1301,7 +1323,7 @@ public partial class MainWindow : FluentWindow
     /// response carries the real tenant GUID per customer, which this app's
     /// <see cref="ITenantService.CurrentTenant"/> already has — so this states "no tenant
     /// selected" honestly rather than the #3540 gap the others hit.</summary>
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildM365SlaRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildM365SlaRowsAsync()
     {
         var tenant = _tenantService.CurrentTenant;
         if (tenant == null)
@@ -1315,7 +1337,9 @@ public partial class MainWindow : FluentWindow
         Models.M365SlaResponse response;
         try
         {
-            response = _slaService.GetM365SlaAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the M365 uptime call is in flight.
+            response = await _slaService.GetM365SlaAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1378,12 +1402,14 @@ public partial class MainWindow : FluentWindow
     /// drill-down into detail/override/audit never depends on a locally-resolved tenant id. On an auth
     /// or transport failure the record states the honest reason (a 401/403 means the operator session
     /// isn't attached, not a bug here) rather than showing a fabricated list.</summary>
-    private void OpenBreakGlassPendingList()
+    private async System.Threading.Tasks.Task OpenBreakGlassPendingListAsync()
     {
         System.Collections.Generic.IReadOnlyList<Models.BreakGlassPendingItem> pending;
         try
         {
-            pending = _breakGlassService.GetPendingAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the request returned.
+            pending = await _breakGlassService.GetPendingAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1416,7 +1442,7 @@ public partial class MainWindow : FluentWindow
                     Name = p.CustomerName ?? $"Customer #{p.CustomerId}",
                     Sub = $"Secret #{p.PendingSecretId} · {p.Status} · {p.CreatedAt.ToLocalTime():g}",
                     Right = p.LiveInviteCount > 0 ? $"{p.LiveInviteCount} live invite(s)" : $"{p.TotalInviteCount} invite(s)",
-                    OnSelect = () => OpenBreakGlassSecretRecord(p.CustomerId, p.PendingSecretId, p.CustomerName),
+                    OnSelect = () => { _ = OpenBreakGlassSecretRecordAsync(p.CustomerId, p.PendingSecretId, p.CustomerName); },
                 }).ToList()),
         };
 
@@ -1429,12 +1455,14 @@ public partial class MainWindow : FluentWindow
     /// trail and full break-glass history. Reason/emails for the override are collected via
     /// write-through <see cref="WorkspaceEdit"/> fields, the same local-capture pattern the Script
     /// Library record uses for its required variables.</summary>
-    private void OpenBreakGlassSecretRecord(int customerId, int pendingSecretId, string? customerName)
+    private async System.Threading.Tasks.Task OpenBreakGlassSecretRecordAsync(int customerId, int pendingSecretId, string? customerName)
     {
         Models.BreakGlassSecretDetail detail;
         try
         {
-            detail = _breakGlassService.GetSecretDetailAsync(customerId, pendingSecretId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the request returned.
+            detail = await _breakGlassService.GetSecretDetailAsync(customerId, pendingSecretId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1514,24 +1542,24 @@ public partial class MainWindow : FluentWindow
                 Label = "Force reset & reissue",
                 Confirm = true,
                 Danger = true,
-                OnSelect = () => RunBreakGlassOverride(customerId, pendingSecretId, customerName, () => overrideReason, () => overrideEmails),
+                OnSelect = () => { _ = RunBreakGlassOverrideAsync(customerId, pendingSecretId, customerName, () => overrideReason, () => overrideEmails); },
             });
         }
 
         spec.Actions.Add(new WorkspaceAction
         {
             Label = "View override audit trail",
-            OnSelect = () => OpenBreakGlassAuditRecord(customerId, customerName),
+            OnSelect = () => { _ = OpenBreakGlassAuditRecordAsync(customerId, customerName); },
         });
         spec.Actions.Add(new WorkspaceAction
         {
             Label = "View customer break-glass history",
-            OnSelect = () => OpenBreakGlassHistoryRecord(customerId, customerName),
+            OnSelect = () => { _ = OpenBreakGlassHistoryRecordAsync(customerId, customerName); },
         });
 
         _shellRegistry.OpenContextual(
             new TrailEntry("break-glass-secret", pendingSecretId.ToString(), $"Break-Glass #{pendingSecretId}",
-                () => OpenBreakGlassSecretRecord(customerId, pendingSecretId, customerName)),
+                () => { _ = OpenBreakGlassSecretRecordAsync(customerId, pendingSecretId, customerName); }),
             new ContextualTabSpec
             {
                 Id = "break-glass-secret",
@@ -1560,7 +1588,7 @@ public partial class MainWindow : FluentWindow
     /// pending-secret id and reissue count on success, or the server's own refusal message (409
     /// still-live links / not awaiting delivery / write-back-gate block, 5xx) on failure. Reason is
     /// validated client-side first to avoid a guaranteed 400.</summary>
-    private void RunBreakGlassOverride(int customerId, int pendingSecretId, string? customerName, Func<string> reasonGetter, Func<string> emailsGetter)
+    private async System.Threading.Tasks.Task RunBreakGlassOverrideAsync(int customerId, int pendingSecretId, string? customerName, Func<string> reasonGetter, Func<string> emailsGetter)
     {
         var reason = (reasonGetter() ?? string.Empty).Trim();
         if (string.IsNullOrEmpty(reason))
@@ -1585,9 +1613,11 @@ public partial class MainWindow : FluentWindow
 
         try
         {
-            var result = _breakGlassService
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the override POST returned.
+            var result = await _breakGlassService
                 .AdminOverrideAsync(customerId, pendingSecretId, reason, emails.Count > 0 ? emails : null)
-                .GetAwaiter().GetResult();
+                .ConfigureAwait(true);
 
             _shellRegistry.OpenRecord(new RecordWorkspaceSpec
             {
@@ -1607,8 +1637,8 @@ public partial class MainWindow : FluentWindow
                     + $"was issued and sent to {result.Sent} recipient(s). The override is recorded in this customer's audit trail."),
                 Actions =
                 {
-                    new WorkspaceAction { Label = "View override audit trail", OnSelect = () => OpenBreakGlassAuditRecord(customerId, customerName) },
-                    new WorkspaceAction { Label = "Back to pending requests", OnSelect = () => OpenBreakGlassPendingList() },
+                    new WorkspaceAction { Label = "View override audit trail", OnSelect = () => { _ = OpenBreakGlassAuditRecordAsync(customerId, customerName); } },
+                    new WorkspaceAction { Label = "Back to pending requests", OnSelect = () => { _ = OpenBreakGlassPendingListAsync(); } },
                 },
             });
         }
@@ -1624,7 +1654,7 @@ public partial class MainWindow : FluentWindow
                 Body = ("Server response", DescribeBreakGlassError(ex)),
                 Actions =
                 {
-                    new WorkspaceAction { Label = "Back to secret", OnSelect = () => OpenBreakGlassSecretRecord(customerId, pendingSecretId, customerName) },
+                    new WorkspaceAction { Label = "Back to secret", OnSelect = () => { _ = OpenBreakGlassSecretRecordAsync(customerId, pendingSecretId, customerName); } },
                 },
             });
         }
@@ -1632,12 +1662,14 @@ public partial class MainWindow : FluentWindow
 
     /// <summary>Opens the per-customer override audit trail (GET .../break-glass/audit) — #3480's
     /// "audit trail view" checklist item — as a full-panel record workspace list.</summary>
-    private void OpenBreakGlassAuditRecord(int customerId, string? customerName)
+    private async System.Threading.Tasks.Task OpenBreakGlassAuditRecordAsync(int customerId, string? customerName)
     {
         System.Collections.Generic.IReadOnlyList<Models.BreakGlassAuditEntry> audit;
         try
         {
-            audit = _breakGlassService.GetAuditAsync(customerId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the request returned.
+            audit = await _breakGlassService.GetAuditAsync(customerId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1676,12 +1708,14 @@ public partial class MainWindow : FluentWindow
     /// <summary>Opens the full per-customer break-glass history (GET .../customers/:id/break-glass —
     /// any status), the "per-tenant list" half of #3480's first checklist item. Rows drill back into
     /// the same per-secret detail record.</summary>
-    private void OpenBreakGlassHistoryRecord(int customerId, string? customerName)
+    private async System.Threading.Tasks.Task OpenBreakGlassHistoryRecordAsync(int customerId, string? customerName)
     {
         System.Collections.Generic.IReadOnlyList<Models.BreakGlassSecretHistoryItem> history;
         try
         {
-            history = _breakGlassService.GetCustomerHistoryAsync(customerId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the request returned.
+            history = await _breakGlassService.GetCustomerHistoryAsync(customerId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1713,7 +1747,7 @@ public partial class MainWindow : FluentWindow
                     Sub = $"{h.Status} · {h.CreatedAt.ToLocalTime():g}"
                           + (string.IsNullOrEmpty(h.DeliveredToEmail) ? "" : $" · {h.DeliveredToEmail}"),
                     Right = h.DeliveredAt.HasValue ? "delivered" : h.Status,
-                    OnSelect = () => OpenBreakGlassSecretRecord(customerId, h.PendingSecretId, customerName),
+                    OnSelect = () => { _ = OpenBreakGlassSecretRecordAsync(customerId, h.PendingSecretId, customerName); },
                 }).ToList()),
         });
     }
@@ -1735,12 +1769,14 @@ public partial class MainWindow : FluentWindow
     /// query and re-opens the record with the results, the same local-capture-then-refresh pattern
     /// the Break-Glass override form and VIP lookup box already use. On an auth or transport
     /// failure the record states the honest reason rather than showing a fabricated list.</summary>
-    private void OpenAuditLog(Models.AuditLogFilter filter)
+    private async System.Threading.Tasks.Task OpenAuditLogAsync(Models.AuditLogFilter filter)
     {
         Models.AuditLogPage page;
         try
         {
-            page = _auditLogService.GetAuditLogAsync(filter).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the request returned.
+            page = await _auditLogService.GetAuditLogAsync(filter).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1759,7 +1795,7 @@ public partial class MainWindow : FluentWindow
         var mspId = filter.MspId ?? string.Empty;
         var actionType = filter.ActionType ?? string.Empty;
 
-        void Rerun() => OpenAuditLog(new Models.AuditLogFilter
+        void Rerun() => _ = OpenAuditLogAsync(new Models.AuditLogFilter
         {
             MspId = string.IsNullOrWhiteSpace(mspId) ? null : mspId,
             ActionType = string.IsNullOrWhiteSpace(actionType) ? null : actionType,
@@ -1832,7 +1868,7 @@ public partial class MainWindow : FluentWindow
             Body = string.IsNullOrWhiteSpace(entry.Detail) ? null : ("Detail", entry.Detail),
             Actions =
             {
-                new WorkspaceAction { Label = "Back to Audit Log", OnSelect = () => OpenAuditLog(new Models.AuditLogFilter()) },
+                new WorkspaceAction { Label = "Back to Audit Log", OnSelect = () => { _ = OpenAuditLogAsync(new Models.AuditLogFilter()); } },
             },
         });
     }
@@ -1855,12 +1891,14 @@ public partial class MainWindow : FluentWindow
     /// sidesteps it entirely, same as <see cref="OpenBreakGlassPendingList"/> already does). On an
     /// auth or transport failure the record states the honest reason rather than showing a
     /// fabricated list.</summary>
-    private void OpenConsentStatusList()
+    private async System.Threading.Tasks.Task OpenConsentStatusListAsync()
     {
         System.Collections.Generic.IReadOnlyList<Models.CustomerConsentSummary> summaries;
         try
         {
-            summaries = _consentService.GetAllAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the request returned.
+            summaries = await _consentService.GetAllAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1893,7 +1931,7 @@ public partial class MainWindow : FluentWindow
                     Name = s.CustomerName ?? $"Customer #{s.CustomerId}",
                     Sub = $"Read: {DescribeGrant(s.Graph)} · Write: {DescribeGrant(s.WriteBack)} · SharePoint: {DescribeGrant(s.Sharepoint)}",
                     Right = s.UpdatedAt.HasValue ? s.UpdatedAt.Value.ToLocalTime().ToString("g") : null,
-                    OnSelect = () => OpenConsentDetailRecord(s.CustomerId, s.CustomerName),
+                    OnSelect = () => { _ = OpenConsentDetailRecordAsync(s.CustomerId, s.CustomerName); },
                 }).ToList()),
         };
 
@@ -1906,12 +1944,14 @@ public partial class MainWindow : FluentWindow
     /// when a grant is already active, same as the portal's own reconsent-link path). A per-key
     /// "Revoke" action only renders when that key is currently "granted" — never a fake clickable
     /// stop over a key with nothing to revoke (UI_RULES.md §1).</summary>
-    private void OpenConsentDetailRecord(int customerId, string? customerName)
+    private async System.Threading.Tasks.Task OpenConsentDetailRecordAsync(int customerId, string? customerName)
     {
         Models.CustomerConsentSummary detail;
         try
         {
-            detail = _consentService.GetForCustomerAsync(customerId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the request returned.
+            detail = await _consentService.GetForCustomerAsync(customerId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1949,29 +1989,31 @@ public partial class MainWindow : FluentWindow
         spec.Actions.Add(new WorkspaceAction
         {
             Label = "Generate read-consent invite link",
-            OnSelect = () => RunConsentInviteAction(customerId, customerName, () =>
+            OnSelect = () => { _ = RunConsentInviteActionAsync(customerId, customerName, async () =>
             {
-                var r = _consentService.CreateInviteLinkAsync(customerId).GetAwaiter().GetResult();
+                // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the
+                // UI thread and froze the ribbon until the request returned.
+                var r = await _consentService.CreateInviteLinkAsync(customerId).ConfigureAwait(true);
                 return (r.ConsentUrl, r.ExpiresAt);
-            }),
+            }); },
         });
         spec.Actions.Add(new WorkspaceAction
         {
             Label = "Start write-back consent",
-            OnSelect = () => RunConsentInviteAction(customerId, customerName, () =>
+            OnSelect = () => { _ = RunConsentInviteActionAsync(customerId, customerName, async () =>
             {
-                var r = _consentService.StartWriteConsentAsync(customerId).GetAwaiter().GetResult();
+                var r = await _consentService.StartWriteConsentAsync(customerId).ConfigureAwait(true);
                 return (r.ConsentUrl, r.ExpiresAt);
-            }),
+            }); },
         });
         spec.Actions.Add(new WorkspaceAction
         {
             Label = "Start SharePoint consent",
-            OnSelect = () => RunConsentInviteAction(customerId, customerName, () =>
+            OnSelect = () => { _ = RunConsentInviteActionAsync(customerId, customerName, async () =>
             {
-                var r = _consentService.StartSharePointConsentAsync(customerId).GetAwaiter().GetResult();
+                var r = await _consentService.StartSharePointConsentAsync(customerId).ConfigureAwait(true);
                 return (r.ConsentUrl, r.ExpiresAt);
-            }),
+            }); },
         });
 
         if (detail.Graph?.ConsentStatus == "granted")
@@ -1981,7 +2023,7 @@ public partial class MainWindow : FluentWindow
                 Label = "Revoke read consent",
                 Confirm = true,
                 Danger = true,
-                OnSelect = () => RunConsentRevoke(customerId, customerName, "graph"),
+                OnSelect = () => { _ = RunConsentRevokeAsync(customerId, customerName, "graph"); },
             });
         }
         if (detail.WriteBack?.ConsentStatus == "granted")
@@ -1991,7 +2033,7 @@ public partial class MainWindow : FluentWindow
                 Label = "Revoke write-back consent",
                 Confirm = true,
                 Danger = true,
-                OnSelect = () => RunConsentRevoke(customerId, customerName, "writeBack"),
+                OnSelect = () => { _ = RunConsentRevokeAsync(customerId, customerName, "writeBack"); },
             });
         }
         if (detail.Sharepoint?.ConsentStatus == "granted")
@@ -2001,11 +2043,11 @@ public partial class MainWindow : FluentWindow
                 Label = "Revoke SharePoint consent",
                 Confirm = true,
                 Danger = true,
-                OnSelect = () => RunConsentRevoke(customerId, customerName, "sharepoint"),
+                OnSelect = () => { _ = RunConsentRevokeAsync(customerId, customerName, "sharepoint"); },
             });
         }
 
-        spec.Actions.Add(new WorkspaceAction { Label = "Back to consent list", OnSelect = () => OpenConsentStatusList() });
+        spec.Actions.Add(new WorkspaceAction { Label = "Back to consent list", OnSelect = () => { _ = OpenConsentStatusListAsync(); } });
 
         _shellRegistry.OpenRecord(spec);
     }
@@ -2036,13 +2078,13 @@ public partial class MainWindow : FluentWindow
     /// <paramref name="mint"/> performs exactly one real call and returns its (url, expiry) pair —
     /// deliberately a single call, not two, so a second invocation never mints a second, wasted
     /// invite token just to read its expiry.</summary>
-    private void RunConsentInviteAction(int customerId, string? customerName, Func<(string Url, DateTimeOffset Expires)> mint)
+    private async System.Threading.Tasks.Task RunConsentInviteActionAsync(int customerId, string? customerName, Func<System.Threading.Tasks.Task<(string Url, DateTimeOffset Expires)>> mint)
     {
         string consentUrl;
         DateTimeOffset expiresAt;
         try
         {
-            (consentUrl, expiresAt) = mint();
+            (consentUrl, expiresAt) = await mint().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -2054,7 +2096,7 @@ public partial class MainWindow : FluentWindow
                 Title = "Could not mint invite link",
                 Sub = customerName ?? $"Customer #{customerId}",
                 Body = ("Server response", DescribeConsentError(ex)),
-                Actions = { new WorkspaceAction { Label = "Back to consent record", OnSelect = () => OpenConsentDetailRecord(customerId, customerName) } },
+                Actions = { new WorkspaceAction { Label = "Back to consent record", OnSelect = () => { _ = OpenConsentDetailRecordAsync(customerId, customerName); } } },
             });
             return;
         }
@@ -2071,7 +2113,7 @@ public partial class MainWindow : FluentWindow
             {
                 new WorkspaceAction { Label = "Open in browser", OnSelect = () => OpenExternalUrl(consentUrl) },
                 new WorkspaceAction { Label = "Copy link to clipboard", OnSelect = () => CopyConsentUrlToClipboard(consentUrl) },
-                new WorkspaceAction { Label = "Back to consent record", OnSelect = () => OpenConsentDetailRecord(customerId, customerName) },
+                new WorkspaceAction { Label = "Back to consent record", OnSelect = () => { _ = OpenConsentDetailRecordAsync(customerId, customerName); } },
             },
         });
     }
@@ -2079,11 +2121,13 @@ public partial class MainWindow : FluentWindow
     /// <summary>Real PATCH .../consent/revoke for one key, then reopens the customer's detail
     /// record from fresh server state so the operator sees the real post-revoke status rather than
     /// a locally-guessed one.</summary>
-    private void RunConsentRevoke(int customerId, string? customerName, string key)
+    private async System.Threading.Tasks.Task RunConsentRevokeAsync(int customerId, string? customerName, string key)
     {
         try
         {
-            _consentService.RevokeAsync(customerId, key).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the revoke PATCH returned.
+            await _consentService.RevokeAsync(customerId, key).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -2095,12 +2139,12 @@ public partial class MainWindow : FluentWindow
                 Title = customerName ?? $"Customer #{customerId}",
                 Sub = "Revoke failed",
                 Body = ("Server response", DescribeConsentError(ex)),
-                Actions = { new WorkspaceAction { Label = "Back to consent record", OnSelect = () => OpenConsentDetailRecord(customerId, customerName) } },
+                Actions = { new WorkspaceAction { Label = "Back to consent record", OnSelect = () => { _ = OpenConsentDetailRecordAsync(customerId, customerName); } } },
             });
             return;
         }
 
-        OpenConsentDetailRecord(customerId, customerName);
+        await OpenConsentDetailRecordAsync(customerId, customerName).ConfigureAwait(true);
     }
 
     private static void OpenExternalUrl(string url)
@@ -2202,7 +2246,7 @@ public partial class MainWindow : FluentWindow
             Tile = cr.RiskLevel.Length >= 2 ? cr.RiskLevel[..2].ToUpperInvariant() : cr.RiskLevel.ToUpperInvariant(),
             Name = cr.Title,
             Sub = $"{cr.Status} · {cr.Category}",
-            OnSelect = () => OpenChangeRequestRecord(cr),
+            OnSelect = () => { _ = OpenChangeRequestRecordAsync(cr); },
         }).ToList();
     }
 
@@ -2218,14 +2262,16 @@ public partial class MainWindow : FluentWindow
     /// just noting it — maintenance coverage is surfaced as a fact only, since the server
     /// itself never enforces maintenance against execution time, only against a change's
     /// originally booked span at submission.</summary>
-    private (ChangeFreezeWindow? Freeze, ChangeMaintenanceWindow? Maintenance, string? Error) EvaluateChangeCalendar(ChangeRequest cr)
+    private async System.Threading.Tasks.Task<(ChangeFreezeWindow? Freeze, ChangeMaintenanceWindow? Maintenance, string? Error)> EvaluateChangeCalendarAsync(ChangeRequest cr)
     {
         var workload = ChangeCalendarMatching.WorkloadForCategory(cr.Category);
         var now = DateTimeOffset.UtcNow;
         try
         {
-            var freezeWindows = _changeControlService.GetFreezeWindowsAsync().GetAwaiter().GetResult();
-            var maintenanceWindows = _changeControlService.GetMaintenanceWindowsAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until both requests returned.
+            var freezeWindows = await _changeControlService.GetFreezeWindowsAsync().ConfigureAwait(true);
+            var maintenanceWindows = await _changeControlService.GetMaintenanceWindowsAsync().ConfigureAwait(true);
             var freeze = ChangeCalendarMatching.FindActiveFreezeNow(freezeWindows, cr.TenantId, workload, now);
             var maintenance = ChangeCalendarMatching.FindMaintenanceCoverageNow(maintenanceWindows, cr.TenantId, workload, now);
             return (freeze, maintenance, null);
@@ -2238,7 +2284,7 @@ public partial class MainWindow : FluentWindow
         }
     }
 
-    private void OpenChangeRequestRecord(ChangeRequest cr)
+    private async System.Threading.Tasks.Task OpenChangeRequestRecordAsync(ChangeRequest cr)
     {
         // Session Notes (#3472) — the change-control-linked half. attestationNote already
         // exists, real, on the server's own POST .../human-action route; the only gap was
@@ -2246,7 +2292,7 @@ public partial class MainWindow : FluentWindow
         // threaded into RecordHumanActionAsync's real attestationNote parameter below.
         var attestationNote = string.Empty;
 
-        var (blockingFreeze, coveringMaintenance, calendarError) = EvaluateChangeCalendar(cr);
+        var (blockingFreeze, coveringMaintenance, calendarError) = await EvaluateChangeCalendarAsync(cr).ConfigureAwait(true);
 
         var facts = new System.Collections.Generic.List<WorkspaceFact>
         {
@@ -2296,7 +2342,7 @@ public partial class MainWindow : FluentWindow
         actions.Add(new WorkspaceAction
         {
             Label = "File Post-Implementation Review",
-            OnSelect = () => OpenPirPickExecutionRecord(cr),
+            OnSelect = () => { _ = OpenPirPickExecutionRecordAsync(cr); },
         });
 
         // #3471's execute wiring — the checklist's own words: "pre-fill Script Library (#3460)
@@ -2310,7 +2356,7 @@ public partial class MainWindow : FluentWindow
             actions.Add(new WorkspaceAction
             {
                 Label = "Open in Script Library",
-                OnSelect = () => OpenCatalogItemForChangeRequest(catalogItemId),
+                OnSelect = () => { _ = OpenCatalogItemForChangeRequestAsync(catalogItemId); },
             });
         }
 
@@ -2337,7 +2383,7 @@ public partial class MainWindow : FluentWindow
         };
 
         _shellRegistry.OpenContextual(
-            new TrailEntry("change-request", cr.Id, cr.Title, () => OpenChangeRequestRecord(cr)),
+            new TrailEntry("change-request", cr.Id, cr.Title, () => { _ = OpenChangeRequestRecordAsync(cr); }),
             new ContextualTabSpec
             {
                 Id = "change-request",
@@ -2368,7 +2414,7 @@ public partial class MainWindow : FluentWindow
     /// built. Not a second execute path; this is the jump into the existing one. Real customerId
     /// resolution is the same #3540 gap <see cref="TryResolveLaunchControlScope"/> already
     /// documents — stated honestly rather than guessed.</summary>
-    private void OpenCatalogItemForChangeRequest(int catalogItemId)
+    private async System.Threading.Tasks.Task OpenCatalogItemForChangeRequestAsync(int catalogItemId)
     {
         if (!TryResolveLaunchControlScope(out var mspId, out var customerId))
         {
@@ -2389,7 +2435,9 @@ public partial class MainWindow : FluentWindow
         LaunchControlCatalog catalog;
         try
         {
-            catalog = _launchControlActionsService.GetActionsAsync(mspId, customerId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the catalog request returned.
+            catalog = await _launchControlActionsService.GetActionsAsync(mspId, customerId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -2433,7 +2481,7 @@ public partial class MainWindow : FluentWindow
     /// GET /api/msp/change-requests (msp-poams.ts's list route has no per-tenant filter either).
     /// Selecting a row opens the full-panel workspace with real milestone CRUD + a confirm-armed
     /// cancel action — the same gallery → contextual tab → workspace contract #3493 proved.</summary>
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildPoamRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildPoamRowsAsync()
     {
         var tenant = _tenantService.CurrentTenant;
         if (tenant == null) return Array.Empty<GalleryRowSpec>();
@@ -2441,7 +2489,9 @@ public partial class MainWindow : FluentWindow
         System.Collections.Generic.IReadOnlyList<Poam> poams;
         try
         {
-            poams = _poamsService.GetPoamsAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the POA&Ms call is in flight.
+            poams = await _poamsService.GetPoamsAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -2461,7 +2511,7 @@ public partial class MainWindow : FluentWindow
                 Tile = PoamStatusTile(p.Status),
                 Name = p.Title,
                 Sub = $"{PoamStatusLabel(p.Status)} · due {p.ScheduledCompletionDate}",
-                OnSelect = () => OpenPoamRecord(p.PoamId),
+                OnSelect = () => { _ = OpenPoamRecordAsync(p.PoamId); },
             })
             .ToList();
     }
@@ -2494,12 +2544,14 @@ public partial class MainWindow : FluentWindow
     /// Record-intent contextual-tab command (UI_RULES.md §2) — milestone CRUD is a specific
     /// record's action, never fixed-tab legal. A terminal plan (cancelled/completed/converted)
     /// renders read-only — msp-poams.ts's own route refuses further edits on one anyway.</summary>
-    private void OpenPoamRecord(string poamId)
+    private async System.Threading.Tasks.Task OpenPoamRecordAsync(string poamId)
     {
         Poam poam;
         try
         {
-            poam = _poamsService.GetPoamAsync(poamId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the request returned.
+            poam = await _poamsService.GetPoamAsync(poamId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -2533,21 +2585,21 @@ public partial class MainWindow : FluentWindow
                         Key = "scheduledCompletionDate",
                         Label = "Scheduled completion (YYYY-MM-DD)",
                         Value = poam.ScheduledCompletionDate,
-                        OnChange = v => UpdatePoamField(poamId, "scheduledCompletionDate", v),
+                        OnChange = v => { _ = UpdatePoamFieldAsync(poamId, "scheduledCompletionDate", v); },
                     },
                     new WorkspaceEdit
                     {
                         Key = "interimCompensatingControl",
                         Label = "Interim compensating control",
                         Value = poam.InterimCompensatingControl,
-                        OnChange = v => UpdatePoamField(poamId, "interimCompensatingControl", v),
+                        OnChange = v => { _ = UpdatePoamFieldAsync(poamId, "interimCompensatingControl", v); },
                     },
                     new WorkspaceEdit
                     {
                         Key = "resourcesRequired",
                         Label = "Resources required",
                         Value = poam.ResourcesRequired,
-                        OnChange = v => UpdatePoamField(poamId, "resourcesRequired", v),
+                        OnChange = v => { _ = UpdatePoamFieldAsync(poamId, "resourcesRequired", v); },
                     },
                 },
             Body = ("Weakness", poam.WeaknessDescription),
@@ -2572,13 +2624,13 @@ public partial class MainWindow : FluentWindow
                         Label = "Cancel POA&M",
                         Confirm = true,
                         Danger = true,
-                        OnSelect = () => CancelPoam(poamId),
+                        OnSelect = () => { _ = CancelPoamAsync(poamId); },
                     },
                 },
         };
 
         _shellRegistry.OpenContextual(
-            new TrailEntry("poam", poam.PoamId, poam.Title, () => OpenPoamRecord(poamId)),
+            new TrailEntry("poam", poam.PoamId, poam.Title, () => { _ = OpenPoamRecordAsync(poamId); }),
             new ContextualTabSpec
             {
                 Id = "poam",
@@ -2606,25 +2658,29 @@ public partial class MainWindow : FluentWindow
     /// re-open the record from the server's real, current state (never an optimistic local
     /// mutation) so a 409 (already cancelled/completed underneath the operator) surfaces
     /// honestly instead of silently "succeeding" in the UI.</summary>
-    private void UpdatePoamField(string poamId, string key, string value)
+    private async System.Threading.Tasks.Task UpdatePoamFieldAsync(string poamId, string key, string value)
     {
         try
         {
-            _poamsService.UpdatePoamAsync(poamId, new System.Collections.Generic.Dictionary<string, object?> { [key] = value }).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the update PATCH returned.
+            await _poamsService.UpdatePoamAsync(poamId, new System.Collections.Generic.Dictionary<string, object?> { [key] = value }).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
             ShowDocument(ConsolePanel);
             ConsolePanel.AppendExternal($"[POA&M] Update failed: {ex.Message}");
         }
-        OpenPoamRecord(poamId);
+        await OpenPoamRecordAsync(poamId).ConfigureAwait(true);
     }
 
-    private void CancelPoam(string poamId)
+    private async System.Threading.Tasks.Task CancelPoamAsync(string poamId)
     {
         try
         {
-            var result = _poamsService.CancelPoamAsync(poamId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the cancel POST returned.
+            var result = await _poamsService.CancelPoamAsync(poamId).ConfigureAwait(true);
             ShowDocument(ConsolePanel);
             ConsolePanel.AppendExternal($"[POA&M] {result.Message}");
         }
@@ -2633,7 +2689,7 @@ public partial class MainWindow : FluentWindow
             ShowDocument(ConsolePanel);
             ConsolePanel.AppendExternal($"[POA&M] Cancel failed: {ex.Message}");
         }
-        OpenPoamRecord(poamId);
+        await OpenPoamRecordAsync(poamId).ConfigureAwait(true);
     }
 
     /// <summary>Home-tab "New POA&amp;M" — real POST against the active tenant. Same gallery-less
@@ -2697,7 +2753,7 @@ public partial class MainWindow : FluentWindow
                 {
                     Label = "Create POA&M",
                     Confirm = true,
-                    OnSelect = () => SubmitCreatePoam(tenant, fields),
+                    OnSelect = () => { _ = SubmitCreatePoamAsync(tenant, fields); },
                 },
             },
         };
@@ -2709,7 +2765,7 @@ public partial class MainWindow : FluentWindow
     /// requires non-empty (title, weaknessDescription, a valid YYYY-MM-DD
     /// scheduledCompletionDate, interimCompensatingControl, resourcesRequired) client-side
     /// before sending, same discipline <see cref="SubmitAdHocHours"/> already applies.</summary>
-    private void SubmitCreatePoam(Tenant tenant, System.Collections.Generic.Dictionary<string, string> fields)
+    private async System.Threading.Tasks.Task SubmitCreatePoamAsync(Tenant tenant, System.Collections.Generic.Dictionary<string, string> fields)
     {
         var dateOk = System.Text.RegularExpressions.Regex.IsMatch(fields["scheduledCompletionDate"], @"^\d{4}-\d{2}-\d{2}$");
         string? missing = string.IsNullOrWhiteSpace(fields["title"]) ? "Title"
@@ -2731,7 +2787,9 @@ public partial class MainWindow : FluentWindow
 
         try
         {
-            var result = _poamsService.CreatePoamAsync(
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the create POST returned.
+            var result = await _poamsService.CreatePoamAsync(
                 tenant.TenantGuid,
                 tenant.Name,
                 fields["primaryDomain"],
@@ -2740,10 +2798,10 @@ public partial class MainWindow : FluentWindow
                 fields["scheduledCompletionDate"],
                 fields["interimCompensatingControl"],
                 fields["resourcesRequired"],
-                fields["status"]).GetAwaiter().GetResult();
+                fields["status"]).ConfigureAwait(true);
 
             ConsolePanel.AppendExternal($"[POA&M] {result.Message} · {result.PoamId}");
-            OpenPoamRecord(result.PoamId);
+            await OpenPoamRecordAsync(result.PoamId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -2782,7 +2840,7 @@ public partial class MainWindow : FluentWindow
                 {
                     Label = "Add Milestone",
                     Confirm = true,
-                    OnSelect = () => SubmitCreateMilestone(poamId, fields),
+                    OnSelect = () => { _ = SubmitCreateMilestoneAsync(poamId, fields); },
                 },
             },
         };
@@ -2790,7 +2848,7 @@ public partial class MainWindow : FluentWindow
         _shellRegistry.OpenRecord(spec);
     }
 
-    private void SubmitCreateMilestone(string poamId, System.Collections.Generic.Dictionary<string, string> fields)
+    private async System.Threading.Tasks.Task SubmitCreateMilestoneAsync(string poamId, System.Collections.Generic.Dictionary<string, string> fields)
     {
         var dateOk = System.Text.RegularExpressions.Regex.IsMatch(fields["dueDate"], @"^\d{4}-\d{2}-\d{2}$");
         string? missing = string.IsNullOrWhiteSpace(fields["title"]) ? "Title"
@@ -2806,7 +2864,9 @@ public partial class MainWindow : FluentWindow
 
         try
         {
-            var result = _poamsService.CreateMilestoneAsync(poamId, fields["title"], Nullify(fields["description"]), fields["dueDate"]).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the add-milestone POST returned.
+            var result = await _poamsService.CreateMilestoneAsync(poamId, fields["title"], Nullify(fields["description"]), fields["dueDate"]).ConfigureAwait(true);
             ShowDocument(ConsolePanel);
             ConsolePanel.AppendExternal($"[POA&M] {result.Message} · milestone #{result.Id}");
         }
@@ -2816,7 +2876,7 @@ public partial class MainWindow : FluentWindow
             ConsolePanel.AppendExternal($"[POA&M] Add milestone failed: {ex.Message}");
         }
 
-        OpenPoamRecord(poamId);
+        await OpenPoamRecordAsync(poamId).ConfigureAwait(true);
     }
 
     /// <summary>Real milestone detail — write-through Edits + Mark Complete while
@@ -2848,21 +2908,21 @@ public partial class MainWindow : FluentWindow
                         Key = "title",
                         Label = "Title",
                         Value = milestone.Title,
-                        OnChange = v => UpdateMilestoneField(poamId, milestone.Id, "title", v),
+                        OnChange = v => { _ = UpdateMilestoneFieldAsync(poamId, milestone.Id, "title", v); },
                     },
                     new WorkspaceEdit
                     {
                         Key = "description",
                         Label = "Description",
                         Value = milestone.Description ?? string.Empty,
-                        OnChange = v => UpdateMilestoneField(poamId, milestone.Id, "description", v),
+                        OnChange = v => { _ = UpdateMilestoneFieldAsync(poamId, milestone.Id, "description", v); },
                     },
                     new WorkspaceEdit
                     {
                         Key = "dueDate",
                         Label = "Due (YYYY-MM-DD)",
                         Value = milestone.DueDate,
-                        OnChange = v => UpdateMilestoneField(poamId, milestone.Id, "dueDate", v),
+                        OnChange = v => { _ = UpdateMilestoneFieldAsync(poamId, milestone.Id, "dueDate", v); },
                     },
                 }
                 : new System.Collections.Generic.List<WorkspaceEdit>(),
@@ -2874,7 +2934,7 @@ public partial class MainWindow : FluentWindow
                     Label = "Delete",
                     Confirm = true,
                     Danger = true,
-                    OnSelect = () => DeleteMilestone(poamId, milestone.Id),
+                    OnSelect = () => { _ = DeleteMilestoneAsync(poamId, milestone.Id); },
                 },
             },
         };
@@ -2885,32 +2945,36 @@ public partial class MainWindow : FluentWindow
             {
                 Label = "Mark Complete",
                 Confirm = true,
-                OnSelect = () => MarkMilestoneComplete(poamId, milestone.Id),
+                OnSelect = () => { _ = MarkMilestoneCompleteAsync(poamId, milestone.Id); },
             });
         }
 
         _shellRegistry.OpenRecord(spec);
     }
 
-    private void UpdateMilestoneField(string poamId, int milestoneId, string key, string value)
+    private async System.Threading.Tasks.Task UpdateMilestoneFieldAsync(string poamId, int milestoneId, string key, string value)
     {
         try
         {
-            _poamsService.UpdateMilestoneAsync(poamId, milestoneId, new System.Collections.Generic.Dictionary<string, object?> { [key] = value }).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the update PATCH returned.
+            await _poamsService.UpdateMilestoneAsync(poamId, milestoneId, new System.Collections.Generic.Dictionary<string, object?> { [key] = value }).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
             ShowDocument(ConsolePanel);
             ConsolePanel.AppendExternal($"[POA&M] Milestone update failed: {ex.Message}");
         }
-        OpenPoamRecord(poamId);
+        await OpenPoamRecordAsync(poamId).ConfigureAwait(true);
     }
 
-    private void MarkMilestoneComplete(string poamId, int milestoneId)
+    private async System.Threading.Tasks.Task MarkMilestoneCompleteAsync(string poamId, int milestoneId)
     {
         try
         {
-            var result = _poamsService.UpdateMilestoneAsync(poamId, milestoneId, new System.Collections.Generic.Dictionary<string, object?> { ["status"] = "completed" }).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the update PATCH returned.
+            var result = await _poamsService.UpdateMilestoneAsync(poamId, milestoneId, new System.Collections.Generic.Dictionary<string, object?> { ["status"] = "completed" }).ConfigureAwait(true);
             ShowDocument(ConsolePanel);
             ConsolePanel.AppendExternal($"[POA&M] {result.Message}");
         }
@@ -2919,14 +2983,16 @@ public partial class MainWindow : FluentWindow
             ShowDocument(ConsolePanel);
             ConsolePanel.AppendExternal($"[POA&M] Mark complete failed: {ex.Message}");
         }
-        OpenPoamRecord(poamId);
+        await OpenPoamRecordAsync(poamId).ConfigureAwait(true);
     }
 
-    private void DeleteMilestone(string poamId, int milestoneId)
+    private async System.Threading.Tasks.Task DeleteMilestoneAsync(string poamId, int milestoneId)
     {
         try
         {
-            var result = _poamsService.DeleteMilestoneAsync(poamId, milestoneId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the delete DELETE returned.
+            var result = await _poamsService.DeleteMilestoneAsync(poamId, milestoneId).ConfigureAwait(true);
             ShowDocument(ConsolePanel);
             ConsolePanel.AppendExternal($"[POA&M] {result.Message}");
         }
@@ -2935,7 +3001,7 @@ public partial class MainWindow : FluentWindow
             ShowDocument(ConsolePanel);
             ConsolePanel.AppendExternal($"[POA&M] Delete failed: {ex.Message}");
         }
-        OpenPoamRecord(poamId);
+        await OpenPoamRecordAsync(poamId).ConfigureAwait(true);
     }
 
     /// <summary>#3482's PIR-filing checklist item: real executions for this change
@@ -2943,7 +3009,7 @@ public partial class MainWindow : FluentWindow
     /// PIR on file yet (GET /msp/change-control/pirs?changeRequestId=) — a PIR attaches to a
     /// specific execution and the server 409s a second one against an already-reviewed
     /// execution, so this never offers to re-file one.</summary>
-    private void OpenPirPickExecutionRecord(ChangeRequest cr)
+    private async System.Threading.Tasks.Task OpenPirPickExecutionRecordAsync(ChangeRequest cr)
     {
         var numericId = cr.NumericId;
         if (numericId == null) return;
@@ -2952,8 +3018,10 @@ public partial class MainWindow : FluentWindow
         System.Collections.Generic.IReadOnlyList<ChangeRequestPir> pirs;
         try
         {
-            executions = _changeControlService.GetExecutionsForChangeAsync(numericId.Value).GetAwaiter().GetResult();
-            pirs = _changeControlService.GetPirsForChangeAsync(numericId.Value).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until both requests returned.
+            executions = await _changeControlService.GetExecutionsForChangeAsync(numericId.Value).ConfigureAwait(true);
+            pirs = await _changeControlService.GetPirsForChangeAsync(numericId.Value).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -3031,7 +3099,11 @@ public partial class MainWindow : FluentWindow
                 {
                     Label = "Submit Review",
                     Confirm = true,
-                    OnSelect = () =>
+                    // #3564 — async lambda assigned directly to the Action-typed OnSelect (same
+                    // guarded async-void-event-handler idiom as OnCurrentTenantChanged): awaited,
+                    // not .GetAwaiter().GetResult(), so filing the review no longer freezes the
+                    // ribbon until the PIR POST returns.
+                    OnSelect = async () =>
                     {
                         if (string.IsNullOrWhiteSpace(fields["summary"]))
                         {
@@ -3043,9 +3115,9 @@ public partial class MainWindow : FluentWindow
                         ConsolePanel.AppendExternal($"[PIR] Filing review for execution #{execution.Id}…");
                         try
                         {
-                            var pir = _changeControlService
+                            var pir = await _changeControlService
                                 .RecordPirAsync(execution.Id, fields["closeCode"], fields["summary"], Nullify(fields["issuesNoted"]))
-                                .GetAwaiter().GetResult();
+                                .ConfigureAwait(true);
                             ConsolePanel.AppendExternal($"[PIR] Recorded #{pir.Id} · {pir.CloseCode} · drift rescan: {pir.DriftRescan.Status}");
                         }
                         catch (ChangeControlException ex)
@@ -3066,12 +3138,14 @@ public partial class MainWindow : FluentWindow
 
     /// <summary>Real rows from GET /api/msp/change-control/cab/meetings — every CAB/ECAB
     /// meeting for this MSP, each already carrying its own agenda summary.</summary>
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildCabMeetingRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildCabMeetingRowsAsync()
     {
         System.Collections.Generic.IReadOnlyList<CabMeeting> meetings;
         try
         {
-            meetings = _cabService.GetMeetingsAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the CAB meetings call is in flight.
+            meetings = await _cabService.GetMeetingsAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -3084,7 +3158,7 @@ public partial class MainWindow : FluentWindow
             Tile = m.MeetingType.ToUpperInvariant(),
             Name = $"{(m.MeetingType == "ecab" ? "ECAB" : "CAB")} · {m.ScheduledFor:yyyy-MM-dd HH:mm}",
             Sub = $"{m.Status} · {m.AgendaSummary.Total} item(s), {m.AgendaSummary.Undecided} undecided",
-            OnSelect = () => OpenCabMeetingRecord(m.Id),
+            OnSelect = () => { _ = OpenCabMeetingRecordAsync(m.Id); },
         }).ToList();
     }
 
@@ -3092,13 +3166,15 @@ public partial class MainWindow : FluentWindow
     /// each row a real change with its recommendation, plus the meeting lifecycle actions
     /// (start/close/cancel) gated on the same rules the server itself enforces
     /// (`isMeetingOpen`, `canCloseMeeting`).</summary>
-    private void OpenCabMeetingRecord(int meetingId)
+    private async System.Threading.Tasks.Task OpenCabMeetingRecordAsync(int meetingId)
     {
         CabMeeting meeting;
         System.Collections.Generic.IReadOnlyList<CabAgendaItem> agenda;
         try
         {
-            (meeting, agenda) = _cabService.GetMeetingAsync(meetingId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the request returned.
+            (meeting, agenda) = await _cabService.GetMeetingAsync(meetingId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -3129,7 +3205,9 @@ public partial class MainWindow : FluentWindow
             {
                 Label = "Start Meeting",
                 Confirm = true,
-                OnSelect = () => { _ = _cabService.StartMeetingAsync(meeting.Id).GetAwaiter().GetResult(); OpenCabMeetingRecord(meeting.Id); },
+                // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on
+                // the UI thread and froze the ribbon until the start POST returned.
+                OnSelect = async () => { await _cabService.StartMeetingAsync(meeting.Id).ConfigureAwait(true); await OpenCabMeetingRecordAsync(meeting.Id).ConfigureAwait(true); },
             });
         }
         if (meeting.IsOpen)
@@ -3139,11 +3217,11 @@ public partial class MainWindow : FluentWindow
             {
                 Label = canClose ? "Close Meeting" : "Close Meeting (undecided items remain)",
                 Confirm = canClose,
-                OnSelect = () =>
+                OnSelect = async () =>
                 {
                     if (!canClose) return;
-                    _ = _cabService.CloseMeetingAsync(meeting.Id).GetAwaiter().GetResult();
-                    OpenCabMeetingRecord(meeting.Id);
+                    await _cabService.CloseMeetingAsync(meeting.Id).ConfigureAwait(true);
+                    await OpenCabMeetingRecordAsync(meeting.Id).ConfigureAwait(true);
                 },
             });
             actions.Add(new WorkspaceAction
@@ -3151,12 +3229,12 @@ public partial class MainWindow : FluentWindow
                 Label = "Cancel Meeting",
                 Confirm = true,
                 Danger = true,
-                OnSelect = () => { _ = _cabService.CancelMeetingAsync(meeting.Id).GetAwaiter().GetResult(); OpenCabMeetingRecord(meeting.Id); },
+                OnSelect = async () => { await _cabService.CancelMeetingAsync(meeting.Id).ConfigureAwait(true); await OpenCabMeetingRecordAsync(meeting.Id).ConfigureAwait(true); },
             });
         }
 
         _shellRegistry.OpenContextual(
-            new TrailEntry("cab-meeting", meeting.Id.ToString(), $"CAB #{meeting.Id}", () => OpenCabMeetingRecord(meeting.Id)),
+            new TrailEntry("cab-meeting", meeting.Id.ToString(), $"CAB #{meeting.Id}", () => { _ = OpenCabMeetingRecordAsync(meeting.Id); }),
             new ContextualTabSpec
             {
                 Id = "cab-meeting",
@@ -3177,7 +3255,7 @@ public partial class MainWindow : FluentWindow
                                 {
                                     Title = "Eligible Changes",
                                     Searchable = true,
-                                    GetRows = () => BuildCabEligibleChangeRows(meeting),
+                                    GetRowsAsync = () => BuildCabEligibleChangeRowsAsync(meeting),
                                 },
                                 OnSelect = () => { },
                             },
@@ -3207,12 +3285,14 @@ public partial class MainWindow : FluentWindow
         });
     }
 
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildCabEligibleChangeRows(CabMeeting meeting)
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildCabEligibleChangeRowsAsync(CabMeeting meeting)
     {
         System.Collections.Generic.IReadOnlyList<CabEligibleChange> eligible;
         try
         {
-            eligible = _cabService.GetEligibleChangesAsync(meeting.Id).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the eligible-changes call is in flight.
+            eligible = await _cabService.GetEligibleChangesAsync(meeting.Id).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -3225,10 +3305,12 @@ public partial class MainWindow : FluentWindow
             Tile = c.RiskLevel.Length >= 2 ? c.RiskLevel[..2].ToUpperInvariant() : c.RiskLevel.ToUpperInvariant(),
             Name = $"{c.Code} — {c.Title}",
             Sub = c.TenantId,
-            OnSelect = () =>
+            // #3564 — async lambda assigned directly to the Action-typed OnSelect: awaited, not
+            // .GetAwaiter().GetResult(), so adding an agenda item no longer freezes the ribbon.
+            OnSelect = async () =>
             {
-                _cabService.AddAgendaItemAsync(meeting.Id, c.Id).GetAwaiter().GetResult();
-                OpenCabMeetingRecord(meeting.Id);
+                await _cabService.AddAgendaItemAsync(meeting.Id, c.Id).ConfigureAwait(true);
+                await OpenCabMeetingRecordAsync(meeting.Id).ConfigureAwait(true);
             },
         }).ToList();
     }
@@ -3253,20 +3335,22 @@ public partial class MainWindow : FluentWindow
             {
                 Label = "Approve",
                 Confirm = true,
-                OnSelect = () => { _cabService.RecordDecisionAsync(item.Id, "approve").GetAwaiter().GetResult(); OpenCabMeetingRecord(meeting.Id); },
+                // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on
+                // the UI thread and froze the ribbon until the decision POST returned.
+                OnSelect = async () => { await _cabService.RecordDecisionAsync(item.Id, "approve").ConfigureAwait(true); await OpenCabMeetingRecordAsync(meeting.Id).ConfigureAwait(true); },
             });
             actions.Add(new WorkspaceAction
             {
                 Label = "Reject",
                 Confirm = true,
                 Danger = true,
-                OnSelect = () => { _cabService.RecordDecisionAsync(item.Id, "reject").GetAwaiter().GetResult(); OpenCabMeetingRecord(meeting.Id); },
+                OnSelect = async () => { await _cabService.RecordDecisionAsync(item.Id, "reject").ConfigureAwait(true); await OpenCabMeetingRecordAsync(meeting.Id).ConfigureAwait(true); },
             });
             actions.Add(new WorkspaceAction
             {
                 Label = "Defer",
                 Confirm = true,
-                OnSelect = () => { _cabService.DeferAgendaItemAsync(item.Id, null).GetAwaiter().GetResult(); OpenCabMeetingRecord(meeting.Id); },
+                OnSelect = async () => { await _cabService.DeferAgendaItemAsync(item.Id, null).ConfigureAwait(true); await OpenCabMeetingRecordAsync(meeting.Id).ConfigureAwait(true); },
             });
         }
 
@@ -3323,7 +3407,9 @@ public partial class MainWindow : FluentWindow
                 {
                     Label = "Schedule",
                     Confirm = true,
-                    OnSelect = () =>
+                    // #3564 — async lambda assigned directly to the Action-typed OnSelect: awaited,
+                    // not .GetAwaiter().GetResult(), so scheduling no longer freezes the ribbon.
+                    OnSelect = async () =>
                     {
                         if (!DateTimeOffset.TryParse(fields["scheduledFor"], System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var scheduledFor))
                         {
@@ -3333,10 +3419,10 @@ public partial class MainWindow : FluentWindow
                         }
                         try
                         {
-                            var meeting = _cabService
+                            var meeting = await _cabService
                                 .ScheduleMeetingAsync(fields["meetingType"], scheduledFor, fields["chairName"], fields["location"], fields["notes"])
-                                .GetAwaiter().GetResult();
-                            OpenCabMeetingRecord(meeting.Id);
+                                .ConfigureAwait(true);
+                            await OpenCabMeetingRecordAsync(meeting.Id).ConfigureAwait(true);
                         }
                         catch (Exception ex)
                         {
@@ -3404,7 +3490,7 @@ public partial class MainWindow : FluentWindow
                 {
                     Label = "Log Hours",
                     Confirm = true,
-                    OnSelect = () => SubmitAdHocHours(customerId, fields),
+                    OnSelect = () => { _ = SubmitAdHocHoursAsync(customerId, fields); },
                 },
             },
         };
@@ -3416,7 +3502,7 @@ public partial class MainWindow : FluentWindow
     /// own `unscopedSchema`: non-empty item, non-negative hours) and reports the real result to
     /// the Console pane, the same feedback channel <see cref="RunScriptLibraryAction"/> already
     /// uses for a real POST's outcome.</summary>
-    private void SubmitAdHocHours(int customerId, System.Collections.Generic.Dictionary<string, string> fields)
+    private async System.Threading.Tasks.Task SubmitAdHocHoursAsync(int customerId, System.Collections.Generic.Dictionary<string, string> fields)
     {
         var item = fields["item"];
         if (string.IsNullOrWhiteSpace(item))
@@ -3438,7 +3524,9 @@ public partial class MainWindow : FluentWindow
 
         try
         {
-            var entry = _adminRetainerService
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the log POST returned.
+            var entry = await _adminRetainerService
                 .LogUnscopedHoursAsync(
                     customerId,
                     item,
@@ -3446,7 +3534,7 @@ public partial class MainWindow : FluentWindow
                     Nullify(fields["pillar"]),
                     Nullify(fields["finding"]),
                     Nullify(fields["outcome"]))
-                .GetAwaiter().GetResult();
+                .ConfigureAwait(true);
 
             ConsolePanel.AppendExternal($"[Retainer Hours] Logged entry #{entry.Id} · {entry.Hours}h · {entry.State}");
         }
@@ -3579,14 +3667,17 @@ public partial class MainWindow : FluentWindow
                 Label = "Status",
                 Value = currentLabel,
                 Options = catalogue.AssignableStatuses.Select(s => s.Label).ToList(),
-                OnChange = newLabel =>
+                // #3564 — async lambda assigned directly to the Action<string>-typed OnChange:
+                // awaited, not .GetAwaiter().GetResult(), so a status change no longer freezes
+                // the ribbon until the update PUT returns.
+                OnChange = async newLabel =>
                 {
                     var target = catalogue.AssignableStatuses.FirstOrDefault(s => s.Label == newLabel);
                     if (target == null) return;
 
                     try
                     {
-                        var updated = _remediationTrackerService.SetStepStatusAsync(customerId, step.StepId, target.Status).GetAwaiter().GetResult();
+                        var updated = await _remediationTrackerService.SetStepStatusAsync(customerId, step.StepId, target.Status).ConfigureAwait(true);
                         step.Status = updated.Status;
                         step.StatusLabel = catalogue.StatusLabels.TryGetValue(updated.Status, out var lbl) ? lbl : updated.Status;
                         step.CompletedAt = updated.CompletedAt;
@@ -3625,11 +3716,13 @@ public partial class MainWindow : FluentWindow
             Key = "note",
             Label = "Session Note",
             Value = step.Note ?? string.Empty,
-            OnChange = newValue =>
+            // #3564 — async lambda assigned directly to the Action<string>-typed OnChange: awaited,
+            // not .GetAwaiter().GetResult(), so saving a note no longer freezes the ribbon.
+            OnChange = async newValue =>
             {
                 try
                 {
-                    var updated = _remediationTrackerService.SetStepNoteAsync(customerId, step.StepId, newValue).GetAwaiter().GetResult();
+                    var updated = await _remediationTrackerService.SetStepNoteAsync(customerId, step.StepId, newValue).ConfigureAwait(true);
                     step.Note = updated.Note;
                 }
                 catch (RemediationTrackerException)
@@ -3824,7 +3917,7 @@ public partial class MainWindow : FluentWindow
     /// <summary>Left panel's "Check" button — resolves the real customer scope (same gap
     /// <see cref="TryResolveLaunchControlScope"/> already documents honestly) and reports the
     /// real classification back, or the real reason none could be checked.</summary>
-    private void RunVipLookup(string upn)
+    private async System.Threading.Tasks.Task RunVipLookupAsync(string upn)
     {
         if (!TryResolveLaunchControlScope(out _, out var customerId))
         {
@@ -3837,7 +3930,7 @@ public partial class MainWindow : FluentWindow
 
         try
         {
-            var classification = FindVipClassification(customerId, upn);
+            var classification = await FindVipClassificationAsync(customerId, upn).ConfigureAwait(true);
             if (classification == null)
             {
                 LeftReferencePanelControl.ShowVipLookupResult(upn, null, "No classification on record.");
@@ -3862,9 +3955,11 @@ public partial class MainWindow : FluentWindow
     /// <summary>Real GET against `msp-vip-classifications`, matched by UPN case-insensitively —
     /// the endpoint has no by-UPN filter, so this fetches the customer's real list and finds the
     /// row client-side rather than inventing a query param the route doesn't support.</summary>
-    private VipClassification? FindVipClassification(int customerId, string upn)
+    private async System.Threading.Tasks.Task<VipClassification?> FindVipClassificationAsync(int customerId, string upn)
     {
-        var classifications = _vipClassificationsService.GetClassificationsAsync(customerId).GetAwaiter().GetResult();
+        // #3564 — awaited, not .GetAwaiter().GetResult(): this ran directly on the UI thread and
+        // froze the ribbon on every VIP lookup / pre-execute check.
+        var classifications = await _vipClassificationsService.GetClassificationsAsync(customerId).ConfigureAwait(true);
         return classifications.FirstOrDefault(c => string.Equals(c.PrincipalUpn, upn, StringComparison.OrdinalIgnoreCase));
     }
 
@@ -3887,7 +3982,7 @@ public partial class MainWindow : FluentWindow
     /// UI_RULES.md §4) once a real MSP+customer id pair is resolvable. Today it never is
     /// (#3501) — this states that honestly instead of guessing an id, which would be inventing
     /// data.</summary>
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildScriptLibraryRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildScriptLibraryRowsAsync()
     {
         if (!TryResolveLaunchControlScope(out var mspId, out var customerId))
         {
@@ -3905,7 +4000,9 @@ public partial class MainWindow : FluentWindow
         LaunchControlCatalog catalog;
         try
         {
-            catalog = _launchControlActionsService.GetActionsAsync(mspId, customerId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the catalog call is in flight.
+            catalog = await _launchControlActionsService.GetActionsAsync(mspId, customerId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -3984,7 +4081,7 @@ public partial class MainWindow : FluentWindow
                 {
                     Label = "Run",
                     Confirm = true,
-                    OnSelect = () => RunScriptLibraryAction(action, mspId, customerId, variableValues),
+                    OnSelect = () => { _ = RunScriptLibraryActionAsync(action, mspId, customerId, variableValues); },
                 },
             },
         };
@@ -4022,7 +4119,7 @@ public partial class MainWindow : FluentWindow
     /// same place a typed command's output lands. The execute route runs server-side, not
     /// through the hosted runspace, so this reports via <see cref="ConsolePanelView.AppendExternal"/>
     /// rather than feeding PowerShell text into <see cref="IPowerShellConsoleService"/>.</summary>
-    private void RunScriptLibraryAction(
+    private async System.Threading.Tasks.Task RunScriptLibraryActionAsync(
         LaunchControlAction action,
         int mspId,
         int customerId,
@@ -4030,13 +4127,15 @@ public partial class MainWindow : FluentWindow
     {
         ShowDocument(ConsolePanel);
         ConsolePanel.AppendExternal($"[Script Library] Running \"{action.ActionName}\" against customer {customerId}…");
-        SurfaceVipStatusBeforeExecute(customerId, variableValues);
+        await SurfaceVipStatusBeforeExecuteAsync(customerId, variableValues).ConfigureAwait(true);
 
         try
         {
-            var response = _launchControlActionsService
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the execute POST returned.
+            var response = await _launchControlActionsService
                 .ExecuteAsync(mspId, action.Id, customerId, variableValues)
-                .GetAwaiter().GetResult();
+                .ConfigureAwait(true);
 
             var result = response.Result;
             ConsolePanel.AppendExternal(
@@ -4070,7 +4169,7 @@ public partial class MainWindow : FluentWindow
     /// principal" flag, so this is the same real signal a human reads off the value itself. This
     /// surfaces information; it does not block the run — the issue's own wording is "surface,"
     /// not "gate."</summary>
-    private void SurfaceVipStatusBeforeExecute(int customerId, System.Collections.Generic.Dictionary<string, string> variableValues)
+    private async System.Threading.Tasks.Task SurfaceVipStatusBeforeExecuteAsync(int customerId, System.Collections.Generic.Dictionary<string, string> variableValues)
     {
         var candidateUpns = variableValues.Values
             .Where(v => !string.IsNullOrWhiteSpace(v) && v.Contains('@'))
@@ -4092,7 +4191,7 @@ public partial class MainWindow : FluentWindow
         {
             try
             {
-                var classification = FindVipClassification(customerId, upn);
+                var classification = await FindVipClassificationAsync(customerId, upn).ConfigureAwait(true);
                 if (classification == null)
                 {
                     ConsolePanel.AppendExternal($"[VIP Check] {upn}: no classification on record.");
@@ -4121,11 +4220,13 @@ public partial class MainWindow : FluentWindow
     /// renders at shell startup, before <see cref="ApplyAuthStateAsync"/> has run) or a transient
     /// network failure reads as "0 open" rather than crashing ribbon render — the gallery itself
     /// (<see cref="BuildAlertRows"/>) is where a real failure is surfaced honestly.</summary>
-    private int GetOpenAlertsCount()
+    private async System.Threading.Tasks.Task<int> GetOpenAlertsCountAsync()
     {
         try
         {
-            return _alertsService.GetAlertsAsync().GetAwaiter().GetResult().Total;
+            // #3564 — awaited, not .GetAwaiter().GetResult(): a LiveCount recompute fires on every
+            // fixed-tab render; blocking here froze the whole ribbon.
+            return (await _alertsService.GetAlertsAsync().ConfigureAwait(true)).Total;
         }
         catch
         {
@@ -4137,12 +4238,14 @@ public partial class MainWindow : FluentWindow
     /// cross-tenant alert, severity-ranked then most-recent-first exactly as the server returns
     /// them (no client-side re-sort). Deliberately not filtered to the active tenant — a
     /// cross-tenant feed is the entire point (UI_RULES.md §2: "the one 'what needs me' surface").</summary>
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildAlertRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildAlertRowsAsync()
     {
         AlertsPayload payload;
         try
         {
-            payload = _alertsService.GetAlertsAsync().GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the alerts call is in flight.
+            payload = await _alertsService.GetAlertsAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -4236,7 +4339,7 @@ public partial class MainWindow : FluentWindow
             {
                 Label = "Acknowledge",
                 Confirm = true,
-                OnSelect = () => AcknowledgeAlert(alert),
+                OnSelect = () => { _ = AcknowledgeAlertAsync(alert); },
             });
         }
 
@@ -4267,11 +4370,13 @@ public partial class MainWindow : FluentWindow
     /// that's now gone. A real failure (already resolved is idempotent success server-side; a
     /// genuine 400/404/500 is not) leaves the workspace open so the operator can see why and
     /// retry.</summary>
-    private void AcknowledgeAlert(CrossTenantAlert alert)
+    private async System.Threading.Tasks.Task AcknowledgeAlertAsync(CrossTenantAlert alert)
     {
         try
         {
-            var result = _alertsService.AcknowledgeAlertAsync(alert.Id).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the acknowledge POST returned.
+            var result = await _alertsService.AcknowledgeAlertAsync(alert.Id).ConfigureAwait(true);
             ShowDocument(ConsolePanel);
             ConsolePanel.AppendExternal($"[Alerts] Acknowledged \"{alert.Title}\" — now {result.Status}.");
         }
@@ -4300,7 +4405,7 @@ public partial class MainWindow : FluentWindow
     /// scope gap <see cref="TryResolveLaunchControlScope"/> already states honestly. Tile
     /// carries the current cycle's completion percentage — the closest equivalent to Script
     /// Library's destructive-vs-read-only tile UI_RULES.md §4 asks for.</summary>
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildRunbookRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildRunbookRowsAsync()
     {
         if (!TryResolveLaunchControlScope(out var mspId, out var customerId))
         {
@@ -4313,7 +4418,9 @@ public partial class MainWindow : FluentWindow
         RunbooksPayload payload;
         try
         {
-            payload = _runbooksService.GetRunbooksAsync(mspId, customerId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the runbooks call is in flight.
+            payload = await _runbooksService.GetRunbooksAsync(mspId, customerId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -4343,7 +4450,7 @@ public partial class MainWindow : FluentWindow
     /// list (#3479) — every active hold window for the customer, not just the one gating a
     /// runbook's current cycle. Shares <see cref="IRunbooksService"/>'s short-TTL cache, so
     /// browsing this gallery right after Runbooks' own doesn't force a second real GET.</summary>
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildHoldWindowRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildHoldWindowRowsAsync()
     {
         if (!TryResolveLaunchControlScope(out var mspId, out var customerId))
         {
@@ -4356,7 +4463,9 @@ public partial class MainWindow : FluentWindow
         RunbooksPayload payload;
         try
         {
-            payload = _runbooksService.GetRunbooksAsync(mspId, customerId).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the runbooks call is in flight.
+            payload = await _runbooksService.GetRunbooksAsync(mspId, customerId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -4375,7 +4484,7 @@ public partial class MainWindow : FluentWindow
                 Tile = hold.Badge,
                 Name = hold.Title,
                 Sub = $"{hold.State} · {hold.Pillar} · {hold.TMinus}",
-                OnSelect = () => OpenHoldWindowRecord(hold, mspId, customerId),
+                OnSelect = () => { _ = OpenHoldWindowRecordAsync(hold, mspId, customerId); },
             })
             .ToList();
     }
@@ -4392,7 +4501,7 @@ public partial class MainWindow : FluentWindow
             .Select(step => new WorkspaceAction
             {
                 Label = (step.Checked ? "☑ " : "☐ ") + $"{step.Position}. {step.Text}",
-                OnSelect = () => ToggleRunbookStep(rb, mspId, customerId, step),
+                OnSelect = () => { _ = ToggleRunbookStepAsync(rb, mspId, customerId, step); },
             })
             .ToList();
 
@@ -4402,7 +4511,7 @@ public partial class MainWindow : FluentWindow
             actions.Add(new WorkspaceAction
             {
                 Label = $"Open Hold Window — {hold.Title}",
-                OnSelect = () => OpenHoldWindowRecord(hold, mspId, customerId),
+                OnSelect = () => { _ = OpenHoldWindowRecordAsync(hold, mspId, customerId); },
             });
         }
 
@@ -4470,7 +4579,7 @@ public partial class MainWindow : FluentWindow
     /// is its own scoped change, not something to fold into #3540's TenantService fix. Document
     /// Hub still browses the caller's whole book here; narrowing it to the selected tenant is a
     /// real, separate follow-up.</summary>
-    private System.Collections.Generic.IReadOnlyList<GalleryRowSpec> BuildDocumentHubRows()
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildDocumentHubRowsAsync()
     {
         if (!_authService.IsAuthenticated)
         {
@@ -4486,7 +4595,9 @@ public partial class MainWindow : FluentWindow
         DocumentHubListResponse payload;
         try
         {
-            payload = _documentHubService.GetDocumentsAsync(mspId.Value, customerId: null).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): gallery row source, must not freeze
+            // the UI thread while the documents call is in flight.
+            payload = await _documentHubService.GetDocumentsAsync(mspId.Value, customerId: null).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -4543,7 +4654,7 @@ public partial class MainWindow : FluentWindow
                 new WorkspaceAction
                 {
                     Label = "View document",
-                    OnSelect = () => ViewDocumentHubItem(doc),
+                    OnSelect = () => { _ = ViewDocumentHubItemAsync(doc); },
                 },
             },
             Body = canDownloadOrShare
@@ -4565,13 +4676,13 @@ public partial class MainWindow : FluentWindow
             spec.Actions.Add(new WorkspaceAction
             {
                 Label = "Download PDF",
-                OnSelect = () => DownloadDocumentHubPdf(doc),
+                OnSelect = () => { _ = DownloadDocumentHubPdfAsync(doc); },
             });
             spec.Actions.Add(new WorkspaceAction
             {
                 Label = "Create & copy share link",
                 Confirm = true,
-                OnSelect = () => ShareDocumentHubItem(doc),
+                OnSelect = () => { _ = ShareDocumentHubItemAsync(doc); },
             });
         }
 
@@ -4586,13 +4697,15 @@ public partial class MainWindow : FluentWindow
     /// <summary>GET /api/msp/documents-hub/:id/view, then opens the real sandboxed-viewer HTML in
     /// the OS default browser via a temp file. Feedback goes to the Console pane, same channel
     /// <see cref="ToggleRunbookStep"/> already uses for a real side-effecting action's result.</summary>
-    private void ViewDocumentHubItem(DocumentHubItem doc)
+    private async System.Threading.Tasks.Task ViewDocumentHubItemAsync(DocumentHubItem doc)
     {
         ShowDocument(ConsolePanel);
         ConsolePanel.AppendExternal($"[Document Hub] Loading \"{doc.Title}\"…");
         try
         {
-            var view = _documentHubService.GetDocumentViewAsync(doc.Id).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the view request returned.
+            var view = await _documentHubService.GetDocumentViewAsync(doc.Id).ConfigureAwait(true);
             var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"myarchitect-doc-{doc.Id}.html");
             System.IO.File.WriteAllText(path, view.HtmlContent);
             Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
@@ -4611,13 +4724,15 @@ public partial class MainWindow : FluentWindow
     /// <summary>GET /api/msp/documents-hub/:id/pdf, then opens the real branded PDF bytes in the
     /// OS default PDF viewer via a temp file — same Process.Start pattern as
     /// <see cref="ViewDocumentHubItem"/>.</summary>
-    private void DownloadDocumentHubPdf(DocumentHubItem doc)
+    private async System.Threading.Tasks.Task DownloadDocumentHubPdfAsync(DocumentHubItem doc)
     {
         ShowDocument(ConsolePanel);
         ConsolePanel.AppendExternal($"[Document Hub] Downloading PDF for \"{doc.Title}\"…");
         try
         {
-            var bytes = _documentHubService.GetDocumentPdfAsync(doc.Id).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the PDF request returned.
+            var bytes = await _documentHubService.GetDocumentPdfAsync(doc.Id).ConfigureAwait(true);
             var safeTitle = new string(doc.Title.Where(c => char.IsLetterOrDigit(c) || c is ' ' or '_' or '-').ToArray()).Trim();
             if (safeTitle.Length == 0) safeTitle = $"document-{doc.Id}";
             var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"{safeTitle}.pdf");
@@ -4638,13 +4753,15 @@ public partial class MainWindow : FluentWindow
     /// <summary>POST /api/msp/documents-hub/:id/share, then copies the real shareUrl to the
     /// clipboard so the operator can paste it straight into an email/Teams message to the
     /// customer.</summary>
-    private void ShareDocumentHubItem(DocumentHubItem doc)
+    private async System.Threading.Tasks.Task ShareDocumentHubItemAsync(DocumentHubItem doc)
     {
         ShowDocument(ConsolePanel);
         ConsolePanel.AppendExternal($"[Document Hub] Creating share link for \"{doc.Title}\"…");
         try
         {
-            var share = _documentHubService.ShareDocumentAsync(doc.Id).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the share POST returned.
+            var share = await _documentHubService.ShareDocumentAsync(doc.Id).ConfigureAwait(true);
             try { System.Windows.Clipboard.SetText(share.ShareUrl); } catch { /* clipboard access can legitimately fail (e.g. locked by another process) — link is still logged below */ }
             ConsolePanel.AppendExternal($"[Document Hub] Share link (copied to clipboard, expires {share.ExpiresAt}): {share.ShareUrl}");
         }
@@ -4664,7 +4781,7 @@ public partial class MainWindow : FluentWindow
     /// uses, since this call also runs server-side rather than through the hosted runspace.
     /// Re-opens the record afterward against a freshly re-fetched (cache-busted by the write
     /// itself) payload, so the checkbox glyph reflects the real, just-written state.</summary>
-    private void ToggleRunbookStep(Runbook rb, int mspId, int customerId, RunbookStep step)
+    private async System.Threading.Tasks.Task ToggleRunbookStepAsync(Runbook rb, int mspId, int customerId, RunbookStep step)
     {
         ShowDocument(ConsolePanel);
         var wantChecked = !step.Checked;
@@ -4672,13 +4789,15 @@ public partial class MainWindow : FluentWindow
 
         try
         {
-            var result = _runbooksService
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until both requests returned.
+            var result = await _runbooksService
                 .SetStepCompletionAsync(mspId, customerId, rb.Id, step.Position, wantChecked)
-                .GetAwaiter().GetResult();
+                .ConfigureAwait(true);
 
             ConsolePanel.AppendExternal($"[Runbooks] Step {result.Position} now {(result.Checked ? "checked" : "unchecked")}.");
 
-            var refreshed = _runbooksService.GetRunbooksAsync(mspId, customerId).GetAwaiter().GetResult();
+            var refreshed = await _runbooksService.GetRunbooksAsync(mspId, customerId).ConfigureAwait(true);
             var reloaded = refreshed.Runbooks.FirstOrDefault(r => r.Id == rb.Id);
             if (reloaded != null) OpenRunbookRecord(reloaded, mspId, customerId);
         }
@@ -4701,14 +4820,16 @@ public partial class MainWindow : FluentWindow
     /// /api/msp/hold-windows/:holdId/events, fetched fresh every open (never cached — a stale
     /// audit trail would be worse than none, same reasoning UI_RULES.md §5 states for the
     /// command palette's <c>?</c> answers).</summary>
-    private void OpenHoldWindowRecord(HoldWindow hold, int mspId, int customerId)
+    private async System.Threading.Tasks.Task OpenHoldWindowRecordAsync(HoldWindow hold, int mspId, int customerId)
     {
         var extend = new System.Collections.Generic.Dictionary<string, string> { ["days"] = string.Empty, ["reason"] = string.Empty };
 
         HoldWindowEventsResponse? events;
         try
         {
-            events = _runbooksService.GetHoldWindowEventsAsync(mspId, customerId, hold.Id).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until the audit-trail request returned.
+            events = await _runbooksService.GetHoldWindowEventsAsync(mspId, customerId, hold.Id).ConfigureAwait(true);
         }
         catch (Exception)
         {
@@ -4759,14 +4880,14 @@ public partial class MainWindow : FluentWindow
                 {
                     Label = "Extend Hold Window",
                     Confirm = true,
-                    OnSelect = () => ExtendHoldWindow(hold, mspId, customerId, extend),
+                    OnSelect = () => { _ = ExtendHoldWindowAsync(hold, mspId, customerId, extend); },
                 },
             },
             List = ("Audit Trail", auditRows),
         };
 
         _shellRegistry.OpenContextual(
-            new TrailEntry("hold-window", spec.Id, hold.Title, () => OpenHoldWindowRecord(hold, mspId, customerId)),
+            new TrailEntry("hold-window", spec.Id, hold.Title, () => { _ = OpenHoldWindowRecordAsync(hold, mspId, customerId); }),
             new ContextualTabSpec
             {
                 Id = "hold-window",
@@ -4795,7 +4916,7 @@ public partial class MainWindow : FluentWindow
     /// reports the real result to the Console pane the same way <see cref="RunScriptLibraryAction"/>
     /// does, then reopens the hold window's own record against the freshly re-fetched (cache-busted
     /// by the write itself) payload so the extended-days fact reflects reality.</summary>
-    private void ExtendHoldWindow(HoldWindow hold, int mspId, int customerId, System.Collections.Generic.Dictionary<string, string> fields)
+    private async System.Threading.Tasks.Task ExtendHoldWindowAsync(HoldWindow hold, int mspId, int customerId, System.Collections.Generic.Dictionary<string, string> fields)
     {
         if (!int.TryParse(fields["days"], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var days) || days <= 0)
         {
@@ -4817,12 +4938,14 @@ public partial class MainWindow : FluentWindow
 
         try
         {
-            var result = _runbooksService.ExtendHoldWindowAsync(mspId, customerId, hold.Id, days, reason).GetAwaiter().GetResult();
+            // #3564 — awaited, not .GetAwaiter().GetResult(): this handler ran directly on the UI
+            // thread and froze the ribbon until both requests returned.
+            var result = await _runbooksService.ExtendHoldWindowAsync(mspId, customerId, hold.Id, days, reason).ConfigureAwait(true);
             ConsolePanel.AppendExternal($"[Runbooks] Extended — hold window now carries {result.ExtendedDays} extended day(s) total.");
 
-            var refreshed = _runbooksService.GetRunbooksAsync(mspId, customerId).GetAwaiter().GetResult();
+            var refreshed = await _runbooksService.GetRunbooksAsync(mspId, customerId).ConfigureAwait(true);
             var reloadedHold = refreshed.Holds.FirstOrDefault(h => h.Id == hold.Id);
-            if (reloadedHold != null) OpenHoldWindowRecord(reloadedHold, mspId, customerId);
+            if (reloadedHold != null) await OpenHoldWindowRecordAsync(reloadedHold, mspId, customerId).ConfigureAwait(true);
         }
         catch (RunbooksServiceException ex)
         {
@@ -4843,9 +4966,9 @@ public partial class MainWindow : FluentWindow
             new() { Id = "dest:sow", Type = PaletteType.Destination, Name = "SOW & Assessment", Sub = "Gate, SOW, Drift & Snapshot", Run = () => ShowAssessmentView() },
             new() { Id = "dest:telemetry", Type = PaletteType.Destination, Name = "Live Telemetry Console", Sub = "Engines, Drift, SOW & Feed", Run = () => ShowTelemetryView() },
             new() { Id = "dest:vault", Type = PaletteType.Destination, Name = "Credential Vault", Sub = "Per-tenant, local-only, DPAPI-encrypted (#3461)", Run = () => ShowDocument(VaultPanel) },
-            new() { Id = "dest:break-glass", Type = PaletteType.Destination, Name = "Break-Glass Requests", Sub = "Cross-tenant pending break-glass deliveries (#3480)", Run = () => OpenBreakGlassPendingList() },
-            new() { Id = "dest:support-tickets", Type = PaletteType.Destination, Name = "Support Tickets", Sub = "Every ticket under your MSP's Zoho Desk org (#3488)", Run = () => OpenSupportTicketsList() },
-            new() { Id = "dest:audit-log", Type = PaletteType.Destination, Name = "Audit Log", Sub = "Filterable platform audit trail — tenant / action type (#3489)", Run = () => OpenAuditLog(new Models.AuditLogFilter()) },
+            new() { Id = "dest:break-glass", Type = PaletteType.Destination, Name = "Break-Glass Requests", Sub = "Cross-tenant pending break-glass deliveries (#3480)", Run = () => { _ = OpenBreakGlassPendingListAsync(); } },
+            new() { Id = "dest:support-tickets", Type = PaletteType.Destination, Name = "Support Tickets", Sub = "Every ticket under your MSP's Zoho Desk org (#3488)", Run = () => { _ = OpenSupportTicketsListAsync(); } },
+            new() { Id = "dest:audit-log", Type = PaletteType.Destination, Name = "Audit Log", Sub = "Filterable platform audit trail — tenant / action type (#3489)", Run = () => { _ = OpenAuditLogAsync(new Models.AuditLogFilter()); } },
             new() { Id = "act:open-all", Type = PaletteType.Action, Name = "Open all portals", Run = () => _ = OpenAllPortalsAsync() },
             new() { Id = "ans:open-tabs", Type = PaletteType.Answer, Name = "Open portal tabs", Live = _tabs.Count.ToString(), Run = () => { } },
         };
