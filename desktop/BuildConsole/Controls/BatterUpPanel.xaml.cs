@@ -237,6 +237,7 @@ namespace BuildConsole.Controls
         /// </summary>
         private void RenderFilteredRows()
         {
+            KeyedSlotCardHost.StopOwnedAnimations(RowsList);
             RowsList.Children.Clear();
             // Cards are rebuilt fresh below — the old Border instance _selectedCard points at is
             // gone, so drop the reference (its highlight goes with it); _selectedNumber is what
@@ -438,6 +439,7 @@ namespace BuildConsole.Controls
                 if (!settings.HasGitHubPat)
                 {
                     TxtCount.Text = "";
+                    KeyedSlotCardHost.StopOwnedAnimations(RowsList);
                     RowsList.Children.Clear();
                     _allRows = new List<Services.BatterUpRow>();
                     UpdateFilterBoxVisibility();
@@ -508,6 +510,7 @@ namespace BuildConsole.Controls
 
                     Services.ActivityLog.Log("batter-up", $"Refresh failed: {ex.Message}");
                     TxtCount.Text = "";
+                    KeyedSlotCardHost.StopOwnedAnimations(RowsList);
                     RowsList.Children.Clear();
                     _allRows = new List<Services.BatterUpRow>();
                     UpdateFilterBoxVisibility();

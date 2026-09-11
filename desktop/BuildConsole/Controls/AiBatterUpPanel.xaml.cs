@@ -200,6 +200,7 @@ namespace BuildConsole.Controls
                 if (gh == null)
                 {
                     TxtCount.Text = "";
+                    KeyedSlotCardHost.StopOwnedAnimations(RowsList);
                     RowsList.Children.Clear();
                     _allRows = new List<Services.AiBatterUpRow>();
                     UpdateFilterBoxVisibility();
@@ -242,6 +243,7 @@ namespace BuildConsole.Controls
 
                     Services.ActivityLog.Log("ai-batter-up", $"Refresh failed: {ex.Message}");
                     TxtCount.Text = "";
+                    KeyedSlotCardHost.StopOwnedAnimations(RowsList);
                     RowsList.Children.Clear();
                     _allRows = new List<Services.AiBatterUpRow>();
                     UpdateFilterBoxVisibility();
@@ -290,6 +292,7 @@ namespace BuildConsole.Controls
         /// </summary>
         private void RenderFilteredRows()
         {
+            KeyedSlotCardHost.StopOwnedAnimations(RowsList);
             RowsList.Children.Clear();
             // Cards are rebuilt fresh below — the old Border instance _selectedCard points
             // at is gone, so drop the reference (its highlight goes with it); _selectedNumber
