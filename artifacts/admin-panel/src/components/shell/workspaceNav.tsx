@@ -23,7 +23,6 @@ import {
   UserPlus,
   Target,
   Building2,
-  BrainCircuit,
   Share2,
   FolderKanban,
   Layers,
@@ -285,7 +284,6 @@ export const WORKSPACES: WorkspaceDef[] = [
       {
         id: "intelligence", label: "Intelligence", defaultOpen: true,
         items: [
-          { id: "pipe-m365", label: "M365 Intelligence", path: "/pipeline/m365-intelligence", icon: BrainCircuit },
           { id: "pipe-diagnostic-shares", label: "Diagnostic Shares", path: "/pipeline/diagnostic-shares", icon: Share2 },
         ],
       },
