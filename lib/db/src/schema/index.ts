@@ -4930,6 +4930,9 @@ export const btBuildQueueTable = pgTable("bt_build_queue", {
   cli:             text("cli"),
   /** Git #3521 — how many times the free-flow path has AUTO-re-queued this row as a supervisory cancel (a 'canceled' row with exit_code=0 whose work never landed). Bounds the auto-re-queue so a build that keeps false-done-ing can't loop forever (the #1997 no-auto-loop guard): once this reaches its cap the row stays visible for a manual Queue click instead of auto-re-queuing again. A fresh dispatch inserts a new row at 0; a manual re-queue is unaffected. */
   supervisoryRequeueCount: integer("supervisory_requeue_count").notNull().default(0),
+  /** Git #3607 — soft-archive (matches bt_chats' identical archived/archivedAt pattern), NOT a delete. Set by FalseDoneReconciler's auto-prune pass on a terminal 'canceled' row whose real GitHub issue is confirmed closed, or that has no real GitHub issue at all (a "local #N" build). The row and its full history stay real and queryable; this only flags it out of the default Canceled board view. */
+  archived:        boolean("archived").notNull().default(false),
+  archivedAt:      timestamp("archived_at", { withTimezone: true }),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
