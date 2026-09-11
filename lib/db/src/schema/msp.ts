@@ -24,8 +24,8 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { wfRunsTable, usersTable, scriptPackagesTable, activeDirectoryOusTable, type MspRole } from "./index";
-import { LEGACY_ROLE } from "../rbac/legacy-ladder";
+import { wfRunsTable, usersTable, scriptPackagesTable, activeDirectoryOusTable, type MspRole } from "./index.ts";
+import { LEGACY_ROLE } from "../rbac/legacy-ladder.ts";
 
 // ── MSPs (Managed Service Provider organisations) ─────────────────────────────
 

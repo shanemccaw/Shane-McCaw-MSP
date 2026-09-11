@@ -1,11 +1,11 @@
 import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index, date, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
-import { mspsTable, tenantsTable } from "./msp";
+import { mspsTable, tenantsTable } from "./msp.ts";
 // #2460 — the seven legacy role values, from the migration's own compatibility shim.
 // PURE (no schema imports), so this cannot form the msp.ts <-> index.ts cycle the
 // note above usersTable warns about.
-import { LEGACY_ROLE_ORDER, type LegacyRole } from "../rbac/legacy-ladder";
+import { LEGACY_ROLE_ORDER, type LegacyRole } from "../rbac/legacy-ladder.ts";
 
 export interface WizardOption {
   id: string;
@@ -4884,19 +4884,19 @@ export const buildDispatchLogTable = pgTable("build_dispatch_log", {
 export type InsertBuildDispatchLogRow = typeof buildDispatchLogTable.$inferInsert;
 export type BuildDispatchLogRow       = typeof buildDispatchLogTable.$inferSelect;
 
-export * from "./msp";
+export * from "./msp.ts";
 
-export * from "./config-state";
+export * from "./config-state.ts";
 
-export * from "./config-snapshots";
+export * from "./config-snapshots.ts";
 
-export * from "./config-diffs";
+export * from "./config-diffs.ts";
 
-export * from "./config-attribution";
+export * from "./config-attribution.ts";
 
-export * from "./retention";
+export * from "./retention.ts";
 
-export * from "./rbac";
+export * from "./rbac.ts";
 
 /**
  * Git #3390 (Feature #3377) — GitHub MCP server, bearer tokens.

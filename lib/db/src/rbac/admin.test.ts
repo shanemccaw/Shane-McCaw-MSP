@@ -25,8 +25,8 @@ import {
   renameRole,
   resolveUserOrgId,
   upsertMapping,
-} from "./admin";
-import type { RbacDb } from "./load";
+} from "./admin.ts";
+import type { RbacDb } from "./load.ts";
 
 // Real local-dev rows (see ./integrity-check.ts for the same ids).
 const MSP = 1;

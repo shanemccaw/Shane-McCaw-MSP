@@ -18,7 +18,7 @@ export {
   listCapabilities,
   type RbacCapability,
   type RbacSystem,
-} from "./capabilities";
+} from "./capabilities.ts";
 
 export {
   CAPABILITY_COLUMN_ROLE_KEYS,
@@ -43,7 +43,7 @@ export {
   type LegacyCapabilityRule,
   type LegacyRole,
   type LegacyUserRow,
-} from "./legacy-ladder";
+} from "./legacy-ladder.ts";
 
 export {
   createRbacEvaluator,
@@ -54,7 +54,7 @@ export {
   type RbacEvaluationInput,
   type RbacEvaluator,
   type RbacFeatureMapping,
-} from "./evaluate";
+} from "./evaluate.ts";
 
 export {
   listRoleMembers,
@@ -62,9 +62,9 @@ export {
   loadRbacEvaluator,
   type LoadRbacContextInput,
   type RbacDb,
-} from "./load";
+} from "./load.ts";
 
-export { syncCapabilityCatalog, type CapabilitySyncResult } from "./sync";
+export { syncCapabilityCatalog, type CapabilitySyncResult } from "./sync.ts";
 
 export {
   listRoles,
@@ -84,4 +84,4 @@ export {
   type DeleteRoleResult,
   type AssignRoleResult,
   type UpsertMappingResult,
-} from "./admin";
+} from "./admin.ts";

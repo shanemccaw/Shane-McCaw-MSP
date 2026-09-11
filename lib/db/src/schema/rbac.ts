@@ -56,9 +56,9 @@
 
 import { pgTable, text, integer, uuid, boolean, timestamp, jsonb, primaryKey, uniqueIndex, index, foreignKey, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { usersTable } from "./index";
-import { mspsTable, tenantsTable } from "./msp";
-import { RBAC_SYSTEMS } from "../rbac/capabilities";
+import { usersTable } from "./index.ts";
+import { mspsTable, tenantsTable } from "./msp.ts";
+import { RBAC_SYSTEMS } from "../rbac/capabilities.ts";
 
 /**
  * The allow/deny payload of a `*_feature_role_mapping` row.

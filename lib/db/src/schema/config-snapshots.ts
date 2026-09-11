@@ -103,13 +103,13 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { tenantsTable } from "./msp";
+import { tenantsTable } from "./msp.ts";
 import {
   CONFIG_READ_TRANSPORTS,
   CONFIG_SURFACES,
   CONFIG_AVAILABILITY,
   GRAPH_VERSIONS,
-} from "./config-state";
+} from "./config-state.ts";
 
 // ── Vocabularies ─────────────────────────────────────────────────────────────
 // Real enums only. Every value below names a state something in this store is

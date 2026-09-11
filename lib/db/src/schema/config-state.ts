@@ -38,7 +38,7 @@ import {
   index,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
-import { monitorChecksTable, tenantsTable, MONITOR_CHECK_EXECUTOR_TYPES } from "./msp";
+import { monitorChecksTable, tenantsTable, MONITOR_CHECK_EXECUTOR_TYPES } from "./msp.ts";
 
 // ── Vocabularies ─────────────────────────────────────────────────────────────
 // Real enums only: each value below is a state something in this model is actually

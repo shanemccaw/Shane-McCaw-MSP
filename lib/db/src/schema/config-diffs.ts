@@ -109,13 +109,13 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { tenantsTable } from "./msp";
+import { tenantsTable } from "./msp.ts";
 import {
   tenantConfigSnapshotsTable,
   SNAPSHOT_RESOURCE_STATUSES,
   SNAPSHOT_SKIP_REASONS,
   SNAPSHOT_IDENTITY_STRATEGIES,
-} from "./config-snapshots";
+} from "./config-snapshots.ts";
 
 // ── Vocabularies ─────────────────────────────────────────────────────────────
 // Real enums only. Every value below names a state the differ actually produces.

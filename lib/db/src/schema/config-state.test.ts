@@ -9,7 +9,7 @@ import {
   coverageStateFor,
   isOperationResource,
   transportHasExecutor,
-} from "./config-state";
+} from "./config-state.ts";
 
 describe("transportHasExecutor", () => {
   it("is true for every transport this platform actually has an executor for", () => {

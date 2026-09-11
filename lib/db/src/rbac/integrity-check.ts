@@ -39,16 +39,16 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql } from "drizzle-orm";
 import pg from "pg";
-import { loadRbacEvaluator } from "./load";
-import { syncCapabilityCatalog } from "./sync";
-import { RBAC_CAPABILITIES } from "./capabilities";
+import { loadRbacEvaluator } from "./load.ts";
+import { syncCapabilityCatalog } from "./sync.ts";
+import { RBAC_CAPABILITIES } from "./capabilities.ts";
 import {
   customerFeatureRoleMappingTable,
   customerRolesTable,
   customerUserRolesTable,
   mspRolesTable,
   mspUserRolesTable,
-} from "../schema/rbac";
+} from "../schema/rbac.ts";
 
 type Tx = Parameters<Parameters<ReturnType<typeof drizzle>["transaction"]>[0]>[0];
 

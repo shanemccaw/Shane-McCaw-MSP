@@ -22,9 +22,9 @@ import {
   mspRolesTable,
   mspUserRolesTable,
   type RbacRoleMappingPayload,
-} from "../schema/rbac";
-import type { RbacSystem } from "./capabilities";
-import { createRbacEvaluator, type RbacContext, type RbacEvaluator, type RbacFeatureMapping } from "./evaluate";
+} from "../schema/rbac.ts";
+import type { RbacSystem } from "./capabilities.ts";
+import { createRbacEvaluator, type RbacContext, type RbacEvaluator, type RbacFeatureMapping } from "./evaluate.ts";
 
 /**
  * Any Drizzle node-postgres handle. Deliberately not the `db` singleton from

@@ -47,7 +47,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { mspsTable, tenantsTable } from "./msp";
+import { mspsTable, tenantsTable } from "./msp.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Platform defaults

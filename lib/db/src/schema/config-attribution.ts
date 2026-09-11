@@ -80,8 +80,8 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { tenantsTable, mspChangeRequestsTable, mspRiskDecisionsTable } from "./msp";
-import { configDiffsTable, configDiffChangesTable } from "./config-diffs";
+import { tenantsTable, mspChangeRequestsTable, mspRiskDecisionsTable } from "./msp.ts";
+import { configDiffsTable, configDiffChangesTable } from "./config-diffs.ts";
 
 // ── Vocabularies ─────────────────────────────────────────────────────────────
 

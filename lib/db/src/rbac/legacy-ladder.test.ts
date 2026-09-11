@@ -31,7 +31,7 @@ import {
   legacyRoleIndex,
   type LegacyRole,
   type LegacyUserRow,
-} from "./legacy-ladder";
+} from "./legacy-ladder.ts";
 
 /** A principal shape. Defaults to the least privileged thing that can exist. */
 function principal(over: Partial<LegacyUserRow> = {}): LegacyUserRow {

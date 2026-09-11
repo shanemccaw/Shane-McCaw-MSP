@@ -17,7 +17,7 @@ import {
   findCapability,
   isKnownCapability,
   listCapabilities,
-} from "./capabilities";
+} from "./capabilities.ts";
 
 describe("the catalog is enumerable", () => {
   it("is a non-empty list that can be walked without a database", () => {

@@ -33,9 +33,9 @@ import {
   usersTable,
   EMPTY_ROLE_MAPPING,
   type RbacRoleMappingPayload,
-} from "../schema";
-import { isKnownCapability, type RbacSystem } from "./capabilities";
-import type { RbacDb } from "./load";
+} from "../schema/index.ts";
+import { isKnownCapability, type RbacSystem } from "./capabilities.ts";
+import type { RbacDb } from "./load.ts";
 
 export interface RbacRoleSummary {
   readonly id: string;

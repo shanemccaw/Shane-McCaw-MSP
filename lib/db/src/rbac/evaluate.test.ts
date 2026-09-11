@@ -14,8 +14,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createRbacEvaluator, evaluateCapability, type RbacFeatureMapping } from "./evaluate";
-import type { RbacSystem } from "./capabilities";
+import { createRbacEvaluator, evaluateCapability, type RbacFeatureMapping } from "./evaluate.ts";
+import type { RbacSystem } from "./capabilities.ts";
 
 // Stable role ids. Real uuids, because that is what the columns hold — the
 // evaluator must never see or compare a role NAME (#1696 requirement 2).

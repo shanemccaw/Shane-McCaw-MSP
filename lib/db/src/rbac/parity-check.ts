@@ -42,10 +42,10 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql } from "drizzle-orm";
 import pg from "pg";
-import { RBAC_CAPABILITIES, type RbacSystem } from "./capabilities";
-import { evaluateCapability, type RbacFeatureMapping } from "./evaluate";
-import { loadRbacEvaluator } from "./load";
-import { LEGACY_ROLE } from "./legacy-ladder";
+import { RBAC_CAPABILITIES, type RbacSystem } from "./capabilities.ts";
+import { evaluateCapability, type RbacFeatureMapping } from "./evaluate.ts";
+import { loadRbacEvaluator } from "./load.ts";
+import { LEGACY_ROLE } from "./legacy-ladder.ts";
 import {
   CAPABILITY_COLUMN_ROLE_KEYS,
   LEGACY_CAPABILITY_RULES,
@@ -55,7 +55,7 @@ import {
   legacyDecision,
   type LegacyRole,
   type LegacyUserRow,
-} from "./legacy-ladder";
+} from "./legacy-ladder.ts";
 
 let failures = 0;
 let comparisons = 0;

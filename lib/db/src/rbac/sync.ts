@@ -12,9 +12,9 @@
  */
 
 import { sql } from "drizzle-orm";
-import { rbacCapabilitiesTable } from "../schema/rbac";
-import { RBAC_CAPABILITIES, capabilityId } from "./capabilities";
-import type { RbacDb } from "./load";
+import { rbacCapabilitiesTable } from "../schema/rbac.ts";
+import { RBAC_CAPABILITIES, capabilityId } from "./capabilities.ts";
+import type { RbacDb } from "./load.ts";
 
 export interface CapabilitySyncResult {
   /** Rows inserted or refreshed from the TS catalog. */
