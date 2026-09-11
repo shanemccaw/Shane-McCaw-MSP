@@ -9,6 +9,15 @@
  *                                           "raise a POA&M to disable the
  *                                           service" case)
  *   POST /api/portal/poams/:poamId/sign  — the real customer signature
+ *   DELETE /api/portal/poams/:poamId     — soft-delete this plan (Git #3451),
+ *                                           through the platform retention
+ *                                           lifecycle (`softDelete()`)
+ *   POST /api/portal/poams/:poamId/request-acceleration — ask the MSP to skip
+ *         the rest of the recoverable window and purge now (Git #3451,
+ *         `requestAcceleration()`) — the real producer for the #1571
+ *         accelerated-delete review queue. Only reachable once the plan is
+ *         already soft-deleted; does not execute on its own, an operator
+ *         still has to agree via `POST /api/msp/retention/queue/:id/decide`.
  *
  * Same scoping shape as `portal-risk-register.ts`: `msp_poams` is an MSP-era
  * table (`msp_id` + free-text `tenant_id`), not customer-id-keyed, so every
@@ -45,7 +54,7 @@ import { and, eq, desc, asc, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { requireCapability } from "../middlewares/requireAuth";
-import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { resolveCustomerId, resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
@@ -59,6 +68,12 @@ import {
   type RiskAuthority,
   type RiskAuthorizedBy,
 } from "../lib/risk-authority";
+import { softDelete, requestAcceleration, findOpenDeletion, RetentionError } from "../lib/retention/lifecycle";
+import { registerPoamRetention } from "../lib/retention/wiring/msp-poams";
+
+// Git #3451 — registers `msp_poams` with the platform retention lifecycle. See that
+// file's own header for why this is a plain import-time side effect.
+registerPoamRetention();
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -221,7 +236,15 @@ router.get(
       const rows = await db
         .select()
         .from(mspPoamsTable)
-        .where(and(eq(mspPoamsTable.mspId, scope.mspId), eq(mspPoamsTable.tenantId, scope.tenantId)))
+        // Git #3451: reads exclude soft-deleted rows by default (the platform
+        // convention `lifecycle.ts` documents).
+        .where(
+          and(
+            eq(mspPoamsTable.mspId, scope.mspId),
+            eq(mspPoamsTable.tenantId, scope.tenantId),
+            isNull(mspPoamsTable.deletedAt),
+          ),
+        )
         .orderBy(desc(mspPoamsTable.id));
 
       const milestonesByPoam = new Map<number, MilestoneRow[]>();
@@ -561,6 +584,162 @@ router.post(
       });
     } catch (err: unknown) {
       log.error({ err, customerId, poamId: poamIdParam }, "POST /portal/poams/:poamId/sign failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+/** Scoped, own-tenant lookup shared by the two retention routes below. */
+async function loadOwnScopedPoam(scope: TenantScope, poamIdParam: string) {
+  const [existing] = await db
+    .select()
+    .from(mspPoamsTable)
+    .where(
+      and(
+        eq(mspPoamsTable.poamId, poamIdParam),
+        eq(mspPoamsTable.mspId, scope.mspId),
+        eq(mspPoamsTable.tenantId, scope.tenantId),
+      ),
+    )
+    .limit(1);
+  return existing ?? null;
+}
+
+const deletePoamReasonSchema = z.object({
+  reason: z.string().trim().min(1),
+});
+
+// DELETE /api/portal/poams/:poamId — Git #3451. The customer's own delete, through
+// the platform retention lifecycle (`softDelete()`) rather than a hard `DELETE FROM`.
+router.delete(
+  "/portal/poams/:poamId",
+  requireCapability("ladder.customer-user"),
+  async (req: Request, res: Response) => {
+    const customerId = resolveCustomerId(req);
+    const poamIdParam = String(req.params.poamId);
+    try {
+      if (customerId === null) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Customer context required");
+        return;
+      }
+      const scope = await resolveTenantScope(customerId);
+      if (!scope) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Customer context required");
+        return;
+      }
+
+      const existing = await loadOwnScopedPoam(scope, poamIdParam);
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "POA&M not found");
+        return;
+      }
+
+      const parsed = deletePoamReasonSchema.safeParse(req.body);
+      if (!parsed.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "A delete reason is required.");
+        return;
+      }
+
+      const user = req.user!;
+      const deletion = await softDelete({
+        recordType: "msp_poams",
+        recordId: String(existing.id),
+        reason: parsed.data.reason,
+        actor: { name: user.name ?? user.email, role: user.role, userId: user.id, side: "customer" },
+      });
+
+      res.json({ poamId: existing.poamId, deletion, message: "POA&M deleted successfully" });
+    } catch (err: unknown) {
+      if (err instanceof RetentionError) {
+        res.status(err.httpStatus).json({ error: err.message });
+        return;
+      }
+      log.error({ err, customerId, poamId: poamIdParam }, "DELETE /portal/poams/:poamId failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+const requestAccelerationSchema = z.object({
+  reasonKind: z.enum(["superseded_by", "no_longer_needed"]),
+  reason: z.string().trim().min(1),
+  /** Only meaningful (and required by `requestAcceleration()`) when `reasonKind` is
+   * `"superseded_by"` — the real record that replaced this one, never inferred. */
+  supersededByRecordType: z.string().trim().min(1).optional(),
+  supersededByRecordId: z.string().trim().min(1).optional(),
+});
+
+/**
+ * POST /api/portal/poams/:poamId/request-acceleration — Git #3451. Ask the MSP to
+ * purge this already-deleted plan now instead of waiting out the rest of the
+ * recoverable window. This is the real producer for the #1571 accelerated-delete
+ * review queue (`record_deletions.acceleration_state = 'pending'`) — it does NOT
+ * execute on its own (see `requestAcceleration()`'s own header): an operator still
+ * has to agree via `POST /api/msp/retention/queue/:deletionId/decide`.
+ */
+router.post(
+  "/portal/poams/:poamId/request-acceleration",
+  requireCapability("ladder.customer-user"),
+  async (req: Request, res: Response) => {
+    const customerId = resolveCustomerId(req);
+    const poamIdParam = String(req.params.poamId);
+    try {
+      if (customerId === null) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Customer context required");
+        return;
+      }
+      const scope = await resolveTenantScope(customerId);
+      if (!scope) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Customer context required");
+        return;
+      }
+
+      const existing = await loadOwnScopedPoam(scope, poamIdParam);
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "POA&M not found");
+        return;
+      }
+
+      const openDeletion = await findOpenDeletion("msp_poams", String(existing.id));
+      if (!openDeletion) {
+        apiError(
+          res,
+          409,
+          ApiErrorCode.CONFLICT,
+          "This POA&M is not currently deleted, so there is nothing to accelerate.",
+        );
+        return;
+      }
+
+      const parsed = requestAccelerationSchema.safeParse(req.body);
+      if (!parsed.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid acceleration request", parsed.error.flatten());
+        return;
+      }
+
+      const user = req.user!;
+      const updated = await requestAcceleration({
+        deletionId: openDeletion.id,
+        reasonKind: parsed.data.reasonKind,
+        reason: parsed.data.reason,
+        supersededBy:
+          parsed.data.supersededByRecordType && parsed.data.supersededByRecordId
+            ? { recordType: parsed.data.supersededByRecordType, recordId: parsed.data.supersededByRecordId }
+            : null,
+        actor: { name: user.name ?? user.email, role: user.role, userId: user.id, side: "customer" },
+      });
+
+      res.json({
+        poamId: existing.poamId,
+        deletion: updated,
+        message: "Acceleration requested — awaiting operator review",
+      });
+    } catch (err: unknown) {
+      if (err instanceof RetentionError) {
+        res.status(err.httpStatus).json({ error: err.message });
+        return;
+      }
+      log.error({ err, customerId, poamId: poamIdParam }, "POST /portal/poams/:poamId/request-acceleration failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },

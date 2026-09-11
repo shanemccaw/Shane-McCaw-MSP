@@ -7336,6 +7336,20 @@ export const mspPoamsTable = pgTable("msp_poams", {
    * or customer-stated reasoning, never inferred. NULL until converted. */
   conversionReason: text("conversion_reason"),
 
+  // ── Soft-delete triple (Git #3451, EPIC #1944) ────────────────────────────
+  // Wires this table into the platform retention lifecycle
+  // (`lib/retention/lifecycle.ts`'s `softDelete()`/`registry.ts`) — the real
+  // first producer for the #1571 accelerated-delete review queue, which
+  // #3451 found could never gain a row because no module had plugged in.
+  // Same shape `retention.ts`'s `softDeleteColumns()` defines; NOT imported
+  // directly here because `retention.ts` already imports `tenantsTable` /
+  // `mspsTable` FROM this file, and importing back would form the exact
+  // msp.ts <-> retention.ts circular schema import `schema/index.ts` (see its
+  // own comment near the top) is already careful to avoid for `index.ts`.
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  deletedBy: text("deleted_by"),
+  deleteReason: text("delete_reason"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

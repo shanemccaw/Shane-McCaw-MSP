@@ -26,9 +26,17 @@
  *   POST  /api/msp/poams/:poamId/milestones             — add a milestone
  *   PATCH /api/msp/poams/:poamId/milestones/:milestoneId — edit / mark complete
  *   DELETE /api/msp/poams/:poamId/milestones/:milestoneId — remove a milestone
+ *   DELETE /api/msp/poams/:poamId                        — soft-delete the plan
+ *         itself (Git #3451): distinct from `cancel` above, which only flips a
+ *         status and keeps the row live. This goes through the platform
+ *         retention lifecycle (`softDelete()`) — recoverable for the tenant's
+ *         configured soft-delete window, then eligible for the #1571
+ *         accelerated-delete review queue, same as every other retained
+ *         record type once one actually registers.
  *
  * Role floor matches `msp-rbd.ts`: `MSPOperator` reads and authors, `MSPAdmin`
- * cancels — cancelling a plan is the same weight as revoking an RBD.
+ * cancels or deletes — deleting a plan carries the same weight as revoking an
+ * RBD or cancelling a plan.
  *
  * `available-checks` / `available-obligations` are NOT duplicated here —
  * `msp-rbd.ts` already serves the exact same `monitor_checks` /
@@ -48,6 +56,12 @@ import { randomPlaceholder, assignPoamId } from "../lib/poam-ref.ts";
 import { assignRegisterRef } from "../lib/risk-register-ref.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 import { logger } from "../lib/logger.ts";
+import { softDelete, RetentionError } from "../lib/retention/lifecycle.ts";
+import { registerPoamRetention } from "../lib/retention/wiring/msp-poams.ts";
+
+// Git #3451 — registers `msp_poams` with the platform retention lifecycle. See that
+// file's own header for why this is a plain import-time side effect.
+registerPoamRetention();
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -89,7 +103,10 @@ router.get(
       const rows = await db
         .select()
         .from(mspPoamsTable)
-        .where(eq(mspPoamsTable.mspId, mspId))
+        // Git #3451: reads exclude soft-deleted rows by default (the platform
+        // convention `lifecycle.ts` documents) — a deleted plan still exists for the
+        // retention clock/queue, but a plain list is not where it's found.
+        .where(and(eq(mspPoamsTable.mspId, mspId), isNull(mspPoamsTable.deletedAt)))
         .orderBy(desc(mspPoamsTable.id));
 
       res.json(rows);
@@ -630,6 +647,57 @@ router.delete(
       res.json({ id: milestoneId, message: "Milestone removed successfully" });
     } catch (err: unknown) {
       log.error({ err }, "DELETE /api/msp/poams/:poamId/milestones/:milestoneId failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+const deletePoamSchema = z.object({
+  reason: z.string().trim().min(1),
+});
+
+// DELETE /api/msp/poams/:poamId — Git #3451. Soft-delete the plan itself through the
+// platform retention lifecycle, distinct from `cancel` above (a status flip that keeps
+// the row live). MSPAdmin-gated, same weight as cancel/convert-to-risk-acceptance.
+router.delete(
+  "/msp/poams/:poamId",
+  requireAuth,
+  requireCapability("ladder.msp-admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+
+      const existing = await loadOwnScoped(mspId, String(req.params.poamId));
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "POA&M not found");
+        return;
+      }
+
+      const parsed = deletePoamSchema.safeParse(req.body);
+      if (!parsed.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "A delete reason is required.");
+        return;
+      }
+
+      const user = req.user!;
+      const deletion = await softDelete({
+        recordType: "msp_poams",
+        recordId: String(existing.id),
+        reason: parsed.data.reason,
+        actor: { name: user.name ?? user.email, role: "admin", userId: user.id, side: "operator" },
+      });
+
+      res.json({ poamId: existing.poamId, deletion, message: "POA&M deleted successfully" });
+    } catch (err: unknown) {
+      if (err instanceof RetentionError) {
+        res.status(err.httpStatus).json({ error: err.message });
+        return;
+      }
+      log.error({ err }, "DELETE /api/msp/poams/:poamId failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },
