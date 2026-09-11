@@ -38,14 +38,17 @@ export function PackagesExplorerPanel() {
   const state = useSyncExternalStore(subscribe, getSnapshot);
   const catalog = new Map(state.checks.map((c) => [c.key, c]));
 
-  const active = state.packages.filter((p) => p.status === "active");
+  const active = state.packages.filter((p) => p.status === "active" && p.kind !== "dashboard_category");
+  const dashboardCategory = state.packages.filter((p) => p.status === "active" && p.kind === "dashboard_category");
   const archived = state.packages.filter((p) => p.status !== "active");
 
   function Row({ pkg }: { pkg: MonitoringPackageRow }) {
     const tally = tallyChecks(currentChecks(pkg.key, state), catalog);
     const selected = state.selected === pkg.key;
     const dirty = isDirty(pkg.key, state);
-    const silent = tally.willRun === 0;
+    // A dashboard_category row (Git #3453) has zero linked checks by design —
+    // it's not a scan bundle with a bug, so it never gets the "runs nothing" alarm.
+    const silent = pkg.kind !== "dashboard_category" && tally.willRun === 0;
     const { menu, open, close } = useContextMenu();
 
     return (
@@ -64,7 +67,13 @@ export function PackagesExplorerPanel() {
             `Actions for ${pkg.label}`,
           )
         }
-        title={silent ? `${pkg.label} resolves no runnable check — a scan on it collects nothing` : pkg.label}
+        title={
+          pkg.kind === "dashboard_category"
+            ? `${pkg.label} is a dashboard-category tab key, not a scan bundle — it has no linked checks by design`
+            : silent
+              ? `${pkg.label} resolves no runnable check — a scan on it collects nothing`
+              : pkg.label
+        }
         style={{
           display: "flex",
           flexDirection: "column",
@@ -87,12 +96,18 @@ export function PackagesExplorerPanel() {
             {pkg.label}
           </span>
           {dirty && <span style={{ flex: "none", fontSize: 10, fontWeight: 700, color: ACCENT.amber }}>unsaved</span>}
-          <span style={{ flex: "none", fontFamily: "Menlo, Consolas, monospace", fontSize: 11, color: silent ? ACCENT.amber : TEXT.meta }}>
-            {tally.willRun}/{tally.linked}
-          </span>
+          {pkg.kind !== "dashboard_category" && (
+            <span style={{ flex: "none", fontFamily: "Menlo, Consolas, monospace", fontSize: 11, color: silent ? ACCENT.amber : TEXT.meta }}>
+              {tally.willRun}/{tally.linked}
+            </span>
+          )}
         </span>
         <span style={{ fontSize: 10.5, color: silent ? ACCENT.amber : TEXT.meta, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {silent ? "runs nothing" : `${tally.willRun} check${tally.willRun === 1 ? "" : "s"} will run`}
+          {pkg.kind === "dashboard_category"
+            ? "dashboard tab key — not a scan"
+            : silent
+              ? "runs nothing"
+              : `${tally.willRun} check${tally.willRun === 1 ? "" : "s"} will run`}
         </span>
       </button>
       <ContextMenu menu={menu} onClose={close} />
@@ -112,6 +127,18 @@ export function PackagesExplorerPanel() {
       {active.map((pkg) => (
         <Row key={pkg.key} pkg={pkg} />
       ))}
+
+      {dashboardCategory.length > 0 && <SectionLabel>Dashboard tabs (not scans)</SectionLabel>}
+      {dashboardCategory.map((pkg) => (
+        <Row key={pkg.key} pkg={pkg} />
+      ))}
+      {dashboardCategory.length > 0 && (
+        <div style={{ padding: "8px 12px", borderTop: `1px solid ${LINE.subtle}`, fontSize: 10.5, lineHeight: 1.5, color: TEXT.faint, textWrap: "pretty" }}>
+          These rows only carry a key the customer-dashboard category-tab feature reuses (Git
+          #3453). They have no linked checks by design and are never offered anywhere a scan is
+          picked from.
+        </div>
+      )}
 
       {archived.length > 0 && <SectionLabel>Archived</SectionLabel>}
       {archived.map((pkg) => (

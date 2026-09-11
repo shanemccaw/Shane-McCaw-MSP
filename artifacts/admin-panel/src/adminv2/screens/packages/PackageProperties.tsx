@@ -117,6 +117,15 @@ export function PackageProperties() {
         </span>
       </div>
 
+      <StaticField
+        label="Kind"
+        value={pkg.kind === "dashboard_category" ? "Dashboard category (not a scan)" : "Scan bundle"}
+        note={
+          pkg.kind === "dashboard_category"
+            ? "This row only carries a key the customer-dashboard category-tab feature reuses. It has no linked checks by design and a scan never resolves it (Git #3453). Fixed — not editable here."
+            : "A real, executable diagnostics package. Fixed — not editable here."
+        }
+      />
       <StaticField label="Key" value={pkg.key} note="Fixed. The junction and every recorded run point at it." />
       <StaticField
         label="Platform cost"

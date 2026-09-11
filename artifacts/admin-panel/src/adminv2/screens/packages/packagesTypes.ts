@@ -49,6 +49,13 @@ export interface MonitoringPackageRow {
   description: string | null;
   engines: string[];
   status: "active" | "archived";
+  /**
+   * `scan_bundle` — a real, executable diagnostics package. `dashboard_category` — a
+   * row that only exists to give the customer-dashboard category-tab feature a key
+   * to reuse (Git #3453); it has no linked checks by design and a scan never resolves
+   * it, so it should never be offered anywhere as something to run.
+   */
+  kind: "scan_bundle" | "dashboard_category";
   platformCostCents: number;
   requiredPlanFeature: string | null;
   createdAt: string;

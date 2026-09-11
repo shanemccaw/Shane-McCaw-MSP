@@ -123,14 +123,22 @@ function setState(patch: Partial<PackagesStoreState>): void {
  * Publishes the two counts the ribbon has to state truthfully.
  *
  * `silentPackages` is the one worth putting on the Watch tab: an active
- * package that resolves no runnable check is scheduled, is assigned to
- * tenants, produces a completed run — and collects nothing. Nothing else in
- * the platform says so.
+ * `scan_bundle` package that resolves no runnable check is scheduled, is
+ * assigned to tenants, produces a completed run — and collects nothing.
+ * Nothing else in the platform says so.
+ *
+ * `kind === "dashboard_category"` rows are excluded on purpose (Git #3453):
+ * those are never meant to resolve any checks — they're a key the customer-
+ * dashboard category-tab feature reuses, not a scan bundle with a bug — so
+ * counting them here would raise a false alarm every session.
  */
 export function silentPackages(s: PackagesStoreState = state): MonitoringPackageRow[] {
   const catalog = new Map(s.checks.map((c) => [c.key, c]));
   return s.packages.filter(
-    (p) => p.status === "active" && tallyChecks(s.checksByPackage[p.key] ?? [], catalog).willRun === 0,
+    (p) =>
+      p.status === "active" &&
+      p.kind !== "dashboard_category" &&
+      tallyChecks(s.checksByPackage[p.key] ?? [], catalog).willRun === 0,
   );
 }
 
