@@ -157,6 +157,8 @@ namespace BuildConsole.Controls
         // not a second source of "who is running."
         private bool _matrixDrawerOpen;
         private readonly Dictionary<int, int> _matrixSlotAssignments = new(); // QueueItem.Id -> slot index (0-based)
+        // Git #3689 — the drawer's slot cards, reused across ticks instead of rebuilt (see RenderMatrixDrawer).
+        private KeyedSlotCardHost? _matrixSlotCards;
         /// <summary>Git #1862 — the live open-issue set from the last Git Board refresh,
         /// forwarded by MainWindow (same free fetch Build Watch already consumes — no new
         /// `gh` call). Null until the first refresh arrives; a real blocker is only counted
@@ -1525,16 +1527,42 @@ namespace BuildConsole.Controls
             MatrixChipCount.Text = $"Build Matrix: {occupied}/{slotCount}";
 
             if (MatrixSlotsHost == null) return;
-            if (!_matrixDrawerOpen) return; // avoid churn while collapsed; re-renders on next open/tick
+            _matrixSlotCards ??= new KeyedSlotCardHost(MatrixSlotsHost);
+            if (!_matrixDrawerOpen)
+            {
+                // Git #3689 — collapsed: stop and drop the cards rather than leave up to
+                // MaxConcurrent Forever pulse clocks ticking every frame behind a hidden drawer.
+                // Re-renders on the next open.
+                _matrixSlotCards.Retire();
+                return;
+            }
 
-            MatrixSlotsHost.Children.Clear();
+            // Git #3689 — this runs on every 5s local-poll tick (via UpdateQueueStatusCounts), and it
+            // used to Children.Clear() and rebuild every card each time. Each busy card starts a
+            // RepeatBehavior.Forever pulse that nothing ever stopped, so every tick with a busy slot
+            // leaked more running animation clocks, without bound — the reported slowdown/crash.
+            // Now a slot only gets a new card when what it displays changed, and the host stops the
+            // old card's pulse before discarding it. An unchanged busy card keeps its pulse running
+            // uninterrupted instead of restarting every tick.
+            var slotItems = new QueueItem?[slotCount];
+            var keys = new object[slotCount];
             for (int slot = 0; slot < slotCount; slot++)
             {
-                QueueItem? item = idBySlot.TryGetValue(slot, out var itemId) && itemsById.TryGetValue(itemId, out var found)
+                slotItems[slot] = idBySlot.TryGetValue(slot, out var itemId) && itemsById.TryGetValue(itemId, out var found)
                     ? found : null;
-                MatrixSlotsHost.Children.Add(MatrixSlotCard(slot, item));
+                keys[slot] = MatrixSlotKey(slot, slotItems[slot]);
             }
+            _matrixSlotCards.Reconcile(keys, slot => MatrixSlotCard(slot, slotItems[slot]));
         }
+
+        /// <summary>Git #3689 — everything <see cref="MatrixSlotCard"/> displays for a slot. Equal keys
+        /// on two ticks mean an identical card, so the existing one (and its running pulse) is kept.</summary>
+        private sealed record MatrixSlotCardKey(int Slot, int? ItemId, int? GithubNumber, string? Title, string? BuildSet, string? Model, string? Effort, string? Pill);
+
+        private MatrixSlotCardKey MatrixSlotKey(int slotIndex, QueueItem? item) =>
+            item == null
+                ? new MatrixSlotCardKey(slotIndex, null, null, null, null, null, null, null)
+                : new MatrixSlotCardKey(slotIndex, item.Id, item.GithubNumber, item.Title, item.BuildSet, item.Model, item.Effort, MatrixSlotStatusPill(item).Text);
 
         /// <summary>One slot card — slot number, status pill, real issue#/title, build set + model.
         /// Idle slots render dimmed with none of that, since there's nothing real to show. A busy
@@ -1599,6 +1627,8 @@ namespace BuildConsole.Controls
                 }
 
                 // Running slots pulse — a real looping opacity animation, not a static glow.
+                // Git #3689 — started through the card host so its clock is actually stopped when
+                // this card is replaced or the drawer collapses (BeginAnimation's clock can't be).
                 var pulse = new DoubleAnimation
                 {
                     From = 1.0,
@@ -1607,7 +1637,7 @@ namespace BuildConsole.Controls
                     AutoReverse = true,
                     RepeatBehavior = RepeatBehavior.Forever
                 };
-                card.BeginAnimation(UIElement.OpacityProperty, pulse);
+                KeyedSlotCardHost.BeginOwnedAnimation(card, UIElement.OpacityProperty, pulse);
 
                 var focusId = item.Id;
                 card.MouseLeftButtonDown += (s, e) => { e.Handled = true; RevealQueueItem(focusId); };
