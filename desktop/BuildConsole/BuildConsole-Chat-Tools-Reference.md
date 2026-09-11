@@ -42,30 +42,52 @@ into a chat message or a `bash_tool` `curl` call for anything the connector alre
 
 - `server_status` — health check; reports `patConfigured` as a boolean only, never the value.
 - `github_whoami` — proves the server-side credential works; returns identity + scopes only.
-- `get_issue(number)` / `create_issue(title, body?, milestone?, labels?)` /
-  `update_issue(number, title?, body?, milestone?, labels?, state?)` — `milestone` is the real
-  milestone *number*, not its title; `update_issue`'s `labels`, when passed, replaces the full
-  label set (GitHub's own PATCH semantics), not an add/remove diff.
-- `search_issues(query, perPage?)` — real passthrough to GitHub's search syntax, scoped to this
-  repo automatically.
-- `post_comment(number, body)` / `list_comments(number)` — `list_comments` paginates through
-  every comment, oldest-first.
-- `close_issue(number, state_reason, comment?)` — `not_planned` is rejected before any GitHub
-  call unless a non-empty `comment` is supplied, and that comment posts first, enforcing the
-  repo's standing NOT_PLANNED-always-carries-a-comment rule (Git #2167) in the tool itself.
-- `move_to_status(number, status)` — moves an issue/epic to one of the real Projects v2 board
-  columns: `Batter Up`, `Backlog`, `AI Batter Up`, `Ask Shane`, `Done`. Validated against that
-  exact vocabulary before any GitHub call fires.
-- `add_sub_issue(parent_number, child_number)` / `remove_sub_issue(parent_number, child_number)` /
-  `list_sub_issues(number)` — real sub-issue hierarchy management (GitHub's one-parent rule
-  applies — remove an existing parent first to re-parent).
-- `set_blocked_by(number, blocker_numbers[])` — makes `number`'s real `blocked_by` edges match
-  the given list exactly (adds missing, removes stale — pass `[]` to clear). Use this, not a
-  comment alone, any time CLAUDE.md's "a blocking conclusion must become a `blocked_by` edge"
-  rule applies.
-- `list_blocked_by(number)` — real current blockers + their live GitHub state.
+- `get_issue(number, repo?)` / `create_issue(title, body?, milestone?, labels?, repo?)` /
+  `update_issue(number, title?, body?, milestone?, labels?, state?, repo?)` — `milestone` is the
+  real milestone *number*, not its title; `update_issue`'s `labels`, when passed, replaces the
+  full label set (GitHub's own PATCH semantics), not an add/remove diff.
+- `search_issues(query, perPage?, repo?)` — real passthrough to GitHub's search syntax, scoped
+  automatically to the target repo.
+- `post_comment(number, body, repo?)` / `list_comments(number, repo?)` — `list_comments`
+  paginates through every comment, oldest-first.
+- `close_issue(number, state_reason, comment?, repo?)` — `not_planned` is rejected before any
+  GitHub call unless a non-empty `comment` is supplied, and that comment posts first, enforcing
+  the repo's standing NOT_PLANNED-always-carries-a-comment rule (Git #2167) in the tool itself.
+- `move_to_status(number, status, repo?)` — moves an issue/epic to one of the real Projects v2
+  board columns: `Batter Up`, `Backlog`, `AI Batter Up`, `Ask Shane`, `Done`. Validated against
+  that exact vocabulary before any GitHub call fires. `repo` only changes which repo's issue is
+  looked up — the board itself is one shared board regardless of `repo`.
+- `get_board_status(number, repo?)` — read counterpart to `move_to_status`; same `repo` semantics
+  (issue lookup only, board is shared).
+- `list_board_column(status, epicNumber?)` — **no `repo` param.** It queries the shared Projects
+  v2 board node directly with no per-repo issue lookup in its query, so there's nothing for a
+  `repo` argument to do.
+- `add_sub_issue(parent_number, child_number, repo?)` /
+  `remove_sub_issue(parent_number, child_number, repo?)` / `list_sub_issues(number, repo?)` —
+  real sub-issue hierarchy management (GitHub's one-parent rule applies — remove an existing
+  parent first to re-parent). `repo` applies to both parent and child.
+- `set_blocked_by(number, blocker_numbers[], repo?)` — makes `number`'s real `blocked_by` edges
+  match the given list exactly (adds missing, removes stale — pass `[]` to clear). Use this, not
+  a comment alone, any time CLAUDE.md's "a blocking conclusion must become a `blocked_by` edge"
+  rule applies. `repo` applies to `number` and every blocker.
+- `list_blocked_by(number, repo?)` — real current blockers + their live GitHub state.
 - `get_recent_activity` — the audit trail of what each connected chat/session has actually done
   through this server.
+
+### Optional `repo` parameter (Git #3580, Feature #3378: Multi-Repo Support)
+
+Every repo-scoped tool listed above now takes an optional `repo` argument, `"owner/repo"` shape.
+Omitted (or empty) resolves to the server's configured default — `GITHUB_MCP_REPO`, currently
+`shanemccaw/Shane-McCaw-MSP` — so every existing call keeps working unchanged. A malformed `repo`
+is rejected (`"repo" must be "owner/repo", got: ...`) before any GitHub call is made.
+
+**Real verification (2026-09-10):** `get_issue({ number: 3580 })` with no `repo` returned
+`shanemccaw/Shane-McCaw-MSP#3580` unchanged (backward compat confirmed); `get_issue({ number: 1,
+repo: "octocat/Hello-World" })` returned that genuinely different public repo's real issue #1 —
+the connector's classic `GITHUB_MCP_PAT` (`repo` scope) isn't restricted to one repo, so a `repo`
+argument pointed at any repo the token's account can read/write actually works today, no PAT
+change needed. A malformed `repo` string was rejected pre-flight with the real
+`"repo" must be "owner/repo", got: ...` error, before any GitHub call fired.
 
 ### Required `context` on every write tool (Git #3538)
 
@@ -90,8 +112,8 @@ A missing or empty `context` is rejected before any GitHub API call fires.
   traceable only through `get_recent_activity`.
 
 Read-only tools (`get_issue`, `search_issues`, `list_sub_issues`, `list_blocked_by`,
-`list_comments`, `get_recent_activity`, `server_status`, `github_whoami`) do not take `context`
-— nothing to trace on a read.
+`list_comments`, `get_recent_activity`, `server_status`, `github_whoami`, `get_board_status`,
+`list_board_column`) do not take `context` — nothing to trace on a read.
 
 ### Connecting
 
