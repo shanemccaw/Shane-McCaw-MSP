@@ -2461,6 +2461,67 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       return { dryRun: true, found: true, objectType: foType, objectId: 1 };
     }
 
+    // ── Monitor / remediation node types (Git #3596) ────────────────────────
+    // These 5 had a real, intentional `if (dryRun) {...}` branch written inside
+    // their real case body in the main switch, but no matching case here — so
+    // dry-run never reached that branch and fell through to the default
+    // "unknown node type" error instead. Shapes below mirror those already-
+    // written inline branches exactly.
+    case "monitor_get_package": {
+      const mpgPackageKey = interp(node.data.packageKey as string | undefined, payload);
+      if (!mpgPackageKey) {
+        return { error: "monitor_get_package: packageKey is required" };
+      }
+      return { dryRun: true, packageKey: mpgPackageKey, packageLabel: "Dry-run package", checkCount: 0, checks: [] };
+    }
+
+    case "monitor_execute_package": {
+      const mepPackageKey = interp(node.data.packageKey as string | undefined, payload) ??
+        (payload.packageKey as string | undefined);
+      const mepTenantId = interp(node.data.tenantId as string | undefined, payload) ??
+        (payload.tenantId as string | undefined);
+      if (!mepPackageKey || !mepTenantId) {
+        return { error: "monitor_execute_package: packageKey and tenantId are required" };
+      }
+      return {
+        dryRun: true,
+        packageKey: mepPackageKey,
+        tenantId: mepTenantId,
+        runStatus: "completed",
+        checksTotal: 0,
+        checksOk: 0,
+        checksError: 0,
+        requiresScript: 0,
+        checks: [],
+      };
+    }
+
+    case "config_snapshot_collect": {
+      const cscTenantIdRaw = interp(node.data.tenantId as string | undefined, payload)
+        ?? (payload.tenantId != null ? String(payload.tenantId) : undefined);
+      const cscTenantId = Number(cscTenantIdRaw);
+      if (!cscTenantIdRaw || !Number.isInteger(cscTenantId) || cscTenantId <= 0) {
+        return {
+          error: "config_snapshot_collect: tenantId is required and must be a tenants.id integer",
+          tenantId: cscTenantIdRaw ?? null,
+        };
+      }
+      // dry-run must not touch a customer tenant. Reporting a plausible-looking
+      // snapshot would be fabricated data, so it reports that it did nothing.
+      return {
+        dryRun: true,
+        skipped: true,
+        reason: "config_snapshot_collect does not run in dry-run mode — it reads a real customer tenant",
+        tenantId: cscTenantId,
+      };
+    }
+
+    case "execute_monitor_check":
+      return { dryRun: true, skipped: true, reason: "execute_monitor_check does not support dry-run execution" };
+
+    case "remediation_pointed_verify":
+      return { dryRun: true, skipped: true, reason: "remediation_pointed_verify does not support dry-run execution" };
+
     // ── Graph Write Operation (dry-run: explicitly blocked) ────────────────
     case "graph_write_operation":
       // Graph writes are never mocked — return a clear skip indicator so
@@ -2681,7 +2742,13 @@ async function executeNode(
   }
 
   // Structural nodes always execute normally; everything else is stubbed in dry-run.
-  const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "check_script_output", "error", "switch_case", "report_progress", "retry"]);
+  // approval_gate and break_glass_verification_gate are included here (not stubbed
+  // via makeDryRunOutput) because their real case bodies already have a clean,
+  // self-contained `if (dryRun) {...} else {...}` branch that makes no DB/Graph
+  // calls — routing dry-run into the real switch reaches that intended branch
+  // directly instead of falling through makeDryRunOutput's default "unknown node
+  // type" case (Git #3596).
+  const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "check_script_output", "error", "switch_case", "report_progress", "retry", "approval_gate", "break_glass_verification_gate"]);
 
   // Promoted type bridge: first-class node types alias to the action handler.
   // Inject data.actionType from node.type so the action case works unchanged.
