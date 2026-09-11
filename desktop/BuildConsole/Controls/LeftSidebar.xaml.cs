@@ -3794,75 +3794,10 @@ namespace BuildConsole.Controls
             // push the card past the panel edge.
             var chips = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
 
-            // Render nested issue pills under this chat
-            if (chat.AssociatedIssueNumbers != null)
-            {
-                foreach (var issueNum in chat.AssociatedIssueNumbers)
-                {
-                    var spPill = new StackPanel { Orientation = Orientation.Horizontal };
-                    string issueTitle = "";
-                    string issueState = "";
-                    var matchedIssue = _lastBoardIssues.FirstOrDefault(i => i.Number == issueNum);
-                    if (matchedIssue != null)
-                    {
-                        issueTitle = matchedIssue.Title;
-                        issueState = matchedIssue.State;
-                    }
-                    else
-                    {
-                        var matchedMilestone = _lastMilestoneInfos.FirstOrDefault(m => m.Number == issueNum);
-                        if (matchedMilestone != null)
-                        {
-                            issueTitle = matchedMilestone.Title;
-                            issueState = matchedMilestone.State;
-                        }
-                    }
-
-                    spPill.Children.Add(new TextBlock
-                    {
-                        Text = $"#{issueNum}",
-                        FontWeight = FontWeights.Bold,
-                        Foreground = GetBrush("BlueBrush"),
-                        Margin = new Thickness(0, 0, 6, 0),
-                        VerticalAlignment = VerticalAlignment.Center
-                    });
-
-                    if (!string.IsNullOrEmpty(issueTitle))
-                    {
-                        var tbTitle = new TextBlock
-                        {
-                            Text = issueTitle,
-                            Foreground = GetBrush("TextBrush"),
-                            TextTrimming = TextTrimming.CharacterEllipsis,
-                            MaxWidth = 140,
-                            VerticalAlignment = VerticalAlignment.Center
-                        };
-                        spPill.Children.Add(tbTitle);
-
-                        bool isClosed = string.Equals(issueState, "closed", StringComparison.OrdinalIgnoreCase);
-                        var tbStatus = new TextBlock
-                        {
-                            Text = isClosed ? " 🟢" : " 🔴",
-                            ToolTip = isClosed ? "Closed" : "Open",
-                            FontSize = 10,
-                            VerticalAlignment = VerticalAlignment.Center,
-                            Margin = new Thickness(4, 0, 0, 0)
-                        };
-                        spPill.Children.Add(tbStatus);
-                    }
-
-                    var pillBorder = new Border
-                    {
-                        Background = GetBrush("Surface0Brush"),
-                        CornerRadius = new CornerRadius(3),
-                        Padding = new Thickness(5, 1, 5, 1),
-                        Margin = new Thickness(0, 0, 4, 4),
-                        ToolTip = string.IsNullOrEmpty(issueTitle) ? $"Issue #{issueNum}" : $"#{issueNum} — {issueTitle} ({(string.Equals(issueState, "closed", StringComparison.OrdinalIgnoreCase) ? "Closed" : "Open")})"
-                    };
-                    pillBorder.Child = spPill;
-                    chips.Children.Add(pillBorder);
-                }
-            }
+            // Git #3595 — the AssociatedIssueNumbers pill block (number + title + status
+            // dot) was removed from here per issue #3595. Display removal only: the
+            // underlying AssociatedIssueNumbers data/logic elsewhere in this file (linking,
+            // filtering, build-badge matching, etc.) is untouched.
 
             // Git #2066 — noisy "mentioned in this chat's text" pills, visually distinct
             // (muted, no title/state lookup) from the deliberate linked-issue pills above.
