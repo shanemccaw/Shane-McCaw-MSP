@@ -443,11 +443,13 @@ namespace BuildConsole.Services
                     if (realCountsByMilestone != null)
                     {
                         var (open, closed) = realCountsByMilestone.TryGetValue(m.Number, out var counts) ? counts : (0, 0);
-                        return new FocusMilestone { Number = m.Number, Title = m.Title, OpenIssues = open, ClosedIssues = closed };
+                        return new FocusMilestone { Number = m.Number, Title = m.Title, OpenIssues = open, ClosedIssues = closed, HasRealCounts = true };
                     }
                     // Fallback: no real ALL-states set available this pass — native counters (may
                     // include Epic/Feature/internal-tooling placeholders, the pre-#2739 behavior).
-                    return new FocusMilestone { Number = m.Number, Title = m.Title, OpenIssues = m.OpenIssues, ClosedIssues = m.ClosedIssues };
+                    // HasRealCounts stays false (Git #3591) so FocusModeBar shows an honest loading
+                    // state instead of this potentially-wrong number.
+                    return new FocusMilestone { Number = m.Number, Title = m.Title, OpenIssues = m.OpenIssues, ClosedIssues = m.ClosedIssues, HasRealCounts = false };
                 })
                 .OrderBy(m => m.Title, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -629,7 +631,8 @@ namespace BuildConsole.Services
                 MilestoneTitle = ms.Title,
                 Closed = ms.ClosedIssues,
                 Total = ms.TotalIssues,
-                Points = _state.Points
+                Points = _state.Points,
+                HasRealCounts = ms.HasRealCounts
             };
 
             int number = ms.Number ?? -1;

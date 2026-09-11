@@ -89,7 +89,17 @@ namespace BuildConsole.Controls
                 var p = svc.Progress;
                 ActiveTitle.Text = string.IsNullOrWhiteSpace(p.MilestoneTitle) ? svc.ActiveMilestoneTitle : p.MilestoneTitle;
 
-                if (p.Total > 0)
+                if (!p.HasRealCounts)
+                {
+                    // Git #3591 — cold board, no real ALL-states fetch has landed yet this
+                    // session. Show an honest loading state rather than GitHub's raw native
+                    // open_issues/closed_issues counter, which may include Epic/Feature/
+                    // internal-tooling placeholders and briefly show a wrong number.
+                    ProgressFill.Width = 0;
+                    ProgressText.Text = "loading…";
+                    ProgressText.Visibility = Visibility.Visible;
+                }
+                else if (p.Total > 0)
                 {
                     ProgressFill.Width = Math.Max(0, Math.Min(TrackWidth, TrackWidth * p.Percent / 100.0));
                     ProgressText.Text = $"{p.Closed}/{p.Total} · {p.Percent}%";

@@ -28,6 +28,14 @@ namespace BuildConsole.Services
         public int ClosedIssues { get; set; }
         public int TotalIssues => OpenIssues + ClosedIssues;
         public int ProgressPercent => TotalIssues == 0 ? 0 : (ClosedIssues * 100 / TotalIssues);
+        /// <summary>True only when Open/Closed came from the real, placeholder-filtered
+        /// ALL-states computation (<c>GitBoardIssueFilters.ComputeRealMilestoneCounts</c>).
+        /// False on a cold board, where these counts are GitHub's raw native
+        /// <c>open_issues</c>/<c>closed_issues</c> fallback — which "may include Epic/Feature/
+        /// internal-tooling placeholders" and can show a briefly wrong number (Git #3591).
+        /// <see cref="FocusModeBar"/> uses this to show an honest loading state instead of
+        /// rendering the fallback number.</summary>
+        public bool HasRealCounts { get; set; }
     }
 
     /// <summary>One bounded, low-commitment thing to do — always scoped to the ACTIVE
@@ -81,6 +89,11 @@ namespace BuildConsole.Services
         public double IssuesPerDay { get; set; }
         /// <summary>Why no ETA yet, for the diagnostic log / bar tooltip.</summary>
         public string EtaReason { get; set; } = "";
+        /// <summary>Mirrors <see cref="FocusMilestone.HasRealCounts"/> for the active milestone —
+        /// false on a cold board (no ALL-states fetch has landed yet this session), so
+        /// <see cref="FocusModeBar"/> can show an honest loading state instead of the
+        /// potentially-wrong native-counter fallback (Git #3591).</summary>
+        public bool HasRealCounts { get; set; }
     }
 
     // ----- persisted snapshot POCOs (focus-mode.json) --------------------
