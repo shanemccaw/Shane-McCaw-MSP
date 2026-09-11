@@ -76,15 +76,40 @@ public sealed class TenantService : ITenantService
 
     public async Task LoadTenantsAsync(int mspId, CancellationToken cancellationToken = default)
     {
+        // #3618 — the HTTP awaits below use ConfigureAwait(false) (the service-layer convention), so
+        // this method's continuation resumes on a threadpool thread. The state commits + event raises
+        // (CurrentTenant setter → CurrentTenantChanged, TenantsChanged) are handled by UI subscribers
+        // that touch WPF elements directly (TenantSwitcher, MainWindow.OnCurrentTenantChanged, the
+        // telemetry/SOW views), so raising them off the UI thread throws the cross-thread
+        // "The calling thread cannot access this object because a different thread owns it"
+        // InvalidOperationException. Capture the calling context (the UI thread — this is always
+        // awaited from it) and run every commit-and-raise block back on it via Commit(). A null
+        // context (headless/unit-test) runs inline, unchanged from the old behaviour.
+        var callerContext = SynchronizationContext.Current;
+        void Commit(Action commit)
+        {
+            if (callerContext != null && callerContext != SynchronizationContext.Current)
+            {
+                callerContext.Send(_ => commit(), null);
+            }
+            else
+            {
+                commit();
+            }
+        }
+
         if (mspId <= 0)
         {
             // No real MSP context (signed out) — clear rather than call an endpoint that would
             // 401/403 anyway.
-            _tenants.Clear();
-            CurrentTenant = null;
-            IsLoaded = false;
-            LoadError = null;
-            TenantsChanged?.Invoke(this, EventArgs.Empty);
+            Commit(() =>
+            {
+                _tenants.Clear();
+                CurrentTenant = null;
+                IsLoaded = false;
+                LoadError = null;
+                TenantsChanged?.Invoke(this, EventArgs.Empty);
+            });
             return;
         }
 
@@ -125,29 +150,35 @@ public sealed class TenantService : ITenantService
                 page++;
             }
 
-            var previousGuid = _currentTenant?.TenantGuid;
+            Commit(() =>
+            {
+                var previousGuid = _currentTenant?.TenantGuid;
 
-            _tenants.Clear();
-            _tenants.AddRange(loaded);
-            IsLoaded = true;
-            LoadError = null;
+                _tenants.Clear();
+                _tenants.AddRange(loaded);
+                IsLoaded = true;
+                LoadError = null;
 
-            // Preserve the current selection across a reload when it still exists; otherwise
-            // fall back to the first real customer (or null if the MSP genuinely has none).
-            var restored = !string.IsNullOrEmpty(previousGuid)
-                ? _tenants.FirstOrDefault(t => t.TenantGuid.Equals(previousGuid, StringComparison.OrdinalIgnoreCase))
-                : null;
-            CurrentTenant = restored ?? _tenants.FirstOrDefault();
+                // Preserve the current selection across a reload when it still exists; otherwise
+                // fall back to the first real customer (or null if the MSP genuinely has none).
+                var restored = !string.IsNullOrEmpty(previousGuid)
+                    ? _tenants.FirstOrDefault(t => t.TenantGuid.Equals(previousGuid, StringComparison.OrdinalIgnoreCase))
+                    : null;
+                CurrentTenant = restored ?? _tenants.FirstOrDefault();
 
-            TenantsChanged?.Invoke(this, EventArgs.Empty);
+                TenantsChanged?.Invoke(this, EventArgs.Empty);
+            });
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _tenants.Clear();
-            CurrentTenant = null;
-            IsLoaded = false;
-            LoadError = ex.Message;
-            TenantsChanged?.Invoke(this, EventArgs.Empty);
+            Commit(() =>
+            {
+                _tenants.Clear();
+                CurrentTenant = null;
+                IsLoaded = false;
+                LoadError = ex.Message;
+                TenantsChanged?.Invoke(this, EventArgs.Empty);
+            });
         }
     }
 
