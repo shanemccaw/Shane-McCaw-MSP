@@ -1,5 +1,7 @@
+using System;
 using System.Windows;
 using System.Windows.Input;
+using BuildConsole.Services;
 
 namespace BuildConsole
 {
@@ -28,5 +30,14 @@ namespace BuildConsole
                 Close();
             }
         }
+
+        // ── Custom title bar (same pattern as ManifestViewerWindow/TestHistoryWindow, Git #1006) ──
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            WindowChromeHelper.Setup(this);
+        }
+
+        private void BtnCloseWindow_Click(object sender, RoutedEventArgs e) => Close();
     }
 }

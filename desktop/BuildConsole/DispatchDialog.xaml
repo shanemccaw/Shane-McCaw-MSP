@@ -1,11 +1,13 @@
 <Window x:Class="BuildConsole.DispatchDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Dispatch" SizeToContent="WidthAndHeight"
         MinWidth="320"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
+        WindowStyle="None"
         Background="{StaticResource BaseBrush}"
         KeyDown="Window_KeyDown">
 
@@ -19,8 +21,46 @@
         (Git #1966), the auto-restart countdown, and the #2716 pending-BUILD:-comment retry
         state — carries over unchanged. Nothing about DispatchPanel's own logic changed; only its
         container did.
+
+        Git #3569 — custom dark title bar (WindowChromeHelper, Git #1006), close-only: this is a
+        fixed-size (SizeToContent, ResizeMode="NoResize"), non-taskbar modal, so no
+        minimize/maximize affordances make sense — only Close.
     -->
+    <WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="32"
+                             ResizeBorderThickness="0"
+                             GlassFrameThickness="-1"
+                             CornerRadius="0"
+                             UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
     <Border BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1" CornerRadius="8">
-        <ContentControl x:Name="ContentHost"/>
+        <DockPanel LastChildFill="True">
+
+            <!-- ── Title bar ── -->
+            <Border DockPanel.Dock="Top"
+                    Background="{StaticResource CrustBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,0,0,1"
+                    Height="32"
+                    CornerRadius="8,8,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Dispatch" Margin="12,0,0,0"
+                               VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource Subtext1Brush}"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
+                            <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <ContentControl x:Name="ContentHost"/>
+        </DockPanel>
     </Border>
 </Window>
