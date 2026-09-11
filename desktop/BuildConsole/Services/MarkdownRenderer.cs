@@ -32,6 +32,21 @@ namespace BuildConsole.Services
         private static readonly Regex BoldRegex = new(@"\*\*([^*]+)\*\*|__([^_]+)__", RegexOptions.Compiled);
         private static readonly Regex ItalicRegex = new(@"(?<!\*)\*([^*]+)\*(?!\*)|(?<!_)_([^_]+)_(?!_)", RegexOptions.Compiled);
 
+        // #3685 — a real repo-relative/absolute path, whether or not its extension is in
+        // FileRegex's narrower whitelist: has a directory separator, and ends in a real extension.
+        private static readonly Regex PathLikeRegex = new(@"^[\w][\w\-./\\]*[/\\][\w\-. ]+\.[A-Za-z0-9]{1,10}$", RegexOptions.Compiled);
+
+        // #3685 — the checklist-row shape a doc-path reference is actually authored in:
+        // "<label> — `<path>`" (em/en dash or hyphen separator, path in backticks, at line end).
+        private static readonly Regex TrailingPathBadgeRegex = new(@"^(?<label>.+?)\s*[—–\-]\s*`(?<path>[^`]+)`\s*$", RegexOptions.Compiled);
+
+        /// <summary>#3685 — "looks like a real file path": has a directory separator and ends in a
+        /// real extension. Deliberately broader than <see cref="FileRegex"/>'s fixed extension
+        /// whitelist (used for bare, non-backtick path mentions) — this drives whether an inline-code
+        /// span (```` `...` ````) gets treated as an implicit clickable FileLink too.</summary>
+        private static bool LooksLikeFilePath(string text) =>
+            !string.IsNullOrWhiteSpace(text) && PathLikeRegex.IsMatch(text.Trim());
+
         // Codepoints that are NEVER legitimate rendered content and show up as tofu boxes
         // in a text font: C0/C1 control chars (except tab/newline/CR), zero-width joiners/
         // spaces, BOM/word-joiner, the Unicode replacement + object-replacement chars, and
@@ -58,6 +73,13 @@ namespace BuildConsole.Services
             public Action<string>? OnUrlClick { get; set; }
             public Action<int>? OnIssueClick { get; set; }
             public Action<string>? OnRunTest { get; set; }
+
+            /// <summary>#3685 — "reveal in folder, file pre-selected." Same real fullPath-resolution
+            /// contract as <see cref="OnFileClick"/> (raw path text in, consumer resolves it against
+            /// the repo root); null (the default) means no reveal action is offered anywhere — the
+            /// existing FileLink hyperlink and inline-code path badges render exactly as before
+            /// #3685 for any consumer that doesn't opt in.</summary>
+            public Action<string>? OnRevealInFolder { get; set; }
 
             /// <summary>#2706 — opt-in task-checkbox interactivity. Null (the default) means every
             /// task item renders exactly as before #2706: a static, read-only glyph — so existing
@@ -404,20 +426,62 @@ namespace BuildConsole.Services
             Grid.SetColumn(iconElement, 0);
             grid.Children.Add(iconElement);
 
-            var textBlock = new TextBlock
+            // #3685 — a checklist row authored as "<label> — `<path>`" (Shane's real doc-path
+            // reference shape) gets its own cleaner layout: the label on one line, the path badge
+            // on its own indented line below, instead of crammed inline after the "—" separator
+            // and wrapping awkwardly for longer paths. Any other checklist row (no trailing
+            // backtick-path shape) keeps the exact prior single-TextBlock rendering — the shared
+            // consumers (GitDetailView, IssueDetailView, FloatingChatWindow) are unaffected unless
+            // their own note text actually has this specific shape.
+            var pathBadgeMatch = TrailingPathBadgeRegex.Match(text);
+            FrameworkElement rowContent;
+            if (pathBadgeMatch.Success && LooksLikeFilePath(pathBadgeMatch.Groups["path"].Value))
             {
-                FontSize = options.BaseFontSize,
-                Foreground = isChecked ? getBrush("Subtext0Brush") : getBrush("TextBrush"),
-                TextWrapping = TextWrapping.Wrap,
-                LineHeight = 19
-            };
-            if (isChecked)
-            {
-                textBlock.TextDecorations = TextDecorations.Strikethrough;
+                string label = pathBadgeMatch.Groups["label"].Value.Trim();
+                string path = pathBadgeMatch.Groups["path"].Value.Trim();
+
+                var stack = new StackPanel();
+
+                var labelBlock = new TextBlock
+                {
+                    FontSize = options.BaseFontSize,
+                    Foreground = isChecked ? getBrush("Subtext0Brush") : getBrush("TextBrush"),
+                    TextWrapping = TextWrapping.Wrap,
+                    LineHeight = 19
+                };
+                if (isChecked) labelBlock.TextDecorations = TextDecorations.Strikethrough;
+                PopulateInlines(labelBlock, label, options, getBrush);
+                stack.Children.Add(labelBlock);
+
+                var badgeRow = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Margin = new Thickness(4, 3, 0, 0)
+                };
+                badgeRow.Children.Add(CreatePathBadge(path, options, getBrush));
+                stack.Children.Add(badgeRow);
+
+                rowContent = stack;
             }
-            PopulateInlines(textBlock, text, options, getBrush);
-            Grid.SetColumn(textBlock, 1);
-            grid.Children.Add(textBlock);
+            else
+            {
+                var textBlock = new TextBlock
+                {
+                    FontSize = options.BaseFontSize,
+                    Foreground = isChecked ? getBrush("Subtext0Brush") : getBrush("TextBrush"),
+                    TextWrapping = TextWrapping.Wrap,
+                    LineHeight = 19
+                };
+                if (isChecked)
+                {
+                    textBlock.TextDecorations = TextDecorations.Strikethrough;
+                }
+                PopulateInlines(textBlock, text, options, getBrush);
+                rowContent = textBlock;
+            }
+
+            Grid.SetColumn(rowContent, 1);
+            grid.Children.Add(rowContent);
 
             return grid;
         }
@@ -660,6 +724,53 @@ namespace BuildConsole.Services
             return tb;
         }
 
+        /// <summary>#3685 — the real code-badge visual (same border/padding/monospace look the
+        /// static inline-code badge already used) but wired clickable: opens the file the same way
+        /// a FileLink hyperlink does, and carries a "Reveal in Explorer" context-menu entry when
+        /// <see cref="RenderOptions.OnRevealInFolder"/> is set — the same real
+        /// <c>explorer.exe /select,"..."</c> pattern already proven in
+        /// <c>MainWindow.xaml.cs</c>/<c>Controls/LeftSidebar.xaml.cs</c>. Shared by the implicit
+        /// path-like inline-code token below and by <see cref="CreateTaskItem"/>'s split-out
+        /// checklist path-badge row.</summary>
+        private static Border CreatePathBadge(string path, RenderOptions options, Func<string, Brush> getBrush)
+        {
+            var badge = new Border
+            {
+                Background = getBrush("Surface0Brush"),
+                BorderBrush = getBrush("Surface1Brush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(4, 1, 4, 1),
+                Margin = new Thickness(2, 0, 2, 0),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Child = new TextBlock
+                {
+                    Text = path,
+                    FontFamily = new FontFamily("Consolas, Courier New"),
+                    FontSize = options.BaseFontSize - 1,
+                    Foreground = getBrush("PeachBrush"),
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            };
+
+            badge.MouseLeftButtonDown += (s, e) =>
+            {
+                e.Handled = true;
+                options.OnFileClick?.Invoke(path);
+            };
+
+            if (options.OnRevealInFolder != null)
+            {
+                var cm = new ContextMenu();
+                var miReveal = new MenuItem { Header = "Reveal in Explorer" };
+                miReveal.Click += (s, e) => options.OnRevealInFolder?.Invoke(path);
+                cm.Items.Add(miReveal);
+                badge.ContextMenu = cm;
+            }
+
+            return badge;
+        }
+
         /// <summary>
         /// Parses inline Markdown styling (bold, italic, inline code, links, files, #issues) into WPF Inlines.
         /// </summary>
@@ -685,24 +796,30 @@ namespace BuildConsole.Services
 
                     case TokenKind.InlineCode:
                         var codeSpan = new Span();
-                        var border = new Border
-                        {
-                            Background = getBrush("Surface0Brush"),
-                            BorderBrush = getBrush("Surface1Brush"),
-                            BorderThickness = new Thickness(1),
-                            CornerRadius = new CornerRadius(3),
-                            Padding = new Thickness(4, 1, 4, 1),
-                            Margin = new Thickness(2, 0, 2, 0),
-                            Child = new TextBlock
+                        // #3685 — an inline-code span whose content looks like a real file path
+                        // (`services/foo.ts`, not just `foo`) gets the real clickable + reveal
+                        // treatment via the shared badge helper. Any other inline code keeps the
+                        // exact prior static-badge rendering.
+                        FrameworkElement codeElement = LooksLikeFilePath(tok.Text)
+                            ? CreatePathBadge(tok.Text, options, getBrush)
+                            : new Border
                             {
-                                Text = tok.Text,
-                                FontFamily = new FontFamily("Consolas, Courier New"),
-                                FontSize = options.BaseFontSize - 1,
-                                Foreground = getBrush("PeachBrush"),
-                                VerticalAlignment = VerticalAlignment.Center
-                            }
-                        };
-                        codeSpan.Inlines.Add(new InlineUIContainer(border));
+                                Background = getBrush("Surface0Brush"),
+                                BorderBrush = getBrush("Surface1Brush"),
+                                BorderThickness = new Thickness(1),
+                                CornerRadius = new CornerRadius(3),
+                                Padding = new Thickness(4, 1, 4, 1),
+                                Margin = new Thickness(2, 0, 2, 0),
+                                Child = new TextBlock
+                                {
+                                    Text = tok.Text,
+                                    FontFamily = new FontFamily("Consolas, Courier New"),
+                                    FontSize = options.BaseFontSize - 1,
+                                    Foreground = getBrush("PeachBrush"),
+                                    VerticalAlignment = VerticalAlignment.Center
+                                }
+                            };
+                        codeSpan.Inlines.Add(new InlineUIContainer(codeElement));
                         tb.Inlines.Add(codeSpan);
                         break;
 
@@ -715,6 +832,14 @@ namespace BuildConsole.Services
                         };
                         string filePath = tok.Text;
                         fileLink.Click += (s, e) => options.OnFileClick?.Invoke(filePath);
+                        if (options.OnRevealInFolder != null)
+                        {
+                            var fileLinkCm = new ContextMenu();
+                            var miRevealFile = new MenuItem { Header = "Reveal in Explorer" };
+                            miRevealFile.Click += (s, e) => options.OnRevealInFolder?.Invoke(filePath);
+                            fileLinkCm.Items.Add(miRevealFile);
+                            fileLink.ContextMenu = fileLinkCm;
+                        }
                         tb.Inlines.Add(fileLink);
                         break;
 

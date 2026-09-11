@@ -55,15 +55,95 @@ namespace BuildConsole.TestPad
 
         /// <summary>Renders <see cref="_note"/>'s current text into the Rendered view, wiring
         /// <see cref="MarkdownRenderer.RenderOptions.OnTaskToggled"/> so a real checklist item's
-        /// checkbox is clickable — #2706. Called both from <see cref="ShowFor"/> and again after
-        /// a toggle persists, so the row's strikethrough reflects the new state immediately.</summary>
+        /// checkbox is clickable — #2706 — and, as of #3685,
+        /// <see cref="MarkdownRenderer.RenderOptions.OnFileClick"/> /
+        /// <see cref="MarkdownRenderer.RenderOptions.OnRevealInFolder"/> so a real doc-path
+        /// reference in a note (a FileLink, or an implicit path-like inline-code span) opens in
+        /// BuildConsole's own markdown-preview tab / reveals in Explorer, the exact same real
+        /// pattern already proven in <c>GitDetailView</c>/<c>IssueDetailView</c>. Called both from
+        /// <see cref="ShowFor"/> and again after a toggle persists, so the row's strikethrough
+        /// reflects the new state immediately.</summary>
         private void RenderNote()
         {
             if (_note == null) return;
             RenderedContent.Content = MarkdownRenderer.Render(_note.Text, new MarkdownRenderer.RenderOptions
             {
-                OnTaskToggled = OnTaskToggled
+                OnTaskToggled = OnTaskToggled,
+                OnFileClick = async fileName => await OpenNotePathAsync(fileName, reveal: false),
+                OnRevealInFolder = async fileName => await OpenNotePathAsync(fileName, reveal: true)
             });
+        }
+
+        /// <summary>#3685 — real, shared resolve-then-act for both a doc-path click (open in
+        /// BuildConsole's own <see cref="MainWindow.OpenFileTab"/> markdown-preview tab) and a
+        /// "Reveal in Explorer" context-menu action, reusing the identical real resolution pattern
+        /// already proven in <c>GitDetailView</c>/<c>IssueDetailView</c>: resolve a relative path
+        /// against the repo root (a direct combine, then the same common-subdirectory probe, then a
+        /// pruned breadth-first search by filename), then act on whichever real path resolves.</summary>
+        private static async System.Threading.Tasks.Task OpenNotePathAsync(string fileName, bool reveal)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return;
+
+            string? repoRoot = BuildTrackerConfig.FindRepoRoot();
+            string fullPath = fileName.Replace("/", "\\");
+            if (!System.IO.Path.IsPathRooted(fullPath) && repoRoot != null)
+            {
+                fullPath = System.IO.Path.Combine(repoRoot, fullPath);
+            }
+
+            if (!System.IO.File.Exists(fullPath) && repoRoot != null)
+            {
+                fullPath = await System.Threading.Tasks.Task.Run(() =>
+                {
+                    var commonDirs = new[]
+                    {
+                        "client/src", "client/src/components", "client/src/pages", "client/src/lib", "client",
+                        "server", "server/routes", "server/services",
+                        "desktop/BuildConsole/Controls", "desktop/BuildConsole/Services", "desktop/BuildConsole/TestPad", "desktop/BuildConsole", "desktop",
+                        "src", "src/components", "src/pages", "src/services",
+                        "migrations", "test-manifests", "scripts", "docs", "build-journal"
+                    };
+                    string justName = System.IO.Path.GetFileName(fileName);
+                    foreach (var rel in commonDirs)
+                    {
+                        string candidate = System.IO.Path.Combine(repoRoot, rel, fileName.Replace("/", "\\"));
+                        if (System.IO.File.Exists(candidate)) return candidate;
+                        string candidateByName = System.IO.Path.Combine(repoRoot, rel, justName);
+                        if (System.IO.File.Exists(candidateByName)) return candidateByName;
+                    }
+
+                    var queue = new System.Collections.Generic.Queue<string>();
+                    queue.Enqueue(repoRoot);
+                    while (queue.Count > 0)
+                    {
+                        var current = queue.Dequeue();
+                        try
+                        {
+                            foreach (var file in System.IO.Directory.GetFiles(current, justName)) return file;
+                            foreach (var dir in System.IO.Directory.GetDirectories(current))
+                            {
+                                var name = System.IO.Path.GetFileName(dir);
+                                if (name is "node_modules" or ".git" or "bin" or "obj" or ".next") continue;
+                                queue.Enqueue(dir);
+                            }
+                        }
+                        catch { }
+                    }
+                    return fullPath;
+                });
+            }
+
+            if (!System.IO.File.Exists(fullPath)) return;
+
+            if (reveal)
+            {
+                try { System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{fullPath}\""); }
+                catch { }
+            }
+            else if (Application.Current.MainWindow is MainWindow mWindow)
+            {
+                mWindow.OpenFileTab(fullPath);
+            }
         }
 
         /// <summary>#2706 — flips one checklist line's `- [ ]`/`- [x]` marker in the note's real
