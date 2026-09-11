@@ -2930,15 +2930,122 @@ namespace BuildConsole.Controls
             return new BuildSetEpicGroupKey { SortRank = 2, EpicNumber = null, Label = "No Epic" };
         }
 
-        /// <summary>Git #3336 — a real, bold Epic-group header above a block of build-set rollup rows.</summary>
-        private static UIElement BuildEpicGroupHeader(BuildSetEpicGroupKey key) => new TextBlock
+        /// <summary>Git #1932's per-build-set "which Verifying items haven't been sent yet"
+        /// computation, factored out so Git #3605's epic-level aggregate button can reuse the
+        /// exact same real logic instead of re-deriving it. Never mutates
+        /// _sentVerifyingByBuildSet — same "no side effects on render" contract as before.</summary>
+        private List<int> GetUnsentVerifying(string buildSetKey, List<int> verifying)
         {
-            Text = key.Label,
-            FontSize = 11,
-            FontWeight = FontWeights.Bold,
-            Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
-            Margin = new Thickness(2, 10, 0, 4),
-        };
+            var alreadySent = _sentVerifyingByBuildSet.TryGetValue(buildSetKey, out var sentSet) ? sentSet : null;
+            return alreadySent == null ? verifying : verifying.Where(n => !alreadySent.Contains(n)).ToList();
+        }
+
+        /// <summary>Git #3336 — a real, bold Epic-group header above a block of build-set rollup
+        /// rows. Git #3605 extends this with an aggregate "✈" send button, next to the header
+        /// text, that sums the real not-yet-sent Verifying items across every member build set
+        /// under this Epic group (<paramref name="unsentByBuildSet"/>, keyed by build-set key) and
+        /// sends them all as one combined landed-list through the same
+        /// SendBuildSetVerifyingRequested pipeline the per-set button (Git #1893/#1932) already
+        /// uses — absent (not disabled) when the aggregate is empty, uniformly across a clean
+        /// single-Epic group, "(mixed Epics)", and "No Epic" alike.</summary>
+        private UIElement BuildEpicGroupHeader(BuildSetEpicGroupKey key, Dictionary<string, List<int>> unsentByBuildSet)
+        {
+            var headerText = new TextBlock
+            {
+                Text = key.Label,
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            int totalUnsent = unsentByBuildSet.Sum(kv => kv.Value.Count);
+            if (totalUnsent == 0)
+            {
+                headerText.Margin = new Thickness(2, 10, 0, 4);
+                return headerText;
+            }
+
+            var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 10, 0, 4) };
+            headerRow.Children.Add(headerText);
+
+            var sendButton = new Button
+            {
+                Content = "✈",
+                FontSize = 12,
+                Padding = new Thickness(5, 1, 5, 2),
+                Margin = new Thickness(6, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Cursor = Cursors.Hand,
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                ToolTip = $"Send {totalUnsent} not-yet-sent verifying item(s) across all {unsentByBuildSet.Count} build set(s) under \"{key.Label}\" as one combined landed-list to the active chat"
+            };
+            headerRow.Children.Add(sendButton);
+
+            var statusText = new TextBlock
+            {
+                FontSize = 10,
+                Margin = new Thickness(2, 0, 2, 4),
+                TextWrapping = TextWrapping.Wrap,
+                Visibility = Visibility.Collapsed
+            };
+
+            var wrapper = new StackPanel();
+            wrapper.Children.Add(headerRow);
+            wrapper.Children.Add(statusText);
+
+            sendButton.Click += (s, e) =>
+            {
+                // Git #3605 — snapshot the aggregate at click time, same discipline as the per-set
+                // button (BuildRollupRow) snapshotting its own unsentVerifying before invoking the
+                // async send, so a re-render mid-flight can't change what this send marks sent.
+                var snapshot = unsentByBuildSet.ToDictionary(kv => kv.Key, kv => kv.Value.ToList(), StringComparer.OrdinalIgnoreCase);
+                var allNumbers = snapshot.Values.SelectMany(v => v).ToList();
+                string text = string.Join("\n", allNumbers.Select(n => $"Git {FormatIssueRef(n)} — landed"));
+                ActivityLog.Log("build-queue.rollup-send-to-chat", $"epic-aggregate-send-clicked: {key.Label}, {allNumbers.Count} not-yet-sent verifying item(s) across {snapshot.Count} build set(s)");
+                SendBuildSetVerifyingRequested?.Invoke(this, new SendBuildSetVerifyingEventArgs(key.Label, text, (msg, isError) =>
+                {
+                    bool justSent = false;
+                    if (!isError)
+                    {
+                        // Mark every real (buildSet, issue) pair in the snapshot sent — across
+                        // every affected build set, not just one — so both this aggregate button
+                        // and each individual set's own airplane correctly read "already sent"
+                        // afterward, with no double-offering.
+                        foreach (var kv in snapshot)
+                        {
+                            if (!_sentVerifyingByBuildSet.TryGetValue(kv.Key, out var sent))
+                            {
+                                sent = new HashSet<int>();
+                                _sentVerifyingByBuildSet[kv.Key] = sent;
+                            }
+                            foreach (var n in kv.Value) sent.Add(n);
+                        }
+                        justSent = true;
+                    }
+                    statusText.Text = msg;
+                    statusText.Foreground = isError
+                        ? (Brush)Application.Current.FindResource("RedBrush")
+                        : (Brush)Application.Current.FindResource("GreenBrush");
+                    statusText.Visibility = Visibility.Visible;
+                    // Same deferred-rebuild pattern as the per-set button: let Shane see the
+                    // outcome message before RenderBuildSetRollup rebuilds this header out from
+                    // under statusText.
+                    var hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+                    hideTimer.Tick += (ts, te) =>
+                    {
+                        hideTimer.Stop();
+                        if (justSent) RenderBuildSetRollup(_lastItems);
+                        else statusText.Visibility = Visibility.Collapsed;
+                    };
+                    hideTimer.Start();
+                }));
+            };
+
+            return wrapper;
+        }
 
         /// <summary>Git #1834 — collapsible per-buildSet rollup summary. Rebuilds
         /// BuildSetRollupList from scratch off the real, current <paramref name="items"/> every
@@ -3037,7 +3144,17 @@ namespace BuildConsole.Controls
 
             foreach (var epicGroup in epicGroups)
             {
-                BuildSetRollupList.Children.Add(BuildEpicGroupHeader(epicGroup.Key));
+                // Git #3605 — the same real per-set unsent-Verifying computation BuildRollupRow
+                // uses below, summed across every member build set under this Epic group, so the
+                // aggregate header button offers exactly what the sum of the individual per-set
+                // buttons would offer — no double-offering, nothing invented.
+                var unsentByBuildSet = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var key in epicGroup)
+                {
+                    var unsent = GetUnsentVerifying(key, buckets[key].verifying);
+                    if (unsent.Count > 0) unsentByBuildSet[key] = unsent;
+                }
+                BuildSetRollupList.Children.Add(BuildEpicGroupHeader(epicGroup.Key, unsentByBuildSet));
                 foreach (var key in epicGroup)
                 {
                     var counts = buckets[key];
@@ -3140,12 +3257,11 @@ namespace BuildConsole.Controls
             headerGrid.Children.Add(summaryText);
 
             // Git #1932 — only the Verifying items this build set hasn't already sent count
-            // toward whether the send button shows/what it sends. _sentVerifyingByBuildSet is
-            // never mutated here — TryGetValue + Except gives the unsent subset without side
-            // effects, so re-rendering this row (RenderBuildSetRollup runs on every refresh) never
-            // itself marks anything as sent.
-            var alreadySent = _sentVerifyingByBuildSet.TryGetValue(buildSetKey, out var sentSet) ? sentSet : null;
-            var unsentVerifying = alreadySent == null ? verifying : verifying.Where(n => !alreadySent.Contains(n)).ToList();
+            // toward whether the send button shows/what it sends. GetUnsentVerifying never
+            // mutates _sentVerifyingByBuildSet — no side effects, so re-rendering this row
+            // (RenderBuildSetRollup runs on every refresh) never itself marks anything as sent.
+            // (Git #3605 factored this out so the epic-level aggregate header button can reuse it.)
+            var unsentVerifying = GetUnsentVerifying(buildSetKey, verifying);
 
             // Git #1893/#1932 — "send this set's not-yet-sent Verifying items as a landed-list to
             // the active chat" button. Only rendered when there's something real and NEW to send
