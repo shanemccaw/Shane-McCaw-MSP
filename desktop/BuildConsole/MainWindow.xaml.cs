@@ -408,10 +408,6 @@ namespace BuildConsole
             // Set dark background on XAML background webview so it never flashes white
             ClaudeWebView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
 
-            // Build completion sound mute toggle — reflect the persisted state
-            // (%AppData%\BuildConsole\settings.json) in the menu checkmark on launch.
-            MuteCompletionSoundMenuItem.IsChecked = BuildConsole.Services.BuildConsoleSettings.Load().BuildCompleteSoundMuted;
-
             // Git #1419 — title-bar Primary/Secondary account toggle: reflect the persisted
             // global default on launch.
             RefreshTopAccountToggleUi();
@@ -6847,14 +6843,6 @@ namespace BuildConsole
         private void MenuExit_Click(object sender, RoutedEventArgs e)
             => Application.Current.Shutdown();
 
-        // ── Menu: Sound ───────────────────────────────────────────────────────
-        private void MuteCompletionSound_Click(object sender, RoutedEventArgs e)
-        {
-            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
-            settings.BuildCompleteSoundMuted = MuteCompletionSoundMenuItem.IsChecked;
-            settings.Save();
-        }
-
         // ── Title bar: Primary/Secondary account toggle (Git #1419) ────────────
         // Shane: "put a checkbox or toggle switch up on the title bar that just
         // switches all the builds over." Flips BuildConsoleSettings.DefaultAccount,
@@ -8890,12 +8878,8 @@ namespace BuildConsole
             }
         }
 
-        // ── Menu: Help ────────────────────────────────────────────────────────
         private void OpenDevTools_Click(object sender, RoutedEventArgs e)
             => GetActiveWebView().CoreWebView2?.OpenDevToolsWindow();
-
-        private void CheerMeUp_Click(object sender, RoutedEventArgs e)
-            => BuildConsole.Services.EncouragementService.Instance.TriggerCheerNow();
 
         // ── Git #821: Release build button ───────────────────────────────────
         private System.Diagnostics.Process? _releaseBuildProcess;

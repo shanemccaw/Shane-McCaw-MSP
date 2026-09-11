@@ -60,6 +60,7 @@ namespace BuildConsole.Controls
             AutoRunFullSuiteFallbackCheck.IsChecked = savedSettings.AutoRunFullSuiteFallbackOnBuildComplete;
 
             BuildSoundPathBox.Text = savedSettings.BuildCompleteSoundPath;
+            MuteCompletionSoundCheck.IsChecked = savedSettings.BuildCompleteSoundMuted;
 
             SshKeyPathBox.Text = savedSettings.SshKeyPath;
             SshHostBox.Text = savedSettings.SshHost;
@@ -116,6 +117,18 @@ namespace BuildConsole.Controls
         {
             var settings = BuildConsoleSettings.Load();
             settings.EncouragementCrittersEnabled = EncouragementCrittersEnabledCheck.IsChecked == true;
+            settings.Save();
+        }
+
+        /// <summary>
+        /// Git #3594 — moved out of the removed top-level "_Sound" menu. The completion
+        /// event/log still fires normally when muted — only BuildCompletionSoundService's
+        /// playback is suppressed.
+        /// </summary>
+        private void MuteCompletionSoundCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsoleSettings.Load();
+            settings.BuildCompleteSoundMuted = MuteCompletionSoundCheck.IsChecked == true;
             settings.Save();
         }
 

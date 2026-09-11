@@ -564,7 +564,7 @@
                                         <CheckBox x:Name="EncouragementCrittersEnabledCheck" Content="🎯 Automatically cheer on milestone progress every 12-24 minutes (&quot;Way to go! Get some ice cream!&quot;)"
                                                   FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"
                                                   Checked="EncouragementCrittersEnabledCheck_Changed" Unchecked="EncouragementCrittersEnabledCheck_Changed"/>
-                                        <TextBlock Text="Off by default. The manual &quot;Cheer Me Up&quot; menu item always works regardless of this setting."
+                                        <TextBlock Text="Off by default."
                                                    FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
@@ -911,6 +911,13 @@
                                 </StackPanel>
                                 <TextBlock Text="Audio notification chime played when a queue-managed build finishes. (Leave blank to use the bundled default)."
                                            FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+
+                                <!-- Git #3594 — moved out of the removed top-level "_Sound" menu.
+                                     The completion event/log still fires normally when muted — only
+                                     BuildCompletionSoundService's playback is suppressed. -->
+                                <CheckBox x:Name="MuteCompletionSoundCheck" Content="Mute build-completion sound"
+                                          FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,14"
+                                          Checked="MuteCompletionSoundCheck_Changed" Unchecked="MuteCompletionSoundCheck_Changed"/>
 
                                 <TextBlock Text="Custom Sound File (.mp3 / .wav)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
                                 <Grid Margin="0,0,0,12">
