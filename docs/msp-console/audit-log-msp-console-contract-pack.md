@@ -1,26 +1,27 @@
 # Audit Log — MSP Console contract extraction pack
 
-**#3370**, under the reset **#1571** (EPIC: Portal Admin) and its fixed 4-step order:
-API build-out → **Document (this pack)** → Design → Implement & wire. `artifacts/msp-console`
-now exists as bare scaffolding (`package.json`, `App.tsx`, `pages/index.tsx`, `pages/not-found.tsx`
-— 11 files total, no audit page yet), so the Design/wire steps ahead of this one have nothing to
-build against yet; the backend this pack documents is real, complete, and already mounted.
+**#3682**, regenerated per the #1642 pattern against `main` on 2026-09-11 — a full
+line-by-line re-audit, wholesale replacement of the prior pack (originally generated for
+**#3370** under the reset **#1571** (EPIC: Portal Admin) and its fixed 4-step order:
+API build-out → **Document (this pack)** → Design → Implement & wire). `artifacts/msp-console`
+remains bare scaffolding (`package.json`, `App.tsx`, `pages/index.tsx`, `pages/not-found.tsx`
+— 11 files total, no audit page yet), so the Design/wire steps ahead of this one still have
+nothing to build against; the backend this pack documents is real, complete, and already mounted.
 
 Read-only. Every field below is extracted verbatim from the route's own code and the Drizzle
 schema, cited to file:line, and cross-checked live against local PostgreSQL. **Nothing here is
-authored or invented.** No product code, schema, or UI was changed by this pass — one out-of-scope
-finding hit while researching consumers (§6) is filed separately, not fixed here.
+authored or invented.** No product code, schema, or UI was changed by this pass.
 
 Backend route (live, mounted — `artifacts/api-server/src/routes/index.ts:487`):
-`artifacts/api-server/src/routes/msp-audit-log.ts` — **146 lines, 1 route**, `GET /api/msp/audit`.
+`artifacts/api-server/src/routes/msp-audit-log.ts` — **154 lines, 1 route**, `GET /api/msp/audit`.
 
 **Confirmed complete, not half-built.** Read in full, not sampled: no `TODO`/`FIXME`/stub markers,
 no dead branches, no half-wired filter. Every query param the route declares in its own header
-comment (`page, limit, search, actionType, mspId, outcome, from, to`) is actually implemented
-(§1.2). The one thing genuinely absent — a UI to call it from — is a Design/wire-step gap (§0),
-not a backend gap this pack's own module is responsible for.
+comment (`page, limit, search, actionType, mspId (PlatformAdmin), customerId, outcome, from, to`)
+is actually implemented (§1.2). The one thing genuinely absent — a UI to call it from — is a
+Design/wire-step gap (§0), not a backend gap this pack's own module is responsible for.
 
-Schema: `lib/db/src/schema/msp.ts:929-954` (`mspAuditLogsTable`, table `msp_audit_logs`). Verified
+Schema: `lib/db/src/schema/msp.ts:930-954` (`mspAuditLogsTable`, table `msp_audit_logs`). Verified
 live against local PostgreSQL (`psql "$DATABASE_URL" -c '\d msp_audit_logs'`) — every column below
 is confirmed present on the running schema, column-for-column identical to the Drizzle source,
 including the three real indexes (`msp_id`, `actor_user_id`, `occurred_at`) and the one FK
@@ -34,73 +35,95 @@ the database.
 
 ---
 
+## What changed since the prior pack (#3370), verified line-by-line against `main`
+
+| Symbol / claim | Prior pack said | Reality now |
+|---|---|---|
+| `customerId` query filter | **absent** — "there is no `customerId` filter param today" | **Present** (Git #3671, `4abe6dcb6`) — exact match on `mspAuditLogsTable.customerId`, AND'd with MSP scoping (§1.2) |
+| Route gate | `requireRole("MSPAdmin")` at `:22`, described via the retired `ROLE_ORDER`/`roleIndex` floor mechanism | **`requireCapability("ladder.msp-admin")`** at `:23` (RBAC #2460, `3dddd4b26` + `c770ac7dd`, both landed 2026-09-10 — `ROLE_ORDER`/`roleIndex` are retired entirely from `requireAuth.ts`). The **allow set is unchanged** — `ladder.msp-admin` was seeded (#2457) as exactly `{MSPAdmin, PlatformAdmin}`, the same two rungs the old floor cleared — but the *mechanism* is now a DB-row lookup (`msp_feature_role_mapping`, evaluated by `userClearsLadderCapability` in `rbac-ladder.ts`), not a compile-time role-index comparison. Who clears this route is now an UPDATE against that row, not a redeploy (§0 below). |
+| §6 finding (GraphProbeModal dead endpoint + fabricated responses) | Presented as open, filed-but-unfixed | **Both fixed and closed.** #3450 (dead `/api/msp/audit-logs` preset → corrected to `/api/msp/audit`) and #3560 (fabricated status/headers/latency/body → real `adminFetch` call against the actual gateway) are both `CLOSED`/`COMPLETED`. Verified directly in `GraphProbeModal.tsx`: the preset now reads `{ url: "/api/msp/audit", label: "MSP Audit Log Telemetry" }` (`:20`), and `handleTestProbe` (`:60-116`) makes a real `await adminFetch(endpointUrl, { method: "GET" })` and reports the real `res.status`/`res.headers`/`res.text()` — no `Math.random()` fabrication left in the file. §6 below is kept as closed-finding history, not a live gap. |
+| Route line count | 146 lines | **154 lines** — the #3671 `customerId` block (`:45-50`, 6 lines) plus the RBAC import swap account for the growth. |
+| Live row count | 522 | **535** (§4, re-queried 2026-09-11) |
+
+Everything else in the prior pack (scoping shape, filter behavior, response aliasing, writer
+catalog, vocabularies, the legacy-table distinction) was re-verified against current code this
+pass and found accurate; those sections are reproduced below with their citations re-confirmed
+against the current 154-line file, not carried over unchecked.
+
+---
+
 ## 0. The surface and its consumers
 
 | Endpoint | Method | Gate | Consumer today | Status |
 |---|---|---|---|---|
-| `/api/msp/audit` | GET | `requireRole("MSPAdmin")` (`:22`) | **MCP server** `get_audit_logs` tool, `source="msp"` (default) — `artifacts/mcp-server/src/tools/get-audit-logs.ts:55` | live, cross-surface reuse, real HTTP round-trip via `apiFetch` |
+| `/api/msp/audit` | GET | `requireCapability("ladder.msp-admin")` (`:23`) | **MCP server** `get_audit_logs` tool, `source="msp"` (default) — `artifacts/mcp-server/src/tools/get-audit-logs.ts:59` | live, cross-surface reuse, real HTTP round-trip via `apiFetch` |
 
 **No MSP Console UI reads this route yet.** `artifacts/msp-console` is scaffolding only (§ above)
 — no audit page exists to wire it to. This is the expected pre-Design state for a Feature at the
 Document step, not a gap this pack invents; the same "orphaned but explicitly staged" pattern the
 RBD pack's §0.1 documents for its own unconsumed routes.
 
-`requireRole("MSPAdmin")` is a **floor**, not an exact match (`requireAuth.ts:115-123`'s
-`ROLE_ORDER`, ascending: `Assessment, Free, CustomerUser, ServiceAccount, MSPOperator, MSPAdmin,
-PlatformAdmin`) — both `MSPAdmin` and `PlatformAdmin` clear it; `MSPOperator` and below do not.
-Legacy `role === "admin"` users are normalized to `PlatformAdmin` (`requireAuth.ts:145`,
-`effectiveMspRole`) before the floor check runs, so an "admin"-role account reaches this route the
-same as a real `PlatformAdmin`.
+`requireCapability("ladder.msp-admin")` (RBAC #2460, `requireAuth.ts:271-307`) replaces what was
+previously a `requireRole("MSPAdmin")` floor check. The decision source moved from a compile-time
+`ROLE_ORDER` array index comparison to a DB-row lookup — `userClearsLadderCapability`
+(`rbac-ladder.ts:345`) evaluates the caller's effective role against `msp_feature_role_mapping`
+rows seeded (#2457) so that `ladder.msp-admin`'s allow set is exactly `{MSPAdmin, PlatformAdmin}` —
+the identical two rungs the retired floor cleared, by construction (`rbac-ladder.ts:21-24`). Both
+`MSPAdmin` and `PlatformAdmin` clear it; `MSPOperator` and below do not. Legacy `role === "admin"`
+users are still normalized to `PlatformAdmin` before the check runs (the promotion `requireRole`
+always applied is explicitly preserved, `rbac-ladder.ts:27-33`), so an "admin"-role account reaches
+this route the same as a real `PlatformAdmin`. The 403 body on denial is byte-identical to the old
+`ROLE_ORDER` failure ("Insufficient privileges — MSPAdmin or above required",
+`requireAuth.ts:309-322`) — a client, test manifest, or log consumer cannot tell the cutover
+happened from the response shape alone. On a genuinely unconsultable RBAC model (e.g. #2457's seed
+never run), the route fails **closed** with a 503, not an open 403-as-allow (`requireAuth.ts:283-294`).
+
+**Practical consequence for anyone reading this pack to design a screen:** the *set* of roles that
+can reach this endpoint has not changed — still MSPAdmin/PlatformAdmin only — but "who can see the
+Audit Log" is now editable by an UPDATE to a `msp_feature_role_mapping` row, not a code change, and
+a future widening/narrowing of that row would not require touching `msp-audit-log.ts` at all.
 
 ---
 
 ## 1. Wire contract — `GET /api/msp/audit`
 
-### 1.1 Scoping (`:30-42`)
+### 1.1 Scoping (`:31-43`)
 
 | Caller | Scope applied |
 |---|---|
-| `PlatformAdmin` (`role === "admin"` or `mspRole === "PlatformAdmin"`) | Unscoped by default — sees every MSP's rows. If `?mspId=` is supplied and parses as a number, narrows to that one MSP (`:37-42`) — no ownership check needed since PlatformAdmin is cross-MSP by design. |
-| `MSPAdmin` | Hard-scoped to `mspAuditLogsTable.mspId = user.mspId` (`:36`) — the request cannot override this; `?mspId=` in the query string is silently ignored for a non-PlatformAdmin caller (the `else if` at `:37` only runs for the PlatformAdmin branch). |
-| `MSPAdmin` with **no** `mspId` on their own user row | `res.json({ entries: [], total: 0, page, limit })` and returns immediately (`:32-35`) — a genuine 200 empty result, not a 403 or 500. This is a real, honest edge case: an MSPAdmin account somehow lacking `mspId` sees nothing rather than erroring or leaking cross-MSP rows. |
+| `PlatformAdmin` (`role === "admin"` or `mspRole === LEGACY_ROLE.platformAdmin`) | Unscoped by default — sees every MSP's rows. If `?mspId=` is supplied and parses as a number, narrows to that one MSP (`:38-43`) — no ownership check needed since PlatformAdmin is cross-MSP by design. |
+| `MSPAdmin` | Hard-scoped to `mspAuditLogsTable.mspId = user.mspId` (`:37`) — the request cannot override this; `?mspId=` in the query string is silently ignored for a non-PlatformAdmin caller (the `else if` at `:38` only runs for the PlatformAdmin branch). |
+| `MSPAdmin` with **no** `mspId` on their own user row | `res.json({ entries: [], total: 0, page, limit })` and returns immediately (`:33-36`) — a genuine 200 empty result, not a 403 or 500. This is a real, honest edge case: an MSPAdmin account somehow lacking `mspId` sees nothing rather than erroring or leaking cross-MSP rows. |
 
-### 1.2 Filters (`:44-76`) — every one from the route's own header comment, all real
+### 1.2 Filters (`:45-84`) — every one from the route's own header comment, all real
 
 | Query param | Behavior | Implementation |
 |---|---|---|
-| `actionType` | Substring match, case-insensitive | `ilike(actionType, '%<val>%')` (`:44-47`) |
-| `outcome` | Exact match, **only** if the value is literally one of `success`/`failure`/`partial` — anything else is silently dropped (no error, filter just doesn't apply) | `:49-51` |
-| `from` | `occurredAt >= <parsed Date>` — invalid date string is silently dropped, no error | `:53-56` |
-| `to` | `occurredAt <= <parsed Date>`, **end-of-day**: the route mutates the parsed date to `23:59:59.999` local-clock-relative before comparing (`:59-63`) — so `?to=2026-09-09` includes the whole day of the 9th, not just midnight | `:58-64` |
-| `search` | One `OR` across four columns, each `ilike '%<val>%'`: `actionType`, `entityType`, `entityLabel`, `actorRole` (`:68-75`) — **does not search `entityId`, `metadata`, or the actor's real name/email** (those aren't columns on this table at all for the latter two — see §1.4) | `:66-76` |
-| `page` / `limit` | `page` floors at 1; `limit` clamped `[1, 100]`, default `30` (`:24-25`) — no zod schema on this route at all, unlike every write-side sibling in this module family; validation is hand-rolled via the local `p()` helper and `parseInt` | `:18-26` |
+| `customerId` | Exact match on `mspAuditLogsTable.customerId`, AND'd with whatever MSP-scoping §1.1 already applies — an `MSPAdmin` supplying it still only ever sees their own MSP's rows narrowed further to that customer; `PlatformAdmin` can combine it with `?mspId=`. Non-numeric values are silently dropped, no error. **Landed via Git #3671** (`4abe6dcb6`), closing the gap this pack's own prior revision (#3370) documented. | `eq(mspAuditLogsTable.customerId, ...)` (`:45-50`) |
+| `actionType` | Substring match, case-insensitive | `ilike(actionType, '%<val>%')` (`:52-55`) |
+| `outcome` | Exact match, **only** if the value is literally one of `success`/`failure`/`partial` — anything else is silently dropped (no error, filter just doesn't apply) | `:57-59` |
+| `from` | `occurredAt >= <parsed Date>` — invalid date string is silently dropped, no error | `:61-64` |
+| `to` | `occurredAt <= <parsed Date>`, **end-of-day**: the route mutates the parsed date to `23:59:59.999` local-clock-relative before comparing (`:67-71`) — so `?to=2026-09-09` includes the whole day of the 9th, not just midnight | `:66-72` |
+| `search` | One `OR` across four columns, each `ilike '%<val>%'`: `actionType`, `entityType`, `entityLabel`, `actorRole` (`:76-83`) — **does not search `entityId`, `metadata`, `customerId`, or the actor's real name/email** (the latter two aren't columns on this table at all — see §1.4) | `:74-84` |
+| `page` / `limit` | `page` floors at 1; `limit` clamped `[1, 100]`, default `30` (`:25-26`) — no zod schema on this route at all, unlike every write-side sibling in this module family; validation is hand-rolled via the local `p()` helper and `parseInt` | `:19-27` |
 
-**Update (Git #3671):** a `customerId` filter param now exists — exact match on
-`mspAuditLogsTable.customerId`, AND'd with whatever MSP-scoping §1.1 already applies (so an
-`MSPAdmin` supplying `?customerId=` still only ever sees their own MSP's rows narrowed further to
-that customer; `PlatformAdmin` can combine it with `?mspId=`). This closed the gap the rest of this
-section originally documented — the paragraph below is left for historical record of the prior
-state this pack captured before #3671.
-
-~~No query param does cross-tenant/cross-MSP filtering beyond what §1.1 already fixed — there is no
-`customerId` filter param today even though the table carries a `customerId` column (§1.4);
-narrowing to one customer's rows would currently require client-side filtering of the page.~~
-
-### 1.3 Query shape (`:78-102`)
+### 1.3 Query shape (`:86-110`)
 
 Two real queries, not one: a `count()` for `total` and a separate `select` for the page of rows,
-both built from the same `where` conditions array so they can never disagree on scope
-(`:78-102`). Ordered `desc(occurredAt)` — newest first, no secondary tiebreaker (two rows with an
+both built from the same `conditions`/`where` array so they can never disagree on scope
+(`:86-110`). Ordered `desc(occurredAt)` — newest first, no secondary tiebreaker (two rows with an
 identical `occurredAt` timestamp have no guaranteed relative order; `id` would be the natural
-tiebreaker but isn't applied).
+tiebreaker but isn't applied). The row-select now also pulls `mspId` and `customerId` off each raw
+row (`:95-96`) — needed internally so the `customerId` filter can be applied, though neither is
+re-emitted on the enriched wire shape (§1.4 confirms `customerId` still never reaches the client).
 
-### 1.4 Response shape — real field aliasing, not a passthrough (`:104-143`)
+### 1.4 Response shape — real field aliasing, not a passthrough (`:112-151`)
 
 The route does **not** return the raw row. It re-shapes every entry with UI-friendly aliases
-(route's own comment, `:115-117`) and does a real second query to batch-resolve actor identity:
+(route's own comment, `:123-125`) and does a real second query to batch-resolve actor identity:
 
 ```ts
-// msp-audit-log.ts:118-141 — the actual shape, paraphrased field-by-field below
+// msp-audit-log.ts:126-149 — the actual shape, paraphrased field-by-field below
 {
   id, eventId, actorEmail, actorName, actorRole, action, resource, detail,
   metadata, outcome, createdAt
@@ -111,24 +134,26 @@ The route does **not** return the raw row. It re-shapes every entry with UI-frie
 |---|---|---|
 | `id` | `mspAuditLogsTable.id` | verbatim |
 | `eventId` | `.eventId` | verbatim — the UUID `recordAuditEvent`/`auditedToolCall` (§2) use to finalize a row later |
-| `actorEmail` | `usersTable.email` for `actorUserId`, joined via a **second, batched query** (`:104-113`) | **Falls back to `e.actorRole` when no user row resolves** (`:128`, `actor?.email ?? e.actorRole ?? null`) — a real, live quirk: for a row with no `actorUserId` (e.g. a service-driven or system event) or a stale/deleted user id, `actorEmail` on the wire can literally be a role string like `"MSPAdmin"`, not an email address at all. Nothing on the wire distinguishes "genuine email" from "role fallback" — a consuming UI that assumes `actorEmail` always looks like an email will render a role name in that slot for those rows. |
+| `actorEmail` | `usersTable.email` for `actorUserId`, joined via a **second, batched query** (`:112-121`) | **Falls back to `e.actorRole` when no user row resolves** (`:136`, `actor?.email ?? e.actorRole ?? null`) — a real, live quirk: for a row with no `actorUserId` (e.g. a service-driven or system event) or a stale/deleted user id, `actorEmail` on the wire can literally be a role string like `"MSPAdmin"`, not an email address at all. Nothing on the wire distinguishes "genuine email" from "role fallback" — a consuming UI that assumes `actorEmail` always looks like an email will render a role name in that slot for those rows. |
 | `actorName` | `usersTable.name`, same joined lookup | `null` whenever the fallback above applies (no user row → no name either) |
 | `actorRole` | `.actorRole` (raw column) | independent of the fallback above — always the stored value, even when it's also being reused as `actorEmail` |
 | `action` | `.actionType` | renamed on the wire; see §2 for the real vocabulary of values that land here |
 | `resource` | `.entityLabel ?? .entityType ?? null` | a 3-way collapse — a row with an `entityLabel` never shows its `entityType` here even if both are set, and a row with neither shows `null` |
-| `detail` | derived from `.metadata`: `null` if absent, the string itself if `metadata` is already a string, else `JSON.stringify(metadata)` (`:120-124`) | a short-string rendering of the same data `metadata` (below) carries structured |
-| `metadata` | `.metadata ?? null` | **verbatim raw JSONB**, added by a later commit (`a29e3a09c`, "Added AuditEntry metadata and details") per the code's own `// NEW: raw metadata for frontend dialog` comment (`:134`) — both `detail` (string) and `metadata` (object) are sent together, not one or the other |
+| `detail` | derived from `.metadata`: `null` if absent, the string itself if `metadata` is already a string, else `JSON.stringify(metadata)` (`:128-132`) | a short-string rendering of the same data `metadata` (below) carries structured |
+| `metadata` | `.metadata ?? null` | **verbatim raw JSONB**, added by a later commit (`a29e3a09c`, "Added AuditEntry metadata and details") per the code's own `// NEW: raw metadata for frontend dialog` comment (`:142`) — both `detail` (string) and `metadata` (object) are sent together, not one or the other |
 | `outcome` | `.outcome` | verbatim, real enum values below (§3) |
-| `createdAt` | `.occurredAt`, ISO-stringified (`:136-139`) | **renamed** — the DB column is `occurred_at`, the wire field is `createdAt`; a consumer expecting the two to be synonyms for "row insert time" should know this is actually "when the audited event happened," which for the write-ahead MCP pattern (§2.2) is set at attempt time, not at finalize time |
+| `createdAt` | `.occurredAt`, ISO-stringified (`:144-147`) | **renamed** — the DB column is `occurred_at`, the wire field is `createdAt`; a consumer expecting the two to be synonyms for "row insert time" should know this is actually "when the audited event happened," which for the write-ahead MCP pattern (§2.2) is set at attempt time, not at finalize time |
 
 **Columns on `msp_audit_logs` that never reach the wire at all:** `actorServiceAccountId`,
 `customerId`, `entityId`, `correlationId`, `ipAddress`, `userAgent`. All six are real, populated
-columns (§4 shows real writers for most of them) that this GET route reads nowhere — not filtered
-on, not selected, not aliased. A consumer wanting "which customer was this action against" or "what
-IP did this come from" cannot get it from this endpoint today; that would require either a new
+columns (§4 shows real writers for most of them) that this GET route reads nowhere on the response
+side — `customerId` is now read internally for the §1.2 filter, but still not aliased or selected
+into the enriched output. A consumer wanting "which customer was this action against" or "what
+IP did this come from" cannot get either from the wire today; the former can be *filtered on* (new,
+§1.2) but not *displayed* without a further route change; the latter would require either a new
 field on this wire shape or a raw DB read, neither of which exists.
 
-Response envelope: `{ entries: <enriched[]>, total, page, limit }` (`:143`) — no `hasMore`/
+Response envelope: `{ entries: <enriched[]>, total, page, limit }` (`:151`) — no `hasMore`/
 `totalPages` convenience field, a caller computes pagination state itself from `total`/`limit`.
 
 ---
@@ -161,7 +186,7 @@ read side has no visibility into any of this; it is documented here because a ca
 | `msp-staff.ts` | `IMPERSONATION_TOKEN_ISSUED` | (none set) |
 | `admin-active-directory.ts` | `user.role.update`, `user.assignment.update`, `user.entitlement.{grant,revoke,clear}` (templated), `active_directory.ou_assignment.{set,move,clear}`, `admin_forced_password_reset`, `IMPERSONATION_TOKEN_ISSUED`, `admin_impersonation_started`, `user.hard_delete{,.refused_env}`, `customer.hard_delete{,.refused_env,.consent_revoked,.phase_a_pre_state}` | `user`, `msp_user`, `active_directory_ou`, `customer` |
 | `portal-customer-engines.ts` | `retainer_cancelled`, `customer.offboarding.deactivate` | (not read from this file per this pass) |
-| `portal-404-events.ts` | `portal.route.not_found` (`:55`) | `route` — the **only** writer reachable by a plain `requireAuth` (any authenticated portal user, not `requireRole("MSPAdmin")`); everything else in this table is written by MSP-staff or PlatformAdmin-gated routes, or by the MCP server acting as an operator (§2.2). This route's own header comment (`:6-8`) states its purpose plainly: "so dead links surface in the Audit Log UI" |
+| `portal-404-events.ts` | `portal.route.not_found` (`:55`) | `route` — the **only** writer reachable by a plain `requireAuth` (any authenticated portal user, not `requireCapability("ladder.msp-admin")`); everything else in this table is written by MSP-staff or PlatformAdmin-gated routes, or by the MCP server acting as an operator (§2.2). This route's own header comment (`:6-8`) states its purpose plainly: "so dead links surface in the Audit Log UI" |
 
 `entityLabel` (when set) is consistently a human-readable name, not an id — `msp.name`
 (`msp-portal.ts:669`), `customer!.name` (`:1038`), `target.name ?? target.email`
@@ -189,6 +214,12 @@ consuming this table's data going forward:
   Read tools get one best-effort row after the call and are never blocked by an audit failure
   (`:35-36`).
 
+**The MCP `get_audit_logs` tool does not expose `mspId` or the new `customerId` filter** —
+verified against `get-audit-logs.ts`'s real `inputSchema` (`:15-24`) and its query-building
+(`:53-64`): only `search`, `actionType`, `outcome`, `from`, `to`, `page`, `limit` are forwarded to
+`/msp/audit`. A caller of the MCP tool cannot narrow to one customer today even though the HTTP
+route itself now supports it — the gap is in the tool's own schema, not the route.
+
 ---
 
 ## 3. Real vocabularies — and where each is (not) enforced
@@ -196,9 +227,9 @@ consuming this table's data going forward:
 None of `outcome`, `actionType`, `entityType`, or `actorRole` has a database CHECK constraint
 (confirmed live, § above) — every one is plain `text`. `outcome` is the only column with even a
 DB-level default (`'success'`, confirmed live) and the only one enforced anywhere close to the
-database, and only weakly: `msp-audit-log.ts:49` itself validates an incoming `?outcome=` filter
+database, and only weakly: `msp-audit-log.ts:57` itself validates an incoming `?outcome=` filter
 against a hardcoded `["success", "failure", "partial"]` array, and the MCP tool's zod schema
-(`get-audit-logs.ts:21`) mirrors the same three values — but nothing stops a future writer from
+(`get-audit-logs.ts:20`) mirrors the same three values — but nothing stops a future writer from
 inserting a fourth string into the column itself.
 
 `actionType` has **no enum anywhere** — every value in §2's tables is a bare string literal chosen
@@ -209,37 +240,37 @@ few bare single words (`retainer_cancelled`). A future consumer building a filte
 grouping UI against `actionType` should expect to normalize across all three, not assume one
 convention.
 
-`entityType` is similarly free text — real live values include `msp`, `customer`, `user`,
-`msp_user`, `route`, `checkout_session`, `mcp_tool`, `audit_check`, and the empty/`null` case
-(§4) — no canonical list is declared anywhere in the codebase for this column.
+`entityType` is similarly free text — real live values include `checkout_session`, `mcp_tool`,
+`route`, `user`, `customer`, `audit_check`, and the empty/`null` case (§4) — no canonical list is
+declared anywhere in the codebase for this column.
 
 ---
 
-## 4. Live data — queried against local PostgreSQL, 2026-09-10
+## 4. Live data — queried against local PostgreSQL, 2026-09-11
 
 ```sql
-SELECT count(*) FROM msp_audit_logs;                                    -- 522
-SELECT outcome, count(*) FROM msp_audit_logs GROUP BY outcome;          -- success 508, failure 14
+SELECT count(*) FROM msp_audit_logs;                                    -- 535
+SELECT outcome, count(*) FROM msp_audit_logs GROUP BY outcome;          -- success 521, failure 14
 SELECT action_type, count(*) FROM msp_audit_logs GROUP BY action_type;  -- see below
 SELECT entity_type, count(*) FROM msp_audit_logs GROUP BY entity_type;  -- see below
 ```
 
 | `action_type` | count | | `entity_type` | count |
 |---|---|---|---|---|
-| `AUTH_LOGOUT` | 302 | | *(blank/null)* | 487 |
-| `AUTH_LOGIN` | 179 | | `checkout_session` | 16 |
+| `AUTH_LOGOUT` | 303 | | *(blank/null)* | 501 |
+| `AUTH_LOGIN` | 192 | | `checkout_session` | 16 |
 | `mcp.tool.create_account` | 16 | | `mcp_tool` | 11 |
 | `AUTH_ACCOUNT_SETUP` | 6 | | `route` | 4 |
-| `portal.route.not_found` | 4 | | `user` | 2 |
-| `mcp.tool.whoami` | 4 | | `customer` | 1 |
+| `portal.route.not_found` | 4 | | `customer` | 1 |
+| `mcp.tool.whoami` | 4 | | `user` | 1 |
 | `mcp.tool.platform_health` | 3 | | `audit_check` | 1 |
-| `IMPERSONATION_SESSION_STARTED` | 2 | | | |
+| `mcp.tool.audit_check_write_ok` | 1 | | | |
 | `mcp.tool.query_customers` | 1 | | | |
 | `mcp.tool.audit_check_write_fail` | 1 | | | |
-| `mcp.tool.audit_check_undeclared_mutation` | 1 | | | |
-| `mcp.tool.audit_check_read` | 1 | | | |
 | `customer.create` | 1 | | | |
-| `mcp.tool.audit_check_write_ok` | 1 | | | |
+| `mcp.tool.audit_check_read` | 1 | | | |
+| `mcp.tool.audit_check_undeclared_mutation` | 1 | | | |
+| `IMPERSONATION_SESSION_STARTED` | 1 | | | |
 
 **No `partial` outcome exists live** — every MCP write-tool attempt in this local dataset resolved
 to a terminal `success`/`failure`, so the "process died mid-attempt" state (§2.2) is real and
@@ -248,13 +279,14 @@ pack's §6 documents for a different table. **The large `msp-settings.ts`/`msp-a
 `msp-sales-bundles.ts`/`msp-custom-domain.ts`/`admin-active-directory.ts` vocabulary cataloged in
 §2.1 has zero live rows** in this local database — every one of those ~45 distinct `actionType`
 values is real, reachable code, just never yet exercised against this local dataset. The live
-picture today is dominated by auth lifecycle events (login/logout/setup — 487 of 522 rows, 93%)
+picture today is dominated by auth lifecycle events (login/logout/setup — 501 of 535 rows, ~94%)
 and MCP tool calls (30 rows).
 
 Other live counts checked: `actor_service_account_id` is set on **0** rows (the column exists,
 `msp-audit-log.ts` even reads it, §1.4 already notes it never reaches the wire — and no writer in
-this codebase currently populates it either). `customer_id` is set on 31/522 rows. `correlation_id`
-is set on all 522/522 (every writer path threads one through). `metadata` is set on 214/522.
+this codebase currently populates it either). `customer_id` is set on 31/535 rows — the same
+population the new §1.2 filter now narrows on. `correlation_id` is set on all 535/535 (every writer
+path threads one through). `metadata` is set on 226/535.
 
 ---
 
@@ -274,21 +306,27 @@ a caller of that tool needs to know which of two genuinely different tables it's
 
 ---
 
-## 6. Real out-of-scope finding hit while researching consumers — filed separately, not fixed here
+## 6. Closed findings from the prior pack — resolved, kept here as history only
 
-While tracing every real consumer of `GET /api/msp/audit` (§0), one admin-panel dev tool referenced
-a URL for this route that has **never existed**: `artifacts/admin-panel/src/components/
-GraphProbeModal.tsx:20` lists a preset `{ url: "/api/msp/audit-logs", label: "MSP Audit Log
-Telemetry" }` — plural, hyphenated. The real, only-ever-mounted path is `/api/msp/audit` (singular,
-confirmed §0/`routes/index.ts:487`); `/api/msp/audit-logs` has no route anywhere in the codebase.
-Reading the modal's own `handleTestProbe` (`:58-121`) further shows the whole component is
-**entirely simulated** — no real `fetch` call is ever made; every "response" (status code, headers,
-body, even a fake `x-request-id`) is hardcoded/randomly generated client-side. This is a live
-violation of this project's own "never invent data to display" rule (a dev tool that fabricates
-fake HTTP responses instead of making a real call), independent of the dead-URL preset. Filed as
-its own issue per the mandatory-finding rule (not fixed in this pass — out of scope for a
-read-only contract-pack extraction, and a real behavioral decision about what this tool should
-actually do belongs to whoever owns it).
+While tracing every real consumer of `GET /api/msp/audit` (§0) for the prior (#3370) revision of
+this pack, one admin-panel dev tool was found referencing a URL for this route that had **never
+existed**, and fabricating every probe response client-side. Both are now **fixed and closed**,
+verified directly against current code, not just against issue state:
+
+- **#3450** (dead endpoint preset) — `GraphProbeModal.tsx`'s `ENDPOINT_PRESETS` now reads
+  `{ url: "/api/msp/audit", label: "MSP Audit Log Telemetry" }` (`:20`, singular, matching the
+  real mounted path from §0/`routes/index.ts:487`). No `/api/msp/audit-logs` preset remains.
+- **#3560** (fabricated responses) — `handleTestProbe` (`:60-116`) now makes a real
+  `await adminFetch(endpointUrl, { method: "GET" })` call and reports the actual `res.status`,
+  `res.headers`, and `res.text()` body — the function's own header comment states this plainly
+  ("No fabricated status/headers/latency — every field below comes off the real `Response`
+  (Git #3560)"). No `Math.random()`-based fabrication remains in the file.
+
+Both issues closed `COMPLETED`. No new out-of-scope finding was hit during this regeneration pass
+(the one gap noted in §2.2 — the MCP tool not exposing `mspId`/`customerId` — is a minor,
+non-urgent surface-completeness note documented inline rather than filed as a separate issue,
+consistent with "not a finding" guidance for a gap this pack merely observes rather than proves
+broken; it does not block anything currently built).
 
 ---
 
@@ -296,8 +334,10 @@ actually do belongs to whoever owns it).
 
 1. **No cross-MSP read for a non-PlatformAdmin.** `MSPAdmin` is hard-scoped to its own `mspId`
    server-side (§1.1) — the request cannot widen this via any query param.
-2. **No cross-tenant customer filter exists at all** (§1.2) — there is no way to ask this endpoint
-   for one customer's rows; the closest available filter is MSP-wide.
+2. **No customer-scoped filter that bypasses MSP scoping.** The `customerId` filter added by
+   #3671 (§1.2) is always AND'd with whatever MSP scope already applies — it narrows within an
+   MSPAdmin's own MSP, it does not let them cross into another MSP's rows by guessing a
+   `customerId`.
 3. **Failed/missing audit inserts never block the action they're auditing**, for every writer that
    uses a local `writeAuditLog`/`writeAuthAuditLog` closure without awaiting failure handling —
    `auth.ts`'s variant explicitly swallows insert errors (`:149-151`, "Audit log is non-fatal").
@@ -309,14 +349,18 @@ actually do belongs to whoever owns it).
 
 ## 8. Provenance
 
-**Generated 2026-09-10** against `main`, for **#3370**, Document step of the Audit Log Feature
-under the reset #1571 Epic. Read in full: `msp-audit-log.ts` (146 lines, the whole file). Cross-
-referenced for the writer catalog (§2): `auth.ts`, `msp-portal.ts`, `msp-settings.ts`,
-`msp-admin-settings.ts`, `msp-custom-domain.ts`, `msp-plan-management.ts`,
+**Regenerated 2026-09-11** against `main`, for **#3682**, per the #1642 full-line-by-line-audit
+pattern — the prior pack (#3370) had gone stale on two independent fronts: #3671's real
+`customerId` filter, and the #2460 RBAC cutover from `requireRole` to `requireCapability`, neither
+of which had been reflected. Read in full: `msp-audit-log.ts` (154 lines, the whole file, current
+version post-#3671). Cross-referenced for the writer catalog (§2): `auth.ts`, `msp-portal.ts`,
+`msp-settings.ts`, `msp-admin-settings.ts`, `msp-custom-domain.ts`, `msp-plan-management.ts`,
 `msp-plan-self-service.ts`, `msp-sales-bundles.ts`, `msp-staff.ts`, `admin-active-directory.ts`,
 `portal-customer-engines.ts`, `portal-404-events.ts`, and `artifacts/mcp-server/src/audit.ts` +
-`artifacts/mcp-server/src/tools/get-audit-logs.ts`. Verified live against local PostgreSQL —
+`artifacts/mcp-server/src/tools/get-audit-logs.ts`. RBAC cutover verified against
+`requireAuth.ts:239-322` and `rbac-ladder.ts:1-40,345`. Verified live against local PostgreSQL —
 `msp_audit_logs`'s schema re-confirmed to match the Drizzle source exactly (column-for-column,
-including the absence of any CHECK constraint), and every count in §4 queried directly, not
-estimated. No product code, schema, or UI was changed by this pass. One real, out-of-scope finding
-(§6) was hit and filed separately rather than folded into this read-only pack.
+including the absence of any CHECK constraint), and every count in §4 re-queried directly, not
+estimated or carried over from the prior pack. No product code, schema, or UI was changed by this
+pass. The two findings the prior pack filed (§6) were independently re-verified as fixed in code,
+not just trusted from issue state.
