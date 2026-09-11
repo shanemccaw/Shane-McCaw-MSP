@@ -223,8 +223,11 @@ namespace BuildConsole
         private DispatcherTimer? _persistTabsTimer;
 
         // ── Git #1417: local PostgreSQL Windows-service status poll ──────────────
+        // Git #3614 — the always-visible status-bar line is gone; this still polls, now
+        // surfacing only a real up→down toast alert (see RefreshPostgresStatusAsync).
         private DispatcherTimer? _postgresStatusTimer;
         private BuildConsole.Services.PostgresServiceStatus? _lastPostgresStatus;
+        private BuildConsole.Services.PostgresServiceState? _lastKnownPostgresState;
 
         // ── Epic #803: auto deploy+verify+test on build completion ────────────────
         // The missing automation between "a queue build finished" and "its code is live
@@ -498,9 +501,7 @@ namespace BuildConsole
             PreviewMouseDown += (_, _) => SailorDuckLayer?.NotifyUserActivity();
 
             // Initial WebView2 events
-            ClaudeWebView.NavigationStarting  += WebView_NavigationStarting;
             ClaudeWebView.NavigationCompleted += WebView_NavigationCompleted;
-            ClaudeWebView.SourceChanged       += WebView_SourceChanged;
 
             // #1882 — Get the animated startup overlay ON SCREEN before any heavy startup
             // work runs. A real cold-start trace showed ~8s of synchronous construction
@@ -770,10 +771,9 @@ namespace BuildConsole
                 BuildConsole.Services.EncouragementService.Instance.Start();
             }
 
-            // Git #815 — surfaces a failed poll as a real, visible signal
-            // (status-bar QueueDot/QueueStatusText, previously unused
-            // hardcoded XAML) instead of silent inline tree text nobody
-            // notices, PLUS every poll's outcome goes to the Output log too.
+            // Git #815 — surfaces a failed poll to the Activity/Output log instead of
+            // silent inline tree text nobody notices. Git #3614 removed the status-bar
+            // QueueDot/QueueStatusText segment this used to also render into.
             LeftSidebar.SyncError += (s, err) => ReportSyncStatus(err);
             BuildQueuePanel.SyncError += (s, err) => ReportSyncStatus(err);
             // Git #1989 — Conservation Cap: the title-bar Drain button's count stays live off
@@ -1140,11 +1140,12 @@ namespace BuildConsole
             _deployStatusTimer.Tick += async (_, _) => await PollDeployStatusAsync();
             _deployStatusTimer.Start();
 
-            // Git #1417 — local PostgreSQL Windows-service status: an always-visible
-            // status-bar segment (same dot+text convention as Deploy/Replit above),
-            // polled independently of SystemHealthService's DB-pipe check since that
-            // one goes red whenever the api-server itself is down too. 15s cadence —
-            // a Windows service query is cheap, but no need to hammer it every tick.
+            // Git #1417 — local PostgreSQL Windows-service status, polled independently
+            // of SystemHealthService's DB-pipe check since that one goes red whenever the
+            // api-server itself is down too. 15s cadence — a Windows service query is
+            // cheap, but no need to hammer it every tick. Git #3614 — no longer an
+            // always-visible status-bar segment; RefreshPostgresStatusAsync now only
+            // raises a real toast alert on a genuine up→down transition.
             _postgresStatusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
             _postgresStatusTimer.Tick += async (_, _) => await RefreshPostgresStatusAsync();
 
@@ -1290,8 +1291,6 @@ namespace BuildConsole
                 AttachTabContextMenu(claudeTab, EditorTabs);
                 AttachTabDragHandlers(claudeTab);
             }
-
-            UpdateZoomDisplay();
 
                 // #1882 — everything above is the real startup work. The overlay's network
                 // probes were kicked off earlier (right after their services were built);
@@ -2487,14 +2486,6 @@ namespace BuildConsole
 
             if (e.Source == EditorTabs)
             {
-                try
-                {
-                    var wv = GetActiveWebView();
-                    UrlStatusText.Text = wv.Source?.ToString() ?? string.Empty;
-                    UpdateZoomDisplay();
-                }
-                catch { }
-
                 // Git #829 — Shane: "I need the right panel to have another
                 // section that shows me all the issues assigned to the chat
                 // I'm on." Only chat tabs carry a BoardChat as their Tag
@@ -2982,9 +2973,7 @@ namespace BuildConsole
             {
                 DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37)
             };
-            wv.NavigationStarting  += WebView_NavigationStarting;
             wv.NavigationCompleted += WebView_NavigationCompleted;
-            wv.SourceChanged       += WebView_SourceChanged;
 
             if (injectPrefillPoll)
             {
@@ -3559,9 +3548,7 @@ namespace BuildConsole
             {
                 DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37)
             };
-            wv.NavigationStarting  += WebView_NavigationStarting;
             wv.NavigationCompleted += WebView_NavigationCompleted;
-            wv.SourceChanged       += WebView_SourceChanged;
             // Git #852 — see OpenWebTab's identical fix: Loaded fires again
             // every time this tab becomes active (WPF TabControl detaches/
             // reattaches Content on switch), not just once - `navigated`
@@ -4607,7 +4594,10 @@ namespace BuildConsole
             }
         }
 
-        /// <summary>Git #902 — renders the Replit idle watcher's live state in the status bar (dot + short text), with last-check / last-intervention times on the tooltip. Runs on the UI thread; the service raises this from UI-thread continuations already, but guard anyway.</summary>
+        /// <summary>Git #902 — the Replit idle watcher keeps running headless (its own hidden
+        /// ReplitWatcherWebView, see the #1637 comment near startup) even though Git #3614
+        /// removed its status-bar dot/text/refresh button. This just logs the live state so
+        /// it's still visible in the Activity Log instead of silently vanishing.</summary>
         private void ReplitWatcher_StatusChanged(BuildConsole.Services.ReplitWatcherStatus status)
         {
             if (!Dispatcher.CheckAccess())
@@ -4616,51 +4606,16 @@ namespace BuildConsole
                 return;
             }
 
-            ReplitDot.Fill = status.State switch
-            {
-                BuildConsole.Services.ReplitWatcherState.Monitoring => DotReady,
-                BuildConsole.Services.ReplitWatcherState.Checking => DotLoading,
-                BuildConsole.Services.ReplitWatcherState.GracePeriod => DotLoading,
-                BuildConsole.Services.ReplitWatcherState.Waking => DotLoading,
-                BuildConsole.Services.ReplitWatcherState.Error => DotError,
-                _ => (Brush)FindResource("Surface2Brush"), // Disabled
-            };
-
-            ReplitStatusText.Text = $"Replit: {status.Message}";
-
-            var tip = new System.Text.StringBuilder();
-            tip.Append("Replit idle watcher");
-            tip.Append(status.LastCheck.HasValue ? $"\nLast check: {status.LastCheck:HH:mm:ss}" : "\nLast check: —");
-            tip.Append(status.LastIntervention.HasValue ? $"\nLast wake: {status.LastIntervention:yyyy-MM-dd HH:mm:ss}" : "\nLast wake: never");
-            tip.Append("\n\nClick to check status and turn Replit on if down.");
-            ReplitStatusText.ToolTip = tip.ToString();
-        }
-
-        private async void BtnReplitRefresh_Click(object sender, RoutedEventArgs e)
-        {
-            if (_replitWatcher == null) return;
-            BtnReplitRefresh.IsEnabled = false;
-            try
-            {
-                await _replitWatcher.CheckNowAndWakeIfDownAsync();
-            }
-            finally
-            {
-                BtnReplitRefresh.IsEnabled = true;
-            }
-        }
-
-        private void ReplitStatus_Click(object sender, MouseButtonEventArgs e)
-        {
-            BtnReplitRefresh_Click(sender, e);
+            BuildConsole.Services.ActivityLog.Log("replit", $"Replit watcher: {status.Message}");
         }
 
         /// <summary>
         /// Git #1417 — polls the real local PostgreSQL Windows service (via
-        /// PostgresServiceMonitor, System.ServiceProcess.ServiceController under
-        /// the hood) and renders dot + text + a "Start" action in the status bar.
-        /// The Start button is only shown when the service is genuinely down
-        /// (Stopped/NotFound/Unknown) — never for Running/pending states.
+        /// PostgresServiceMonitor, System.ServiceProcess.ServiceController under the
+        /// hood). Git #3614 — no longer renders an always-visible status-bar line;
+        /// instead this fires a real toast alert, with a working Start action, only on
+        /// a genuine up→down transition (a previously-seen Running state followed by a
+        /// down state), never on the app's own initial/unknown state at startup.
         /// </summary>
         private async System.Threading.Tasks.Task RefreshPostgresStatusAsync()
         {
@@ -4679,53 +4634,36 @@ namespace BuildConsole
                 };
             }
 
+            var previousState = _lastKnownPostgresState;
             _lastPostgresStatus = status;
-            RenderPostgresStatus(status);
-        }
+            _lastKnownPostgresState = status.State;
 
-        private void RenderPostgresStatus(BuildConsole.Services.PostgresServiceStatus status)
-        {
-            PostgresDot.Fill = status.State switch
-            {
-                BuildConsole.Services.PostgresServiceState.Running => DotReady,
-                BuildConsole.Services.PostgresServiceState.StartPending => DotLoading,
-                BuildConsole.Services.PostgresServiceState.StopPending => DotLoading,
-                BuildConsole.Services.PostgresServiceState.Stopped => DotError,
-                BuildConsole.Services.PostgresServiceState.NotFound => (Brush)FindResource("Surface2Brush"),
-                _ => DotError,
-            };
-
-            string label = status.State switch
-            {
-                BuildConsole.Services.PostgresServiceState.Running => $"Postgres: up ({status.ServiceName})",
-                BuildConsole.Services.PostgresServiceState.StartPending => "Postgres: starting…",
-                BuildConsole.Services.PostgresServiceState.StopPending => "Postgres: stopping…",
-                BuildConsole.Services.PostgresServiceState.Stopped => $"Postgres: DOWN ({status.ServiceName})",
-                BuildConsole.Services.PostgresServiceState.NotFound => "Postgres: service not found",
-                _ => $"Postgres: {status.Summary}",
-            };
-            PostgresStatusText.Text = label;
-            PostgresStatusText.ToolTip = $"{status.Details}\n\nClick to re-check now.";
-
-            bool canOfferStart = status.State == BuildConsole.Services.PostgresServiceState.Stopped
+            bool wasUp = previousState == BuildConsole.Services.PostgresServiceState.Running;
+            bool isDownNow = status.State == BuildConsole.Services.PostgresServiceState.Stopped
+                || status.State == BuildConsole.Services.PostgresServiceState.NotFound
                 || status.State == BuildConsole.Services.PostgresServiceState.Unknown;
-            BtnPostgresStart.Visibility = canOfferStart ? Visibility.Visible : Visibility.Collapsed;
-        }
 
-        private void PostgresStatus_Click(object sender, MouseButtonEventArgs e)
-        {
-            _ = RefreshPostgresStatusAsync();
+            if (wasUp && isDownNow)
+            {
+                BuildConsole.Services.ActivityLog.Log("system.health", $"Postgres went DOWN — {status.Summary}");
+                ToastEngine.ShowPersistent(
+                    "Postgres is down",
+                    $"{status.Summary}\n\nClick to start it.",
+                    ToastKind.Error,
+                    onClick: () => _ = StartPostgresServiceAsync());
+            }
         }
 
         /// <summary>
-        /// Git #1417 — the one-click "Start" action. Invokes the real Windows
-        /// service-control start (PostgresServiceMonitor.StartAsync), which
-        /// re-checks the actual service state afterward before reporting success
-        /// — never assumes Start() succeeding means the DB is genuinely up.
-        /// Surfaces an elevation failure with a clear, actionable message rather
-        /// than failing silently.
+        /// Git #1417 — the one-click "Start" action, now invoked from the Postgres
+        /// down-alert toast's onClick (see RefreshPostgresStatusAsync) rather than a
+        /// status-bar button. Invokes the real Windows service-control start
+        /// (PostgresServiceMonitor.StartAsync), which re-checks the actual service
+        /// state afterward before reporting success — never assumes Start() succeeding
+        /// means the DB is genuinely up. Surfaces an elevation failure with a clear,
+        /// actionable message rather than failing silently.
         /// </summary>
-        private async void BtnPostgresStart_Click(object sender, RoutedEventArgs e)
+        private async System.Threading.Tasks.Task StartPostgresServiceAsync()
         {
             string? serviceName = _lastPostgresStatus?.ServiceName;
             if (string.IsNullOrWhiteSpace(serviceName))
@@ -4737,27 +4675,26 @@ namespace BuildConsole
             if (string.IsNullOrWhiteSpace(serviceName))
             {
                 BuildConsole.Services.ActivityLog.Log("system.health", "Postgres Start clicked but no service name resolved — nothing to start.");
+                ToastEngine.Warning("Postgres", "Couldn't resolve a service name to start.");
                 return;
             }
 
-            BtnPostgresStart.IsEnabled = false;
-            PostgresStatusText.Text = "Postgres: starting…";
-            PostgresDot.Fill = DotLoading;
             try
             {
                 var (success, message) = await BuildConsole.Services.PostgresServiceMonitor.StartAsync(serviceName);
-                if (!success)
+                if (success)
                 {
-                    PostgresStatusText.Text = $"Postgres: start failed — {message}";
-                    PostgresStatusText.ToolTip = message;
-                    PostgresDot.Fill = DotError;
+                    ToastEngine.Success("Postgres started", message);
+                }
+                else
+                {
                     BuildConsole.Services.ActivityLog.Log("system.health", $"Postgres start FAILED: {message}");
+                    ToastEngine.Error("Postgres start failed", message);
                 }
             }
             finally
             {
                 await RefreshPostgresStatusAsync();
-                BtnPostgresStart.IsEnabled = true;
             }
         }
 
@@ -6772,39 +6709,19 @@ namespace BuildConsole
         }
 
         // ── WebView2 events ───────────────────────────────────────────────────
-        private void WebView_NavigationStarting(
-            object? sender,
-            Microsoft.Web.WebView2.Core.CoreWebView2NavigationStartingEventArgs e)
-        {
-            NavStatusText.Text = "Loading…";
-            StatusDot.Fill     = DotLoading;
-            UrlStatusText.Text = e.Uri ?? string.Empty;
-        }
-
+        // Git #3614 — the status bar's Ready/URL/Zoom segments these used to render into
+        // are gone. WebView_NavigationCompleted keeps its one real piece of non-UI logic
+        // (the visual test tracker hookup); WebView_NavigationStarting/SourceChanged and
+        // UpdateZoomDisplay had no other purpose, so they're removed along with their
+        // subscriptions/call sites.
         private void WebView_NavigationCompleted(
             object? sender,
             Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs e)
         {
-            NavStatusText.Text = e.IsSuccess ? "Ready" : $"Error {(int)e.WebErrorStatus}";
-            StatusDot.Fill     = e.IsSuccess ? DotReady : DotError;
-            var activeWv = sender as Microsoft.Web.WebView2.Wpf.WebView2 ?? GetActiveWebView();
-            UrlStatusText.Text = activeWv.Source?.ToString() ?? string.Empty;
-
             // Git #1472 — filtered to only fire for tabs matching the configured watched base
             // URLs, so it never triggers on e.g. claude.ai chat tabs.
             UpdateVisualTestTrackerForNavigatedTab(sender as Microsoft.Web.WebView2.Wpf.WebView2);
         }
-
-        private void WebView_SourceChanged(
-            object? sender,
-            Microsoft.Web.WebView2.Core.CoreWebView2SourceChangedEventArgs e)
-        {
-            var activeWv = sender as Microsoft.Web.WebView2.Wpf.WebView2 ?? GetActiveWebView();
-            UrlStatusText.Text = activeWv.Source?.ToString() ?? string.Empty;
-        }
-
-        private void UpdateZoomDisplay()
-            => ZoomText.Text = $"{GetActiveWebView().ZoomFactor:P0}";
 
         // ── Menu: File ────────────────────────────────────────────────────────
         private void MenuExit_Click(object sender, RoutedEventArgs e)
@@ -7247,17 +7164,13 @@ namespace BuildConsole
             OutputPauseButton.Content = _outputPausableLog.IsPaused ? "▶ Resume" : "⏸ Pause";
         }
 
+        // Git #3614 — the "Sync: live" / "Sync error: …" status-bar segment is gone; this
+        // still logs a failed poll to the Output/Activity log and still proactively wakes
+        // Replit on a likely-asleep-dev-server error, same as before.
         private void ReportSyncStatus(string? error)
         {
-            if (error == null)
+            if (error != null)
             {
-                QueueDot.Fill = DotReady;
-                QueueStatusText.Text = "Sync: live";
-            }
-            else
-            {
-                QueueDot.Fill = DotError;
-                QueueStatusText.Text = $"Sync error: {error}";
                 BuildConsole.Services.ActivityLog.Log("sync", $"FAILED: {error}");
 
                 // Proactively wake Replit via SSH / watcher if dev server is asleep or returned 502 / unreachable
@@ -7280,25 +7193,24 @@ namespace BuildConsole
         }
 
         // ── Menu: View → Zoom ─────────────────────────────────────────────────
+        // Git #3614 — the "100%" status-bar readout these used to refresh (UpdateZoomDisplay)
+        // is gone; the actual zoom actions themselves are untouched.
         private void ZoomIn_Click(object sender, RoutedEventArgs e)
         {
             var wv = GetActiveWebView();
             wv.ZoomFactor = Math.Min(wv.ZoomFactor + 0.1, 3.0);
-            UpdateZoomDisplay();
         }
 
         private void ZoomOut_Click(object sender, RoutedEventArgs e)
         {
             var wv = GetActiveWebView();
             wv.ZoomFactor = Math.Max(wv.ZoomFactor - 0.1, 0.25);
-            UpdateZoomDisplay();
         }
 
         private void ZoomReset_Click(object sender, RoutedEventArgs e)
         {
             var wv = GetActiveWebView();
             wv.ZoomFactor = 1.0;
-            UpdateZoomDisplay();
         }
 
         // ── Menu: Claude ──────────────────────────────────────────────────────
