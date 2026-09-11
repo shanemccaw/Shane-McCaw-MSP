@@ -3548,24 +3548,9 @@ namespace BuildConsole.Controls
             var countBadge = new TextBlock { Text = chats.Count.ToString(), FontSize = 10.5, Foreground = GetBrush("Subtext0Brush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0), ToolTip = $"{chats.Count} chat(s)" };
             DockPanel.SetDock(countBadge, Dock.Right);
             topRow.Children.Add(countBadge);
-            // Git #2534 — green-tinted "<N> open" pill: the epic's real count of still-open
-            // sub-issues on the live board (design-reference right-aligned badge).
-            if (githubNumber.HasValue)
-            {
-                int openIssues = _lastBoardIssues.Count(i => i.ParentNumber == githubNumber.Value && !i.IsClosed);
-                var openPill = new Border
-                {
-                    Background = new SolidColorBrush(Color.FromArgb(0x22, 0xA6, 0xE3, 0xA1)),
-                    CornerRadius = new CornerRadius(8),
-                    Padding = new Thickness(6, 0, 6, 0),
-                    Margin = new Thickness(6, 0, 0, 0),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    ToolTip = $"{openIssues} open sub-issue(s) under this epic",
-                    Child = new TextBlock { Text = $"{openIssues} open", FontSize = 10, Foreground = GetBrush("GreenBrush"), VerticalAlignment = VerticalAlignment.Center },
-                };
-                DockPanel.SetDock(openPill, Dock.Right);
-                topRow.Children.Add(openPill);
-            }
+            // Git #3662 — the "<N> open" pill (Git #2534) was removed per Shane's request; the
+            // epic's real open-sub-issue count is still tracked in _lastBoardIssues/EpicProgress
+            // below, this was display-only removal.
             if (githubNumber.HasValue)
             {
                 var numTb = new TextBlock { Text = $"#{githubNumber.Value}", FontSize = 10.5, Foreground = GetBrush("Subtext0Brush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
@@ -3817,38 +3802,9 @@ namespace BuildConsole.Controls
             // underlying AssociatedIssueNumbers data/logic elsewhere in this file (linking,
             // filtering, build-badge matching, etc.) is untouched.
 
-            // Git #2066 — noisy "mentioned in this chat's text" pills, visually distinct
-            // (muted, no title/state lookup) from the deliberate linked-issue pills above.
-            // Only shows numbers not already covered by a real link, so the same issue
-            // never renders twice.
-            if (chat.MentionedIssueNumbers != null && chat.MentionedIssueNumbers.Count > 0)
-            {
-                var mentionedOnly = chat.MentionedIssueNumbers
-                    .Where(n => chat.AssociatedIssueNumbers == null || !chat.AssociatedIssueNumbers.Contains(n))
-                    .Distinct()
-                    .OrderBy(n => n)
-                    .ToList();
-
-                foreach (var issueNum in mentionedOnly)
-                {
-                    var mentionBorder = new Border
-                    {
-                        Background = GetBrush("MantleBrush"),
-                        CornerRadius = new CornerRadius(3),
-                        Padding = new Thickness(5, 1, 5, 1),
-                        Margin = new Thickness(0, 0, 4, 4),
-                        ToolTip = $"#{issueNum} — mentioned in this chat (auto-detected, not a deliberate link)"
-                    };
-                    mentionBorder.Child = new TextBlock
-                    {
-                        Text = $"#{issueNum}",
-                        FontSize = 10.5,
-                        Foreground = GetBrush("Subtext0Brush"),
-                        VerticalAlignment = VerticalAlignment.Center
-                    };
-                    chips.Children.Add(mentionBorder);
-                }
-            }
+            // Git #3662 — the "mentioned in this chat's text" pill grid (Git #2066) was
+            // removed from here per Shane's request. Display removal only: the underlying
+            // MentionedIssueNumbers data/detection logic elsewhere in this file is untouched.
 
             // Render nested build reports under this chat
             var queueItems = GetQueueItems?.Invoke() ?? Array.Empty<QueueItem>();
