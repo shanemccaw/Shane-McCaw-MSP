@@ -1747,54 +1747,14 @@ export const visitorIdentitiesTable = pgTable("visitor_identities", {
 export type InsertVisitorIdentity = typeof visitorIdentitiesTable.$inferInsert;
 export type VisitorIdentity = typeof visitorIdentitiesTable.$inferSelect;
 
-// ── Site Analytics ─────────────────────────────────────────────────────────────
-// RETIRED (issue #123) — analytics_sessions/pageviews/site_events are no longer
-// written to (routes/analytics.ts was deleted). admin-marketing.ts's KPI/analytics/
-// campaign-badge endpoints were repointed off these tables to honest zero/empty
-// values (Git #3625) — the whole Marketing admin tool is slated for a GA4-backed
-// rebuild (#3437, not yet scheduled) which will build real replacements. The
-// Drizzle definitions and tables themselves are still left in place undropped —
-// see #3610 for the drop itself and its remaining live-reader audit.
-export const analyticsSessionsTable = pgTable("analytics_sessions", {
-  sessionId: text("session_id").primaryKey(),
-  entryPage: text("entry_page").notNull().default("/"),
-  referrer: text("referrer"),
-  utmSource: text("utm_source"),
-  utmMedium: text("utm_medium"),
-  utmCampaign: text("utm_campaign"),
-  utmContent: text("utm_content"),
-  utmTerm: text("utm_term"),
-  deviceType: text("device_type"),
-  browser: text("browser"),
-  country: text("country"),
-  startedAt: timestamp("started_at").notNull().defaultNow(),
-  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
-  totalSeconds: integer("total_seconds").notNull().default(0),
-  isBounce: boolean("is_bounce").notNull().default(true),
-  identifiedEmail: text("identified_email"),
-});
-
-export const analyticsPageviewsTable = pgTable("analytics_pageviews", {
-  id: serial("id").primaryKey(),
-  sessionId: text("session_id").notNull(),
-  page: text("page").notNull(),
-  title: text("title"),
-  enteredAt: timestamp("entered_at").notNull().defaultNow(),
-  exitedAt: timestamp("exited_at"),
-  durationSeconds: integer("duration_seconds"),
-  maxScrollPct: integer("max_scroll_pct").notNull().default(0),
-});
-
-export const analyticsSiteEventsTable = pgTable("analytics_site_events", {
-  id: serial("id").primaryKey(),
-  sessionId: text("session_id").notNull(),
-  page: text("page").notNull(),
-  eventType: text("event_type").notNull(),
-  elementLabel: text("element_label"),
-  elementHref: text("element_href"),
-  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+// ── Site Analytics — RETIRED, tables dropped (#3610) ─────────────────────────────
+// analytics_sessions/pageviews/site_events (issue #123's homegrown pre-GA4 tracker)
+// stopped being written to when #123 deleted routes/analytics.ts. The two remaining
+// live readers — admin-marketing.ts's dashboard endpoints (#3625) and
+// seed-system-workflows.ts's Engagement Offer Delayed Follow-Up workflow (#3644) —
+// were repointed off them, and #3610 drops the tables themselves via
+// lib/db/migrations/manual/2026-09-11-drop-legacy-site-analytics-tables-3610.sql.
+// These Drizzle definitions are removed in the same commit as that migration file.
 
 // Email Templates — editable email copy stored in the database
 export const emailTemplatesTable = pgTable("email_templates", {
