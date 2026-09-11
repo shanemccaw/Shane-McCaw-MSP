@@ -63,9 +63,12 @@ async function getOrCreateStripeCustomer(
 // requireAuth alone. Reads ask customer:billing.view; anything that moves money or
 // changes a subscription asks customer:billing.manage. The tenant/user scoping
 // inside each handler limits WHICH rows come back — the capability decides WHO may
-// ask at all. Both are seeded to every rung (lib/db/migrations/manual/
-// 2026-09-10-rbac-billing-manage-3465.sql), so narrowing either is a mapping-row
-// edit, not a code change.
+// ask at all. #3629 (resolving #3587) narrowed both from every rung to the Customer
+// Admin and Billing roles plus MSP staff (lib/db/migrations/manual/
+// 2026-09-11-rbac-customer-admin-billing-roles-3629.sql). Every handler here reads
+// the caller's OWN rows (clientUserId = req.user.id), so that migration also grants
+// Billing to whoever an invoice or client service is addressed to — without it a bill
+// could be issued to someone who can neither open nor pay it.
 
 router.get("/portal/invoices", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
   const userId = req.user!.id;

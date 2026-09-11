@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import {
   CAPABILITY_COLUMN_ROLE_KEYS,
+  CUSTOMER_PLATFORM_ROLE_KEYS,
   LADDER,
   LADDER_CAPABILITY_KEYS,
   LEGACY_CAPABILITY_RULES,
@@ -245,16 +246,20 @@ describe("the capability columns are read ASYMMETRICALLY today, and the transcri
     }
   });
 
-  it("customer:billing.view and customer:billing.manage were open to every authenticated principal", () => {
-    // #3465 split the billing surface into a read and a write capability; both
-    // transcribe the same pre-#3465 rule, because every route was requireAuth only.
+  it("customer:billing.view and customer:billing.manage are MSP staff by rung, nobody below them (#3629)", () => {
+    // #3465 transcribed both as every rung (the routes were requireAuth only); #3629
+    // narrowed them by decision — Shane, 2026-09-11, resolving #3587.
     for (const key of ["billing.view", "billing.manage"]) {
-      for (const role of LEGACY_ROLE_ORDER) {
-        expect(legacyDecision(asRole(role), "customer", key)).toBe(true);
-      }
-      // Including one with no recognised role at all — portal-billing.ts was
-      // requireAuth and nothing else. See #3360.
-      expect(legacyDecision(principal({ mspRole: "NotARole" }), "customer", key)).toBe(true);
+      const allowed = LEGACY_ROLE_ORDER.filter((rung) => legacyDecision(asRole(rung), "customer", key));
+      expect(allowed, key).toEqual([LEGACY_ROLE.mspOperator, LEGACY_ROLE.mspAdmin, LEGACY_ROLE.platformAdmin]);
+      expect(legacyDecision(principal({ role: "admin" }), "customer", key), key).toBe(true);
+      // No capability COLUMN reaches billing — only #3629's two role memberships do.
+      const everyColumn = { canApprovePurchases: true, canManageTeam: true, canApproveChanges: true };
+      expect(legacyDecision(asRole("Customer", everyColumn), "customer", key), key).toBe(false);
+      // A principal with no recognised rung now holds nothing unless granted a role,
+      // which is why parity-check.ts no longer registers the two #3360 billing twins.
+      expect(legacyDecision(principal({ mspRole: "NotARole" }), "customer", key), key).toBe(false);
+      expect(legacyDecision(principal({ mspRole: "NotARole", billingRole: true }), "customer", key), key).toBe(true);
     }
   });
 
@@ -358,5 +363,47 @@ describe("#3590 — CustomerUser renamed Customer, Assessment folded into Free",
       LEGACY_ROLE.platformAdmin,
     ]);
     expect(legacyDecision(row(LEGACY_ROLE.free, "admin"), "customer", "marketplace.browse-full")).toBe(true);
+  });
+});
+
+describe("#3629 — the Customer Admin and Billing platform roles", () => {
+  const customerKeys = LEGACY_CAPABILITY_RULES.filter((rule) => rule.system === "customer").map((rule) => rule.key);
+  const isBilling = (key: string) => key === "billing.view" || key === "billing.manage";
+
+  it("Customer Admin holds every customer-system capability, even on the Free rung", () => {
+    expect([...customerKeys].sort()).toEqual(
+      ["billing.manage", "billing.view", "changes.approve", "marketplace.browse-full", "team.manage"],
+    );
+    for (const key of customerKeys) {
+      expect(legacyDecision(principal({ mspRole: "Free" }), "customer", key), key).toBe(false);
+      expect(legacyDecision(principal({ mspRole: "Free", customerAdmin: true }), "customer", key), key).toBe(true);
+    }
+  });
+
+  it("Billing adds billing.view and billing.manage and nothing else", () => {
+    for (const rung of ["Free", "Customer"] as const) {
+      for (const key of customerKeys) {
+        const without = legacyDecision(principal({ mspRole: rung }), "customer", key);
+        const withBilling = legacyDecision(principal({ mspRole: rung, billingRole: true }), "customer", key);
+        expect(withBilling, `${rung} ${key}`).toBe(isBilling(key) ? true : without);
+        if (isBilling(key)) expect(without, `${rung} ${key}`).toBe(false);
+      }
+    }
+  });
+
+  it("neither role reaches the MSP system", () => {
+    const base = principal({ mspRole: "Customer" });
+    for (const rule of LEGACY_CAPABILITY_RULES.filter((r) => r.system === "msp")) {
+      expect(legacyDecision({ ...base, customerAdmin: true, billingRole: true }, "msp", rule.key), rule.key).toBe(
+        legacyDecision(base, "msp", rule.key),
+      );
+    }
+  });
+
+  it("the role keys are distinct, are not rungs, and do not collide with the capability-column roles", () => {
+    const keys = Object.values(CUSTOMER_PLATFORM_ROLE_KEYS);
+    const all = [...keys, ...Object.values(CAPABILITY_COLUMN_ROLE_KEYS)];
+    expect(new Set(all).size).toBe(all.length);
+    for (const key of keys) expect(isLegacyRole(key)).toBe(false);
   });
 });

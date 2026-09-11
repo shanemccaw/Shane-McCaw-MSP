@@ -31,8 +31,9 @@
  * that means much less than it looks like.
  *
  * Pass B closes that: it takes every possible principal SHAPE — each of the seven
- * rungs, plus the `role = 'admin'` legacy promotion, crossed with all eight
- * combinations of the three capability columns — and runs both sides for each. It
+ * rungs, plus the `role = 'admin'` legacy promotion, crossed with all 32
+ * combinations of the three capability columns and #3629's two role memberships
+ * (Customer Admin, Billing) — and runs both sides for each. It
  * uses the real seeded role uuids and the real seeded mapping payloads read out of
  * the database; the only thing it synthesises is which of those real roles a
  * hypothetical principal holds. Nothing is inserted, so no fake user is ever
@@ -48,6 +49,7 @@ import { loadRbacEvaluator } from "./load.ts";
 import { LEGACY_ROLE } from "./legacy-ladder.ts";
 import {
   CAPABILITY_COLUMN_ROLE_KEYS,
+  CUSTOMER_PLATFORM_ROLE_KEYS,
   LEGACY_CAPABILITY_RULES,
   LEGACY_ROLE_ORDER,
   effectiveLegacyRole,
@@ -118,20 +120,9 @@ const KNOWN_FAIL_CLOSED_DIVERGENCES: readonly KnownDivergence[] = [
     issue: "#3360",
     why: "pre-#2460 portal-team.ts permitted an unrecognised role; the new model, live since #2460, denies it",
   },
-  {
-    shape: "unrecognised msp_role",
-    system: "customer",
-    capability: "billing.view",
-    issue: "#3360",
-    why: "portal-billing.ts is requireAuth-only, so 'everyone' includes a principal holding no rung",
-  },
-  {
-    shape: "unrecognised msp_role",
-    system: "customer",
-    capability: "billing.manage",
-    issue: "#3360",
-    why: "portal-billing.ts's writes were requireAuth-only, so 'everyone' included a principal holding no rung",
-  },
+  // #3629 retired the billing.view / billing.manage twins that stood here: once
+  // billing stopped being "everyone", the old rule denies a principal holding no rung
+  // exactly as the new model does, so the divergence stopped occurring.
   {
     shape: "unrecognised msp_role",
     system: "customer",
@@ -230,8 +221,14 @@ const expectedRoleKeys = [
   `msp:${CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases}`,
   `customer:${CAPABILITY_COLUMN_ROLE_KEYS.manageTeam}`,
   `customer:${CAPABILITY_COLUMN_ROLE_KEYS.approveChanges}`,
+  `customer:${CUSTOMER_PLATFORM_ROLE_KEYS.customerAdmin}`,
+  `customer:${CUSTOMER_PLATFORM_ROLE_KEYS.billing}`,
 ].sort();
-check("the seeded platform roles are exactly the ladder rungs plus one role per column", [...roleId.keys()].sort(), expectedRoleKeys);
+check(
+  "the seeded platform roles are exactly the ladder rungs, one role per column, and #3629's Customer Admin + Billing",
+  [...roleId.keys()].sort(),
+  expectedRoleKeys,
+);
 
 // ── 1. Pass A — every real user, through the real loader ─────────────────────
 //
@@ -261,11 +258,19 @@ const oldModelIntact = columnsPresent.n === 2;
 const users = oldModelIntact
   ? (await db.execute(sql`
       SELECT id, role, msp_role, msp_id, tenant_id,
-             can_approve_purchases, can_manage_team, can_approve_changes
+             can_approve_purchases, can_manage_team, can_approve_changes,
+             -- #3629's two roles have no column: the membership row is the grant.
+             EXISTS (SELECT 1 FROM customer_user_roles ur JOIN customer_roles r ON r.id = ur.role_id
+                      WHERE ur.user_id = users.id AND r.tenant_id IS NULL
+                        AND r.key = ${CUSTOMER_PLATFORM_ROLE_KEYS.customerAdmin}) AS customer_admin,
+             EXISTS (SELECT 1 FROM customer_user_roles ur JOIN customer_roles r ON r.id = ur.role_id
+                      WHERE ur.user_id = users.id AND r.tenant_id IS NULL
+                        AND r.key = ${CUSTOMER_PLATFORM_ROLE_KEYS.billing}) AS billing_role
       FROM users ORDER BY id
     `)).rows as Array<{
       id: number; role: string; msp_role: string | null; msp_id: number | null; tenant_id: number | null;
       can_approve_purchases: boolean; can_manage_team: boolean; can_approve_changes: boolean;
+      customer_admin: boolean; billing_role: boolean;
     }>
   : [];
 
@@ -289,6 +294,8 @@ for (const row of users) {
     canApprovePurchases: row.can_approve_purchases,
     canManageTeam: row.can_manage_team,
     canApproveChanges: row.can_approve_changes,
+    customerAdmin: row.customer_admin,
+    billingRole: row.billing_role,
   };
   const subject = `user ${row.id} (${row.role}/${row.msp_role ?? "—"})`;
 
@@ -353,6 +360,8 @@ function rolesFor(system: RbacSystem, rung: LegacyRole | undefined, user: Legacy
   } else {
     if (user.canManageTeam) held.push(roleId.get(`customer:${CAPABILITY_COLUMN_ROLE_KEYS.manageTeam}`)!);
     if (user.canApproveChanges) held.push(roleId.get(`customer:${CAPABILITY_COLUMN_ROLE_KEYS.approveChanges}`)!);
+    if (user.customerAdmin) held.push(roleId.get(`customer:${CUSTOMER_PLATFORM_ROLE_KEYS.customerAdmin}`)!);
+    if (user.billingRole) held.push(roleId.get(`customer:${CUSTOMER_PLATFORM_ROLE_KEYS.billing}`)!);
   }
   return held;
 }
@@ -368,7 +377,8 @@ const shapes: Array<{ label: string; role: string; mspRole: string | null }> = [
 
 let shapeCount = 0;
 for (const shape of shapes) {
-  for (const flags of [0, 1, 2, 3, 4, 5, 6, 7]) {
+  // Three capability columns plus #3629's two role memberships: 2^5 combinations.
+  for (let flags = 0; flags < 32; flags++) {
     const user: LegacyUserRow = {
       id: -1,
       role: shape.role,
@@ -378,10 +388,13 @@ for (const shape of shapes) {
       canApprovePurchases: (flags & 1) !== 0,
       canManageTeam: (flags & 2) !== 0,
       canApproveChanges: (flags & 4) !== 0,
+      customerAdmin: (flags & 8) !== 0,
+      billingRole: (flags & 16) !== 0,
     };
     const rung = effectiveLegacyRole(user);
     const subject =
-      `shape ${shape.label} [purchases=${user.canApprovePurchases} team=${user.canManageTeam} changes=${user.canApproveChanges}]`;
+      `shape ${shape.label} [purchases=${user.canApprovePurchases} team=${user.canManageTeam} changes=${user.canApproveChanges} ` +
+      `customerAdmin=${user.customerAdmin} billing=${user.billingRole}]`;
     shapeCount++;
 
     for (const capability of RBAC_CAPABILITIES) {
@@ -479,6 +492,61 @@ for (const row of memberships) {
 }
 if (failures === failuresBeforeMaintenance) {
   console.log(`PASS  maintenance pass — ${memberships.length} real users hold exactly the rows their users columns imply, in both systems`);
+}
+
+// ── 2c. #3629 — nobody is left holding a bill they cannot open ────────────────
+//
+// #3629 narrowed customer:billing.view / billing.manage from every rung to the
+// Customer Admin and Billing roles plus MSP staff. Every portal billing handler reads
+// the caller's OWN rows (clientUserId = req.user.id), so that is only safe if everyone
+// a bill is addressed to still holds both — which the migration's one-time
+// carry-forward and its invoices / client_services triggers exist to guarantee. This
+// pass checks the guarantee for every real user, through the real loader, and lists
+// who the narrowing did take billing from (informational: that is the decision).
+
+const billedPartyTriggers = (await db.execute(sql`
+  SELECT tgname FROM pg_trigger
+   WHERE NOT tgisinternal
+     AND tgname IN ('invoices_rbac_billing_on_write', 'client_services_rbac_billing_on_write')
+   ORDER BY tgname
+`)).rows as Array<{ tgname: string }>;
+check(
+  "the #3629 billed-party triggers are installed on invoices and client_services",
+  billedPartyTriggers.map((r) => r.tgname),
+  ["client_services_rbac_billing_on_write", "invoices_rbac_billing_on_write"],
+);
+
+const billingSubjects = (await db.execute(sql`
+  SELECT u.id, u.role, u.msp_role, u.tenant_id,
+         (SELECT count(*)::int FROM invoices i WHERE i.client_user_id = u.id)
+       + (SELECT count(*)::int FROM client_services cs WHERE cs.client_user_id = u.id) AS own_records
+    FROM users u ORDER BY u.id
+`)).rows as Array<{ id: number; role: string; msp_role: string | null; tenant_id: number | null; own_records: number }>;
+
+const failuresBeforeBilling = failures;
+let narrowedCount = 0;
+for (const row of billingSubjects) {
+  const evaluator = await loadRbacEvaluator(db as never, { system: "customer", userId: row.id, orgId: row.tenant_id });
+  const view = evaluator.can("billing.view");
+  const manage = evaluator.can("billing.manage");
+  const subject = `user ${row.id} (${row.role}/${row.msp_role ?? "—"})`;
+  if (row.own_records > 0 && !(view && manage)) {
+    fail(
+      `${subject} — has ${row.own_records} billing record(s) of their own, but billing.view=${view} ` +
+        `billing.manage=${manage}: a bill they cannot open or pay (#3629)`,
+    );
+  }
+  // Before #3629 every recognised rung held both (#3465's every-rung rows).
+  if (effectiveLegacyRole({ role: row.role, mspRole: row.msp_role }) && !view) {
+    narrowedCount++;
+    console.log(`NARROW ${subject} — held billing under the pre-#3629 every-rung rows, no longer does; ${row.own_records} billing record(s) of their own`);
+  }
+}
+if (failures === failuresBeforeBilling) {
+  console.log(
+    `PASS  #3629 billed-party pass — every real user with a bill of their own can open and act on it ` +
+      `(${billingSubjects.length} users; ${narrowedCount} narrowed, none with a bill of their own)`,
+  );
 }
 
 // ── 3. Every registered divergence must still be real ────────────────────────

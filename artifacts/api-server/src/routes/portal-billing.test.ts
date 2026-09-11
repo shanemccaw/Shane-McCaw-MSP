@@ -118,6 +118,8 @@ vi.mock("stripe", () => ({
 }));
 
 import router from "./portal-billing.ts";
+import { setGrantRole } from "../middlewares/rbac-capability.ts";
+import { CUSTOMER_PLATFORM_ROLE_KEYS } from "@workspace/db/rbac/legacy-ladder";
 
 // getMspPortalBaseUrl() resolves off PORTAL_BASE_URL (highest priority, see
 // ../lib/portal-url.ts) so this test drives it deterministically rather than
@@ -153,6 +155,14 @@ function makeClientToken(userId: number): string {
   );
 }
 
+// #3629 — billing is no longer every rung: it is the Customer Admin and Billing roles
+// plus MSP staff. The subscriber these routes act for holds Billing (the migration's
+// client_services trigger grants it to whoever a subscription is addressed to), so the
+// test principal is granted it the same way — a membership row, not a wider fixture.
+async function grantBilling(userId: number): Promise<void> {
+  expect(await setGrantRole("customer", userId, CUSTOMER_PLATFORM_ROLE_KEYS.billing, true, null)).toEqual({ ok: true });
+}
+
 // #175 (portal.ts route decommission, carrying forward the #172 mailer.ts
 // PORTAL_URL fix): when this resubscribe route was moved out of portal.ts
 // into portal-billing.ts, its Stripe checkout session's success_url/
@@ -173,6 +183,7 @@ describe("POST /api/portal/billing/subscriptions/:id/resubscribe (#175)", () => 
     const userId = 21;
     const clientServiceId = 7;
     const token = makeClientToken(userId);
+    await grantBilling(userId);
 
     mockSelectResultsQueue = [
       // clientServicesTable innerJoin servicesTable lookup
@@ -227,6 +238,7 @@ describe("POST /api/portal/billing/customer-portal (#177)", () => {
   it("builds the Stripe billing portal session's return_url off getMspPortalBaseUrl(), never the retired /crm path", async () => {
     const userId = 21;
     const token = makeClientToken(userId);
+    await grantBilling(userId);
 
     mockSelectResultsQueue = [
       // clientServicesTable innerJoin servicesTable lookup for an active subscription

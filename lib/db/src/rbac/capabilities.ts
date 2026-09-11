@@ -125,11 +125,12 @@ export const RBAC_CAPABILITIES: readonly RbacCapability[] = Object.freeze([
     category: "change-control",
     label: "Approve change requests",
     description:
-      "Approve or reject a Change Request against the customer's own live tenant. Today " +
-      "this is the per-user users.can_approve_changes column, read live in " +
-      "artifacts/api-server/src/routes/portal-change-control.ts:488-505 (Git #1496). " +
-      "Deliberately distinct from purchases.approve and team.manage — approving a " +
-      "configuration change to a live tenant is its own authority.",
+      "Approve or reject a Change Request against the customer's own live tenant. Granted " +
+      "per user by users.can_approve_changes (Git #1496), which #3408's users trigger mirrors " +
+      "into the cap.changes.approve role, and by the Customer Admin role (#3629); decided " +
+      "through the evaluator in artifacts/api-server/src/routes/portal-change-control.ts " +
+      "(callerChangeApproval). Deliberately distinct from purchases.approve and team.manage — " +
+      "approving a configuration change to a live tenant is its own authority.",
   },
   {
     system: "customer",
@@ -141,7 +142,8 @@ export const RBAC_CAPABILITIES: readonly RbacCapability[] = Object.freeze([
       "capability #1696 was filed about — Shane, 2026-08-29: 'the customer needs RBAC to " +
       "stop say an engineer from seeing billing.' Enforced on every read route in " +
       "artifacts/api-server/src/routes/portal-billing.ts and portal-retainer-billing.ts " +
-      "(#3465); the writes on the same surface ask billing.manage instead.",
+      "(#3465); the writes on the same surface ask billing.manage instead. Held by the " +
+      "Customer Admin and Billing roles and by MSP staff since #3629 — not by every rung.",
   },
   {
     system: "customer",
@@ -154,7 +156,9 @@ export const RBAC_CAPABILITIES: readonly RbacCapability[] = Object.freeze([
       "portal (where cards change and subscriptions can be cancelled). Split from " +
       "billing.view by #3465 because these are money-path writes, and a capability named " +
       "for a read should not authorise them. Enforced on every write route in " +
-      "artifacts/api-server/src/routes/portal-billing.ts and portal-retainer-billing.ts.",
+      "artifacts/api-server/src/routes/portal-billing.ts and portal-retainer-billing.ts. " +
+      "Held by the Customer Admin and Billing roles and by MSP staff since #3629 — not by " +
+      "every rung.",
   },
   {
     system: "customer",

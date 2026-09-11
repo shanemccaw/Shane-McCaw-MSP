@@ -14,7 +14,8 @@
  * The shape #2457's seed migration writes, computed from the shim's own constants
  * rather than typed out:
  *
- *   - one platform role per rung, plus one `cap.*` role per capability column;
+ *   - one platform role per rung, one `cap.*` role per capability column, and #3629's
+ *     Customer Admin and Billing roles;
  *   - the `msp:purchases.approve` and `customer:team.manage` allow sets, derived by
  *     asking `LEGACY_CAPABILITY_RULES` — the cited transcription of the live rules —
  *     which rungs pass with no grant, and adding the column's own `cap.*` role. So
@@ -33,6 +34,7 @@
 
 import {
   CAPABILITY_COLUMN_ROLE_KEYS,
+  CUSTOMER_PLATFORM_ROLE_KEYS,
   LEGACY_CAPABILITY_RULES,
   LEGACY_ROLE_ORDER,
   type LegacyRole,
@@ -44,15 +46,29 @@ import type { RoleRow } from "../middlewares/rbac-capability-source.ts";
 
 const roleId = (system: RbacSystem, key: string): string => `rbac-test-${system}-${key}`;
 
+/**
+ * Every non-rung platform role the seeds create, as the principal flag holding it sets.
+ * The `cap.*` roles each carry a capability column; #3629's Customer Admin and Billing
+ * carry none — the membership row is the grant.
+ */
+const GRANT_ROLES: ReadonlyArray<{ system: RbacSystem; key: string; holds: Partial<LegacyUserRow> }> = [
+  { system: "msp", key: CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases, holds: { canApprovePurchases: true } },
+  { system: "customer", key: CAPABILITY_COLUMN_ROLE_KEYS.manageTeam, holds: { canManageTeam: true } },
+  { system: "customer", key: CAPABILITY_COLUMN_ROLE_KEYS.approveChanges, holds: { canApproveChanges: true } },
+  { system: "customer", key: CUSTOMER_PLATFORM_ROLE_KEYS.customerAdmin, holds: { customerAdmin: true } },
+  { system: "customer", key: CUSTOMER_PLATFORM_ROLE_KEYS.billing, holds: { billingRole: true } },
+];
+
 /** Every platform role the seed creates, in both systems. */
 function platformRoles(system: RbacSystem): RoleRow[] {
-  const keys: string[] = [...LEGACY_ROLE_ORDER];
-  if (system === "msp") keys.push(CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases);
-  else keys.push(CAPABILITY_COLUMN_ROLE_KEYS.manageTeam, CAPABILITY_COLUMN_ROLE_KEYS.approveChanges);
+  const keys: string[] = [
+    ...LEGACY_ROLE_ORDER,
+    ...GRANT_ROLES.filter((grant) => grant.system === system).map((grant) => grant.key),
+  ];
   return keys.map((key) => ({ id: roleId(system, key), key }));
 }
 
-/** A principal holding exactly `rung` and carrying no capability column. */
+/** A principal holding exactly `rung` and carrying no capability column or grant role. */
 function flagless(rung: LegacyRole): LegacyUserRow {
   return {
     id: 1,
@@ -66,19 +82,13 @@ function flagless(rung: LegacyRole): LegacyUserRow {
   };
 }
 
-/** The `cap.*` role that carries a given capability's column grant, if it has one. */
-function grantRoleKeyFor(system: RbacSystem, key: string): string | null {
-  if (system === "msp" && key === "purchases.approve") return CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases;
-  if (system === "customer" && key === "team.manage") return CAPABILITY_COLUMN_ROLE_KEYS.manageTeam;
-  if (system === "customer" && key === "changes.approve") return CAPABILITY_COLUMN_ROLE_KEYS.approveChanges;
-  return null;
-}
-
 /**
  * The seed's mapping rows for every NON-ladder capability.
  *
- * The allow set is "every rung the transcribed rule already passes without a grant",
- * plus the column's own `cap.*` role. That is precisely how #2457's seed built them.
+ * A rung is allowed when the transcribed rule already passes it without a grant. A
+ * grant role is allowed when holding it turns some rung's refusal into a pass — which
+ * is how #2457 seeded each column's `cap.*` role and #3629 seeded Customer Admin and
+ * Billing. Both halves come from asking the rule, so the rows cannot drift from it.
  */
 function mappingRows(): RbacFeatureMapping[] {
   return LEGACY_CAPABILITY_RULES
@@ -87,8 +97,13 @@ function mappingRows(): RbacFeatureMapping[] {
       const allow = LEGACY_ROLE_ORDER
         .filter((rung) => rule.decide(flagless(rung)))
         .map((rung) => roleId(rule.system, rung));
-      const grantKey = grantRoleKeyFor(rule.system, rule.key);
-      if (grantKey) allow.push(roleId(rule.system, grantKey));
+      for (const grant of GRANT_ROLES) {
+        if (grant.system !== rule.system) continue;
+        const unlocks = LEGACY_ROLE_ORDER.some(
+          (rung) => !rule.decide(flagless(rung)) && rule.decide({ ...flagless(rung), ...grant.holds }),
+        );
+        if (unlocks) allow.push(roleId(rule.system, grant.key));
+      }
       return {
         system: rule.system,
         capabilityKey: rule.key,

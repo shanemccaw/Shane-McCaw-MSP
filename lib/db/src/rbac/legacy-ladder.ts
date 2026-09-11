@@ -171,6 +171,14 @@ export interface LegacyUserRow {
   readonly canApprovePurchases: boolean;
   readonly canManageTeam: boolean;
   readonly canApproveChanges: boolean;
+  /**
+   * #3629 — membership of the two platform-default customer roles
+   * (`CUSTOMER_PLATFORM_ROLE_KEYS`). Neither has a `users` column behind it: the
+   * `customer_user_roles` row IS the grant, so these are read from there, not from
+   * `users`. Optional, and absent reads as "holds neither".
+   */
+  readonly customerAdmin?: boolean;
+  readonly billingRole?: boolean;
 }
 
 /**
@@ -329,6 +337,29 @@ export interface LegacyCapabilityRule {
  * missing from here is a capability that goes unproven — `parity-check.ts`
  * asserts this list covers the catalog exactly, in both directions.
  */
+/**
+ * #3629 — who holds `customer:billing.view` and `customer:billing.manage`.
+ *
+ * Shane's decision of 2026-09-11 (resolving #3587): the Customer Admin and Billing
+ * roles, plus MSP staff. The staff rungs are the same set `customer:changes.approve`
+ * lets act by role — every existing customer capability lets MSP staff act on a
+ * customer's behalf — and on today's handlers the grant is inert, because every
+ * portal billing route reads the caller's OWN rows (`clientUserId = req.user.id`).
+ * `Free`, `Customer` and `ServiceAccount` hold neither capability by rung any more;
+ * no capability COLUMN grants it either.
+ */
+function billingDecision(user: LegacyUserRow): boolean {
+  const effective = effectiveLegacyRole(user);
+  if (
+    effective === LEGACY_ROLE.mspOperator ||
+    effective === LEGACY_ROLE.mspAdmin ||
+    effective === LEGACY_ROLE.platformAdmin
+  ) {
+    return true;
+  }
+  return user.customerAdmin === true || user.billingRole === true;
+}
+
 export const LEGACY_CAPABILITY_RULES: readonly LegacyCapabilityRule[] = Object.freeze([
   ...LEGACY_ROLE_ORDER.map((role): LegacyCapabilityRule => ({
     system: "msp",
@@ -392,12 +423,14 @@ export const LEGACY_CAPABILITY_RULES: readonly LegacyCapabilityRule[] = Object.f
      * is not carried into the seed, and since #2460 the live route reads the seeded
      * row instead of this rule, so it denies that principal. This rule is the old
      * behaviour, kept verbatim as parity-check.ts's oracle.
+     *
+     * #3629 adds one grant by decision: the Customer Admin role holds this too.
      */
     decide: (user) => {
       const effective = effectiveLegacyRole(user);
       const isCustomerTier = effective === LEGACY_ROLE.customer || effective === LEGACY_ROLE.free;
       if (!isCustomerTier) return true;
-      return user.canManageTeam;
+      return user.canManageTeam || user.customerAdmin === true;
     },
   },
   {
@@ -415,16 +448,19 @@ export const LEGACY_CAPABILITY_RULES: readonly LegacyCapabilityRule[] = Object.f
      * not the pre-payment tier, so the old comparison handed it the full catalog. The seed
      * does not carry that forward — a principal holding no rung holds no role row and is
      * denied (the same #3360 shape parity-check.ts registers for team.manage).
+     *
+     * #3629 adds one grant by decision: the Customer Admin role holds this on any rung.
      */
     decide: (user) => {
       const role = user.role === "admin" ? LEGACY_ROLE.platformAdmin : canonicalRoleValue(user.mspRole);
-      return role !== LEGACY_ROLE.free;
+      return role !== LEGACY_ROLE.free || user.customerAdmin === true;
     },
   },
   {
     system: "customer",
     key: "changes.approve",
-    source: "artifacts/api-server/src/routes/portal-change-control.ts:493-506 (callerCanApproveChanges)",
+    source:
+      "artifacts/api-server/src/routes/portal-change-control.ts:494-507 as of 548e42b04 (callerCanApproveChanges, pre-#3629 column read)",
     /**
      * *"MSP staff and PlatformAdmin approve by role and are not subject to the
      * per-user flag."* — an explicit three-role list, then the flag for everyone
@@ -436,48 +472,51 @@ export const LEGACY_CAPABILITY_RULES: readonly LegacyCapabilityRule[] = Object.f
      * customer tier only. Two columns that look symmetrical in the schema are not
      * symmetrical in the code, which is precisely the kind of divergence a
      * one-boolean-per-permission model produces.
+     *
+     * #3629 adds one grant by decision: the Customer Admin role holds this too, and
+     * the route now asks the evaluator (callerChangeApproval) rather than the column,
+     * so that grant is honoured live.
      */
     decide: (user) => {
       const effective = effectiveLegacyRole(user);
       if (effective === "MSPAdmin" || effective === "MSPOperator" || effective === "PlatformAdmin") {
         return true;
       }
-      return user.canApproveChanges;
+      return user.canApproveChanges || user.customerAdmin === true;
     },
   },
   {
     system: "customer",
     key: "billing.view",
-    source: "artifacts/api-server/src/routes/portal-billing.ts:60-513 (requireAuth only, before #3465)",
+    source:
+      "artifacts/api-server/src/routes/portal-billing.ts:61-80 (requireCustomerCapability, #3465); holders decided by #3629",
     /**
      * Until #3465 every billing route in that file was `requireAuth` and nothing
-     * else, so the answer was "yes" for every authenticated principal — the tenant
-     * scoping inside each handler limits WHICH invoices are returned, not WHO may ask.
+     * else, so the answer was "yes" for every authenticated principal. #3465 moved
+     * the reads onto this capability WITHOUT narrowing it, and this rule was
+     * `() => true`.
      *
-     * This is the capability #1696 was actually filed about (*"the customer needs
-     * RBAC to stop say an engineer from seeing billing"*). Transcribing it as
-     * "everyone" is the honest statement of that rule, not an endorsement. #3465
-     * moved the read routes onto this capability WITHOUT narrowing it: who should
-     * hold it is a product decision (#1696's money test), and it is now a mapping-row
-     * edit rather than a code change.
+     * #3629 narrowed it by product decision (Shane, 2026-09-11, resolving #3587) —
+     * not a transcription, the same way #3590's marketplace rule is not. See
+     * `billingDecision` for who holds it now.
      */
-    decide: () => true,
+    decide: (user) => billingDecision(user),
   },
   {
     system: "customer",
     key: "billing.manage",
-    source: "artifacts/api-server/src/routes/portal-billing.ts:133-578 (requireAuth only, before #3465)",
+    source:
+      "artifacts/api-server/src/routes/portal-billing.ts:61-80 (requireCustomerCapability, #3465); holders decided by #3629",
     /**
      * The write half of the same surface — pay an invoice, cancel / resume /
      * re-subscribe a subscription, open the Stripe customer portal, and
-     * portal-retainer-billing.ts's interval switch. Every one of them was also
-     * `requireAuth` and nothing else, so this too was "yes" for everyone.
+     * portal-retainer-billing.ts's interval switch. #3465 split it from
+     * `billing.view` so a role can SEE billing without being able to spend.
      *
-     * #3465 split it from `billing.view` so a role can be allowed to SEE billing
-     * without being allowed to spend or cancel. The split alone changes nobody's
-     * access; the seed grants it to exactly the principals the old rule passed.
+     * #3629's two roles each hold both halves, so today the two rules are equal; an
+     * org that wants a view-only role builds it through its own mapping rows.
      */
-    decide: () => true,
+    decide: (user) => billingDecision(user),
   },
 ]);
 
@@ -523,4 +562,25 @@ export const CAPABILITY_COLUMN_ROLE_KEYS = Object.freeze({
   manageTeam: "cap.team.manage",
   /** users.can_approve_changes (#1496). */
   approveChanges: "cap.changes.approve",
+});
+
+/**
+ * #3629 — the `customer_roles.key` of the two platform-default customer roles that
+ * are a product decision rather than a transcription (Shane, 2026-09-11, resolving
+ * #3587). Seeded by `2026-09-11-rbac-customer-admin-billing-roles-3629.sql`.
+ *
+ * Unlike the `cap.*` roles above, neither carries a `users` column — membership in
+ * `customer_user_roles` is the grant — and each holds several capabilities:
+ *
+ *  - `customerAdmin` — the top of a customer org, parallel to MSPAdmin: every
+ *    customer-system capability (billing.view/manage, team.manage, changes.approve,
+ *    marketplace.browse-full).
+ *  - `billing` — billing.view + billing.manage only, assigned by a Customer Admin
+ *    to specific employees. The migration's trigger also grants it to whoever an
+ *    invoice or client service is addressed to, because the billing routes read the
+ *    caller's own rows.
+ */
+export const CUSTOMER_PLATFORM_ROLE_KEYS = Object.freeze({
+  customerAdmin: "customer-admin",
+  billing: "billing",
 });

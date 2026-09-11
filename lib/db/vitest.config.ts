@@ -32,6 +32,10 @@ export default defineConfig({
       // rung and capability-role memberships follow the row. Runs against
       // DATABASE_URL, everything rolled back.
       "src/rbac/user-role-sync.test.ts",
+      // #3629 — the Customer Admin / Billing roles, the narrowed billing rows, and the
+      // invoices / client_services triggers that grant the billed party Billing. Runs
+      // against DATABASE_URL, everything rolled back.
+      "src/rbac/customer-admin-billing-roles.test.ts",
     ],
   },
 });

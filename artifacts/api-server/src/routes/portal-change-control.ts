@@ -111,11 +111,12 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, changeFreezeWindowsTable, changeMaintenanceWindowsTable, crApprovalsTable, mspChangeRequestsTable, usersTable, type CrApproval } from "@workspace/db";
+import { db, changeFreezeWindowsTable, changeMaintenanceWindowsTable, crApprovalsTable, mspChangeRequestsTable, type CrApproval } from "@workspace/db";
 import { and, asc, desc, eq, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { requireCapability } from "../middlewares/requireAuth";
+import { userHasCapability, type CapabilityOutcome } from "../middlewares/rbac-capability";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireAddOnEntitlement } from "../lib/portal-addon-entitlements";
 import { declineRoutedChangeToRisk } from "../lib/m365-change-router";
@@ -486,24 +487,19 @@ function buildStats(wire: readonly WireChangeRequest[], now: Date) {
 export const CHANGE_CONTROL_FEATURE_KEY = "change_control";
 
 /**
- * The caller's LIVE `canApproveChanges` capability (#1496). Read fresh from the
- * DB every call, never trusted from the JWT — same discipline as `canManageTeam`
- * / `canApprovePurchases`, so a revoke takes effect immediately. MSP staff and
- * PlatformAdmin approve by role and are not subject to the per-user flag.
+ * Whether the caller holds `customer:changes.approve` (#1496).
+ *
+ * Until #3629 this read `users.can_approve_changes` directly and let MSP staff and
+ * PlatformAdmin through by role. It now asks the #2455 evaluator, whose platform row
+ * allows exactly those rungs, the `cap.changes.approve` role (kept in step with the
+ * column by #3408's users trigger) and #3629's Customer Admin role — a grant a column
+ * read could never honour. Still read live every call, so a revoke takes effect
+ * immediately. An unreadable or unseeded model comes back `unavailable`, which the
+ * gates below answer 503, never a 403 that would misreport a missing migration.
  */
-async function callerCanApproveChanges(req: Request): Promise<boolean> {
-  const user = req.user;
-  if (!user) return false;
-  const effectiveRole = user.role === "admin" ? LEGACY_ROLE.platformAdmin : user.mspRole;
-  if (effectiveRole === LEGACY_ROLE.mspAdmin || effectiveRole === LEGACY_ROLE.mspOperator || effectiveRole === LEGACY_ROLE.platformAdmin) {
-    return true;
-  }
-  const [row] = await db
-    .select({ canApproveChanges: usersTable.canApproveChanges })
-    .from(usersTable)
-    .where(eq(usersTable.id, user.id))
-    .limit(1);
-  return row?.canApproveChanges === true;
+async function callerChangeApproval(req: Request): Promise<CapabilityOutcome> {
+  if (!req.user) return { kind: "deny" };
+  return userHasCapability(req.user, "customer", "changes.approve");
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────────
@@ -595,7 +591,9 @@ router.get(
       // register read reflects both so the affordance matches what the store will
       // actually enforce.
       const [callerCanApprove, policy, dependenciesByCr] = await Promise.all([
-        callerCanApproveChanges(req),
+        // Display only — an unavailable model hides the approve affordance; the
+        // write gates below are what answer 503 for it.
+        callerChangeApproval(req).then((outcome) => outcome.kind === "allow"),
         loadApprovalPolicy(customerId),
         // #1504 — one bulk pair of queries for the whole page's blocked_by edges.
         dependencyEdgesForMany(crIds, scope.mspId),
@@ -1122,7 +1120,12 @@ router.post(
     }
 
     try {
-      if (!(await callerCanApproveChanges(req))) {
+      const approval = await callerChangeApproval(req);
+      if (approval.kind === "unavailable") {
+        res.status(503).json({ error: "Authorization is temporarily unavailable" });
+        return;
+      }
+      if (approval.kind === "deny") {
         res.status(403).json({ error: "You do not have permission to approve changes." });
         return;
       }
@@ -1174,7 +1177,12 @@ router.post(
     }
 
     try {
-      if (!(await callerCanApproveChanges(req))) {
+      const approval = await callerChangeApproval(req);
+      if (approval.kind === "unavailable") {
+        res.status(503).json({ error: "Authorization is temporarily unavailable" });
+        return;
+      }
+      if (approval.kind === "deny") {
         res.status(403).json({ error: "You do not have permission to reject changes." });
         return;
       }
