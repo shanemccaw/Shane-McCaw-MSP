@@ -941,6 +941,45 @@ namespace BuildConsole.Controls
             return counts;
         }
 
+        private Dictionary<int, List<QueueItem>> _reverseBlocks = new();
+
+        /// <summary>Git #3601 — the reverse of the forward blocker ghost cards
+        /// (<see cref="BuildBlockerGhostCard"/>/<see cref="LiveBlockedBy"/>): for every real
+        /// queue item that is a live, currently-open blocker of at least one other real queue
+        /// item, the list of those blocked items themselves — same real relationship, just
+        /// inverted, and using the exact same live filter (<see cref="LiveBlockedBy"/>, which
+        /// already checks a declared blocker against the real <see cref="_openIssues"/> set)
+        /// so this list and the forward ghost cards can never disagree about which edges are
+        /// still genuinely live. Keyed by the blocker's own GitHub issue number, since
+        /// `blocked_by` edges are GitHub-native — an item with no GithubNumber can't be
+        /// declared as anyone's blocker.
+        ///
+        /// Computed against <paramref name="allItems"/> — the FULL, unfiltered queue
+        /// (RenderQueue's own <c>rawItems</c> parameter, effectively <see cref="_lastItems"/>)
+        /// — not whatever the currently-active status filter narrowed the render to, so a
+        /// build's "Blocks:" row is correct even when what it blocks sits under a different
+        /// filter. Same reasoning as <see cref="FindLiveNodeForBlocker"/> (#3599).
+        ///
+        /// Gated on the blocked item still being "queued" (mirrors the exact gate the forward
+        /// ghost-card row already uses at its own call site): once a blocked item lands, its
+        /// blocker relationship is moot and it drops off this list on the next refresh, even
+        /// if the underlying GitHub dependency edge is still technically declared.</summary>
+        private Dictionary<int, List<QueueItem>> ComputeReverseBlocks(List<QueueItem> allItems)
+        {
+            var result = new Dictionary<int, List<QueueItem>>();
+            foreach (var candidate in allItems)
+            {
+                if (candidate.Status != "queued") continue;
+                var node = BuildItemNode(candidate);
+                foreach (var blockerNumber in LiveBlockedBy(node))
+                {
+                    if (!result.TryGetValue(blockerNumber, out var list)) { list = new List<QueueItem>(); result[blockerNumber] = list; }
+                    list.Add(candidate);
+                }
+            }
+            return result;
+        }
+
         /// <summary>
         /// Re-reads the queue's real current status and re-renders the panel.
         /// <paramref name="includeGitHubWork"/> (Git #3074) separates the two genuinely different
@@ -2071,6 +2110,9 @@ namespace BuildConsole.Controls
 
             _downstreamBlockCounts = ComputeDownstreamBlockCounts(items);
             _maxDownstreamBlockCount = _downstreamBlockCounts.Count > 0 ? _downstreamBlockCounts.Values.Max() : 0;
+            // Git #3601 — against the full unfiltered rawItems, not the filtered `items` above,
+            // so a "Blocks:" row is correct regardless of which filter is currently active.
+            _reverseBlocks = ComputeReverseBlocks(rawItems);
 
             var itemNodes = new List<QueueGraphNode>();
             foreach (var item in SortForDisplay(items))
@@ -4368,6 +4410,15 @@ namespace BuildConsole.Controls
                     mainStack.Children.Add(BuildBlockerGhostCard(blockerNumber));
                 }
             }
+            // Git #3601 — reverse of the ghost cards above: this item's own real "Blocks:"
+            // row, listing every other real queue item this one currently, genuinely blocks
+            // (see ComputeReverseBlocks). Unlike the ghost-card row above, this isn't gated
+            // on this item's own status — a running/verifying build routinely blocks a
+            // queued one, and that's exactly the case Shane wants surfaced here.
+            if (item.GithubNumber.HasValue && _reverseBlocks.TryGetValue(item.GithubNumber.Value, out var blockedItems) && blockedItems.Count > 0)
+            {
+                mainStack.Children.Add(BuildBlocksRow(blockedItems));
+            }
             if (item.Status == "failed" && item.ExitCode.HasValue)
             {
                 string orphanDetail = !string.IsNullOrEmpty(item.SessionId)
@@ -4747,6 +4798,60 @@ namespace BuildConsole.Controls
             };
 
             return card;
+        }
+
+        /// <summary>Git #3601 — the reverse of <see cref="BuildBlockerGhostCard"/>: a real
+        /// "Blocks: #N, #M" row for a build card that itself genuinely blocks one or more
+        /// other real queue items (<see cref="ComputeReverseBlocks"/>). Same real interaction
+        /// model, reverse direction — each entry is a small clickable pill naming the blocked
+        /// item's real issue ref, and clicking it calls <see cref="RevealQueueItem"/> (#3599)
+        /// so navigation switches to whichever filter actually shows that item before
+        /// selecting/highlighting it, regardless of which filter is currently active. No
+        /// navigation logic is reimplemented here.</summary>
+        private WrapPanel BuildBlocksRow(List<QueueItem> blockedItems)
+        {
+            var row = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
+            row.Children.Add(new TextBlock
+            {
+                Text = "🔗 Blocks:",
+                FontSize = 9.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 4, 2)
+            });
+
+            foreach (var blocked in blockedItems.OrderBy(b => b.GithubNumber ?? b.Id))
+            {
+                string refText = blocked.GithubNumber.HasValue ? FormatIssueRef(blocked.GithubNumber.Value) : $"#{blocked.Id}";
+                var pill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x14, 0x22, 0x28)),
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(0x80, 0x89, 0xB4, 0xFA)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1.5, 5, 1.5),
+                    Margin = new Thickness(0, 0, 4, 2),
+                    Cursor = Cursors.Hand,
+                    ToolTip = $"Blocks {refText} — {blocked.Title}\nClick to jump to its build card."
+                };
+                pill.Child = new TextBlock
+                {
+                    Text = refText,
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA))
+                };
+                int targetId = blocked.Id;
+                pill.MouseLeftButtonDown += (s, e) =>
+                {
+                    e.Handled = true;
+                    RevealQueueItem(targetId);
+                };
+                row.Children.Add(pill);
+            }
+
+            return row;
         }
 
         /// <summary>Git #3600 — guards a ghost-card dispatch click against a second click on the
