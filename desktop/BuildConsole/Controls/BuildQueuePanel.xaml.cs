@@ -4599,7 +4599,10 @@ namespace BuildConsole.Controls
             // go find #N himself. Each genuinely-open blocker now gets its own real ghost
             // card (BuildBlockerGhostCard) inline instead — the blocker's real title/state,
             // not just its number.
-            if (LiveBlockedBy(node).Count > 0 && item.Status == "queued")
+            // Git #3620 — a self-blocked "⏳ WAITING" row (IsWaitingSelfBlocked) has
+            // real open blocked_by data too; include it here the same way #3599
+            // already folded it into the Queued/Running filter views.
+            if (LiveBlockedBy(node).Count > 0 && (item.Status == "queued" || IsWaitingSelfBlocked(item)))
             {
                 foreach (var blockerNumber in LiveBlockedBy(node))
                 {
