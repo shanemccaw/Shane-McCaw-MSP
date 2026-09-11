@@ -353,6 +353,78 @@
                         </DockPanel>
                     </Border>
 
+                    <!-- ══ Build Matrix drawer — Git #3658, real salvage of ShaneBuilder's own
+                         Build Matrix (Git #2281/#2286/#2287) re-wired against BuildConsole's real
+                         concurrent-build tracking. The chip toggles a collapsible drawer of every
+                         concurrent build slot (up to QueueWatcherService.MaxConcurrent, default 8):
+                         busy/idle state, real issue #/title, build set, model, status. Slot
+                         OCCUPANCY is sourced from QueueWatcherService.GetRunningBuildIds() — the
+                         same real _running dictionary backing GetActiveUsageSummary's "(N active)"
+                         readout above (#3615) — not re-derived from the DB Status column. "Tab"
+                         freezes the current slot state into its own read-only document tab, same
+                         open-or-focus convention MainWindow's other document tabs already use. -->
+                    <Border x:Name="MatrixChip"
+                            Background="{StaticResource Surface0Brush}"
+                            BorderBrush="{StaticResource Surface1Brush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8,5"
+                            Margin="0,0,0,8"
+                            Cursor="Hand"
+                            ToolTip="Build Matrix — every concurrent build slot, real per-slot occupancy"
+                            MouseLeftButtonUp="BtnMatrixChip_Click">
+                        <DockPanel LastChildFill="True">
+                            <TextBlock x:Name="MatrixChipCaret"
+                                       Text="&#xE70D;"
+                                       DockPanel.Dock="Right"
+                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontSize="9"
+                                       Margin="4,0,0,0"
+                                       Foreground="{StaticResource Subtext0Brush}"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xE8A9;"
+                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontSize="10"
+                                       Margin="0,0,6,0"
+                                       Foreground="{StaticResource Subtext0Brush}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock x:Name="MatrixChipCount"
+                                       Text="Build Matrix: 0/8"
+                                       FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextBrush}"
+                                       VerticalAlignment="Center"/>
+                        </DockPanel>
+                    </Border>
+
+                    <Border x:Name="MatrixDrawer"
+                            Background="{StaticResource MantleBrush}"
+                            BorderBrush="{StaticResource Surface1Brush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="10,8"
+                            Margin="0,0,0,8"
+                            Visibility="Collapsed">
+                        <StackPanel>
+                            <DockPanel LastChildFill="True" Margin="0,0,0,6">
+                                <Button x:Name="BtnMatrixSendToTab"
+                                        DockPanel.Dock="Right"
+                                        Content="Tab"
+                                        Style="{StaticResource IconButton}"
+                                        FontSize="10"
+                                        Padding="8,2"
+                                        ToolTip="Send a frozen, read-only snapshot of the current slots to its own document tab"
+                                        Click="BtnMatrixSendToTab_Click"/>
+                                <TextBlock x:Name="MatrixSlotSummary"
+                                           Text="0/8 slots"
+                                           FontSize="10.5" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Subtext1Brush}"
+                                           VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <WrapPanel x:Name="MatrixSlotsHost"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Git #3254 — real, small, live-updating display of when the local
                          issue-mirror's next automatic sync (#3113, bt_issue_mirror_sync_state;
                          #3337 split this into GitHubIssueMirror.IncrementalSyncInterval = 5 min

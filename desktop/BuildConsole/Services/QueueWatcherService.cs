@@ -3189,6 +3189,17 @@ namespace BuildConsole.Services
             return null;
         }
 
+        /// <summary>Git #3658 (Build Matrix) — the real per-slot occupancy set: every queue item id
+        /// currently in <see cref="_running"/>, the exact same in-memory dictionary
+        /// <see cref="GetActiveUsageSummary"/> reads from. Deliberately NOT a re-derivation from the
+        /// DB-sourced QueueItem list's Status column (which can lag genuine process state — a row can
+        /// still read "running" after this instance's own process already exited, or the reverse
+        /// mid-tick) — this is the same real membership every other capacity check in this class
+        /// (<see cref="RunningCount"/>, the <c>freeSlots</c> math) already trusts. Snapshot copy, safe
+        /// to enumerate off the UI thread's own call; membership itself is only ever mutated on the UI
+        /// thread (see <see cref="_running"/>'s own doc comment).</summary>
+        public IReadOnlyList<int> GetRunningBuildIds() => _running.Keys.ToList();
+
         /// <summary>Gets aggregate active token count and estimated cost across all running interactive builds.</summary>
         public (long TotalTokens, double EstimatedCost, int ActiveBuildCount) GetActiveUsageSummary()
         {

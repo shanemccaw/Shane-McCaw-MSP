@@ -148,6 +148,15 @@ namespace BuildConsole.Controls
         private Services.BuildQueuePostgresClient? _db;
         private Services.SessionLimitAutoRestartService? _sessionLimitAutoRestart;
         private List<QueueItem> _lastItems = new();
+
+        // ── Build Matrix drawer — Git #3658. Real per-slot occupancy comes from
+        // _watcher.GetRunningBuildIds() (the real _running dictionary backing
+        // GetActiveUsageSummary); this dictionary only keeps that admission STABLE
+        // across re-renders — a running build keeps its slot number until it stops
+        // running, matching ShaneBuilder's own _matrixSlotAssignments behavior — it is
+        // not a second source of "who is running."
+        private bool _matrixDrawerOpen;
+        private readonly Dictionary<int, int> _matrixSlotAssignments = new(); // QueueItem.Id -> slot index (0-based)
         /// <summary>Git #1862 — the live open-issue set from the last Git Board refresh,
         /// forwarded by MainWindow (same free fetch Build Watch already consumes — no new
         /// `gh` call). Null until the first refresh arrives; a real blocker is only counted
@@ -1439,6 +1448,7 @@ namespace BuildConsole.Controls
             }
 
             if (QueueNextPopup?.IsOpen == true) _ = RenderNextToRunAsync();
+            RenderMatrixDrawer();
         }
 
         /// <summary>Git #2107 — human "2h ago" style relative time for the QUEUE header's
@@ -1455,6 +1465,216 @@ namespace BuildConsole.Controls
         {
             QueueNextPopup.IsOpen = !QueueNextPopup.IsOpen;
             if (QueueNextPopup.IsOpen) await RenderNextToRunAsync();
+        }
+
+        // ══ Build Matrix — Git #3658. Real salvage of ShaneBuilder's own Build Matrix
+        // (Git #2281/#2286/#2287, desktop/ShaneBuilder/MainWindow.BuildMatrixPanel.cs +
+        // MainWindow.xaml.cs's _matrixSlotAssignments/RenderMatrixDrawer/MatrixSlotCard),
+        // re-implemented against BuildConsole's own real concurrent-build tracking rather
+        // than copy-pasted. Slot COUNT is QueueWatcherService.MaxConcurrent (the real
+        // configured concurrency cap, default 8 — not hardcoded here). Slot OCCUPANCY is
+        // QueueWatcherService.GetRunningBuildIds() — the real _running dictionary backing
+        // GetActiveUsageSummary's "(N active)" readout (#3615) — joined against this
+        // panel's own already-loaded _lastItems for display fields (title/build
+        // set/model/status), the same "real queue list already shown" join ShaneBuilder's
+        // own drawer did against _queueItems. No fixture data: with fewer than MaxConcurrent
+        // real builds running, idle slots render honestly as idle.
+
+        private void BtnMatrixChip_Click(object sender, MouseButtonEventArgs e)
+        {
+            _matrixDrawerOpen = !_matrixDrawerOpen;
+            RenderMatrixDrawer();
+        }
+
+        private void RenderMatrixDrawer()
+        {
+            if (MatrixDrawer == null || MatrixChipCount == null) return;
+            MatrixDrawer.Visibility = _matrixDrawerOpen ? Visibility.Visible : Visibility.Collapsed;
+            if (MatrixChipCaret != null)
+                MatrixChipCaret.Text = _matrixDrawerOpen ? "" : ""; // Segoe MDL2 chevron up/down
+
+            int slotCount = Math.Max(1, _watcher?.MaxConcurrent ?? 8);
+            var runningIds = _watcher?.GetRunningBuildIds() ?? Array.Empty<int>();
+            var runningSet = runningIds.ToHashSet();
+
+            // Free any slot whose build is no longer in the real running set.
+            foreach (var staleId in _matrixSlotAssignments.Keys.Where(id => !runningSet.Contains(id)).ToList())
+                _matrixSlotAssignments.Remove(staleId);
+
+            // Assign a free slot (lowest index first) to any running build that doesn't have one yet.
+            foreach (var id in runningIds)
+            {
+                if (_matrixSlotAssignments.ContainsKey(id)) continue;
+                var taken = _matrixSlotAssignments.Values.ToHashSet();
+                for (int slot = 0; slot < slotCount; slot++)
+                {
+                    if (taken.Contains(slot)) continue;
+                    _matrixSlotAssignments[id] = slot;
+                    break;
+                }
+                // If every slot is already taken, this running build simply has no slot to
+                // show yet — same "waiting for a slot" honesty ShaneBuilder's own comment
+                // documented; it isn't rendered as a phantom 9th slot.
+            }
+
+            var idBySlot = _matrixSlotAssignments.ToDictionary(kv => kv.Value, kv => kv.Key);
+            var itemsById = _lastItems.ToDictionary(i => i.Id, i => i);
+
+            int occupied = Math.Min(_matrixSlotAssignments.Count, slotCount);
+            MatrixSlotSummary.Text = $"{occupied}/{slotCount} slots";
+            MatrixChipCount.Text = $"Build Matrix: {occupied}/{slotCount}";
+
+            if (MatrixSlotsHost == null) return;
+            if (!_matrixDrawerOpen) return; // avoid churn while collapsed; re-renders on next open/tick
+
+            MatrixSlotsHost.Children.Clear();
+            for (int slot = 0; slot < slotCount; slot++)
+            {
+                QueueItem? item = idBySlot.TryGetValue(slot, out var itemId) && itemsById.TryGetValue(itemId, out var found)
+                    ? found : null;
+                MatrixSlotsHost.Children.Add(MatrixSlotCard(slot, item));
+            }
+        }
+
+        /// <summary>One slot card — slot number, status pill, real issue#/title, build set + model.
+        /// Idle slots render dimmed with none of that, since there's nothing real to show. A busy
+        /// slot pulses via a looping opacity animation and is clickable — <see cref="RevealQueueItem"/>
+        /// (#3599's real cross-filter navigation) focuses that build in the queue below, exactly the
+        /// same "focus the build" behavior ShaneBuilder's own MatrixSlotCard click handler had.</summary>
+        private Border MatrixSlotCard(int slotIndex, QueueItem? item)
+        {
+            bool busy = item != null;
+            string pillText = "";
+            Color pillBg = default, pillBorder = default, pillFg = Color.FromRgb(0x6C, 0x70, 0x86);
+            if (busy) (pillText, pillBg, pillBorder, pillFg) = MatrixSlotStatusPill(item!);
+            var accent = pillFg;
+
+            var card = new Border
+            {
+                Width = 150,
+                Margin = new Thickness(0, 0, 6, 6),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(8, 6, 8, 6),
+                Background = busy ? new SolidColorBrush(Color.FromArgb(0x1a, accent.R, accent.G, accent.B)) : (Brush)Application.Current.FindResource("Surface0Brush"),
+                BorderBrush = busy ? new SolidColorBrush(Color.FromArgb(0x66, accent.R, accent.G, accent.B)) : (Brush)Application.Current.FindResource("Surface1Brush"),
+                BorderThickness = new Thickness(1),
+                Opacity = busy ? 1.0 : 0.45,
+                Cursor = busy ? Cursors.Hand : Cursors.Arrow
+            };
+
+            var stack = new StackPanel();
+            stack.Children.Add(new TextBlock
+            {
+                Text = $"SLOT {slotIndex + 1}",
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 9,
+                FontWeight = FontWeights.Bold,
+                Foreground = (Brush)Application.Current.FindResource("Subtext0Brush")
+            });
+
+            if (busy)
+            {
+                stack.Children.Add(BuildStatusPill(pillText, pillBg, pillBorder, pillFg));
+                stack.Children.Add(new TextBlock
+                {
+                    Text = item!.GithubNumber.HasValue ? $"#{item.GithubNumber.Value} {item.Title}" : item.Title,
+                    Margin = new Thickness(0, 4, 0, 0),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    FontSize = 10.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)Application.Current.FindResource("TextBrush")
+                });
+                string modelEffort = item.Model != null && item.Effort != null ? $"{item.Model} · {item.Effort}" : (item.Model ?? item.Effort ?? "");
+                string subtitle = string.IsNullOrEmpty(modelEffort) ? (item.BuildSet ?? "") : (string.IsNullOrEmpty(item.BuildSet) ? modelEffort : $"{item.BuildSet} · {modelEffort}");
+                if (!string.IsNullOrEmpty(subtitle))
+                {
+                    stack.Children.Add(new TextBlock
+                    {
+                        Text = subtitle,
+                        Margin = new Thickness(0, 2, 0, 0),
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        FontSize = 9,
+                        Foreground = (Brush)Application.Current.FindResource("Subtext0Brush")
+                    });
+                }
+
+                // Running slots pulse — a real looping opacity animation, not a static glow.
+                var pulse = new DoubleAnimation
+                {
+                    From = 1.0,
+                    To = 0.55,
+                    Duration = new Duration(TimeSpan.FromSeconds(1.1)),
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever
+                };
+                card.BeginAnimation(UIElement.OpacityProperty, pulse);
+
+                var focusId = item.Id;
+                card.MouseLeftButtonDown += (s, e) => { e.Handled = true; RevealQueueItem(focusId); };
+            }
+            else
+            {
+                stack.Children.Add(new TextBlock
+                {
+                    Text = "Idle",
+                    Margin = new Thickness(0, 4, 0, 0),
+                    FontSize = 10.5,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext0Brush")
+                });
+            }
+
+            card.Child = stack;
+            return card;
+        }
+
+        /// <summary>Real per-slot status label/colors. Prefers the build's live interactive
+        /// sub-state (Working/WaitingForInput/Stopped — the same three-state vocabulary
+        /// GitDetailView's own chat-pane pill already uses: RUNNING/NEEDS INPUT/PAUSED) when this
+        /// instance owns it; falls back to the DB row's own Status for a legacy/foreign/adopted
+        /// running build with no live interactive state to read.</summary>
+        private (string Text, Color Bg, Color Border, Color Fg) MatrixSlotStatusPill(QueueItem item)
+        {
+            var state = _watcher?.GetInteractiveState(item.Id);
+            if (state == InteractiveInputState.WaitingForInput)
+                return ("NEEDS INPUT", Color.FromRgb(0x3A, 0x35, 0x1C), Color.FromRgb(0xF9, 0xE2, 0xAF), Color.FromRgb(0xF9, 0xE2, 0xAF));
+            if (state == InteractiveInputState.Stopped)
+                return ("PAUSED", Color.FromRgb(0x3A, 0x28, 0x1C), Color.FromRgb(0xFA, 0xB3, 0x87), Color.FromRgb(0xFA, 0xB3, 0x87));
+            return ("RUNNING", Color.FromRgb(0x1D, 0x2E, 0x45), Color.FromRgb(0x89, 0xB4, 0xFA), Color.FromRgb(0x89, 0xB4, 0xFA));
+        }
+
+        /// <summary>Git #3658 — plain frozen record types for the "Tab" snapshot (same shape
+        /// ShaneBuilder's own BuildMatrixSlotSnapshot/BuildMatrixDocSnapshot used).</summary>
+        private sealed record BuildMatrixSlotSnapshot(int Number, bool Busy, int? GithubNumber, string? Title, string? BuildSet, string? Model, string? Status);
+        private sealed record BuildMatrixDocSnapshot(IReadOnlyList<BuildMatrixSlotSnapshot> Slots, int BusyCount, int SlotCount);
+
+        /// <summary>Freezes the CURRENT real slot state — reads the same _matrixSlotAssignments/
+        /// _lastItems the live drawer just rendered from, no second slot-assignment pass.</summary>
+        private BuildMatrixDocSnapshot BuildMatrixSnapshotNow()
+        {
+            int slotCount = Math.Max(1, _watcher?.MaxConcurrent ?? 8);
+            var idBySlot = _matrixSlotAssignments.ToDictionary(kv => kv.Value, kv => kv.Key);
+            var itemsById = _lastItems.ToDictionary(i => i.Id, i => i);
+
+            var slots = new List<BuildMatrixSlotSnapshot>(slotCount);
+            for (int slot = 0; slot < slotCount; slot++)
+            {
+                QueueItem? item = idBySlot.TryGetValue(slot, out var itemId) && itemsById.TryGetValue(itemId, out var found)
+                    ? found : null;
+                slots.Add(new BuildMatrixSlotSnapshot(
+                    slot + 1, item != null, item?.GithubNumber, item?.Title, item?.BuildSet, item?.Model,
+                    item != null ? MatrixSlotStatusPill(item).Text : null));
+            }
+            return new BuildMatrixDocSnapshot(slots, slots.Count(s => s.Busy), slotCount);
+        }
+
+        /// <summary>"Tab" — sends a frozen, read-only snapshot of the current 8 slots to its own
+        /// document tab, the same open-or-focus convention MainWindow's other document tabs
+        /// (Batter Up, Settings) already use.</summary>
+        private void BtnMatrixSendToTab_Click(object sender, RoutedEventArgs e)
+        {
+            var snapshot = BuildMatrixSnapshotNow();
+            if (Application.Current.MainWindow is MainWindow mw)
+                mw.OpenBuildMatrixTab(snapshot.Slots.Select(s => (s.Number, s.Busy, s.GithubNumber, s.Title, s.BuildSet, s.Model, s.Status)).ToList(), snapshot.BusyCount, snapshot.SlotCount);
         }
 
         /// <summary>
