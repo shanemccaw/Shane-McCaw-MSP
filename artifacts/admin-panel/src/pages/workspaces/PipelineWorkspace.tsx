@@ -1,7 +1,6 @@
 import { type ReactNode } from "react";
 import ChatQueuePage from "@/pages/crm/ChatQueue";
 import ClientsPage from "@/pages/crm/Clients";
-import DiagnosticSharesPage from "@/pages/crm/DiagnosticShares";
 // Zoho CRM (#83). As of #135 (Decommission Legacy CRM Phase A) these have fully
 // replaced the local-DB Leads/Opportunities pages, which are deleted — Zoho Leads
 // is now this workspace's default section.
@@ -22,7 +21,6 @@ function getContent(section: string): ReactNode {
   switch (section) {
     case "chat-queue":          return <ChatQueuePage />;
     case "clients":             return <ClientsPage />;
-    case "diagnostic-shares":   return <DiagnosticSharesPage />;
     case "zoho-leads":          return <ZohoLeadsPage />;
     case "zoho-deals":          return <ZohoDealsPage />;
     case "zoho-contacts":       return <ZohoContactsPage />;

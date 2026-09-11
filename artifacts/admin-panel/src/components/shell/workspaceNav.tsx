@@ -23,7 +23,6 @@ import {
   UserPlus,
   Target,
   Building2,
-  Share2,
   FolderKanban,
   Layers,
   Activity,
@@ -279,12 +278,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         id: "accounts", label: "Accounts", defaultOpen: true,
         items: [
           { id: "pipe-clients", label: "Clients", path: "/pipeline/clients", icon: Building2 },
-        ],
-      },
-      {
-        id: "intelligence", label: "Intelligence", defaultOpen: true,
-        items: [
-          { id: "pipe-diagnostic-shares", label: "Diagnostic Shares", path: "/pipeline/diagnostic-shares", icon: Share2 },
         ],
       },
       {
