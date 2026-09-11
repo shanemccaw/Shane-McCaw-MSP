@@ -330,7 +330,14 @@ router.post(
       let stripeSubPeriod: { start: Date | null; end: Date | null; cancelAtPeriodEnd: boolean } | null = null;
       let stripeSubPriceId: string | null = null;
 
-      if (serviceClass === "subscription") {
+      // #3403 — serviceClass narrowly checks for "subscription", but the 6 live
+      // retainer catalog items (Architect Essentials/Growth/Enterprise/Advisory
+      // Retainer, vCISO / Governance Retainer, Copilot Governance Retainer) carry
+      // serviceClass="retainer" with billingType="recurring_monthly". Widened to
+      // match the working pattern already proven in portal-checkout-direct.ts:164
+      // — a recurring item is anything billed recurring_monthly OR flagged as
+      // serviceClass "subscription", not only the latter.
+      if (serviceClass === "subscription" || svc.billingType === "recurring_monthly") {
         const product = await stripe.products.create({
           name: svc.name,
           description: svc.description ?? undefined,
@@ -412,7 +419,13 @@ router.post(
         return;
       }
 
-      if (serviceClass === "subscription" && subscriptionId && stripeSubStatus && stripeSubPeriod) {
+      // #3403 — gate on the actual Stripe outcome (subscriptionId/stripeSubStatus/
+      // stripeSubPeriod are only ever set together, inside the widened branch
+      // above), not a re-derived serviceClass check — a second narrow
+      // serviceClass === "subscription" check here would silently undo the
+      // widening above for retainer items even though the Subscription branch
+      // ran and a real Stripe Subscription was created.
+      if (subscriptionId && stripeSubStatus && stripeSubPeriod) {
         // #2847 — RECORD IT. Until this landed, the Stripe Subscription created
         // above was returned to the caller, copied into an audit-log metadata
         // blob, and persisted in no table at all. The platform therefore had no

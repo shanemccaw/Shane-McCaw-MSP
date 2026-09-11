@@ -162,6 +162,12 @@ const addOnService = {
 const freeService = { ...addOnService, priceCents: 0 };
 const projectService = { ...addOnService, serviceClass: "project" };
 const consultationService = { ...addOnService, priceCents: null };
+// #3403 — a real live catalog shape: retainer items carry serviceClass="retainer"
+// (not "subscription") but billingType="recurring_monthly". Must route through
+// the Stripe Subscription branch, not the one-time PaymentIntent branch.
+const retainerService = {
+  ...addOnService, serviceClass: "retainer", billingType: "recurring_monthly", priceCents: 450_000,
+};
 // A really-priced catalog row whose price lives ONLY in the legacy base_price
 // decimal column — the exact shape POST /admin/catalog/import produces for an
 // assessment (its import allow-list carries basePrice, not price, and never
@@ -443,5 +449,40 @@ describe("POST /msp/customers/:customerId/marketplace/checkout", () => {
       expect(mockDbInsert).not.toHaveBeenCalled();
       expect(mockResolveFulfillment).not.toHaveBeenCalled();
     });
+  });
+
+  it("#3403: paid retainer (serviceClass=retainer, billingType=recurring_monthly) creates a real Stripe Subscription, not a one-time charge", async () => {
+    queueScopingSelects();
+    mockDbSelect.mockReturnValueOnce(selectChain([retainerService]));
+    mockDbSelect.mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // mspSubscriptionsTable
+    mockDbInsert.mockReturnValueOnce(insertChain([{ id: 504 }])); // salesOffersTable insert
+    // Real Stripe Subscription objects always carry `items.data[]` — shape the
+    // mock like the real API response so the route's own
+    // `stripeSub.items.data[0]?.price?.id` read doesn't throw.
+    mockStripeSubscriptionsCreate.mockResolvedValueOnce({
+      id: "sub_test", status: "active", cancel_at_period_end: false,
+      items: { data: [{ price: { id: "price_test" } }] },
+    });
+
+    const app = await makeApp();
+    const res = await request(app)
+      .post(`/api/msp/customers/${CUSTOMER_ID}/marketplace/checkout`)
+      .set("Authorization", `Bearer ${mspToken()}`)
+      .send({ serviceId: SERVICE_ID });
+
+    expect(res.status).toBe(201);
+    expect(res.body.outcome).toBe("payment_processed");
+    expect(res.body.subscriptionId).toBe("sub_test");
+    expect(mockStripeSubscriptionsCreate).toHaveBeenCalledOnce();
+    expect(mockStripePaymentIntentsCreate).not.toHaveBeenCalled();
+    expect(mockRecordTenantSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: CUSTOMER_ID,
+        mspId: MSP_ID,
+        billingParty: "msp",
+        source: "msp_marketplace",
+        stripeSubscriptionId: "sub_test",
+      }),
+    );
   });
 });
