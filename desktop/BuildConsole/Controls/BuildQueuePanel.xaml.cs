@@ -1528,11 +1528,17 @@ namespace BuildConsole.Controls
                 // Git #1829 — "Queued" = genuinely not executing right now: real queued rows plus
                 // limit-paused (Git #1600 — same practical meaning as queued even though the DB
                 // status string differs, waiting to resume later rather than in flight).
-                "Queued"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus)).ToList(),
+                // Git #3599 — a self-blocked "⏳ WAITING" row (supervisory cancel, exit 0) is a
+                // real decision on this issue: still an active queue item that self-corrected
+                // mid-run, not a dead/canceled one, so it belongs in the normal working filters
+                // alongside Queued/RunningAndQueued, not tucked away exclusively under "All" or
+                // the dedicated "Canceled" tab (see IsWaitingSelfBlocked).
+                "Queued"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus || IsWaitingSelfBlocked(i))).ToList(),
                 // Git #1894 — combined view added back as a third option alongside the split
                 // Running/Queued (Git #1829), reusing that pre-#1829 combined "Active" criteria
                 // verbatim: queued + running + LimitPausedStatus + VerifyingStatus.
-                "RunningAndQueued" => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or Services.SessionLimitAutoRestartService.LimitPausedStatus or BuildQueuePostgresClient.VerifyingStatus)).ToList(),
+                // Git #3599 — same WAITING inclusion as "Queued" above.
+                "RunningAndQueued" => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or Services.SessionLimitAutoRestartService.LimitPausedStatus or BuildQueuePostgresClient.VerifyingStatus || IsWaitingSelfBlocked(i))).ToList(),
                 // Git #1927 — standalone Verifying filter: exactly status == VerifyingStatus,
                 // distinct from "Running" above (which folds VerifyingStatus into its broader
                 // "in motion" bucket) so a build that's done executing and just waiting on
@@ -1555,7 +1561,10 @@ namespace BuildConsole.Controls
                 // grid, but still real rows that should be findable rather than lost.
                 "External" => items.Where(i => i.Status == "external" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
                 "Done"     => items.Where(i => i.Status == "done" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
-                "Canceled" => items.Where(i => i.Status == "canceled" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
+                // Git #3599 — exclusive to a GENUINE cancel now; a self-blocked "⏳ WAITING" row
+                // (IsWaitingSelfBlocked) moved to the working filters above per the real decision
+                // on this issue.
+                "Canceled" => items.Where(i => i.Status == "canceled" && !IsWaitingSelfBlocked(i) && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
                 _          => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             };
 
@@ -1609,9 +1618,18 @@ namespace BuildConsole.Controls
 
             string targetFilter = item.Status switch
             {
-                "running" or BuildQueuePostgresClient.VerifyingStatus                              => "Running",
-                "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus               => "Queued",
-                "failed" when item.ExitCode == -2                                                    => "Crashed",
+                "running"              => "Running",
+                // Git #3599 — Git #3340 hardened "Running" to mean exactly status == "running",
+                // full stop; a Verifying item is no longer visible under it, so landing here still
+                // has to target the real standalone "Verifying" filter or the reveal becomes
+                // exactly the no-op-click failure this issue exists to close.
+                BuildQueuePostgresClient.VerifyingStatus                                             => "Verifying",
+                "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus                => "Queued",
+                // Git #3599 — a self-blocked "⏳ WAITING" row (IsWaitingSelfBlocked) now lives in
+                // the "Queued" filter bucket (see ApplyFilter), not "Canceled" — must match here or
+                // revealing one would switch to a filter that doesn't actually show it.
+                "canceled" when IsWaitingSelfBlocked(item)                                            => "Queued",
+                "failed" when item.ExitCode == -2                                                     => "Crashed",
                 "parked"              => "Parked",
                 Services.AccountCapPolicy.CappedStatus => "Capped",
                 "external"            => "External",
@@ -1808,6 +1826,62 @@ namespace BuildConsole.Controls
             return ordered;
         }
 
+        /// <summary>Git #3599 — the per-item <see cref="QueueGraphNode"/> shape, extracted out of
+        /// <see cref="RenderQueue"/>'s build loop so it can also be used to resolve a blocker's
+        /// live node against the full, unfiltered queue (<see cref="_lastItems"/>) rather than
+        /// only whatever the currently-active status filter happened to render into
+        /// <see cref="_currentGraphNodes"/>. Behavior is unchanged for the RenderQueue call site.</summary>
+        private QueueGraphNode BuildItemNode(QueueItem item)
+        {
+            var interactiveState = _watcher?.GetInteractiveState(item.Id);
+            bool isWaitingForInput = interactiveState == InteractiveInputState.WaitingForInput;
+            var blockerList = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : new List<int>());
+            var cleanBlockers = blockerList.Where(b => b != 0 && b != item.GithubNumber).ToList();
+
+            return new QueueGraphNode
+            {
+                Key = item.GithubNumber ?? item.Id,
+                DisplayRef = item.GithubNumber.HasValue ? FormatIssueRef(item.GithubNumber.Value) : $"#{item.Id}",
+                Title = item.Title,
+                Status = item.Status,
+                // Git #1862 — blocked means a declared blocker GitHub reports OPEN, not
+                // merely one declared (the old heuristic left 🔒 BLOCKED on items whose
+                // blocker closed days ago). Cold start (no open-issue set yet) falls back
+                // to declared-blocker behaviour, matching the header's provisional count.
+                IsBlocked = IsGenuinelyBlocked(item, cleanBlockers),
+                IsWaitingForInput = isWaitingForInput,
+                BlockedBy = cleanBlockers,
+                Item = item,
+                BuildSet = string.IsNullOrWhiteSpace(item.BuildSet) ? null : item.BuildSet.Trim()
+            };
+        }
+
+        /// <summary>Git #3521/#3599 — a supervisory self-cancel (a session wired a real
+        /// blocked_by edge onto its own issue and exited cleanly, exit code 0): rendered
+        /// "⏳ WAITING", not the terminal "🚫 CANCELED" a genuine failed/aborted cancel gets.
+        /// Single source of truth for that distinction so the card pill (<see cref="GhostStatusLabel"/>,
+        /// the graph dot, <see cref="ApplyFilter"/>'s filter buckets, and <see cref="RevealQueueItem"/>'s
+        /// navigation target can never disagree about which bucket a given row falls in.</summary>
+        private static bool IsWaitingSelfBlocked(QueueItem item) => item.Status == "canceled" && item.ExitCode == 0;
+
+        /// <summary>Git #3599 — resolves a declared blocker's live queue node against the FULL,
+        /// unfiltered queue, not just whatever the currently-active status filter rendered into
+        /// <see cref="_currentGraphNodes"/>. Previously a blocker sitting under a different filter
+        /// (e.g. viewing "Queued" while the real blocker is "Verifying") came back null here, so
+        /// its ghost card rendered as non-clickable — "Open on GitHub — not itself a build in this
+        /// queue" — even though it genuinely IS a build in this queue, just filtered out of the
+        /// current view. Fast path still prefers an already-rendered node (real CardElement, no
+        /// rebuild); only falls through to <see cref="_lastItems"/> when nothing currently on
+        /// screen matches.</summary>
+        private QueueGraphNode? FindLiveNodeForBlocker(int blockerNumber)
+        {
+            var visible = _currentGraphNodes.FirstOrDefault(n => n.Key == blockerNumber && (n.Item != null || n.RestartItem != null));
+            if (visible != null) return visible;
+
+            var item = _lastItems.FirstOrDefault(i => (i.GithubNumber ?? i.Id) == blockerNumber);
+            return item != null ? BuildItemNode(item) : null;
+        }
+
         // ══════════════════════════════════════════════════════════════════════════
         // ── Visual Queue DAG with Canvas-Based Connectors (#860 Reference) ────────
         // ══════════════════════════════════════════════════════════════════════════
@@ -1905,30 +1979,7 @@ namespace BuildConsole.Controls
 
             var itemNodes = new List<QueueGraphNode>();
             foreach (var item in SortForDisplay(items))
-            {
-                var interactiveState = _watcher?.GetInteractiveState(item.Id);
-                bool isWaitingForInput = interactiveState == InteractiveInputState.WaitingForInput;
-                var blockerList = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : new List<int>());
-                var cleanBlockers = blockerList.Where(b => b != 0 && b != item.GithubNumber).ToList();
-
-                int key = item.GithubNumber ?? item.Id;
-                itemNodes.Add(new QueueGraphNode
-                {
-                    Key = key,
-                    DisplayRef = item.GithubNumber.HasValue ? FormatIssueRef(item.GithubNumber.Value) : $"#{item.Id}",
-                    Title = item.Title,
-                    Status = item.Status,
-                    // Git #1862 — blocked means a declared blocker GitHub reports OPEN, not
-                    // merely one declared (the old heuristic left 🔒 BLOCKED on items whose
-                    // blocker closed days ago). Cold start (no open-issue set yet) falls back
-                    // to declared-blocker behaviour, matching the header's provisional count.
-                    IsBlocked = IsGenuinelyBlocked(item, cleanBlockers),
-                    IsWaitingForInput = isWaitingForInput,
-                    BlockedBy = cleanBlockers,
-                    Item = item,
-                    BuildSet = string.IsNullOrWhiteSpace(item.BuildSet) ? null : item.BuildSet.Trim()
-                });
-            }
+                itemNodes.Add(BuildItemNode(item));
             // Git-style shape fix — Shane: "Blocked ends up showing above the thing
             // it's blocked [by]... I would think this would be nested under whatever
             // blocks it." SortForDisplay's plain "newest number first" order had no
@@ -4382,7 +4433,7 @@ namespace BuildConsole.Controls
         /// own card when it has one, but not the full chain-highlight interaction (#2030).</summary>
         private Border BuildBlockerGhostCard(int blockerNumber)
         {
-            var liveNode = _currentGraphNodes.FirstOrDefault(n => n.Key == blockerNumber && (n.Item != null || n.RestartItem != null));
+            var liveNode = FindLiveNodeForBlocker(blockerNumber);
             bool clickable = liveNode != null;
 
             string title;
@@ -4455,7 +4506,16 @@ namespace BuildConsole.Controls
                 card.MouseLeftButtonDown += (s, e) =>
                 {
                     e.Handled = true;
-                    SelectNode(liveNode!);
+                    // Git #3599 — the blocker may not be in the currently-active filter's
+                    // rendered set at all (that's exactly why FindLiveNodeForBlocker had to
+                    // fall through to _lastItems above). RevealQueueItem already knows how to
+                    // switch the active filter to whichever one actually shows this item before
+                    // selecting/highlighting it, so navigation always lands somewhere the target
+                    // is actually visible instead of a no-op click. Restart pseudo-nodes (no real
+                    // Item, only RestartItem) have no queue row to reveal — same no-op they were
+                    // before this fix (SelectNode itself no-ops when Item is null).
+                    if (liveNode!.Item != null)
+                        RevealQueueItem(liveNode.Item.Id);
                 };
             }
 
