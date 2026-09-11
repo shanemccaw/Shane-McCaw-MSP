@@ -363,6 +363,13 @@
                          readout above (#3615) — not re-derived from the DB Status column. "Tab"
                          freezes the current slot state into its own read-only document tab, same
                          open-or-focus convention MainWindow's other document tabs already use. -->
+                    <!-- Git #3699 — Build Matrix fully disconnected for now (real, immediate safety
+                         measure requested by Shane while #3698's larger RenderQueue leak gets fixed;
+                         NOT a retirement — code below stays intact, just hidden + inert). Chip forced
+                         Collapsed so it never renders and can't be clicked open; RenderMatrixDrawer()
+                         itself no-ops behind BuildMatrixDisabled (see code-behind) so no polling/
+                         rebuild work runs even in the background. Flip Visibility back to Visible and
+                         BuildMatrixDisabled back to false to re-enable once #3698 lands. -->
                     <Border x:Name="MatrixChip"
                             Background="{StaticResource Surface0Brush}"
                             BorderBrush="{StaticResource Surface1Brush}"
@@ -371,6 +378,7 @@
                             Padding="8,5"
                             Margin="0,0,0,8"
                             Cursor="Hand"
+                            Visibility="Collapsed"
                             ToolTip="Build Matrix — every concurrent build slot, real per-slot occupancy"
                             MouseLeftButtonUp="BtnMatrixChip_Click">
                         <DockPanel LastChildFill="True">

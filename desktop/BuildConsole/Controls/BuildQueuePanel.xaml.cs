@@ -1482,14 +1482,29 @@ namespace BuildConsole.Controls
         // own drawer did against _queueItems. No fixture data: with fewer than MaxConcurrent
         // real builds running, idle slots render honestly as idle.
 
+        // Git #3699 — real, immediate safety measure requested by Shane: fully disconnect
+        // Build Matrix for now (chip hidden in XAML above, polling/rebuild inert here) while
+        // #3698's real, larger RenderQueue animation leak gets fixed, regardless of #3689
+        // already having fixed Build Matrix's own leak. NOT a retirement — KeyedSlotCardHost,
+        // MatrixSlotCard and the "Tab" send-to-document feature below are left intact. Flip
+        // this back to false (and the XAML chip's Visibility back to Visible) to re-enable
+        // once the app is confirmed stable again.
+        private const bool BuildMatrixDisabled = true;
+
         private void BtnMatrixChip_Click(object sender, MouseButtonEventArgs e)
         {
+            if (BuildMatrixDisabled) return;
             _matrixDrawerOpen = !_matrixDrawerOpen;
             RenderMatrixDrawer();
         }
 
         private void RenderMatrixDrawer()
         {
+            if (BuildMatrixDisabled)
+            {
+                if (MatrixDrawer != null) MatrixDrawer.Visibility = Visibility.Collapsed;
+                return;
+            }
             if (MatrixDrawer == null || MatrixChipCount == null) return;
             MatrixDrawer.Visibility = _matrixDrawerOpen ? Visibility.Visible : Visibility.Collapsed;
             if (MatrixChipCaret != null)
