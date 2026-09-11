@@ -16,8 +16,9 @@ namespace BuildConsole.Services.TestPad;
 /// the in-memory list, and every mutation the service funnels (add / edit / delete / mark-sent /
 /// selection) writes through here.
 ///
-/// Same direct-Npgsql, DATABASE_URL-resolved pattern as <see cref="GitHubIssueMirror"/> /
-/// <c>VisualTestTrackerStore</c> — no separate config step, connection resolved once and cached.
+/// Same direct-Npgsql, BUILD_DATABASE_URL-resolved pattern as <see cref="GitHubIssueMirror"/>
+/// (BuildConsole's own database, Git #3651) — no separate config step, connection resolved once
+/// and cached.
 /// Every call is wrapped so ANY failure (unresolved DB, table not migrated, a query error) is
 /// logged and swallowed: a persistence failure must never take down the pad, exactly like the
 /// never-throws contract <see cref="TestPadService"/> itself already holds. When the DB is
@@ -44,8 +45,7 @@ public static class TestPadPersistence
         lock (_connLock)
         {
             if (!string.IsNullOrEmpty(_connString)) return _connString;
-            var raw = BuildQueuePostgresClient.TryResolveConnectionString(
-                BuildTrackerConfig.Load(), BuildTrackerConfig.FindRepoRoot());
+            var raw = BuildQueuePostgresClient.TryResolveConnectionString(BuildTrackerConfig.FindRepoRoot());
             if (string.IsNullOrWhiteSpace(raw)) return null;
             _connString = BuildQueuePostgresClient.ParseConnectionString(raw!);
             return _connString;

@@ -25,8 +25,12 @@
 //                a duplicate BUILD: comment — re-check the issue's real comments first,
 //                or wait for the existing claim to expire if it's genuinely stale.
 // Exit code 2 -> bad usage / DB error.
+//
+// Git #3651 — bt_dispatch_claims lives in BuildConsole's own database (BUILD_DATABASE_URL),
+// the same one BuildQueuePostgresClient claims through; claiming against the product
+// database's DATABASE_URL would split the gate in two.
 
-import { connect } from "../config-state/db.mjs";
+import { connectBuildDatabase } from "../config-state/db.mjs";
 
 // Git #3579 — bt_dispatch_claims' PK is now (repo_owner, repo_name, github_number), so a
 // bare github_number is no longer a sound uniqueness boundary once a second real repo's
@@ -57,7 +61,7 @@ async function main() {
   const claimedBy = args.by || `chat:${process.env.USERNAME || process.env.USER || "unknown"}`;
   const ttlMinutes = Number.isFinite(args.ttlMinutes) && args.ttlMinutes > 0 ? args.ttlMinutes : 20;
 
-  const client = await connect();
+  const client = await connectBuildDatabase();
   try {
     // A claim past its own TTL is abandoned — purge it before attempting a fresh one, so
     // a forgotten ask can never hold an issue's dispatch hostage forever.

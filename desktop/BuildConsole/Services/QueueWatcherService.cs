@@ -212,7 +212,7 @@ namespace BuildConsole.Services
         }
 
         private readonly BuildTrackerApiClient _api;
-        /// <summary>Direct Postgres client for all queue DB mutations (claim, complete, orphan-sweep). Non-null when DATABASE_URL was resolved at startup; falls back to _api HTTP calls when null (e.g. .env.local not found).</summary>
+        /// <summary>Direct Postgres client for all queue DB mutations (claim, complete, orphan-sweep). Non-null when BUILD_DATABASE_URL was resolved at startup; falls back to _api HTTP calls when null (e.g. .env.local not found).</summary>
         private readonly BuildQueuePostgresClient? _db;
         /// <summary>Git #2122 — no longer readonly: <see cref="UpdateMaxConcurrent"/> is the live-apply
         /// path for the Settings UI's max concurrent build slots control.</summary>
@@ -1752,9 +1752,9 @@ namespace BuildConsole.Services
                         }
                     }
 
-                    // Report completion — direct Postgres when available (always-on Neon,
-                    // no nap/sleep issue), HTTP fallback otherwise. The fallback path is
-                    // kept for environments where DATABASE_URL isn't configured.
+                    // Report completion — direct Postgres when available (always-on local
+                    // Postgres, no nap/sleep issue), HTTP fallback otherwise. The fallback path
+                    // is kept for environments where BUILD_DATABASE_URL isn't configured.
                     // It MUST NOT gate the local BuildFinished fan-out below:
                     // that fan-out drives PostBuildDeployPipeline (Epic #803/#911).
                     if (!limitParked)

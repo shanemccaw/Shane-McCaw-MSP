@@ -13,20 +13,42 @@ import pg from "pg";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-export async function resolveDatabaseUrl() {
-  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+async function resolveEnvUrl(name) {
+  if (process.env[name]) return process.env[name];
+  const line = new RegExp(`^${name}\\s*=\\s*(.+)$`, "m");
   for (const file of [".env.local", ".env"]) {
     try {
       const txt = await readFile(path.join(repoRoot, file), "utf8");
-      const m = /^DATABASE_URL\s*=\s*(.+)$/m.exec(txt);
+      const m = line.exec(txt);
       if (m) return m[1].trim().replace(/^["']|["']$/g, "");
     } catch { /* try the next candidate */ }
   }
-  throw new Error("DATABASE_URL not set and not found in .env.local");
+  throw new Error(`${name} not set and not found in .env.local`);
+}
+
+export async function resolveDatabaseUrl() {
+  return resolveEnvUrl("DATABASE_URL");
+}
+
+/**
+ * Git #3651 — BuildConsole's own tables (bt_build_queue, bt_chats, bt_dispatch_claims,
+ * bt_issue_mirror, build_dispatch_log, …) live in the dedicated local `BuildConsole`
+ * database, not the shared product database. Anything touching them resolves
+ * BUILD_DATABASE_URL only, never DATABASE_URL: a missing variable throws rather than
+ * silently reading/writing the stale copy left behind in the product database.
+ */
+export async function resolveBuildDatabaseUrl() {
+  return resolveEnvUrl("BUILD_DATABASE_URL");
 }
 
 export async function connect() {
   const client = new pg.Client({ connectionString: await resolveDatabaseUrl() });
+  await client.connect();
+  return client;
+}
+
+export async function connectBuildDatabase() {
+  const client = new pg.Client({ connectionString: await resolveBuildDatabaseUrl() });
   await client.connect();
   return client;
 }

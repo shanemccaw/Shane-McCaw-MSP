@@ -8,7 +8,8 @@
 //
 // Usage: node scripts/dev-server/release-dispatch-claim.mjs <issueNumber>
 
-import { connect } from "../config-state/db.mjs";
+// Git #3651 — BUILD_DATABASE_URL (BuildConsole's own database), same as claim-dispatch.mjs.
+import { connectBuildDatabase } from "../config-state/db.mjs";
 
 // Git #3579 — repo-scoped, same reasoning as claim-dispatch.mjs.
 const REPO_OWNER = "shanemccaw";
@@ -21,7 +22,7 @@ async function main() {
     process.exit(2);
     return;
   }
-  const client = await connect();
+  const client = await connectBuildDatabase();
   try {
     const res = await client.query(
       "DELETE FROM bt_dispatch_claims WHERE repo_owner = $1 AND repo_name = $2 AND github_number = $3",

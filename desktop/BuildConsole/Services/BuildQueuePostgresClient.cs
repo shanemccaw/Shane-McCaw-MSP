@@ -16,8 +16,8 @@ namespace BuildConsole.Services
     public readonly record struct LiveBoardIssueInfo(bool IsEpic, string Title, int? ParentEpicGithubNumber);
 
     /// <summary>
-    /// Direct Npgsql connection to the Neon Postgres database for all build-queue
-    /// operations previously routed through the Replit API server (HTTP).
+    /// Direct Npgsql connection to BuildConsole's own local Postgres database for all
+    /// build-queue operations previously routed through the Replit API server (HTTP).
     ///
     /// ── Why direct Postgres instead of the API server? ──────────────────────────
     /// The API server was the original transport for queue state mutations
@@ -25,18 +25,18 @@ namespace BuildConsole.Services
     /// → mark done/failed). That server lives on Replit, which shuts down after
     /// ~15 min of inactivity — so a build finishing while the server was napping
     /// would silently fail to report completion, leading to stuck "running" rows.
-    /// The Neon Postgres server is always on; a direct connection from BuildConsole
+    /// The local Postgres 18 server is always on; a direct connection from BuildConsole
     /// is faster, more reliable, and removes the "server asleep" class of failure
     /// entirely. Npgsql 7.0.7 is already a project dependency (see BuildConsole.csproj).
     ///
-    /// ── Connection string ────────────────────────────────────────────────────────
-    /// Reads DATABASE_URL from:
-    ///   1. The build-queue-watcher.config.json "databaseUrl" field (if set), OR
-    ///   2. A DATABASE_URL line in &lt;repoRoot&gt;/.env.local (the standard local
-    ///      development file already used by the Next.js/Node side of the stack),
-    ///   so no separate configuration step is needed — Shane already has .env.local
-    ///   with the real Neon connection string, and the config loader reads it
-    ///   automatically the first time it's needed.
+    /// ── Connection string (Git #3651) ────────────────────────────────────────────
+    /// Reads ONLY the BUILD_DATABASE_URL= line in &lt;repoRoot&gt;/.env.local — the
+    /// dedicated local `BuildConsole` database holding the bt_* tables plus
+    /// build_dispatch_log and chat_pinned_questions. It deliberately never falls back
+    /// to DATABASE_URL (the shared product database, which BuildConsole used until
+    /// #3651 and which still holds a stale pre-migration copy of those tables) or to
+    /// the config's databaseUrl field, so it can never silently read or write the
+    /// wrong database. Neon is long retired (Git #1209); this is local Postgres 18.
     ///
     /// ── What this does NOT replace ───────────────────────────────────────────────
     /// QueueBuildAsync (ADDING/re-queuing an item — from chat buttons, the "Retry"
@@ -3747,57 +3747,51 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// Creates a client from the DATABASE_URL found in:
-        ///   1. The config's own databaseUrl field (if non-empty), OR
-        ///   2. The DATABASE_URL= line in &lt;repoRoot&gt;/.env.local
-        /// Returns null (and logs via <paramref name="onMissing"/>) if neither is found.
+        /// Creates a client from the BUILD_DATABASE_URL= line in &lt;repoRoot&gt;/.env.local
+        /// (see <see cref="TryResolveConnectionString"/>). Returns null (and logs via
+        /// <paramref name="onMissing"/>) if it isn't found.
         /// </summary>
         public static BuildQueuePostgresClient? TryCreate(
-            BuildTrackerConfig config,
             string? repoRoot,
             Action<string> onMissing)
         {
-            // 1. Explicit override in the config JSON
-            if (!string.IsNullOrWhiteSpace(config.DatabaseUrl))
-                return new BuildQueuePostgresClient(config.DatabaseUrl);
-
             // Git #1985 — was `repoRoot` typed as non-nullable `string` at the call site with the
             // caller coalescing a null FindRepoRoot() to "". That resolves .env.local against the
             // PROCESS CWD instead of the repo root, silently — either missing the real file (falls
-            // through to the generic "no DATABASE_URL" message below, which doesn't reveal the real
-            // cause) or, worse, picking up an unrelated .env.local. Fail closed instead: a null repo
-            // root here is treated the same as "no DATABASE_URL", but the message says why.
+            // through to the generic "no BUILD_DATABASE_URL" message below, which doesn't reveal the
+            // real cause) or, worse, picking up an unrelated .env.local. Fail closed instead: a null
+            // repo root here is treated the same as "no BUILD_DATABASE_URL", but the message says why.
             if (string.IsNullOrWhiteSpace(repoRoot))
             {
                 onMissing("Repo root could not be resolved — cannot look for .env.local. Direct-Postgres queue DB access is unavailable this run; falling back to HTTP (API server).");
                 return null;
             }
 
-            // 2. .env.local at the repo root
-            var url = TryResolveConnectionString(config, repoRoot);
+            var url = TryResolveConnectionString(repoRoot);
             if (!string.IsNullOrWhiteSpace(url))
                 return new BuildQueuePostgresClient(url!);
 
             onMissing(
-                "No DATABASE_URL found — set databaseUrl in scripts/build-queue-watcher.config.json " +
-                "or add DATABASE_URL=<connection string> to .env.local at the repo root. " +
-                "The queue watcher will fall back to HTTP (API server) for DB operations.");
+                "No BUILD_DATABASE_URL found — add BUILD_DATABASE_URL=<connection string> (BuildConsole's own " +
+                "database) to .env.local at the repo root. The queue watcher will fall back to HTTP (API server), " +
+                "which still reads the product database's stale pre-#3651 copy of the bt_ tables.");
             return null;
         }
 
         /// <summary>
-        /// Git #3113 — resolves the raw DATABASE_URL the same way <see cref="TryCreate"/> does
-        /// (the config's own <c>databaseUrl</c> override first, then the <c>DATABASE_URL=</c> line in
-        /// &lt;repoRoot&gt;/.env.local), WITHOUT constructing a client. Used by
-        /// <see cref="GitHubIssueMirror"/>, which owns its own <c>bt_issue_mirror</c> SQL and only
-        /// needs the connection string, not a full queue client. Returns null when neither source has
-        /// one (a null/blank <paramref name="repoRoot"/> is treated the same as "no .env.local" — the
-        /// same #1985 fail-closed rule TryCreate applies, so we never resolve .env.local against the
-        /// process cwd and pick up an unrelated database).
+        /// Git #3113 / #3651 — resolves BuildConsole's own database connection string from the
+        /// <c>BUILD_DATABASE_URL=</c> line in &lt;repoRoot&gt;/.env.local, WITHOUT constructing a
+        /// client. The single point of truth every bt_ consumer routes through (<see cref="TryCreate"/>,
+        /// <see cref="GitHubIssueMirror"/>, <c>TestPadPersistence</c>). Deliberately no fallback to
+        /// <c>DATABASE_URL</c> (the shared product database) or the config's <c>databaseUrl</c>
+        /// override — a missing BUILD_DATABASE_URL returns null rather than silently landing in the
+        /// wrong database. A null/blank <paramref name="repoRoot"/> is treated the same as "no
+        /// .env.local" (the #1985 fail-closed rule), so .env.local is never resolved against the
+        /// process cwd.
         /// </summary>
-        public static string? TryResolveConnectionString(BuildTrackerConfig config, string? repoRoot)
+        public static string? TryResolveConnectionString(string? repoRoot)
         {
-            if (!string.IsNullOrWhiteSpace(config.DatabaseUrl)) return config.DatabaseUrl;
+            const string key = "BUILD_DATABASE_URL=";
             if (string.IsNullOrWhiteSpace(repoRoot)) return null;
 
             var envLocal = System.IO.Path.Combine(repoRoot, ".env.local");
@@ -3805,9 +3799,9 @@ namespace BuildConsole.Services
             foreach (var line in System.IO.File.ReadAllLines(envLocal))
             {
                 var trimmed = line.Trim();
-                if (trimmed.StartsWith('#') || !trimmed.StartsWith("DATABASE_URL=", StringComparison.OrdinalIgnoreCase))
+                if (trimmed.StartsWith('#') || !trimmed.StartsWith(key, StringComparison.OrdinalIgnoreCase))
                     continue;
-                var url = trimmed.Substring("DATABASE_URL=".Length).Trim().Trim('"').Trim('\'');
+                var url = trimmed.Substring(key.Length).Trim().Trim('"').Trim('\'');
                 if (!string.IsNullOrWhiteSpace(url)) return url;
             }
             return null;

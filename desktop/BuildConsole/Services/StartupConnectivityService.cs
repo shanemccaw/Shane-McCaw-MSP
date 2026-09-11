@@ -393,8 +393,8 @@ namespace BuildConsole.Services
                 _ = ProbeAsync(KeyInProgress, () => _api.GetInProgressAsync(),
                     r => Count(r.Count, "issue") + " in flight");
 
-                // Build queue reads go direct to Neon Postgres when a DATABASE_URL
-                // connection is available (same reasoning as every other queue
+                // Build queue reads go direct to BuildConsole's local Postgres database when a
+                // BUILD_DATABASE_URL connection is available (same reasoning as every other queue
                 // operation — see BuildQueuePostgresClient's class doc comment): no
                 // reason for a launch probe to depend on the Replit-hosted API server
                 // napping/waking just to report how many items are queued.

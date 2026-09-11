@@ -301,7 +301,7 @@ namespace BuildConsole
             if (_queueDb == null)
             {
                 PendingUpdateQueueDiag(
-                    $"Couldn't re-queue \"{req.Title}\" — no direct Postgres connection (DATABASE_URL not found). Keeping it persisted for the next launch.");
+                    $"Couldn't re-queue \"{req.Title}\" — no direct Postgres connection (BUILD_DATABASE_URL not found). Keeping it persisted for the next launch.");
                 return false;
             }
 

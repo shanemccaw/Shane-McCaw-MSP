@@ -555,7 +555,6 @@ namespace BuildConsole
                 {
                     var repoRootForDb = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
                     _queueDb = BuildConsole.Services.BuildQueuePostgresClient.TryCreate(
-                        btConfig,
                         repoRootForDb,
                         msg => BuildConsole.Services.ActivityLog.Log("watcher", msg));
                 }
@@ -3771,11 +3770,17 @@ namespace BuildConsole
             home.ReopenAllRequested  += Home_ReopenAllRequested;
             home.RunningItemClicked  += (s, c) => { if (c.GithubNumber is int n) OpenChatForIssue(n); };
             // Clear a stale/orphaned "Running now" row — cancel the queue item (same
-            // DELETE queue/{id} the Build Queue panel's right-click Cancel uses), then refresh.
+            // cancel the Build Queue panel's right-click Cancel uses), then refresh.
+            // Git #3651 — direct-Postgres first: the API server's DELETE queue/{id} still
+            // writes the product database's stale bt_build_queue copy, not BuildConsole's own.
             home.ClearStuckItemRequested += async (s, c) =>
             {
-                if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured) return;
-                try { await _buildTrackerApi.CancelQueueItemAsync(c.QueueItemId); }
+                try
+                {
+                    if (_queueDb != null) await _queueDb.CancelAsync(c.QueueItemId);
+                    else if (_buildTrackerApi != null && _buildTrackerApi.IsConfigured) await _buildTrackerApi.CancelQueueItemAsync(c.QueueItemId);
+                    else return;
+                }
                 catch { /* best-effort — a failed cancel just leaves the row, never crashes the glance screen */ }
                 await RefreshHomeRollupAsync(force: true);
             };
@@ -8090,7 +8095,7 @@ namespace BuildConsole
             {
                 if (_queueDb == null)
                 {
-                    ToastEngine.Warning("Queue Build", "Not connected — no DATABASE_URL found (see Settings).");
+                    ToastEngine.Warning("Queue Build", "Not connected — no BUILD_DATABASE_URL found in .env.local.");
                     return;
                 }
 
@@ -8241,7 +8246,7 @@ namespace BuildConsole
                     }
                     if (_queueDb == null)
                     {
-                        ToastEngine.Warning("Queue Build", "Not connected — no DATABASE_URL found (see Settings).");
+                        ToastEngine.Warning("Queue Build", "Not connected — no BUILD_DATABASE_URL found in .env.local.");
                         if (correlation != null)
                             await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
                         return;

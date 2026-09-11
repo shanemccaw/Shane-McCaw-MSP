@@ -55,15 +55,12 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// DEPRECATED / no longer used. This once held a direct Postgres connection string
-        /// for an earlier <c>shaneapp://executeSql</c> design that opened its own local
-        /// Npgsql connection — a design that always failed "no local Postgres connection
-        /// string configured" because it was never set. <c>executeSql</c> now routes SQL
-        /// through the SAME pipe the manual SQL Runner uses
-        /// (<see cref="BuildTrackerApiClient.ExecuteSqlAsync"/> →
-        /// <c>POST /api/simulator/sql/execute</c>), so no separate connection string is
-        /// required. Kept only so an old config file carrying this key still deserializes
-        /// cleanly; nothing reads it anymore.
+        /// Optional explicit override for the PRODUCT database connection string, read ahead
+        /// of .env.local's DATABASE_URL= line by <see cref="LocalSqlExecutor"/>,
+        /// <c>LocalSchemaMapService</c> and <see cref="VisualTestTrackerStore"/>. Git #3651 —
+        /// deliberately NOT read by <see cref="BuildQueuePostgresClient"/>: BuildConsole's own
+        /// bt_* tables live in a separate database resolved from BUILD_DATABASE_URL only, so a
+        /// value here can never redirect them back into the product database.
         /// </summary>
         public string DatabaseUrl { get; set; } = "";
 

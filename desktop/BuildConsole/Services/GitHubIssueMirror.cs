@@ -182,8 +182,7 @@ namespace BuildConsole.Services
             lock (_connLock)
             {
                 if (!string.IsNullOrEmpty(_connString)) return _connString;
-                var raw = BuildQueuePostgresClient.TryResolveConnectionString(
-                    BuildTrackerConfig.Load(), BuildTrackerConfig.FindRepoRoot());
+                var raw = BuildQueuePostgresClient.TryResolveConnectionString(BuildTrackerConfig.FindRepoRoot());
                 if (string.IsNullOrWhiteSpace(raw)) return null;
                 _connString = BuildQueuePostgresClient.ParseConnectionString(raw!);
                 return _connString;

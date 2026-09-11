@@ -190,16 +190,18 @@ if ($queueId) {
   # BuildQueuePostgresClient.MarkCompleteAsync itself - same "connect directly, report
   # the real result" manual-SQL convention the rest of this repo uses for local
   # Postgres (see CLAUDE.md's Database section). Best-effort/non-fatal: a missing
-  # psql.exe or DATABASE_URL leaves the row visibly stuck showing "external" (findable
+  # psql.exe or BUILD_DATABASE_URL leaves the row visibly stuck showing "external" (findable
   # via the Build Queue panel's External filter) rather than failing this launch.
+  # Git #3651 — bt_build_queue lives in BuildConsole's own database (BUILD_DATABASE_URL),
+  # never the product database's DATABASE_URL.
   try {
     $databaseUrl = $null
     $envLocalPath = Join-Path $repoRoot ".env.local"
     if (Test-Path $envLocalPath) {
       foreach ($line in Get-Content $envLocalPath) {
         $t = $line.Trim()
-        if ($t.StartsWith('#') -or -not $t.StartsWith('DATABASE_URL=')) { continue }
-        $databaseUrl = $t.Substring('DATABASE_URL='.Length).Trim().Trim('"').Trim("'")
+        if ($t.StartsWith('#') -or -not $t.StartsWith('BUILD_DATABASE_URL=')) { continue }
+        $databaseUrl = $t.Substring('BUILD_DATABASE_URL='.Length).Trim().Trim('"').Trim("'")
         break
       }
     }
@@ -209,7 +211,7 @@ if ($queueId) {
       $sql = "UPDATE bt_build_queue SET status = '$newStatus', exit_code = $exitCode, completed_at = NOW(), updated_at = NOW() WHERE id = $queueId;"
       & $psqlCmd.Source $databaseUrl -v "ON_ERROR_STOP=1" -q -c $sql | Out-Null
     } else {
-      Write-Warning "Couldn't write queue #$queueId completion back - psql.exe or DATABASE_URL not found. Row will stay showing 'external'."
+      Write-Warning "Couldn't write queue #$queueId completion back - psql.exe or BUILD_DATABASE_URL not found. Row will stay showing 'external'."
     }
   } catch {
     Write-Warning "Couldn't write queue #$queueId completion back: $_"

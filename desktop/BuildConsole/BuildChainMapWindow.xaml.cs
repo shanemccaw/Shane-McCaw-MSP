@@ -50,7 +50,7 @@ namespace BuildConsole
         /// move lands on GitHub (#2481), this lets the Map reconcile the operational cache to match:
         /// cancel a queued row we pulled to Backlog so live dispatch actually stops picking it up,
         /// and free-flow-queue a row we promoted to Batter Up — through the one real #1870 pipeline,
-        /// never a second dispatch path. Null (logged) when no DATABASE_URL is resolvable this run.</summary>
+        /// never a second dispatch path. Null (logged) when no BUILD_DATABASE_URL is resolvable this run.</summary>
         private BuildQueuePostgresClient? _queueDb;
 
         /// <summary>Git #2481 — serializes real GitHub persistence so overlapping mutations apply
@@ -175,14 +175,13 @@ namespace BuildConsole
 
                 // Git #2486 — resolve the local dispatch queue once, so a Map board move can
                 // reconcile bt_build_queue (see PersistThenConfirm → SyncQueueAfterBoardMovesAsync)
-                // instead of only moving the GitHub label. A missing DATABASE_URL is non-fatal: the
+                // instead of only moving the GitHub label. A missing BUILD_DATABASE_URL is non-fatal: the
                 // Map still works and the existing Home/Build Watch refreshes reconcile eventually.
                 if (_queueDb == null)
                 {
                     try
                     {
                         _queueDb = BuildQueuePostgresClient.TryCreate(
-                            BuildTrackerConfig.Load(),
                             BuildTrackerConfig.FindRepoRoot(),
                             msg => ActivityLog.Log(Channel, msg));
                     }
