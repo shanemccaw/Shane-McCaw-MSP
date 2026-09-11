@@ -14,6 +14,40 @@ namespace BuildConsole.Services
         public string Icon { get; set; } = "";
     }
 
+    /// <summary>
+    /// Git #3581 (Feature #3578, Multi-Repo Support) — one entry in the real Settings repo
+    /// registry: an `owner/repo` BuildConsole knows about, a display name, and a real tier tag
+    /// (<see cref="Tiers.Main"/> or <see cref="Tiers.Tinker"/>). This is the real, known list of
+    /// configured repos and their tier that #3579's Batter Up/AI Batter Up merge, the per-repo
+    /// pause control, and multi-repo dispatch all consume — see
+    /// <see cref="BuildConsoleSettings.GetAllConfiguredRepos"/>/<see cref="BuildConsoleSettings.GetMainTierRepos"/>/
+    /// <see cref="BuildConsoleSettings.GetTinkerTierRepos"/> for the query surface. Deliberately
+    /// separate from <see cref="BuildConsoleSettings.GitHubOwner"/>/<see cref="BuildConsoleSettings.GitHubRepoName"/>
+    /// (Git #3069's single-instance repo/board identity) — that pair still says which repo THIS
+    /// BuildConsole instance's own Git Board targets; this registry is the broader multi-repo list
+    /// other features fan out over.
+    /// </summary>
+    public class RepoRegistryEntry
+    {
+        /// <summary>Real "owner/repo" string, e.g. "shanemccaw/Shane-McCaw-MSP".</summary>
+        public string OwnerRepo { get; set; } = "";
+
+        /// <summary>Friendly display name shown in the Settings list. Defaults to the repo's own name.</summary>
+        public string DisplayName { get; set; } = "";
+
+        /// <summary>"Main" or "Tinker" — see <see cref="RepoRegistryEntry.Tiers"/>.</summary>
+        public string Tier { get; set; } = Tiers.Main;
+
+        public static class Tiers
+        {
+            public const string Main = "Main";
+            public const string Tinker = "Tinker";
+        }
+
+        public bool IsMainTier => string.Equals(Tier, Tiers.Main, StringComparison.OrdinalIgnoreCase);
+        public bool IsTinkerTier => string.Equals(Tier, Tiers.Tinker, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>Represents a user account/credential profile for local instance gating/auth tests.</summary>
     public class UserAccountEntry
     {
@@ -756,6 +790,27 @@ namespace BuildConsole.Services
         /// <summary>The real "owner/repo" string `gh` and GitHubIssuesService's REST/GraphQL calls take.</summary>
         public string GitHubOwnerRepo => $"{GitHubOwner}/{GitHubRepoName}";
 
+        // ── Git #3581 (Feature #3578, Multi-Repo Support) — real repo registry ────────────
+        // The Settings "Repos" list: every repo BuildConsole knows about, each tagged Main or
+        // Tinker. Backfilled with a single seeded entry (this repo, tagged Main) in LoadCore
+        // below for both a brand-new settings.json and an existing one with no "configuredRepos"
+        // key, so this never starts genuinely empty. Separate list from GitHubOwner/GitHubRepoName
+        // above (that pair is this INSTANCE's own single-repo Git Board target) — this is the
+        // broader registry #3579/#3582's multi-repo dispatch and per-repo pause consume.
+        public List<RepoRegistryEntry> ConfiguredRepos { get; set; } = new()
+        {
+            new RepoRegistryEntry { OwnerRepo = "shanemccaw/Shane-McCaw-MSP", DisplayName = "Shane-McCaw-MSP", Tier = RepoRegistryEntry.Tiers.Main }
+        };
+
+        /// <summary>Real query surface #3579/#3582 read against — every configured repo, regardless of tier.</summary>
+        public List<RepoRegistryEntry> GetAllConfiguredRepos() => ConfiguredRepos.ToList();
+
+        /// <summary>Real query surface — every repo tagged <see cref="RepoRegistryEntry.Tiers.Main"/>.</summary>
+        public List<RepoRegistryEntry> GetMainTierRepos() => ConfiguredRepos.Where(r => r.IsMainTier).ToList();
+
+        /// <summary>Real query surface — every repo tagged <see cref="RepoRegistryEntry.Tiers.Tinker"/>.</summary>
+        public List<RepoRegistryEntry> GetTinkerTierRepos() => ConfiguredRepos.Where(r => r.IsTinkerTier).ToList();
+
         /// <summary>The real GitHub Projects v2 board node id the Batter Up / AI Batter Up panels
         /// read and write against (<see cref="GitHubApiClient.GetBatterUpIssuesAsync"/> and friends).
         /// Default is this repo's real "AI Batter Up" project board.</summary>
@@ -871,6 +926,24 @@ namespace BuildConsole.Services
                         Url = "https://github.com/shanemccaw/Shane-McCaw-MSP",
                         Icon = ""
                     });
+                    settings.Save();
+                }
+
+                // Git #3581 — seed the repo registry's default Main entry for an existing
+                // settings.json saved before "configuredRepos" existed. Same backfill shape as
+                // the WebTools Git entry above: the field initializer only seeds a brand-new
+                // settings.json with no key at all.
+                if (settings.ConfiguredRepos == null || settings.ConfiguredRepos.Count == 0)
+                {
+                    settings.ConfiguredRepos = new List<RepoRegistryEntry>
+                    {
+                        new RepoRegistryEntry
+                        {
+                            OwnerRepo = settings.GitHubOwnerRepo,
+                            DisplayName = settings.GitHubRepoName,
+                            Tier = RepoRegistryEntry.Tiers.Main
+                        }
+                    };
                     settings.Save();
                 }
 

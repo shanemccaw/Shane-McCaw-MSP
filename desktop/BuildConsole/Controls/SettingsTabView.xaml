@@ -205,6 +205,19 @@
                             </Button>
                         </Border>
 
+                        <!-- 6b. Repos (Multi-Repo Support) -->
+                        <Border x:Name="NavWrapRepos" CornerRadius="6" Margin="0,0,0,4">
+                            <Button x:Name="NavBtnRepos" Style="{StaticResource IconButton}"
+                                    HorizontalContentAlignment="Stretch" Padding="10,9"
+                                    Tag="Repos" Click="NavButton_Click">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock Text="📦" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextRepos" Text="Repos" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                </DockPanel>
+                            </Button>
+                        </Border>
+
                         <!-- 7. Claude Projects -->
                         <Border x:Name="NavWrapChatIntegration" CornerRadius="6" Margin="0,0,0,4">
                             <Button x:Name="NavBtnChatIntegration" Style="{StaticResource IconButton}"
@@ -806,6 +819,58 @@
                                         </Grid>
                                         <Button x:Name="BtnAddWebTool" Content="Add Web Tool" Style="{StaticResource PrimaryButton}"
                                                 HorizontalAlignment="Left" Padding="14,4" Click="BtnAddWebTool_Click"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- ════════════════ 6b. PAGE: REPOS (Multi-Repo Support, Git #3581) ════════════════ -->
+                    <StackPanel x:Name="PageRepos" Visibility="Collapsed">
+                        <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}"
+                                BorderThickness="1" CornerRadius="10" Padding="20">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <TextBlock Text="📦" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Repo Registry" FontSize="15" FontWeight="Bold"
+                                               Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Text="Real repos BuildConsole knows about, each tagged Main or Tinker. This list is the real source Batter Up/AI Batter Up merging, the per-repo pause control, and multi-repo dispatch read against. A new repo is validated against the configured GitHub PAT's real access before it's accepted."
+                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+
+                                <StackPanel x:Name="ReposSettingsList" Margin="0,0,0,12"/>
+
+                                <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="12">
+                                    <StackPanel>
+                                        <TextBlock Text="Add Repo" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="2*"/>
+                                                <ColumnDefinition Width="2*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                                <TextBlock Text="owner/repo" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                                <TextBox x:Name="RepoOwnerRepoBox" Height="26" FontSize="12"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                                                <TextBlock Text="Display Name (optional)" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                                <TextBox x:Name="RepoDisplayNameBox" Height="26" FontSize="12"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2" Width="110">
+                                                <TextBlock Text="Tier" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                                <ComboBox x:Name="RepoTierCombo" Height="26" FontSize="12" SelectedIndex="0">
+                                                    <ComboBoxItem Content="Main"/>
+                                                    <ComboBoxItem Content="Tinker"/>
+                                                </ComboBox>
+                                            </StackPanel>
+                                        </Grid>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button x:Name="BtnAddRepo" Content="Add Repo" Style="{StaticResource PrimaryButton}"
+                                                    Padding="14,4" Click="BtnAddRepo_Click"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="RepoAddStatusText" Text="" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>

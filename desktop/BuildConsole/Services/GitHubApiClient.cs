@@ -319,6 +319,48 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #3581 (Feature #3578, Multi-Repo Support) — real validation for the Settings repo
+        /// registry's "add a repo" flow: checks the configured PAT can actually reach
+        /// <c>GET /repos/{ownerRepo}</c> before the entry is accepted, so a typo'd or genuinely
+        /// inaccessible "owner/repo" string is never silently added. Deliberately a standalone,
+        /// short-lived HttpClient (not this instance's own <see cref="_http"/>) since this is a
+        /// one-shot manual check triggered from the Settings UI, not a call this long-lived client
+        /// makes as part of its normal API surface — still routed through the shared rate-limit
+        /// circuit with manual priority (Git #2815/#3511), same as <see cref="ForManualAction"/>,
+        /// since it's a deliberate user-initiated action.
+        /// </summary>
+        public static async Task<(bool Ok, string Message)> ValidateRepoAccessAsync(string pat, string ownerRepo)
+        {
+            if (string.IsNullOrWhiteSpace(pat))
+                return (false, "No GitHub PAT is configured — set one in Settings → Credentials first.");
+            if (string.IsNullOrWhiteSpace(ownerRepo) || !ownerRepo.Contains('/'))
+                return (false, "Enter a repo as \"owner/repo\".");
+
+            using var http = new HttpClient(new GitHubRateLimitHandler(new HttpClientHandler(), manualPriority: true))
+            { BaseAddress = new Uri("https://api.github.com/"), Timeout = TimeSpan.FromSeconds(20) };
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pat);
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("BuildConsole");
+            http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+
+            try
+            {
+                var res = await http.GetAsync($"repos/{ownerRepo}");
+                if (res.IsSuccessStatusCode) return (true, "");
+                if (res.StatusCode == HttpStatusCode.NotFound)
+                    return (false, $"\"{ownerRepo}\" doesn't exist, or the configured PAT can't see it (404 Not Found).");
+                if (res.StatusCode == HttpStatusCode.Unauthorized)
+                    return (false, "The configured GitHub PAT is invalid or expired (401 Unauthorized).");
+                if (res.StatusCode == HttpStatusCode.Forbidden)
+                    return (false, $"The configured PAT doesn't have access to \"{ownerRepo}\" (403 Forbidden).");
+                return (false, $"GitHub returned {(int)res.StatusCode} {res.StatusCode} for \"{ownerRepo}\".");
+            }
+            catch (Exception ex)
+            {
+                return (false, $"Could not reach GitHub to validate \"{ownerRepo}\": {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Git #2770 — the single choke-point that turns a raw 401 into a diagnosable log line.
         /// Called right after every <see cref="HttpClient.SendAsync(HttpRequestMessage)"/> in this
         /// class (both the REST GET path and the GraphQL POST helpers) BEFORE the response is

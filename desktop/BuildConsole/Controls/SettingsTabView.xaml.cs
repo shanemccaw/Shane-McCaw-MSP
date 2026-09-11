@@ -89,6 +89,7 @@ namespace BuildConsole.Controls
             _loadingSettings = false;
 
             RenderWebToolsSettingsList();
+            RenderReposSettingsList();
             RenderUserAccountsSettingsList();
 
             // Run manifest variable scan & render environment
@@ -203,6 +204,7 @@ namespace BuildConsole.Controls
             PageScheduledRun.Visibility = category == "ScheduledRun" ? Visibility.Visible : Visibility.Collapsed;
             PageSshRemote.Visibility = category == "SshRemote" ? Visibility.Visible : Visibility.Collapsed;
             PageWebTools.Visibility = category == "WebTools" ? Visibility.Visible : Visibility.Collapsed;
+            PageRepos.Visibility = category == "Repos" ? Visibility.Visible : Visibility.Collapsed;
             PageChatIntegration.Visibility = category == "ChatIntegration" ? Visibility.Visible : Visibility.Collapsed;
             PageBuildSound.Visibility = category == "BuildSound" ? Visibility.Visible : Visibility.Collapsed;
             PageLinkedIn.Visibility = category == "LinkedIn" ? Visibility.Visible : Visibility.Collapsed;
@@ -229,6 +231,7 @@ namespace BuildConsole.Controls
                 (NavWrapScheduledRun, NavTextScheduledRun, "ScheduledRun"),
                 (NavWrapSshRemote, NavTextSshRemote, "SshRemote"),
                 (NavWrapWebTools, NavTextWebTools, "WebTools"),
+                (NavWrapRepos, NavTextRepos, "Repos"),
                 (NavWrapChatIntegration, NavTextChatIntegration, "ChatIntegration"),
                 (NavWrapBuildSound, NavTextBuildSound, "BuildSound"),
                 (NavWrapLinkedIn, NavTextLinkedIn, "LinkedIn"),
@@ -1333,6 +1336,145 @@ namespace BuildConsole.Controls
             WebToolUrlBox.Text = "";
             WebToolIconBox.Text = "";
             RenderWebToolsSettingsList();
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // REPOS (Multi-Repo Support, Git #3581 / Feature #3578)
+        // ══════════════════════════════════════════════════════════════════════
+        private void RenderReposSettingsList()
+        {
+            var settings = BuildConsoleSettings.Load();
+            ReposSettingsList.Children.Clear();
+
+            var repos = settings.GetAllConfiguredRepos();
+            for (int i = 0; i < repos.Count; i++)
+            {
+                var repo = repos[i];
+                var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var tierBrush = repo.IsMainTier ? (Brush)FindResource("GreenBrush") : (Brush)FindResource("PeachBrush");
+                var tierBadge = new Border
+                {
+                    Background = tierBrush, CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(0, 0, 8, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                tierBadge.Child = new TextBlock
+                {
+                    Text = repo.Tier, FontSize = 9.5, FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)FindResource("CrustBrush")
+                };
+
+                var label = new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(repo.DisplayName) || repo.DisplayName == repo.OwnerRepo
+                        ? repo.OwnerRepo
+                        : $"{repo.DisplayName} — {repo.OwnerRepo}",
+                    FontSize = 11.5,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)FindResource("TextBrush")
+                };
+
+                var labelWrap = new StackPanel { Orientation = Orientation.Horizontal };
+                labelWrap.Children.Add(tierBadge);
+                labelWrap.Children.Add(label);
+                Grid.SetColumn(labelWrap, 0);
+                row.Children.Add(labelWrap);
+
+                var removeBtn = new Button
+                {
+                    Content = "✕", FontSize = 10, Style = (Style)FindResource("IconButton"),
+                    Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(4, 0, 0, 0), Tag = i,
+                    ToolTip = "Remove this repo from the registry"
+                };
+                removeBtn.Click += BtnRemoveRepo_Click;
+                Grid.SetColumn(removeBtn, 2);
+                row.Children.Add(removeBtn);
+
+                ReposSettingsList.Children.Add(row);
+            }
+        }
+
+        private void BtnRemoveRepo_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not int index) return;
+            var settings = BuildConsoleSettings.Load();
+            var repos = settings.GetAllConfiguredRepos();
+            if (index < 0 || index >= repos.Count) return;
+
+            settings.ConfiguredRepos.RemoveAll(r => r.OwnerRepo == repos[index].OwnerRepo);
+            settings.Save();
+            RenderReposSettingsList();
+        }
+
+        /// <summary>
+        /// Git #3581 — real add flow: validates the typed "owner/repo" against the configured
+        /// PAT's actual GitHub access (<see cref="GitHubApiClient.ValidateRepoAccessAsync"/>)
+        /// before accepting it, so a typo'd or genuinely inaccessible repo is never silently added.
+        /// </summary>
+        private async void BtnAddRepo_Click(object sender, RoutedEventArgs e)
+        {
+            var ownerRepo = RepoOwnerRepoBox.Text.Trim();
+            var displayName = RepoDisplayNameBox.Text.Trim();
+            var tier = (RepoTierCombo.SelectedItem as ComboBoxItem)?.Content as string ?? RepoRegistryEntry.Tiers.Main;
+
+            if (string.IsNullOrWhiteSpace(ownerRepo) || !ownerRepo.Contains('/'))
+            {
+                RepoAddStatusText.Text = "✕ Enter a repo as \"owner/repo\".";
+                RepoAddStatusText.Foreground = (Brush)FindResource("RedBrush");
+                return;
+            }
+
+            var settings = BuildConsoleSettings.Load();
+            if (settings.ConfiguredRepos.Any(r => string.Equals(r.OwnerRepo, ownerRepo, StringComparison.OrdinalIgnoreCase)))
+            {
+                RepoAddStatusText.Text = $"✕ \"{ownerRepo}\" is already in the registry.";
+                RepoAddStatusText.Foreground = (Brush)FindResource("RedBrush");
+                return;
+            }
+
+            BtnAddRepo.IsEnabled = false;
+            RepoAddStatusText.Text = $"⏳ Validating \"{ownerRepo}\" against the configured PAT…";
+            RepoAddStatusText.Foreground = (Brush)FindResource("PeachBrush");
+
+            try
+            {
+                var (ok, message) = await GitHubApiClient.ValidateRepoAccessAsync(settings.GitHubPat, ownerRepo);
+                if (!ok)
+                {
+                    RepoAddStatusText.Text = $"✕ {message}";
+                    RepoAddStatusText.Foreground = (Brush)FindResource("RedBrush");
+                    return;
+                }
+
+                settings.ConfiguredRepos.Add(new RepoRegistryEntry
+                {
+                    OwnerRepo = ownerRepo,
+                    DisplayName = string.IsNullOrWhiteSpace(displayName) ? ownerRepo.Split('/').Last() : displayName,
+                    Tier = tier
+                });
+                settings.Save();
+
+                RepoAddStatusText.Text = $"✓ Added \"{ownerRepo}\" ({tier}).";
+                RepoAddStatusText.Foreground = (Brush)FindResource("GreenBrush");
+                RepoOwnerRepoBox.Text = "";
+                RepoDisplayNameBox.Text = "";
+                RepoTierCombo.SelectedIndex = 0;
+                RenderReposSettingsList();
+            }
+            catch (Exception ex)
+            {
+                RepoAddStatusText.Text = $"✕ Failed to validate/add repo: {ex.Message}";
+                RepoAddStatusText.Foreground = (Brush)FindResource("RedBrush");
+            }
+            finally
+            {
+                BtnAddRepo.IsEnabled = true;
+            }
         }
 
         // ══════════════════════════════════════════════════════════════════════
