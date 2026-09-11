@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAdminFetch } from "@/lib/useAdminFetch";
 
 interface GraphProbeModalProps {
   isOpen: boolean;
@@ -29,6 +30,7 @@ const SCOPE_OPTIONS = [
 ];
 
 export function GraphProbeModal({ isOpen, onClose }: GraphProbeModalProps) {
+  const { adminFetch } = useAdminFetch();
   const [endpointUrl, setEndpointUrl] = useState(ENDPOINT_PRESETS[0].url);
   const [selectedScopes, setSelectedScopes] = useState<string[]>(["read:msp", "read:users"]);
   
@@ -55,69 +57,67 @@ export function GraphProbeModal({ isOpen, onClose }: GraphProbeModalProps) {
     );
   };
 
-  const handleTestProbe = () => {
+  /**
+   * Real GET probe against the actual gateway, through the same authenticated
+   * `adminFetch` the rest of the admin panel uses (see `useAdminFetch`). No
+   * fabricated status/headers/latency — every field below comes off the real
+   * `Response` (Git #3560). Every preset in `ENDPOINT_PRESETS` is a read-only
+   * GET route (verified against `admin-observability.ts` / `msp-audit-log.ts`);
+   * a write/mutating preset must never be added here without the same review.
+   * The scope checkboxes are illustrative only — this dev tool has no way to
+   * downscope the real admin session's own token, so the response always
+   * reflects that session's actual authorization, not the boxes checked above.
+   */
+  const handleTestProbe = async () => {
     setIsTesting(true);
-    
-    // Simulate API request timing
-    setTimeout(() => {
-      const hasAdmin = selectedScopes.includes("admin:all") || selectedScopes.includes("read:msp");
-      
-      const success = hasAdmin && endpointUrl.startsWith("/api/admin");
-      const status = success ? 200 : (hasAdmin ? 404 : 403);
-      const statusText = status === 200 ? "OK" : status === 403 ? "Forbidden (Missing Scopes)" : "Not Found";
-      
-      let bodyData = {};
-      if (status === 200) {
-        if (endpointUrl.includes("service-health")) {
-          bodyData = {
-            healthy: true,
-            uptime: "14d 6h 22m",
-            jobQueue: { pending: 0, running: 1, completed: 852, failed: 0 },
-            services: { database: "CONNECTED", cache: "CONNECTED", mailer: "ACTIVE" }
-          };
-        } else if (endpointUrl.includes("event-bus")) {
-          bodyData = {
-            busStatus: "ACTIVE",
-            activeListeners: 24,
-            throughput24h: 42104,
-            droppedEvents: 0
-          };
-        } else {
-          bodyData = {
-            scopes_verified: selectedScopes,
-            authorized: true,
-            timestamp: new Date().toISOString(),
-            payload: { message: "Telemetry probe request returned with valid context." }
-          };
-        }
-      } else {
-        bodyData = {
-          error: status === 403 ? "AccessDenied" : "ResourceNotFound",
-          message: status === 403 ? "The security context lacks required credentials." : "Endpoint not registered on target server.",
-          required_scopes: ["admin:all", "read:msp"],
-          provided_scopes: selectedScopes
-        };
+    const start = performance.now();
+
+    try {
+      const res = await adminFetch(endpointUrl, { method: "GET" });
+      const duration = Math.round(performance.now() - start);
+      const bodyText = await res.text();
+
+      let bodyString = bodyText;
+      try {
+        bodyString = JSON.stringify(JSON.parse(bodyText), null, 2);
+      } catch {
+        // Not JSON (or empty body) — show the raw text as-is.
       }
 
-      const bodyString = JSON.stringify(bodyData, null, 2);
-
-      setProbeResult({
-        status,
-        statusText,
-        duration: Math.round(100 + Math.random() * 250),
-        sizeBytes: new Blob([bodyString]).size,
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          "x-powered-by": "Express/Shane-McCaw-MSP",
-          "cache-control": "no-store, no-cache",
-          "x-request-id": Math.random().toString(36).substring(2, 15)
-        },
-        body: bodyString
+      const headers: Record<string, string> = {};
+      res.headers.forEach((value, key) => {
+        headers[key] = value;
       });
 
+      setProbeResult({
+        status: res.status,
+        statusText: res.statusText,
+        duration,
+        sizeBytes: new Blob([bodyText]).size,
+        headers,
+        body: bodyString
+      });
+    } catch (err) {
+      const duration = Math.round(performance.now() - start);
+      const message = err instanceof Error ? err.message : String(err);
+      const bodyString = JSON.stringify(
+        { error: "NetworkError", message },
+        null,
+        2
+      );
+
+      setProbeResult({
+        status: 0,
+        statusText: "Network Error",
+        duration,
+        sizeBytes: new Blob([bodyString]).size,
+        headers: {},
+        body: bodyString
+      });
+    } finally {
       setIsTesting(false);
       setShowResultModal(true);
-    }, 1200);
+    }
   };
 
   const handleCopyBody = () => {
