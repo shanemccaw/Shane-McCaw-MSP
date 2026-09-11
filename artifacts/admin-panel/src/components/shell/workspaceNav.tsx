@@ -21,7 +21,6 @@ import {
   Link2,
   Plug,
   UserPlus,
-  HelpCircle,
   Target,
   Building2,
   BrainCircuit,
@@ -274,7 +273,6 @@ export const WORKSPACES: WorkspaceDef[] = [
       {
         id: "leads", label: "Leads", defaultOpen: true,
         items: [
-          { id: "pipe-quiz-leads", label: "Quiz Leads", path: "/pipeline/quiz-leads", icon: HelpCircle },
           { id: "pipe-chat-queue", label: "Chat Queue", path: "/pipeline/chat-queue", icon: MessageSquare },
         ],
       },

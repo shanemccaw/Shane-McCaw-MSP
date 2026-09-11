@@ -1,5 +1,4 @@
 import { type ReactNode } from "react";
-import QuizLeadsPage from "@/pages/crm/QuizLeads";
 import ChatQueuePage from "@/pages/crm/ChatQueue";
 import ClientsPage from "@/pages/crm/Clients";
 import M365IntelligencePage from "@/pages/crm/M365Intelligence";
@@ -22,7 +21,6 @@ import EngageBaySettingsPage from "@/pages/crm/engagebay/EngageBaySettings";
 
 function getContent(section: string): ReactNode {
   switch (section) {
-    case "quiz-leads":          return <QuizLeadsPage />;
     case "chat-queue":          return <ChatQueuePage />;
     case "clients":             return <ClientsPage />;
     case "m365-intelligence":   return <M365IntelligencePage />;

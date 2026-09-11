@@ -167,9 +167,10 @@ describe("Collapsible-node persistence keys", () => {
 
 describe("Active-ancestor auto-expand chain", () => {
   it("returns the workspace + section chain for a plain leaf", () => {
-    // /pipeline/quiz-leads is a leaf under the pipeline > leads section. (Was
-    // /pipeline/leads, whose leaf was removed with the page in #135.)
-    expect(activeAncestorKeys("/pipeline/quiz-leads", "")).toEqual([
+    // /pipeline/chat-queue is a leaf under the pipeline > leads section. (Was
+    // /pipeline/leads, whose leaf was removed with the page in #135; Quiz Leads
+    // was removed from this section in #3421.)
+    expect(activeAncestorKeys("/pipeline/chat-queue", "")).toEqual([
       "pipeline",
       "pipeline/leads",
     ]);
