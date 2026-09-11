@@ -84,9 +84,21 @@ namespace BuildConsole.Services
                 };
             }
 
-            // Milestone-level projected release date, over the milestone's own real daily series.
+            // Milestone-level projected release date, over the milestone's own real daily series
+            // (Git #3512 — already local-mirror-backed via bt_issue_mirror in the common case, no
+            // live GitHub call). Git #3567 — the milestone's own Total/Closed/Open counts are NOT
+            // taken from that series: bt_issue_mirror only carries the issues an open-issues walk +
+            // incremental mark-closed + partial closed-backfill have captured (a real but incomplete
+            // subset — confirmed 986 total mirrored issues repo-wide against 1943 real issues on
+            // milestone #5 alone), so a series built over it undercounts badly. `active` above
+            // already carries the REAL per-milestone counts straight off GitHub's own milestone
+            // object (bt_milestone_mirror when fresh, a live milestones call otherwise — see
+            // ResolveActiveMilestoneAsync) — use those for the row's counts and as the ETA
+            // projection's real "remaining" input, while still fitting the pace/date over the
+            // series' real daily cumulative-closed curve.
             var msSeries = await GitHubIssueTimeSeriesService.GetMilestoneSeriesAsync(active.Number, active.Title, forceRefresh);
-            var milestoneRow = BuildRow(active.Number, active.Title, msSeries, now, "milestone");
+            var milestoneRow = BuildRow(active.Number, active.Title, msSeries, now, "milestone",
+                totalOverride: active.TotalIssues, closedOverride: active.ClosedIssues, openOverride: active.OpenIssues);
 
             // One projected completion date per OPEN Epic in the active milestone. The fetch is
             // already cached from the milestone call above (same 5-minute window) — no force here.
@@ -115,12 +127,20 @@ namespace BuildConsole.Services
 
         /// <summary>Fit one honest projected-completion row over a single scope's real #2711 daily
         /// series, reusing <see cref="IssueEtaProjection"/> exactly. The pace is fit over the real
-        /// cumulative-closed curve; the remaining count is the scope's real still-open issues.</summary>
-        private static EtaProjectionRow BuildRow(int number, string title, IssueTimeSeries series, DateTime nowUtc, string scopeNoun)
+        /// cumulative-closed curve; the remaining count is the scope's real still-open issues.
+        ///
+        /// Git #3567 — <paramref name="totalOverride"/>/<paramref name="closedOverride"/>/
+        /// <paramref name="openOverride"/> let a caller substitute a more authoritative real count
+        /// (e.g. the Milestone row's <c>bt_milestone_mirror</c>-backed counts) for the ones the
+        /// series itself derived from its own (possibly incomplete) scoped issue set — the series'
+        /// daily curve is still used for the pace fit either way. Null (the default, used for the
+        /// per-Epic rows) keeps the original series-derived counts.</summary>
+        private static EtaProjectionRow BuildRow(int number, string title, IssueTimeSeries series, DateTime nowUtc, string scopeNoun,
+            int? totalOverride = null, int? closedOverride = null, int? openOverride = null)
         {
-            int total = series.TotalIssues;
-            int closed = series.CurrentClosed;
-            int open = series.CurrentOpen;
+            int total = totalOverride ?? series.TotalIssues;
+            int closed = closedOverride ?? series.CurrentClosed;
+            int open = openOverride ?? series.CurrentOpen;
 
             // Terminal: nothing left to close is a real state, not a projection failure.
             if (total > 0 && open == 0)
