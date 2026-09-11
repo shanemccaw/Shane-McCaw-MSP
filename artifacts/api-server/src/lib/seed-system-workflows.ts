@@ -3252,9 +3252,7 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
             label: "Get Session End Time",
             query:
               "SELECT COALESCE(" +
-              "(SELECT s.last_seen_at FROM analytics_sessions s WHERE s.session_id = " +
-              "(SELECT metadata->>'sessionId' FROM lead_intent_events WHERE lead_id = {{leadId}} " +
-              "AND metadata->>'sessionId' IS NOT NULL ORDER BY occurred_at DESC LIMIT 1)), " +
+              "(SELECT MAX(occurred_at) FROM lead_intent_events WHERE lead_id = {{leadId}}), " +
               "(SELECT fired_at FROM engagement_offer_firings WHERE id = {{firingId}})" +
               ") + INTERVAL '2 hours' AS follow_up_at",
           },
