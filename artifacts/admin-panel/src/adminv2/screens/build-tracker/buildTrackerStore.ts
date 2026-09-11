@@ -617,13 +617,35 @@ export async function trimMilestoneToCapacity(milestoneId: number, maxDays: numb
 
 // ── Load ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Git #3652 — the api-server routes this hits are retired (HTTP 410, honest
+ * "this endpoint has been disconnected" body): #3651 moved bt_ data to
+ * BUILD_DATABASE_URL and this route family was never moved with it, so it
+ * used to silently keep serving a frozen pre-#3651 copy out of the shared
+ * product database instead. `res.ok` is checked explicitly below so that
+ * 410 response reads as a real, honest error — not `.json()`'d straight
+ * into `EpicRow[]`/`IssueRow[]`/`ChatRow[]` as if it were live data.
+ */
+async function assertOkOrThrow(res: Response, label: string): Promise<Response> {
+  if (res.ok) return res;
+  let detail = `HTTP ${res.status}`;
+  try {
+    const body = await res.json();
+    if (body?.message) detail = body.message;
+    else if (body?.error) detail = body.error;
+  } catch {
+    // response wasn't JSON — fall back to the status code above
+  }
+  throw new Error(`${label}: ${detail}`);
+}
+
 export async function loadAll(): Promise<void> {
   set({ epicsLoading: true, issuesLoading: true, chatsLoading: true });
   try {
     const [epicsRes, issuesRes, chatsRes, milestonesRes] = await Promise.all([
-      apiFetch("/admin/build-tracker/epics"),
-      apiFetch("/admin/build-tracker/issues"),
-      apiFetch("/admin/build-tracker/chats"),
+      apiFetch("/admin/build-tracker/epics").then((r) => assertOkOrThrow(r, "epics")),
+      apiFetch("/admin/build-tracker/issues").then((r) => assertOkOrThrow(r, "issues")),
+      apiFetch("/admin/build-tracker/chats").then((r) => assertOkOrThrow(r, "chats")),
       apiFetch("/admin/build-tracker/milestones").catch(() => null),
     ]);
     const epics = (await epicsRes.json()) as EpicRow[];
@@ -643,6 +665,7 @@ export async function loadAll(): Promise<void> {
   } catch (err) {
     log.error({ err }, "loadAll failed");
     set({ epicsLoading: false, issuesLoading: false, chatsLoading: false, epicsError: String(err) });
+    flashMessage(`Couldn't load Build Tracker data — ${err instanceof Error ? err.message : String(err)}`, "error");
   }
 }
 

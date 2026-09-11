@@ -387,11 +387,13 @@ namespace BuildConsole.Services
             }
             else
             {
-                _ = ProbeAsync(KeyBoard, () => _api.GetBoardAsync(),
-                    r => $"{r.Data.Epics.Count} epics · {r.Data.Chats.Count} chats" + (r.IsStale ? " (cached)" : ""),
-                    r => r.IsStale);
-                _ = ProbeAsync(KeyInProgress, () => _api.GetInProgressAsync(),
-                    r => Count(r.Count, "issue") + " in flight");
+                // Git #3652 — GET /admin/build-tracker/extension/board and .../in-progress are
+                // disconnected: they had no direct-DB alternative (unlike Queue below) and the
+                // api-server route now returns an honest 410 rather than a frozen pre-#3651 bt_
+                // copy. Probing them here would just report every launch as Degraded for a route
+                // that's deliberately retired, not actually broken — skip instead.
+                Transition(KeyBoard, StartupConnectionState.Skipped, "Build Tracker board endpoint retired (Git #3652)");
+                Transition(KeyInProgress, StartupConnectionState.Skipped, "Build Tracker in-progress endpoint retired (Git #3652)");
 
                 // Build queue reads go direct to BuildConsole's local Postgres database when a
                 // BUILD_DATABASE_URL connection is available (same reasoning as every other queue

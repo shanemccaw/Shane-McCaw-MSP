@@ -726,54 +726,18 @@ namespace BuildConsole.Controls
             }
             catch (Exception ex)
             {
-                ActivityLog.Log("build-queue-panel.epic", $"GitHub sub-issues #{epicGithubNumber} FAILED: {ex.Message} — will try internal BT fallback.");
+                ActivityLog.Log("build-queue-panel.epic", $"GitHub sub-issues #{epicGithubNumber} FAILED: {ex.Message}");
             }
 
             if (_activeChatEpicId != epicId) return;
 
-            // ── Source 2: Internal Build Tracker API (bt_issues.epic_id) ─────────
-            // Issues are linked here when assigned via the Build Tracker UI, GitHub
-            // Projects sync, or manual DB linkage — a separate system from GitHub's
-            // sub-issues graph. Also covers issues whose body mentions "Part of #N"
-            // that the Git Board renders as children via text inference but that are
-            // NOT formal GitHub sub-issues (so Source 1 returns empty for them).
-            List<IssueSummary> btIssues = new();
-            if (_api?.IsConfigured == true)
-            {
-                try
-                {
-                    btIssues = await _api.GetIssuesForEpicAsync(epicId.Value);
-                    ActivityLog.Log("build-queue-panel.epic", $"BT internal epicId={epicId}: {btIssues.Count} returned ({btIssues.Count(i => i.Status != "closed" && i.Status != "done")} open).");
-                }
-                catch (Exception ex)
-                {
-                    ActivityLog.Log("build-queue-panel.epic", $"BT internal epicId={epicId} FAILED: {ex.Message}");
-                }
-            }
-            else
-            {
-                ActivityLog.Log("build-queue-panel.epic", $"BT internal API not configured — skipping fallback for epicId={epicId}.");
-            }
-
-            if (_activeChatEpicId != epicId) return;
-
-            // ── Merge: start with GitHub list, add any BT issues not already there ─
+            // Git #3652 — the "internal Build Tracker API" fallback that used to run here
+            // (GetIssuesForEpicAsync against bt_issues.epic_id) is disconnected: #3651 moved
+            // bt_ tables to BUILD_DATABASE_URL and the api-server route it called now only
+            // serves a frozen pre-#3651 copy out of the shared product database — that route
+            // now returns an honest 410. GitHub sub-issues is the sole source here now.
             var issues = new List<GitHubSubIssue>(ghIssues);
-            var seenNumbers = new HashSet<int>(ghIssues.Select(i => i.Number));
-            foreach (var bti in btIssues)
-            {
-                if (!bti.GithubNumber.HasValue) continue;             // no GitHub number → can't display
-                if (seenNumbers.Contains(bti.GithubNumber.Value)) continue; // already in GitHub list
-                seenNumbers.Add(bti.GithubNumber.Value);
-                issues.Add(new GitHubSubIssue
-                {
-                    Number  = bti.GithubNumber.Value,
-                    Title   = bti.Title,
-                    State   = (bti.Status == "done" || bti.Status == "closed") ? "closed" : "open",
-                    HtmlUrl = bti.GithubUrl ?? "",
-                });
-            }
-            ActivityLog.Log("build-queue-panel.epic", $"Merged total for epic #{epicGithubNumber} (id={epicId}): {issues.Count} issues ({issues.Count(i => !IsRealClosed(i.State))} open, {issues.Count(i => IsRealClosed(i.State))} closed). Filter={_epicFilter}.");
+            ActivityLog.Log("build-queue-panel.epic", $"Total for epic #{epicGithubNumber} (id={epicId}): {issues.Count} issues ({issues.Count(i => !IsRealClosed(i.State))} open, {issues.Count(i => IsRealClosed(i.State))} closed). Filter={_epicFilter}.");
 
             if (_lastEpicIssues != null && _lastEpicIssues.Count > 0)
             {

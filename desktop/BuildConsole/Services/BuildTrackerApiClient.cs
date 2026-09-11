@@ -539,12 +539,11 @@ namespace BuildConsole.Services
             return res ?? new BoardResponse();
         }));
 
-        /// <summary>Git #829 — Shane: "I need the right panel to have another section that shows me all the issues assigned to the chat I'm on." Real GET /admin/build-tracker/issues?epicId=N, same route the admin-panel's own issue tracker UI uses.</summary>
-        public Task<List<IssueSummary>> GetIssuesForEpicAsync(int epicId) => TrackAsync($"GET issues?epicId={epicId}", async () =>
-        {
-            var res = await _http.GetFromJsonAsync<List<IssueSummary>>($"api/admin/build-tracker/issues?epicId={epicId}", JsonOpts);
-            return res ?? new List<IssueSummary>();
-        });
+        // Git #3652 — GetIssuesForEpicAsync (GET /admin/build-tracker/issues?epicId=N) removed.
+        // That api-server route now returns an honest 410; #3651 moved bt_ data to
+        // BUILD_DATABASE_URL and this HTTP path only ever served a frozen pre-#3651 copy out
+        // of the shared product database. BuildQueuePanel's epic-issues panel now reads
+        // GitHub sub-issues only (see its own comment at the removed call site).
 
         /// <summary>
         /// Git #828 — Shane: "I need a way to assign a chat to an epic in
