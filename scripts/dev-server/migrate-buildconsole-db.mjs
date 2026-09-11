@@ -27,6 +27,10 @@
 // Re-run with --resync right before relaunching BuildConsole on the BUILD_DATABASE_URL
 // build: anything the old binary wrote to the product database since the first copy
 // (queue completions, new chats) is otherwise left behind.
+//
+// Git #3653 dropped the source tables from the product database, so this tool now fails at
+// the source row count, before it touches the target. To re-seed, pg_restore the #3653
+// snapshot (~/BuildConsole-db-snapshots/3653/) instead.
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
