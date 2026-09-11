@@ -891,6 +891,28 @@ export const customerNotificationPreferencesTable = pgTable("customer_notificati
 export type InsertCustomerNotificationPreference = typeof customerNotificationPreferencesTable.$inferInsert;
 export type CustomerNotificationPreference = typeof customerNotificationPreferencesTable.$inferSelect;
 
+// MSP-staff-configurable notification preferences — one row per (user, category).
+// Git #3693. Mirrors customerNotificationPreferencesTable's exact shape and
+// "absence of a row = default" convention (in-app on, email off), applied to
+// MSP staff instead of customers. Same shared `notifications` table + the
+// CATEGORY_STYLES taxonomy (notifications.ts) that already fires into both
+// /portal/notifications and /msp/notifications — genuinely the same categories,
+// so no separate MSP-side category list is invented here.
+export const mspStaffNotificationPreferencesTable = pgTable("msp_staff_notification_preferences", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  category: text("category").notNull(),
+  inAppEnabled: boolean("in_app_enabled").notNull().default(true),
+  emailEnabled: boolean("email_enabled").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("msp_staff_notif_prefs_user_category_uidx").on(t.userId, t.category),
+]);
+
+export type InsertMspStaffNotificationPreference = typeof mspStaffNotificationPreferencesTable.$inferInsert;
+export type MspStaffNotificationPreference = typeof mspStaffNotificationPreferencesTable.$inferSelect;
+
 // Project updates / communication log
 export const projectUpdatesTable = pgTable("project_updates", {
   id: serial("id").primaryKey(),

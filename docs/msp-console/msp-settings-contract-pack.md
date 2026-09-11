@@ -8,8 +8,14 @@ Module: **Settings (MSP Console)** (leaf issue #2604, Feature #1690, portal-side
 is the MSP-operator console, not the customer portal). This is the **first** contract pack for
 this module; there is no prior version to replace.
 
-**The one fact that changes how Design must read every field below:** the entire backend — 39
-routes across 11 functional groups, ~1,780 lines — is real, finished, and live on `main`
+**Updated 2026-09-11 (Git #3693):** added Group L — Notification Preferences (2 new routes,
+`GET`/`PATCH /api/msp/settings/notification-preferences`), the real, confirmed v1.1 alert-
+preferences gap Shane flagged (no per-MSP-staff-user preference surface existed anywhere before
+this build). Everything else in this pack is unchanged from the 2026-09-06 extraction; only §0, a
+new §1l, §7, and this note were touched.
+
+**The one fact that changes how Design must read every field below:** the entire backend — 41
+routes across 12 functional groups, ~1,860 lines — is real, finished, and live on `main`
 (`artifacts/api-server/src/routes/msp-settings.ts`), but **`artifacts/msp-console` (the MSP
 Console frontend app) is a bare scaffold with zero pages beyond a placeholder** (`App.tsx:16-23`,
 `pages/index.tsx:1-20`, both dated #2668). A repo-wide search of every frontend app (`msp-console`,
@@ -21,16 +27,18 @@ backend is finished, so the pack is not documenting absence.
 
 ---
 
-## 0. The eleven functional groups of this module
+## 0. The twelve functional groups of this module
 
-All 39 routes live in one file, `artifacts/api-server/src/routes/msp-settings.ts`, registered at
+All 41 routes live in one file, `artifacts/api-server/src/routes/msp-settings.ts`, registered at
 `artifacts/api-server/src/routes/index.ts:153,478`. Every route (except the OAuth callback) is
 gated `requireRole("MSPAdmin")` — a **floor**, not an exact match: `requireRole()` does a
 `ROLE_ORDER` index comparison (`requireAuth.ts:81-89,206+`), so `PlatformAdmin` (the one role above
 `MSPAdmin` in the 7-value hierarchy `Assessment < Free < CustomerUser < ServiceAccount <
 MSPOperator < MSPAdmin < PlatformAdmin`) also passes every gate in this module. `MSPOperator` does
-**not** pass — every write and every read here is MSPAdmin-or-above only, with the single
-documented exception in Group A.
+**not** pass — every write and every read here is MSPAdmin-or-above only, with two documented
+exceptions: Group A's alias GET (`ladder.free`, open to every authenticated role) and Group L's
+notification-preferences pair (`ladder.msp-operator` — deliberately open to MSPOperator too, since
+these are a staff member's own preferences, not an MSP-level admin setting).
 
 | # | Group | Routes | Writes? |
 |---|---|---|---|
@@ -45,6 +53,7 @@ documented exception in Group A.
 | I | Email Templates | `GET /email-templates`, `PUT/DELETE /email-templates/:key` | PUT/DELETE |
 | J | Customer Agreement Template | `GET/PUT /agreement-template` | PUT only |
 | K | Sessions + Invites | `GET /sessions`, `DELETE /sessions/:tokenHash`, `POST/GET /invites`, `DELETE /invites/:inviteId` | all but the two GETs |
+| L | Notification Preferences | `GET/PATCH /msp/settings/notification-preferences` | PATCH only |
 
 Every route's `mspId` comes from `resolveMspIdStrict(req)` (`resolve-msp-id.ts:75-77`) — the
 caller's own JWT claim, **no `?mspId=`/`?slug=` override, even for PlatformAdmin**. This is a
@@ -408,6 +417,70 @@ fields).
 accepted) but worth Design knowing the delete button should disable/hide once an invite shows as
 used.
 
+### 1l. Notification Preferences (Group L, Git #3693)
+
+Real, confirmed v1.1 gap — Shane's own words: "MSP Settings are needed though. Alert
+preferences, MFA, other things that are coming in v1.2" (later corrected to real v1.1 scope on
+the same issue). Direct schema check confirmed no per-MSP-staff-user preference table existed
+anywhere before this build (`msp_alert_rules`/`msp_alert_events` are rule/event definitions, not
+per-user delivery preferences). This group mirrors the customer-side
+`GET/PATCH /api/portal/notification-preferences` (`notification-preferences.ts`) route pair
+**exactly** — same shape, same "absence of a row = default" convention — applied to MSP staff
+instead of customers, backed by a new table (`msp_staff_notification_preferences`,
+`lib/db/migrations/manual/2026-09-11-msp-staff-notification-preferences-3693.sql`) that is
+byte-for-byte the same shape as `customer_notification_preferences`
+(`id, user_id, category, in_app_enabled, email_enabled, created_at, updated_at`, unique on
+`(user_id, category)`).
+
+**Different from every other group in this module: gated `ladder.msp-operator`, not
+`ladder.msp-admin`.** These are a staff member's own delivery preferences, not an MSP-level
+setting — an MSPOperator edits their own row exactly like an MSPAdmin edits theirs; there is no
+admin-only concept here the way Groups B–K's settings are MSP-wide config only an MSPAdmin should
+touch.
+
+**`GET /api/msp/settings/notification-preferences`** (`msp-settings.ts:1976-2000`) — returns
+every known category with the caller's own current preference (`userId = req.user!.id`, **not**
+`mspId`-scoped — this is per-staff-member, same as the customer-side route), defaulting unset
+categories to `{ inAppEnabled: true, emailEnabled: false }`:
+
+```
+{ preferences: { category: string, inAppEnabled: boolean, emailEnabled: boolean }[] }
+```
+
+Categories are the **same 15-key `CATEGORY_STYLES` taxonomy** the customer-side route uses
+(`notifications.ts:27-43` — `fulfillment`, `payment`, `security`, `ai`, `sow`, `signal`,
+`message`, `system`, `lead`, `dunning`, `consent`, `automation`, `project`, `onboarding`,
+`offer`) — genuinely the same categories, not a new MSP-side vocabulary, because both
+`/portal/notifications` and `/msp/notifications` fire into the one shared `notifications` table
+under this one taxonomy.
+
+**`PATCH /api/msp/settings/notification-preferences`** (`:2010-2050`) — body (`:2002-2008`):
+
+```
+{ preferences: { category: string, inAppEnabled: boolean, emailEnabled: boolean }[] (1-50 items) }
+```
+
+Upserts each category in the array (`onConflictDoUpdate` on `(userId, category)`, `:2020-2033`).
+Returns `{ ok: true }`. Audit: `user.notification_preferences.update`, metadata is the list of
+categories touched (`:2036-2043`) — **no `mspId` on this audit row**, unlike every other write in
+this module, since the action has no MSP-wide effect to attribute.
+
+**Delivery enforcement is real, not just storage.** `createNotification()`
+(`artifacts/api-server/src/lib/notification-center.ts`) — the one real path every in-app/email
+notification fired at an `msp_user` recipient goes through — now reads this table via
+`getMspStaffPreference()` before inserting the notification row: an `inAppEnabled: false`
+category suppresses the notification entirely (mirrors the pre-existing `customer_user` branch's
+`getCustomerPreference()` call exactly), and `emailEnabled: true` fires
+`deliverPreferenceEmail()` (Exchange Online / Graph, never Resend — see CLAUDE.md). Before this
+build, the `msp_user` branch consulted no preference table at all — every MSP-staff notification
+was unconditionally in-app-only with no opt-out and no email option, the real gap this group
+closes end-to-end, not just at the settings-page storage layer. Deliberately still out of scope,
+matching the customer-side route's own documented boundary
+(`notification-preferences.ts:1-15`): this never touches `policy_rules`
+severity/cooldown/escalation, and there is no outbound-webhook fan-out for `msp_user` recipients
+(the customer-side `fanOutToCustomerWebhook` call has no MSP-staff analog — out of this group's
+scope, not an oversight).
+
 ---
 
 ## 2. Real enum unions (no invented vocabularies)
@@ -546,7 +619,7 @@ call out.
 
 ---
 
-## 7. Orphaned endpoints — all 39
+## 7. Orphaned endpoints — all 41
 
 Confirmed by a repo-wide search of every frontend app (`artifacts/msp-console`,
 `artifacts/msp-portal`, `artifacts/admin-panel`, `artifacts/shane-mccaw-consulting`) for every path
@@ -555,7 +628,12 @@ in this module: **zero call sites** outside `msp-settings.ts` itself and its two
 `artifacts/msp-console/src` is a 6-file scaffold — `App.tsx`, `pages/index.tsx`,
 `pages/not-found.tsx`, plus `lib/utils.ts`/`main.tsx`/`index.css` — with an explicit placeholder
 docstring (`pages/index.tsx:1-8`) naming Feature #2667 (MSP Console Shell) as where real chrome
-lands. Every route below is orphaned for that one structural reason, not 39 individual defects:
+lands. Every route below is orphaned for that one structural reason, not 41 individual defects.
+**Group L's two routes are the one partial exception:** no frontend calls the `GET`/`PATCH`
+settings endpoints either, but the table they read/write is not otherwise dead — every real
+`msp_user` notification created via `createNotification()` reads it for delivery gating (§1l), so
+the *data path* is live even though the *settings-page* wire contract is orphaned exactly like
+every other group here:
 
 ```
 GET    /api/msp/profile
@@ -598,6 +676,8 @@ DELETE /api/msp/settings/sessions/:tokenHash
 POST   /api/msp/settings/invites
 GET    /api/msp/settings/invites
 DELETE /api/msp/settings/invites/:inviteId
+GET    /api/msp/settings/notification-preferences
+PATCH  /api/msp/settings/notification-preferences
 ```
 
 ---

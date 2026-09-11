@@ -6,7 +6,7 @@
  * and fires SSE events so open tabs update in real time.
  */
 
-import { db, notificationsTable, usersTable, customerNotificationPreferencesTable, portalOwnershipAssignmentsTable } from "@workspace/db";
+import { db, notificationsTable, usersTable, customerNotificationPreferencesTable, mspStaffNotificationPreferencesTable, portalOwnershipAssignmentsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { broadcastNotification, broadcastUnreadCount } from "./sse-channels";
 import { logger } from "./logger";
@@ -36,6 +36,31 @@ async function getCustomerPreference(
     return row ?? defaultPref;
   } catch (err) {
     log.warn({ err, userId, category }, "notification-center: preference lookup failed, defaulting to opted-in");
+    return defaultPref;
+  }
+}
+
+/**
+ * Look up an MSP staff recipient's own notification preference for a category
+ * (Git #3693). Mirrors getCustomerPreference exactly — same "no row = default
+ * (in-app on, email off)" opt-out model, same fail-open-to-default on lookup
+ * error, applied to msp_staff_notification_preferences instead.
+ */
+async function getMspStaffPreference(
+  mspUserId: number,
+  category: string | null | undefined,
+): Promise<{ inAppEnabled: boolean; emailEnabled: boolean }> {
+  const defaultPref = { inAppEnabled: true, emailEnabled: false };
+  if (!category) return defaultPref;
+  try {
+    const [row] = await db
+      .select({ inAppEnabled: mspStaffNotificationPreferencesTable.inAppEnabled, emailEnabled: mspStaffNotificationPreferencesTable.emailEnabled })
+      .from(mspStaffNotificationPreferencesTable)
+      .where(and(eq(mspStaffNotificationPreferencesTable.userId, mspUserId), eq(mspStaffNotificationPreferencesTable.category, category)))
+      .limit(1);
+    return row ?? defaultPref;
+  } catch (err) {
+    log.warn({ err, mspUserId, category }, "notification-center: msp staff preference lookup failed, defaulting to opted-in");
     return defaultPref;
   }
 }
@@ -163,6 +188,7 @@ export async function createNotification(opts: CreateNotificationOptions): Promi
     let recipientType: "platform_admin" | "msp_user" | "customer_user";
 
     let customerPref = { inAppEnabled: true, emailEnabled: false };
+    let mspStaffPref = { inAppEnabled: true, emailEnabled: false };
 
     if (recipient.type === "platform_admin") {
       recipientType = "platform_admin";
@@ -177,6 +203,11 @@ export async function createNotification(opts: CreateNotificationOptions): Promi
     } else {
       recipientType = "msp_user";
       mspUserId = recipient.mspUserId;
+      mspStaffPref = await getMspStaffPreference(mspUserId, category);
+      if (!mspStaffPref.inAppEnabled) {
+        log.info({ mspUserId, category }, "notification-center: suppressed by msp staff preference");
+        return null;
+      }
     }
 
     const [row] = await db.insert(notificationsTable).values({
@@ -245,6 +276,13 @@ export async function createNotification(opts: CreateNotificationOptions): Promi
           .from(notificationsTable)
           .where(and(eq(notificationsTable.mspUserId, mspUserId), eq(notificationsTable.feedType, "personal"), eq(notificationsTable.read, false)));
         broadcastUnreadCount(sseKey, cnt?.n ?? 0);
+      }
+
+      // MSP-staff-preference-gated email (Git #3693) — mirrors the
+      // customer_user branch's deliverPreferenceEmail call above. Fire-and-
+      // forget: never block or fail the in-app notification on this.
+      if (mspStaffPref.emailEnabled && !suppressPreferenceEmail) {
+        void deliverPreferenceEmail(mspUserId, title, body);
       }
     }
 

@@ -43,6 +43,10 @@
  * Sessions:
  *   GET  /api/msp/settings/sessions             — list active refresh-token sessions (own MSP)
  *   DELETE /api/msp/settings/sessions/:tokenHash — revoke a session
+ *
+ * Notification Preferences (Git #3693):
+ *   GET  /api/msp/settings/notification-preferences   — get own alert delivery preferences
+ *   PATCH /api/msp/settings/notification-preferences  — upsert own alert delivery preferences
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -66,6 +70,7 @@ import {
   mfaChallengesTable,
   webauthnCredentialsTable,
   webauthnChallengesTable,
+  mspStaffNotificationPreferencesTable,
   MSP_LOCKED_EMAIL_KEYS,
   MSP_EMAIL_TEMPLATE_KEYS,
   type MspEmailTemplateKey,
@@ -91,6 +96,7 @@ import { buildAdminConsentUrl, mtAppCredentialsPresent } from "../lib/graph.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { sendEmailForMsp, emailButton, brandedEmail, sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
+import { CATEGORY_STYLES } from "./notifications.ts";
 
 const router: IRouter = Router();
 
@@ -1947,6 +1953,94 @@ router.delete("/msp/settings/invites/:inviteId", requireCapability("ladder.msp-a
     entityType: "msp_invite",
     entityId: String(inviteId),
     mspId,
+  });
+
+  res.json({ ok: true });
+});
+
+// ── Notification Preferences (Git #3693) ───────────────────────────────────────
+// MSP-staff-owned analog of /portal/notification-preferences
+// (notification-preferences.ts) — mirrors that route pair exactly, scoped to the
+// caller's own row (not mspId-wide) since these are per-staff-member delivery
+// preferences, not an MSP-level setting. Open to any MSP staff member
+// (MSPOperator or above), matching the customer-side requireAuth floor: every
+// staff member edits their own preferences, regardless of role.
+//
+// Categories reuse the same shared CATEGORY_STYLES taxonomy the customer-side
+// route uses — both /portal/notifications and /msp/notifications fire into the
+// one shared `notifications` table with this taxonomy, so no separate MSP-side
+// category vocabulary is invented here.
+
+const NOTIFICATION_CATEGORIES = Object.keys(CATEGORY_STYLES);
+
+router.get("/msp/settings/notification-preferences", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  const rows = await db
+    .select({
+      category: mspStaffNotificationPreferencesTable.category,
+      inAppEnabled: mspStaffNotificationPreferencesTable.inAppEnabled,
+      emailEnabled: mspStaffNotificationPreferencesTable.emailEnabled,
+    })
+    .from(mspStaffNotificationPreferencesTable)
+    .where(eq(mspStaffNotificationPreferencesTable.userId, userId));
+
+  const byCategory = new Map(rows.map((r) => [r.category, r]));
+
+  const preferences = NOTIFICATION_CATEGORIES.map((category) => {
+    const existing = byCategory.get(category);
+    return {
+      category,
+      inAppEnabled: existing?.inAppEnabled ?? true,
+      emailEnabled: existing?.emailEnabled ?? false,
+    };
+  });
+
+  res.json({ preferences });
+});
+
+const mspNotificationPrefsPatchSchema = z.object({
+  preferences: z.array(z.object({
+    category: z.string().min(1),
+    inAppEnabled: z.boolean(),
+    emailEnabled: z.boolean(),
+  })).min(1).max(50),
+});
+
+router.patch("/msp/settings/notification-preferences", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  const parsed = mspNotificationPrefsPatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    apiError(res, 400, parsed.error.issues.map((i) => i.message).join("; "));
+    return;
+  }
+
+  for (const pref of parsed.data.preferences) {
+    await db
+      .insert(mspStaffNotificationPreferencesTable)
+      .values({
+        userId,
+        category: pref.category,
+        inAppEnabled: pref.inAppEnabled,
+        emailEnabled: pref.emailEnabled,
+      })
+      .onConflictDoUpdate({
+        target: [mspStaffNotificationPreferencesTable.userId, mspStaffNotificationPreferencesTable.category],
+        set: {
+          inAppEnabled: pref.inAppEnabled,
+          emailEnabled: pref.emailEnabled,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  await writeAuditLog({
+    req,
+    actionType: "user.notification_preferences.update",
+    entityType: "msp_user",
+    entityId: String(userId),
+    metadata: { categories: parsed.data.preferences.map((p) => p.category) },
   });
 
   res.json({ ok: true });
