@@ -979,6 +979,9 @@ export const impersonationTokensTable = pgTable("impersonation_tokens", {
   adminUserId: integer("admin_user_id").notNull().references(() => usersTable.id),
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
+  // Lets a PlatformAdmin end a live impersonation session early (Git #3680) —
+  // exchange still checks this the same way it already checks usedAt/expiresAt.
+  revokedAt: timestamp("revoked_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   index("impersonation_tokens_admin_user_id_idx").on(t.adminUserId),
