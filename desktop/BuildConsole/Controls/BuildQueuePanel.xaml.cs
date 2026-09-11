@@ -989,7 +989,7 @@ namespace BuildConsole.Controls
                 if (signature != _lastQueueSignature)
                 {
                     _lastQueueSignature = signature;
-                    if (_filter != "Tests") RenderQueue(ApplyFilter(_lastItems));
+                    if (_filter != "Tests") RenderQueue(_lastItems);
                     // Git #3336 — resolve each build set's real top Epic(s) from the local mirror
                     // BEFORE rendering, so the rollup below can nest under a real Epic header.
                     _buildSetEpics = await ResolveBuildSetEpicsAsync(_lastItems);
@@ -1081,7 +1081,7 @@ namespace BuildConsole.Controls
             Services.BuildSetExclusiveStore.Clear();
             ActivityLog.Log("build-queue-panel.exclusive",
                 $"Exclusive build set \"{setName}\" — all {members.Count} member(s) reached a terminal state ({string.Join(", ", members.Select(m => m.Status).Distinct())}). Auto-clearing exclusive mode; queue resumes normal dispatch.");
-            RenderQueue(ApplyFilter(_lastItems));
+            RenderQueue(_lastItems);
         }
 
         /// <summary>
@@ -1243,7 +1243,7 @@ namespace BuildConsole.Controls
             _openIssues = open;
             _openIssuesRefreshedUtc = DateTime.UtcNow;
             UpdateQueueStatusCounts();
-            try { if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(ApplyFilter(_lastItems)); } catch { }
+            try { if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(_lastItems); } catch { }
         }
 
         /// <summary>
@@ -1607,7 +1607,7 @@ namespace BuildConsole.Controls
 
         public void ReapplyFocusFilter()
         {
-            try { if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(ApplyFilter(_lastItems)); } catch { }
+            try { if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(_lastItems); } catch { }
             try { RenderInFlightGrouped(_lastInFlightIssues); } catch { }
         }
 
@@ -1653,7 +1653,7 @@ namespace BuildConsole.Controls
                 QueueSearchBox.Text = "";
 
             if (QueueGraphContainer != null && _filter != "Tests")
-                RenderQueue(ApplyFilter(_lastItems));
+                RenderQueue(_lastItems);
 
             var node = _currentGraphNodes.FirstOrDefault(n => n.Item?.Id == id);
             if (node != null)
@@ -1670,7 +1670,7 @@ namespace BuildConsole.Controls
             if (QueueGraphContainer == null) return;
 
             if (_filter == "Tests") RenderTestsTree();
-            else RenderQueue(ApplyFilter(_lastItems));
+            else RenderQueue(_lastItems);
         }
 
         private string _queueSearch = "";
@@ -1693,28 +1693,28 @@ namespace BuildConsole.Controls
             var wasEmpty = string.IsNullOrEmpty(_queueSearch);
             _queueSearch = QueueSearchBox.Text ?? "";
             if (!wasEmpty && _queueSearch.Length == 0)
-                RunQueueSearch(showFilterWarning: false);
+                RunQueueSearch();
         }
 
         private void QueueSearchBox_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key != Key.Enter) return;
-            RunQueueSearch(showFilterWarning: true);
+            RunQueueSearch();
             e.Handled = true;
         }
 
         /// <summary>Git #2680 — the one real "apply the queue search" path, shared by the
         /// Enter key (KeyDown above), the ✕/select-all-delete empty transition (TextChanged
-        /// above), and a programmatic search from Dispatch (<see cref="SearchAndFocus"/>).</summary>
-        private void RunQueueSearch(bool showFilterWarning)
+        /// above), and a programmatic search from Dispatch (<see cref="SearchAndFocus"/>).
+        /// Git #3613 — used to also fire <c>ShowBuildSetFilterWarning("Search")</c> (Git #2058)
+        /// to explain that a real match while searching could be hidden by the active Build Set
+        /// filter. RenderQueue now genuinely bypasses the status/build-set filter while
+        /// <see cref="_queueSearch"/> is non-empty (see its own Git #3613 comment), so that class
+        /// of "hidden by filter" search miss no longer exists — nothing left to warn about here.</summary>
+        private void RunQueueSearch()
         {
             if (QueueGraphContainer == null || _filter == "Tests") return;
-            RenderQueue(ApplyFilter(_lastItems));
-            if (showFilterWarning)
-                // Git #2058 — a search performed while a Build Set filter is active can come
-                // back empty (or short) not because no match exists, but because the real
-                // match is filtered out of view — same root cause as the dispatch trigger below.
-                ShowBuildSetFilterWarning("Search");
+            RenderQueue(_lastItems);
         }
 
         /// <summary>Git #2680 — called from MainWindow's DispatchPanel.Dispatched handler right
@@ -1728,26 +1728,24 @@ namespace BuildConsole.Controls
             var text = issueNumber.ToString();
             QueueSearchBox.Text = text;
             _queueSearch = text;
-            RunQueueSearch(showFilterWarning: true);
+            RunQueueSearch();
         }
 
         private DispatcherTimer? _buildSetFilterWarningTimer;
 
-        /// <summary>Git #2058 — shared entry point for both trigger points named in the issue:
-        /// a search run here (see QueueSearchBox_KeyDown above) and a build dispatched elsewhere
-        /// (DispatchPanel → MainWindow → here, see <see cref="NotifyBuildDispatched"/>). No-op
-        /// when no Build Set filter is active — the whole point is to explain a filter Shane may
-        /// not remember is on, not to warn unconditionally. Uses the Popup declared in the XAML
+        /// <summary>Git #2058 — warns that a newly-dispatched build may have landed outside the
+        /// currently-active Build Set filter view. Git #3613 removed this method's "Search"
+        /// reason/trigger (that class of miss is now genuinely fixed in RenderQueue itself, not
+        /// just explained), leaving this as the Dispatch-only warning it started as. No-op when
+        /// no Build Set filter is active. Uses the Popup declared in the XAML
         /// (BuildSetFilterWarningPopup) rather than an inline Border, since a Popup renders in
         /// its own overlay layer and genuinely cannot bump/reflow the rest of the panel — the
-        /// issue's explicit requirement.</summary>
-        private void ShowBuildSetFilterWarning(string reason)
+        /// original issue's explicit requirement.</summary>
+        private void ShowBuildSetFilterWarning()
         {
             if (_buildSetFilter == null || BuildSetFilterWarningPopup == null) return;
 
-            BuildSetFilterWarningText.Text = reason == "Search"
-                ? $"Filtered to \"{_buildSetFilter}\" — a real match may be hidden by this filter."
-                : $"New build landed outside the current filter — Build Set: {_buildSetFilter}";
+            BuildSetFilterWarningText.Text = $"New build landed outside the current filter — Build Set: {_buildSetFilter}";
             BuildSetFilterWarningPopup.IsOpen = true;
 
             _buildSetFilterWarningTimer?.Stop();
@@ -1765,7 +1763,7 @@ namespace BuildConsole.Controls
         /// warn if the item it just queued may be hidden by an active Build Set filter. Public
         /// because DispatchPanel is a separate sibling control with no knowledge of this panel's
         /// private filter state.</summary>
-        public void NotifyBuildDispatched() => ShowBuildSetFilterWarning("Dispatch");
+        public void NotifyBuildDispatched() => ShowBuildSetFilterWarning();
 
         private static List<QueueItem> SortForDisplay(IEnumerable<QueueItem> items) =>
             items
@@ -1886,10 +1884,28 @@ namespace BuildConsole.Controls
         // ── Visual Queue DAG with Canvas-Based Connectors (#860 Reference) ────────
         // ══════════════════════════════════════════════════════════════════════════
 
-        private void RenderQueue(List<QueueItem> items)
+        // Git #3613 — takes the RAW, unfiltered queue (_lastItems) now, not a pre-narrowed
+        // ApplyFilter(_lastItems) result — the status/build-set narrowing decision moved
+        // inside this method (below) so it can be bypassed while a search is active. Every
+        // call site was updated to pass _lastItems directly; see the block just below.
+        private void RenderQueue(List<QueueItem> rawItems)
         {
             var search = _queueSearch.Trim();
             bool searching = search.Length > 0;
+
+            // Git #3613 — while a search is active, bypass the status filter (_filter) and
+            // the build-set filter (_buildSetFilter) entirely: search against the full raw
+            // set, only excluding manually-hidden ids (a deliberate Shane-initiated hide, not
+            // a status filter) rather than ApplyFilter's status/build-set-narrowed subset. A
+            // real match outside the active filter can now actually be found. This replaces
+            // the old ShowBuildSetFilterWarning band-aid (Git #2058) for the search trigger —
+            // a real match just shows now instead of requiring an explanatory toast about why
+            // it doesn't. Neither _filter nor _buildSetFilter's own stored value/dropdown
+            // selection is touched here, so clearing the search falls back to the ApplyFilter
+            // branch below and naturally restores exactly the view that was active before.
+            List<QueueItem> items = search.Length > 0
+                ? rawItems.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id)).ToList()
+                : ApplyFilter(rawItems);
 
             // Git #1833 — the broad "All" view (default ApplyFilter case) with an empty
             // search box matches hundreds of items nobody scrolls through; Shane always
@@ -2042,10 +2058,13 @@ namespace BuildConsole.Controls
                     "Canceled" => "Nothing canceled.",
                     _          => "Queue is empty.",
                 };
-            // Git #1834 — the build-set drill-down composes with the filter/search above
-            // rather than replacing their own empty-state text, so name it too when it's
-            // the reason the combined result is empty.
-            if (_buildSetFilter != null && _currentGraphNodes.Count == 0)
+            // Git #1834 — the build-set drill-down composes with the filter above rather than
+            // replacing its own empty-state text, so name it too when it's the reason the
+            // combined result is empty. Git #3613 — gated on !searching: while searching, the
+            // build-set filter is bypassed entirely (see the top of this method), so it is
+            // never actually the reason a search comes back empty and must not be named as if
+            // it were.
+            if (!searching && _buildSetFilter != null && _currentGraphNodes.Count == 0)
                 QueueEmptyText.Text += $" (build set \"{_buildSetFilter}\")";
 
             if (_currentGraphNodes.Count == 0)
@@ -2741,7 +2760,7 @@ namespace BuildConsole.Controls
                 bool newState = !isPriority;
                 Services.BuildSetPriorityStore.SetPriority(buildSetName, newState);
                 ActivityLog.Log("build-queue-panel.priority", $"Build set \"{buildSetName}\" {(newState ? "marked" : "unmarked")} Priority.");
-                RenderQueue(ApplyFilter(_lastItems));
+                RenderQueue(_lastItems);
             };
             cm.Items.Add(mi);
 
@@ -2770,7 +2789,7 @@ namespace BuildConsole.Controls
                     Services.BuildSetExclusiveStore.SetExclusive(buildSetName);
                     ActivityLog.Log("build-queue-panel.exclusive", $"Build set \"{buildSetName}\" marked exclusive — queue will hold every other build set until it finishes.");
                 }
-                RenderQueue(ApplyFilter(_lastItems));
+                RenderQueue(_lastItems);
             };
             cm.Items.Add(exclusiveItem);
 
@@ -3561,14 +3580,14 @@ namespace BuildConsole.Controls
         private void ToggleBuildSetFilter(string buildSetKey)
         {
             _buildSetFilter = string.Equals(_buildSetFilter, buildSetKey, StringComparison.OrdinalIgnoreCase) ? null : buildSetKey;
-            if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(ApplyFilter(_lastItems));
+            if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(_lastItems);
             RenderBuildSetRollup(_lastItems);
         }
 
         private void BuildSetRollupClear_Click(object sender, MouseButtonEventArgs e)
         {
             _buildSetFilter = null;
-            if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(ApplyFilter(_lastItems));
+            if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(_lastItems);
             RenderBuildSetRollup(_lastItems);
         }
 
@@ -6050,7 +6069,7 @@ namespace BuildConsole.Controls
                             // instead of waiting for the next poll tick.
                             if (_lastItems != null && _lastItems.Any(i => CleanBlockers(i).Contains(issueNumber)))
                             {
-                                try { RenderQueue(ApplyFilter(_lastItems)); } catch { }
+                                try { RenderQueue(_lastItems); } catch { }
                             }
                         }));
                     }
