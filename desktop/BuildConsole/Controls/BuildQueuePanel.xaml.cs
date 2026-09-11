@@ -101,7 +101,8 @@ namespace BuildConsole.Controls
         /// Tuple carries the real GitHub number plus whether to open it side-by-side.</summary>
         public event EventHandler<(int Number, bool SideBySide)>? OpenGitIssueRequested;
         /// <summary>Git #2976 — an awaitable delegate (NOT a fire-and-forget EventHandler) so
-        /// BtnRefreshGitHubTiles_Click can genuinely <c>await</c> the full Git Board + Batter Up +
+        /// BtnRefreshCombined_Click (Git #3702; was BtnRefreshGitHubTiles_Click before the two
+        /// refresh buttons merged) can genuinely <c>await</c> the full Git Board + Batter Up +
         /// AI Batter Up refresh and only fire its success toast / re-enable its button once that
         /// real work has completed. Single subscriber (MainWindow); assigned with <c>=</c>, not
         /// <c>+=</c>, so the awaited task is the real cascade's, not a multicast's last return.</summary>
@@ -123,7 +124,7 @@ namespace BuildConsole.Controls
 
         /// <summary>Git #3448 — the real, honest Batter Up / AI Batter Up closed-sweep summary from
         /// the most recent full GitHub refresh, set by MainWindow's FullGitRefreshRequested handler
-        /// right after it awaits both panels' own refresh. <see cref="BtnRefreshGitHubTiles_Click"/>
+        /// right after it awaits both panels' own refresh. <see cref="BtnRefreshCombined_Click"/>
         /// uses this for its completion toast instead of a generic "Refreshed!" message — null only
         /// when FullGitRefreshRequested has no subscriber yet (falls back to the old static text).</summary>
         public string? LastGitSyncSummary { get; set; }
@@ -390,7 +391,7 @@ namespace BuildConsole.Controls
             // recurring 10s DispatcherTimer (_sessionsPollTimer) re-polling active sessions +
             // status counts + rollback state with zero user interaction. Now: one real one-time
             // initial load on tab open, same as RefreshInFlightIssuesAsync below, and otherwise
-            // only BtnRefreshGitHubTiles_Click (manual click) re-runs this work.
+            // only BtnRefreshCombined_Click (manual click) re-runs this work.
             _ = RefreshActiveSessionsAsync();
             UpdateQueueStatusCounts();
             DevServerRollbackService.CheckForRollbacks(this);
@@ -411,7 +412,7 @@ namespace BuildConsole.Controls
             // automatic refilling (BatterUpPanel/AiBatterUpPanel have no timer of their own; they
             // ride RefreshAsync's QueueRefreshed/BoardRefreshCompleted cascade). Now: one real
             // one-time initial load on tab open, and otherwise only the manual refresh button
-            // (BtnRefreshGitHubTiles_Click) invokes the FULL RefreshAsync() (including its
+            // (BtnRefreshCombined_Click) invokes the FULL RefreshAsync() (including its
             // GitHub-calling work).
             _ = RefreshAsync();
 
@@ -7701,96 +7702,118 @@ namespace BuildConsole.Controls
             }
         }
 
-        private void BtnPinQueue_Click(object sender, RoutedEventArgs e) => TogglePin();
-
-        // Git #3701 — the new always-visible header chevron (left of QueueDot) drives the
-        // exact same toggle as the overflow-menu's BtnPinQueue, kept in sync via TogglePin().
+        // Git #3701 — the always-visible header chevron (left of QueueDot) drives the shared
+        // _isPinned/PinToggled toggle. Git #3702 removed the old overflow-menu Pin item this
+        // used to stay in sync with — TogglePin() is now this button's only caller.
         private void BtnCollapseQueue_Click(object sender, RoutedEventArgs e) => TogglePin();
 
         private void TogglePin()
         {
             _isPinned = !_isPinned;
-            PinQueueIcon.Text = _isPinned ? "📌" : "📍";
             CollapseQueueIcon.Text = _isPinned ? CollapseArrowGlyph : ExpandArrowGlyph;
             PinToggled?.Invoke(this, _isPinned);
         }
 
-        // Git #3444 — opens the overflow "⋯" menu (Pause/Resume, broad GitHub refresh, Pin)
-        // on a normal left-click. A Button.ContextMenu only opens on right-click by default,
-        // so this wires the same left-click gesture the other header icon buttons use.
-        private void BtnQueueMenu_Click(object sender, RoutedEventArgs e)
+        // Git #3702 — guards BtnRefreshCombined_Click against re-entry while the sequential
+        // Git-then-Queue refresh is still in flight (MainWindow's own SetGitHubTilesRefreshInProgress
+        // re-enables the button as soon as just the Git half lands — see that method's doc — so
+        // IsEnabled alone can't be trusted as the reentry guard for the whole combined span).
+        private bool _combinedRefreshInFlight;
+
+        private AnimationClock? _refreshCombinedSpinClock;
+
+        // Git #3689 lesson (see KeyedSlotCardHost.BeginOwnedAnimation): BeginAnimation(dp, null)
+        // only unhooks the element — a RepeatBehavior.Forever clock keeps ticking every frame
+        // until GC happens to collect it. Stop it for real via Controller.Stop() before dropping it.
+        private void StartRefreshCombinedSpin()
         {
-            if (sender is Button btn && btn.ContextMenu != null)
+            StopRefreshCombinedSpin();
+            var spin = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(0.9))
             {
-                btn.ContextMenu.PlacementTarget = btn;
-                btn.ContextMenu.IsOpen = true;
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+            _refreshCombinedSpinClock = spin.CreateClock();
+            RefreshCombinedIconRotate.ApplyAnimationClock(RotateTransform.AngleProperty, _refreshCombinedSpinClock);
+        }
+
+        private void StopRefreshCombinedSpin()
+        {
+            if (_refreshCombinedSpinClock == null) return;
+            _refreshCombinedSpinClock.Controller?.Stop();
+            RefreshCombinedIconRotate.ApplyAnimationClock(RotateTransform.AngleProperty, null);
+            _refreshCombinedSpinClock = null;
+        }
+
+        // Git #3702 — replaces both BtnRefreshQueueLocal_Click (local-only Postgres re-read) and
+        // the old overflow menu's BtnRefreshGitHubTiles_Click (Git Board + Batter Up + AI Batter
+        // Up + epic issues + in-flight + focus progress) with one combined, always-visible,
+        // icon-only button. Real, exact ask: Git first, then — once that fully completes — the
+        // local Queue re-read, sequential (not parallel), spinning for the whole span. The Git
+        // step preserves the exact same real scope BtnRefreshGitHubTiles_Click always covered
+        // (confirmed via the open question in #3702's own issue body — nothing regresses in what
+        // gets refreshed).
+        private async void BtnRefreshCombined_Click(object sender, RoutedEventArgs e)
+        {
+            if (_combinedRefreshInFlight) return;
+            _combinedRefreshInFlight = true;
+            BtnRefreshCombined.IsEnabled = false;
+            StartRefreshCombinedSpin();
+            try
+            {
+                ActivityLog.Log("github.manual-refresh",
+                    "Build Queue panel [manual combined Refresh click]: Git first (Board + Batter Up + AI Batter Up + Issues in Epic + In-Flight + Focus Progress), then the local queue re-read (Git #3702).");
+
+                var fullGitRefresh = FullGitRefreshRequested;
+
+                // Git #2900 — Active Sessions + the dev-server rollback check used to re-run on their
+                // own recurring 10s timer; now that they're manual-only, fold them into this same
+                // manual refresh so no functionality is lost, just its trigger.
+                _ = RefreshActiveSessionsAsync();
+                DevServerRollbackService.CheckForRollbacks(this);
+
+                // Step 1 — Git, same real scope the old BtnRefreshGitHubTiles_Click covered.
+                await System.Threading.Tasks.Task.WhenAll(
+                    fullGitRefresh?.Invoke() ?? System.Threading.Tasks.Task.CompletedTask,
+                    RefreshActiveChatEpicIssuesAsync(),
+                    RefreshInFlightIssuesAsync("manual combined Refresh click"),
+                    RefreshAsync());
+
+                // Step 2 — Queue, only once step 1 above has genuinely finished. Same real local-only
+                // Postgres re-read (zero GitHub calls) the old BtnRefreshQueueLocal_Click did.
+                await RefreshAsync(includeGitHubWork: false);
+
+                // Git #3448 — Shane: report real, honest sync status (e.g. "Batter Up: was out of
+                // sync — 3 stale item(s) found and cleared." / "Batter Up: no issues — every item is
+                // current.") instead of a generic "Refreshed!" message. LastGitSyncSummary was just
+                // set above (inside the awaited fullGitRefresh call) from the real closed-sweep result
+                // each panel's own RefreshAsync landed. Falls back to the old static text only if
+                // FullGitRefreshRequested has no subscriber (shouldn't happen once MainWindow wires
+                // it, but keeps this button honest either way rather than throwing on a null).
+                ToastEngine.Success("Git Sync", string.IsNullOrWhiteSpace(LastGitSyncSummary)
+                    ? "Refreshed Git Board, Batter Up, AI Batter Up, epic issues, and queue!"
+                    : LastGitSyncSummary!);
+            }
+            finally
+            {
+                StopRefreshCombinedSpin();
+                _combinedRefreshInFlight = false;
+                BtnRefreshCombined.IsEnabled = true;
             }
         }
 
-        // Git #3444 — dedicated, always-visible fast refresh: local-only Postgres re-read via
-        // #3074's RefreshAsync(includeGitHubWork: false) path (_db.GetQueueAsync() + in-memory
-        // re-render). Zero GitHub calls — no AutoRecheckOpenIssuesOnTransitionAsync, no
-        // TriggerBackgroundIssueTitleQueries, both gated off by includeGitHubWork:false inside
-        // RefreshAsync. Safe to click freely, unlike the broad refresh moved into the ⋯ menu.
-        private async void BtnRefreshQueueLocal_Click(object sender, RoutedEventArgs e)
-        {
-            ActivityLog.Log("build-queue-panel",
-                "Build Queue panel [manual Refresh Queue click]: local-only Postgres re-read (Git #3444), zero GitHub calls.");
-            await RefreshAsync(includeGitHubWork: false);
-        }
-
-        // Git #1816 — the single shared refresh control for Git Board + Batter Up + AI
-        // Batter Up. FullGitRefreshRequested drives LeftSidebar.PopulateGitTrackerBoard
-        // (forceFresh: true), whose completion fires BoardRefreshCompleted — #1813 already
-        // wired that event to also refresh BatterUpPanel and AiBatterUpPanel.
-        // Git #2976 — FullGitRefreshRequested is now an awaitable Func<Task>, and MainWindow's
-        // handler genuinely awaits the board fetch AND the Batter Up / AI Batter Up refresh
-        // (coalesced onto their real in-flight tasks). We fold that awaitable into the WhenAll
-        // below so the success toast + the button re-enable only happen once every one of
-        // those panels has ACTUALLY repainted — not before, which is what made Shane click 2-3
-        // times: the toast used to fire the instant this panel's own local work finished while
-        // the real Board/Batter Up fetches were still in flight in the background.
-        private async void BtnRefreshGitHubTiles_Click(object sender, RoutedEventArgs e)
-        {
-            ActivityLog.Log("github.manual-refresh",
-                "Build Queue panel [manual Refresh click]: re-fetching GitHub components (Board + Batter Up + AI Batter Up + Issues in Epic + In-Flight + Focus Progress).");
-
-            var fullGitRefresh = FullGitRefreshRequested;
-
-            // Git #2900 — Active Sessions + the dev-server rollback check used to re-run on their
-            // own recurring 10s timer; now that they're manual-only, fold them into this same
-            // manual refresh so no functionality is lost, just its trigger.
-            _ = RefreshActiveSessionsAsync();
-            DevServerRollbackService.CheckForRollbacks(this);
-
-            await System.Threading.Tasks.Task.WhenAll(
-                fullGitRefresh?.Invoke() ?? System.Threading.Tasks.Task.CompletedTask,
-                RefreshActiveChatEpicIssuesAsync(),
-                RefreshInFlightIssuesAsync("manual Refresh click"),
-                RefreshAsync());
-
-            // Git #3448 — Shane: report real, honest sync status (e.g. "Batter Up: was out of
-            // sync — 3 stale item(s) found and cleared." / "Batter Up: no issues — every item is
-            // current.") instead of a generic "Refreshed!" message. LastGitSyncSummary was just
-            // set above (inside the awaited fullGitRefresh call) from the real closed-sweep result
-            // each panel's own RefreshAsync landed. Falls back to the old static text only if
-            // FullGitRefreshRequested has no subscriber (shouldn't happen once MainWindow wires
-            // it, but keeps this button honest either way rather than throwing on a null).
-            ToastEngine.Success("Git Sync", string.IsNullOrWhiteSpace(LastGitSyncSummary)
-                ? "Refreshed Git Board, Batter Up, AI Batter Up, epic issues, and queue!"
-                : LastGitSyncSummary!);
-        }
-
         /// <summary>
-        /// Git #1836 — Shane: this button triggers the exact same GitHub fetch as Git
-        /// Board's own refresh button, but showed no disabled-state feedback of its own
-        /// while that fetch (and its critter loading strip, on the Git Board panel) was
-        /// in flight. MainWindow — which already owns both this panel and LeftSidebar —
-        /// calls this around its awaited LeftSidebar.RefreshGitBoardWithLoadingFeedbackAsync()
-        /// so BtnRefreshGitHubTiles is disabled for the same real span Git Board's own
-        /// button is.
+        /// Git #1836 — Shane: the Git half of the combined refresh triggers the exact same
+        /// GitHub fetch as Git Board's own refresh button, but showed no disabled-state feedback
+        /// of its own while that fetch (and its critter loading strip, on the Git Board panel)
+        /// was in flight. MainWindow — which already owns both this panel and LeftSidebar —
+        /// calls this around its awaited LeftSidebar.RefreshGitBoardWithLoadingFeedbackAsync() so
+        /// BtnRefreshCombined is disabled for that real span too. Git #3702 repointed this from
+        /// the old BtnRefreshGitHubTiles to BtnRefreshCombined when the two buttons merged; note
+        /// this can flip IsEnabled back to true mid-way through BtnRefreshCombined_Click's own
+        /// Step 2 (local queue re-read) — _combinedRefreshInFlight, not IsEnabled, is the real
+        /// reentry guard for the whole combined span.
         /// </summary>
-        public void SetGitHubTilesRefreshInProgress(bool inProgress) => BtnRefreshGitHubTiles.IsEnabled = !inProgress;
+        public void SetGitHubTilesRefreshInProgress(bool inProgress) => BtnRefreshCombined.IsEnabled = !inProgress;
 
         private void TileInFlight_Click(object sender, RoutedEventArgs e)
         {

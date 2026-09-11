@@ -76,7 +76,7 @@
 
                 <!-- Header — Git #1816: this panel's own BtnRefresh is gone; refreshing is now
                      the Build Queue header's single shared icon (BuildQueuePanel.xaml
-                     BtnRefreshGitHubTiles), which cascades here via BoardRefreshCompleted
+                     BtnRefreshCombined), which cascades here via BoardRefreshCompleted
                      (#1813). TxtCount also carries the "no items" empty-state note inline now,
                      so an empty panel never grows past this one header row. -->
                 <!-- Git #1870 — the Free flow gate toggle sits in this same header row (title,

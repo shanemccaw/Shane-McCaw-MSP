@@ -869,7 +869,7 @@ namespace BuildConsole
                     // honestly report real sync status ("Batter Up out of sync" / "no issues")
                     // instead of a generic success message. Both panels just landed their own
                     // real closed-sweep result above; hand the honest summary to BuildQueuePanel
-                    // so BtnRefreshGitHubTiles_Click's toast can use it instead of static text.
+                    // so BtnRefreshCombined_Click's toast can use it instead of static text.
                     BuildQueuePanel.LastGitSyncSummary =
                         Services.BatterUpQueueService.BuildSyncSummary("Batter Up", _batterUpPanel.LastSweepResult) + " " +
                         Services.BatterUpQueueService.BuildSyncSummary("AI Batter Up", _aiBatterUpPanel.LastSweepResult);

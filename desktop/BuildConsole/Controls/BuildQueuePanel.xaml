@@ -80,8 +80,8 @@
                              the arrow points the opposite way: right while expanded (click
                              collapses it off to the right), left while collapsed (click
                              re-expands it back in from the right). Drives the exact same
-                             _isPinned/PinToggled mechanism BtnPinQueue (still in the overflow
-                             menu) already used — TogglePin() is the one shared implementation. -->
+                             _isPinned/PinToggled mechanism the old overflow-menu Pin item used
+                             (removed by Git #3702) — TogglePin() is the one shared implementation. -->
                         <Button x:Name="BtnCollapseQueue"
                                 Style="{StaticResource IconButton}"
                                 ToolTip="Collapse / Expand Panel"
@@ -127,110 +127,48 @@
                                        Foreground="{StaticResource BlueBrush}"
                                        VerticalAlignment="Center"/>
                         </Button>
-                        <!-- Git #3444 — dedicated, always-visible fast refresh: local-only
-                             Postgres re-read (#3074's `RefreshAsync(includeGitHubWork: false)`
-                             path — _db.GetQueueAsync() + in-memory re-render, zero GitHub
-                             calls), separate from the broad GitHub-calling refresh now moved
-                             into the overflow menu below. Near-instant, safe to click freely. -->
-                        <Button x:Name="BtnRefreshQueueLocal"
+                        <!-- Git #3702 — real, always-visible Play/Pause icon button, promoted
+                             from the old overflow-menu MiPauseQueue item. Same real
+                             QueueWatcherService.SetPaused/IsPaused mechanism (see
+                             BuildQueuePanel.QueuePause.cs) — icon/tooltip flip in code-behind
+                             (SyncPauseToggleVisual) so the paused state stays unmistakable. -->
+                        <Button x:Name="BtnPlayPauseQueue"
                                 Style="{StaticResource IconButton}"
-                                ToolTip="Refresh queue — re-read current build status from the local database (fast, zero GitHub calls)"
+                                ToolTip="Queue running — click to pause (already-running builds keep going; no new items start until resumed)."
                                 Padding="6,4"
                                 Margin="0,0,3,0"
-                                Click="BtnRefreshQueueLocal_Click">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="&#xE72C;"
-                                           FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
-                                           FontSize="11"
-                                           Foreground="{StaticResource GreenBrush}"
-                                           VerticalAlignment="Center"/>
-                                <TextBlock Text="Refresh"
-                                           FontSize="10"
-                                           FontWeight="SemiBold"
-                                           Margin="4,0,0,0"
-                                           Foreground="{StaticResource GreenBrush}"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
+                                Click="BtnPauseQueue_Click">
+                            <TextBlock x:Name="PlayPauseQueueIcon"
+                                       Text="&#xE769;"
+                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontSize="13"
+                                       Foreground="{StaticResource GreenBrush}"
+                                       VerticalAlignment="Center"/>
                         </Button>
-                        <!-- Git #3444 — overflow menu: consolidates Pause/Resume, the broad
-                             GitHub-calling refresh, and Pin/Collapse into one "⋯" menu so the
-                             header row declutters to one primary action (Refresh, above) plus
-                             this. Opened programmatically on click (BtnQueueMenu_Click) since a
-                             Button.ContextMenu doesn't open on a normal left-click by default. -->
-                        <Button x:Name="BtnQueueMenu"
+                        <!-- Git #3702 — one real, combined refresh icon replacing both
+                             BtnRefreshQueueLocal (local-only Postgres re-read) and the old
+                             overflow menu's BtnRefreshGitHubTiles (Git Board + Batter Up + AI
+                             Batter Up + epic issues + in-flight + focus progress). Sequential,
+                             not parallel: Git first, then — once that completes — the local
+                             queue re-read, per Shane's exact ask. Spins for the whole span via
+                             BtnRefreshCombined_Click (RefreshCombinedIconRotate). -->
+                        <Button x:Name="BtnRefreshCombined"
                                 Style="{StaticResource IconButton}"
-                                ToolTip="More queue actions — Pause/Resume, Pin, Refresh Git Board"
+                                ToolTip="Refresh — Git Board, Batter Up, AI Batter Up, then the queue"
                                 Padding="6,4"
                                 Margin="2,0,0,0"
-                                Click="BtnQueueMenu_Click">
-                            <TextBlock Text="&#xE712;"
+                                Click="BtnRefreshCombined_Click">
+                            <TextBlock x:Name="RefreshCombinedIcon"
+                                       Text="&#xE72C;"
                                        FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
-                                       FontSize="14"
-                                       Foreground="{StaticResource Subtext0Brush}"
-                                       VerticalAlignment="Center"/>
-                            <Button.ContextMenu>
-                                <ContextMenu x:Name="QueueOverflowMenu" Placement="Bottom">
-                                    <!-- Global "Queue Paused / Running" toggle — separate from
-                                         any individual build's Stop. While paused, new queued
-                                         items are NOT picked up/started (already-running builds
-                                         keep going); queuing still works normally. See
-                                         QueueWatcherService.SetPaused and the
-                                         BuildQueuePanel.QueuePause.cs partial. Colour + glyph
-                                         flip in code-behind (SyncPauseToggleVisual) so the
-                                         paused state stays unmistakable even inside the menu. -->
-                                    <MenuItem x:Name="MiPauseQueue" Click="BtnPauseQueue_Click">
-                                        <MenuItem.Header>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock x:Name="PauseQueueIcon"
-                                                           Text="&#xE769;"
-                                                           FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
-                                                           FontSize="12"
-                                                           Width="20"
-                                                           VerticalAlignment="Center"/>
-                                                <TextBlock x:Name="PauseQueueLabel"
-                                                           Text="Running"
-                                                           FontWeight="SemiBold"
-                                                           VerticalAlignment="Center"/>
-                                            </StackPanel>
-                                        </MenuItem.Header>
-                                    </MenuItem>
-                                    <!-- Manual-only GitHub (Shane, 2026-08-14): the three
-                                         GitHub-backed tiles below (In-Flight / To-Do /
-                                         Completed) no longer poll on a timer — this is their
-                                         single, explicit refresh trigger, matching the Git
-                                         Board's own #863 header refresh icon.
-                                         Git #1816 — this is now also THE one shared refresh
-                                         control for Git Board + Batter Up + AI Batter Up:
-                                         BtnRefreshGitHubTiles_Click raises
-                                         FullGitRefreshRequested, which MainWindow wires to
-                                         LeftSidebar.PopulateGitTrackerBoard(forceFresh: true);
-                                         that fetch fires BoardRefreshCompleted on completion,
-                                         which #1813 already wired to also await
-                                         BatterUpPanel.RefreshAsync() and
-                                         AiBatterUpPanel.RefreshAsync(). -->
-                                    <MenuItem x:Name="BtnRefreshGitHubTiles"
-                                              Header="Refresh Git Board, Batter Up, AI Batter Up, milestones + focus progress"
-                                              Click="BtnRefreshGitHubTiles_Click">
-                                        <MenuItem.Icon>
-                                            <TextBlock Text="&#xE72C;"
-                                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
-                                                       FontSize="12"
-                                                       Foreground="{StaticResource BlueBrush}"/>
-                                        </MenuItem.Icon>
-                                    </MenuItem>
-                                    <MenuItem x:Name="BtnPinQueue"
-                                              Header="Pin / Collapse Panel"
-                                              Click="BtnPinQueue_Click">
-                                        <MenuItem.Icon>
-                                            <TextBlock x:Name="PinQueueIcon"
-                                                       Text="&#xE718;"
-                                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
-                                                       FontSize="12"
-                                                       Foreground="{StaticResource Subtext0Brush}"/>
-                                        </MenuItem.Icon>
-                                    </MenuItem>
-                                </ContextMenu>
-                            </Button.ContextMenu>
+                                       FontSize="13"
+                                       Foreground="{StaticResource GreenBrush}"
+                                       VerticalAlignment="Center"
+                                       RenderTransformOrigin="0.5,0.5">
+                                <TextBlock.RenderTransform>
+                                    <RotateTransform x:Name="RefreshCombinedIconRotate" Angle="0"/>
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
                         </Button>
                     </StackPanel>
                 </DockPanel>
