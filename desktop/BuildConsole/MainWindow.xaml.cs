@@ -4792,6 +4792,10 @@ namespace BuildConsole
                     : "")
                 : "";
             TopConservationUsageText.ToolTip = status.WeeklyToolTip;
+            // Git #3593 — the usage%/reset-countdown text just above is one of the five real
+            // values the collapsed top-bar summary composes; keep it live here too, not just from
+            // the toggle-click paths.
+            RefreshTopBarSummaryUi();
 
             // Git #2003 — feed the real per-account reading to the automation service, which runs
             // the auto-conservation state machine (engage/release with hysteresis, fail-closed on a
@@ -6735,6 +6739,38 @@ namespace BuildConsole
         // and EditBuildPromptDialog's own initial selector state) falls back to. The
         // per-build Account selector from #1416 remains a real, explicit override —
         // this toggle only changes what NEW builds default to going forward.
+        // Git #3593 — Account/Location/Auto/Conservation/Drain were five always-visible
+        // top-bar controls; they're now one clickable summary (TopBarSummaryBorder) whose
+        // click opens this real dropdown, same "⋯" overflow-menu mechanism BuildQueuePanel
+        // already uses (Git #3444): a Border has no Click event and a ContextMenu doesn't
+        // open on a normal left-click by default, so it's opened programmatically here.
+        private void TopBarSummary_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border b && b.ContextMenu != null)
+            {
+                b.ContextMenu.PlacementTarget = b;
+                b.ContextMenu.IsOpen = true;
+            }
+        }
+
+        /// <summary>Git #3593 — composes the five real current-state strings (Account, Location,
+        /// Auto, Conservation, and the Conservation usage%/reset-countdown text) that used to be
+        /// five separate always-visible controls into the one collapsed summary line. Called from
+        /// each of the underlying RefreshTop*Ui methods (and from UsageMeter_StatusChanged, whose
+        /// TopConservationUsageText update also feeds this) so the summary never goes stale
+        /// relative to whichever individual control last changed.</summary>
+        private void RefreshTopBarSummaryUi()
+        {
+            if (TopBarSummaryText == null) return; // called before InitializeComponent in edge paths
+            string usage = string.IsNullOrEmpty(TopConservationUsageText?.Text) ? "" : $" ({TopConservationUsageText.Text})";
+            TopBarSummaryText.Text =
+                $"{TopAccountToggleText.Text} · {TopLocationToggleText.Text} · Auto {TopAutomationToggleText.Text} · Conservation {TopConservationToggleText.Text}{usage}";
+        }
+
+        /// <summary>Git #3593 — MenuItem.Click wrapper: reuses TopAccountToggle_Click's exact body
+        /// unchanged (this is a presentation consolidation, not a behavior change).</summary>
+        private void MiAccountToggle_Click(object sender, RoutedEventArgs e) => TopAccountToggle_Click(sender, null!);
+
         private void TopAccountToggle_Click(object sender, MouseButtonEventArgs e)
         {
             var settings = BuildConsole.Services.BuildConsoleSettings.Load();
@@ -6776,6 +6812,7 @@ namespace BuildConsole
             TopAccountToggleBorder.ToolTip = secondary
                 ? "Account: SECONDARY — new builds launch against Shane's overflow Pro account (CLAUDE_CONFIG_DIR override). Click to switch new builds back to primary."
                 : "Account: PRIMARY (default Max 20x account) — new builds launch normally. Click to default new builds to the secondary overflow account instead.\n\nThis only sets the default for NEW builds; the Edit Build Prompt dialog's own Account selector always overrides it per build.";
+            RefreshTopBarSummaryUi();
         }
 
         /// <summary>Git #1419 — the `account` value a newly queued build should carry when it has
@@ -6811,6 +6848,10 @@ namespace BuildConsole
 
         /// <summary>The operation a live one-shot override was granted for (shown in the toggle tooltip + logged), or null.</summary>
         private string? _meteredOverrideOperation;
+
+        /// <summary>Git #3593 — MenuItem.Click wrapper: reuses TopLocationToggle_Click's exact body
+        /// unchanged (this is a presentation consolidation, not a behavior change).</summary>
+        private void MiLocationToggle_Click(object sender, RoutedEventArgs e) => TopLocationToggle_Click(sender, null!);
 
         private void TopLocationToggle_Click(object sender, MouseButtonEventArgs e)
         {
@@ -6862,6 +6903,7 @@ namespace BuildConsole
             TopLocationToggleBorder.ToolTip = metered
                 ? "Location: RENTAL (capped Verizon — metered). Network-heavy operations are gated: launched builds carry BUILD_NETWORK=metered, `pnpm install` at the repo root is refused (.pnpmfile.cjs), and the version-update deploy requires a one-shot right-click override. Click to switch to Home when you're back on fibre."
                 : "Location: HOME (fibre — unmetered). Network-heavy operations run at full weight. Click to switch to Rental when you're on the capped connection, to gate metered work.";
+            RefreshTopBarSummaryUi();
         }
 
         /// <summary>Git #1986 — the `network` value a newly queued build should carry when it has
@@ -6909,6 +6951,10 @@ namespace BuildConsole
         // original model/effort (per Shane's own requirement) — no confirm dialog, since a
         // direct toggle click is already the deliberate act; the Drain button below is the
         // separate, confirm-first bulk lever for the "release everything" moment.
+        /// <summary>Git #3593 — MenuItem.Click wrapper: reuses TopConservationToggle_Click's exact
+        /// body unchanged (this is a presentation consolidation, not a behavior change).</summary>
+        private void MiConservationToggle_Click(object sender, RoutedEventArgs e) => TopConservationToggle_Click(sender, null!);
+
         private void TopConservationToggle_Click(object sender, MouseButtonEventArgs e)
         {
             var settings = BuildConsole.Services.BuildConsoleSettings.Load();
@@ -6932,6 +6978,10 @@ namespace BuildConsole
         // exactly as the pure manual #1989/#1419 controls. When on, automation is still only a
         // default — it fails closed on any unavailable/errored/stale reading and never overrides a
         // manual Conservation toggle inside its hold window. See UsageAutomationService.
+        /// <summary>Git #3593 — MenuItem.Click wrapper: reuses TopAutomationToggle_Click's exact
+        /// body unchanged (this is a presentation consolidation, not a behavior change).</summary>
+        private void MiAutomationToggle_Click(object sender, RoutedEventArgs e) => TopAutomationToggle_Click(sender, null!);
+
         private void TopAutomationToggle_Click(object sender, MouseButtonEventArgs e)
         {
             var settings = BuildConsole.Services.BuildConsoleSettings.Load();
@@ -6986,6 +7036,7 @@ namespace BuildConsole
             TopAutomationToggleBorder.ToolTip = on
                 ? $"Usage automation: ON — {svc.StatusText()}.\n\nEngages Conservation for you when the account with the most headroom still crosses the threshold, and routes heavy builds to the account with more headroom. Fails closed: if a reading is unavailable, errored, or stale (>{(int)BuildConsole.Services.UsageAutomationService.StaleAfter.TotalMinutes}m old) it does nothing and holds the last manual state. A manual Conservation toggle wins for {(int)BuildConsole.Services.UsageAutomationService.ManualHoldWindow.TotalHours}h. Click to turn off (full manual control)."
                 : "Usage automation: OFF — the Conservation toggle and account routing are fully manual (as before). Click to let the live usage meter engage Conservation and route heavy builds to the account with more headroom automatically.";
+            RefreshTopBarSummaryUi();
         }
 
         /// <summary>Repaints the title-bar Conservation Cap toggle from the persisted setting.</summary>
@@ -7010,6 +7061,7 @@ namespace BuildConsole
             TopConservationToggleBorder.ToolTip = on
                 ? "Conservation Cap: ON — no build above Sonnet High launches; it's parked instead (right-click a parked build for Run at Full Model, or use Drain). Click to turn off (releases every parked build back to the queue)."
                 : "Conservation Cap: OFF — builds launch normally. Click to turn on when a usage window is tight: nothing above Sonnet High will launch until you turn this off or Drain.";
+            RefreshTopBarSummaryUi();
         }
 
         /// <summary>Git #1989 — the shared release used by both the toggle's OFF click and
