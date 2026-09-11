@@ -141,8 +141,16 @@ app.use("/api", router);
 const JWT_SECRET = "test-secret";
 process.env.JWT_SECRET = JWT_SECRET;
 
+// #3465 — every route here now asks a customer capability, which is decided from the
+// caller's rung. A real customer session always carries one (auth.ts buildUserPayload),
+// so the token does too; a claim-less token is refused, see
+// portal-billing-capability-gates.test.ts.
 function makeClientToken(userId: number): string {
-  return jwt.sign({ id: userId, email: "client@example.com", role: "client" }, JWT_SECRET, { expiresIn: "1h" });
+  return jwt.sign(
+    { id: userId, email: "client@example.com", role: "client", mspRole: "CustomerUser", mspId: 1, customerId: 1 },
+    JWT_SECRET,
+    { expiresIn: "1h" },
+  );
 }
 
 // #175 (portal.ts route decommission, carrying forward the #172 mailer.ts

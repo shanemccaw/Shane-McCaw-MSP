@@ -26,6 +26,7 @@ import {
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
+import { requireCustomerCapability } from "../middlewares/rbac-capability.ts";
 import {
   getOrCreateRetainerPrice,
   monthlyPriceCentsOf,
@@ -51,7 +52,7 @@ function apiError(res: Response, status: number, message: string) {
 // clientServiceId so the billing page can merge interval + pending-switch state
 // into each subscription card without touching the existing endpoint.
 
-router.get("/portal/billing/retainer-intervals", requireAuth, async (req: Request, res: Response) => {
+router.get("/portal/billing/retainer-intervals", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
 
@@ -93,7 +94,7 @@ const switchSchema = z.object({
   targetInterval: z.enum(["month", "year"]),
 });
 
-router.post("/portal/billing/subscriptions/:id/switch-interval", requireAuth, async (req: Request, res: Response) => {
+router.post("/portal/billing/subscriptions/:id/switch-interval", requireAuth, requireCustomerCapability("billing.manage"), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const id = parseInt(String(req.params.id ?? ""), 10);
@@ -210,7 +211,7 @@ router.post("/portal/billing/subscriptions/:id/switch-interval", requireAuth, as
 
 // ── POST /api/portal/billing/subscriptions/:id/cancel-interval-switch ─────────
 
-router.post("/portal/billing/subscriptions/:id/cancel-interval-switch", requireAuth, async (req: Request, res: Response) => {
+router.post("/portal/billing/subscriptions/:id/cancel-interval-switch", requireAuth, requireCustomerCapability("billing.manage"), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const id = parseInt(String(req.params.id ?? ""), 10);

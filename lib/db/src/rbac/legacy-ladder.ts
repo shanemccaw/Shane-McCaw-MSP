@@ -385,18 +385,34 @@ export const LEGACY_CAPABILITY_RULES: readonly LegacyCapabilityRule[] = Object.f
   {
     system: "customer",
     key: "billing.view",
-    source: "artifacts/api-server/src/routes/portal-billing.ts:60-513 (requireAuth only)",
+    source: "artifacts/api-server/src/routes/portal-billing.ts:60-513 (requireAuth only, before #3465)",
     /**
-     * Every billing route in that file is `requireAuth` and nothing else, so today
-     * the answer is "yes" for every authenticated principal — the tenant scoping
-     * inside each handler limits WHICH invoices are returned, not WHO may ask.
+     * Until #3465 every billing route in that file was `requireAuth` and nothing
+     * else, so the answer was "yes" for every authenticated principal — the tenant
+     * scoping inside each handler limits WHICH invoices are returned, not WHO may ask.
      *
      * This is the capability #1696 was actually filed about (*"the customer needs
      * RBAC to stop say an engineer from seeing billing"*). Transcribing it as
-     * "everyone" is the honest statement of today, not an endorsement: narrowing
-     * it is a real product change that belongs to the step which moves the route
-     * onto the evaluator, not to a step whose entire contract is that nothing
-     * observable changes.
+     * "everyone" is the honest statement of that rule, not an endorsement. #3465
+     * moved the read routes onto this capability WITHOUT narrowing it: who should
+     * hold it is a product decision (#1696's money test), and it is now a mapping-row
+     * edit rather than a code change.
+     */
+    decide: () => true,
+  },
+  {
+    system: "customer",
+    key: "billing.manage",
+    source: "artifacts/api-server/src/routes/portal-billing.ts:133-578 (requireAuth only, before #3465)",
+    /**
+     * The write half of the same surface — pay an invoice, cancel / resume /
+     * re-subscribe a subscription, open the Stripe customer portal, and
+     * portal-retainer-billing.ts's interval switch. Every one of them was also
+     * `requireAuth` and nothing else, so this too was "yes" for everyone.
+     *
+     * #3465 split it from `billing.view` so a role can be allowed to SEE billing
+     * without being allowed to spend or cancel. The split alone changes nobody's
+     * access; the seed grants it to exactly the principals the old rule passed.
      */
     decide: () => true,
   },

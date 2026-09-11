@@ -125,6 +125,13 @@ const KNOWN_FAIL_CLOSED_DIVERGENCES: readonly KnownDivergence[] = [
     issue: "#3360",
     why: "portal-billing.ts is requireAuth-only, so 'everyone' includes a principal holding no rung",
   },
+  {
+    shape: "unrecognised msp_role",
+    system: "customer",
+    capability: "billing.manage",
+    issue: "#3360",
+    why: "portal-billing.ts's writes were requireAuth-only, so 'everyone' included a principal holding no rung",
+  },
 ];
 
 const divergenceKey = (shape: string, system: RbacSystem, capability: string) => `${shape}|${system}:${capability}`;

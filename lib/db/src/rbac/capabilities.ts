@@ -139,10 +139,22 @@ export const RBAC_CAPABILITIES: readonly RbacCapability[] = Object.freeze([
     description:
       "View the customer's invoices, subscriptions and payment history. This is the " +
       "capability #1696 was filed about — Shane, 2026-08-29: 'the customer needs RBAC to " +
-      "stop say an engineer from seeing billing.' The surface is real and live " +
-      "(artifacts/api-server/src/routes/portal-billing.ts) but is gated by requireAuth " +
-      "alone today, so every authenticated customer user can read it. Cataloguing it " +
-      "changes nothing on its own; #2458 is what moves that route onto this evaluator.",
+      "stop say an engineer from seeing billing.' Enforced on every read route in " +
+      "artifacts/api-server/src/routes/portal-billing.ts and portal-retainer-billing.ts " +
+      "(#3465); the writes on the same surface ask billing.manage instead.",
+  },
+  {
+    system: "customer",
+    key: "billing.manage",
+    category: "billing",
+    label: "Manage billing",
+    description:
+      "Act on the customer's billing: pay an invoice, cancel, resume or re-subscribe a " +
+      "subscription, switch a retainer's billing interval, and open the Stripe customer " +
+      "portal (where cards change and subscriptions can be cancelled). Split from " +
+      "billing.view by #3465 because these are money-path writes, and a capability named " +
+      "for a read should not authorise them. Enforced on every write route in " +
+      "artifacts/api-server/src/routes/portal-billing.ts and portal-retainer-billing.ts.",
   },
 ]);
 

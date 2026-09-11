@@ -78,9 +78,9 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
   // Shane, 2026-08-29: *"the customer needs RBAC to stop say an engineer from
   // seeing billing."* Today every seeded customer role is in `billing.view`'s
   // allow set, so this hides nothing; it becomes real the moment a customer
-  // role is defined without it, with no code change. The BILLING ROUTES ARE
-  // STILL THE GATE — `portal-billing.ts` is `requireAuth`-only, and narrowing
-  // it is #1698's mechanical route-coverage pass, not this step's to make.
+  // role is defined without it, with no code change. This is a presentation
+  // hint only — the gate is server-side: every read route in
+  // `portal-billing.ts` asks the same `customer:billing.view` (#3465).
   const showBilling = can("customer", "billing.view");
   return (
     <div

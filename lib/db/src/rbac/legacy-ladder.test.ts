@@ -243,13 +243,17 @@ describe("the capability columns are read ASYMMETRICALLY today, and the transcri
     }
   });
 
-  it("customer:billing.view is open to every authenticated principal today", () => {
-    for (const role of LEGACY_ROLE_ORDER) {
-      expect(legacyDecision(asRole(role), "customer", "billing.view")).toBe(true);
+  it("customer:billing.view and customer:billing.manage were open to every authenticated principal", () => {
+    // #3465 split the billing surface into a read and a write capability; both
+    // transcribe the same pre-#3465 rule, because every route was requireAuth only.
+    for (const key of ["billing.view", "billing.manage"]) {
+      for (const role of LEGACY_ROLE_ORDER) {
+        expect(legacyDecision(asRole(role), "customer", key)).toBe(true);
+      }
+      // Including one with no recognised role at all — portal-billing.ts was
+      // requireAuth and nothing else. See #3360.
+      expect(legacyDecision(principal({ mspRole: "NotARole" }), "customer", key)).toBe(true);
     }
-    // Including one with no recognised role at all — portal-billing.ts is
-    // requireAuth and nothing else. See #3360.
-    expect(legacyDecision(principal({ mspRole: "NotARole" }), "customer", "billing.view")).toBe(true);
   });
 
   it("customer:team.manage FAILS OPEN for an unrecognised role — the #3360 defect, recorded not reproduced", () => {

@@ -83,6 +83,8 @@ import {
   type RoleRow,
 } from "./rbac-capability-source.ts";
 import type { AuthUser } from "./requireAuth.ts";
+import type { NextFunction, Request, Response } from "express";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 
 /** The migration an unseeded environment is missing. Named in every such log line. */
 const SEED_MIGRATION = "lib/db/migrations/manual/2026-09-09-rbac-seed-current-model-2457.sql";
@@ -204,6 +206,54 @@ export async function userHasCapability(
 
   const decision = evaluateCapability({ system, capability, roleIds, mappings, orgId });
   return decision.allowed ? { kind: "allow" } : { kind: "deny" };
+}
+
+/**
+ * Route gate for a CUSTOMER-system capability (#3465, part of #1696).
+ *
+ * `requireCapability` (./requireAuth.ts) decides the seven `ladder.*` rungs and
+ * nothing else — `requireCapability-keys.test.ts` pins that. A route whose requirement
+ * is a real customer-side capability mounts this instead, and this asks
+ * `userHasCapability`, so the decision is exactly the one portal-team.ts's gate makes:
+ * the claim's rung plus the live `cap.*` grants, deny wins, read every request.
+ *
+ * Mount it AFTER `requireAuth`. The three outcomes answer the way `requireCapability`
+ * answers them — allow → `next()`, deny → 403, and an unreadable or unseeded model →
+ * 503, never 403, because a missing migration must not read as a permission decision.
+ * Every path writes a response or calls `next()`; nothing rejects out of it.
+ */
+export function requireCustomerCapability(capability: string) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const user = req.user;
+    if (!user) {
+      apiError(res, 401, ApiErrorCode.AUTH, "Authentication required");
+      return;
+    }
+
+    let outcome: CapabilityOutcome;
+    try {
+      outcome = await userHasCapability(user, "customer", capability);
+    } catch (err) {
+      // Unreachable by design — userHasCapability catches its own reads — but an
+      // authorization path does not get to throw.
+      outcome = { kind: "unavailable", reason: "capability_check_threw" };
+      log.error({ err, system: "customer", capability }, "requireCustomerCapability threw unexpectedly — failing closed");
+    }
+
+    if (outcome.kind === "allow") {
+      next();
+      return;
+    }
+    if (outcome.kind === "unavailable") {
+      req.log?.error(
+        { capability: `customer:${capability}`, reason: outcome.reason },
+        "requireCustomerCapability could not consult the RBAC model — failing closed",
+      );
+      apiError(res, 503, ApiErrorCode.INTERNAL, "Authorization is temporarily unavailable");
+      return;
+    }
+    apiError(res, 403, ApiErrorCode.FORBIDDEN, "Insufficient privileges");
+  };
 }
 
 /**

@@ -155,3 +155,50 @@ describe("#2460 — requireCapability call sites name catalogued capabilities", 
     for (const key of used) expect(CATALOGUED_MSP_KEYS.has(key)).toBe(true);
   });
 });
+
+// ── #3465 — the customer-system gate gets the same mechanical check ─────────────
+//
+// `requireCustomerCapability` takes a bare string for the same reason
+// `requireCapability` does, so it gets the same scan: a typo there fails closed as a
+// 503 that looks like an unseeded model, and a dynamic key would be invisible to
+// #1698's route-coverage pass.
+
+/** Its own definition takes `capability: string` — a signature, not a call site. */
+const CUSTOMER_GATE_DEFINITION = "middlewares/rbac-capability.ts";
+const CUSTOMER_LITERAL_CALL = /requireCustomerCapability\(\s*"([^"]*)"\s*\)/g;
+const CUSTOMER_ANY_CALL = /requireCustomerCapability\(\s*([^)]*?)\s*\)/g;
+
+const customerSites: Site[] = [];
+const customerDynamicSites: string[] = [];
+
+for (const file of candidateFiles()) {
+  if (rel(file) === CUSTOMER_GATE_DEFINITION) continue;
+  const source = code(file);
+  for (const match of source.matchAll(CUSTOMER_LITERAL_CALL)) {
+    customerSites.push({ file: rel(file), key: match[1]! });
+  }
+  for (const match of source.matchAll(CUSTOMER_ANY_CALL)) {
+    const arg = match[1]!;
+    if (/^"[^"]*"$/.test(arg) || arg === "") continue;
+    customerDynamicSites.push(`${rel(file)}: requireCustomerCapability(${arg})`);
+  }
+}
+
+const CATALOGUED_CUSTOMER_KEYS = new Set(
+  RBAC_CAPABILITIES.filter((c) => c.system === "customer").map((c) => c.key),
+);
+
+describe("#3465 — requireCustomerCapability call sites name catalogued customer capabilities", () => {
+  it("finds the billing gates at all (13 routes across portal-billing.ts and portal-retainer-billing.ts)", () => {
+    expect(customerSites.length).toBeGreaterThanOrEqual(13);
+  });
+
+  it("every key is a catalogued CUSTOMER capability", () => {
+    const unknown = customerSites.filter((s) => !CATALOGUED_CUSTOMER_KEYS.has(s.key));
+    expect(unknown.map((s) => `${s.file} -> ${s.key}`)).toEqual([]);
+  });
+
+  it("no call site passes a non-literal", () => {
+    expect(customerDynamicSites).toEqual([]);
+  });
+});

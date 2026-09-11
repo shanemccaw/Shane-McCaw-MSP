@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, invoicesTable, projectsTable, usersTable, contractsTable, servicesTable, clientServicesTable } from "@workspace/db";
 import { eq, and, desc, isNotNull } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
+import { requireCustomerCapability } from "../middlewares/rbac-capability.ts";
 import { sendEmailFromTemplate, getTenantHealthBlockHtml, canSendAutomatedCustomerEmail, retainerResumedEmail } from "../lib/mailer.ts";
 import { sendAdminSms } from "../lib/sms.ts";
 import { createAuditLog } from "../lib/audit.ts";
@@ -57,7 +58,16 @@ async function getOrCreateStripeCustomer(
   }
 }
 
-router.get("/portal/invoices", requireAuth, async (req: Request, res: Response) => {
+// ─── Authorization (#3465, part of #1696) ─────────────────────────────────────
+// Every route in this file answers to a customer-system capability, not to
+// requireAuth alone. Reads ask customer:billing.view; anything that moves money or
+// changes a subscription asks customer:billing.manage. The tenant/user scoping
+// inside each handler limits WHICH rows come back — the capability decides WHO may
+// ask at all. Both are seeded to every rung (lib/db/migrations/manual/
+// 2026-09-10-rbac-billing-manage-3465.sql), so narrowing either is a mapping-row
+// edit, not a code change.
+
+router.get("/portal/invoices", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const invoices = await db.select().from(invoicesTable)
     .where(eq(invoicesTable.clientUserId, userId))
@@ -66,7 +76,7 @@ router.get("/portal/invoices", requireAuth, async (req: Request, res: Response) 
 });
 
 // ─── CLIENT: Invoice detail ───────────────────────────────────────────────────
-router.get("/portal/invoices/:id", requireAuth, async (req: Request, res: Response) => {
+router.get("/portal/invoices/:id", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
@@ -130,7 +140,7 @@ router.get("/portal/invoices/:id", requireAuth, async (req: Request, res: Respon
   res.json({ invoice, project, contracts, client });
 });
 
-router.post("/portal/invoices/:id/pay", requireAuth, async (req: Request, res: Response) => {
+router.post("/portal/invoices/:id/pay", requireAuth, requireCustomerCapability("billing.manage"), async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
@@ -188,7 +198,7 @@ router.post("/portal/invoices/:id/pay", requireAuth, async (req: Request, res: R
   res.json({ url: session.url });
 });
 
-router.get("/portal/invoices/:id/download", requireAuth, async (req: Request, res: Response) => {
+router.get("/portal/invoices/:id/download", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
@@ -204,7 +214,7 @@ router.get("/portal/invoices/:id/download", requireAuth, async (req: Request, re
   res.download(filePath, invoice.pdfFilename);
 });
 
-router.get("/portal/billing/stripe-receipts", requireAuth, async (req: Request, res: Response) => {
+router.get("/portal/billing/stripe-receipts", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
   let stripeKey: string;
@@ -265,7 +275,7 @@ router.get("/portal/billing/stripe-receipts", requireAuth, async (req: Request, 
 });
 
 // ─── CLIENT: Subscriptions ────────────────────────────────────────────────────
-router.get("/portal/billing/subscriptions", requireAuth, async (req: Request, res: Response) => {
+router.get("/portal/billing/subscriptions", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
   const rows = await db.select({
@@ -341,7 +351,7 @@ router.get("/portal/billing/subscriptions", requireAuth, async (req: Request, re
   res.json(results);
 });
 
-router.post("/portal/billing/subscriptions/:id/cancel", requireAuth, async (req: Request, res: Response) => {
+router.post("/portal/billing/subscriptions/:id/cancel", requireAuth, requireCustomerCapability("billing.manage"), async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
@@ -396,7 +406,7 @@ router.post("/portal/billing/subscriptions/:id/cancel", requireAuth, async (req:
 });
 
 // ─── CLIENT: Resume a cancel-at-period-end subscription ──────────────────────
-router.post("/portal/billing/subscriptions/:id/resume", requireAuth, async (req: Request, res: Response) => {
+router.post("/portal/billing/subscriptions/:id/resume", requireAuth, requireCustomerCapability("billing.manage"), async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
@@ -463,7 +473,7 @@ router.post("/portal/billing/subscriptions/:id/resume", requireAuth, async (req:
 });
 
 // ─── CLIENT: Billing portal (manage payment method) ──────────────────────────
-router.post("/portal/billing/customer-portal", requireAuth, async (req: Request, res: Response) => {
+router.post("/portal/billing/customer-portal", requireAuth, requireCustomerCapability("billing.manage"), async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
   let stripeKey: string;
@@ -510,7 +520,7 @@ router.post("/portal/billing/customer-portal", requireAuth, async (req: Request,
 });
 
 // ─── CLIENT: Re-subscribe (new checkout for a canceled subscription) ──────────
-router.post("/portal/billing/subscriptions/:id/resubscribe", requireAuth, async (req: Request, res: Response) => {
+router.post("/portal/billing/subscriptions/:id/resubscribe", requireAuth, requireCustomerCapability("billing.manage"), async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
