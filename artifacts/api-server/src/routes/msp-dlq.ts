@@ -187,7 +187,7 @@ router.patch(
 // POST /api/msp/dlq/bulk-replay
 // Replay multiple DLQ items
 router.post(
-  "/api/msp/dlq/bulk-replay",
+  "/msp/dlq/bulk-replay",
   requireAuth,
   requireCapability("ladder.msp-admin"),
   async (req: Request, res: Response) => {
