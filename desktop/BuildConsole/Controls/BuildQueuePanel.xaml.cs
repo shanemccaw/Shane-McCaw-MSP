@@ -167,6 +167,12 @@ namespace BuildConsole.Controls
         /// UNKNOWN — the header falls back to the old declared-blocker heuristic and marks
         /// itself provisional (see <see cref="UpdateQueueStatusCounts"/>).</summary>
         private HashSet<int>? _openIssues;
+        /// <summary>Git #3700 — real, live set of issue numbers currently sitting in the board's
+        /// "Ask Shane" status, fed by <see cref="ApplyAskShaneSet"/> (MainWindow's
+        /// AskShaneMonitorService poll, mirror-driven). Null until the first poll lands — a card's
+        /// <see cref="QueueGraphNode.IsAskingShane"/> reads false in that cold-start window rather
+        /// than guessing, the same fail-safe shape <see cref="_openIssues"/> uses elsewhere.</summary>
+        private HashSet<int>? _askShaneNumbers;
         /// <summary>Git #2107 — when <see cref="_openIssues"/> was last populated, whether by a
         /// Git Board refresh (<see cref="ApplyOpenIssueSet"/>) or this panel's own event-triggered
         /// recheck (<see cref="AutoRecheckOpenIssuesOnTransitionToVerifyingAsync"/>). Surfaced in
@@ -305,6 +311,12 @@ namespace BuildConsole.Controls
             public string Status = "queued";
             public bool IsBlocked;
             public bool IsWaitingForInput;
+            /// <summary>Git #3700 — this item's real GitHub issue currently sits in the board's
+            /// "Ask Shane" status (see <see cref="_askShaneNumbers"/>): a genuine, standing
+            /// decision Shane needs to make, not an active mid-build chat prompt (that's
+            /// <see cref="IsWaitingForInput"/>). Never gated on this item's own raw queue
+            /// status, mirroring #3626's "Blocked" no-gating principle.</summary>
+            public bool IsAskingShane;
             public List<int> BlockedBy = new();
             public QueueItem? Item;
             public MainWindow.PersistedQueueDisplayItem? RestartItem;
@@ -1310,6 +1322,17 @@ namespace BuildConsole.Controls
             try { if (QueueGraphContainer != null) RenderQueue(_lastItems); } catch { }
         }
 
+        /// <summary>Git #3700 — fed by MainWindow's AskShaneMonitorService poll (mirror-driven, no
+        /// new GitHub cost of its own here). An empty set IS meaningful here (unlike
+        /// <see cref="ApplyOpenIssueSet"/>'s "empty == couldn't determine" guard) — zero items
+        /// genuinely in "Ask Shane" is a real, common state, and a card's 🏷 label must clear the
+        /// moment its item leaves that status, not stay stuck on a stale non-empty set.</summary>
+        public void ApplyAskShaneSet(HashSet<int> askShaneNumbers)
+        {
+            _askShaneNumbers = askShaneNumbers ?? new HashSet<int>();
+            try { if (QueueGraphContainer != null) RenderQueue(_lastItems); } catch { }
+        }
+
         /// <summary>
         /// Git #2107 — confirmed root cause: <see cref="_openIssues"/> is only ever populated by
         /// <see cref="ApplyOpenIssueSet"/>, fed exclusively by Git Board's own manual/tab-open
@@ -2208,6 +2231,9 @@ namespace BuildConsole.Controls
                 // to declared-blocker behaviour, matching the header's provisional count.
                 IsBlocked = IsGenuinelyBlocked(item, cleanBlockers),
                 IsWaitingForInput = isWaitingForInput,
+                // Git #3700 — real board Status membership, not gated on this item's own raw
+                // queue status (mirrors #3626's IsBlocked no-gating).
+                IsAskingShane = item.GithubNumber.HasValue && (_askShaneNumbers?.Contains(item.GithubNumber.Value) ?? false),
                 BlockedBy = cleanBlockers,
                 Item = item,
                 BuildSet = string.IsNullOrWhiteSpace(item.BuildSet) ? null : item.BuildSet.Trim()
@@ -4282,11 +4308,16 @@ namespace BuildConsole.Controls
             var item = node.Item!;
             bool isWaitingForInput = node.IsWaitingForInput;
             bool isBlocked = node.IsBlocked;
+            // Git #3700 — a real, standing decision Shane needs to make (board status), distinct
+            // from isWaitingForInput's live mid-build chat prompt. Checked right after it in every
+            // priority chain below: the second-most-urgent "needs Shane" signal on the card.
+            bool isAskingShane = node.IsAskingShane;
             bool isSelected = _selectedQueueItemId == item.Id;
             bool isPaused = BuildConsoleSettings.Load().PausedBuildIds.Contains(item.Id);
 
             Color cardBorderColor = isSelected ? Color.FromRgb(0x89, 0xB4, 0xFA) :
                 (isWaitingForInput ? Color.FromRgb(0xF9, 0xE2, 0xAF) :
+                (isAskingShane ? Color.FromRgb(0xF5, 0xC2, 0xE7) :
                 (item.Status == "running" ? Color.FromRgb(0x45, 0x5A, 0x82) :
                 (isPaused ? Color.FromRgb(0xFA, 0xB3, 0x87) :
                 (isBlocked ? Color.FromRgb(0x5A, 0x2A, 0x34) :
@@ -4302,10 +4333,11 @@ namespace BuildConsole.Controls
                 // to revisit (override/drain), not just a passive staging spot.
                 (item.Status == Services.AccountCapPolicy.CappedStatus ? Color.FromRgb(0xFA, 0xB3, 0x87) :
                 (item.Status == "external" ? Color.FromRgb(0x89, 0xB4, 0xFA) :
-                Color.FromRgb(0x31, 0x32, 0x44)))))))))));
+                Color.FromRgb(0x31, 0x32, 0x44))))))))))));
 
             Color cardBgColor = isSelected ? Color.FromRgb(0x1B, 0x22, 0x34) :
                 (isWaitingForInput ? Color.FromRgb(0x23, 0x1E, 0x18) :
+                (isAskingShane ? Color.FromRgb(0x27, 0x1B, 0x24) :
                 (item.Status == "running" ? Color.FromRgb(0x15, 0x19, 0x26) :
                 (isPaused ? Color.FromRgb(0x2A, 0x20, 0x1A) :
                 (isBlocked ? Color.FromRgb(0x1E, 0x18, 0x22) :
@@ -4314,13 +4346,13 @@ namespace BuildConsole.Controls
                 (item.Status == "parked" ? Color.FromRgb(0x1E, 0x1F, 0x2A) :
                 (item.Status == Services.AccountCapPolicy.CappedStatus ? Color.FromRgb(0x2A, 0x20, 0x1A) :
                 (item.Status == "external" ? Color.FromRgb(0x15, 0x19, 0x26) :
-                Color.FromRgb(0x18, 0x18, 0x25))))))))));
+                Color.FromRgb(0x18, 0x18, 0x25)))))))))));
 
             var card = new Border
             {
                 Background = new SolidColorBrush(cardBgColor),
                 BorderBrush = new SolidColorBrush(cardBorderColor),
-                BorderThickness = new Thickness(isSelected ? 1.8 : (isWaitingForInput ? 1.5 : 1)),
+                BorderThickness = new Thickness(isSelected ? 1.8 : (isWaitingForInput || isAskingShane ? 1.5 : 1)),
                 CornerRadius = new CornerRadius(6),
                 Padding = new Thickness(8, 6, 8, 6),
                 Margin = new Thickness(0, 2, 0, 3),
@@ -4357,6 +4389,32 @@ namespace BuildConsole.Controls
                     FontWeight = FontWeights.Bold,
                     Foreground = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
                     VerticalAlignment = VerticalAlignment.Center
+                };
+            }
+            // Git #3700 — a real board Status of "Ask Shane" always shows this label, regardless
+            // of the item's own raw queue status (isPaused/running/blocked/etc. below) — same
+            // no-gating principle #3626 established for 🔒 BLOCKED. Checked right after
+            // isWaitingForInput: the second-most-urgent "needs Shane" signal, and visually
+            // distinct (pink, not the peach ASK QUESTION/PAUSED already use) so the two "needs
+            // Shane" cases never look identical on the card.
+            else if (isAskingShane)
+            {
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x1E, 0x30)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xF5, 0xC2, 0xE7)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "❓ NEEDS YOUR INPUT",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xC2, 0xE7)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "This issue's real board Status is \"Ask Shane\" — a standing decision is needed."
                 };
             }
             else if (isPaused)
@@ -5485,6 +5543,8 @@ namespace BuildConsole.Controls
         private (string text, Color color) GhostStatusLabel(QueueGraphNode node)
         {
             if (node.IsWaitingForInput) return ("❓ ASK QUESTION", Color.FromRgb(0xF9, 0xE2, 0xAF));
+            // Git #3700 — same no-gating priority as BuildQueueCard's own pill.
+            if (node.IsAskingShane) return ("❓ NEEDS YOUR INPUT", Color.FromRgb(0xF5, 0xC2, 0xE7));
             if (node.Status == "running") return ("▶ RUNNING", Color.FromRgb(0x89, 0xB4, 0xFA));
             if (node.Item != null && BuildConsoleSettings.Load().PausedBuildIds.Contains(node.Item.Id))
                 return ("⏸ PAUSED", Color.FromRgb(0xFA, 0xB3, 0x87));

@@ -565,6 +565,25 @@
                                            Foreground="{StaticResource Subtext0Brush}"/>
                             </StackPanel>
                         </Button>
+                        <!-- Git #3700 (sub-issue of Feature #1788) — persistent "Ask Shane" counter:
+                             every real, open issue currently sitting in the board's "Ask Shane"
+                             status, needing Shane's own decision. Collapsed entirely at zero (not a
+                             static "0") per the issue's own ask — this button only exists when there
+                             is real work for it to point at. -->
+                        <Button x:Name="BtnAskShane"
+                                AutomationProperties.AutomationId="BtnAskShane"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Ask Shane — items needing your decision"
+                                Click="BtnAskShane_Click"
+                                Padding="6,4"
+                                Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="❓" FontSize="12" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TopAskShaneCount" Text="0" FontSize="10.5" FontWeight="SemiBold"
+                                           Margin="4,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{StaticResource PinkBrush}"/>
+                            </StackPanel>
+                        </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Toggle Primary Side Bar (Ctrl+B)"
                                 Click="ToggleSidebar_Click"

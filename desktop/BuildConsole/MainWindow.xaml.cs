@@ -691,6 +691,7 @@ namespace BuildConsole
 
                 _aiBatterUpPanel.Initialize();
                 WireBatterUpTitleBarCounts();
+                InitializeAskShaneMonitor();
 
                 if (!BuildConsole.Services.AppMode.IsAgent)
                 {

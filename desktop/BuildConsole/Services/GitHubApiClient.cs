@@ -1375,6 +1375,33 @@ namespace BuildConsole.Services
             }).ToList();
         }
 
+        /// <summary>
+        /// Git #3700 — every real, OPEN issue currently sitting in the project board's real
+        /// "Ask Shane" status (<see cref="AskShaneOptionId"/>): an item genuinely needing
+        /// Shane's own decision, not just one flagged for Yes/No review. Same shared
+        /// paginated project-items GraphQL walk <see cref="GetAiBatterUpIssuesAsync"/> uses,
+        /// filtered to this option instead. Reuses <see cref="AiBatterUpBoardIssue"/>'s shape
+        /// (number/title/url/repo, no board-specific fields) rather than inventing a parallel
+        /// type for the same data.
+        /// </summary>
+        public async Task<List<AiBatterUpBoardIssue>> GetAskShaneIssuesAsync()
+        {
+            var nodes = await ScanProjectItemsForStatusAsync(AskShaneOptionId, includeItemId: true, "Ask Shane");
+            return nodes.Select(n =>
+            {
+                var (repoOwner, repoName) = SplitNameWithOwner(n.Content?.Repository?.NameWithOwner);
+                return new AiBatterUpBoardIssue
+                {
+                    Number = n.Content!.Number,
+                    Title = n.Content.Title ?? "",
+                    HtmlUrl = n.Content.Url ?? "",
+                    ItemId = n.Id ?? "",
+                    RepoOwner = repoOwner,
+                    RepoName = repoName,
+                };
+            }).ToList();
+        }
+
         /// <summary>Git #3582 — splits GraphQL's real <c>repository.nameWithOwner</c> ("owner/name")
         /// back into its two parts. Falls back to this instance's own configured repo when the value
         /// is missing/malformed (shouldn't happen — every match already passed <see cref="IsConfiguredRepo"/>),
