@@ -227,8 +227,8 @@ export const STATIC_NODE_SAMPLES: Record<string, Record<string, unknown>> = {
   // ── Project Actions ───────────────────────────────────────────────────────
   create_kanban_task: {
     taskId: 1,
-    boardId: "marketing",
-    columnId: "todo",
+    boardId: "12",
+    columnId: "backlog",
     title: "Sample Kanban Task",
   },
   get_project_tasks: {

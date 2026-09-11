@@ -36,7 +36,6 @@ import {
   clientDocumentsTable,
   clientHealthHistoryTable,
   emailTemplatesTable,
-  marketingTasksTable,
   kanbanTasksTable,
   articlesTable,
   campaignsTable,
@@ -2011,7 +2010,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "create_kanban_task":
       return {
         dryRun: true,
-        boardId: interp((node.data.boardId as string | undefined) ?? "marketing", p) || "marketing",
+        boardId: interp((node.data.boardId as string | undefined) ?? "{{projectId}}", p) || "{{projectId}}",
         columnId: str("columnId", "backlog"),
         title: interp((node.data.titleExpr as string | undefined) ?? "New task", p) || "New task",
         taskId: null,
@@ -5346,7 +5345,10 @@ async function executeNode(
       }
 
       case "create_kanban_task": {
-        const boardIdRaw = interp(node.data.boardId as string | undefined, payload) || "marketing";
+        // The "marketing" board option was removed (Git #3562) — marketing_tasks
+        // lost its last viewing UI in #3441/#3543, so this node targets a
+        // project board (numeric projectId) exclusively.
+        const boardIdRaw = interp(node.data.boardId as string | undefined, payload) ?? "";
         const columnId = node.data.columnId as string | undefined;
         const title = interp(node.data.titleExpr as string | undefined, payload);
         const description = interp(node.data.descriptionExpr as string | undefined, payload);
@@ -5357,21 +5359,11 @@ async function executeNode(
         if (!columnId || !title?.trim()) {
           nodeError = true;
           output = { error: "create_kanban_task requires columnId and a non-empty title" };
-        } else if (boardIdRaw === "marketing") {
-          const validStatuses = ["ideas", "in_progress", "scheduled", "published", "completed", "money_task"] as const;
-          type MarketingStatus = typeof validStatuses[number];
-          const status: MarketingStatus = (validStatuses as readonly string[]).includes(columnId) ? (columnId as MarketingStatus) : "ideas";
-          const [task] = await db.insert(marketingTasksTable).values({
-            title: title.trim(),
-            description: description ?? undefined,
-            status,
-          }).returning();
-          output = { taskId: task.id, boardId: boardIdRaw, columnId: status, title: task.title };
         } else {
           const projectId = parseInt(boardIdRaw, 10);
           if (isNaN(projectId)) {
             nodeError = true;
-            output = { error: `create_kanban_task: invalid boardId '${boardIdRaw}' — must be 'marketing' or a numeric project ID` };
+            output = { error: `create_kanban_task: invalid boardId '${boardIdRaw}' — must be a numeric project ID` };
           } else {
             const validColumns = ["backlog", "in_progress", "waiting_on_customer", "completed"] as const;
             type KanbanColumn = typeof validColumns[number];

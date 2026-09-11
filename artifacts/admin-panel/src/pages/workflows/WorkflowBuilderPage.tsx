@@ -120,7 +120,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   // Marketing Actions
   send_campaign_email: [{ key: "sent", label: "true if email was sent" }, { key: "recipient", label: "Resolved recipient address" }, { key: "subject", label: "Rendered email subject" }, { key: "sourceRef", label: "asset:id or template:slug that was used" }, { key: "templateSlug", label: "Legacy: template slug (empty when using campaign asset)" }],
   // Project Actions
-  create_kanban_task:       [{ key: "taskId", label: "Created task ID" }, { key: "boardId", label: "Board used (marketing / project ID)" }, { key: "columnId", label: "Column/status the task was placed in" }, { key: "title", label: "Rendered task title" }],
+  create_kanban_task:       [{ key: "taskId", label: "Created task ID" }, { key: "boardId", label: "Project board ID the task was placed on" }, { key: "columnId", label: "Column/status the task was placed in" }, { key: "title", label: "Rendered task title" }],
   get_project_tasks:        [{ key: "phases", label: "Array of phase groups, each with phaseId, phaseTitle, phaseStatus, order, and tasks[]" }, { key: "flatTasks", label: "All tasks across all phases in a single flat array — each task includes phaseId, phaseTitle, phaseStatus, and phaseOrder. Use with a single ForEach instead of nested loops." }, { key: "flatTasks[].linkedWorkflowId", label: "Integer definition ID of the sub-workflow linked to this task (run_workflow tasks only; null for all other task types)" }, { key: "flatTasks[].linkedWorkflowName", label: "Human-readable name of the linked sub-workflow (run_workflow tasks only; null for all other task types)" }, { key: "taskCount", label: "Total number of tasks across all phases" }, { key: "projectId", label: "Project ID that was queried" }],
   update_project_task:      [{ key: "updated", label: "true when the task was found and updated" }, { key: "taskId", label: "ID of the updated task" }, { key: "column", label: "Final column value after update" }, { key: "title", label: "Final title value after update" }],
   update_milestone:         [{ key: "milestoneId", label: "ID of the updated milestone (workflow step)" }, { key: "previousStatus", label: "Status before this node ran", enumValues: ["pending", "in_progress", "completed", "blocked"] }, { key: "newStatus", label: "Status after this node ran", enumValues: ["pending", "in_progress", "completed", "blocked"] }, { key: "kanbanCardsSeeded", label: "true if new Kanban cards were seeded for this phase (only possible when status is in_progress and no cards existed yet)" }],
@@ -5321,17 +5321,11 @@ function GenerateLandingPagePanel({
 }
 
 // ── Create Kanban Task panel ──────────────────────────────────────────────────
+// The "marketing" board option was removed (Git #3562) — marketing_tasks lost
+// its last viewing UI in #3441/#3543, so this node now targets a project board
+// (numeric projectId) exclusively.
 
 const PRIORITY_OPTIONS = ["low", "medium", "high", "urgent"];
-
-const MARKETING_COLUMNS = [
-  { id: "ideas",        label: "Ideas"        },
-  { id: "in_progress",  label: "In Progress"  },
-  { id: "scheduled",    label: "Scheduled"    },
-  { id: "published",    label: "Published"    },
-  { id: "completed",    label: "Completed"    },
-  { id: "money_task",   label: "Money Task"   },
-];
 
 const PROJECT_COLUMNS = [
   { id: "backlog",              label: "Backlog"              },
@@ -5349,9 +5343,8 @@ function CreateKanbanTaskPanel({
   onChange: (id: string, data: Record<string, unknown>) => void;
   ancestorOutputs: AncestorGroup[];
 }) {
-  const isMarketing = (node.data.boardId as string | undefined) === "marketing";
   const columnId = (node.data.columnId as string) ?? "";
-  const columns = isMarketing ? MARKETING_COLUMNS : PROJECT_COLUMNS;
+  const columns = PROJECT_COLUMNS;
   const effectiveColumnId = columns.some(c => c.id === columnId) ? columnId : columns[0]!.id;
 
   useEffect(() => {
@@ -5359,46 +5352,22 @@ function CreateKanbanTaskPanel({
       onChange(node.id, { ...node.data, columnId: columns[0]!.id });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMarketing]);
+  }, []);
 
   return (
     <>
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-muted-foreground">Board type</label>
-          <FieldHint text="Choose Marketing to hardcode the marketing board, or Project board to pass a dynamic {{projectId}} at runtime." />
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => onChange(node.id, { ...node.data, boardId: "marketing", columnId: MARKETING_COLUMNS[0]!.id })}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${isMarketing ? "bg-[#818CF8]/20 border-[#818CF8] text-[#C7D2FE]" : "bg-background border-border text-muted-foreground hover:border-muted-foreground/60"}`}
-          >
-            Marketing
-          </button>
-          <button
-            type="button"
-            onClick={() => onChange(node.id, { ...node.data, boardId: "{{projectId}}", columnId: PROJECT_COLUMNS[0]!.id })}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${!isMarketing ? "bg-[#818CF8]/20 border-[#818CF8] text-[#C7D2FE]" : "bg-background border-border text-muted-foreground hover:border-muted-foreground/60"}`}
-          >
-            Project board
-          </button>
-        </div>
-      </div>
-      {!isMarketing && (
-        <PayloadField
-          label="Board ID (project ID)"
-          hint="Numeric project ID or {{token}}. Supports {{projectId}} from upstream create_project or get_phases nodes."
-          value={(node.data.boardId as string) ?? "{{projectId}}"}
-          onChange={v => onChange(node.id, { ...node.data, boardId: v })}
-          placeholder="{{projectId}}"
-          ancestorOutputs={ancestorOutputs}
-        />
-      )}
+      <PayloadField
+        label="Board ID (project ID)"
+        hint="Numeric project ID or {{token}}. Supports {{projectId}} from upstream create_project or get_phases nodes."
+        value={(node.data.boardId as string) ?? "{{projectId}}"}
+        onChange={v => onChange(node.id, { ...node.data, boardId: v })}
+        placeholder="{{projectId}}"
+        ancestorOutputs={ancestorOutputs}
+      />
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
           <label className="text-xs font-medium text-muted-foreground">Column / Status</label>
-          <FieldHint text={isMarketing ? "The status column on the marketing board." : "The column (status) the card starts in on the project kanban board."} />
+          <FieldHint text="The column (status) the card starts in on the project kanban board." />
         </div>
         <select
           value={effectiveColumnId}
@@ -5442,18 +5411,16 @@ function CreateKanbanTaskPanel({
           ))}
         </select>
       </div>
-      {!isMarketing && (
-        <PayloadField
-          label="Phase ID (optional)"
-          hint="Links this task to a project phase (workflow_steps row). Supports {{phaseId}} from an upstream create_phase node."
-          value={(node.data.phaseId as string) ?? ""}
-          onChange={v => onChange(node.id, { ...node.data, phaseId: v })}
-          placeholder="{{phaseId}}"
-          ancestorOutputs={ancestorOutputs}
-        />
-      )}
+      <PayloadField
+        label="Phase ID (optional)"
+        hint="Links this task to a project phase (workflow_steps row). Supports {{phaseId}} from an upstream create_phase node."
+        value={(node.data.phaseId as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, phaseId: v })}
+        placeholder="{{phaseId}}"
+        ancestorOutputs={ancestorOutputs}
+      />
       <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
-        <p className="text-[10px] text-muted-foreground/60">Creates a Kanban card on the selected board and column. Title, description, board ID, and phase ID support <span className="font-mono text-muted-foreground">{"{{tokens}}"}</span> from the workflow payload. Outputs:</p>
+        <p className="text-[10px] text-muted-foreground/60">Creates a Kanban card on the selected project board and column. Title, description, board ID, and phase ID support <span className="font-mono text-muted-foreground">{"{{tokens}}"}</span> from the workflow payload. Outputs:</p>
         <p className="text-[10px] font-mono text-muted-foreground">{"{{taskId}}"} · {"{{boardId}}"} · {"{{columnId}}"} · {"{{title}}"}</p>
       </div>
     </>

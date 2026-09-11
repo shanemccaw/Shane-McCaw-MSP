@@ -552,8 +552,8 @@ describe("create_kanban_task — missing title is an error (live)", () => {
   beforeEach(async () => {
     resetState();
     seedDb(singleNodeGraph("create_kanban_task", {
-      boardId: "marketing",
-      columnId: "ideas",
+      boardId: "12",
+      columnId: "backlog",
       titleExpr: "",
     }));
     await executeWorkflowRun(1);
@@ -568,19 +568,19 @@ describe("create_kanban_task — missing title is an error (live)", () => {
   });
 });
 
-describe("create_kanban_task — marketing board happy path (live)", () => {
+describe("create_kanban_task — project board happy path (live)", () => {
   beforeEach(async () => {
     resetState();
     seedDb(singleNodeGraph("create_kanban_task", {
-      boardId: "marketing",
+      boardId: "12",
       columnId: "in_progress",
       titleExpr: "Write blog post about {{topic}}",
     }), { topic: "Copilot AI" });
     await executeWorkflowRun(1);
   });
 
-  it("output.boardId is marketing", () => {
-    expect(capturedOutput().boardId).toBe("marketing");
+  it("output.boardId is the project id", () => {
+    expect(capturedOutput().boardId).toBe("12");
   });
 
   it("output.taskId is assigned", () => {
