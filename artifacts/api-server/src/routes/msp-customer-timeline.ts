@@ -19,9 +19,11 @@
  *     status delivered/approved)
  *   - sales offers once they've actually been sent (sales_offers, state != draft)
  *
- * Data-model note: insights_generated_documents.customerId and
- * sales_offers.customerId are both users.id, NOT msp_customers.id — bridged
- * via msp_users the same way msp-documents-hub.ts already does.
+ * Data-model note: insights_generated_documents.customerId is a users.id,
+ * NOT msp_customers.id — bridged via msp_users the same way
+ * msp-documents-hub.ts already does. sales_offers.customerId is different:
+ * it's a direct tenants.id FK (#2730), filtered straight against
+ * effectiveCustomerIds below with no bridge involved.
  *
  * Scoping: mspId from resolveMspIdStrict (session JWT only, no ?mspId=
  * override) + resolveStaffScopedCustomerIds (a scoped MSP staff member only
@@ -387,14 +389,13 @@ router.get("/msp/timeline", requireCapability("ladder.msp-operator"), async (req
           status = "info";
           at = offer.sentAt ?? offer.createdAt;
       }
-      const bridged = offer.customerId !== null ? bridge.get(offer.customerId) : undefined;
       events.push({
         id: `offer:${offer.id}`,
         type: "offer",
         title,
         status,
         timestamp: at.toISOString(),
-        ...customerFor(bridged?.customerId ?? null),
+        ...customerFor(offer.customerId),
       });
     }
 
