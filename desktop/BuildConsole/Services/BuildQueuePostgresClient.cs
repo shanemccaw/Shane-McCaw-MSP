@@ -282,8 +282,12 @@ namespace BuildConsole.Services
                 ORDER BY created_at ASC";
 
         /// <summary>Result of <see cref="SelectClaimCandidatesAsync"/>: the ordered ready
-        /// rows (capped to the requested limit) plus the per-id held-reason map.</summary>
-        private sealed record CandidateSelection(List<QueueItem> Ready, Dictionary<int, string> HeldReasons);
+        /// rows (capped to the requested limit) plus the per-id held-reason map. Git #3623 —
+        /// <see cref="MissingLiveBlockers"/> holds, per queue row id, the live GitHub blocked_by edges
+        /// the row's stored columns were missing (only filled by the claim path's live edge re-check),
+        /// for GetNextAsync to record on the row.</summary>
+        public sealed record CandidateSelection(
+            List<QueueItem> Ready, Dictionary<int, string> HeldReasons, Dictionary<int, List<int>> MissingLiveBlockers);
 
         /// <summary>
         /// Git #1862 — the shared, strictly READ-ONLY candidate selection that both
@@ -303,8 +307,9 @@ namespace BuildConsole.Services
         /// <c>github_number</c>, Git #1645) and null-numbered rows have no real issue to
         /// check and are exempt from the self-check.
         ///
-        /// This method issues NO UPDATE and claims nothing — the ONLY write in the entire
-        /// claim path is GetNextAsync's Step 3, which runs AFTER this returns.
+        /// This method issues NO UPDATE and claims nothing — the only writes in the claim path
+        /// are GetNextAsync's Step 2b (recording live blocked_by edges a row was missing, Git
+        /// #3623) and Step 3 (the claim), both AFTER this returns.
         ///
         /// <paramref name="presuppliedOpen"/>: when non-null it is used directly as the
         /// live open-issue snapshot (PeekNextAsync reuses the panel's already-fetched Git
@@ -316,7 +321,8 @@ namespace BuildConsole.Services
             NpgsqlConnection conn,
             int limit,
             LiveOpenIssuesResult? presuppliedOpen,
-            Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher)
+            Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher,
+            Func<IReadOnlyList<int>, Task<Dictionary<int, List<int>>>>? liveBlockedByFetcher = null)
         {
             // Step 1 — fetch all queued rows (cheapest scan; the queue is tiny),
             // minus manually-paused ids.
@@ -386,6 +392,28 @@ namespace BuildConsole.Services
                 }
             }
 
+            return await EvaluateCandidatesAsync(
+                candidates, heldReasons, limit, presuppliedOpen, liveOpenIssuesFetcher, liveBlockedByFetcher);
+        }
+
+        /// <summary>
+        /// Git #3623 — Step 2 of the claim selection (every blocker/own-issue decision), split out of
+        /// <see cref="SelectClaimCandidatesAsync"/> with no database access of its own so the exact
+        /// decision the watcher makes can be exercised against real rows and real GitHub state
+        /// without claiming anything. <paramref name="heldReasons"/> is extended in place.
+        ///
+        /// <paramref name="liveBlockedByFetcher"/> (issue numbers → each issue's real GitHub
+        /// <c>blocked_by</c> edge numbers) turns on the Git #3623 claim-time edge re-check; null
+        /// skips it (PeekNextAsync, which must fire no GitHub call).
+        /// </summary>
+        public static async Task<CandidateSelection> EvaluateCandidatesAsync(
+            List<QueueItem> candidates,
+            Dictionary<int, string> heldReasons,
+            int limit,
+            LiveOpenIssuesResult? presuppliedOpen,
+            Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher,
+            Func<IReadOnlyList<int>, Task<Dictionary<int, List<int>>>>? liveBlockedByFetcher)
+        {
             // Step 2 — filter to items whose blockers are all confirmed closed on
             // GitHub, live, right now (Git #1600 — no exceptions for local queue-row
             // state). One live query covers every candidate this pass: gather the
@@ -446,9 +474,17 @@ namespace BuildConsole.Services
                 }
             }
 
+            // Git #3623 — when the claim-time live edge re-check below will run, evaluate EVERY
+            // candidate here (no early cap) so a row that re-check holds can be backfilled from the
+            // next ready candidate; the real limit is applied after the re-check. It only runs when
+            // the live open-issue set was actually reached, so the #2815 unreachable branch below is
+            // never reached uncapped.
+            bool liveEdgeCheck = liveBlockedByFetcher != null && live != null && live.Success;
+            int passLimit = liveEdgeCheck ? int.MaxValue : limit;
+
             foreach (var item in candidates)
             {
-                if (ready.Count >= limit) break;
+                if (ready.Count >= passLimit) break;
                 var blockers = EffectiveBlockers(item);
                 bool hasOwnIssue = item.GithubNumber is int gh && gh > 0;
 
@@ -504,7 +540,251 @@ namespace BuildConsole.Services
                 if (stillOpen.Count == 0) { ready.Add(item); continue; }
                 heldReasons[item.Id] = $"waiting on {string.Join(", ", stillOpen.Select(b => $"#{b}"))} (open)";
             }
-            return new CandidateSelection(ready, heldReasons);
+            // Git #3623 — claim-time live blocked_by edge re-check (see ApplyLiveBlockerEdgesAsync).
+            var missingLive = new Dictionary<int, List<int>>();
+            if (liveEdgeCheck && ready.Count > 0)
+                ready = await ApplyLiveBlockerEdgesAsync(
+                    ready, heldReasons, missingLive, live!, satisfiedByDoneBookend, liveBlockedByFetcher!);
+            if (ready.Count > limit) ready = ready.Take(limit).ToList();
+            return new CandidateSelection(ready, heldReasons, missingLive);
+        }
+
+        /// <summary>
+        /// Git #3623 — the claim-time half of the fix. Everything above decides from the row's STORED
+        /// blocker columns, and #3585's row had none: Batter Up inserted it with blocked_by_numbers
+        /// NULL while GitHub carried real edges to #3582/#3584, so the gate had nothing to hold on and
+        /// claimed it. BUILD_QUEUE_BLOCKING_AND_GATING.md §1 promises the claim checks GitHub directly;
+        /// this makes that true for the edges themselves, not only for the blockers' open/closed state.
+        ///
+        /// For every row that would otherwise claim (and belongs to the configured repo), one batched
+        /// GraphQL read fetches its real GitHub <c>blocked_by</c> edges. An edge missing from the row
+        /// whose issue is still open — and not satisfied by a verified DONE bookend (#2225) — HOLDS
+        /// the row. Every missing edge (open or closed) is returned in <paramref name="missingLive"/>
+        /// so GetNextAsync records it on the row, after which the normal stored-set check holds it
+        /// with no further live call. Cost is one GraphQL read per tick that actually has claimable
+        /// rows — and those rows are claimed on that same tick.
+        ///
+        /// If the edge read itself fails, the rows are claimed on their stored sets (logged) — the
+        /// same stance as the recorded #2815 decision for an unreachable GitHub. Those stored sets are
+        /// now populated at queue time from the header --blocked-by (QueueBuildAsync) and, for Batter
+        /// Up, from a live read that must succeed before the row is inserted at all.
+        /// </summary>
+        private static async Task<List<QueueItem>> ApplyLiveBlockerEdgesAsync(
+            List<QueueItem> ready,
+            Dictionary<int, string> heldReasons,
+            Dictionary<int, List<int>> missingLive,
+            LiveOpenIssuesResult live,
+            HashSet<int> satisfiedByDoneBookend,
+            Func<IReadOnlyList<int>, Task<Dictionary<int, List<int>>>> liveBlockedByFetcher)
+        {
+            // The live read (like the open-issue set) is scoped to the configured repo; a row from
+            // another repo can't be checked against it and keeps its stored set.
+            string configuredRepo = BuildConsoleSettings.Load().GitHubOwnerRepo;
+            var checkable = ready
+                .Where(i => i.GithubNumber is int g && g > 0
+                            && string.Equals(i.OwnerRepo, configuredRepo, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (checkable.Count == 0) return ready;
+
+            Dictionary<int, List<int>> edges;
+            try
+            {
+                edges = await liveBlockedByFetcher(checkable.Select(i => i.GithubNumber!.Value).Distinct().ToList());
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("watcher",
+                    $"Git #3623: live blocked_by edge re-check failed ({ex.Message}) — claiming {checkable.Count} row(s) on their " +
+                    "stored blocker sets this tick (captured at queue time), the same stance as #2815's unreachable-GitHub rule.");
+                return ready;
+            }
+
+            var perItemMissing = new Dictionary<int, List<int>>();
+            foreach (var item in checkable)
+            {
+                int num = item.GithubNumber!.Value;
+                if (!edges.TryGetValue(num, out var liveEdges))
+                {
+                    ActivityLog.Log("watcher",
+                        $"Git #3623: GitHub returned no blocked_by data for #{num} (queue #{item.Id}) — claiming on its stored blocker set this tick.");
+                    continue;
+                }
+                var stored = EffectiveBlockers(item);
+                var missing = liveEdges.Where(b => b > 0 && !stored.Contains(b)).Distinct().ToList();
+                if (missing.Count > 0) perItemMissing[item.Id] = missing;
+            }
+            if (perItemMissing.Count == 0) return ready;
+
+            // A blocker only the live edges revealed was never part of the #2225 DONE-bookend pass
+            // above — check the still-open ones now, failing closed on any error.
+            var satisfied = new HashSet<int>(satisfiedByDoneBookend);
+            var openMissing = perItemMissing.Values.SelectMany(v => v)
+                .Where(b => live.OpenNumbers.Contains(b) && !satisfied.Contains(b))
+                .Distinct()
+                .ToList();
+            if (openMissing.Count > 0)
+            {
+                try
+                {
+                    satisfied.UnionWith(await DoneBookendVerifier.GetSatisfiedAsync(openMissing));
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("watcher",
+                        $"Git #3623: DONE-bookend check for newly-found blocker(s) threw ({ex.Message}) — treating them as unsatisfied (fail closed).");
+                }
+            }
+
+            var held = new HashSet<int>();
+            foreach (var item in checkable)
+            {
+                if (!perItemMissing.TryGetValue(item.Id, out var missing)) continue;
+                missingLive[item.Id] = missing;
+                var stillOpen = missing.Where(b => live.OpenNumbers.Contains(b) && !satisfied.Contains(b)).ToList();
+                if (stillOpen.Count == 0) continue;
+
+                held.Add(item.Id);
+                string list = string.Join(", ", stillOpen.Select(b => $"#{b}"));
+                heldReasons[item.Id] = $"waiting on {list} (open) — live GitHub blocked_by edge(s) this queue row was missing (Git #3623)";
+                ActivityLog.Log("watcher",
+                    $"Git #3623: HELD queue #{item.Id} (GH #{item.GithubNumber}) — its stored blocker set " +
+                    $"[{string.Join(",", EffectiveBlockers(item))}] was missing live GitHub blocked_by edge(s) {list}, still open. " +
+                    "Not claimed; recording the edge(s) on the row.");
+            }
+            return held.Count == 0 ? ready : ready.Where(i => !held.Contains(i.Id)).ToList();
+        }
+
+        /// <summary>Git #3623 — GetNextAsync's real default live blocked_by fetcher: batched GraphQL reads
+        /// (<see cref="GitHubApiClient.BatchGetBlockedByAsync"/>) through a plain, circuit-gated client, so
+        /// an open #2815 circuit short-circuits it instead of adding pressure. Throws when no PAT is
+        /// configured, which the caller treats as "couldn't check".</summary>
+        private static Task<Dictionary<int, List<int>>> FetchLiveBlockedByEdgesAsync(IReadOnlyList<int> issueNumbers)
+        {
+            var settings = BuildConsoleSettings.Load();
+            if (!settings.HasGitHubPat)
+                throw new InvalidOperationException("no GitHub PAT configured");
+            return new GitHubApiClient(settings.GitHubPat).BatchGetBlockedByAsync(issueNumbers);
+        }
+
+        /// <summary>Git #3623 — records the live GitHub blocked_by edges a still-queued row was missing
+        /// (merged into its existing set, never replacing it), so the next tick's stored-set check holds
+        /// it with no live call. Per-row and best-effort: this tick's hold has already been applied in
+        /// memory, and a failed write only means the next tick re-discovers the edge live.</summary>
+        private static async Task RecordMissingLiveBlockersAsync(NpgsqlConnection conn, Dictionary<int, List<int>> missingByRowId)
+        {
+            foreach (var (id, missing) in missingByRowId)
+            {
+                try
+                {
+                    await using var cmd = new NpgsqlCommand(@"
+                        UPDATE bt_build_queue
+                           SET blocked_by_numbers = ARRAY(
+                                   SELECT DISTINCT b FROM unnest(
+                                       COALESCE(blocked_by_numbers,
+                                                CASE WHEN blocked_by_number IS NULL THEN ARRAY[]::int[] ELSE ARRAY[blocked_by_number] END)
+                                       || @add) AS b),
+                               blocked_by_number = COALESCE(blocked_by_number, @first),
+                               updated_at = NOW()
+                         WHERE id = @id
+                           AND status NOT IN ('done', 'failed', 'superseded')", conn);
+                    cmd.Parameters.Add(new NpgsqlParameter("@add", NpgsqlDbType.Array | NpgsqlDbType.Integer) { Value = missing.ToArray() });
+                    cmd.Parameters.AddWithValue("@first", missing[0]);
+                    cmd.Parameters.AddWithValue("@id", id);
+                    int n = await cmd.ExecuteNonQueryAsync();
+                    if (n > 0)
+                        ActivityLog.Log("watcher", $"Git #3623: recorded live blocked_by edge(s) {string.Join(",", missing)} on queue #{id}.");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("watcher",
+                        $"Git #3623: couldn't record live blocked_by edge(s) on queue #{id} ({ex.Message}) — any hold already applied stands; the next pass re-checks live.");
+                }
+            }
+        }
+
+        /// <summary>Git #3623 — one row <see cref="ResyncLiveBlockedByAsync"/> found missing live GitHub
+        /// blocked_by edge(s): its queue id, real issue number, status, and the edge numbers added.</summary>
+        public sealed record BlockerResyncChange(int Id, int GithubNumber, string Status, List<int> Added);
+
+        /// <summary>
+        /// Git #3623 — the periodic re-sync of <c>blocked_by_numbers</c> from GitHub's real dependency
+        /// graph. Before this, the column was written once, at queue time, and never again: an edge
+        /// wired afterwards never reached the row. The confirmed case is #3610 — claimed 23:12:45
+        /// local, its session filed #3625 and wired #3610 blocked-by #3625 at 03:17:09Z, and the row's
+        /// columns stayed empty through every refresh, so neither the gate nor the 🔒 BLOCKED display
+        /// (#3624) had anything to act on.
+        ///
+        /// Covers every row whose blocker columns are still acted on or shown — queued, parked,
+        /// running, verifying, limit-paused, capped, external — plus un-archived supervisory cancels
+        /// (canceled with exit 0), which #3521 can re-queue. Rows outside the configured repo are
+        /// skipped (the live read is scoped to it). One batched GraphQL read per 25 rows.
+        ///
+        /// Edges are only ever ADDED, never removed: dropping a stored blocker is a release decision,
+        /// and this path fails closed. A failed live read changes nothing (logged) — the claim path's
+        /// own live edge re-check (<see cref="ApplyLiveBlockerEdgesAsync"/>) is still the gate.
+        /// <paramref name="dryRun"/> computes and returns the changes without writing them.
+        /// </summary>
+        public async Task<List<BlockerResyncChange>> ResyncLiveBlockedByAsync(
+            Func<IReadOnlyList<int>, Task<Dictionary<int, List<int>>>>? liveBlockedByFetcher = null, bool dryRun = false)
+        {
+            string configuredRepo = BuildConsoleSettings.Load().GitHubOwnerRepo;
+            var rows = new List<(int Id, int Num, string Status, List<int> Stored)>();
+
+            await using var conn = await OpenAsync();
+            await using (var cmd = new NpgsqlCommand(@"
+                SELECT id, github_number, status, blocked_by_number, blocked_by_numbers, repo_owner, repo_name
+                  FROM bt_build_queue
+                 WHERE github_number > 0
+                   AND (status IN ('queued', 'parked', 'running', 'external', @verifying, @limitPaused, @capped)
+                        OR (status = 'canceled' AND archived IS NOT TRUE AND exit_code = 0))", conn))
+            {
+                cmd.Parameters.AddWithValue("@verifying", VerifyingStatus);
+                cmd.Parameters.AddWithValue("@limitPaused", Services.SessionLimitAutoRestartService.LimitPausedStatus);
+                cmd.Parameters.AddWithValue("@capped", AccountCapPolicy.CappedStatus);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    string owner = reader.IsDBNull(5) ? RepoIdentity.DefaultOwner : reader.GetString(5);
+                    string name = reader.IsDBNull(6) ? RepoIdentity.DefaultName : reader.GetString(6);
+                    if (!string.Equals($"{owner}/{name}", configuredRepo, StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var stored = reader.IsDBNull(4) ? new List<int>() : reader.GetFieldValue<int[]>(4).ToList();
+                    if (stored.Count == 0 && !reader.IsDBNull(3)) stored.Add(reader.GetInt32(3));
+                    rows.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), stored));
+                }
+            }
+
+            var changes = new List<BlockerResyncChange>();
+            if (rows.Count == 0) return changes;
+
+            Dictionary<int, List<int>> edges;
+            try
+            {
+                edges = await (liveBlockedByFetcher ?? FetchLiveBlockedByEdgesAsync)(rows.Select(r => r.Num).Distinct().ToList());
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("watcher",
+                    $"Git #3623: blocked_by re-sync couldn't read live edges for {rows.Count} row(s) ({ex.Message}) — nothing changed; retried next interval.");
+                return changes;
+            }
+
+            foreach (var r in rows)
+            {
+                if (!edges.TryGetValue(r.Num, out var live)) continue;
+                var added = live.Where(b => b > 0 && !r.Stored.Contains(b)).Distinct().ToList();
+                if (added.Count > 0) changes.Add(new BlockerResyncChange(r.Id, r.Num, r.Status, added));
+            }
+
+            if (changes.Count > 0)
+            {
+                ActivityLog.Log("watcher",
+                    $"Git #3623: blocked_by re-sync{(dryRun ? " (dry run)" : "")} — {changes.Count} of {rows.Count} row(s) were missing live GitHub edge(s): " +
+                    string.Join("; ", changes.Select(c => $"queue #{c.Id} (GH #{c.GithubNumber}, {c.Status}) +{string.Join(",", c.Added.Select(a => $"#{a}"))}")) + ".");
+                if (!dryRun)
+                    await RecordMissingLiveBlockersAsync(conn, changes.ToDictionary(c => c.Id, c => c.Added));
+            }
+            return changes;
         }
 
         /// <summary>
@@ -529,7 +809,8 @@ namespace BuildConsole.Services
         }
 
         public async Task<List<QueueItem>> GetNextAsync(
-            int limit, Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher = null)
+            int limit, Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher = null,
+            Func<IReadOnlyList<int>, Task<Dictionary<int, List<int>>>>? liveBlockedByFetcher = null)
         {
             if (limit <= 0) return new List<QueueItem>();
             limit = Math.Min(limit, 20); // same cap as the server
@@ -537,10 +818,18 @@ namespace BuildConsole.Services
             await using var conn = await OpenAsync();
 
             // Steps 1 & 2 — the shared, read-only selection (identical to what the
-            // dropdown's PeekNextAsync sees). Only Step 3 below mutates anything.
+            // dropdown's PeekNextAsync sees), plus — on this claim path only — Git #3623's
+            // live re-read of each would-be-claimed row's real GitHub blocked_by edges.
             var selection = await SelectClaimCandidatesAsync(
-                conn, limit, presuppliedOpen: null, liveOpenIssuesFetcher);
+                conn, limit, presuppliedOpen: null, liveOpenIssuesFetcher,
+                liveBlockedByFetcher ?? FetchLiveBlockedByEdgesAsync);
             LastHeldReasons = selection.HeldReasons;
+
+            // Step 2b (Git #3623) — record any live edge a queued row was missing, so the next
+            // tick's stored-set check holds it with no live call. The hold itself was already
+            // applied in the selection above; this write only makes it durable.
+            if (selection.MissingLiveBlockers.Count > 0)
+                await RecordMissingLiveBlockersAsync(conn, selection.MissingLiveBlockers);
 
             var ready = selection.Ready.Select(i => i.Id).ToList(); // ids to claim
             if (ready.Count == 0) return new List<QueueItem>();
@@ -853,7 +1142,23 @@ namespace BuildConsole.Services
                     $" — parked instead of queued: {headerInvalidReason} (Git #3012).");
             }
 
-            var allBlockers = (blockedByNumbers ?? new List<int>()).Distinct().ToList();
+            // Git #3623 — the prompt's own `--blocked-by` header is always enforced, whichever caller
+            // queued it. #3585 (and #3582/#3584/#3624) were inserted by Batter Up with a prompt whose
+            // first line declared `--blocked-by …`, but the caller passed an empty list, so the row
+            // landed with no blockers and was claimed while those blockers were still open. The header
+            // is the dispatch's declared bridge to this column (BUILD_QUEUE_BLOCKING_AND_GATING.md §3);
+            // reading it here means no queue path can drop it again.
+            var headerBlockers = BuildPromptHeader.ParseGitHubBlockers(prompt);
+            var callerBlockers = blockedByNumbers ?? new List<int>();
+            var addedFromHeader = headerBlockers.Except(callerBlockers).ToList();
+            if (addedFromHeader.Count > 0)
+            {
+                ActivityLog.Log("watcher",
+                    $"Git #3623: queue header for \"{titleTrimmed}\"" +
+                    (githubNumber.HasValue ? $" (#{githubNumber.Value})" : "") +
+                    $" declares --blocked-by {string.Join(",", addedFromHeader)} that the queuing caller didn't pass — enforcing them on the row.");
+            }
+            var allBlockers = callerBlockers.Concat(headerBlockers).Where(n => n != 0).Distinct().ToList();
             int? firstBlocker = allBlockers.Count > 0 ? allBlockers[0] : null;
             int[]? blockerArray = allBlockers.Count > 0 ? allBlockers.ToArray() : null;
 

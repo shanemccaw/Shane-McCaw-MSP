@@ -963,7 +963,7 @@ namespace BuildConsole
                         _client, _queueDb, msg => ActivityLog.Log(Channel, msg));
                     foreach (var row in rows.Where(r => promoted.Contains(r.Number) && r.HasBuildComment))
                     {
-                        if (await Services.BatterUpQueueService.QueueRowAsync(_queueDb, row, msg => ActivityLog.Log(Channel, msg)))
+                        if (await Services.BatterUpQueueService.QueueRowAsync(_queueDb, row, msg => ActivityLog.Log(Channel, msg), gh: _client))
                             queued++;
                     }
                 }

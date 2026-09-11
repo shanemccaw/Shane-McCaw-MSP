@@ -117,11 +117,20 @@ namespace BuildConsole.Services
         /// tell failure apart from a genuinely-empty result (Git #1600's dispatch
         /// gate) uses TryGetOpenIssueNumbersAsync directly instead.
         /// </summary>
-        public static async Task<HashSet<int>> GetOpenIssueNumbersAsync(int limit = 500)
+        public static async Task<HashSet<int>> GetOpenIssueNumbersAsync(int limit = OpenIssueListLimit)
         {
             var result = await TryGetOpenIssueNumbersAsync(limit);
             return result.OpenNumbers;
         }
+
+        /// <summary>
+        /// Git #3623 — default cap for the open-issue list. It was 500, and the repo passed that: on
+        /// 2026-09-11 GitHub reported 505 open issues while `gh issue list --limit 500` returned 500,
+        /// so #77 and #350–#353 were simply absent — which the #1600 claim gate reads as CLOSED. A row
+        /// blocked by any of them would have been released. The limit is now far above the real
+        /// count, and a result that fills it is treated as a failure (see TryGetOpenIssueNumbersAsync).
+        /// </summary>
+        public const int OpenIssueListLimit = 5000;
 
         /// <summary>
         /// Git #1600 — the dispatch-time blocker gate needs to tell "GitHub says
@@ -131,7 +140,7 @@ namespace BuildConsole.Services
         /// set, which is exactly wrong for a build-dispatch gate — an unreachable
         /// `gh` CLI must never look identical to "every issue is closed, go ahead."
         /// </summary>
-        public static async Task<LiveOpenIssuesResult> TryGetOpenIssueNumbersAsync(int limit = 500)
+        public static async Task<LiveOpenIssuesResult> TryGetOpenIssueNumbersAsync(int limit = OpenIssueListLimit)
         {
             // Git #2539 — through SubprocessRunner (shared concurrency gate + crash retry). The
             // fail-closed distinction this method exists for (unreachable gh ≠ "nothing open") is
@@ -155,6 +164,14 @@ namespace BuildConsole.Services
             {
                 var rows = System.Text.Json.JsonSerializer.Deserialize<List<OpenIssueNumberRow>>(
                     res.StdOut, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                // Git #3623 — a list that fills the limit can't prove it's complete: anything past it
+                // would be missing, and every consumer of this set reads "missing" as CLOSED. Fail
+                // closed instead of handing back a silently truncated set.
+                if (rows != null && rows.Count >= limit)
+                {
+                    ActivityLog.Log("github", $"gh issue list (open numbers) returned {rows.Count} rows = the --limit {limit} cap — can't prove the open set is complete; reporting failure (Git #3623).");
+                    return LiveOpenIssuesResult.Failure($"open-issue list hit its {limit}-row limit — set may be truncated");
+                }
                 return LiveOpenIssuesResult.Ok(rows == null ? new HashSet<int>() : new HashSet<int>(rows.Select(r => r.Number)));
             }
             catch (Exception ex)

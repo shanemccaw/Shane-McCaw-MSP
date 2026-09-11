@@ -368,34 +368,10 @@ namespace BuildConsole
                 ? new List<string>()
                 : csv.Split(',').Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
 
-        private static (Dictionary<string, string> flags, string rest) ExtractLeadingFlags(string text)
-        {
-            int newlineIdx = text.IndexOf('\n');
-            string firstLine = newlineIdx == -1 ? text : text.Substring(0, newlineIdx);
-
-            // Allow a valueless --notGit (the letter id is auto-allocated). Normalize a bare
-            // "--notGit" (end of line, or immediately before another --flag) to "--notGit local"
-            // so the flag/value regex below still recognizes it. "--notGit 109" is untouched
-            // (its value is simply ignored downstream).
-            firstLine = Regex.Replace(firstLine, @"--notGit(?=\s+--|\s*$)", "--notGit local");
-
-            var flagRe = new Regex(@"--([\w-]+)\s+(\S+)", RegexOptions.Compiled);
-            var flags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            var matches = flagRe.Matches(firstLine);
-            foreach (Match m in matches)
-            {
-                flags[m.Groups[1].Value] = m.Groups[2].Value;
-            }
-
-            if (flags.Count == 0 || flagRe.Replace(firstLine, "").Trim() != "")
-            {
-                return (new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), text);
-            }
-
-            string rest = newlineIdx == -1 ? "" : text.Substring(newlineIdx + 1).TrimStart('\r', '\n');
-            return (flags, rest);
-        }
+        // Git #3623 — the parser now lives in Services.BuildPromptHeader so the queue's own insert
+        // path (BuildQueuePostgresClient.QueueBuildAsync) reads --blocked-by with the same rules.
+        private static (Dictionary<string, string> flags, string rest) ExtractLeadingFlags(string text) =>
+            BuildPromptHeader.ExtractLeadingFlags(text);
 
         private static string Truncate(string s, int max) => s.Length > max ? s.Substring(0, max - 1) + "…" : s;
     }

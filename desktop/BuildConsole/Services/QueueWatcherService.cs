@@ -419,7 +419,53 @@ namespace BuildConsole.Services
         /// work. A no-op if a tick is already in flight (TickAsync's own _ticking
         /// guard).
         /// </summary>
-        public void RequestImmediateReevaluation() => _ = TickAsync();
+        public void RequestImmediateReevaluation()
+        {
+            // Git #3623 — a board refresh is also when Shane expects a freshly-wired blocked_by edge
+            // to show up, so let this tick re-sync edges without waiting out the normal interval.
+            _blockerResyncRequested = true;
+            _ = TickAsync();
+        }
+
+        // ── Git #3623 — periodic blocked_by re-sync ─────────────────────────────────
+        // bt_build_queue.blocked_by_numbers used to be written once, at queue time, and never
+        // again, so an edge wired later (#3610 → #3625, wired mid-run by #3610's own session)
+        // never reached the row — neither the claim gate nor the 🔒 BLOCKED display (#3624) could
+        // see it. BuildQueuePostgresClient.ResyncLiveBlockedByAsync merges each tracked row's live
+        // GitHub edges in; this is its throttle. ~34 tracked rows today = 2 batched GraphQL reads
+        // per run.
+        private DateTime _lastBlockerResyncUtc = DateTime.MinValue;
+        private volatile bool _blockerResyncRequested;
+        private int _blockerResyncInFlight;
+        private static readonly TimeSpan BlockerResyncInterval = TimeSpan.FromMinutes(3);
+        private static readonly TimeSpan BlockerResyncMinGap = TimeSpan.FromSeconds(20);
+
+        /// <summary>Git #3623 — runs the blocked_by re-sync every <see cref="BlockerResyncInterval"/>,
+        /// or sooner (never more often than <see cref="BlockerResyncMinGap"/>) after a board refresh.
+        /// Skipped while the #2815 rate-limit circuit is open; single-flight; best-effort — it never
+        /// throws into the tick.</summary>
+        private async Task MaybeResyncLiveBlockersAsync()
+        {
+            if (_db == null) return;
+            var sinceLast = DateTime.UtcNow - _lastBlockerResyncUtc;
+            bool due = sinceLast >= BlockerResyncInterval || (_blockerResyncRequested && sinceLast >= BlockerResyncMinGap);
+            if (!due || GitHubRateLimitCircuit.IsOpen) return;
+            if (Interlocked.Exchange(ref _blockerResyncInFlight, 1) == 1) return;
+            _lastBlockerResyncUtc = DateTime.UtcNow;
+            _blockerResyncRequested = false;
+            try
+            {
+                await _db.ResyncLiveBlockedByAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("watcher", $"Git #3623: blocked_by re-sync threw ({ex.Message}) — retried next interval.");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _blockerResyncInFlight, 0);
+            }
+        }
 
         /// <summary>
         /// Git #3009 — the same live open-issue snapshot LeftSidebar's board refresh already
@@ -1895,6 +1941,13 @@ namespace BuildConsole.Services
                 // resources that's the actual problem, not the pause state. Reaping (above)
                 // still runs regardless — a fresh cold start has nothing to reap anyway.
                 if (!_appReady) return;
+
+                // Git #3623 — keep every tracked row's blocked_by_numbers in step with GitHub's real
+                // dependency graph (an edge wired after queueing never reached the row before). After
+                // the readiness gate so it never joins the cold-start GitHub burst; before the pause
+                // and free-slot gates because Verifying/held rows need it for display too. Background,
+                // throttled and single-flight inside, so most ticks it no-ops instantly.
+                _ = System.Threading.Tasks.Task.Run(MaybeResyncLiveBlockersAsync);
 
                 // Global pause: reaping (above) still runs so already-running
                 // builds complete and free their slots, but the claim/launch of

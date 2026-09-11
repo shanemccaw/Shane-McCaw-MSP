@@ -378,7 +378,13 @@ namespace BuildConsole.Controls
                     // Git #1997 — a manual Queue click on a row that reappeared because its prior
                     // queue row died (failed/canceled) re-queues that exact row. Explicit click only;
                     // free-flow never sets this, so a failing build can't auto-loop.
-                    allowRequeueTerminal: r.TrackedTerminalStatus != null);
+                    allowRequeueTerminal: r.TrackedTerminalStatus != null,
+                    // Git #3623 — the live blocked_by read QueueRowAsync now makes before inserting goes
+                    // through the #3511 manual-priority client for this explicit click, like every other
+                    // manual action.
+                    gh: Services.BuildConsoleSettings.Load() is { HasGitHubPat: true } ghSettings
+                        ? Services.GitHubApiClient.ForManualAction(ghSettings.GitHubPat)
+                        : null);
             }
             catch (Exception ex)
             {

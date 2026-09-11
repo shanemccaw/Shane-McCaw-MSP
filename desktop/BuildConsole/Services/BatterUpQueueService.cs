@@ -480,8 +480,13 @@ namespace BuildConsole.Services
                     // Fresh-edge safety net: a `blocked`-labeled item whose mirror row hasn't captured
                     // its edge yet (the mirror only fetches blocked_by for blocked-labeled issues, and
                     // an edge added since the last sync may not be in yet) is resolved live for JUST
-                    // that item — vanishingly rare in practice, and never a per-item burst for the
-                    // common case (an unblocked item's declared set is genuinely empty).
+                    // that item, never a per-item burst for the common case.
+                    // Git #3623 — this is NOT the only fresh-edge case, and it is not rare: an edge wired
+                    // BEFORE the `blocked` label (#3585, #3582, #3584, #3624) reads as an empty set here
+                    // and this net never fires. This map only feeds the panel's display now —
+                    // QueueRowAsync re-reads the real edges live before any insert
+                    // (ResolveBlockersForInsertAsync) and the claim path re-checks them again, so an edge
+                    // missed here can no longer reach bt_build_queue as "no blockers".
                     if (declared.Count == 0 && m.Labels.Any(l => string.Equals(l, "blocked", StringComparison.OrdinalIgnoreCase)))
                     {
                         try
@@ -850,19 +855,82 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #3623 — the blocker set a Batter Up row is actually inserted with: the row's
+        /// mirror-resolved edges, UNION the BUILD comment header's own <c>--blocked-by</c>, UNION a
+        /// LIVE read of the issue's real GitHub <c>blocked_by</c> edges taken right now.
+        ///
+        /// The mirror alone is not enough. Its sync fetches <c>blocked_by</c> only for issues that
+        /// already carry the <c>blocked</c> label and stores <c>{}</c> for every other issue
+        /// (GitHubIssueMirror's sync), so an edge wired before the label reads as "no blockers".
+        /// That is exactly #3585: edges to #3582/#3584 added 00:19:42Z, auto-queued 00:28:31Z with
+        /// blocked_by_numbers NULL, labeled <c>blocked</c> only at 00:52:48Z by its own session —
+        /// by then it had already been claimed and run. #3582, #3584 and #3624 went the same way.
+        ///
+        /// Returns null — and the caller does NOT queue this pass — when the live read can't be made
+        /// or doesn't return this issue (fail closed, BUILD_QUEUE_BLOCKING_AND_GATING.md §4). The row
+        /// stays listed and is retried on the next refresh. One small GraphQL read, made only at the
+        /// moment a row is genuinely about to be inserted — never per refresh per item.
+        /// </summary>
+        private static async Task<List<int>?> ResolveBlockersForInsertAsync(BatterUpRow row, GitHubApiClient? gh, Action<string> log)
+        {
+            var blockers = new List<int>(row.BlockedByNumbers);
+            blockers.AddRange(BuildPromptHeader.ParseGitHubBlockers(row.Prompt));
+
+            Dictionary<int, List<int>> live;
+            try
+            {
+                if (gh == null)
+                {
+                    var settings = BuildConsoleSettings.Load();
+                    if (!settings.HasGitHubPat)
+                    {
+                        log($"Batter Up #{row.Number} \"{row.Title}\" — NOT queued this pass: no GitHub PAT to read its live blocked_by edges (fail closed, Git #3623).");
+                        return null;
+                    }
+                    gh = new GitHubApiClient(settings.GitHubPat);
+                }
+                live = await gh.BatchGetBlockedByAsync(new[] { row.Number });
+            }
+            catch (Exception ex)
+            {
+                log($"Batter Up #{row.Number} \"{row.Title}\" — NOT queued this pass: live blocked_by read failed ({ex.Message}); " +
+                    "retried on the next refresh (fail closed, Git #3623).");
+                return null;
+            }
+
+            if (!live.TryGetValue(row.Number, out var liveEdges))
+            {
+                log($"Batter Up #{row.Number} \"{row.Title}\" — NOT queued this pass: GitHub returned no blocked_by data for this issue; " +
+                    "retried on the next refresh (fail closed, Git #3623).");
+                return null;
+            }
+
+            var missedByMirror = liveEdges.Except(blockers).ToList();
+            if (missedByMirror.Count > 0)
+                log($"Batter Up #{row.Number} \"{row.Title}\" — live GitHub blocked_by edge(s) {string.Join(", ", missedByMirror.Select(n => $"#{n}"))} " +
+                    "were missing from the mirror's view; recording them on the queue row (Git #3623).");
+            blockers.AddRange(liveEdges);
+            return blockers.Where(n => n > 0).Distinct().ToList();
+        }
+
+        /// <summary>
         /// Git #1870 — the QUEUE half: queues exactly ONE already-resolved row through the same
         /// <see cref="BuildQueuePostgresClient.QueueBuildAsync"/> path Queue / Send to Builder use.
         /// It OWNS the <see cref="BuildQueuePostgresClient.FindDedupCandidateAsync"/> guard (so a
         /// double-click across the 90s refresh window can't queue twice) and the existing auto-queue
-        /// log line, verbatim. Blocked-by numbers are passed straight through, unchanged — the #1600
-        /// fail-closed watcher still governs whether a queued blocked item actually launches; there
-        /// is NO bypass here. Returns true only when a fresh queue row was actually inserted this
-        /// call; false when the row is not queueable (no `BUILD:` comment / no queue DB), was already
-        /// tracked (dedup hit), or the insert failed (logged, not thrown — same stance as before).
+        /// log line, verbatim. Git #3623 — the blocked-by numbers written are the row's mirror view
+        /// UNION its BUILD header's --blocked-by UNION a live GitHub read made right before the insert
+        /// (<see cref="ResolveBlockersForInsertAsync"/>); when that live read fails the row is not
+        /// queued this pass. The #1600 fail-closed watcher still governs whether a queued blocked
+        /// item actually launches; there is NO bypass here. Returns true only when a fresh queue row
+        /// was actually inserted this call; false when the row is not queueable (no `BUILD:` comment /
+        /// no queue DB), was already tracked (dedup hit), its live blockers couldn't be read, or the
+        /// insert failed (logged, not thrown — same stance as before). <paramref name="gh"/> is the
+        /// caller's client for that live read; null builds a plain (circuit-gated) one from settings.
         /// </summary>
         public static async Task<bool> QueueRowAsync(
             BuildQueuePostgresClient? queueDb, BatterUpRow row, Action<string> log,
-            bool allowRequeueTerminal = false)
+            bool allowRequeueTerminal = false, GitHubApiClient? gh = null)
         {
             if (queueDb == null || !row.HasBuildComment || row.Prompt == null)
                 return false;
@@ -927,6 +995,10 @@ namespace BuildConsole.Services
                     return false; // already tracked — dedup guard against a double-click / a peer pass
                 }
 
+                // Git #3623 — never re-queue on the mirror's blocker view alone; see ResolveBlockersForInsertAsync.
+                var requeueBlockers = await ResolveBlockersForInsertAsync(row, gh, log);
+                if (requeueBlockers == null) return false;
+
                 try
                 {
                     await queueDb.QueueBuildAsync(
@@ -936,7 +1008,7 @@ namespace BuildConsole.Services
                         effort: row.Effort,
                         cwd: null,
                         githubNumber: row.Number,
-                        blockedByNumbers: row.BlockedByNumbers,
+                        blockedByNumbers: requeueBlockers,
                         buildSet: row.BuildSet,
                         reuseRowId: reuseRowId);
 
@@ -955,7 +1027,7 @@ namespace BuildConsole.Services
                         : $"re-queued (supervisory cancel exit 0{(row.IsBlocked ? ", still blocked — held by #1600 gate" : ", blocker cleared — will launch")} — reused row {reuseRowId}, Git #3521)";
                     log($"Batter Up #{row.Number} \"{row.Title}\" — {action} " +
                         $"(model={row.Model ?? "default"}, effort={row.Effort ?? "default"}, buildSet={row.BuildSet ?? "none"}" +
-                        (row.BlockedByNumbers.Count > 0 ? $", blocked-by={string.Join(",", row.BlockedByNumbers)}" : "") + ").");
+                        (requeueBlockers.Count > 0 ? $", blocked-by={string.Join(",", requeueBlockers)}" : "") + ").");
                     return true;
                 }
                 catch (Exception ex)
@@ -964,6 +1036,10 @@ namespace BuildConsole.Services
                     return false;
                 }
             }
+
+            // Git #3623 — resolve the real blocker set before the insert; null = fail closed, not queued this pass.
+            var freshBlockers = await ResolveBlockersForInsertAsync(row, gh, log);
+            if (freshBlockers == null) return false;
 
             // existing == null here (a null dedup candidate falls through to a fresh insert): this is a
             // first-time auto-queue of a never-before-tracked row, so reuseRowId is null by construction.
@@ -976,12 +1052,12 @@ namespace BuildConsole.Services
                     effort: row.Effort,
                     cwd: null,
                     githubNumber: row.Number,
-                    blockedByNumbers: row.BlockedByNumbers,
+                    blockedByNumbers: freshBlockers,
                     buildSet: row.BuildSet,
                     reuseRowId: reuseRowId);
                 log($"Batter Up #{row.Number} \"{row.Title}\" — auto-queued " +
                     $"(model={row.Model ?? "default"}, effort={row.Effort ?? "default"}, buildSet={row.BuildSet ?? "none"}" +
-                    (row.BlockedByNumbers.Count > 0 ? $", blocked-by={string.Join(",", row.BlockedByNumbers)}" : "") + ").");
+                    (freshBlockers.Count > 0 ? $", blocked-by={string.Join(",", freshBlockers)}" : "") + ").");
                 return true;
             }
             catch (Exception ex)
@@ -1015,7 +1091,7 @@ namespace BuildConsole.Services
                     continue;
                 }
 
-                if (await QueueRowAsync(queueDb, row, log))
+                if (await QueueRowAsync(queueDb, row, log, gh: gh))
                 {
                     // Git #1808 — just landed in bt_build_queue; drop from the displayed list.
                     justQueuedCount++;
