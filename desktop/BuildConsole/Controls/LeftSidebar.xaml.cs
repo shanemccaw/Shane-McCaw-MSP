@@ -4011,7 +4011,8 @@ namespace BuildConsole.Controls
 
             // ── Claude Design URL pill (Git #3692) — only rendered when set; matches #3675's
             // #num pill visual convention (rounded, accent-tinted border/background). Clicking
-            // opens the real URL in the system default browser, a genuine new tab.
+            // opens the real URL as an internal BuildConsole document tab (Git #3694), via the
+            // same OpenWebTab every other real web link in this app already goes through.
             if (!string.IsNullOrWhiteSpace(group.DesignUrl))
             {
                 var designPillRow = new DockPanel { Margin = new Thickness(9, 0, 9, 8) };
@@ -4035,12 +4036,16 @@ namespace BuildConsole.Controls
                     },
                 };
                 string designUrl = group.DesignUrl!;
+                string epicTitle = group.Title;
                 designPill.MouseLeftButtonUp += (_, e) =>
                 {
                     e.Handled = true;
                     try
                     {
-                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(designUrl) { UseShellExecute = true });
+                        if (Application.Current.MainWindow is MainWindow mWindow)
+                        {
+                            mWindow.OpenWebTab(designUrl, epicTitle + " — Design", "🎨");
+                        }
                     }
                     catch (Exception ex)
                     {
