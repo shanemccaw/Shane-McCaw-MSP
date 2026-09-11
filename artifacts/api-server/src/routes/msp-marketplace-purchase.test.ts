@@ -333,4 +333,61 @@ describe("POST /msp/customers/:customerId/marketplace/checkout", () => {
     expect(mockResolveFulfillment).toHaveBeenCalledOnce();
     expect(mockCreateAuditLog).toHaveBeenCalledOnce();
   });
+
+  // #3400 — a failed charge must not leave a permanently "accepted" sales
+  // offer with no money collected. Before the fix, the sales_offers insert
+  // (and SSE broadcast) happened unconditionally before Stripe was ever
+  // called, so every one of these failure exits left a terminal "accepted"
+  // row behind. Assert db.insert is never reached on any of them.
+  describe("paid (add_on): a failed charge never records a sales offer (#3400)", () => {
+    it("does not insert when the PaymentIntent does not succeed", async () => {
+      queueScopingSelects();
+      mockDbSelect.mockReturnValueOnce(selectChain([addOnService]));
+      mockDbSelect.mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // mspSubscriptionsTable
+      mockStripePaymentIntentsCreate.mockResolvedValueOnce({ id: "pi_failed", status: "requires_payment_method" });
+
+      const app = await makeApp();
+      const res = await request(app)
+        .post(`/api/msp/customers/${CUSTOMER_ID}/marketplace/checkout`)
+        .set("Authorization", `Bearer ${mspToken()}`)
+        .send({ serviceId: SERVICE_ID });
+
+      expect(res.status).toBe(402);
+      expect(mockDbInsert).not.toHaveBeenCalled();
+      expect(mockResolveFulfillment).not.toHaveBeenCalled();
+      expect(mockCreateAuditLog).not.toHaveBeenCalled();
+    });
+
+    it("does not insert when the MSP has no saved Stripe customer id", async () => {
+      queueScopingSelects();
+      mockDbSelect.mockReturnValueOnce(selectChain([addOnService]));
+      mockDbSelect.mockReturnValueOnce(selectChain([])); // mspSubscriptionsTable — no row
+
+      const app = await makeApp();
+      const res = await request(app)
+        .post(`/api/msp/customers/${CUSTOMER_ID}/marketplace/checkout`)
+        .set("Authorization", `Bearer ${mspToken()}`)
+        .send({ serviceId: SERVICE_ID });
+
+      expect(res.status).toBe(400);
+      expect(mockDbInsert).not.toHaveBeenCalled();
+    });
+
+    it("does not insert when the Stripe charge throws", async () => {
+      queueScopingSelects();
+      mockDbSelect.mockReturnValueOnce(selectChain([addOnService]));
+      mockDbSelect.mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // mspSubscriptionsTable
+      mockStripePaymentIntentsCreate.mockRejectedValueOnce(new Error("card_declined"));
+
+      const app = await makeApp();
+      const res = await request(app)
+        .post(`/api/msp/customers/${CUSTOMER_ID}/marketplace/checkout`)
+        .set("Authorization", `Bearer ${mspToken()}`)
+        .send({ serviceId: SERVICE_ID });
+
+      expect(res.status).toBe(500);
+      expect(mockDbInsert).not.toHaveBeenCalled();
+      expect(mockResolveFulfillment).not.toHaveBeenCalled();
+    });
+  });
 });

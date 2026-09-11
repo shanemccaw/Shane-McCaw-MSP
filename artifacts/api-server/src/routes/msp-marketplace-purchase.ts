@@ -192,46 +192,61 @@ router.post(
     const actorId = (req.user as { id?: number } | undefined)?.id ?? null;
     const actorEmail = (req.user as { email?: string } | undefined)?.email ?? "";
 
-    // ── Record the purchase as a real sales offer, already accepted ──────────
+    // ── Record the purchase as a real sales offer ────────────────────────────
     // Mirrors the shape a customer's own accepted offer would have, so the
     // customer sees this reflected via the exact same GET /api/portal/offers /
     // /customer-offers surfaces their own purchases use — no parallel table.
-    const now = new Date();
-    const [offer] = await db
-      .insert(salesOffersTable)
-      .values({
-        customerId,
-        serviceId: svc.id,
-        mspId: targetMspId,
-        title: svc.name,
-        rationale: "Purchased on your behalf by your MSP.",
-        basePriceCents: amountCents,
-        adjustedPriceCents: amountCents,
-        priceCents: amountCents,
-        internalCostCents: svc.internalCostCents,
-        trialPeriodDays: svc.trialPeriodDays,
-        state: "accepted",
-        sentAt: now,
-        acceptedAt: now,
-        engineSnapshot: {
-          initiatedBy: "msp_staff",
-          staffUserId: actorId,
-          staffEmail: actorEmail,
-        },
-      })
-      .returning({ id: salesOffersTable.id });
+    //
+    // #3400 — this insert (and the SSE broadcast that follows it) used to happen
+    // unconditionally, before the paid path below ever touched Stripe. Every
+    // failure exit in that path (Stripe not configured, no saved card, no
+    // default payment method, a non-active/trialing subscription, a
+    // non-succeeded PaymentIntent, any thrown exception) left this row
+    // permanently "accepted" — a terminal state per VALID_TRANSITIONS in
+    // sales-offer-engine.ts — with zero money collected and zero audit trail.
+    // The free path can't hit that failure class (no Stripe call at all), so it
+    // still records immediately below; the paid path now only records after
+    // Stripe has actually confirmed the charge.
+    async function recordAcceptedOffer(): Promise<number | null> {
+      const now = new Date();
+      const [offer] = await db
+        .insert(salesOffersTable)
+        .values({
+          customerId,
+          serviceId: svc.id,
+          mspId: targetMspId,
+          title: svc.name,
+          rationale: "Purchased on your behalf by your MSP.",
+          basePriceCents: amountCents,
+          adjustedPriceCents: amountCents,
+          priceCents: amountCents,
+          internalCostCents: svc.internalCostCents,
+          trialPeriodDays: svc.trialPeriodDays,
+          state: "accepted",
+          sentAt: now,
+          acceptedAt: now,
+          engineSnapshot: {
+            initiatedBy: "msp_staff",
+            staffUserId: actorId,
+            staffEmail: actorEmail,
+          },
+        })
+        .returning({ id: salesOffersTable.id });
 
-    if (!offer) {
-      apiErr(res, 500, "Failed to record purchase");
-      return;
+      if (!offer) return null;
+      broadcastCustomerOfferChange(customerId, { offerId: offer.id, state: "accepted" });
+      broadcastMspOfferChange(targetMspId, { offerId: offer.id, state: "accepted", tenantId: customerId });
+      return offer.id;
     }
-    const offerId = offer.id;
-
-    broadcastCustomerOfferChange(customerId, { offerId, state: "accepted" });
-    broadcastMspOfferChange(targetMspId, { offerId, state: "accepted", tenantId: customerId });
 
     // ── Free ($0) path — skip Stripe entirely ─────────────────────────────────
     if (amountCents === 0) {
+      const offerId = await recordAcceptedOffer();
+      if (offerId === null) {
+        apiErr(res, 500, "Failed to record purchase");
+        return;
+      }
+
       if (svc.fulfillmentTypeKey) {
         await resolveFulfillment({
           fulfillmentTypeKey: svc.fulfillmentTypeKey,
@@ -264,11 +279,13 @@ router.post(
     }
 
     // ── Paid path — Stripe Card-on-File billing, MSP's saved card ─────────────
+    // Nothing is written to sales_offers until the charge below actually
+    // succeeds (see #3400 note above).
     let stripeKey: string;
     try {
       stripeKey = getStripeKey();
     } catch {
-      log.warn({ offerId }, "msp-marketplace-purchase: Stripe not configured");
+      log.warn({ customerId, serviceId: svc.id }, "msp-marketplace-purchase: Stripe not configured");
       apiErr(res, 503, "Payment service not configured. Please contact support.");
       return;
     }
@@ -301,6 +318,9 @@ router.post(
 
       let subscriptionId: string | null = null;
       let stripePaymentIntentId: string | null = null;
+      let stripeSubStatus: "active" | "trialing" | null = null;
+      let stripeSubPeriod: { start: Date | null; end: Date | null; cancelAtPeriodEnd: boolean } | null = null;
+      let stripeSubPriceId: string | null = null;
 
       if (serviceClass === "subscription") {
         const product = await stripe.products.create({
@@ -327,9 +347,66 @@ router.post(
           return;
         }
         subscriptionId = stripeSub.id;
+        stripeSubStatus = stripeSub.status;
+        stripeSubPriceId = stripeSub.items.data[0]?.price?.id ?? null;
 
-        // #2847 — RECORD IT. Until this landed, the Stripe Subscription created two
-        // lines above was returned to the caller, copied into an audit-log metadata
+        const rawStripeSub = stripeSub as unknown as {
+          current_period_start?: number;
+          current_period_end?: number;
+        };
+        stripeSubPeriod = {
+          start: rawStripeSub.current_period_start ? new Date(rawStripeSub.current_period_start * 1000) : null,
+          end: rawStripeSub.current_period_end ? new Date(rawStripeSub.current_period_end * 1000) : null,
+          cancelAtPeriodEnd: stripeSub.cancel_at_period_end ?? false,
+        };
+      } else {
+        const pi = await stripe.paymentIntents.create({
+          amount: wholesaleCostCents,
+          currency: "usd",
+          customer: stripeCustomerId,
+          payment_method: defaultPaymentMethod,
+          confirm: true,
+          off_session: true,
+          description: `Wholesale charge: ${svc.name} (MSP: ${targetMspId}, staff-initiated for customer ${customerId})`,
+          metadata: {
+            customerId: String(customerId),
+            mspId: String(targetMspId),
+            serviceId: String(svc.id),
+            serviceClass,
+            initiatedBy: "msp_staff",
+          },
+        });
+
+        if (pi.status !== "succeeded") {
+          apiErr(res, 402, `Payment failed with status: ${pi.status}`);
+          return;
+        }
+        stripePaymentIntentId = pi.id;
+      }
+
+      // ── Charge confirmed successful — only now record the sales offer ──────
+      const offerId = await recordAcceptedOffer();
+      if (offerId === null) {
+        // Real money has already moved; telling the client the purchase
+        // "failed" here would invite a retry and a double charge. Log loud
+        // enough to reconcile by hand instead.
+        log.error(
+          { customerId, targetMspId, serviceId: svc.id, subscriptionId, stripePaymentIntentId },
+          "msp-marketplace-purchase: CRITICAL — Stripe charge succeeded but sales_offers insert failed; needs manual reconciliation",
+        );
+        res.status(201).json({
+          outcome: "payment_processed",
+          offerId: null,
+          message: `${svc.name} has been purchased and charged to the MSP's card on file. (There was an issue recording this purchase — contact support to confirm it shows up.)`,
+          subscriptionId,
+          paymentIntentId: stripePaymentIntentId,
+        });
+        return;
+      }
+
+      if (serviceClass === "subscription" && subscriptionId && stripeSubStatus && stripeSubPeriod) {
+        // #2847 — RECORD IT. Until this landed, the Stripe Subscription created
+        // above was returned to the caller, copied into an audit-log metadata
         // blob, and persisted in no table at all. The platform therefore had no
         // per-customer answer to "is this customer paying", which is precisely the fact
         // #1944 part 8 gates the entire customer portal on and #2765's retention clock
@@ -341,61 +418,30 @@ router.post(
         // to run, so throwing here would fail a request that actually succeeded. The
         // consequence of a miss is a customer whose portal stays open on the
         // `tenants.status` fallback — the pre-#2847 behaviour — not a wrong charge.
-        const rawStripeSub = stripeSub as unknown as {
-          current_period_start?: number;
-          current_period_end?: number;
-        };
         try {
           await recordTenantSubscription({
             tenantId: customerId,
             mspId: targetMspId,
             billingParty: "msp",
             source: "msp_marketplace",
-            status: stripeSub.status === "trialing" ? "trialing" : "active",
+            status: stripeSubStatus === "trialing" ? "trialing" : "active",
             serviceId: svc.id,
             planName: svc.name,
             stripeCustomerId,
-            stripeSubscriptionId: stripeSub.id,
-            stripePriceId: stripeSub.items.data[0]?.price?.id ?? null,
+            stripeSubscriptionId: subscriptionId,
+            stripePriceId: stripeSubPriceId,
             billingInterval: "month",
             unitAmountCents: wholesaleCostCents,
-            currentPeriodStart: rawStripeSub.current_period_start
-              ? new Date(rawStripeSub.current_period_start * 1000)
-              : null,
-            currentPeriodEnd: rawStripeSub.current_period_end
-              ? new Date(rawStripeSub.current_period_end * 1000)
-              : null,
-            cancelAtPeriodEnd: stripeSub.cancel_at_period_end ?? false,
+            currentPeriodStart: stripeSubPeriod.start,
+            currentPeriodEnd: stripeSubPeriod.end,
+            cancelAtPeriodEnd: stripeSubPeriod.cancelAtPeriodEnd,
           });
         } catch (err) {
           log.error(
-            { err, customerId, targetMspId, subscriptionId: stripeSub.id },
+            { err, customerId, targetMspId, subscriptionId },
             "msp-marketplace-purchase: failed to record tenant_subscriptions row (charge succeeded; billing state not updated)",
           );
         }
-      } else {
-        const pi = await stripe.paymentIntents.create({
-          amount: wholesaleCostCents,
-          currency: "usd",
-          customer: stripeCustomerId,
-          payment_method: defaultPaymentMethod,
-          confirm: true,
-          off_session: true,
-          description: `Wholesale charge: ${svc.name} (MSP: ${targetMspId}, staff-initiated for customer ${customerId})`,
-          metadata: {
-            offerId: String(offerId),
-            customerId: String(customerId),
-            mspId: String(targetMspId),
-            serviceClass,
-            initiatedBy: "msp_staff",
-          },
-        });
-
-        if (pi.status !== "succeeded") {
-          apiErr(res, 402, `Payment failed with status: ${pi.status}`);
-          return;
-        }
-        stripePaymentIntentId = pi.id;
       }
 
       if (svc.fulfillmentTypeKey) {
@@ -441,7 +487,7 @@ router.post(
         paymentIntentId: stripePaymentIntentId,
       });
     } catch (err) {
-      log.error({ err, offerId, customerId }, "msp-marketplace-purchase: billing failed");
+      log.error({ err, customerId, serviceId: svc.id }, "msp-marketplace-purchase: billing failed");
       apiErr(res, 500, `Failed to process card-on-file charge: ${(err as Error).message}`);
     }
   },
