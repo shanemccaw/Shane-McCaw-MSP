@@ -1296,20 +1296,46 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>
-        /// Git #1862 — is a queued item genuinely blocked RIGHT NOW? Blocked means it
+        /// Git #1862 — is this item genuinely blocked RIGHT NOW? Blocked means it
         /// declares a blocker the live open-issue set (<see cref="_openIssues"/>) reports
         /// still OPEN — not merely that it declares one (the old heuristic, which painted
         /// 🔒 BLOCKED on items whose blocker closed days ago). Until that set arrives
         /// (_openIssues == null, cold start) blocked-ness is UNKNOWN, so we fail safe to
         /// the old declared-blocker behaviour rather than assert a confident "runnable".
+        ///
+        /// Git #3624 — no longer gated to the raw "queued" status. #3585 was claimed and
+        /// ran (status: Verifying) while its declared blockers were still genuinely open —
+        /// the exact incident #3623 investigates on the claim side — and its card showed a
+        /// generic "🔎 VERIFYING" pill instead of "🔒 BLOCKED", because this check bailed
+        /// out before ever looking at the live open-issue set. Eligible statuses are the
+        /// three the real evidence covers: <c>queued</c> (a genuine claim candidate),
+        /// <see cref="BuildQueuePostgresClient.VerifyingStatus"/> (claimed/ran anyway, per
+        /// #3623's incident class), and a supervisory self-cancel pending re-dispatch
+        /// (<see cref="IsWaitingSelfBlocked"/> — "canceled" + ExitCode == 0, which
+        /// auto-requeues rather than sitting abandoned). Any OTHER status — done, failed, a
+        /// genuine abandoned cancel, superseded, parked, capped, external, limit-paused —
+        /// is excluded on purpose: those are either terminal (blocked-ness is moot once work
+        /// is finished/abandoned) or a deliberate, orthogonal staging state whose own label
+        /// (📥 PARKED, CAPPED, 🚀 EXTERNAL, ⏸ LIMIT) already says something more specific
+        /// than "waiting on a dependency" and shouldn't be overridden by it.
         /// </summary>
         private bool IsGenuinelyBlocked(QueueItem item, List<int> cleanBlockers)
         {
-            if (item.Status != "queued") return false;
+            if (!IsBlockedEligibleStatus(item)) return false;
             if (cleanBlockers.Count == 0) return false;
             if (_openIssues == null) return true; // cold start: provisional-blocked
             return cleanBlockers.Any(b => _openIssues.Contains(b));
         }
+
+        /// <summary>Git #3624 — the raw statuses eligible for the 🔒 BLOCKED treatment at all,
+        /// shared by <see cref="IsGenuinelyBlocked"/> (drives the card's headline pill/border)
+        /// and the ghost-card render gate in <see cref="BuildQueueCard"/> (drives whether the
+        /// real BuildBlockerGhostCard(s) render inline) — kept as one source of truth so the
+        /// two can never disagree about which rows are even in scope for "blocked".</summary>
+        private static bool IsBlockedEligibleStatus(QueueItem item) =>
+            item.Status == "queued"
+            || item.Status == BuildQueuePostgresClient.VerifyingStatus
+            || IsWaitingSelfBlocked(item);
 
         /// <summary>
         /// Git #1862 — forwarded by MainWindow off every Git Board refresh (the same free
@@ -4146,6 +4172,33 @@ namespace BuildConsole.Controls
                     VerticalAlignment = VerticalAlignment.Center
                 };
             }
+            else if (isBlocked)
+            {
+                // Git #3624 — a real, currently-open declared blocker overrides whatever the
+                // raw status column would otherwise render (Verifying — #3585's incident, or
+                // a supervisory self-cancel/WAITING — see IsGenuinelyBlocked). Matches
+                // GhostStatusLabel's own priority order (checked before Verifying/canceled)
+                // so the headline pill and the inline ghost-card label can never disagree
+                // about which bucket a genuinely-blocked row falls in. The "queued" branch
+                // below no longer needs its own isBlocked check — this one already caught it.
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x1E, 0x26)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "🔒 BLOCKED",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "A real, declared blocker is still open on GitHub — see the ghost card below for which issue(s)."
+                };
+            }
             else if (item.Status == BuildQueuePostgresClient.VerifyingStatus)
             {
                 // Git #1469 — session genuinely finished, but its real GitHub issue
@@ -4392,25 +4445,25 @@ namespace BuildConsole.Controls
             }
             else if (item.Status == "queued")
             {
-                // Git #3514 — the "UP NEXT"/"🔒 BLOCKED" pill is now reachable ONLY for a
-                // genuinely queued row (IsGenuinelyBlocked itself returns false for any
-                // non-queued status), so nothing that isn't actually a claim candidate can
-                // be painted as one. isBlocked here means the live open-issue set still
-                // reports one of its declared blockers open.
+                // Git #3514 — a genuinely queued, non-blocked row is a real claim candidate.
+                // Git #3624 — the "🔒 BLOCKED" case for a queued row is now handled by the
+                // shared `else if (isBlocked)` branch above (which fires for ANY eligible
+                // status, not just queued — see IsBlockedEligibleStatus), so reaching this
+                // branch at all already means isBlocked is false; no ternary needed here.
                 statusPill = new Border
                 {
-                    Background = new SolidColorBrush(isBlocked ? Color.FromRgb(0x3A, 0x1E, 0x26) : Color.FromRgb(0x21, 0x22, 0x34)),
-                    BorderBrush = new SolidColorBrush(isBlocked ? Color.FromRgb(0xF3, 0x8B, 0xA8) : Color.FromRgb(0x6C, 0x70, 0x86)),
+                    Background = new SolidColorBrush(Color.FromRgb(0x21, 0x22, 0x34)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x6C, 0x70, 0x86)),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(4),
                     Padding = new Thickness(6, 1.5, 6, 1.5)
                 };
                 statusPill.Child = new TextBlock
                 {
-                    Text = isBlocked ? "🔒 BLOCKED" : "⏳ UP NEXT",
+                    Text = "⏳ UP NEXT",
                     FontSize = 9.5,
                     FontWeight = FontWeights.Bold,
-                    Foreground = new SolidColorBrush(isBlocked ? Color.FromRgb(0xF3, 0x8B, 0xA8) : Color.FromRgb(0xBA, 0xB4, 0xCD)),
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xBA, 0xB4, 0xCD)),
                     VerticalAlignment = VerticalAlignment.Center
                 };
             }
@@ -4621,7 +4674,12 @@ namespace BuildConsole.Controls
             // Git #3620 — a self-blocked "⏳ WAITING" row (IsWaitingSelfBlocked) has
             // real open blocked_by data too; include it here the same way #3599
             // already folded it into the Queued/Running filter views.
-            if (LiveBlockedBy(node).Count > 0 && (item.Status == "queued" || IsWaitingSelfBlocked(item)))
+            // Git #3624 — extended to a genuinely-blocked Verifying row (#3585's incident:
+            // claimed and ran anyway, still shows a real open blocker) via the same
+            // IsBlockedEligibleStatus source of truth the headline pill now uses, so the
+            // card's own "🔒 BLOCKED" label is never shown without the ghost card(s)
+            // naming which real issue(s) it's waiting on.
+            if (LiveBlockedBy(node).Count > 0 && IsBlockedEligibleStatus(item))
             {
                 foreach (var blockerNumber in LiveBlockedBy(node))
                 {
