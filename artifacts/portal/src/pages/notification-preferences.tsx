@@ -81,7 +81,7 @@ function pluralize(n: number, singular: string, plural: string): string {
  *
  * Wired to the real, already-built `GET`/`PATCH /api/portal/notification-
  * preferences` (docs/portal/notification-preferences-contract-pack.md) — no
- * fixture data. Both endpoints are CustomerUser-reachable with no other
+ * fixture data. Both endpoints are Customer-reachable with no other
  * role/tenant scoping (contract pack §7), matching the archived page's own
  * usage.
  */

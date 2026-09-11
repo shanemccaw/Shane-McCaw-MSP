@@ -33,10 +33,10 @@
  * `(mspId, tenantId)` and fails closed on anything missing — see that
  * module's own header for why both predicates are required, not just one.
  *
- * ── Role floor: `CustomerUser` ──────────────────────────────────────────
+ * ── Role floor: `Customer` ──────────────────────────────────────────
  * Same reasoning as `portal-risk-register.ts`: this is a signature surface
  * that transfers liability, so it sits at the higher floor, not the
- * `Assessment` floor the lower-stakes customer routes use.
+ * `Free` floor the lower-stakes customer routes use.
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { createHash } from "node:crypto";

@@ -930,7 +930,7 @@ router.patch("/admin/active-directory/user/:id/role", requireAdmin, async (req: 
 
 // PATCH /admin/active-directory/user/:id/assignment
 // Body: { mspId: number } for an MSP-scoped role, or { customerId: number }
-// for CustomerUser — never both. Reassigning a CustomerUser always derives
+// for Customer — never both. Reassigning a Customer always derives
 // mspId server-side from the target customer's real owning MSP (never
 // client-supplied), per planAssignmentChange()'s header comment.
 router.patch("/admin/active-directory/user/:id/assignment", requireAdmin, async (req: Request, res: Response) => {

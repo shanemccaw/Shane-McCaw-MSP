@@ -120,7 +120,7 @@ async function fanOutToCustomerWebhook(
     if (!ctx) return;
     await dispatchEvent({
       eventType: `notification.${payload.category ?? "general"}`,
-      actor: { id: userId, role: LEGACY_ROLE.customerUser, type: "user" },
+      actor: { id: userId, role: LEGACY_ROLE.customer, type: "user" },
       source: "notification-center",
       mspId: ctx.mspId,
       customerId: ctx.customerId,

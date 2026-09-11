@@ -22,6 +22,8 @@ import {
   LEGACY_MSP_STAFF_ROLES,
   LEGACY_ROLE,
   LEGACY_ROLE_ORDER,
+  RETIRED_ROLE_VALUES,
+  canonicalRoleValue,
   effectiveLegacyRole,
   isLegacyRole,
   ladderCapabilityKey,
@@ -38,7 +40,7 @@ function principal(over: Partial<LegacyUserRow> = {}): LegacyUserRow {
   return {
     id: 1,
     role: "client",
-    mspRole: "Assessment",
+    mspRole: "Free",
     mspId: 1,
     tenantId: 1,
     canApprovePurchases: false,
@@ -88,7 +90,7 @@ describe("this module is now the ONLY copy of the ordering (#2460)", () => {
   it("exposes the seven values by name, so no other file needs the literal", () => {
     expect(Object.values(LEGACY_ROLE).sort()).toEqual([...LEGACY_ROLE_ORDER].sort());
     expect([...LEGACY_MSP_STAFF_ROLES]).toEqual(["MSPAdmin", "MSPOperator"]);
-    expect([...LEGACY_CUSTOMER_TIER_ROLES]).toEqual(["CustomerUser", "Free", "Assessment"]);
+    expect([...LEGACY_CUSTOMER_TIER_ROLES]).toEqual(["Customer", "Free"]);
     // LADDER is the capability-key face of the same seven, and must agree with the
     // rung → key map the seed was computed from.
     expect(Object.values(LADDER).sort()).toEqual(Object.values(LADDER_CAPABILITY_KEYS).sort());
@@ -106,14 +108,14 @@ describe("legacyRoleIndex", () => {
       expect(legacyRoleIndex(value)).toBe(-1);
       // Every floor in the codebase is a real rung, so index 0 is the lowest
       // anything is ever compared against.
-      expect(legacyRoleIndex(value) >= legacyRoleIndex("Assessment")).toBe(false);
+      expect(legacyRoleIndex(value) >= legacyRoleIndex("Free")).toBe(false);
     }
   });
 });
 
 describe("effectiveLegacyRole — the legacy admin promotion (requireAuth.ts:210-212)", () => {
   it("promotes role='admin' to PlatformAdmin regardless of msp_role", () => {
-    expect(effectiveLegacyRole({ role: "admin", mspRole: "Assessment" })).toBe("PlatformAdmin");
+    expect(effectiveLegacyRole({ role: "admin", mspRole: "Free" })).toBe("PlatformAdmin");
     expect(effectiveLegacyRole({ role: "admin", mspRole: null })).toBe("PlatformAdmin");
     expect(effectiveLegacyRole({ role: "admin", mspRole: "PlatformAdmin" })).toBe("PlatformAdmin");
   });
@@ -150,9 +152,9 @@ describe("legacyRequireRole", () => {
     }
   });
 
-  it("puts a ServiceAccount ABOVE a human CustomerUser — the artifact, carried across on purpose", () => {
-    expect(legacyRequireRole({ role: "client", mspRole: "ServiceAccount" }, "CustomerUser")).toBe(true);
-    expect(legacyRequireRole({ role: "client", mspRole: "CustomerUser" }, "ServiceAccount")).toBe(false);
+  it("puts a ServiceAccount ABOVE a human Customer — the artifact, carried across on purpose", () => {
+    expect(legacyRequireRole({ role: "client", mspRole: "ServiceAccount" }, "Customer")).toBe(true);
+    expect(legacyRequireRole({ role: "client", mspRole: "Customer" }, "ServiceAccount")).toBe(false);
   });
 });
 
@@ -201,14 +203,14 @@ describe("the capability columns are read ASYMMETRICALLY today, and the transcri
     expect(legacyDecision(asRole("MSPOperator", { canApprovePurchases: true }), "msp", "purchases.approve")).toBe(true);
     // ...and on anyone else the column grants NOTHING. Seeding it as a grant
     // would be a privilege escalation dressed up as a transcription.
-    for (const role of ["Assessment", "Free", "CustomerUser", "ServiceAccount"] as const) {
+    for (const role of ["Free", "Customer", "ServiceAccount"] as const) {
       expect(legacyDecision(asRole(role, { canApprovePurchases: true }), "msp", "purchases.approve")).toBe(false);
     }
   });
 
   it("customer:team.manage exempts the three customer tiers only — so ServiceAccount passes flagless", () => {
     // portal-team.ts before #2460 tested isCustomerTier, an allow-list of three NAMES.
-    for (const role of ["Assessment", "Free", "CustomerUser"] as const) {
+    for (const role of ["Free", "Customer"] as const) {
       expect(legacyDecision(asRole(role), "customer", "team.manage")).toBe(false);
       expect(legacyDecision(asRole(role, { canManageTeam: true }), "customer", "team.manage")).toBe(true);
     }
@@ -223,7 +225,7 @@ describe("the capability columns are read ASYMMETRICALLY today, and the transcri
     for (const role of ["MSPOperator", "MSPAdmin", "PlatformAdmin"] as const) {
       expect(legacyDecision(asRole(role), "customer", "changes.approve")).toBe(true);
     }
-    for (const role of ["Assessment", "Free", "CustomerUser", "ServiceAccount"] as const) {
+    for (const role of ["Free", "Customer", "ServiceAccount"] as const) {
       expect(legacyDecision(asRole(role), "customer", "changes.approve")).toBe(false);
       expect(legacyDecision(asRole(role, { canApproveChanges: true }), "customer", "changes.approve")).toBe(true);
     }
@@ -279,7 +281,7 @@ describe("legacyDecision", () => {
   });
 
   it("carries the admin promotion into capability answers, not just requireRole", () => {
-    const legacyAdmin = principal({ role: "admin", mspRole: "Assessment" });
+    const legacyAdmin = principal({ role: "admin", mspRole: "Free" });
     expect(legacyDecision(legacyAdmin, "msp", ladderCapabilityKey("PlatformAdmin"))).toBe(true);
     expect(legacyDecision(legacyAdmin, "msp", "purchases.approve")).toBe(true);
     expect(legacyDecision(legacyAdmin, "customer", "changes.approve")).toBe(true);
@@ -312,5 +314,49 @@ describe("the capability-column role keys", () => {
       expect(key.startsWith("cap.")).toBe(true);
       expect(isLegacyRole(key)).toBe(false);
     }
+  });
+});
+
+describe("#3590 — CustomerUser renamed Customer, Assessment folded into Free", () => {
+  const row = (mspRole: string | null, role = "client"): LegacyUserRow => ({
+    id: 1, role, mspRole, mspId: 1, tenantId: 1,
+    canApprovePurchases: false, canManageTeam: false, canApproveChanges: false,
+  });
+
+  it("maps exactly the two retired values, and nothing else", () => {
+    expect(canonicalRoleValue("CustomerUser")).toBe(LEGACY_ROLE.customer);
+    expect(canonicalRoleValue("Assessment")).toBe(LEGACY_ROLE.free);
+    expect(canonicalRoleValue(LEGACY_ROLE.mspAdmin)).toBe(LEGACY_ROLE.mspAdmin);
+    expect(canonicalRoleValue("NotARole")).toBe("NotARole");
+    expect(canonicalRoleValue(undefined)).toBeUndefined();
+    expect(canonicalRoleValue(null)).toBeNull();
+    // An inherited property name is not an alias.
+    expect(canonicalRoleValue("toString")).toBe("toString");
+  });
+
+  it("never lets a retired value stand as a rung in its own right, and always points at a real one", () => {
+    for (const [retired, current] of Object.entries(RETIRED_ROLE_VALUES)) {
+      expect(isLegacyRole(retired)).toBe(false);
+      expect(isLegacyRole(current)).toBe(true);
+    }
+  });
+
+  it("reads a pre-rename claim as the rung it became", () => {
+    expect(effectiveLegacyRole({ role: "client", mspRole: "CustomerUser" })).toBe(LEGACY_ROLE.customer);
+    expect(effectiveLegacyRole({ role: "client", mspRole: "Assessment" })).toBe(LEGACY_ROLE.free);
+    expect(legacyRequireRole({ role: "client", mspRole: "CustomerUser" }, LEGACY_ROLE.customer)).toBe(true);
+    expect(legacyRequireRole({ role: "client", mspRole: "Assessment" }, LEGACY_ROLE.customer)).toBe(false);
+  });
+
+  it("customer:marketplace.browse-full is every rung except the pre-payment Free rung", () => {
+    const allowed = LEGACY_ROLE_ORDER.filter((rung) => legacyDecision(row(rung), "customer", "marketplace.browse-full"));
+    expect(allowed).toEqual([
+      LEGACY_ROLE.customer,
+      LEGACY_ROLE.serviceAccount,
+      LEGACY_ROLE.mspOperator,
+      LEGACY_ROLE.mspAdmin,
+      LEGACY_ROLE.platformAdmin,
+    ]);
+    expect(legacyDecision(row(LEGACY_ROLE.free, "admin"), "customer", "marketplace.browse-full")).toBe(true);
   });
 });

@@ -114,7 +114,7 @@ router.post("/admin/msps/:mspId/impersonate", requireAdmin, async (req: Request,
 
 // PlatformAdmin: list real accounts usable as "view as" targets for the
 // testing switcher, grouped by tier. Read-only — issues no tokens itself.
-// Reuses the existing /admin/impersonate/:userId (Assessment/CustomerUser,
+// Reuses the existing /admin/impersonate/:userId (Free/Customer,
 // both usersTable.role="client") and /admin/msps/:mspId/impersonate
 // (MSPAdmin) endpoints unchanged to actually generate a token.
 //
@@ -140,8 +140,8 @@ const VIEW_AS_GROUPS: ReadonlyArray<{
   /** Which pre-existing token-generation endpoint this group's accounts use. */
   impersonationScope: "msp" | "user";
 }> = [
-  { key: "Assessment", label: "Assessment", impersonationScope: "user" },
-  { key: LEGACY_ROLE.customerUser, label: "Customer User", impersonationScope: "user" },
+  { key: LEGACY_ROLE.free, label: "Free", impersonationScope: "user" },
+  { key: LEGACY_ROLE.customer, label: "Customer", impersonationScope: "user" },
   // MSPAdmin accounts go through /admin/msps/:mspId/impersonate — the MSP-level
   // token — rather than /admin/impersonate/:userId. Unchanged behaviour; what
   // changed is that the server states it instead of the component inferring it.

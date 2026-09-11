@@ -2,7 +2,7 @@
  * AI Support Chat — grounded Q&A for MSP users and customer users.
  *
  * Scoped to:
- *   MSP ↔ Shane: all MSP roles (MSPAdmin, MSPOperator, CustomerUser) can ask questions
+ *   MSP ↔ Shane: all MSP roles (MSPAdmin, MSPOperator, Customer) can ask questions
  *   answered from real platform data (billing, signals, SOW/fulfillment, monitoring).
  *
  * Escalation:
@@ -14,7 +14,7 @@
  *   - zoho_desk_create_ticket queued via the standard msp_job_queue/drain pattern
  *   - Recipients are emailed by the job itself, with the real ticket link — never a
  *     dead-end "log in" pointer sent from this request path
- *   - For CustomerUser: a messagesTable row is also created so it shows in their own
+ *   - For Customer: a messagesTable row is also created so it shows in their own
  *     inbox thread — unrelated to the admin side, untouched by #89
  *   - aiCostOwner: "msp" — logged in metadata
  *
@@ -72,7 +72,7 @@ import type { ChatMessageContent } from "@workspace/db";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 /**
- * Shane's own MSP. CustomerUser escalations from this MSP route to platform
+ * Shane's own MSP. Customer escalations from this MSP route to platform
  * admins (Shane's team runs it directly), same as MSP-staff escalations —
  * see the routing table in escalateToAdmin().
  */
@@ -246,7 +246,7 @@ REMEDIATION PROPOSAL RULES (follow exactly):
   // Same "propose, never silently act" shape as the remediation block above,
   // for the two actions shanebot-engine.ts's action_router is allowed to
   // authorize for this instance (regenerate_document, rerun_scan). Gated by
-  // `actionsEnabled` (this route only enables it for a CustomerUser on their
+  // `actionsEnabled` (this route only enables it for a Customer on their
   // own tenant) so an MSP-staff turn never even learns the tokens exist.
   const actionsBlock = !actionsEnabled
     ? ""
@@ -264,7 +264,7 @@ PLATFORM ACTION RULES (follow exactly):
 - Offer at most one action per reply.
 - If there is nothing eligible for that action, the Confirm button will not appear — still explain what you're offering, and let the user know if it turns out nothing was available.`;
 
-  // Active Cards (#366) — same gate as actionsBlock (a CustomerUser on their own
+  // Active Cards (#366) — same gate as actionsBlock (a Customer on their own
   // tenant), since card data is resolved the same real-per-customer way actions
   // are. The marker never carries data itself; it only tells the client which
   // pre-resolved card (if any) to render alongside the reply.
@@ -320,7 +320,7 @@ ${grounding.summary}
 
 /**
  * A resolved escalation recipient. `mspUserId` is set for MSP-routed recipients
- * (CustomerUser → their MSP's admins) so the notification row carries
+ * (Customer → their MSP's admins) so the notification row carries
  * recipientType "msp_user" + mspId; `userId` is set for platform-admin
  * recipients (recipientType "platform_admin"), matching the two fan-out
  * patterns in workflow-executor.ts's approval-gate handler.
@@ -345,9 +345,9 @@ async function loadPlatformAdminRecipients(): Promise<EscalationRecipient[]> {
 /**
  * Resolve who a given escalation should notify, per the routing table:
  *   - MSP staff (MSPAdmin/MSPOperator)                → all platform admins
- *   - CustomerUser on the platform MSP (id === 1)      → all platform admins
- *   - CustomerUser on any other MSP                    → that MSP's active MSPAdmins
- *   - CustomerUser MSP with zero active MSPAdmins      → fall back to platform admins
+ *   - Customer on the platform MSP (id === 1)      → all platform admins
+ *   - Customer on any other MSP                    → that MSP's active MSPAdmins
+ *   - Customer MSP with zero active MSPAdmins      → fall back to platform admins
  *   - no resolvable mspId                              → all platform admins
  * Mirrors the MSP-scoped fan-out in workflow-executor.ts — since #2460 both resolve
  * their recipients through `msp:purchases.approve` rather than through the retired
@@ -438,7 +438,7 @@ async function escalateToAdmin(opts: {
       { mspId: opts.mspId ?? undefined },
     );
 
-    // For CustomerUser: create a messagesTable row so it shows in the inbox thread.
+    // For Customer: create a messagesTable row so it shows in the inbox thread.
     if (opts.isCustomerUser && opts.userId) {
       await db.insert(messagesTable).values({
         clientUserId: opts.userId,
@@ -499,7 +499,7 @@ router.post(
 
     const mspId = await resolveMspId(req);
     const customerId = user.customerId ?? null;
-    const isCustomerUser = user.mspRole === LEGACY_ROLE.customerUser;
+    const isCustomerUser = user.mspRole === LEGACY_ROLE.customer;
 
     // Billing attribution for this chat turn. resolveBillingMspId takes
     // precedence over resolveMspId so an impersonation session bills the
@@ -508,13 +508,13 @@ router.post(
     const billingMspId = resolveBillingMspId(user) ?? mspId;
 
     // ShaneBot Paid — grounded via the shared engine's customer_entitlements
-    // builder. The engine branches CustomerUser → own tenant, MSP staff → their
+    // builder. The engine branches Customer → own tenant, MSP staff → their
     // MSP, and falls back for a user with no resolvable MSP context (the
     // PlatformAdmin case is already rejected above).
     const paidInstance = resolveInstance("shanebot_paid");
     let groundedCtx: BotGrounding;
     // Instant remediations the AI is allowed to propose in this session. Only
-    // ever non-empty for a CustomerUser on a testbed tenant with an eligible
+    // ever non-empty for a Customer on a testbed tenant with an eligible
     // sent offer — listRemediableOffers enforces the same gate the execute
     // endpoint does, so every entry here is genuinely actionable.
     let remediableOffers: RemediableOffer[] = [];
@@ -604,7 +604,7 @@ router.post(
     }
 
     // Action proposal (#363) — regenerate_document / rerun_scan. Only ever
-    // computed for a CustomerUser on their own tenant, matching the system
+    // computed for a Customer on their own tenant, matching the system
     // prompt's actionsEnabled gate above, so an MSP-staff turn can never
     // surface one even if the model somehow emitted a token. The router
     // (shanebot-engine.ts) already authorized the token name against the
@@ -744,7 +744,7 @@ router.post(
     if (rejectPlatformAdmin(user, res)) return;
 
     const mspId = await resolveMspId(req);
-    const isCustomerUser = user.mspRole === LEGACY_ROLE.customerUser;
+    const isCustomerUser = user.mspRole === LEGACY_ROLE.customer;
 
     await escalateToAdmin({
       question: question ?? "(no question provided)",
@@ -771,7 +771,7 @@ router.post(
 
 // ── POST /api/msp/support/actions/regenerate-document ────────────────────────
 // Confirmed execution of a [ACTION:regenerate_document] proposal (#363).
-// CustomerUser-only, self-service on their OWN tenant's own most recent
+// Customer-only, self-service on their OWN tenant's own most recent
 // eligible document — the target is re-resolved here from scratch (never
 // trusted from the earlier proposal or the request body), so a stale or
 // tampered confirm click can never regenerate anything but the caller's own
@@ -786,7 +786,7 @@ router.post(
   requireAuth,
   async (req: Request, res: Response) => {
     const user = req.user!;
-    if (user.mspRole !== LEGACY_ROLE.customerUser || !user.customerId) {
+    if (user.mspRole !== LEGACY_ROLE.customer || !user.customerId) {
       res.status(403).json({ error: "Not available for this account" });
       return;
     }
@@ -864,7 +864,7 @@ router.post(
   requireAuth,
   async (req: Request, res: Response) => {
     const user = req.user!;
-    if (user.mspRole !== LEGACY_ROLE.customerUser || !user.customerId) {
+    if (user.mspRole !== LEGACY_ROLE.customer || !user.customerId) {
       res.status(403).json({ error: "Not available for this account" });
       return;
     }

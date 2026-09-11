@@ -30,7 +30,7 @@ export const MspUserProfileMspRole = {
   PlatformAdmin: 'PlatformAdmin',
   MSPAdmin: 'MSPAdmin',
   MSPOperator: 'MSPOperator',
-  CustomerUser: 'CustomerUser',
+  Customer: 'Customer',
   ServiceAccount: 'ServiceAccount',
   Free: 'Free',
 } as const;

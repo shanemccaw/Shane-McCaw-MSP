@@ -5,7 +5,7 @@
  *   PUT /api/portal/theme-preference — update the caller's own preference
  *
  * Self-scoped to req.user's own users row only — every authenticated role
- * gets this (not CustomerUser-specific), and there is no target-user
+ * gets this (not Customer-specific), and there is no target-user
  * override; a caller can only ever read/write their own row.
  *
  * Tenant/User Refactor Phase 2a (#102): themePreference lives on usersTable

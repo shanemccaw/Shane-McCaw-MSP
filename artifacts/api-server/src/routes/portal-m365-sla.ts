@@ -9,7 +9,7 @@
  * customers care whether their tenant is meeting the SLA, not the full
  * accountability detail an MSP operator needs.
  *
- * Routes (CustomerUser, customerId from JWT claim):
+ * Routes (Customer, customerId from JWT claim):
  *   GET /api/portal/m365-sla/summary
  */
 

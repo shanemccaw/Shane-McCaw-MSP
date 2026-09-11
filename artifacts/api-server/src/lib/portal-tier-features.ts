@@ -7,7 +7,7 @@
  * confusing them is how a tenant gets the wrong screen:
  *
  *   - `middlewares/requireAuth.ts`'s `requireRole(...)` — the coarse
- *     Free/Assessment/CustomerUser/MSP* ROLE floor. It answers "is this login
+ *     Free/Customer/MSP* ROLE floor. It answers "is this login
  *     a paying customer at all", not "which operational modules does this
  *     customer's PURCHASED MONITORING TIER include". Every route below still
  *     keeps its existing role floor; this module is an ADDITIONAL check.

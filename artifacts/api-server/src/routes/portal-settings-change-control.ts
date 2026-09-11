@@ -40,8 +40,8 @@
  *
  * ── Scoping ───────────────────────────────────────────────────────────────
  * `resolveCustomerId` off the JWT, identical to `portal-ownership.ts` — these
- * are the same customer-scoped era of table. Role floor `CustomerUser`,
- * matching Ownership rather than the lower `Assessment` floor
+ * are the same customer-scoped era of table. Role floor `Customer`,
+ * matching Ownership rather than the lower `Free` floor
  * `portal-change-control.ts` uses: configuring who may approve a change is a
  * paying tenant's own governance decision, not something a free assessment
  * lead is asked to set.

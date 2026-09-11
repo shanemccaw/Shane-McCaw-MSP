@@ -95,7 +95,7 @@ function resolveCustomerId(req: Request): number | null {
 router.get(
   "/portal/remediation-tracker/pillar-scores",
   // Same floor as the rest of the Copilot Readiness journey (portal-assessment.ts).
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

@@ -116,20 +116,20 @@ describe("PATCH /admin/active-directory/user/:id/role", () => {
     expect(res.status).toBe(404);
   });
 
-  it("400s an invalid transition — CustomerUser target with no customer linkage (acceptance-criteria rejection case)", async () => {
+  it("400s an invalid transition — Customer target with no customer linkage (acceptance-criteria rejection case)", async () => {
     mockResultQueue = [[{ mspRole: LEGACY_ROLE.mspAdmin, mspId: 1, customerId: null }]];
     const res = await request(app)
       .patch("/api/admin/active-directory/user/100/role")
       .set("Authorization", `Bearer ${adminToken()}`)
-      .send({ mspRole: LEGACY_ROLE.customerUser });
+      .send({ mspRole: LEGACY_ROLE.customer });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/no customer linkage/i);
     expect(auditLogSpy).not.toHaveBeenCalled();
   });
 
-  it("200s a valid role change, clearing customer linkage when moving a CustomerUser to an MSP-scoped role, and audit-logs before/after", async () => {
+  it("200s a valid role change, clearing customer linkage when moving a Customer to an MSP-scoped role, and audit-logs before/after", async () => {
     mockResultQueue = [
-      [{ mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10 }], // current row
+      [{ mspRole: LEGACY_ROLE.customer, mspId: 1, customerId: 10 }], // current row
       [], // update()
       [], // createAuditLog's insert() (unused since createAuditLog is mocked, but harmless if consumed)
     ];
@@ -142,7 +142,7 @@ describe("PATCH /admin/active-directory/user/:id/role", () => {
     expect(auditLogSpy).toHaveBeenCalledTimes(1);
     const call = auditLogSpy.mock.calls[0][0];
     expect(call.actionType).toBe("user.role.update");
-    expect(call.metadata.before).toEqual({ mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10 });
+    expect(call.metadata.before).toEqual({ mspRole: LEGACY_ROLE.customer, mspId: 1, customerId: 10 });
     expect(call.metadata.after).toEqual({ mspRole: LEGACY_ROLE.mspOperator, mspId: 1, customerId: null });
   });
 });
@@ -186,9 +186,9 @@ describe("PATCH /admin/active-directory/user/:id/assignment", () => {
     expect(auditLogSpy).not.toHaveBeenCalled();
   });
 
-  it("200s a valid CustomerUser reassignment, deriving mspId from the target customer's real owning MSP", async () => {
+  it("200s a valid Customer reassignment, deriving mspId from the target customer's real owning MSP", async () => {
     mockResultQueue = [
-      [{ mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10 }], // current row
+      [{ mspRole: LEGACY_ROLE.customer, mspId: 1, customerId: 10 }], // current row
       [{ mspId: 7 }], // target customer's owning MSP
       [], // update()
       [], // createAuditLog insert
@@ -203,9 +203,9 @@ describe("PATCH /admin/active-directory/user/:id/assignment", () => {
     expect(auditLogSpy.mock.calls[0][0].actionType).toBe("user.assignment.update");
   });
 
-  it("400s a client-supplied mspId alongside a customerId for a CustomerUser (mspId is always derived server-side)", async () => {
+  it("400s a client-supplied mspId alongside a customerId for a Customer (mspId is always derived server-side)", async () => {
     mockResultQueue = [
-      [{ mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10 }], // current row
+      [{ mspRole: LEGACY_ROLE.customer, mspId: 1, customerId: 10 }], // current row
       [{ mspId: 7 }], // target customer lookup
       [{ id: 3 }], // target MSP lookup (since bodyMspId is also provided)
     ];

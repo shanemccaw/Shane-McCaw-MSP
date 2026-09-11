@@ -3,7 +3,7 @@
  *
  * MSP-initiated marketplace purchase — closes the gap flagged in
  * portal-marketplace.ts / marketplace.tsx: the real Marketplace catalog is
- * floored at requireCapability("ladder.assessment"), so only the customer themselves can
+ * floored at requireCapability("ladder.free"), so only the customer themselves can
  * browse/buy. MSP staff had no path to purchase or assign a catalog item on a
  * specific customer's behalf.
  *
@@ -93,7 +93,7 @@ async function resolveScopedCustomer(
 
 // ── GET /api/msp/customers/:customerId/marketplace/catalog ───────────────────
 // Same customer-safe catalog shape as portal-marketplace.ts, always the fuller
-// (CustomerUser+) allow-set — staff act on the customer's behalf, not scoped
+// (Customer+) allow-set — staff act on the customer's behalf, not scoped
 // down to whatever role tier that customer happens to be.
 
 router.get(

@@ -23,7 +23,7 @@
 // POST .../diagnostics/run route, already PlatformAdmin-reachable —
 // portal-assessment.ts's debug-trigger-scan was audited and rejected for
 // this use: it's testbed-only, resolves its target from the CALLER's own
-// JWT rather than a parameterized customerId, and requireCapability("ladder.assessment")
+// JWT rather than a parameterized customerId, and requireCapability("ladder.free")
 // would reject a PlatformAdmin caller outright), and a re-consent invite
 // link generator (consent.ts's existing POST /consent/invite-link route,
 // already requireAdmin-gated, used as-is).

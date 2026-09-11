@@ -38,11 +38,11 @@
  * `active_directory_ou_assignments.tenantId`) so the create route can call
  * Graph to verify the object — that alone needs `resolveTenantScope`.
  *
- * ── Role floor: `CustomerUser`, not `Assessment` ─────────────────────────────
+ * ── Role floor: `Customer`, not `Free` ─────────────────────────────
  * This surface names specific employees (UPN, display name) and their real
- * directory/policy grouping — more than the free/prospect `Assessment` tier
+ * directory/policy grouping — more than the free/prospect `Free` tier
  * should see, matching Policy Decisions' own reasoning for flooring above
- * `Assessment` (`portal-risk-register.ts`).
+ * `Free` (`portal-risk-register.ts`).
  *
  * ── No UI in this pass ────────────────────────────────────────────────────
  * `Design/portal/design_handoff_full_site/screens/Policy Decisions.dc.html`

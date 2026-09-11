@@ -25,7 +25,7 @@
  *
  * ── Why there are two passes ────────────────────────────────────────────────
  * Only three of the seven rungs are occupied by a real user in this database
- * (PlatformAdmin, CustomerUser, Assessment), and only one of the three capability
+ * (PlatformAdmin, Customer, Free — #3590 folded Assessment into Free), and only one of the three capability
  * columns is set on anybody. Pass A alone would therefore leave most of the
  * seeded data unproven while reporting "all real users agree" — a green result
  * that means much less than it looks like.
@@ -132,6 +132,13 @@ const KNOWN_FAIL_CLOSED_DIVERGENCES: readonly KnownDivergence[] = [
     issue: "#3360",
     why: "portal-billing.ts's writes were requireAuth-only, so 'everyone' included a principal holding no rung",
   },
+  {
+    shape: "unrecognised msp_role",
+    system: "customer",
+    capability: "marketplace.browse-full",
+    issue: "#3590",
+    why: "the old catalog branch compared the raw claim to one string, so any value that was not the pre-payment tier got the full catalog",
+  },
 ];
 
 const divergenceKey = (shape: string, system: RbacSystem, capability: string) => `${shape}|${system}:${capability}`;
@@ -224,7 +231,7 @@ const expectedRoleKeys = [
   `customer:${CAPABILITY_COLUMN_ROLE_KEYS.manageTeam}`,
   `customer:${CAPABILITY_COLUMN_ROLE_KEYS.approveChanges}`,
 ].sort();
-check("the seeded platform roles are exactly the seven rungs plus one role per column", [...roleId.keys()].sort(), expectedRoleKeys);
+check("the seeded platform roles are exactly the ladder rungs plus one role per column", [...roleId.keys()].sort(), expectedRoleKeys);
 
 // ── 1. Pass A — every real user, through the real loader ─────────────────────
 //
@@ -356,7 +363,7 @@ function rolesFor(system: RbacSystem, rung: LegacyRole | undefined, user: Legacy
 // promotion were being dropped, this shape is where it would show.
 const shapes: Array<{ label: string; role: string; mspRole: string | null }> = [
   ...LEGACY_ROLE_ORDER.map((r) => ({ label: r, role: "client", mspRole: r as string })),
-  { label: "legacy role='admin' (msp_role=Assessment)", role: "admin", mspRole: "Assessment" },
+  { label: "legacy role='admin' (msp_role=Free)", role: "admin", mspRole: LEGACY_ROLE.free },
 ];
 
 let shapeCount = 0;

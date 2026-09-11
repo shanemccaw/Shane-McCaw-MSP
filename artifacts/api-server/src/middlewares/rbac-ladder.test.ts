@@ -141,7 +141,7 @@ describe("the snapshot is loaded once, not per request", () => {
   it("issues one pair of reads for a burst of concurrent checks", async () => {
     seededRows();
     const { roleClearsLadderFloor } = await freshModule();
-    await Promise.all(LEGACY_ROLE_ORDER.map((rung) => roleClearsLadderFloor(rung, LEGACY_ROLE.customerUser)));
+    await Promise.all(LEGACY_ROLE_ORDER.map((rung) => roleClearsLadderFloor(rung, LEGACY_ROLE.customer)));
     // ONE read for all seven checks — the in-flight dedupe. A per-request query on
     // 616 route gates is the regression this guards against.
     expect(reads).toBe(1);
@@ -166,12 +166,12 @@ describe("the snapshot is loaded once, not per request", () => {
 describe("deny wins, through the shared evaluator", () => {
   it("denies a rung that is on both the allow and the deny list", async () => {
     seededRows();
-    const row = mappingRows.find((m) => m.capabilityKey === LADDER_CAPABILITY_KEYS.CustomerUser)!;
+    const row = mappingRows.find((m) => m.capabilityKey === LADDER_CAPABILITY_KEYS.Customer)!;
     row.deny = [rungRoleId(LEGACY_ROLE.platformAdmin)];
     const { roleClearsLadderFloor } = await freshModule();
     // Not this module's rule — it is #2455's evaluator, reached unchanged. Asserted
     // here because `requireRole` is the caller that has to inherit it.
-    const outcome = await roleClearsLadderFloor(LEGACY_ROLE.platformAdmin, LEGACY_ROLE.customerUser);
+    const outcome = await roleClearsLadderFloor(LEGACY_ROLE.platformAdmin, LEGACY_ROLE.customer);
     expect(outcome.kind).toBe("deny");
     if (outcome.kind === "deny") expect(outcome.decision.effect).toBe("deny");
   });
@@ -208,7 +208,7 @@ describe("the legacy-admin promotion has exactly one meaning", () => {
     seededRows();
     const { userClearsLadderCapability } = await freshModule();
     const top = LADDER.platformAdmin;
-    expect((await userClearsLadderCapability({ role: "admin", mspRole: LEGACY_ROLE.assessment }, top)).kind).toBe("allow");
-    expect((await userClearsLadderCapability({ role: "client", mspRole: LEGACY_ROLE.assessment }, top)).kind).toBe("deny");
+    expect((await userClearsLadderCapability({ role: "admin", mspRole: LEGACY_ROLE.free }, top)).kind).toBe("allow");
+    expect((await userClearsLadderCapability({ role: "client", mspRole: LEGACY_ROLE.free }, top)).kind).toBe("deny");
   });
 });

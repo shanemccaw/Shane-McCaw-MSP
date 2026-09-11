@@ -205,7 +205,7 @@ function validateMergeFields(key: string, body: string): string | null {
 // for white-label display. No sensitive MSP-internal data is exposed here.
 // The write/management surface (PATCH /msp/settings/profile) remains MSPAdmin-gated.
 
-router.get("/msp/profile", requireCapability("ladder.assessment"), async (req: Request, res: Response) => {
+router.get("/msp/profile", requireCapability("ladder.free"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 

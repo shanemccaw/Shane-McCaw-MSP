@@ -25,8 +25,8 @@ describe("resolveSecurityPlanCrossTenantBook() — fail-closed guard (#2145)", (
     expect(book).toEqual({ mspId: null, isPlatformAdmin: false, tenants: [] });
   });
 
-  it("returns an empty book for a CustomerUser — never a customer-role cross-tenant read", async () => {
-    const user: AuthUser = { id: 1, email: "customer@example.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 9 };
+  it("returns an empty book for a Customer — never a customer-role cross-tenant read", async () => {
+    const user: AuthUser = { id: 1, email: "customer@example.com", role: "client", mspRole: LEGACY_ROLE.customer, customerId: 9 };
     const book = await resolveSecurityPlanCrossTenantBook(reqWithUser(user));
     expect(book).toEqual({ mspId: null, isPlatformAdmin: false, tenants: [] });
   });

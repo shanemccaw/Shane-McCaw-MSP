@@ -69,7 +69,7 @@ function mspAdminToken(mspId = 1): string {
 }
 
 function customerUserToken(): string {
-  return jwt.sign({ id: 4, email: "user@customer.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10 }, JWT_SECRET, { expiresIn: "1h" });
+  return jwt.sign({ id: 4, email: "user@customer.com", role: "client", mspRole: LEGACY_ROLE.customer, mspId: 1, customerId: 10 }, JWT_SECRET, { expiresIn: "1h" });
 }
 
 const SAMPLE_LAYOUT = [
@@ -176,7 +176,7 @@ describe("dashboard-templates API — /api/msp/* (own-mspId scoping)", () => {
     mockResultQueue = [];
   });
 
-  it("403s CustomerUser on the msp routes (MSPOperator or above required)", async () => {
+  it("403s Customer on the msp routes (MSPOperator or above required)", async () => {
     const res = await request(app)
       .get("/api/msp/dashboard-templates")
       .set("Authorization", `Bearer ${customerUserToken()}`);
@@ -276,7 +276,7 @@ describe("dashboard-templates API — GET /api/msp/services", () => {
     mockResultQueue = [];
   });
 
-  it("403s CustomerUser", async () => {
+  it("403s Customer", async () => {
     const res = await request(app)
       .get("/api/msp/services")
       .set("Authorization", `Bearer ${customerUserToken()}`);

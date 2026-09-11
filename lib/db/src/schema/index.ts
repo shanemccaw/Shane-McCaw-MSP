@@ -25,15 +25,16 @@ export interface WizardStep {
 // PlatformAdmin  — full platform access, cross-MSP
 // MSPAdmin       — full access within their MSP
 // MSPOperator    — operational access within their MSP (no billing/settings)
-// CustomerUser   — access to their own customer portal
+// Customer       — the paid customer: access to their own customer portal
+//                  (was `CustomerUser` until #3590)
 // ServiceAccount — API key / machine identity
-// Free           — gates to free-assessment results only; upgrade flips to CustomerUser
-// Assessment     — assessment-experience customer (free OR paid tier). Same
-//                  privilege floor as Free (below CustomerUser): may view their
-//                  own assessment results/SOW, but never tenant-wide dashboards,
-//                  engines, signals, workflows, or monitoring. New assessment
-//                  signups use this role; existing Free rows are left as-is and
-//                  treated identically everywhere Free is checked.
+// Free           — the one pre-payment tier: may view their own assessment
+//                  results/SOW, but never tenant-wide dashboards, engines,
+//                  signals, workflows, or monitoring; payment promotes it to
+//                  Customer. #3590 folded the old `Assessment` role into it —
+//                  the two were already treated identically everywhere except
+//                  the marketplace catalog scope, which is now the
+//                  `customer:marketplace.browse-full` capability.
 //
 // Defined here (not in ./msp) because usersTable's enum use below is eager and
 // the msp.ts ↔ index.ts circular import would TDZ-crash on a cross-module read.
@@ -129,7 +130,7 @@ export const usersTable = pgTable("users", {
   // seeded and mapped identically, so retiring it is the same small change whenever
   // that is asked for — but it is not this issue's scope, on a security path.
   //
-  // Grants a customer-tier team member (CustomerUser) permission to APPROVE or
+  // Grants a customer-tier team member (Customer) permission to APPROVE or
   // REJECT a Change Request against their own live tenant — the authority the
   // Change Control approval model (Git #1496) is built on. Deliberately its own
   // authority: approving a configuration change to a live tenant is distinct from
@@ -172,7 +173,7 @@ export const usersTable = pgTable("users", {
   index("users_tenant_id_idx").on(t.tenantId),
   index("users_manager_user_id_idx").on(t.managerUserId),
   check("users_role_scope_check", sql`
-    (${t.mspRole} IN ('CustomerUser', 'Free', 'Assessment') AND ${t.tenantId} IS NOT NULL)
+    (${t.mspRole} IN ('Customer', 'Free') AND ${t.tenantId} IS NOT NULL)
     OR
     (${t.mspRole} IN ('MSPAdmin', 'MSPOperator', 'ServiceAccount') AND ${t.mspId} IS NOT NULL)
     OR
@@ -1075,7 +1076,7 @@ export type SignupExchangeToken = typeof signupExchangeTokensTable.$inferSelect;
 // `customerId` here is a `users.id` FK (NOT a `tenants.id`, despite the
 // "customerId" name every other portal route uses for tenants — see
 // requireAuth.ts's AuthUser.customerId comment for that frozen, unrelated
-// naming). It is the logged-in CustomerUser who clicked "Send for review" /
+// naming). It is the logged-in Customer who clicked "Send for review" /
 // "Send to purchasing" on their OWN document set — the same identity
 // documentPrintTokensTable.userId and printTokensTable.userId already key
 // on, just named per this issue's own schema spec.

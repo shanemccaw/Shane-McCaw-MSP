@@ -62,7 +62,7 @@ router.get(
   // Same floor as the rest of the Copilot Readiness/Remediation journey (see
   // portal-remediation-tracker.ts / portal-tenant-check-items.ts): Assessment
   // is the lowest role carrying a customerId.
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

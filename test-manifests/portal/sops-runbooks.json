@@ -1,5 +1,5 @@
 {
-  "feature": "Customer Portal (artifacts/portal) -- SOPs & Runbooks (/sops, /runbooks), wired to real data (#2994, carried forward from #1730/#1493/#1488). Design: Design/portal/design_handoff_full_site/screens/SOPs.dc.html. Real endpoints: GET/POST /api/portal/sops, GET /api/portal/sop-runs, POST /api/portal/sops/:sopId/custom-steps (routes/portal-sops.ts, requireRole('CustomerUser')), and GET /api/portal/runbooks + the hold-window writes (routes/portal-runbooks.ts, requireRole('Assessment')) via the pre-existing, previously-unconsumed useRunbooks.ts/useHoldBadge.ts hooks. No fixture data anywhere -- a genuinely empty runbooks/holds table for this tenant renders the design's own honest-empty copy, not a fabricated row.",
+  "feature": "Customer Portal (artifacts/portal) -- SOPs & Runbooks (/sops, /runbooks), wired to real data (#2994, carried forward from #1730/#1493/#1488). Design: Design/portal/design_handoff_full_site/screens/SOPs.dc.html. Real endpoints: GET/POST /api/portal/sops, GET /api/portal/sop-runs, POST /api/portal/sops/:sopId/custom-steps (routes/portal-sops.ts, requireRole('Customer')), and GET /api/portal/runbooks + the hold-window writes (routes/portal-runbooks.ts, requireRole('Assessment')) via the pre-existing, previously-unconsumed useRunbooks.ts/useHoldBadge.ts hooks. No fixture data anywhere -- a genuinely empty runbooks/holds table for this tenant renders the design's own honest-empty copy, not a fabricated row.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "407b696db",
   "notes": [
@@ -26,12 +26,12 @@
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
     {
-      "name": "A2 -- the testbed account clears the CustomerUser floor GET /api/portal/sops requires (higher than the Assessment floor GET /api/portal/runbooks sits at).",
+      "name": "A2 -- the testbed account clears the Customer floor GET /api/portal/sops requires (higher than the Assessment floor GET /api/portal/runbooks sits at).",
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
       "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
-      "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "CustomerUser" }
+      "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "Customer" }
     },
     {
       "name": "A3 -- GET /api/portal/sops returns this tenant's real library.",

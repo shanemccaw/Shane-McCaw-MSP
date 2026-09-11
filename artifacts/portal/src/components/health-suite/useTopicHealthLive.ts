@@ -18,8 +18,8 @@
  *   2. GET  /api/portal/mission-control/overview
  *        — the real diagnostics findings feed (msp_diagnostic_findings from the
  *          last completed run) with server-linked sales offers (incl. the hard
- *          testbed-gated `instant` flag). Auth floor: CustomerUser — an
- *          Assessment-role viewer gets 403 → honest empty state.
+ *          testbed-gated `instant` flag). Auth floor: Customer — an
+ *          Free-role viewer gets 403 → honest empty state.
  *
  *   3. POST /api/dashboard/resolve
  *        — the generic customer-safe batch metric resolver, parameterized by
@@ -352,7 +352,7 @@ export function useTopicHealthLive(options: TopicHealthLiveOptions): TopicHealth
     const loadOverview = async () => {
       try {
         const res = await fetchWithAuth("/api/portal/mission-control/overview", undefined, { silent: true });
-        if (!res.ok) return; // 403 for Assessment-role viewers → honest empty
+        if (!res.ok) return; // 403 for Free-role viewers → honest empty
         const data = (await res.json()) as TopicOverviewSlice;
         if (!Array.isArray(data.findings)) data.findings = [];
         if (!cancelled) setOverview(data);
@@ -379,7 +379,7 @@ export function useTopicHealthLive(options: TopicHealthLiveOptions): TopicHealth
           },
           { silent: true },
         );
-        if (!res.ok) return; // 403 for Assessment-role viewers → honest empty
+        if (!res.ok) return; // 403 for Free-role viewers → honest empty
         const data = (await res.json()) as { results?: Record<string, ResolvedMetric> };
         if (!cancelled && data.results && typeof data.results === "object") {
           setMetrics(data.results);

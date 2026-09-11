@@ -26,7 +26,7 @@ vi.mock("@workspace/db", () => {
       select: vi.fn(() => ({
         from: vi.fn(() => ({
           // Tenant/User Refactor Phase 5: the mspId lookup now left-joins
-          // tenants onto users. A tenant-scoped user (CustomerUser/Free/
+          // tenants onto users. A tenant-scoped user (Customer/Free/
           // Assessment) carries a NULL users.mspId, so the MSP must come from
           // tenants.mspId — the row shape below models exactly that case,
           // which is the one a naive users.mspId-only rewrite would break.

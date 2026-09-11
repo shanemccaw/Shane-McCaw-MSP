@@ -767,7 +767,7 @@ router.post(
 router.post(
   "/admin/testbed/seed-runbooks",
   requireDevOrigin,
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     // From the token, never from the body. See the note above.
     const claimed = (req.user as { customerId?: number } | undefined)?.customerId;
@@ -1021,7 +1021,7 @@ router.post(
 router.post(
   "/admin/testbed/seed-sops",
   requireDevOrigin,
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const claimed = (req.user as { customerId?: number } | undefined)?.customerId;
     const customerId = typeof claimed === "number" && !Number.isNaN(claimed) ? claimed : NaN;

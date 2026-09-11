@@ -21,7 +21,7 @@
  *   GET  /api/msp/customers/:customerId/diagnostics/runs/:runId/sse
  *     — SSE stream: per-check progress → complete/error events.
  *       Uses Bearer JWT in ?jwt= query param (EventSource can't send headers).
- *       Also accepts a CustomerUser JWT when its customerId claim matches
+ *       Also accepts a Customer JWT when its customerId claim matches
  *       :customerId (dashboard Mission Control live scan progress).
  *
  *   GET  /api/msp/customers/:customerId/scripts
@@ -36,7 +36,7 @@
  *       three-step resolution, ownership scoped by assertCustomerAccess instead
  *       of "caller IS this customer".
  *
- * Customer portal routes (require CustomerUser role):
+ * Customer portal routes (require Customer role):
  *   GET  /api/portal/diagnostics/latest
  *     — Customer's latest run + findings summary (read-only).
  *
@@ -76,7 +76,7 @@ import { REQUIRED_MT_SCOPES } from "../lib/graph";
 import { classifyMonitorFailure, type FailureClassification } from "../lib/monitor-failure-classifier";
 import jwt from "jsonwebtoken";
 import { randomUUID } from "crypto";
-import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { LEGACY_ROLE, canonicalRoleValue } from "@workspace/db/rbac/legacy-ladder";
 
 const router: IRouter = Router();
 
@@ -615,14 +615,15 @@ router.get(
       }
 
       const userMspId = decoded.mspId as number | undefined;
-      const userRole = decoded.mspRole as string | undefined;
+      // canonicalRoleValue: a token signed before #3590 may still say CustomerUser/Assessment.
+      const userRole = canonicalRoleValue(decoded.mspRole as string | undefined);
       const isAdmin = decoded.role === "admin";
 
       if (!isAdmin) {
-        if (userRole === LEGACY_ROLE.customerUser || userRole === LEGACY_ROLE.assessment) {
-          // A customer (full portal user or Assessment-role prospect) may stream
-          // progress only for runs on their own tenant. CustomerUser uses this
-          // for the Mission Control scan-progress strip; Assessment uses the same
+        if (userRole === LEGACY_ROLE.customer || userRole === LEGACY_ROLE.free) {
+          // A customer (full portal user or pre-payment Free prospect) may stream
+          // progress only for runs on their own tenant. Customer uses this
+          // for the Mission Control scan-progress strip; Free uses the same
           // stream for the live deep-scan step in the assessment wizard. Both are
           // scoped to their own customerId claim — no cross-tenant access.
           const tokenCustomerId = decoded.customerId as number | undefined;

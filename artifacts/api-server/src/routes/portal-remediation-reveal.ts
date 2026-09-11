@@ -56,9 +56,9 @@ interface WireRevealedFix {
 router.post(
   "/portal/remediation/fix-routes/:checkKey/reveal",
   // Same floor as the sibling shape-resolution route (#1539) — the item itself
-  // is visible at Assessment tier; what gates THIS route is the CR's own
+  // is visible at the Free tier; what gates THIS route is the CR's own
   // approval, not a second, separate entitlement check.
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

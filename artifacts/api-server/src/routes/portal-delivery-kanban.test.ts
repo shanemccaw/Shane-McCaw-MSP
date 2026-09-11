@@ -92,7 +92,7 @@ function adminToken(): string {
 }
 
 function customerToken(): string {
-  return jwt.sign({ id: 2, email: "customer@test.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 1 }, JWT_SECRET, { expiresIn: "1h" });
+  return jwt.sign({ id: 2, email: "customer@test.com", role: "client", mspRole: LEGACY_ROLE.customer, mspId: 1 }, JWT_SECRET, { expiresIn: "1h" });
 }
 
 const app = express();

@@ -20,7 +20,7 @@
  *    tenant, unless narrowed via `?mspId=` / `?slug=` (`resolveMspId`).
  *  - MSPAdmin / MSPOperator — the tenants of their own MSP, intersected with
  *    `resolveStaffScopedCustomerIds` when the member is scoped.
- *  - CustomerUser, ServiceAccount, Free, Assessment, or no user at all — no book.
+ *  - Customer, ServiceAccount, Free, Assessment, or no user at all — no book.
  *    NEVER a customer-role caller; this is an MSP-only read path.
  *
  * FAIL CLOSED, same shape as `resolveTenantScope` and `resolveConfigStateBook`:
@@ -44,7 +44,7 @@ import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "tenant.portal" });
 
-/** MSP roles allowed to read across customers. NEVER CustomerUser — see header. */
+/** MSP roles allowed to read across customers. NEVER Customer — see header. */
 const MSP_ONLY_ROLES: ReadonlySet<string> = new Set([LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspOperator]);
 
 /** Every tenant the caller may read Security Plan data for, across customers. */
@@ -68,7 +68,7 @@ export async function resolveSecurityPlanCrossTenantBook(req: Request): Promise<
   const isPlatformAdmin = user.role === "admin" || user.mspRole === LEGACY_ROLE.platformAdmin;
   const isMspStaff = typeof user.mspRole === "string" && MSP_ONLY_ROLES.has(user.mspRole);
   if (!isPlatformAdmin && !isMspStaff) {
-    // Includes every customer-facing role (CustomerUser, etc). Fail closed.
+    // Includes every customer-facing role (Customer, etc). Fail closed.
     return EMPTY_BOOK;
   }
 

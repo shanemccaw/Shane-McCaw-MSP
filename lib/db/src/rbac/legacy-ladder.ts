@@ -9,7 +9,7 @@
  * Nothing here is a design. Every rule below is a literal transcription of code
  * that is live on `main`, cited to file:line, and every one of them was read
  * before it was written down. Where the live rule is odd — `ServiceAccount`
- * outranking a human `CustomerUser`, `role === "admin"` silently promoting to
+ * outranking a human `Customer`, `role === "admin"` silently promoting to
  * `PlatformAdmin`, one capability column that ORs across every role and another
  * that only fires for one rung — the oddity is carried across deliberately
  * rather than tidied up. Tidying it here would mean the comparison script proves
@@ -34,15 +34,18 @@
  * Higher index = higher privilege, and every check is "your index >= the required
  * index" — which is why this is a ladder and not RBAC: every role is a strict
  * superset of the one below it, so there is no permission a lower rung has that a
- * higher rung lacks. `ServiceAccount` sitting ABOVE `CustomerUser` means a machine
+ * higher rung lacks. `ServiceAccount` sitting ABOVE `Customer` means a machine
  * credential outranks a human customer for every `requireRole` check. That is an
  * artifact of jamming account type into the same ordering as privilege level
  * (#1696), not a decision anyone made — and it is transcribed as-is.
+ *
+ * #3590 changed two rungs by product decision, not by transcription: `CustomerUser`
+ * is renamed `Customer`, and the old bottom rung `Assessment` is folded into `Free`.
+ * Six rungs now; see `RETIRED_ROLE_VALUES` below.
  */
 export const LEGACY_ROLE_ORDER = [
-  "Assessment",
   "Free",
-  "CustomerUser",
+  "Customer",
   "ServiceAccount",
   "MSPOperator",
   "MSPAdmin",
@@ -50,6 +53,35 @@ export const LEGACY_ROLE_ORDER = [
 ] as const;
 
 export type LegacyRole = typeof LEGACY_ROLE_ORDER[number];
+
+/**
+ * #3590 — two role values that no longer exist, and what each one became.
+ *
+ * Product decision, Shane 2026-09-11: `CustomerUser` is renamed `Customer` (the one
+ * paid-customer rung), and `Assessment` is folded into `Free` — one pre-payment tier,
+ * not two. Before this, the only place the two pre-payment tiers disagreed was the
+ * marketplace/search catalog scope, and that now asks a capability
+ * (`customer:marketplace.browse-full`) instead of comparing a role string.
+ *
+ * `2026-09-11-rbac-customer-free-roles-3590.sql` rewrites every stored value, so no
+ * `users` row carries either spelling after it runs. What can still carry one is a
+ * JWT signed before the deploy — access tokens live 15 minutes, impersonation tokens
+ * 30 — and `canonicalRoleValue` maps those onto the value they now mean, so a session
+ * straddling the deploy is decided as the role it actually holds rather than as no role
+ * at all. Retire this with the claim itself.
+ */
+export const RETIRED_ROLE_VALUES: Readonly<Record<string, LegacyRole>> = Object.freeze({
+  CustomerUser: "Customer",
+  Assessment: "Free",
+});
+
+/** A role value as it should be read today: a retired spelling becomes what it was renamed to. */
+export function canonicalRoleValue<T extends string | null | undefined>(value: T): T | LegacyRole {
+  if (typeof value === "string" && Object.prototype.hasOwnProperty.call(RETIRED_ROLE_VALUES, value)) {
+    return RETIRED_ROLE_VALUES[value]!;
+  }
+  return value;
+}
 
 /**
  * The seven role values by name — #2460's single home for the strings themselves.
@@ -71,9 +103,8 @@ export type LegacyRole = typeof LEGACY_ROLE_ORDER[number];
  * evaluator by #2458/#2460.
  */
 export const LEGACY_ROLE = Object.freeze({
-  assessment: "Assessment",
   free: "Free",
-  customerUser: "CustomerUser",
+  customer: "Customer",
   serviceAccount: "ServiceAccount",
   mspOperator: "MSPOperator",
   mspAdmin: "MSPAdmin",
@@ -94,15 +125,15 @@ export const LEGACY_MSP_STAFF_ROLES = Object.freeze([
 ] as const);
 
 /**
- * The three customer-facing tiers, as a value set.
+ * The customer-facing tiers, as a value set — the paid `Customer` rung and the one
+ * pre-payment `Free` rung (#3590 folded `Assessment` into `Free`).
  *
- * `portal-team.ts`'s live rule tests membership of exactly these three (which is why
+ * `portal-team.ts`'s live rule tests membership of exactly these (which is why
  * `ServiceAccount` passes it without a flag — the ladder artifact #1696 records).
  */
 export const LEGACY_CUSTOMER_TIER_ROLES = Object.freeze([
-  LEGACY_ROLE.customerUser,
+  LEGACY_ROLE.customer,
   LEGACY_ROLE.free,
-  LEGACY_ROLE.assessment,
 ] as const);
 
 const LEGACY_ROLE_SET: ReadonlySet<string> = new Set(LEGACY_ROLE_ORDER);
@@ -152,7 +183,9 @@ export interface LegacyUserRow {
  * the effective role through this function rather than `msp_role` directly.
  */
 export function effectiveLegacyRole(user: Pick<LegacyUserRow, "role" | "mspRole">): LegacyRole | undefined {
-  const effective = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+  // canonicalRoleValue: a pre-#3590 claim ("CustomerUser"/"Assessment") is read as
+  // the rung it was renamed to, not as an unrecognised value that holds nothing.
+  const effective = user.role === "admin" ? "PlatformAdmin" : canonicalRoleValue(user.mspRole);
   return isLegacyRole(effective) ? effective : undefined;
 }
 
@@ -193,11 +226,19 @@ export const LADDER_CAPABILITY_PREFIX = "ladder.";
  * same authority. #2458 has to turn a `requireRole("MSPAdmin")` call site into a
  * capability key with no room for doubt, so the pairs are stated once, here, and
  * `legacy-ladder.test.ts` asserts the mapping is total and injective.
+ *
+ * #3590 — `Customer` keeps the key `ladder.customer-user`. The rung was renamed from
+ * `CustomerUser`, but a capability key is *"Immutable once shipped"*
+ * (capabilities.ts): it is what 40+ route gates and the `msp_feature_role_mapping`
+ * row both name, and an admin edit made to that row through AdminV2 must survive a
+ * role rename. Renaming a ROLE is free precisely because nothing stores its name —
+ * the key half of that bargain is that capability keys do not move. `Assessment`'s
+ * key, `ladder.assessment`, is retired with the rung; its gates now ask `ladder.free`,
+ * which after the merge admits exactly the set `ladder.assessment` did.
  */
 export const LADDER_CAPABILITY_KEYS: Readonly<Record<LegacyRole, string>> = Object.freeze({
-  Assessment: "ladder.assessment",
   Free: "ladder.free",
-  CustomerUser: "ladder.customer-user",
+  Customer: "ladder.customer-user",
   ServiceAccount: "ladder.service-account",
   MSPOperator: "ladder.msp-operator",
   MSPAdmin: "ladder.msp-admin",
@@ -223,9 +264,8 @@ export function ladderCapabilityKey(role: LegacyRole): string {
  * typo on an authorization path cannot ship silently.
  */
 export const LADDER = Object.freeze({
-  assessment: LADDER_CAPABILITY_KEYS.Assessment,
   free: LADDER_CAPABILITY_KEYS.Free,
-  customerUser: LADDER_CAPABILITY_KEYS.CustomerUser,
+  customer: LADDER_CAPABILITY_KEYS.Customer,
   serviceAccount: LADDER_CAPABILITY_KEYS.ServiceAccount,
   mspOperator: LADDER_CAPABILITY_KEYS.MSPOperator,
   mspAdmin: LADDER_CAPABILITY_KEYS.MSPAdmin,
@@ -338,7 +378,8 @@ export const LEGACY_CAPABILITY_RULES: readonly LegacyCapabilityRule[] = Object.f
     /**
      * *"a customer-tier user (CustomerUser/Free/Assessment) must ADDITIONALLY
      * carry the live `canManageTeam` flag. MSP staff (MSPAdmin/MSPOperator) and
-     * PlatformAdmin manage customer teams by virtue of their role."*
+     * PlatformAdmin manage customer teams by virtue of their role."* — since #3590
+     * those tiers are `Customer` and `Free`.
      *
      * The old test was `isCustomerTier`, not a rung comparison — so `ServiceAccount`
      * passes without the flag, because it is not one of the three tiers named. That
@@ -352,10 +393,30 @@ export const LEGACY_CAPABILITY_RULES: readonly LegacyCapabilityRule[] = Object.f
      */
     decide: (user) => {
       const effective = effectiveLegacyRole(user);
-      const isCustomerTier =
-        effective === "CustomerUser" || effective === "Free" || effective === "Assessment";
+      const isCustomerTier = effective === LEGACY_ROLE.customer || effective === LEGACY_ROLE.free;
       if (!isCustomerTier) return true;
       return user.canManageTeam;
+    },
+  },
+  {
+    system: "customer",
+    key: "marketplace.browse-full",
+    source: "artifacts/api-server/src/routes/portal-marketplace.ts:69-74 and portal-customer-search.ts:71-73, pre-#3590 (serviceTypesForRole)",
+    /**
+     * Both routes narrowed their catalog with `role === "Assessment" ? ASSESSMENT_SERVICE_TYPES
+     * : CUSTOMER_SERVICE_TYPES`, where `role` was `role === "admin" ? PlatformAdmin : mspRole`
+     * — the raw claim, never validated against the ladder. #3590 folded `Assessment` into
+     * `Free`, so the one pre-payment tier is the one that gets the narrow catalog, and every
+     * other value gets the full one.
+     *
+     * Transcribed verbatim, which includes a value the ladder does not recognise: it is
+     * not the pre-payment tier, so the old comparison handed it the full catalog. The seed
+     * does not carry that forward — a principal holding no rung holds no role row and is
+     * denied (the same #3360 shape parity-check.ts registers for team.manage).
+     */
+    decide: (user) => {
+      const role = user.role === "admin" ? LEGACY_ROLE.platformAdmin : canonicalRoleValue(user.mspRole);
+      return role !== LEGACY_ROLE.free;
     },
   },
   {

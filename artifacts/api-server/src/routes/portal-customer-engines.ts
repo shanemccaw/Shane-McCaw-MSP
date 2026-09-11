@@ -8,13 +8,13 @@
  * or internal operator data are returned — only what a customer needs to
  * know about their service health.
  *
- * Auth: requireCapability("ladder.customer-user") — MSP JWT with CustomerUser role — for
+ * Auth: requireCapability("ladder.customer-user") — MSP JWT with Customer role — for
  * every route here EXCEPT GET /portal/dashboard, which is requireAuth (see the
  * note on that route), and GET /portal/customer/rescoring-status, which is
- * requireCapability("ladder.assessment") (Git #1051 fix) — its own eligibility query looks
- * for a tenant's active mspRole='Assessment' user (the free weekly Copilot
+ * requireCapability("ladder.free") (Git #1051 fix) — its own eligibility query looks
+ * for a tenant's active mspRole='Free' user (the free weekly Copilot
  * Assessment rescan's real audience per #1058), so gating the READ one tier
- * above that at CustomerUser blocked the exact free-tier customers the route
+ * above that at Customer blocked the exact free-tier customers the route
  * exists to inform — confirmed live via shaneapp://runTest against the real
  * testbed Assessment account (403 before this fix).
  * The customer's own ID is read from the JWT claim (req.user.customerId).
@@ -303,11 +303,11 @@ router.get(
   "/portal/customer/rescoring-status",
   // Git #1051 fix — was requireCapability("ladder.customer-user"), one tier above the route's
   // real audience (see the file-level doc comment above): its eligibility query
-  // looks for an active mspRole='Assessment' user on the tenant, so a
-  // CustomerUser+ floor 403'd the free-tier Assessment customers this route
+  // looks for an active mspRole='Free' user on the tenant, so a
+  // Customer+ floor 403'd the free-tier customers this route
   // exists to inform. Lowered to match /portal/diagnostics/status and
-  // /portal/scan-status's own Assessment floor (same data domain).
-  requireCapability("ladder.assessment"),
+  // /portal/scan-status's own Free floor (same data domain).
+  requireCapability("ladder.free"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
     if (!customerId) {
@@ -348,7 +348,7 @@ router.get(
         : { status: "not_available", reason: "never_scanned" };
 
       // Eligibility for the free weekly rescan: same predicate as the seeded
-      // workflow's fan_out_query (mspRole='Assessment', active user, Graph
+      // workflow's fan_out_query (mspRole='Free', active user, Graph
       // consent granted) — mirrored here read-only, never re-derived into a
       // second copy the workflow itself relies on.
       const [tenantRow] = await db
@@ -361,7 +361,7 @@ router.get(
       const [eligibleUser] = await db
         .select({ id: usersTable.id })
         .from(usersTable)
-        .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.mspRole, "Assessment"), eq(usersTable.isActive, true)))
+        .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.mspRole, LEGACY_ROLE.free), eq(usersTable.isActive, true)))
         .limit(1);
 
       const enrolledInWeeklyRescan = consentGranted && eligibleUser != null;
@@ -402,9 +402,9 @@ router.get(
 // tenant-name fetch silently reading a field no live route emitted.
 //
 // requireAuth, not requireCapability("ladder.customer-user") — Shane's call on #327. The
-// Assessment role sits BELOW CustomerUser in ROLE_ORDER, so the old floor 403'd
+// Assessment role sits BELOW Customer in ROLE_ORDER, so the old floor 403'd
 // the War Room and the assessment dashboard, which are Assessment-tier surfaces
-// that call this route. Deliberate consequence: Assessment/Free tier now receive
+// that call this route. Deliberate consequence: Free tier now receive
 // the engine payload (`scores`, `results.summary.compositeScore`, per-pillar
 // `score`, `telemetryStatus`, `type_attributes`). The #164 paywall below is
 // unaffected and still redacts findings/recommendation TEXT for unpaid
@@ -1082,7 +1082,7 @@ router.post(
 
       await db.insert(mspAuditLogsTable).values({
         actorUserId: userId,
-        actorRole: LEGACY_ROLE.customerUser,
+        actorRole: LEGACY_ROLE.customer,
         mspId: mspId,
         actionType: "customer.offboarding.deactivate",
         entityType: "customer",

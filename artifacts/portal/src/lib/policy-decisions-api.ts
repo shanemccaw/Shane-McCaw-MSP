@@ -102,7 +102,7 @@ export function useResolveClearance() {
 }
 
 /** The obligations catalogue (§3) — "what you are measured against". Lower
- * `Assessment` role floor than the register above; not tier-gated. */
+ * `Free` role floor than the register above; not tier-gated. */
 export function useComplianceObligations() {
   const { fetchWithAuth } = useAuth();
   return useQuery({

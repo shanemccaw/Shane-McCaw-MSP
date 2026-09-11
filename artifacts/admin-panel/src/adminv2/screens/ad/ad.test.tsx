@@ -46,7 +46,7 @@ const sampleTree: AdTree = {
           domain: "contoso.onmicrosoft.com",
           tenantId: "8f214d6a-91c2-4c1f-9b77-2a5e0f31c4d0",
           status: "active",
-          users: [{ id: 100, email: "jordan@contoso.com", name: "Jordan Doe", mspRole: LEGACY_ROLE.customerUser, isActive: true }],
+          users: [{ id: 100, email: "jordan@contoso.com", name: "Jordan Doe", mspRole: LEGACY_ROLE.customer, isActive: true }],
         },
       ],
     },

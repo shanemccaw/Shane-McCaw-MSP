@@ -25,7 +25,7 @@
  * Each source is fetched independently, already scoped + time-bounded, then
  * merged and re-sorted so no single noisy source can crowd out the others.
  *
- * Auth: requireCapability("ladder.customer-user") — MSP JWT with CustomerUser role.
+ * Auth: requireCapability("ladder.customer-user") — MSP JWT with Customer role.
  *
  * Routes:
  *   GET /api/portal/customer/timeline

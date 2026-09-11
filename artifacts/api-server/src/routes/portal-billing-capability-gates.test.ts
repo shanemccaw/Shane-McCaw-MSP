@@ -127,7 +127,7 @@ app.use((req, _res, next) => {
 app.use("/api", billingRouter);
 app.use("/api", retainerBillingRouter);
 
-const ALL_RUNGS = ["Assessment", "Free", "CustomerUser", "ServiceAccount", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
+const ALL_RUNGS = ["Free", "Customer", "ServiceAccount", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
 
 type Capability = "billing.view" | "billing.manage";
 
@@ -156,7 +156,7 @@ const ROUTES: readonly BillingRoute[] = [
 ];
 
 /** A real customer session's shape (auth.ts buildUserPayload). `null` omits the rung claim. */
-function customerToken(mspRole: string | null = "CustomerUser"): string {
+function customerToken(mspRole: string | null = "Customer"): string {
   return jwt.sign(
     { id: 21, email: "client@example.com", role: "client", ...(mspRole ? { mspRole } : {}), mspId: 1, customerId: 1 },
     JWT_SECRET,
@@ -198,7 +198,7 @@ describe("#3465 — billing routes are gated on a customer capability, not requi
   });
 
   it("billing.view alone admits the reads and refuses every write", async () => {
-    mockRows.allow = { "billing.view": ["CustomerUser"], "billing.manage": [] };
+    mockRows.allow = { "billing.view": ["Customer"], "billing.manage": [] };
     for (const route of ROUTES) {
       const res = await call(route, customerToken());
       if (route.capability === "billing.view") expect(res.status, route.path).not.toBe(403);
@@ -207,7 +207,7 @@ describe("#3465 — billing routes are gated on a customer capability, not requi
   });
 
   it("billing.manage alone admits the writes and refuses every read — the two are independent", async () => {
-    mockRows.allow = { "billing.view": [], "billing.manage": ["CustomerUser"] };
+    mockRows.allow = { "billing.view": [], "billing.manage": ["Customer"] };
     for (const route of ROUTES) {
       const res = await call(route, customerToken());
       if (route.capability === "billing.manage") expect(res.status, route.path).not.toBe(403);
@@ -218,7 +218,7 @@ describe("#3465 — billing routes are gated on a customer capability, not requi
   it("a rung outside the allow set is refused while a rung inside it is admitted", async () => {
     mockRows.allow = { "billing.view": ["MSPAdmin"], "billing.manage": ["MSPAdmin"] };
     const invoices = ROUTES[0]!;
-    expect((await call(invoices, customerToken("CustomerUser"))).status).toBe(403);
+    expect((await call(invoices, customerToken("Customer"))).status).toBe(403);
     expect((await call(invoices, customerToken("MSPAdmin"))).status).toBe(200);
   });
 

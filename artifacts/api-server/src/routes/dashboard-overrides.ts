@@ -2,11 +2,11 @@
  * dashboard-overrides.ts
  *
  * Customer/MSP-facing surface for `dashboard_overrides` — Step 4c. Lets a
- * CustomerUser or MSPOperator+ view their resolved dashboard (template +
+ * Customer or MSPOperator+ view their resolved dashboard (template +
  * their own saved deltas merged) and save/reset those deltas.
  *
  * This is deliberately narrow, matching the two viewer-facing template types:
- *   - "customer_default" -> CustomerUser,  scopeType "customer",  scopeId = msp_customers.id
+ *   - "customer_default" -> Customer,  scopeType "customer",  scopeId = msp_customers.id
  *   - "msp_overview"     -> MSPOperator+,  scopeType "msp_user",  scopeId = msp_users.id
  * Resolving/merging "assessment"/"project" templates is out of scope here —
  * blocked on a separate, already-tracked backlog gap: projectsTable links to
@@ -119,7 +119,7 @@ export async function resolveCallerScope(req: Request): Promise<ResolvedScope | 
   const user = req.user!;
   const effectiveRole = user.role === "admin" ? LEGACY_ROLE.platformAdmin : user.mspRole;
 
-  if (effectiveRole === LEGACY_ROLE.customerUser || effectiveRole === LEGACY_ROLE.free || effectiveRole === LEGACY_ROLE.assessment) {
+  if (effectiveRole === LEGACY_ROLE.customer || effectiveRole === LEGACY_ROLE.free) {
     if (user.customerId == null) return { error: "No customer association on this session" };
     return { templateType: "customer_default", scopeType: "customer", scopeId: user.customerId };
   }

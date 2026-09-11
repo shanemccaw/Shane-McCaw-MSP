@@ -12,8 +12,9 @@
  *   - sales offers (sales_offers)                        — scoped by tenantsTable.id
  *     (#2730), sent/accepted/rejected/expired only (drafts excluded)
  *   - marketplace items (services)                       — public catalog, narrowed
- *     to the caller's role-appropriate serviceType set (same convention as
- *     portal-marketplace.ts — Assessment-tier sees the narrower catalog)
+ *     to the caller's serviceType set by the same capability portal-marketplace.ts
+ *     asks (`customer:marketplace.browse-full`, #3590) — without it, the narrower
+ *     pre-payment catalog
  *
  * These are the same tables/status filters portal-customer-timeline.ts already
  * reads (aggregated there for recency; here filtered for substring match) — the
@@ -30,8 +31,8 @@
  * entirely client-side in command-palette.tsx — no backend round-trip needed
  * for those.
  *
- * Auth: requireCapability("ladder.assessment") — the lowest portal floor, matching
- * portal-marketplace.ts, so both Assessment-tier and CustomerUser-tier callers
+ * Auth: requireCapability("ladder.free") — the lowest portal floor, matching
+ * portal-marketplace.ts, so both Free-tier and Customer-tier callers
  * reach it; each source query is scoped to the caller's own ids only.
  *
  * Routes:
@@ -46,31 +47,16 @@ import {
   insightsGeneratedDocumentsTable,
   salesOffersTable,
   servicesTable,
-  type MspRole,
 } from "@workspace/db";
 import { and, eq, ilike, inArray, or, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { PRE_PAYMENT_SERVICE_TYPES, resolveCatalogScope } from "../lib/marketplace-catalog-scope";
 
 const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
 
 const RESULTS_PER_SOURCE = 5;
-
-const ASSESSMENT_SERVICE_TYPES = ["assessment", "monitoring_tier"] as const;
-const CUSTOMER_SERVICE_TYPES = ["assessment", "monitoring_tier", "micro_offer", "retainer"] as const;
-
-function effectiveRole(req: Request): MspRole | undefined {
-  const user = req.user as { role?: string; mspRole?: MspRole } | undefined;
-  if (!user) return undefined;
-  if (user.role === "admin") return LEGACY_ROLE.platformAdmin;
-  return user.mspRole;
-}
-
-function serviceTypesForRole(role: MspRole | undefined): readonly string[] {
-  return role === "Assessment" ? ASSESSMENT_SERVICE_TYPES : CUSTOMER_SERVICE_TYPES;
-}
 
 type SearchResultType = "finding" | "document" | "offer" | "marketplace";
 
@@ -85,7 +71,7 @@ interface SearchResultDto {
 
 router.get(
   "/portal/customer/search",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = req.user!.customerId;
     const userId = req.user!.id;
@@ -101,8 +87,14 @@ router.get(
     }
 
     const like = `%${q}%`;
-    const role = effectiveRole(req);
-    const allowedServiceTypes = [...serviceTypesForRole(role)];
+    const scope = await resolveCatalogScope(req.user!);
+    if (scope.kind === "unavailable") {
+      // One of four sources; the caller's own findings, documents and offers do not
+      // depend on the RBAC model, so failing the whole search would be wrong. The
+      // marketplace source fails closed to the pre-payment catalog instead, loudly.
+      log.error({ reason: scope.reason, customerId }, "portal-customer-search: catalog scope could not be resolved — narrowing marketplace results");
+    }
+    const allowedServiceTypes = [...(scope.kind === "unavailable" ? PRE_PAYMENT_SERVICE_TYPES : scope.serviceTypes)];
 
     try {
       const [findings, documents, offers, services] = await Promise.all([

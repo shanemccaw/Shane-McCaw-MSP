@@ -48,21 +48,21 @@ import { effectiveLegacyRole, LEGACY_ROLE, type LegacyRole } from "@workspace/db
  * decided client-side before this landed — the same chain, in both of the two
  * places it was written out:
  *
- *   Assessment    -> "copilot-readiness"
- *   CustomerUser  -> "portal-v2"
+ *   Free      -> "copilot-readiness"
+ *   Customer  -> "portal-v2"
  *   everything else (and an absent/unknown role) -> "dashboard"
  *
- * `Free` falling through to "dashboard" is carried across deliberately rather
- * than tidied to "portal-v2": that is what the running product does today, and a
- * step whose contract is "nothing observable changes" is the wrong place to
- * change where a Free-tier user lands. If that is wrong it is a real product
- * decision, and it now has one place to be made instead of two.
+ * #3590 — the first line used to read `Assessment -> "copilot-readiness"`, with `Free`
+ * falling through to "dashboard". Shane's decision (2026-09-11) folded `Assessment`
+ * into `Free` as the one pre-payment tier, so `Free` inherits the assessment shell:
+ * every live pre-payment account was an `Assessment` account, and sending them to
+ * "dashboard" after the merge would have moved all of them for no reason.
  */
 export type PortalLandingSurface = string;
 
 export function portalLandingSurface(effective: LegacyRole | undefined): PortalLandingSurface {
-  if (effective === "Assessment") return "copilot-readiness";
-  if (effective === LEGACY_ROLE.customerUser) return "portal-v2";
+  if (effective === LEGACY_ROLE.free) return "copilot-readiness";
+  if (effective === LEGACY_ROLE.customer) return "portal-v2";
   return "dashboard";
 }
 
@@ -75,9 +75,8 @@ export function portalLandingSurface(effective: LegacyRole | undefined): PortalL
  * "Customer". Display only — nothing branches on the returned string.
  */
 const ROLE_LABELS: Readonly<Record<LegacyRole, string>> = Object.freeze({
-  Assessment: "Assessment",
   Free: "Free",
-  CustomerUser: "Customer",
+  Customer: "Customer",
   ServiceAccount: "Service Account",
   MSPOperator: "MSP Operator",
   MSPAdmin: "MSP Admin",

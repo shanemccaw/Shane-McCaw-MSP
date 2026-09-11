@@ -7,7 +7,7 @@
  * resolution, mirroring dashboard-data.ts's POST /resolve pattern.
  *
  * Same auth/scope rules as POST /api/dashboard/resolve:
- *   CustomerUser  → always their own req.user.customerId.
+ *   Customer  → always their own req.user.customerId.
  *   MSPOperator+  → an explicit ?customerId=, ownership-verified via assertCustomerAccess.
  *
  * ?refresh=true forces regeneration past the cache TTL (manual "Regenerate" button).
@@ -30,7 +30,7 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const user = req.user!;
     const effectiveRole = user.role === "admin" ? LEGACY_ROLE.platformAdmin : user.mspRole;
-    const isCustomerUser = effectiveRole === LEGACY_ROLE.customerUser || effectiveRole === LEGACY_ROLE.free || effectiveRole === LEGACY_ROLE.assessment;
+    const isCustomerUser = effectiveRole === LEGACY_ROLE.customer || effectiveRole === LEGACY_ROLE.free;
     const mspId = user.mspId;
 
     if (mspId == null) {

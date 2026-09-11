@@ -5,7 +5,7 @@
  *
  * Covers:
  *   - 401 without auth on every endpoint
- *   - GET /msp/executive requires MSPOperator+ (403 for CustomerUser) and
+ *   - GET /msp/executive requires MSPOperator+ (403 for Customer) and
  *     returns the gathered book, scoped via resolveStaffScopedCustomerIds
  *   - the QBR endpoints require MSPAdmin+ (403 for a plain MSPOperator)
  *   - POST generate: 200 with a ready QBR, 422 for an empty book, 502 on failure
@@ -24,7 +24,7 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = "msp-executive-test-secret";
 process.env["JWT_SECRET"] = JWT_SECRET;
 
-function mspToken(mspId: number | null, mspRole: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customerUser = LEGACY_ROLE.mspOperator): string {
+function mspToken(mspId: number | null, mspRole: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customer = LEGACY_ROLE.mspOperator): string {
   return jwt.sign(
     { id: 1, email: "staff@test.com", role: "client", mspRole, mspId },
     JWT_SECRET,
@@ -112,7 +112,7 @@ describe("GET /msp/executive", () => {
   it("rejects roles below MSPOperator", async () => {
     const res = await request(makeApp())
       .get("/msp/executive")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.customerUser)}`);
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.customer)}`);
     expect(res.status).toBe(403);
   });
 

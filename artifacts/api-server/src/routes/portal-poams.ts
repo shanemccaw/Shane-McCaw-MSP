@@ -15,8 +15,8 @@
  * query resolves through `resolveTenantScope` and filters on BOTH resulting
  * values — see that file's own header for why either alone is insufficient.
  *
- * Role floor: `CustomerUser`, matching the Risk Register rather than the
- * lower `Assessment` floor some other customer-scoped routes use — a POA&M
+ * Role floor: `Customer`, matching the Risk Register rather than the
+ * lower `Free` floor some other customer-scoped routes use — a POA&M
  * carries the same class of governance/compliance weight (and, once signed,
  * the same "this was formally agreed" evidentiary value) that justified the
  * higher floor there.
@@ -449,7 +449,7 @@ router.post(
       // Same rule the Risk Register already settled: when `checkKey` resolves
       // to a real workload, only a CURRENT Accountable holder there may sign.
       // A `checkKey` resolving to no workload keeps the honest fallback: any
-      // `CustomerUser` may sign.
+      // `Customer` may sign.
       const workload = resolveRiskWorkload(existing.checkKey);
       const signerPersonId = typeof req.user?.id === "number" ? personIdForUser(req.user.id) : null;
       let authorizingHolderIds: string[] | null = null;

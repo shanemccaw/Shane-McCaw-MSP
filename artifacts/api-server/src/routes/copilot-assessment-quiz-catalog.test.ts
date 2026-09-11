@@ -130,7 +130,7 @@ function token(): string {
       id: 501,
       email: "buyer@contoso.com",
       role: "client",
-      mspRole: "Assessment",
+      mspRole: "Free",
       mspId: 42,
       customerId: 77,
       sid: "session-1",

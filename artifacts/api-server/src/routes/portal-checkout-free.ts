@@ -97,7 +97,7 @@ async function provisionFreeOnboarding(opts: {
     // provisionProspectAccount already created at M365-consent time — it can
     // never create one. Every real order (assessments included) goes through
     // consent before this function runs, and the consent callback already
-    // assigned the correct role (Assessment vs CustomerUser, from the ordered
+    // assigned the correct role (Free vs Customer, from the ordered
     // product's serviceType) and tenant scope. A guest email with NO account
     // therefore means something upstream skipped the consent flow: that used
     // to fall through to a bare, unscoped users row (no tenant, no msp link —

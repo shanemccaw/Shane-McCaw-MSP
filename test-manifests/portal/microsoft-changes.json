@@ -10,13 +10,13 @@
     "TEST1 covers the honest-empty case that is ALSO the live case in local dev right now: analysedCount can legitimately be 0 or low (contract pack's own 'dormant pipeline' caveat) — the assertions below check SHAPE (keys exist, buckets has the fixed 11-entry axis, dateUnclearPosts/posts are arrays), not a specific count, so the manifest does not need re-pinning as real interpretations/routings are authored over time.",
     "TEST4/TEST5 assert the NEW `routing` field this build added exists as a key on a post (present-but-null is a valid, honest state) — this is the regression guard for the gap this build closed (the wire previously had no field connecting a post to its Change Request at all).",
     "UI STEPS drive the real page: login through the real Auth Core login page (#2991, Feature #1648), then assert the page's own dataState machine (loading → live), the 4 real stat cards, the triage section (empty-state asserted, since the local testbed tenant currently has zero actionable 'approval'-intake routings — MC1287370's real routing is intake=informed, which the page correctly excludes from triage), and the horizon wave-0 selection driving the 'In this wave' panel.",
-    "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same CustomerUser testbed account test-manifests/portal/customer-home-landing.json and test-manifests/portal/notification-preferences.json already use.",
+    "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same Customer testbed account test-manifests/portal/customer-home-landing.json and test-manifests/portal/notification-preferences.json already use.",
     "NO WRITE IS EXERCISED by this manifest. The decline action (surface C) needs a real actionable routing (decision=auto_created, intake=approval, an existing msp_change_requests row) to test end-to-end, which does not exist in local dev at the time of writing (see TEST1 note) — wiring is covered by the route's own existing tests in artifacts/api-server (portal-change-control.ts) and by direct code review of the decline() call in useMicrosoftChangesLive.ts. Exercising it here once real routed data exists is a natural follow-up, not a gap being silently skipped."
   ],
 
   "apiTests": [
     {
-      "name": "SETUP — log in as the CustomerUser testbed account; extract the bearer.",
+      "name": "SETUP — log in as the Customer testbed account; extract the bearer.",
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },

@@ -1,10 +1,10 @@
 {
-  "feature": "Identity interstitial (Git #1296): a non-CustomerUser role (PlatformAdmin, MSPAdmin, MSPOperator, ServiceAccount) logging in through the customer-facing /portal/ login now lands on a new identity interstitial instead of straight to /dashboard. It offers two choices -- log out and go sign in at /admin-panel/, or accept and continue into /portal-v2 with tenant impersonation available. CustomerUser is unaffected and still lands straight on /portal-v2. TenantSwitcherFloaty and ImpersonationBanner are now also mounted on PortalV2Shell.tsx (previously only on the legacy app-shell.tsx).",
+  "feature": "Identity interstitial (Git #1296): a non-Customer role (PlatformAdmin, MSPAdmin, MSPOperator, ServiceAccount) logging in through the customer-facing /portal/ login now lands on a new identity interstitial instead of straight to /dashboard. It offers two choices -- log out and go sign in at /admin-panel/, or accept and continue into /portal-v2 with tenant impersonation available. Customer is unaffected and still lands straight on /portal-v2. TenantSwitcherFloaty and ImpersonationBanner are now also mounted on PortalV2Shell.tsx (previously only on the legacy app-shell.tsx).",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "PENDING",
 
   "notes": [
-    "ENV VARS required: DEPLOY_URL, TEST_ADMIN_EMAIL/TEST_ADMIN_PASSWORD (PlatformAdmin -- the non-CustomerUser account driving the primary assertions), TEST_CUSTOMER_EMAIL/TEST_CUSTOMER_PASSWORD (CustomerUser -- the negative control proving the interstitial does not appear for that role).",
+    "ENV VARS required: DEPLOY_URL, TEST_ADMIN_EMAIL/TEST_ADMIN_PASSWORD (PlatformAdmin -- the non-Customer account driving the primary assertions), TEST_CUSTOMER_EMAIL/TEST_CUSTOMER_PASSWORD (Customer -- the negative control proving the interstitial does not appear for that role).",
     "Mirrors test-manifests/portal/customer-home-landing.json's landing-proof pattern: no explicit goto after login-submit, so the DOM assertion can only pass if the real post-login redirect (login.tsx resolvedLanding) sent the account there."
   ],
 
@@ -18,7 +18,7 @@
     { "action": "input", "selector": "#email", "value": "{{TEST_ADMIN_EMAIL}}" },
     { "action": "input", "selector": "#password", "value": "{{TEST_ADMIN_PASSWORD}}" },
     {
-      "name": "Primary login AS PlatformAdmin -- assert the response really carries a non-CustomerUser role, since the whole landing assertion below depends on it",
+      "name": "Primary login AS PlatformAdmin -- assert the response really carries a non-Customer role, since the whole landing assertion below depends on it",
       "action": "click",
       "selector": "[data-testid='login-submit']",
       "critical": true,
@@ -28,7 +28,7 @@
       }
     },
     {
-      "name": "LANDING -- with NO explicit goto, the identity interstitial renders. This is only true if the post-login redirect resolved a non-CustomerUser role's landing to /identity (the feature under test).",
+      "name": "LANDING -- with NO explicit goto, the identity interstitial renders. This is only true if the post-login redirect resolved a non-Customer role's landing to /identity (the feature under test).",
       "action": "expect",
       "selector": "[data-testid='identity-interstitial-card']",
       "state": "visible"
@@ -59,7 +59,7 @@
     },
 
     {
-      "name": "log out and switch to a CustomerUser session -- negative control",
+      "name": "log out and switch to a Customer session -- negative control",
       "action": "goto",
       "target": "/portal/login"
     },
@@ -70,11 +70,11 @@
       "selector": "[data-testid='login-submit']",
       "captureResponse": {
         "urlPattern": "/api/auth/login",
-        "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "CustomerUser" }
+        "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "Customer" }
       }
     },
     {
-      "name": "NEGATIVE CONTROL -- CustomerUser never sees the interstitial, lands straight on /portal-v2",
+      "name": "NEGATIVE CONTROL -- Customer never sees the interstitial, lands straight on /portal-v2",
       "action": "expect",
       "selector": "[data-testid='pv2-sidebar']",
       "state": "visible"

@@ -20,7 +20,7 @@ const log = logger.child({ channel: "tenant.portal" });
 export async function ensureClientAccount(
   email: string,
   name?: string,
-  scope?: { tenantId: number; mspId: number | null; mspRole: typeof LEGACY_ROLE.assessment | typeof LEGACY_ROLE.customerUser },
+  scope?: { tenantId: number; mspId: number | null; mspRole: typeof LEGACY_ROLE.free | typeof LEGACY_ROLE.customer },
 ): Promise<{ id: number }> {
   const normalizedEmail = email.toLowerCase().trim();
   // Atomic upsert — if the email already exists the ON CONFLICT clause returns
@@ -156,13 +156,13 @@ async function ensureDirectCustomerRecord(userId: number, tenantId?: string | nu
  * default (mspRole "Free", no mspId, no tenantId — i.e. what used to be "no
  * msp_users row exists yet"); an account already carrying an explicit role or
  * link is never role-patched here (promoteMspUserToCustomer owns upgrades).
- * Defaults to `CustomerUser`, keeping the historical behavior.
+ * Defaults to `Customer`, keeping the historical behavior.
  */
 export async function ensureClientMspUser(
   userId: number,
   tenantId?: string | null,
   explicitCustomerId?: number | null,
-  desiredRole?: typeof LEGACY_ROLE.customerUser | typeof LEGACY_ROLE.assessment,
+  desiredRole?: typeof LEGACY_ROLE.customer | typeof LEGACY_ROLE.free,
 ): Promise<void> {
   // Resolve target mspId + tenants.id — explicitCustomerId takes precedence over tenantId.
   let mspId: number | null = null;
@@ -242,7 +242,7 @@ export async function ensureClientMspUser(
     .set({
       tenantId: customerId,
       mspId: existing.existingMspId ?? mspId,
-      ...(stillAtUnbridgedDefault ? { mspRole: desiredRole ?? LEGACY_ROLE.customerUser } : {}),
+      ...(stillAtUnbridgedDefault ? { mspRole: desiredRole ?? LEGACY_ROLE.customer } : {}),
       updatedAt: new Date(),
     })
     .where(eq(usersTable.id, userId));
@@ -261,9 +261,9 @@ export async function ensureClientMspUser(
  *      no tenant link; this is the schema-level consent-first rule), then
  *   2. a `users` row (role "client", passwordHash left NULL — no usable
  *      password yet; the customer sets one via the account-setup / password
- *      flow) stamped inline with tenantId/mspId and `role` — "Assessment" for
- *      the assessment funnel (promoted to `CustomerUser` on payment; see
- *      promoteMspUserToCustomer), else `CustomerUser`.
+ *      flow) stamped inline with tenantId/mspId and `role` — "Free" for
+ *      the assessment funnel (promoted to `Customer` on payment; see
+ *      promoteMspUserToCustomer), else `Customer`.
  * It also converts the funnel-entry lead (name+email capture) new → converted.
  *
  * Reuses ensureClientAccount / ensureDirectCustomerRecord / ensureClientMspUser so
@@ -280,7 +280,7 @@ export async function provisionProspectAccount(opts: {
   company?: string | null;
   industry?: string | null;
   tenantId?: string | null;
-  role: typeof LEGACY_ROLE.assessment | typeof LEGACY_ROLE.customerUser;
+  role: typeof LEGACY_ROLE.free | typeof LEGACY_ROLE.customer;
 }): Promise<{ userId: number; customerId: number | null } | null> {
   const email = opts.email?.toLowerCase().trim();
   if (!email) return null;
@@ -330,20 +330,21 @@ export async function provisionProspectAccount(opts: {
 }
 
 /**
- * Promote a funnel Prospect from the low-privilege "Assessment"/"Free" role up to
- * `CustomerUser` once payment is confirmed — this is what unlocks the full portal
- * (CustomerUser is the floor for the main portal; Assessment/Free sit below it).
+ * Promote a funnel Prospect from the pre-payment "Free" role up to
+ * `Customer` once payment is confirmed — this is what unlocks the full portal
+ * (Customer is the floor for the main portal; Free sits below it — #3590 folded
+ * the old "Assessment" tier into Free).
  *
- * Idempotent and guarded: only rows currently at "Assessment" or "Free" are
- * touched, so an existing CustomerUser / MSPAdmin / etc. is never downgraded or
+ * Idempotent and guarded: only rows currently at "Free" are
+ * touched, so an existing Customer / MSPAdmin / etc. is never downgraded or
  * re-stamped, and re-delivered webhooks are safe. Non-fatal.
  */
 export async function promoteMspUserToCustomer(userId: number): Promise<void> {
   try {
     await db
       .update(usersTable)
-      .set({ mspRole: LEGACY_ROLE.customerUser, updatedAt: new Date() })
-      .where(and(eq(usersTable.id, userId), inArray(usersTable.mspRole, ["Assessment", "Free"])));
+      .set({ mspRole: LEGACY_ROLE.customer, updatedAt: new Date() })
+      .where(and(eq(usersTable.id, userId), eq(usersTable.mspRole, LEGACY_ROLE.free)));
   } catch (err) {
     log.warn({ err, userId }, "promoteMspUserToCustomer: role promotion failed (non-fatal)");
   }

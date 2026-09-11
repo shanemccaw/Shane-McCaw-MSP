@@ -18,7 +18,7 @@
  * These tests cover the four things that can regress:
  *   1. Assessment role reaches the route at all and gets the REAL customerName
  *      (#315 — this was a hard 403 before).
- *   2. CustomerUser still gets the full engine payload (no regression to the
+ *   2. Customer still gets the full engine payload (no regression to the
  *      customer-engines route that was winning the collision).
  *   3. The floor drop is scoped to THIS route — the sibling customer-engines
  *      routes still reject Assessment, and a token with no customerId claim is
@@ -225,7 +225,7 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
 
     const res = await request(makeApp())
       .get("/api/portal/dashboard")
-      .set("Authorization", `Bearer ${token("Assessment")}`);
+      .set("Authorization", `Bearer ${token("Free")}`);
 
     // Before #327 this was a hard 403 from requireCapability("ladder.customer-user") — the
     // War Room's whole reason for calling this endpoint.
@@ -240,7 +240,7 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
 
     const res = await request(makeApp())
       .get("/api/portal/dashboard")
-      .set("Authorization", `Bearer ${token("Assessment")}`);
+      .set("Authorization", `Bearer ${token("Free")}`);
 
     expect(res.body.customerName).not.toBe("Northline Health");
     expect(JSON.stringify(res.body)).not.toContain("Northline Health");
@@ -262,7 +262,7 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
 
     const res = await request(makeApp())
       .get("/api/portal/dashboard")
-      .set("Authorization", `Bearer ${token("Assessment")}`);
+      .set("Authorization", `Bearer ${token("Free")}`);
 
     expect(res.status).toBe(200);
     // `undefined` would be dropped entirely by JSON.stringify; the deleted
@@ -271,12 +271,12 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
     expect(res.body).toHaveProperty("customerStatus", null);
   });
 
-  it("NO REGRESSION: CustomerUser still gets the full engine payload it got before", async () => {
+  it("NO REGRESSION: Customer still gets the full engine payload it got before", async () => {
     queueFullDashboard({ paid: true });
 
     const res = await request(makeApp())
       .get("/api/portal/dashboard")
-      .set("Authorization", `Bearer ${token(LEGACY_ROLE.customerUser)}`);
+      .set("Authorization", `Bearer ${token(LEGACY_ROLE.customer)}`);
 
     expect(res.status).toBe(200);
     // Fields that only ever came from the customer-engines handler.
@@ -304,7 +304,7 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
 
     const res = await request(makeApp())
       .get("/api/portal/dashboard")
-      .set("Authorization", `Bearer ${token("Assessment")}`);
+      .set("Authorization", `Bearer ${token("Free")}`);
 
     expect(res.status).toBe(200);
     expect(res.body.results.pillars.security.findings).toBeUndefined();
@@ -330,9 +330,9 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
     for (const path of ["/api/portal/customer/sla-status", "/api/portal/customer/scope-status"]) {
       const res = await request(makeApp())
         .get(path)
-        .set("Authorization", `Bearer ${token("Assessment")}`);
+        .set("Authorization", `Bearer ${token("Free")}`);
 
-      expect(res.status, `${path} must still be CustomerUser-gated`).toBe(403);
+      expect(res.status, `${path} must still be Customer-gated`).toBe(403);
     }
   });
 });

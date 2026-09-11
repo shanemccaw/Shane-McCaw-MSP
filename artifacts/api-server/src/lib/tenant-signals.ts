@@ -95,8 +95,8 @@ export async function getDisabledSignalKeys(): Promise<Set<string>> {
  * be stable across runs (an unordered LIMIT 1 resolved a different, wrong user
  * per run — the confirmed customerId=4 → users.id=21 bug):
  *
- *   1. Customer-facing role rank: CustomerUser (full customer account) beats
- *      Assessment beats Free; any MSP-side/service role attached to the
+ *   1. Customer-facing role rank: Customer (full customer account) beats
+ *      Free (the one pre-payment tier since #3590); any MSP-side/service role attached to the
  *      customer ranks last — customer documents and notifications must never
  *      land on MSP staff or machine identities when a real customer login exists.
  *   2. Earliest created_at — the original account-holder (the person who
@@ -109,10 +109,9 @@ export async function getDisabledSignalKeys(): Promise<Set<string>> {
 // mock drizzle-orm and import tenant-signals only transitively.
 const canonicalPortalUserOrder = () => [
   sql`CASE ${usersTable.mspRole}
-    WHEN 'CustomerUser' THEN 0
-    WHEN 'Assessment' THEN 1
-    WHEN 'Free' THEN 2
-    ELSE 3 END`,
+    WHEN 'Customer' THEN 0
+    WHEN 'Free' THEN 1
+    ELSE 2 END`,
   asc(usersTable.createdAt),
   asc(usersTable.id),
 ];

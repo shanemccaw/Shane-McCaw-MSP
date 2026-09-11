@@ -33,7 +33,7 @@
  * principal — real indexed search, not a jsonb scan.
  *
  * ── Role floor ───────────────────────────────────────────────────────────
- * `Assessment` — same floor as `portal-tenant-check-items.ts`, the table's
+ * `Free` — same floor as `portal-tenant-check-items.ts`, the table's
  * previous only reader.
  */
 
@@ -99,7 +99,7 @@ function parseCsvFilter<T extends string>(raw: unknown, allowed: readonly T[]): 
 
 router.get(
   "/portal/oversharing/items",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response) => {
     try {
       const customerId = resolveCustomerId(req);

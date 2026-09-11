@@ -48,7 +48,7 @@ router.post(
     const displayName = user.name ?? user.email ?? `Client ${user.id}`;
     void runFirstLoginProvisioning({ userId: user.id, displayName });
 
-    // First-login side of the Assessment/Free document-generation "wait for both"
+    // First-login side of the Free document-generation "wait for both"
     // gate. This endpoint firing IS the customer's first-login event. Rather than
     // calling document generation directly (the retired assessment-doc-trigger
     // path), we emit a visible workflow event: the seeded "Assessment Document

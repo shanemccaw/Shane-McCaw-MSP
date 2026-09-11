@@ -25,7 +25,7 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = "msp-data-rights-test-secret";
 process.env["JWT_SECRET"] = JWT_SECRET;
 
-function mspToken(mspId: number, mspRole: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.platformAdmin | typeof LEGACY_ROLE.customerUser = LEGACY_ROLE.mspAdmin): string {
+function mspToken(mspId: number, mspRole: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.platformAdmin | typeof LEGACY_ROLE.customer = LEGACY_ROLE.mspAdmin): string {
   return jwt.sign(
     { id: 7, email: "admin@test.com", name: "Pat Admin", role: "client", mspRole, mspId },
     JWT_SECRET,

@@ -61,7 +61,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 
 function customerToken(overrides: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 1, email: "c@co.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10, ...overrides },
+    { id: 1, email: "c@co.com", role: "client", mspRole: LEGACY_ROLE.customer, mspId: 1, customerId: 10, ...overrides },
     JWT_SECRET,
     { expiresIn: "1h" },
   );
@@ -105,7 +105,7 @@ describe("dashboard-overrides API", () => {
     expect(res.status).toBe(401);
   });
 
-  it("403s a Free role below CustomerUser", async () => {
+  it("403s a Free role below Customer", async () => {
     const token = jwt.sign({ id: 9, email: "f@f.com", role: "client", mspRole: "Free", mspId: 1 }, JWT_SECRET, { expiresIn: "1h" });
     const res = await request(app).get("/api/dashboard/resolved").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(403);
@@ -121,7 +121,7 @@ describe("dashboard-overrides API", () => {
     expect(res.body.configured).toBe(false);
   });
 
-  it("resolves a CustomerUser's dashboard with no override (template as-is)", async () => {
+  it("resolves a Customer's dashboard with no override (template as-is)", async () => {
     mockResultQueue = [
       [sampleTemplate()], // findDefaultTemplate
       [], // findOverride -> none

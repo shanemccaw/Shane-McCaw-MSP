@@ -25,7 +25,7 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = "msp-alerts-test-secret";
 process.env["JWT_SECRET"] = JWT_SECRET;
 
-function mspToken(mspId: number, mspRole: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customerUser = LEGACY_ROLE.mspOperator): string {
+function mspToken(mspId: number, mspRole: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customer = LEGACY_ROLE.mspOperator): string {
   return jwt.sign(
     { id: 1, email: "staff@test.com", role: "client", mspRole, mspId },
     JWT_SECRET,
@@ -189,7 +189,7 @@ describe("GET /msp/alerts", () => {
   it("rejects roles below MSPOperator", async () => {
     const res = await request(makeApp())
       .get("/msp/alerts")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.customerUser)}`);
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.customer)}`);
     expect(res.status).toBe(403);
   });
 
@@ -314,7 +314,7 @@ describe("POST /msp/alerts/:alertId/acknowledge", () => {
   it("rejects roles below MSPOperator", async () => {
     const res = await request(makeApp())
       .post("/msp/alerts/incident-501/acknowledge")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.customerUser)}`);
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.customer)}`);
     expect(res.status).toBe(403);
   });
 

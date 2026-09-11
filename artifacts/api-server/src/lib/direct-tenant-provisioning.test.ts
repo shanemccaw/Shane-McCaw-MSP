@@ -102,7 +102,7 @@ describe("ensureClientMspUser — cross-MSP customerId patch backstop", () => {
       // 1. tenantId → tenants lookup: tenant 1 lives under mspId 1
       [{ id: 1, mspId: 1 }],
       // 2. the user's own row: under mspId 89, not tenant-linked yet
-      [{ existingCustomerId: null, existingMspId: 89, existingRole: LEGACY_ROLE.customerUser }],
+      [{ existingCustomerId: null, existingMspId: 89, existingRole: LEGACY_ROLE.customer }],
     ];
 
     await ensureClientMspUser(92, "tenant-conflict");
@@ -116,7 +116,7 @@ describe("ensureClientMspUser — cross-MSP customerId patch backstop", () => {
       // 1. tenantId → tenants lookup: tenant 5 under mspId 89 (matches the user's MSP)
       [{ id: 5, mspId: 89 }],
       // 2. the user's own row: under mspId 89, not tenant-linked → safe to patch
-      [{ existingCustomerId: null, existingMspId: 89, existingRole: LEGACY_ROLE.customerUser }],
+      [{ existingCustomerId: null, existingMspId: 89, existingRole: LEGACY_ROLE.customer }],
     ];
 
     await ensureClientMspUser(92, "tenant-ok");
@@ -129,7 +129,7 @@ describe("ensureClientMspUser — cross-MSP customerId patch backstop", () => {
     mockSelectResultsQueue = [
       [{ id: 5, mspId: 89 }],
       // already linked → no patch regardless of MSP
-      [{ existingCustomerId: 5, existingMspId: 89, existingRole: LEGACY_ROLE.customerUser }],
+      [{ existingCustomerId: 5, existingMspId: 89, existingRole: LEGACY_ROLE.customer }],
     ];
 
     await ensureClientMspUser(92, "tenant-ok");

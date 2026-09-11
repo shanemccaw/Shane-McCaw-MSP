@@ -7,7 +7,7 @@
  * keys, no engine snapshots are returned. Customers can accept or reject offers,
  * which emits offer.accepted / offer.rejected into the canonical event bus.
  *
- * Auth: requireCapability("ladder.customer-user") — MSP JWT with CustomerUser role.
+ * Auth: requireCapability("ladder.customer-user") — MSP JWT with Customer role.
  *   The customer's own ID is read from the JWT claim (req.user.customerId).
  *
  * Routes:

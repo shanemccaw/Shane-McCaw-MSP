@@ -230,7 +230,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       "Weekly schedule-triggered rescan for Free/Assessment-tier tenants (mspRole), so " +
       "retargeting/upgrade messaging always has fresh telemetry instead of a stale " +
       "one-time snapshot from consent time. Per-record fan-out: the trigger's " +
-      "fan_out_query selects every active users row with mspRole IN ('Free','Assessment') " +
+      "fan_out_query selects every active users row with mspRole = 'Free' (the one pre-payment tier; #3590 folded 'Assessment' into it) " +
       "whose tenant's Graph consent is still 'granted' (not revoked/pending/declined), and " +
       "fires one run per row carrying clientId (users.id), tenantId (Azure AD tenant GUID), " +
       "and packageKey. packageKey is the same 'core:security-baseline' fallback the " +
@@ -254,7 +254,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       "JOIN tenants t ON t.id = u.tenant_id " +
       "LEFT JOIN client_services cs ON cs.client_user_id = u.id AND cs.status = 'active' " +
       "LEFT JOIN services s ON s.id = cs.service_id " +
-      "WHERE u.msp_role IN ('Free', 'Assessment') AND u.is_active = true " +
+      "WHERE u.msp_role = 'Free' AND u.is_active = true " +
       "AND t.consent->'graph'->>'status' = 'granted'",
     graph: {
       nodes: [
@@ -373,8 +373,8 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       "Assessment-tier customer's REAL purchased package by joining client_services -> services " +
       "on the active purchase (type_attributes->>'packageKey'), falling back to " +
       "'core:security-baseline' only when no active purchase resolves. Sunday 03:00 schedule, " +
-      "distinct from the retargeting workflow's Monday slot, and scoped to mspRole = 'Assessment' " +
-      "only (not 'Free') since this is paid-tier drift-tracking, not a pre-purchase nurture rescan. " +
+      "distinct from the retargeting workflow's Monday slot, and scoped to mspRole = 'Free' " +
+      "(was 'Assessment' until #3590 folded it into Free as the one pre-payment tier). " +
       "Deliberately passive: no remediation work, no alerting beyond the standard rescan-complete " +
       "notification, and does NOT touch msp_subscriptions or any billing/monitoring_tier config — " +
       "this is a pure Workflow Engine definition.",
@@ -389,7 +389,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       "JOIN tenants t ON t.id = u.tenant_id " +
       "LEFT JOIN client_services cs ON cs.client_user_id = u.id AND cs.status = 'active' " +
       "LEFT JOIN services s ON s.id = cs.service_id " +
-      "WHERE u.msp_role = 'Assessment' AND u.is_active = true " +
+      "WHERE u.msp_role = 'Free' AND u.is_active = true " +
       "AND t.consent->'graph'->>'status' = 'granted'",
     graph: {
       nodes: [

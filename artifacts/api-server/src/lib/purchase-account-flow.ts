@@ -314,7 +314,7 @@ export type AttachPasswordResult =
  *
  * provisionIfMissing: the generalized Buy.tsx path provisions a missing users
  * row through the SAME provisionProspectAccount the consent flow uses (role
- * `CustomerUser` — these are paid purchases, not assessment prospects). The
+ * `Customer` — these are paid purchases, not assessment prospects). The
  * assessment funnel's own semantics (missing row = upstream defect) are
  * available by passing false.
  *
@@ -346,7 +346,7 @@ export async function attachPasswordToAccount(
       company: session.company,
       industry: session.industry,
       tenantId: session.tenantId,
-      role: LEGACY_ROLE.customerUser,
+      role: LEGACY_ROLE.customer,
     });
     if (!result) return { outcome: "account_missing" };
     provisioned = true;

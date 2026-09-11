@@ -147,7 +147,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 // portal-billing-capability-gates.test.ts.
 function makeClientToken(userId: number): string {
   return jwt.sign(
-    { id: userId, email: "client@example.com", role: "client", mspRole: "CustomerUser", mspId: 1, customerId: 1 },
+    { id: userId, email: "client@example.com", role: "client", mspRole: "Customer", mspId: 1, customerId: 1 },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

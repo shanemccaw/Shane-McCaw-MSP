@@ -116,9 +116,9 @@ function toWire(row: {
 router.get(
   "/portal/tenant-check-items",
   // Same floor as the rest of the Copilot Readiness/Remediation journey (see
-  // portal-remediation-tracker.ts): Assessment is the lowest role carrying a
+  // portal-remediation-tracker.ts): Free is the lowest role carrying a
   // customerId.
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

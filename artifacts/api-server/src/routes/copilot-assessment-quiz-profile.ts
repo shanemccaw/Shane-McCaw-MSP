@@ -124,7 +124,7 @@ function normalizeQuizProfile(profile: CopilotQuizProfile): CopilotQuizProfile {
 // anyway, so a 404 would only make the two cases harder to tell apart.
 router.get(
   "/portal/copilot-assessment/quiz-profile",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const tenantId = resolveTenantId(req);
     if (tenantId === null) {
@@ -160,7 +160,7 @@ router.get(
 // wiped by a quiz retake.
 router.put(
   "/portal/copilot-assessment/quiz-profile",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const tenantId = resolveTenantId(req);
     if (tenantId === null) {

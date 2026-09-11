@@ -166,9 +166,9 @@ describe("requireCapability()", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it("blocks CustomerUser from MSPAdmin-required route", async () => {
+  it("blocks Customer from MSPAdmin-required route", async () => {
     const { requireCapability } = await import("../middlewares/requireAuth");
-    const user = { id: 4, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customerUser };
+    const user = { id: 4, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customer };
     const req = mockReq(user);
     const res = mockRes();
     const next = vi.fn();

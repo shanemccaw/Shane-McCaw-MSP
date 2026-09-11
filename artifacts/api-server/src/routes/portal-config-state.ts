@@ -34,8 +34,8 @@
  * `/api/msp/config-state/*`.
  *
  * ─── Role floor ────────────────────────────────────────────────────────────────
- * `requireCapability("ladder.customer-user")` — which admits CustomerUser and every MSP/admin role
- * above it, and excludes `Free` and `Assessment`. This is a HIGHER floor than the
+ * `requireCapability("ladder.customer-user")` — which admits Customer and every MSP/admin role
+ * above it, and excludes `Free`. This is a HIGHER floor than the
  * neighbouring `portal-change-control.ts` / `portal-remediation-tracker.ts`, and
  * deliberately so: those serve findings ABOUT a tenant, this serves the tenant's
  * actual configuration — every conditional access policy, every service principal,

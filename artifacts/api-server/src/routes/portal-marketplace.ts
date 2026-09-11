@@ -6,72 +6,47 @@
  * catalog scope per role (matching the shared-page pattern used elsewhere in the
  * portal: Sharing, Account Basics, GDPR self-service).
  *
- * Auth: requireCapability("ladder.assessment") — the LOWEST portal role floor, so BOTH
- *   Assessment-tier and CustomerUser-tier (and higher) customers can browse.
- *   The caller's effective role then narrows WHICH services are returned.
+ * Auth: requireCapability("ladder.free") — the LOWEST portal role floor, so BOTH
+ *   the pre-payment Free tier and Customer-tier (and higher) callers can browse.
+ *   A customer capability then narrows WHICH services are returned.
  *
  * Catalog scoping (Deliverable 1) reuses the codebase's existing catalog
  * convention — `visibility = "public"` + a per-surface `serviceType` allow-set
  * (exactly how portal.ts /portal/onboarding/services, public-services.ts
  * /catalog/assessments, and useCatalog.ts already scope catalogs). No new
  * servicesTable column is introduced; there is no per-service role column in the
- * schema today (confirmed), so the established serviceType convention is keyed on
- * the authenticated mspRole rather than inventing a role gate per product.
+ * schema today (confirmed). Which allow-set applies is decided by the
+ * `customer:marketplace.browse-full` capability (#3590, lib/marketplace-catalog-scope.ts),
+ * not by comparing the caller's role string:
  *
- *   Assessment-tier   → assessment/governance/security/Copilot-readiness/
+ *   without it (Free) → assessment/governance/security/Copilot-readiness/
  *                       remediation packages (serviceType "assessment") + the
  *                       monitoring upsell ("monitoring_tier"). NOT the full
  *                       monitoring/automation catalog.
- *   CustomerUser+     → the fuller catalog (assessments + monitoring +
+ *   with it (Customer+) → the fuller catalog (assessments + monitoring +
  *                       micro-offers/projects + retainers).
  *
  * Purchase is intentionally NOT handled here — see routes/portal-checkout.ts
- * (offer checkout, CustomerUser floor) and routes/portal-assessment.ts (SOW
- * checkout, Assessment floor). This router is read-only catalog browsing.
+ * (offer checkout, Customer floor) and routes/portal-assessment.ts (SOW
+ * checkout, Free floor). This router is read-only catalog browsing.
  *
  * Routes:
  *   GET /api/portal/marketplace/catalog — role-scoped purchasable catalog
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, servicesTable, type MspRole } from "@workspace/db";
+import { db, servicesTable } from "@workspace/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { requireCapability } from "../middlewares/requireAuth";
+import { effectiveMspRole, requireCapability } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
-import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { resolveCatalogScope } from "../lib/marketplace-catalog-scope";
+
+// Re-exported: msp-marketplace-purchase.ts and its tests read the full set from here.
+export { CUSTOMER_SERVICE_TYPES } from "../lib/marketplace-catalog-scope";
 
 const log = logger.child({ channel: "growth.marketplace" });
 
 const router: IRouter = Router();
-
-// ── Role → serviceType allow-set ───────────────────────────────────────────────
-// Uses the existing serviceType catalog convention. Assessment-tier sees the
-// assessment family + the monitoring upsell only; CustomerUser and above see the
-// fuller purchasable catalog. Anything not in the caller's set is not returned.
-
-const ASSESSMENT_SERVICE_TYPES = ["assessment", "monitoring_tier"] as const;
-export const CUSTOMER_SERVICE_TYPES = [
-  "assessment",
-  "monitoring_tier",
-  "micro_offer",
-  "retainer",
-] as const;
-
-/** Resolve the caller's effective portal role (admin JWT === PlatformAdmin). */
-function effectiveRole(req: Request): MspRole | undefined {
-  const user = req.user as { role?: string; mspRole?: MspRole } | undefined;
-  if (!user) return undefined;
-  if (user.role === "admin") return LEGACY_ROLE.platformAdmin;
-  return user.mspRole;
-}
-
-/** The serviceType set this role is allowed to browse. */
-function serviceTypesForRole(role: MspRole | undefined): readonly string[] {
-  // Assessment-tier is the only role that gets the narrowed catalog. Every other
-  // role that clears the requireCapability("ladder.assessment") floor (CustomerUser and up)
-  // gets the fuller purchasable catalog.
-  return role === "Assessment" ? ASSESSMENT_SERVICE_TYPES : CUSTOMER_SERVICE_TYPES;
-}
 
 // ── Customer-safe catalog shape ────────────────────────────────────────────────
 // Only fields a customer needs to browse and decide. Internal cost, wholesale
@@ -162,11 +137,20 @@ export function toMarketplaceService(row: ServiceRow): MarketplaceService {
 
 router.get(
   "/portal/marketplace/catalog",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const role = effectiveRole(req);
-      const allowedTypes = [...serviceTypesForRole(role)];
+      const role = effectiveMspRole(req.user!);
+      const scope = await resolveCatalogScope(req.user!);
+      if (scope.kind === "unavailable") {
+        // Not a denial: the model could not be read (typically an environment the
+        // #3590 migration has not reached). Serving the narrow catalog would silently
+        // hide a paying customer's options behind a configuration fault.
+        log.error({ reason: scope.reason }, "portal-marketplace: catalog scope could not be resolved — failing closed");
+        res.status(503).json({ error: "Authorization is temporarily unavailable" });
+        return;
+      }
+      const allowedTypes = [...scope.serviceTypes];
 
       const rows = await db
         .select()

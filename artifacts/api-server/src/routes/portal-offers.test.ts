@@ -26,12 +26,12 @@ const CUSTOMER_ID = 42;
 const OTHER_CUSTOMER_ID = 99;
 
 const customerToken = jwt.sign(
-  { id: 1, email: "c@test.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: CUSTOMER_ID },
+  { id: 1, email: "c@test.com", role: "client", mspRole: LEGACY_ROLE.customer, customerId: CUSTOMER_ID },
   JWT_SECRET,
   { expiresIn: "1h" },
 );
 const otherCustomerToken = jwt.sign(
-  { id: 2, email: "c2@test.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: OTHER_CUSTOMER_ID },
+  { id: 2, email: "c2@test.com", role: "client", mspRole: LEGACY_ROLE.customer, customerId: OTHER_CUSTOMER_ID },
   JWT_SECRET,
   { expiresIn: "1h" },
 );

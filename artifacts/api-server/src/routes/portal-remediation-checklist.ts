@@ -81,7 +81,7 @@ function resolveCustomerId(req: Request): number | null {
 // ── Read: the findings-derived checklist ────────────────────────────────────
 router.get(
   "/portal/remediation/checklist",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   // #1168: writes below stay unconditional; only this READ checks the tier
   // bundles Remediation Tracking (same module key as portal-remediation-tracker.ts).
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.remediationTracking),
@@ -105,7 +105,7 @@ router.get(
 // ── Write: the customer's claim about one item, keyed by its checkKey ───────
 router.put(
   "/portal/remediation/checklist/:checkKey",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -238,7 +238,7 @@ router.put(
 // has been waiting on a real row to authorize.
 router.post(
   "/portal/remediation/checklist/:checkKey/raise-change",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -275,9 +275,9 @@ router.post(
 // .../remediation-tracker/steps/:stepId/decline-to-risk` (#1542) — same
 // signed fields, same real `msp_risk_decisions` row, same idempotency-on-
 // repeat-decline rule (409), just addressed by `checkKey` instead of an s-id.
-// Role floor: `CustomerUser`, matching the s1–s30 route's own floor for the
+// Role floor: `Customer`, matching the s1–s30 route's own floor for the
 // same reason — this creates a signed liability record, a higher bar than
-// the `Assessment` floor the rest of this journey (including this route's own
+// the `Free` floor the rest of this journey (including this route's own
 // GET/PUT) uses.
 router.post(
   "/portal/remediation/checklist/:checkKey/decline-to-risk",

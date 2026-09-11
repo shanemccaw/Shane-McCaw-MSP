@@ -31,7 +31,7 @@
  * no new toggle endpoint here.
  *
  * ── Role floor ─────────────────────────────────────────────────────────────
- * `Assessment` — same floor as the sibling `portal-oversharing-items.ts` and
+ * `Free` — same floor as the sibling `portal-oversharing-items.ts` and
  * `portal-runbooks.ts`.
  */
 
@@ -61,7 +61,7 @@ const DEFAULT_CHECK_KEY = "compliance:eeeu-site-sharing";
 
 router.get(
   "/portal/oversharing/sites",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response) => {
     try {
       const customerId = resolveCustomerId(req);
@@ -218,7 +218,7 @@ async function loadRunbookWire(runbookId: number, sopKind: SopKind): Promise<Wir
 
 router.post(
   "/portal/oversharing/runbooks/:sopKind",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response) => {
     try {
       const customerId = resolveCustomerId(req);

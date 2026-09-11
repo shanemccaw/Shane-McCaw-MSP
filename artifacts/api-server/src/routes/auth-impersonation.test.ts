@@ -198,7 +198,7 @@ const fakeMspUserRow = {
   userId: TARGET_USER_ID,
   mspId: TARGET_MSP_ID,
   customerId: TARGET_CUSTOMER_ID,
-  mspRole: LEGACY_ROLE.customerUser,
+  mspRole: LEGACY_ROLE.customer,
   isActive: true,
 };
 

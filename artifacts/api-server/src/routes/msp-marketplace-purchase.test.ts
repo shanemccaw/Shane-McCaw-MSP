@@ -39,7 +39,7 @@ const MSP_ID = 900;
 const CUSTOMER_ID = 5;
 const SERVICE_ID = 77;
 
-function mspToken(mspRole: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customerUser = LEGACY_ROLE.mspOperator): string {
+function mspToken(mspRole: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customer = LEGACY_ROLE.mspOperator): string {
   return jwt.sign({ id: 1, email: "staff@test.com", role: "client", mspRole, mspId: MSP_ID }, JWT_SECRET, { expiresIn: "1h" });
 }
 
@@ -195,7 +195,7 @@ describe("GET /msp/customers/:customerId/marketplace/catalog", () => {
     const app = await makeApp();
     const res = await request(app)
       .get(`/api/msp/customers/${CUSTOMER_ID}/marketplace/catalog`)
-      .set("Authorization", `Bearer ${mspToken(LEGACY_ROLE.customerUser)}`);
+      .set("Authorization", `Bearer ${mspToken(LEGACY_ROLE.customer)}`);
     expect(res.status).toBe(403);
   });
 

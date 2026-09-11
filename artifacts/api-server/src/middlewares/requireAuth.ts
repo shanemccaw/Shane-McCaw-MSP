@@ -4,6 +4,7 @@ import { db, tenantsTable, mspStaffCustomerScopesTable } from "@workspace/db";
 import {
   LEGACY_CUSTOMER_TIER_ROLES,
   LEGACY_ROLE,
+  canonicalRoleValue,
   effectiveLegacyRole,
   ladderCapabilityRole,
   type LegacyRole,
@@ -101,7 +102,7 @@ declare global {
 // The two ordering artifacts #1696 flagged were settled by #2458 and carry forward
 // into the rows unchanged:
 //
-//  1. `ServiceAccount` sits ABOVE `CustomerUser`, so a machine credential clears
+//  1. `ServiceAccount` sits ABOVE `Customer`, so a machine credential clears
 //     every floor a human customer clears. Real code depends on it —
 //     subscription-gate.ts's operator role set, msp-ownership.ts's MSP-scoped role
 //     set, the remediation-tracker exports' staff role set, and event-bus.ts minting
@@ -150,6 +151,9 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
   try {
     const payload = jwt.verify(token, secret) as AuthUser;
+    // #3590 — a token signed before CustomerUser/Assessment were renamed carries the old
+    // value for the rest of its 15-minute life; read it as the rung it became.
+    if (payload.mspRole) payload.mspRole = canonicalRoleValue(payload.mspRole);
     req.user = payload;
 
     if (payload.mfaSetupPending) {
@@ -374,7 +378,7 @@ export function requireMspScope(source: "params" | "query" | "body" = "params") 
  *
  * - PlatformAdmin (`role === "admin"`)      → always.
  * - MSPAdmin / MSPOperator                  → iff the tenant belongs to their MSP (DB IDOR check).
- * - CustomerUser / Free / Assessment        → iff it is their own tenant (token claim).
+ * - Customer / Free                     → iff it is their own tenant (token claim).
  * - anything else                           → denied.
  *
  * The single source of truth for this rule. `requireCustomerScope` (which reads the
@@ -431,7 +435,7 @@ export async function assertCustomerAccess(user: AuthUser, customerId: number): 
  * `assertCustomerAccess` now compares against.
  *
  * Only MSPAdmin / MSPOperator can be scoped. PlatformAdmin is cross-MSP and is
- * never scoped here; CustomerUser / Free / Assessment are already pinned to
+ * never scoped here; Customer / Free are already pinned to
  * their own `customerId` claim, so per-customer scoping does not apply to them.
  *
  * List/aggregate routes call this to narrow their result set (e.g.

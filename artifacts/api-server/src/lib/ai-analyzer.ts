@@ -190,7 +190,7 @@ export async function runAiAnalyzer(input: AiAnalyzerInput): Promise<AiAnalyzerR
         // staff and customer alike — so a naive rewrite onto users.mspId
         // alone would silently drop MSP attribution for every AI call
         // triggered by a customer login: since Phase 0 a tenant-scoped role
-        // (CustomerUser/Free/Assessment) carries tenantId and a NULL mspId.
+        // (Customer/Free) carries tenantId and a NULL mspId.
         // Resolve the MSP-scoped case from users.mspId and the tenant-scoped
         // case through tenants.mspId, preferring the user's own direct
         // linkage. Left join so an MSP staff user with no tenant still

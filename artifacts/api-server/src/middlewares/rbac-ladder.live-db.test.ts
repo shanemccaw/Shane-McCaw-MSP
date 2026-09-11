@@ -54,7 +54,7 @@ const hasDb = Boolean(process.env.DATABASE_URL);
 const describeLive = hasDb ? describe : describe.skip;
 
 /** Every floor that a real route gate actually requires today. */
-const REAL_FLOORS: readonly LegacyRole[] = [LEGACY_ROLE.assessment, LEGACY_ROLE.customerUser, LEGACY_ROLE.mspOperator, LEGACY_ROLE.mspAdmin, LEGACY_ROLE.platformAdmin];
+const REAL_FLOORS: readonly LegacyRole[] = [LEGACY_ROLE.free, LEGACY_ROLE.customer, LEGACY_ROLE.mspOperator, LEGACY_ROLE.mspAdmin, LEGACY_ROLE.platformAdmin];
 
 describeLive("#2458/#2460 — the capability gate's decision source, against the real seeded rows", () => {
   let roleClearsLadderFloor: typeof import("./rbac-ladder.ts").roleClearsLadderFloor;
@@ -140,13 +140,13 @@ describeLive("#2458/#2460 — the capability gate's decision source, against the
 
   // ── 2. The two flagged legacy artifacts ───────────────────────────────────
 
-  it("carries ServiceAccount ABOVE CustomerUser forward, as requireAuth.ts documents", async () => {
+  it("carries ServiceAccount ABOVE Customer forward, as requireAuth.ts documents", async () => {
     // #1696 flagged this as an artifact rather than a decision; #2458 asks whether it
     // is still relied upon. It is (subscription-gate OPERATOR_ROLES,
     // msp-ownership MSP_SCOPED_ROLES, the two remediation-tracker exports'
     // MSP_STAFF_ROLES, event-bus's ServiceAccount actor), so it is transcribed as-is.
-    expect((await roleClearsLadderFloor(LEGACY_ROLE.serviceAccount, LEGACY_ROLE.customerUser)).kind).toBe("allow");
-    expect((await roleClearsLadderFloor("ServiceAccount", "Assessment")).kind).toBe("allow");
+    expect((await roleClearsLadderFloor(LEGACY_ROLE.serviceAccount, LEGACY_ROLE.customer)).kind).toBe("allow");
+    expect((await roleClearsLadderFloor("ServiceAccount", LEGACY_ROLE.free)).kind).toBe("allow");
     // And it still does NOT reach MSP-staff floors, exactly as the index comparison had it.
     expect((await roleClearsLadderFloor(LEGACY_ROLE.serviceAccount, LEGACY_ROLE.mspOperator)).kind).toBe("deny");
     expect((await roleClearsLadderFloor(LEGACY_ROLE.serviceAccount, LEGACY_ROLE.mspAdmin)).kind).toBe("deny");
@@ -167,7 +167,7 @@ describeLive("#2458/#2460 — the capability gate's decision source, against the
   it("does not let a stale mspRole claim override the admin promotion", async () => {
     // The gate has always read `role === "admin" ? `PlatformAdmin` : mspRole`, so an
     // admin row carrying a LOWER mspRole is still promoted. Transcribed, not tidied.
-    const outcome = await userClearsLadderCapability({ role: "admin", mspRole: "Assessment" }, LADDER.platformAdmin);
+    const outcome = await userClearsLadderCapability({ role: "admin", mspRole: "Free" }, LADDER.platformAdmin);
     expect(outcome.kind).toBe("allow");
   });
 
@@ -197,9 +197,10 @@ describeLive("#2458/#2460 — the capability gate's decision source, against the
       { label: LEGACY_ROLE.mspAdmin, claims: { id: 3, role: "client", mspRole: LEGACY_ROLE.mspAdmin }, held: LEGACY_ROLE.mspAdmin },
       { label: LEGACY_ROLE.mspOperator, claims: { id: 4, role: "client", mspRole: LEGACY_ROLE.mspOperator }, held: LEGACY_ROLE.mspOperator },
       { label: "ServiceAccount", claims: { id: 5, role: "client", mspRole: "ServiceAccount" }, held: "ServiceAccount" },
-      { label: LEGACY_ROLE.customerUser, claims: { id: 6, role: "client", mspRole: LEGACY_ROLE.customerUser }, held: LEGACY_ROLE.customerUser },
+      { label: LEGACY_ROLE.customer, claims: { id: 6, role: "client", mspRole: LEGACY_ROLE.customer }, held: LEGACY_ROLE.customer },
       { label: "Free", claims: { id: 7, role: "client", mspRole: "Free" }, held: "Free" },
-      { label: "Assessment", claims: { id: 8, role: "client", mspRole: "Assessment" }, held: "Assessment" },
+      // #3590 — a token signed before the rename still says "Assessment"; it is read as Free.
+      { label: "pre-#3590 Assessment claim", claims: { id: 8, role: "client", mspRole: "Assessment" }, held: LEGACY_ROLE.free },
       { label: "no mspRole claim", claims: { id: 9, role: "client" }, held: undefined },
     ];
 

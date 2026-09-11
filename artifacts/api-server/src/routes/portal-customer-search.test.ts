@@ -60,7 +60,7 @@ beforeEach(() => {
 describe("GET /api/portal/customer/search", () => {
   it("400s when the caller has no customerId", async () => {
     const app = await buildApp();
-    const token = tokenFor({ id: 1, email: "a@b.com", role: "client", mspRole: LEGACY_ROLE.customerUser });
+    const token = tokenFor({ id: 1, email: "a@b.com", role: "client", mspRole: LEGACY_ROLE.customer });
     const res = await request(app)
       .get("/api/portal/customer/search?q=security")
       .set("Authorization", `Bearer ${token}`);
@@ -69,7 +69,7 @@ describe("GET /api/portal/customer/search", () => {
 
   it("returns empty results for a too-short query without hitting the db", async () => {
     const app = await buildApp();
-    const token = tokenFor({ id: 1, email: "a@b.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 42 });
+    const token = tokenFor({ id: 1, email: "a@b.com", role: "client", mspRole: LEGACY_ROLE.customer, customerId: 42 });
     const res = await request(app)
       .get("/api/portal/customer/search?q=a")
       .set("Authorization", `Bearer ${token}`);
@@ -85,7 +85,7 @@ describe("GET /api/portal/customer/search", () => {
       [],
     ];
     const app = await buildApp();
-    const token = tokenFor({ id: 1, email: "a@b.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 42 });
+    const token = tokenFor({ id: 1, email: "a@b.com", role: "client", mspRole: LEGACY_ROLE.customer, customerId: 42 });
     const res = await request(app)
       .get("/api/portal/customer/search?q=security")
       .set("Authorization", `Bearer ${token}`);

@@ -97,7 +97,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 
 function customerToken(overrides: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 1, email: "c@co.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10, ...overrides },
+    { id: 1, email: "c@co.com", role: "client", mspRole: LEGACY_ROLE.customer, mspId: 1, customerId: 10, ...overrides },
     JWT_SECRET,
     { expiresIn: "1h" },
   );
@@ -127,9 +127,9 @@ describe("POST /api/dashboard/resolve", () => {
     expect(res.status).toBe(401);
   });
 
-  it("403s a Free/anon role below CustomerUser", async () => {
+  it("403s a Free/anon role below Customer", async () => {
     const token = jwt.sign({ id: 9, email: "f@f.com", role: "client", mspRole: "Free", mspId: 1 }, JWT_SECRET, { expiresIn: "1h" });
-    // Free is admitted by requireCapability("ladder.customer-user")? No — Free < CustomerUser, so 403.
+    // Free is admitted by requireCapability("ladder.customer-user")? No — Free < Customer, so 403.
     const res = await resolve(token, { metrics: ["engine.healthScore"] });
     expect(res.status).toBe(403);
   });
@@ -148,7 +148,7 @@ describe("POST /api/dashboard/resolve", () => {
     expect(res.body.error.message).toMatch(/not permitted/i);
   });
 
-  it("403s when a CustomerUser names a different customerId", async () => {
+  it("403s when a Customer names a different customerId", async () => {
     const res = await resolve(customerToken({ customerId: 10 }), { metrics: ["engine.healthScore"], customerId: 11 });
     expect(res.status).toBe(403);
   });
@@ -232,7 +232,7 @@ describe("POST /api/dashboard/resolve", () => {
     expect(r.meta.aggregation).toBe("sum");
   });
 
-  it("forbids an msp-scope metric for a CustomerUser", async () => {
+  it("forbids an msp-scope metric for a Customer", async () => {
     const res = await resolve(customerToken(), { metrics: ["financial.totalRevenue"] });
     expect(res.status).toBe(200);
     const r = res.body.results["financial.totalRevenue"];

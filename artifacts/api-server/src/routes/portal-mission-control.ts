@@ -11,7 +11,7 @@
  * here, mirroring the privacy contract portal-offers.ts establishes with
  * toCustomerOffer (which deliberately strips firedSignalKeys).
  *
- * Routes (CustomerUser, customerId from JWT claim like portal-offers.ts):
+ * Routes (Customer, customerId from JWT claim like portal-offers.ts):
  *   GET  /api/portal/mission-control/engines
  *     — Live run of the customer-relevant engine subset via
  *       runEngineManifestForTenant, reduced to status-strip entries plus the

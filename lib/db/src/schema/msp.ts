@@ -3767,7 +3767,7 @@ export const mspSowsTable = pgTable("msp_sows", {
   // ── Parties ───────────────────────────────────────────────────────────────
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
   customerId: integer("customer_id"), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
-  // The end-customer user that signs the SOW (CustomerUser role)
+  // The end-customer user that signs the SOW (Customer role)
   customerUserId: integer("customer_user_id"),
 
   // ── Service context ───────────────────────────────────────────────────────
@@ -3835,7 +3835,7 @@ export const mspSowEventsTable = pgTable("msp_sow_events", {
   sowId: uuid("sow_id").notNull().references(() => mspSowsTable.sowId, { onDelete: "cascade" }),
   eventName: text("event_name").notNull(), // sow.created | sow.sent | sow.signed | sow.charged | sow.paid | sow.failed | sow.expired
   actorUserId: integer("actor_user_id"),
-  actorRole: text("actor_role"),           // LEGACY_ROLE.mspAdmin | LEGACY_ROLE.customerUser | "system"
+  actorRole: text("actor_role"),           // LEGACY_ROLE.mspAdmin | LEGACY_ROLE.customer | "system"
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -5064,7 +5064,7 @@ export const crApprovalsTable = pgTable("cr_approvals", {
   }).notNull().default("pending"),
   /**
    * WHO holds this approval authority — never "the system".
-   *   • `customer` — a CustomerUser carrying the live `canApproveChanges` flag,
+   *   • `customer` — a Customer carrying the live `canApproveChanges` flag,
    *     approving a change to their own live tenant. The authority #1496 adds.
    *   • `msp` — an MSP operator/admin approving on the delivery side.
    *   • `catalog_inherited` — an auto-approved standard change inherits the
@@ -6462,7 +6462,7 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   // check category — cost:*, appgov:*, governance:* etc — that is not one
   // workload's accountability). That is the honest, unresolved case, not an
   // error: the accept route falls back to its pre-#1511 behaviour (any
-  // `CustomerUser` may sign) for exactly this case, rather than inventing an
+  // `Customer` may sign) for exactly this case, rather than inventing an
   // authority this table cannot back up.
   /** The authorising matrix object id, e.g. "wl-icam" — same id space
    * `portal_ownership_assignments.object_id` / `workloadObject()` use. */
@@ -6632,7 +6632,7 @@ export const mspRbdVersionsTable = pgTable("msp_rbd_versions", {
   /** #1512 — unauthenticated review/sign link token, same mechanism as
    * `msp_sows.shareToken`. Null until an MSP operator explicitly generates one
    * for this version (`POST .../share`) — a version is reachable by an
-   * authenticated CustomerUser without ever needing a token. */
+   * authenticated Customer without ever needing a token. */
   shareToken: text("share_token").unique(),
   shareTokenExpiresAt: timestamp("share_token_expires_at", { withTimezone: true }),
   /** When a newer version replaced this one. NULL = the current version. Never

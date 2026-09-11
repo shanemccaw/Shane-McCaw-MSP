@@ -49,7 +49,7 @@ const VALID_COLUMNS: DeliveryColumn[] = [
 ];
 
 function isAdmin(req: Request): boolean {
-  return req.user?.role === "admin" || (req.user?.mspRole !== LEGACY_ROLE.customerUser && req.user?.mspRole !== undefined && req.user?.role !== "client");
+  return req.user?.role === "admin" || (req.user?.mspRole !== LEGACY_ROLE.customer && req.user?.mspRole !== undefined && req.user?.role !== "client");
 }
 
 function stripInternalNotes<T extends { internalNotes?: string | null }>(task: T): Omit<T, "internalNotes"> {

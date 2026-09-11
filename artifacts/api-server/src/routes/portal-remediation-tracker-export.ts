@@ -313,7 +313,7 @@ function toEvidenceHtml(customerName: string, rows: readonly EvidenceRow[]): str
 
 router.get(
   "/portal/remediation-tracker/export.csv",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -345,7 +345,7 @@ router.get(
 
 router.get(
   "/portal/remediation-tracker/export.pdf",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -378,7 +378,7 @@ router.get(
 
 router.get(
   "/portal/remediation-tracker/evidence-pack.pdf",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

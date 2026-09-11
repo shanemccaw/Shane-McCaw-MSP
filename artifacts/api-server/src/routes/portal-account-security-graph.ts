@@ -16,7 +16,7 @@
  * is the "build the endpoints" step of #1485's fixed order, ahead of Design.
  *
  * Same floor and customerId->tenantId resolution as portal-tenant-check-items.ts
- * (`requireCapability("ladder.assessment")`, JWT `customerId` claim is `tenants.id`).
+ * (`requireCapability("ladder.free")`, JWT `customerId` claim is `tenants.id`).
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -60,7 +60,7 @@ function resolveCustomerId(req: Request): number | null {
 
 router.get(
   "/portal/account-security/graph-signals",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

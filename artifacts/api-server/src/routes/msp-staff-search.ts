@@ -196,7 +196,7 @@ router.get("/msp/staff-search", requireCapability("ladder.msp-operator"), async 
 
     // ── Documents: same users→tenants link as msp-documents-hub.ts, by q ──
     // Scoped on the already MSP- and staff-scoped customer set above rather
-    // than on `users.mspId`: since #92 a tenant-scoped user (CustomerUser/Free/
+    // than on `users.mspId`: since #92 a tenant-scoped user (Customer/Free/
     // Assessment) is required to carry tenantId but NOT mspId — the
     // users_role_scope_check constraint demands one or the other — so the
     // mspId filter the old msp_users query used would drop every customer login

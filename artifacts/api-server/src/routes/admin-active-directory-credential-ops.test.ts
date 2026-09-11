@@ -359,7 +359,7 @@ describe("POST /admin/active-directory/user/:id/impersonate", () => {
 
   it("issues a single-use 30-minute token for the pre-existing exchange endpoint, with the target's tenant slug", async () => {
     selectQueue.push([TARGET_WITH_PASSWORD]); // loadTargetAccount
-    selectQueue.push([{ mspId: 7, customerId: 12, mspRole: LEGACY_ROLE.customerUser, isActive: true }]); // linkage
+    selectQueue.push([{ mspId: 7, customerId: 12, mspRole: LEGACY_ROLE.customer, isActive: true }]); // linkage
     selectQueue.push([{ slug: "contoso", name: "Contoso IT" }]); // owning MSP
 
     const before = Date.now();
@@ -370,7 +370,7 @@ describe("POST /admin/active-directory/user/:id/impersonate", () => {
     // msp-portal's auth-context needs target_slug alongside the token to land
     // the new tab on the right tenant — without it it can only warn and stay put.
     expect(res.body.targetSlug).toBe("contoso");
-    expect(res.body.user).toMatchObject({ id: 42, email: TARGET_WITH_PASSWORD.email, mspRole: LEGACY_ROLE.customerUser });
+    expect(res.body.user).toMatchObject({ id: 42, email: TARGET_WITH_PASSWORD.email, mspRole: LEGACY_ROLE.customer });
 
     const tokenRows = insertsTo("impersonation_tokens");
     expect(tokenRows).toHaveLength(1);
@@ -382,7 +382,7 @@ describe("POST /admin/active-directory/user/:id/impersonate", () => {
 
   it("audit-logs the session start with actor, target, and timestamp", async () => {
     selectQueue.push([TARGET_WITH_PASSWORD]);
-    selectQueue.push([{ mspId: 7, customerId: 12, mspRole: LEGACY_ROLE.customerUser, isActive: true }]);
+    selectQueue.push([{ mspId: 7, customerId: 12, mspRole: LEGACY_ROLE.customer, isActive: true }]);
     selectQueue.push([{ slug: "contoso", name: "Contoso IT" }]);
 
     await request(app).post("/admin/active-directory/user/42/impersonate").set(authHeader);
@@ -438,7 +438,7 @@ describe("POST /admin/active-directory/user/:id/impersonate", () => {
 
   it("still issues a token for an account with no owning MSP, reporting a null slug rather than guessing one", async () => {
     selectQueue.push([TARGET_WITH_PASSWORD]);
-    selectQueue.push([{ mspId: null, customerId: null, mspRole: LEGACY_ROLE.customerUser, isActive: true }]);
+    selectQueue.push([{ mspId: null, customerId: null, mspRole: LEGACY_ROLE.customer, isActive: true }]);
 
     const res = await request(app).post("/admin/active-directory/user/42/impersonate").set(authHeader);
 

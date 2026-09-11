@@ -46,9 +46,9 @@
  * identifier and the handlers answer with an empty register rather than a
  * query. This is the single most important line in the file.
  *
- * ── Role floor: `Assessment`, not `CustomerUser` ────────────────────────────
- * BUILD_PLAN §3.5 says `requireRole('CustomerUser')`. The floor used here is
- * `Assessment`, matching the customer-scoped routes that already exist —
+ * ── Role floor: `Free`, not `Customer` ────────────────────────────
+ * BUILD_PLAN §3.5 says `requireRole('Customer')`. The floor used here is
+ * `Free`, matching the customer-scoped routes that already exist —
  * `portal-remediation-tracker.ts` and `portal-tenant-check-items.ts` both floor
  * there, and the former states why in its own header: "Assessment is the lowest
  * role carrying a customerId".
@@ -58,23 +58,23 @@
  * `customerId`-from-JWT scoping above is, and that is identical either way. So
  * the choice between the two floors is a product decision, not a security one.
  *
- * `Assessment` is used for consistency with the routes above rather than
- * because `CustomerUser` would break anything: the configured testbed account
- * is in fact a `CustomerUser` (verified against the database, not assumed from
+ * `Free` is used for consistency with the routes above rather than
+ * because `Customer` would break anything: the configured testbed account
+ * is in fact a `Customer` (verified against the database, not assumed from
  * the "testbed Assessment account" phrasing in BuildConsole's own docs), so
  * either floor is reachable by the harness.
  *
- * ── UPDATE (Git #1173/#1168) — the READ route now floors at `CustomerUser` ──
+ * ── UPDATE (Git #1173/#1168) — the READ route now floors at `Customer` ──
  * Change Control shipped as a real, separately-priced add-on (#1173, prices
  * locked by Shane 2026-08-21) rather than folding into a tier. Per #1168's
  * "creation unconditional, gate visibility only" rule, the customer-facing
  * APPROVAL EXPERIENCE — this GET, which is what the register/briefing/record
- * views actually read — now requires both `CustomerUser` and an active
+ * views actually read — now requires both `Customer` and an active
  * `change_control` entitlement (`../lib/portal-addon-entitlements.ts`). This
- * answers the flag above: an Assessment-tier (free) account no longer sees
+ * answers the flag above: a Free-tier account no longer sees
  * Change Control at all, by design.
  *
- * The POST below is deliberately left at `Assessment` with NO entitlement
+ * The POST below is deliberately left at `Free` with NO entitlement
  * check — CR creation is the "creation unconditional" half of #1168's rule.
  * Every real change (including ones raised automatically elsewhere in the
  * platform) must always produce a real CR record regardless of whether this
@@ -680,7 +680,7 @@ function parseJsonField(value: string | undefined): Record<string, unknown> {
 
 router.post(
   "/portal/change-control",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -731,7 +731,7 @@ router.post(
 // This tenant's own active freeze windows — global, their own tenant, or any
 // workload — so a future page can show "here is what is frozen right now" the
 // same way the wizard is blocked from submitting into it. Gated identically to
-// the register read: CustomerUser + the change_control entitlement, since
+// the register read: Customer + the change_control entitlement, since
 // seeing the freeze calendar is part of the same approval experience.
 interface WireFreezeWindow {
   readonly id: number;
@@ -944,7 +944,7 @@ router.get(
 // resolved (mspId, tenantId), and only a routed Microsoft change (source_kind =
 // 'microsoft_change') may be declined through this path — a wizard-raised CR has
 // no risk-acceptance semantics and is out of scope. Gated on the same
-// CustomerUser + change_control entitlement as the register read: declining is
+// Customer + change_control entitlement as the register read: declining is
 // part of the approval experience.
 const declineSchema = z.object({
   fullName: z.string().trim().min(1).max(200),
@@ -1040,7 +1040,7 @@ router.post(
 // ── Approve / reject a change (the #1496 approval model) ─────────────────────
 //
 // These are the customer-facing decision endpoints the approval model exists
-// for. Both floor at CustomerUser + the change_control entitlement (the approval
+// for. Both floor at Customer + the change_control entitlement (the approval
 // experience), and both ADDITIONALLY require the live `canApproveChanges`
 // capability — approving a configuration change to a live tenant is a distinct
 // authority (see this file's header and the flag's note in the users schema).
@@ -1213,7 +1213,7 @@ router.post(
 //
 // The register had no per-CR history at all — "Add a comment" was one of five
 // dead buttons in the retired prototype. All three floor at the same
-// CustomerUser + change_control entitlement as the register read and the
+// Customer + change_control entitlement as the register read and the
 // approve/reject/decline actions above: this is part of the same approval
 // experience, not a separate free surface.
 //
@@ -1458,7 +1458,7 @@ router.post(
 //
 // Same middleware pair as the register read and the timeline: this is a view
 // over the same customer-scoped Change Control data, gated the same way —
-// CustomerUser + an active `change_control` entitlement.
+// Customer + an active `change_control` entitlement.
 
 interface WireRateMetric {
   readonly available: boolean;

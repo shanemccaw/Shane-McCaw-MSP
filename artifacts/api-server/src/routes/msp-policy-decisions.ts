@@ -55,7 +55,7 @@
  *
  * The one MUTATING action built here — manual clearance resolve — is safe to extend to MSP
  * staff because it is not a policy position: it is a plain, already-established action
- * (`portal-policy-decisions.ts` already lets ANY CustomerUser resolve it, not specifically
+ * (`portal-policy-decisions.ts` already lets ANY Customer resolve it, not specifically
  * the original signer) recording an observed operational fact ("the dependency actually
  * resolved"), identical business rules to the portal's own endpoint (`manual` trigger
  * type only, one-shot).

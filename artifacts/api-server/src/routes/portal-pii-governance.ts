@@ -19,14 +19,14 @@
  * tenant whose identifier is also blank). The check rows are then filtered on
  * that resolved tenantId inside `computePiiGovernance`.
  *
- * ── Role floor: CustomerUser ────────────────────────────────────────────────
+ * ── Role floor: Customer ────────────────────────────────────────────────
  * Matches its Governance sibling portal-risk-register.ts rather than the
- * Assessment floor used by change-control / remediation-tracker. This page names
+ * Free floor used by change-control / remediation-tracker. This page names
  * the tenant's personal-data exposure and links straight into the risk /
  * change / policy surfaces that act on it, so it sits with the register, not with
- * the free Assessment tier. The floor gates the TIER; the scoping above is what
+ * the Free tier. The floor gates the TIER; the scoping above is what
  * prevents a cross-tenant read, and it is identical either way. TEST_PORTAL_EMAIL
- * is a real CustomerUser (verified in portal-risk-register.ts's header against
+ * is a real Customer (verified in portal-risk-register.ts's header against
  * the users/tenants join), so the harness reaches this floor.
  *
  * ── What this route deliberately does NOT serve ─────────────────────────────

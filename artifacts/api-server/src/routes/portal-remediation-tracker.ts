@@ -173,10 +173,10 @@ function toWire(row: {
 router.get(
   "/portal/remediation-tracker",
   // Same floor as the rest of the Copilot Readiness journey (see
-  // portal-assessment.ts): Assessment is the lowest role carrying a customerId.
-  requireCapability("ladder.assessment"),
+  // portal-assessment.ts): Free is the lowest role carrying a customerId.
+  requireCapability("ladder.free"),
   // #1168: step writes below stay unconditional; only this READ checks the
-  // tier bundles Remediation Tracking (an Assessment-tier login has no active
+  // tier bundles Remediation Tracking (a Free-tier login has no active
   // Monitoring subscription, so this fails closed to empty automatically).
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.remediationTracking),
   async (req: Request, res: Response): Promise<void> => {
@@ -225,7 +225,7 @@ router.get(
 // behind claiming a completion that was withdrawn.
 router.put(
   "/portal/remediation-tracker/steps/:stepId",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -366,7 +366,7 @@ router.put(
 // uses (document generation, monitor check runs, …).
 router.post(
   "/portal/remediation-tracker/steps/:stepId/verify",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -431,7 +431,7 @@ router.post(
 // off on).
 router.get(
   "/portal/remediation-tracker/steps/:stepId/verification-guide",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   requireTierFeature(PORTAL_TIER_MODULE_KEYS.remediationTracking),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -488,9 +488,9 @@ const declineToRiskSchema = z.object({
   statement: z.string().trim().min(1).max(2000),
 });
 
-// Role floor: `CustomerUser`, matching portal-risk-register.ts's own floor for
+// Role floor: `Customer`, matching portal-risk-register.ts's own floor for
 // the same reason — this creates a signed liability record, which is a higher
-// bar than the `Assessment` floor the rest of this journey uses.
+// bar than the `Free` floor the rest of this journey uses.
 router.post(
   "/portal/remediation-tracker/steps/:stepId/decline-to-risk",
   requireCapability("ladder.customer-user"),

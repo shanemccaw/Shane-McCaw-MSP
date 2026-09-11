@@ -1330,7 +1330,7 @@ router.patch(
 // exposes the computed day count so the frontend can decide whether to show the
 // informational banner.
 //
-// Accessible by CustomerUser and above (MSP staff can call it for testing).
+// Accessible by Customer and above (MSP staff can call it for testing).
 
 router.get(
   "/portal/msp-suspension",
@@ -1340,11 +1340,11 @@ router.get(
       const userId = req.user!.id;
 
       // Resolve the MSP this user belongs to.
-      // For CustomerUser, mspId is on the JWT claim; fall back to a DB lookup.
+      // For Customer, mspId is on the JWT claim; fall back to a DB lookup.
       let mspId: number | null = req.user!.mspId ?? null;
 
       if (!mspId) {
-        // Resolved through the user's TENANT, not users.mspId. A CustomerUser is
+        // Resolved through the user's TENANT, not users.mspId. A Customer is
         // tenant-scoped: users_role_scope_check (#92) requires it to carry
         // tenantId, and it is NOT required to carry an mspId of its own — the
         // owning MSP is a property of the tenant. Reading users.mspId here would

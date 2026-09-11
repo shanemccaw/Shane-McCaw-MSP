@@ -345,7 +345,7 @@ async function buildLiveCatalogGrounding(): Promise<BotGrounding> {
 // ── customer_entitlements builder (ShaneBot Paid) ─────────────────────────────
 // The authenticated customer's own real platform data — what they pay for and what
 // their tenant looks like right now. Branches the same way the portal support chat
-// always has: a CustomerUser is grounded in their own tenant; MSP staff in their
+// always has: a Customer is grounded in their own tenant; MSP staff in their
 // MSP's book of customers + recent signals.
 
 function relativeDate(d: Date): string {

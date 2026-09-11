@@ -9,13 +9,13 @@
     "apiTests prove the real, already-built backend contract directly: log in via POST /api/auth/login, extract a bearer token, then exercise GET /api/portal/pillars exactly as usePillarPage.ts's own fetchWithAuth call does.",
     "PILLAR_SUMMARY_KEYS order is fixed server-side (pillar-summary-stats.ts, asserted by its own cross-app order test) and reused here: governance=0, licensing=1, adoption=2, compliance=3, health=4, security=5, copilot=6 — asserted by index rather than a JSONPath filter (HttpTestExecutor.cs's TryResolveJsonPath has no `[?(@...)]` filter support, #3052).",
     "No write assertions: /api/portal/pillars is a pure read (buildPillarSummary), so there is nothing to round-trip or restore.",
-    "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same CustomerUser testbed account other portal manifests use.",
+    "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same Customer testbed account other portal manifests use.",
     "UI steps deliberately assert the honest-state scaffolding (page shell, score hero, findings section) rather than exact score numbers or finding titles, which are real tenant data that changes with every scan run."
   ],
 
   "apiTests": [
     {
-      "name": "SETUP — log in as the CustomerUser testbed account; extract the bearer.",
+      "name": "SETUP — log in as the Customer testbed account; extract the bearer.",
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },

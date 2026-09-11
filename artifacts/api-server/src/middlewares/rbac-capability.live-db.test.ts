@@ -68,7 +68,7 @@ describeLive("#3360 — customer:team.manage against the real seeded rows", () =
   });
 
   it("denies the three customer tiers without a grant", async () => {
-    for (const rung of ["CustomerUser", "Free", "Assessment"]) {
+    for (const rung of ["Customer", "Free"]) {
       expect(await decide(rung), rung).toBe("deny");
     }
   });

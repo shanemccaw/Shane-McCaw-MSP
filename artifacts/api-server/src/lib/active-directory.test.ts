@@ -87,8 +87,8 @@ describe("buildMspTree", () => {
 
   it("nests real Users under their owning Tenant node (Phase 10, Issue #91)", () => {
     const USERS: DirectoryTreeUserRow[] = [
-      { id: 100, tenantId: 10, email: "alice@contoso.com", name: "Alice", mspRole: LEGACY_ROLE.customerUser, isActive: true },
-      { id: 101, tenantId: 10, email: "bob@contoso.com", name: "Bob", mspRole: LEGACY_ROLE.customerUser, isActive: false },
+      { id: 100, tenantId: 10, email: "alice@contoso.com", name: "Alice", mspRole: LEGACY_ROLE.customer, isActive: true },
+      { id: 101, tenantId: 10, email: "bob@contoso.com", name: "Bob", mspRole: LEGACY_ROLE.customer, isActive: false },
       { id: 102, tenantId: 12, email: "carol@globex.com", name: "Carol", mspRole: "Free", isActive: true },
     ];
     const tree = buildMspTree(MSPS, CUSTOMERS, USERS);
@@ -96,7 +96,7 @@ describe("buildMspTree", () => {
     const acme = tree.find((m) => m.id === 1)!;
     const contoso = acme.customers.find((c) => c.id === 10)!;
     expect(contoso.users.map((u) => u.id)).toEqual([100, 101]);
-    expect(contoso.users[0]).toMatchObject({ email: "alice@contoso.com", name: "Alice", mspRole: LEGACY_ROLE.customerUser, isActive: true });
+    expect(contoso.users[0]).toMatchObject({ email: "alice@contoso.com", name: "Alice", mspRole: LEGACY_ROLE.customer, isActive: true });
 
     const fabrikam = acme.customers.find((c) => c.id === 11)!;
     expect(fabrikam.users).toEqual([]);
@@ -107,7 +107,7 @@ describe("buildMspTree", () => {
 });
 
 describe("buildGroupNodes", () => {
-  it("returns exactly the 7 real MSP roles, in order, even with no counts", () => {
+  it("returns exactly the 6 real MSP roles, in order, even with no counts", () => {
     const groups = buildGroupNodes([]);
     expect(groups.map((g) => g.role)).toEqual([...DIRECTORY_GROUP_ROLES]);
     expect(groups.every((g) => g.count === 0)).toBe(true);
@@ -116,15 +116,14 @@ describe("buildGroupNodes", () => {
   it("fills in real counts by role and defaults missing roles to 0", () => {
     const groups = buildGroupNodes([
       { role: LEGACY_ROLE.mspAdmin, count: 4 },
-      { role: LEGACY_ROLE.customerUser, count: 57 },
-      { role: "Assessment", count: 12 },
+      { role: LEGACY_ROLE.customer, count: 57 },
+      { role: "Free", count: 12 },
     ]);
     expect(groups.find((g) => g.role === LEGACY_ROLE.mspAdmin)?.count).toBe(4);
-    expect(groups.find((g) => g.role === LEGACY_ROLE.customerUser)?.count).toBe(57);
-    expect(groups.find((g) => g.role === "Assessment")?.count).toBe(12);
+    expect(groups.find((g) => g.role === LEGACY_ROLE.customer)?.count).toBe(57);
+    expect(groups.find((g) => g.role === "Free")?.count).toBe(12);
     expect(groups.find((g) => g.role === LEGACY_ROLE.platformAdmin)?.count).toBe(0);
     expect(groups.find((g) => g.role === "ServiceAccount")?.count).toBe(0);
-    expect(groups.find((g) => g.role === "Free")?.count).toBe(0);
   });
 
   it("includes Free with a live count", () => {
@@ -138,7 +137,7 @@ const USERS: SearchableUser[] = [
     id: 100,
     email: "jane@contoso.com",
     name: "Jane Doe",
-    mspRole: LEGACY_ROLE.customerUser,
+    mspRole: LEGACY_ROLE.customer,
     mspId: 1,
     mspName: "Acme Consulting",
     customerId: 10,
@@ -395,8 +394,8 @@ const GROUP_MEMBERS: GroupMember[] = [
 
 describe("buildGroupDetail", () => {
   it("carries through the role and members, with a live count matching the list length", () => {
-    const detail = buildGroupDetail(LEGACY_ROLE.customerUser, GROUP_MEMBERS);
-    expect(detail.role).toBe(LEGACY_ROLE.customerUser);
+    const detail = buildGroupDetail(LEGACY_ROLE.customer, GROUP_MEMBERS);
+    expect(detail.role).toBe(LEGACY_ROLE.customer);
     expect(detail.members).toEqual(GROUP_MEMBERS);
     expect(detail.memberCount).toBe(2);
   });
@@ -450,7 +449,7 @@ const CUSTOMER_PROFILE: CustomerProfileRow = {
 const OWNING_MSP: CustomerOwningMsp = { id: 1, name: "Acme Consulting", slug: "acme-consulting" };
 
 const CUSTOMER_USERS: CustomerDetailUser[] = [
-  { id: 100, email: "jane@contoso.com", name: "Jane Doe", mspRole: LEGACY_ROLE.customerUser, isActive: true, lastLoginAt: null },
+  { id: 100, email: "jane@contoso.com", name: "Jane Doe", mspRole: LEGACY_ROLE.customer, isActive: true, lastLoginAt: null },
 ];
 
 const GRAPH_CONSENT: CustomerConsentStatus = {
@@ -593,7 +592,7 @@ describe("buildUserDetail", () => {
     mspSlug: "acme-consulting",
     customerId: 10,
     customerName: "Contoso Ltd",
-    mspRole: LEGACY_ROLE.customerUser,
+    mspRole: LEGACY_ROLE.customer,
     isActive: true,
     mfaEnforced: false,
     department: "Finance",
@@ -766,10 +765,9 @@ describe("roleLinkageRequirement", () => {
     expect(roleLinkageRequirement("ServiceAccount")).toBe("msp");
   });
 
-  it("requires customer (tenant) linkage for CustomerUser/Free/Assessment", () => {
-    expect(roleLinkageRequirement(LEGACY_ROLE.customerUser)).toBe("customer");
+  it("requires customer (tenant) linkage for Customer/Free", () => {
+    expect(roleLinkageRequirement(LEGACY_ROLE.customer)).toBe("customer");
     expect(roleLinkageRequirement("Free")).toBe("customer");
-    expect(roleLinkageRequirement("Assessment")).toBe("customer");
   });
 });
 
@@ -779,7 +777,7 @@ describe("planRoleChange", () => {
     expect(result).toEqual({ ok: true, mspRole: LEGACY_ROLE.platformAdmin, mspId: null, customerId: null });
   });
 
-  it("keeps the existing mspId and clears customerId when moving a CustomerUser to MSPOperator", () => {
+  it("keeps the existing mspId and clears customerId when moving a Customer to MSPOperator", () => {
     // The acceptance-criteria example from Issue #67: an MSPAdmin role can't
     // be assigned to a customer-scoped account without clearing the customer
     // linkage. mspId carries over since it was already denormalized to the
@@ -794,20 +792,20 @@ describe("planRoleChange", () => {
     if (!result.ok) expect(result.error).toMatch(/no MSP linkage/i);
   });
 
-  it("rejects CustomerUser when the account has no customer linkage", () => {
-    const result = planRoleChange({ newRole: LEGACY_ROLE.customerUser, currentMspId: 1, currentCustomerId: null });
+  it("rejects Customer when the account has no customer linkage", () => {
+    const result = planRoleChange({ newRole: LEGACY_ROLE.customer, currentMspId: 1, currentCustomerId: null });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/no customer linkage/i);
   });
 
   it("keeps the existing customerId/mspId pair when reassigning within the customer tier", () => {
-    const result = planRoleChange({ newRole: LEGACY_ROLE.customerUser, currentMspId: 1, currentCustomerId: 10 });
-    expect(result).toEqual({ ok: true, mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 10 });
+    const result = planRoleChange({ newRole: LEGACY_ROLE.customer, currentMspId: 1, currentCustomerId: 10 });
+    expect(result).toEqual({ ok: true, mspRole: LEGACY_ROLE.customer, mspId: 1, customerId: 10 });
   });
 
-  it("keeps the tenant linkage on a Free/Assessment role change (the CHECK constraint requires it)", () => {
-    const result = planRoleChange({ newRole: "Assessment", currentMspId: 1, currentCustomerId: 10 });
-    expect(result).toEqual({ ok: true, mspRole: "Assessment", mspId: 1, customerId: 10 });
+  it("keeps the tenant linkage on a Free role change (the CHECK constraint requires it)", () => {
+    const result = planRoleChange({ newRole: "Free", currentMspId: 1, currentCustomerId: 10 });
+    expect(result).toEqual({ ok: true, mspRole: "Free", mspId: 1, customerId: 10 });
   });
 
   it("refuses a Free/Assessment role change on an account with no tenant linkage", () => {
@@ -840,23 +838,23 @@ describe("planAssignmentChange", () => {
     if (!result.ok) expect(result.error).toMatch(/cannot be assigned a customer/i);
   });
 
-  it("reassigns a CustomerUser's customerId and derives mspId from the target customer's real owning MSP", () => {
+  it("reassigns a Customer's customerId and derives mspId from the target customer's real owning MSP", () => {
     const result = planAssignmentChange({
-      currentRole: LEGACY_ROLE.customerUser,
+      currentRole: LEGACY_ROLE.customer,
       target: { customerId: 42 },
       customerOwningMspId: 7,
     });
     expect(result).toEqual({ ok: true, mspId: 7, customerId: 42 });
   });
 
-  it("rejects a CustomerUser reassignment missing a target customerId", () => {
-    const result = planAssignmentChange({ currentRole: LEGACY_ROLE.customerUser, target: {} });
+  it("rejects a Customer reassignment missing a target customerId", () => {
+    const result = planAssignmentChange({ currentRole: LEGACY_ROLE.customer, target: {} });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/requires a target customerId/i);
   });
 
-  it("rejects a client-supplied mspId for a CustomerUser reassignment (mspId is always derived server-side)", () => {
-    const result = planAssignmentChange({ currentRole: LEGACY_ROLE.customerUser, target: { mspId: 1, customerId: 42 } });
+  it("rejects a client-supplied mspId for a Customer reassignment (mspId is always derived server-side)", () => {
+    const result = planAssignmentChange({ currentRole: LEGACY_ROLE.customer, target: { mspId: 1, customerId: 42 } });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/derived automatically/i);
   });
@@ -868,7 +866,7 @@ describe("planAssignmentChange", () => {
   });
 
   it("reassigns Free/Assessment by customerId, deriving the owning MSP server-side", () => {
-    for (const role of ["Free", "Assessment"] as const) {
+    for (const role of ["Free"] as const) {
       const result = planAssignmentChange({ currentRole: role, target: { customerId: 10 }, customerOwningMspId: 3 });
       expect(result).toEqual({ ok: true, mspId: 3, customerId: 10 });
     }

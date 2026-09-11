@@ -147,7 +147,7 @@ export async function aggregateMspTelemetry(
   // row's own mspId (#92 Phase 4). The retired msp_users bridge carried mspId
   // AND customerId on the same row, so one predicate covered both; since Phase 0
   // the users_role_scope_check constraint requires a tenant-scoped user
-  // (CustomerUser/Free/Assessment) to carry tenantId and does NOT require mspId,
+  // (Customer/Free) to carry tenantId and does NOT require mspId,
   // so eq(usersTable.mspId, mspId) would match no customer login at all. Every
   // revenue figure below Category A would silently read $0.00 rather than
   // erroring. Same pattern for Category C and the open-task metric.

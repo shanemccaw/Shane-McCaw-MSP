@@ -23,9 +23,9 @@
  * `(mspId, tenantId)` via the shared `resolveTenantScope` and both are used in
  * every query, never `tenantId` alone.
  *
- * ── Role floor: `CustomerUser` ─────────────────────────────────────────────
+ * ── Role floor: `Customer` ─────────────────────────────────────────────
  * Matches `portal-risk-register.ts`'s floor, for the same reason: recording a
- * signed policy decision is not something a free Assessment-tier account
+ * signed policy decision is not something a Free-tier account
  * should reach.
  *
  * ── No unsigned intermediate state ──────────────────────────────────────────

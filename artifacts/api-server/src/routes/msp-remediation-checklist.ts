@@ -23,7 +23,7 @@
  * WHY decline-to-risk IS MIRRORED HERE, UNLIKE msp-remediation-tracker.ts
  * ---------------------------------------------------------------------------
  * `msp-remediation-tracker.ts`'s own header explains why it does NOT mirror
- * the s1–s30 `decline-to-risk` route: that route requires `CustomerUser`
+ * the s1–s30 `decline-to-risk` route: that route requires `Customer`
  * specifically, because it is the customer's own signature on a liability
  * record an MSP operator cannot complete on their behalf without
  * misattributing who accepted the risk. That reasoning does not carry over

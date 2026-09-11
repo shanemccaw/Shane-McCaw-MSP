@@ -48,11 +48,11 @@
  * kind `portal-change-control.ts` guards against, and this route has no
  * free-text predicate to have that problem with.
  *
- * ── Role floor: `CustomerUser`, as specified ──────────────────────────────
- * The legacy ladder ranked PlatformAdmin, MSPAdmin, MSPOperator, CustomerUser,
+ * ── Role floor: `Customer`, as specified ──────────────────────────────
+ * The legacy ladder ranked PlatformAdmin, MSPAdmin, MSPOperator, Customer,
  * ServiceAccount, Free, Assessment — so `requireCapability("ladder.customer-user")` admits
- * paying customers and MSP staff, and excludes Free and Assessment tiers. That
- * is a deliberately higher floor than `portal-change-control.ts`'s `Assessment`:
+ * paying customers and MSP staff, and excludes the Free tier. That
+ * is a deliberately higher floor than `portal-change-control.ts`'s `Free`:
  * this page reads the customer's connected Microsoft 365 tenant, which a free
  * assessment account has no entitlement to. The floor decides which TIER may
  * open the page; it is NOT what prevents a cross-tenant read — the

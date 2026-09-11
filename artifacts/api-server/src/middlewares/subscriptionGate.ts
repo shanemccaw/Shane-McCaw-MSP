@@ -27,6 +27,7 @@
 
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { canonicalRoleValue } from "@workspace/db/rbac/legacy-ladder";
 import { logger } from "../lib/logger";
 import {
   evaluateSubscriptionGate,
@@ -49,7 +50,9 @@ function principalFromRequest(req: Request): GatePrincipal | null {
   const secret = process.env.JWT_SECRET;
   if (!secret) return null;
   try {
-    return jwt.verify(header.slice(7), secret) as GatePrincipal;
+    const principal = jwt.verify(header.slice(7), secret) as GatePrincipal;
+    // #3590 — a token signed before the rename may still say CustomerUser/Assessment.
+    return { ...principal, mspRole: canonicalRoleValue(principal.mspRole) };
   } catch {
     // Expired or forged. Not gated, not authenticated — `requireAuth` answers 401.
     return null;

@@ -400,7 +400,7 @@ router.post("/consent/invite-link", requireAdmin, async (req: Request, res: Resp
 // invite-token + buildAdminConsentUrl mechanism — no second consent mechanism.
 // tenantId/customerId are resolved server-side from the JWT, never trusted
 // from the request body.
-router.post("/portal/consent/reconsent-link", requireCapability("ladder.assessment"), async (req: Request, res: Response) => {
+router.post("/portal/consent/reconsent-link", requireCapability("ladder.free"), async (req: Request, res: Response) => {
   if (!mtAppCredentialsPresent()) {
     res.status(503).json({
       error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID / MT_APP_CLIENT_SECRET)",
@@ -856,8 +856,8 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
       // Resolve packageKey + serviceType via services.type_attributes->>'packageKey'.
       // serviceType picks the Prospect's role: assessment products get the low-
-      // privilege "Assessment" role (promoted to CustomerUser on payment); anything
-      // else gets `CustomerUser` directly (a passwordless account can't log in until
+      // privilege, pre-payment "Free" role (promoted to Customer on payment); anything
+      // else gets `Customer` directly (a passwordless account can't log in until
       // setup, so this grants no premature access).
       let serviceType: string | null = null;
       if (productSlug) {
@@ -883,7 +883,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       // /scan flow reaches this exact branch — its read consent runs through the
       // same #1311 session-keyed checkout session (#1361), against the
       // `license-waste-audit-free` *assessment* product — so a Free Scan grant
-      // provisions a passwordless "Assessment" Prospect here with a real
+      // provisions a passwordless "Free" Prospect here with a real
       // customerId, which Phase 4's scan trigger and Phase 7's return link
       // attach to. This deliberately does NOT mint a /setup-password token or a
       // session: hasRealEntitlement() (auth.ts) refuses both password setup and
@@ -898,7 +898,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
           company: sessionCompany,
           industry: sessionIndustry,
           tenantId: tenant,
-          role: serviceType === "assessment" ? LEGACY_ROLE.assessment : LEGACY_ROLE.customerUser,
+          role: serviceType === "assessment" ? LEGACY_ROLE.free : LEGACY_ROLE.customer,
         });
         if (prospect) {
           clientId = prospect.userId;
@@ -943,7 +943,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         email: inviteRecord.invitedEmail,
         fullName: inviteRecord.invitedName,
         tenantId: tenant,
-        role: LEGACY_ROLE.customerUser,
+        role: LEGACY_ROLE.customer,
       });
       if (prospect) {
         clientId = prospect.userId;
@@ -1347,7 +1347,7 @@ router.get("/admin/customers/:customerId/write-consent/start", requireAdmin, asy
 // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
 // Allows a testbed customer to self-serve the write-consent flow from the
 // msp-portal shell. Uses the exact same write-consent logic as the admin route.
-router.post("/portal/consent/debug-write-reconsent-link", requireCapability("ladder.assessment"), async (req: Request, res: Response) => {
+router.post("/portal/consent/debug-write-reconsent-link", requireCapability("ladder.free"), async (req: Request, res: Response) => {
   if (!process.env.MT_APP_WRITE_CLIENT_ID) {
     res.status(503).json({ error: "Write app credentials not configured (MT_APP_WRITE_CLIENT_ID)" });
     return;
@@ -1727,7 +1727,7 @@ router.get("/admin/customers/:customerId/sharepoint-consent/start", requireAdmin
 // /portal/consent/reconsent-link (read flow) so the portal pill has one real
 // button to call for the SharePoint case. customerId comes from the JWT only.
 
-router.post("/portal/consent/sharepoint-link", requireCapability("ladder.assessment"), async (req: Request, res: Response) => {
+router.post("/portal/consent/sharepoint-link", requireCapability("ladder.free"), async (req: Request, res: Response) => {
   if (!process.env.MT_APP_CLIENT_ID) {
     res.status(503).json({ error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID)" });
     return;

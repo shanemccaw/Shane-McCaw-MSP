@@ -59,7 +59,7 @@ const router: IRouter = Router();
  *
  * The MSP scope comes off the TENANT row, not the user row. Pre-refactor
  * msp_users carried both mspId and customerId so one predicate covered both;
- * since #92 a tenant-scoped user (CustomerUser/Free/Assessment) is required to
+ * since #92 a tenant-scoped user (Customer/Free) is required to
  * carry tenantId but NOT mspId (users_role_scope_check demands one or the
  * other), so filtering on users.mspId would return an empty bridge and this
  * whole hub would report zero documents. The join is likewise an INNER join:

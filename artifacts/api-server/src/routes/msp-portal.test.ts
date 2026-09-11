@@ -185,13 +185,13 @@ describe("GET /api/msp/dashboard", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 403 for CustomerUser role (below MSPOperator)", async () => {
+  it("returns 403 for Customer role (below MSPOperator)", async () => {
     const { default: router } = await import("./msp-portal.ts");
     const app = express();
     app.use(express.json());
     app.use("/api", router);
 
-    const token = makeToken({ mspRole: LEGACY_ROLE.customerUser });
+    const token = makeToken({ mspRole: LEGACY_ROLE.customer });
     const res = await request(app)
       .get("/api/msp/dashboard")
       .set("Authorization", `Bearer ${token}`);

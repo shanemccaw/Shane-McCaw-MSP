@@ -33,18 +33,18 @@
  * real tenant. Filtering on that column alone would be filtering on a
  * convention nothing enforces.
  *
- * ── Role floor: `CustomerUser` ─────────────────────────────────────────────
+ * ── Role floor: `Customer` ─────────────────────────────────────────────
  * Chosen deliberately, and it is a HIGHER floor than the customer-scoped routes
  * next door: `portal-change-control.ts`, `portal-remediation-tracker.ts` and
- * `portal-tenant-check-items.ts` all floor at `Assessment` ("the lowest role
+ * `portal-tenant-check-items.ts` all floor at `Free` ("the lowest role
  * carrying a customerId"). This one does not, for a product reason rather than
  * a security one — the register carries the tenant's dollar liability exposure
  * and a signature surface that transfers that liability, which is not something
- * a free Assessment-tier account should reach. The floor decides which TIER may
+ * a Free-tier account should reach. The floor decides which TIER may
  * open the page; it is NOT what prevents a cross-tenant read (the scoping
  * above is, and it is identical either way).
  *
- * The configured testbed account is a real `CustomerUser`, so this floor is
+ * The configured testbed account is a real `Customer`, so this floor is
  * reachable by the test harness — verified in `portal-change-control.ts`'s own
  * header against the database rather than assumed.
  *
@@ -589,7 +589,7 @@ router.post(
       // of them, in any order, all carrying identical authority (#1515/#1517).
       // A `checkKey` resolving to no workload (a free-standing liability
       // record authored directly via `msp-rbd.ts`, or a cross-cutting check
-      // category) keeps the pre-#1511 behaviour: any `CustomerUser` may sign,
+      // category) keeps the pre-#1511 behaviour: any `Customer` may sign,
       // because there is no workload to check authority against — the honest
       // unresolved case, not a security hole this build introduces.
       const workload = resolveRiskWorkload(existing.checkKey);

@@ -32,7 +32,7 @@
  * ── Scope ─────────────────────────────────────────────────────────────────────
  * There is no customer picker. Scope is derived from the request:
  *   scope:"customer" — a single customerId (int, msp_customers.id). For a
- *                      CustomerUser this is their own; for an MSPOperator it is an
+ *                      Customer this is their own; for an MSPOperator it is an
  *                      explicit, ownership-verified customerId (checked upstream in
  *                      the route via assertCustomerAccess).
  *   scope:"msp"      — aggregate across every customer of req.user.mspId.

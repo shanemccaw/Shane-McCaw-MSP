@@ -3303,7 +3303,7 @@ async function executeNode(
             }
           }
         } else if (actionType === "assessment_doc_gate") {
-          // Two-sided "wait for both" gate for Assessment/Free-tier document
+          // Two-sided "wait for both" gate for Free-tier document
           // generation, ported verbatim from the retired assessment-doc-trigger.ts.
           // Fires eligible=true ONLY when the order is Assessment-tier AND a
           // diagnostics scan has completed AND the customer has logged in at least
@@ -9246,7 +9246,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         // triggerId, own package, no tenant_monitor_profiles row, never throws).
         // Every OTHER real-scan trigger already fires this alongside the scoring
         // run; this node type is the one both of them were missing — it backs
-        // the weekly "Free/Assessment Tenants" retargeting rescan (and any other
+        // the weekly "Free Tenants" retargeting rescan (and any other
         // Workflow-Studio-built schedule that uses this node), which is why
         // tenant_check_item_details rows were observed lagging
         // tenant_monitor_profiles by days: the aggregate refreshed on every

@@ -164,10 +164,8 @@ export function personRoleLabel(
   const dept = (department ?? "").trim();
   if (dept) return dept;
   switch ((mspRole ?? "").trim()) {
-    case LEGACY_ROLE.customerUser:
+    case LEGACY_ROLE.customer:
       return "Team member";
-    case "Assessment":
-      return "Assessment access";
     case "Free":
       return "Free account";
     case "ServiceAccount":

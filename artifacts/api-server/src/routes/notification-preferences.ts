@@ -1,7 +1,7 @@
 /**
  * Customer Notification Preferences
  *
- * Lets a CustomerUser control what reaches them from the existing Notification
+ * Lets a Customer control what reaches them from the existing Notification
  * Center bell (notifications table / notification-center.ts): which categories
  * they receive, and whether email delivery is also on for those they keep.
  *

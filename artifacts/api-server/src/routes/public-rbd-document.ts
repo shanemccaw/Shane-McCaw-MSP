@@ -9,7 +9,7 @@
  * A share link is generated explicitly by an MSP operator
  * (`POST /api/msp/rbd/:rbdId/versions/:versionUid/share`, `msp-rbd-versions.ts`)
  * for the current, unsigned version only — it is not the default access path;
- * an authenticated `CustomerUser` never needs one (`portal-rbd-document.ts`).
+ * an authenticated `Customer` never needs one (`portal-rbd-document.ts`).
  * This exists for the case the actual signer is not a portal user at all.
  *
  * Never renders on demand, same reasoning as the portal read path: only the

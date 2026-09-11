@@ -5,7 +5,7 @@
  * Admin endpoints (/api/admin/webhooks/*) — platform admin view.
  *
  * Ownership model:
- *   - CustomerUser  → webhooks scoped to their customerId
+ *   - Customer  → webhooks scoped to their customerId
  *   - MSPAdmin/MSPOperator → webhooks scoped to their mspId
  *   - PlatformAdmin → can read any webhook (admin endpoints)
  */
@@ -94,8 +94,8 @@ function resolveOwner(req: Request): OwnerContext | null {
   const user = req.user;
   if (!user) return null;
 
-  // CustomerUser → webhook is scoped to their customer
-  if (user.mspRole === LEGACY_ROLE.customerUser && user.customerId) {
+  // Customer → webhook is scoped to their customer
+  if (user.mspRole === LEGACY_ROLE.customer && user.customerId) {
     return { ownerType: "customer", mspId: user.mspId ?? null, customerId: user.customerId };
   }
 

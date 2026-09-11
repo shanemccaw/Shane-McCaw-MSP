@@ -31,7 +31,7 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = "msp-engine-history-test-secret";
 process.env["JWT_SECRET"] = JWT_SECRET;
 
-function mspToken(opts: { mspId?: number; mspRole?: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customerUser | typeof LEGACY_ROLE.platformAdmin; id?: number }): string {
+function mspToken(opts: { mspId?: number; mspRole?: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customer | typeof LEGACY_ROLE.platformAdmin; id?: number }): string {
   const { mspId, mspRole = LEGACY_ROLE.mspOperator, id = 1 } = opts;
   return jwt.sign(
     { id, email: "staff@test.com", role: "client", mspRole, ...(mspId !== undefined ? { mspId } : {}) },
@@ -124,7 +124,7 @@ describe("GET /msp/engines/:key/history", () => {
   it("rejects roles below MSPOperator", async () => {
     const res = await request(makeApp())
       .get("/msp/engines/health/history")
-      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: LEGACY_ROLE.customerUser })}`);
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: LEGACY_ROLE.customer })}`);
     expect(res.status).toBe(403);
   });
 

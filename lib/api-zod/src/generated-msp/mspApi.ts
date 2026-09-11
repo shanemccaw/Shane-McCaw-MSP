@@ -28,7 +28,7 @@ export const MspAuthLoginResponse = zod.object({
   "email": zod.string(),
   "name": zod.string().nullish(),
   "role": zod.enum(['admin', 'user']),
-  "mspRole": zod.enum(['PlatformAdmin', 'MSPAdmin', 'MSPOperator', 'CustomerUser', 'ServiceAccount', 'Free']).nullish(),
+  "mspRole": zod.enum(['PlatformAdmin', 'MSPAdmin', 'MSPOperator', 'Customer', 'ServiceAccount', 'Free']).nullish(),
   "mspId": zod.number().nullish(),
   "mspSlug": zod.string().nullish(),
   "customerId": zod.number().nullish()
@@ -46,7 +46,7 @@ export const MspAuthRefreshResponse = zod.object({
   "email": zod.string(),
   "name": zod.string().nullish(),
   "role": zod.enum(['admin', 'user']),
-  "mspRole": zod.enum(['PlatformAdmin', 'MSPAdmin', 'MSPOperator', 'CustomerUser', 'ServiceAccount', 'Free']).nullish(),
+  "mspRole": zod.enum(['PlatformAdmin', 'MSPAdmin', 'MSPOperator', 'Customer', 'ServiceAccount', 'Free']).nullish(),
   "mspId": zod.number().nullish(),
   "mspSlug": zod.string().nullish(),
   "customerId": zod.number().nullish()
@@ -70,7 +70,7 @@ export const MspAuthMeResponse = zod.object({
   "email": zod.string(),
   "name": zod.string().nullish(),
   "role": zod.enum(['admin', 'user']),
-  "mspRole": zod.enum(['PlatformAdmin', 'MSPAdmin', 'MSPOperator', 'CustomerUser', 'ServiceAccount', 'Free']).nullish(),
+  "mspRole": zod.enum(['PlatformAdmin', 'MSPAdmin', 'MSPOperator', 'Customer', 'ServiceAccount', 'Free']).nullish(),
   "mspId": zod.number().nullish(),
   "mspSlug": zod.string().nullish(),
   "customerId": zod.number().nullish()

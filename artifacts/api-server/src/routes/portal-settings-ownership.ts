@@ -29,7 +29,7 @@
  * ── Scoping ───────────────────────────────────────────────────────────────
  * `resolveCustomerId` off the JWT, identical to `portal-ownership.ts` and
  * `portal-settings-change-control.ts` — the same customer-scoped era of
- * table. Role floor `CustomerUser`, matching Ownership: configuring how
+ * table. Role floor `Customer`, matching Ownership: configuring how
  * strictly a tenant's own RACI gate runs is a paying tenant's governance
  * decision.
  */

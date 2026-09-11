@@ -64,7 +64,7 @@ const MAX_LIMIT = 200;
  *
  * The MSP scope comes off the TENANT row, not the user row. Pre-refactor
  * msp_users carried both mspId and customerId so one predicate covered both;
- * since #92 a tenant-scoped user (CustomerUser/Free/Assessment) is required to
+ * since #92 a tenant-scoped user (Customer/Free) is required to
  * carry tenantId but NOT mspId (users_role_scope_check demands one or the
  * other), so filtering on users.mspId would return an empty bridge and this
  * page would show no data-rights activity at all. Inner join for the same

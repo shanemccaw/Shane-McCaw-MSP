@@ -112,8 +112,8 @@ function tokenFor(user: Record<string, unknown>) {
   return jwt.sign(user, process.env["JWT_SECRET"]!);
 }
 
-const CUSTOMER_TOKEN = tokenFor({ id: 7, email: "a@b.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 42 });
-const ASSESSMENT_TOKEN = tokenFor({ id: 8, email: "c@d.com", role: "client", mspRole: "Assessment", customerId: 42 });
+const CUSTOMER_TOKEN = tokenFor({ id: 7, email: "a@b.com", role: "client", mspRole: LEGACY_ROLE.customer, customerId: 42 });
+const ASSESSMENT_TOKEN = tokenFor({ id: 8, email: "c@d.com", role: "client", mspRole: "Free", customerId: 42 });
 
 beforeEach(() => {
   mockSelect.mockReset();
@@ -129,7 +129,7 @@ describe("GET /api/portal/active-directory/ou-assignment", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects a role below CustomerUser", async () => {
+  it("rejects a role below Customer", async () => {
     const res = await request(makeApp())
       .get("/api/portal/active-directory/ou-assignment")
       .set("Authorization", `Bearer ${ASSESSMENT_TOKEN}`);

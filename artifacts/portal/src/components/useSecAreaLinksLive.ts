@@ -99,7 +99,7 @@ export function useSecAreaLinksLive(enabled = true): SecAreaLinksLiveState {
           },
           { silent: true },
         );
-        if (!res.ok) return; // 403 for Assessment-role viewers → stays unresolved (honest no-data)
+        if (!res.ok) return; // 403 for Free-role viewers → stays unresolved (honest no-data)
         const data = (await res.json()) as { results?: Record<string, ResolvedMetric> };
         if (!cancelled && data.results && typeof data.results === "object") {
           setMetrics(data.results);

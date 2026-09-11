@@ -112,17 +112,16 @@ export function buildMspTree(
 
 // ── Groups (RBAC role nodes) ─────────────────────────────────────────────────
 //
-// All 7 real role values, from `LEGACY_ROLE_ORDER` in @workspace/db/rbac,
-// including Free and Assessment.
+// All 6 real role values, from `LEGACY_ROLE_ORDER` in @workspace/db/rbac,
+// including Free (#3590 folded the old Assessment tier into it).
 
 export const DIRECTORY_GROUP_ROLES = [
   LEGACY_ROLE.platformAdmin,
   LEGACY_ROLE.mspAdmin,
   LEGACY_ROLE.mspOperator,
-  LEGACY_ROLE.customerUser,
+  LEGACY_ROLE.customer,
   "ServiceAccount",
   "Free",
-  "Assessment",
 ] as const;
 export type DirectoryGroupRole = (typeof DIRECTORY_GROUP_ROLES)[number];
 
@@ -687,11 +686,11 @@ export function buildUserDetail(params: {
 // stay identical to it or every plan this module approves gets rejected by
 // the database:
 //
-//   CustomerUser / Free / Assessment       -> tenant_id NOT NULL
+//   Customer / Free                    -> tenant_id NOT NULL
 //   MSPAdmin / MSPOperator / ServiceAccount -> msp_id    NOT NULL
 //   PlatformAdmin                           -> neither required
 //
-// Free/Assessment therefore moved from "none" to "customer" here — under the
+// Free therefore moved from "none" to "customer" here — under the
 // old msp_users table they were a linkage-free floor tier, but the constraint
 // now requires them to sit under a tenant like any other customer-side role.
 // ("customer" means tenant linkage; the wire/field name customerId is kept
@@ -707,9 +706,8 @@ export function roleLinkageRequirement(role: DirectoryGroupRole): RoleLinkageReq
     case LEGACY_ROLE.mspOperator:
     case "ServiceAccount":
       return "msp";
-    case LEGACY_ROLE.customerUser:
+    case LEGACY_ROLE.customer:
     case "Free":
-    case "Assessment":
       return "customer";
   }
 }
@@ -765,11 +763,11 @@ export type AssignmentChangeResult =
 /**
  * Computes the resulting mspId/customerId for an MSP/customer reassignment.
  * Which field is reassignable is entirely determined by the account's
- * CURRENT role (an MSP-scoped role reassigns mspId only; CustomerUser
+ * CURRENT role (an MSP-scoped role reassigns mspId only; Customer
  * reassigns customerId only, with mspId always derived server-side from the
  * target customer's real owning MSP — never client-supplied, so an mspId/
  * customerId pair can never disagree). Roles with no linkage requirement
- * (PlatformAdmin/Free/Assessment) have nothing to reassign.
+ * (PlatformAdmin/Free) have nothing to reassign.
  */
 export function planAssignmentChange(input: {
   currentRole: DirectoryGroupRole;

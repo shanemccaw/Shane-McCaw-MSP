@@ -30,7 +30,7 @@ process.env["JWT_SECRET"] = JWT_SECRET;
 
 function customerToken(customerId: number, userId = 1): string {
   return jwt.sign(
-    { id: userId, email: `c${customerId}@test.com`, role: "client", mspRole: LEGACY_ROLE.customerUser, customerId },
+    { id: userId, email: `c${customerId}@test.com`, role: "client", mspRole: LEGACY_ROLE.customer, customerId },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

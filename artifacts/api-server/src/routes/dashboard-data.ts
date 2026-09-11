@@ -10,7 +10,7 @@
  *   Body: {
  *     metrics: string[]         // MetricDef.key values to resolve (required, 1..200)
  *     customerId?: number       // required for MSPOperator resolving customer-scope
- *                               // metrics; ignored/validated for CustomerUser
+ *                               // metrics; ignored/validated for Customer
  *     windowDays?: number       // look-back for trend/heatmap/timeline + Smart
  *                               // history (default 30)
  *     includeHistory?: string[] // Step 5 (Smart widget state): a SUBSET of
@@ -38,9 +38,9 @@
  * batch. Unknown metric keys return { status: "error", error: "unknown metric" }.
  *
  * ── Auth & scope (no customer picker) ─────────────────────────────────────────
- *   requireCapability("ladder.customer-user") admits CustomerUser and every higher MSP role.
+ *   requireCapability("ladder.customer-user") admits Customer and every higher MSP role.
  *
- *   CustomerUser  → customer-scope metrics resolve against their own
+ *   Customer  → customer-scope metrics resolve against their own
  *                   req.user.customerId. A mismatching body.customerId is rejected.
  *   MSPOperator+  → customer-scope metrics require an explicit body.customerId,
  *                   verified to belong to the caller's mspId via assertCustomerAccess
@@ -100,7 +100,7 @@ router.post(
 
     // ── Resolve scope ──
     const effectiveRole = user.role === "admin" ? LEGACY_ROLE.platformAdmin : user.mspRole;
-    const isCustomerUser = effectiveRole === LEGACY_ROLE.customerUser || effectiveRole === LEGACY_ROLE.free || effectiveRole === LEGACY_ROLE.assessment;
+    const isCustomerUser = effectiveRole === LEGACY_ROLE.customer || effectiveRole === LEGACY_ROLE.free;
     const mspId = user.mspId;
 
     if (mspId == null) {
@@ -123,7 +123,7 @@ router.post(
       if (customerId == null) {
         // A customer with no customer association can still get msp-scope-free results,
         // but customer-scope metrics will resolve to not_available downstream.
-        log.warn({ userId: user.id }, "dashboard: CustomerUser has no customerId claim");
+        log.warn({ userId: user.id }, "dashboard: Customer has no customerId claim");
       }
     } else {
       // MSPOperator / MSPAdmin / PlatformAdmin — customerId comes from the request and

@@ -265,7 +265,7 @@ async function probeCatalogVisibility(): Promise<Record<string, unknown>> {
 
 router.get(
   "/portal/copilot-assessment/quiz-catalog",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const industry = typeof req.query.industry === "string" ? req.query.industry.trim() : "";
     if (!industry) {

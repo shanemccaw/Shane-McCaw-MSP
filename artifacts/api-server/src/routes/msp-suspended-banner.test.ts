@@ -75,7 +75,7 @@ process.env.JWT_SECRET = JWT_SECRET;
 
 function makeCustomerToken(overrides: Record<string, unknown> = {}): string {
   return jwt.sign(
-    { id: 10, email: "customer@acme.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 5, customerId: 99, ...overrides },
+    { id: 10, email: "customer@acme.com", role: "client", mspRole: LEGACY_ROLE.customer, mspId: 5, customerId: 99, ...overrides },
     JWT_SECRET,
     { expiresIn: "1h" },
   );
@@ -205,7 +205,7 @@ describe("GET /api/portal/msp-suspension", () => {
     expect(res.status).toBe(401);
   });
 
-  it("also allows MSPAdmin to call the endpoint (role ≥ CustomerUser)", async () => {
+  it("also allows MSPAdmin to call the endpoint (role ≥ Customer)", async () => {
     mockDb.limit.mockResolvedValueOnce([
       { status: "active", suspendedAt: null },
     ]);

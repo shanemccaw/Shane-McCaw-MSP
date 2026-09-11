@@ -134,7 +134,7 @@ function makeApp() {
 
 function customerToken(customerId = 10, id = 1): string {
   return jwt.sign(
-    { id, email: "customer@test.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId },
+    { id, email: "customer@test.com", role: "client", mspRole: LEGACY_ROLE.customer, mspId: 1, customerId },
     JWT_SECRET,
     { expiresIn: "1h" },
   );

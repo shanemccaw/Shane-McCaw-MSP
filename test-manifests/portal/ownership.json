@@ -23,7 +23,7 @@
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
     {
-      "name": "A1 -- the route answers 200 for a CustomerUser whose plan bundles Ownership (the real, most common state for this test account); take the first real row's id/name to assert against the DOM.",
+      "name": "A1 -- the route answers 200 for a Customer whose plan bundles Ownership (the real, most common state for this test account); take the first real row's id/name to assert against the DOM.",
       "method": "GET",
       "path": "/api/portal/ownership",
       "headers": { "Authorization": "Bearer {{authToken}}" },

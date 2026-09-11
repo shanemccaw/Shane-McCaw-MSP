@@ -38,8 +38,8 @@
 //
 // #1696's architecture decision (2026-08-29, re-confirmed 2026-09-09) is two
 // systems sharing one mechanism, and the real seeded data shows why that matters
-// here: every live user holds roles in BOTH — user 39 is `CustomerUser` on the
-// MSP side and `Team Manager,CustomerUser` on the customer side. A response that
+// here: every live user holds roles in BOTH — user 39 is `Customer` on the
+// MSP side and `Team Manager,Customer` on the customer side. A response that
 // flattened them to one list would have to pick a winner for a duplicated key
 // like `team.manage`, which exists in both systems as genuinely different
 // authorities. So the two are returned separately and are never merged.

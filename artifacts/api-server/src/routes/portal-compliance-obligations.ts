@@ -49,8 +49,8 @@
  * uses for the obligation-FK resolution.
  *
  * ── Role floor ──────────────────────────────────────────────────────────────
- * `Assessment` — same floor as `/portal/pillars`/`useLivePillarHero`, since this
- * page carries no liability dollar figure (unlike risk-register's `CustomerUser`
+ * `Free` — same floor as `/portal/pillars`/`useLivePillarHero`, since this
+ * page carries no liability dollar figure (unlike risk-register's `Customer`
  * floor).
  *
  * ── `id` / `type` added for #1724 ───────────────────────────────────────────
@@ -106,7 +106,7 @@ function normalizeKey(value: string): string {
 
 router.get(
   "/portal/compliance-obligations",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response) => {
     try {
       const customerId = resolveCustomerId(req);

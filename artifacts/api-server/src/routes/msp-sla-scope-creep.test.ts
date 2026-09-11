@@ -115,13 +115,13 @@ describe("MSP SLA routes — auth enforcement", () => {
     expect(res.status).toBe(401);
   });
 
-  it("GET /api/msp/sla/timers — 403 for CustomerUser role", async () => {
+  it("GET /api/msp/sla/timers — 403 for Customer role", async () => {
     const { default: router } = await import("./msp-sla.ts");
     const app = express();
     app.use(express.json());
     app.use("/api", router);
 
-    const token = makeToken({ mspRole: LEGACY_ROLE.customerUser });
+    const token = makeToken({ mspRole: LEGACY_ROLE.customer });
     const res = await request(app)
       .get("/api/msp/sla/timers")
       .set("Authorization", `Bearer ${token}`);
@@ -405,13 +405,13 @@ describe("MSP Scope Creep routes — auth enforcement (sampled)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("GET /api/msp/scope-creep/violations — 403 for CustomerUser role", async () => {
+  it("GET /api/msp/scope-creep/violations — 403 for Customer role", async () => {
     const { default: router } = await import("./msp-scope-creep.ts");
     const app = express();
     app.use(express.json());
     app.use("/api", router);
 
-    const token = makeToken({ mspRole: LEGACY_ROLE.customerUser });
+    const token = makeToken({ mspRole: LEGACY_ROLE.customer });
     const res = await request(app)
       .get("/api/msp/scope-creep/violations")
       .set("Authorization", `Bearer ${token}`);

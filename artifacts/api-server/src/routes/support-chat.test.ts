@@ -150,7 +150,7 @@ function makeToken(overrides: Record<string, unknown> = {}): string {
 function makeCustomerToken(overrides: Record<string, unknown> = {}): string {
   return makeToken({
     id: 10, email: "customer@co.com", role: "client",
-    mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 42, ...overrides,
+    mspRole: LEGACY_ROLE.customer, mspId: 1, customerId: 42, ...overrides,
   });
 }
 
@@ -169,7 +169,7 @@ describe("POST /api/msp/support/chat", () => {
   const mockDbAny = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
   const customerToken = () =>
-    makeToken({ id: 10, email: "customer@co.com", role: "client", mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 42 });
+    makeToken({ id: 10, email: "customer@co.com", role: "client", mspRole: LEGACY_ROLE.customer, mspId: 1, customerId: 42 });
 
   beforeEach(() => {
     // vi.clearAllMocks() only clears call history, not queued
@@ -267,7 +267,7 @@ describe("POST /api/msp/support/chat", () => {
     expect(res.body.error).toMatch(/temporarily unavailable/i);
   });
 
-  it("CustomerUser gets escalation triggered", async () => {
+  it("Customer gets escalation triggered", async () => {
     mockCreate.mockResolvedValueOnce({
       content: [{ type: "text", text: "I cannot help with that.\n[ESCALATE_TO_HUMAN]" }],
     });
@@ -276,7 +276,7 @@ describe("POST /api/msp/support/chat", () => {
     const app = makeApp();
     const token = makeToken({
       id: 10, email: "customer@co.com", role: "client",
-      mspRole: LEGACY_ROLE.customerUser, mspId: 1, customerId: 42,
+      mspRole: LEGACY_ROLE.customer, mspId: 1, customerId: 42,
     });
 
     const res = await request(app)
@@ -350,7 +350,7 @@ describe("POST /api/msp/support/chat", () => {
   // ── #363: action layer (regenerate document / rerun scan) ──────────────────
 
   it("surfaces proposedAction:regenerate_document when the AI emits the marker and a document is eligible", async () => {
-    // Blanket `.limit()` resolution — same pattern the CustomerUser-escalation
+    // Blanket `.limit()` resolution — same pattern the Customer-escalation
     // test above uses. Satisfies buildCustomerContext's own grounding queries
     // (loosely — it just needs a truthy customerRow[0]) AND
     // findRegenerableDocument's query, whose real fields this row also carries.
@@ -653,7 +653,7 @@ describe("POST /api/msp/support/escalate", () => {
   });
 });
 
-// #363 — action layer confirm/execute endpoints. Both are CustomerUser-only,
+// #363 — action layer confirm/execute endpoints. Both are Customer-only,
 // self-service on the caller's OWN tenant — customerId always comes from the
 // authenticated JWT, never the request body, so there is nothing for a client
 // to spoof.
@@ -673,7 +673,7 @@ describe("POST /api/msp/support/actions/regenerate-document", () => {
     mockDbAny["limit"].mockReset().mockResolvedValue([]);
   });
 
-  it("returns 403 for a non-CustomerUser", async () => {
+  it("returns 403 for a non-Customer", async () => {
     const app = makeApp();
     const res = await request(app)
       .post("/api/msp/support/actions/regenerate-document")
@@ -733,7 +733,7 @@ describe("POST /api/msp/support/actions/rerun-scan", () => {
     mockRunDiagnostics.mockResolvedValue(undefined);
   });
 
-  it("returns 403 for a non-CustomerUser", async () => {
+  it("returns 403 for a non-Customer", async () => {
     const app = makeApp();
     const res = await request(app)
       .post("/api/msp/support/actions/rerun-scan")

@@ -12,14 +12,14 @@
  * session-keyed checkout-session flow (#1361), and the callback provisions the
  * Prospect via provisionProspectAccount the instant Microsoft confirms the
  * grant. The role that call passes is chosen from the product's service_type
- * (`serviceType === "assessment" ? `Assessment` : `CustomerUser``), and the Free
+ * (`serviceType === "assessment" ? `Assessment` : `Customer``), and the Free
  * Scan product `license-waste-audit-free` is an `assessment`, so the Prospect
- * lands with the low-privilege "Assessment" role.
+ * lands with the pre-payment "Free" role (#3590 folded "Assessment" into it).
  *
  * This suite regression-LOCKS both halves of that invariant so a later change
  * cannot silently break them:
  *   1. the product mapping (`license-waste-audit-free` → service_type
- *      "assessment" → role "Assessment"), and
+ *      "assessment" → role "Free"), and
  *   2. the shape of the shell account provisionProspectAccount produces for that
  *      exact call — passwordless, low-privilege, tenant-linked (real customerId),
  *      and crucially WITHOUT a client_services entitlement.
@@ -60,9 +60,9 @@ const FREE_SCAN_PRODUCT_SLUG = "license-waste-audit-free";
 // The exact role selection routes/consent.ts makes for a checkout-session
 // Prospect. Mirrored here so the test breaks if the product's service_type
 // drifts away from "assessment" and the Free Scan silently starts minting
-// higher-privilege `CustomerUser` prospects.
-function roleForServiceType(serviceType: string | null): typeof LEGACY_ROLE.assessment | typeof LEGACY_ROLE.customerUser {
-  return serviceType === "assessment" ? LEGACY_ROLE.assessment : LEGACY_ROLE.customerUser;
+// higher-privilege `Customer` prospects.
+function roleForServiceType(serviceType: string | null): typeof LEGACY_ROLE.free | typeof LEGACY_ROLE.customer {
+  return serviceType === "assessment" ? LEGACY_ROLE.free : LEGACY_ROLE.customer;
 }
 
 const createdEmails: string[] = [];
@@ -112,7 +112,7 @@ describe("Free Scan product mapping (Git #1355)", () => {
 
     expect(svc, `services row for '${FREE_SCAN_PRODUCT_SLUG}' must exist`).toBeTruthy();
     // service_type "assessment" is what routes the consent-time Prospect to the
-    // low-privilege `Assessment` role instead of `CustomerUser`.
+    // low-privilege `Assessment` role instead of `Customer`.
     expect(svc.serviceType).toBe("assessment");
     // Git #1169: this product is reached only through the marketing /scan
     // consent funnel, never the general public catalog. GET
@@ -123,7 +123,7 @@ describe("Free Scan product mapping (Git #1355)", () => {
     expect(svc.visibility).toBe("landing_page_only");
     // A Free Scan carries no payment gate.
     expect(svc.priceCents).toBe(0);
-    expect(roleForServiceType(svc.serviceType)).toBe("Assessment");
+    expect(roleForServiceType(svc.serviceType)).toBe("Free");
   });
 });
 
@@ -140,7 +140,7 @@ describe("Prospect shell-account creation at consent time (Git #1355)", () => {
       company: "Free Scan Test Co",
       industry: "Unknown",
       tenantId: tenantGuid,
-      role: "Assessment",
+      role: "Free",
     });
 
     expect(result, "provisionProspectAccount must return an account").toBeTruthy();
@@ -167,9 +167,9 @@ describe("Prospect shell-account creation at consent time (Git #1355)", () => {
     // Passwordless — /auth/login refuses an account with no passwordHash
     // ("No password set for this account"), so it can never be logged into.
     expect(user.passwordHash).toBeNull();
-    // Low-privilege scope: a funnel Prospect, promoted to CustomerUser only on a
-    // real payment (promoteMspUserToCustomer). It never lands at CustomerUser here.
-    expect(user.mspRole).toBe("Assessment");
+    // Low-privilege scope: a funnel Prospect, promoted to Customer only on a
+    // real payment (promoteMspUserToCustomer). It never lands at Customer here.
+    expect(user.mspRole).toBe("Free");
     expect(user.role).toBe("client");
     // The users row is genuinely tenant-linked, and to the SAME customer id the
     // function returned.
@@ -219,14 +219,14 @@ describe("Prospect shell-account creation at consent time (Git #1355)", () => {
       fullName: "Repeat Tester",
       company: "Repeat Test Co",
       tenantId: tenantGuid,
-      role: "Assessment",
+      role: "Free",
     });
     const second = await provisionProspectAccount({
       email,
       fullName: "Repeat Tester",
       company: "Repeat Test Co",
       tenantId: tenantGuid,
-      role: "Assessment",
+      role: "Free",
     });
 
     expect(first?.userId).toBeTypeOf("number");

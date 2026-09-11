@@ -120,7 +120,8 @@ export default function AccountSetupPage() {
     }
   }
 
-  const isAssessment = context?.role === "Assessment";
+  // #3590 — the pre-payment tier ("Assessment" until it was folded into "Free").
+  const isAssessment = context?.role === "Free";
 
   return (
     <AuthPageShell

@@ -314,7 +314,7 @@ function deletedTables(): string[] {
   return h.opRecords.filter((r) => r.op === "delete").map((r) => r.table ?? "?");
 }
 
-const TARGET_ROW = { id: 42, email: "victim@customer.com", name: "Victim", mspRole: LEGACY_ROLE.customerUser, mspId: 3, tenantId: 7 };
+const TARGET_ROW = { id: 42, email: "victim@customer.com", name: "Victim", mspRole: LEGACY_ROLE.customer, mspId: 3, tenantId: 7 };
 
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 

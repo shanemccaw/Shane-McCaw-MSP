@@ -6,7 +6,7 @@
  * Security-critical: customerId must be resolvable ONLY from the
  * authenticated session (req.user.customerId) — never from a query param or
  * any other client-supplied value. Covers:
- *   - 401 without auth, 403 below CustomerUser
+ *   - 401 without auth, 403 below Customer
  *   - 404 for a truly unknown engine key
  *   - 404 for an internal/MSP-only engine key (not customer-safe), same
  *     response shape as a truly unknown key — its existence isn't disclosed
@@ -26,7 +26,7 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = "portal-engine-history-test-secret";
 process.env["JWT_SECRET"] = JWT_SECRET;
 
-function customerToken(customerId: number | undefined, mspRole: typeof LEGACY_ROLE.customerUser | typeof LEGACY_ROLE.free | typeof LEGACY_ROLE.mspOperator = LEGACY_ROLE.customerUser): string {
+function customerToken(customerId: number | undefined, mspRole: typeof LEGACY_ROLE.customer | typeof LEGACY_ROLE.free | typeof LEGACY_ROLE.mspOperator = LEGACY_ROLE.customer): string {
   return jwt.sign(
     { id: 1, email: "customer@test.com", role: "client", mspRole, ...(customerId !== undefined ? { customerId } : {}) },
     JWT_SECRET,
@@ -92,7 +92,7 @@ describe("GET /portal/engines/:key/history", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects roles below CustomerUser", async () => {
+  it("rejects roles below Customer", async () => {
     const res = await request(makeApp())
       .get("/portal/engines/health/history")
       .set("Authorization", `Bearer ${customerToken(5, "Free")}`);

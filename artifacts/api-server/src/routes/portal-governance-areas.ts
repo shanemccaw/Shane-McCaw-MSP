@@ -17,7 +17,7 @@
  * so the page can render every card's true state.
  *
  * ── Role floor ──────────────────────────────────────────────────────────────
- * `Assessment` — same floor as the sibling `portal-oversharing-sites.ts` and
+ * `Free` — same floor as the sibling `portal-oversharing-sites.ts` and
  * the pillar-hero seam this grid sits beside.
  */
 
@@ -42,7 +42,7 @@ const router: IRouter = Router();
 
 router.get(
   "/portal/governance/areas",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response) => {
     try {
       const customerId = resolveCustomerId(req);

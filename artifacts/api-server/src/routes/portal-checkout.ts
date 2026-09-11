@@ -1,7 +1,7 @@
 /**
  * portal-checkout.ts
  *
- * Authenticated-only checkout for CustomerUser role — branches by serviceClass
+ * Authenticated-only checkout for Customer role — branches by serviceClass
  * so add_on / subscription offers go through instant Stripe checkout, $0 offers
  * skip Stripe entirely (rate-limited), and project offers create a SOW that flows
  * through the existing draft/signed/paid state machine.
@@ -120,7 +120,7 @@ async function emitMspEvent(
       source: "portal-checkout",
       actor: {
         id: String(actorUserId ?? "system"),
-        role: actorUserId ? LEGACY_ROLE.customerUser : ("system" as const),
+        role: actorUserId ? LEGACY_ROLE.customer : ("system" as const),
         type: actorUserId ? ("user" as const) : ("system" as const),
       },
       meta: { tenant: { mspId, customerId } },
@@ -553,7 +553,7 @@ router.post(
         return;
       }
 
-      await emitSowEvent(sow.sowId, "sow.created", actorId, LEGACY_ROLE.customerUser, {
+      await emitSowEvent(sow.sowId, "sow.created", actorId, LEGACY_ROLE.customer, {
         offerId, mspId, customerId, amountCents,
       });
 

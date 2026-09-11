@@ -277,7 +277,7 @@ router.post("/msp/customers/:customerId/team/invite", requireCapability("ladder.
       name: name?.trim() || null,
       mspId: targetTenant.mspId,
       tenantId: customerId,
-      mspRole: LEGACY_ROLE.customerUser,
+      mspRole: LEGACY_ROLE.customer,
       isActive: true,
       department: department?.trim() || null,
       jobTitle: jobTitle?.trim() || null,

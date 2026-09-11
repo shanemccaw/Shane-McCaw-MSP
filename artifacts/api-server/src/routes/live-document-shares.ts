@@ -125,7 +125,7 @@ const LIVE_DOCUMENT_SHARE_REPORTS: ReadonlyArray<{
 // ── POST /portal/live-documents/share ─────────────────────────────────────
 //
 // Mints a token for the CALLER'S OWN document set. `customerId` on the
-// stored row is `req.user!.id` (a users.id) — the logged-in CustomerUser
+// stored row is `req.user!.id` (a users.id) — the logged-in Customer
 // sharing their own results, matching this issue's own schema spec. This is
 // the same identity documentPrintTokensTable.userId/printTokensTable.userId
 // already key on, just named per the spec here.

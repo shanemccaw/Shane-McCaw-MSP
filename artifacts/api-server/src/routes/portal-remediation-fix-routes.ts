@@ -71,7 +71,7 @@ function resolveCustomerId(req: Request): number | null {
 
 router.get(
   "/portal/remediation/fix-routes",
-  requireCapability("ladder.assessment"),
+  requireCapability("ladder.free"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {

@@ -59,7 +59,7 @@ const customerToken = jwt.sign(
     id: 1,
     email: "customer@example.com",
     role: "client",
-    mspRole: LEGACY_ROLE.customerUser,
+    mspRole: LEGACY_ROLE.customer,
     customerId: CUSTOMER_ID,
     mspId: MSP_ID,
   },

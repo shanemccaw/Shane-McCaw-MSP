@@ -20,7 +20,7 @@
     { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
     { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
     {
-      "name": "Primary login — CRITICAL: every downstream assertion needs a real authenticated CustomerUser session.",
+      "name": "Primary login — CRITICAL: every downstream assertion needs a real authenticated Customer session.",
       "action": "click",
       "selector": "[data-testid='login-submit']",
       "critical": true,

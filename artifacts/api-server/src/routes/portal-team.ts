@@ -20,7 +20,7 @@ const router: IRouter = Router();
  *
  * Before this existed every mutating route gated only on assertCustomerAccess,
  * which enforces tenant isolation but NOT privilege within a tenant — so any
- * plain CustomerUser could invite/suspend/reset-password/disable-MFA/unlock/
+ * plain Customer could invite/suspend/reset-password/disable-MFA/unlock/
  * emergency-bypass their own company's other users by direct API call. This
  * closes that gap with two ordered gates:
  *
@@ -28,7 +28,7 @@ const router: IRouter = Router();
  *     touch this customer at all (own tenant for customer-tier users; in-MSP +
  *     staff-scope for MSP staff; anything for PlatformAdmin).
  *  2. Team-admin capability — `customer:team.manage`. A customer-tier user
- *     (CustomerUser/Free/Assessment) must ADDITIONALLY hold it; MSP staff and
+ *     (Customer/Free) must ADDITIONALLY hold it; MSP staff and
  *     PlatformAdmin hold it by virtue of their role and are not subject to a
  *     per-user grant. There is no "CustomerAdmin" rung, so this capability is the
  *     elevated-customer distinction.
@@ -150,7 +150,7 @@ router.post("/portal/team/invite", requireAuth, async (req: Request, res: Respon
     name: name?.trim() || null,
     mspId: inviterMspId,
     tenantId: inviterCustomerId,
-    mspRole: LEGACY_ROLE.customerUser,
+    mspRole: LEGACY_ROLE.customer,
     isActive: true,
     department: department?.trim() || null,
     jobTitle: jobTitle?.trim() || null,

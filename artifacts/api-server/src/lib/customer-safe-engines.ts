@@ -2,7 +2,7 @@
  * customer-safe-engines.ts
  *
  * The subset of ENGINE_DEFS (engine-registry.ts) safe to expose directly to a
- * CustomerUser session. Excludes MSP/platform-internal engines — priority
+ * Customer session. Excludes MSP/platform-internal engines — priority
  * (ops triage ranking), pricing (revenue capture), crm (sales intent), msp
  * (portfolio-wide, not tenant-scoped), forecasting (resource planning), and
  * sales_offer (sales pipeline; its customer-visible output is the offers

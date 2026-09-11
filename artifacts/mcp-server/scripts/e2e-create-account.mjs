@@ -126,9 +126,9 @@ try {
 
   // The real users row + credential must exist.
   // provisionProspectAccount writes the legacy customer role value 'client'
-  // (CustomerUser is the portal-facing mapping of it, not the column literal).
+  // (Customer is the portal-facing mapping of it, not the column literal).
   const { rows: userRows } = await dbc.query(`SELECT id, role, password_hash FROM users WHERE email = $1`, [EMAIL]);
-  check("real users row exists with a bcrypt credential", userRows.length === 1 && ["client", "CustomerUser"].includes(userRows[0].role) && String(userRows[0].password_hash ?? "").startsWith("$2"), JSON.stringify({ role: userRows[0]?.role, hash: String(userRows[0]?.password_hash ?? "").slice(0, 4) }));
+  check("real users row exists with a bcrypt credential", userRows.length === 1 && ["client", "Customer"].includes(userRows[0].role) && String(userRows[0].password_hash ?? "").startsWith("$2"), JSON.stringify({ role: userRows[0]?.role, hash: String(userRows[0]?.password_hash ?? "").slice(0, 4) }));
 
   // Git #1325 audit trail: every call landed, secrets redacted.
   const { rows: audits } = await dbc.query(

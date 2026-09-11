@@ -27,7 +27,7 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = "msp-active-directory-test-secret";
 process.env["JWT_SECRET"] = JWT_SECRET;
 
-function mspToken(opts: { mspId?: number; mspRole?: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customerUser | typeof LEGACY_ROLE.platformAdmin; id?: number }): string {
+function mspToken(opts: { mspId?: number; mspRole?: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customer | typeof LEGACY_ROLE.platformAdmin; id?: number }): string {
   const { mspId, mspRole = LEGACY_ROLE.mspOperator, id = 1 } = opts;
   return jwt.sign(
     { id, email: "staff@test.com", role: "client", mspRole, ...(mspId !== undefined ? { mspId } : {}) },
@@ -173,7 +173,7 @@ describe("GET /msp/active-directory/ou/:id/assignments", () => {
   it("rejects roles below MSPOperator", async () => {
     const res = await request(makeApp())
       .get("/msp/active-directory/ou/5/assignments")
-      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: LEGACY_ROLE.customerUser })}`);
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: LEGACY_ROLE.customer })}`);
     expect(res.status).toBe(403);
   });
 
@@ -392,7 +392,7 @@ describe("GET /msp/active-directory/ou-assignment-requests", () => {
   it("rejects roles below MSPOperator", async () => {
     const res = await request(makeApp())
       .get("/msp/active-directory/ou-assignment-requests")
-      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: LEGACY_ROLE.customerUser })}`);
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: LEGACY_ROLE.customer })}`);
     expect(res.status).toBe(403);
   });
 

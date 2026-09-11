@@ -44,7 +44,7 @@
 
     { "name": "log out of the PlatformAdmin session", "action": "click", "selector": "[data-testid='sidebar-logout']" },
 
-    { "name": "log in as a non-PlatformAdmin test account (CustomerUser tier)", "action": "goto", "target": "/login" },
+    { "name": "log in as a non-PlatformAdmin test account (Customer tier)", "action": "goto", "target": "/login" },
     { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
     { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
     {

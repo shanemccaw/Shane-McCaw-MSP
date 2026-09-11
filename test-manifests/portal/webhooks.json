@@ -7,7 +7,7 @@
   "notes": [
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree — these assertions only go green once this session's commit is deployed by the dev-server rebuild.",
     "apiTests prove the real, already-built backend contract directly, in the same order the page itself calls it: create (full secret returned once), list (secretPrefix only), toggle isActive via PATCH, rotate-secret (new secret returned once, old one gone), deliveries (empty for a fresh endpoint), then delete (cleanup — this run creates one real row and removes it again so it never lingers against a real test account).",
-    "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same CustomerUser testbed account test-manifests/portal/customer-home-landing.json already uses. requireAuth + resolveOwner() (webhooks.ts:71-97) scope every call to the caller's own customerId; no separate role/tenant fixture is needed.",
+    "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same Customer testbed account test-manifests/portal/customer-home-landing.json already uses. requireAuth + resolveOwner() (webhooks.ts:71-97) scope every call to the caller's own customerId; no separate role/tenant fixture is needed.",
     "TEST3 creates a real webhook with eventTypes ['auth.login'] (a real, always-present canonical EVENT_TYPES member, not one of the design's own illustrative/dead ones) and asserts the response carries the full plaintext 'secret' field (webhooks.ts:193) exactly once — this is the create-moment reveal the page's secret modal is built on.",
     "TEST4 asserts the list endpoint (GET /api/portal/webhooks) never re-exposes that secret — only secretPrefix — proving the page's 'no reveal after creation' copy matches the real wire contract, not just the design's own claim.",
     "TEST8 (DELETE) is the manifest's own cleanup step — it always runs, keeping this a repeatable, non-accumulating test run against a real account.",
@@ -17,7 +17,7 @@
 
   "apiTests": [
     {
-      "name": "SETUP — log in as the CustomerUser testbed account; extract the bearer.",
+      "name": "SETUP — log in as the Customer testbed account; extract the bearer.",
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },

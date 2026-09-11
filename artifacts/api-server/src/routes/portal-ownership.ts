@@ -67,10 +67,10 @@
  * less, not a reason to fail a page that has other real rows to show.
  *
  * ── Role floor ─────────────────────────────────────────────────────────────
- * `requireCapability("ladder.customer-user")`, which admits CustomerUser and every MSP/admin
- * role above it, and excludes `Free` and `Assessment`. Note this is a HIGHER
+ * `requireCapability("ladder.customer-user")`, which admits Customer and every MSP/admin
+ * role above it, and excludes `Free`. Note this is a HIGHER
  * floor than the neighbouring `portal-change-control.ts` and
- * `portal-remediation-tracker.ts`, which floor at `Assessment`. It is not a
+ * `portal-remediation-tracker.ts`, which floor at `Free`. It is not a
  * security difference — the cross-tenant guard is the `customerId`-from-JWT
  * scoping below, and that is identical either way — it is a product one: an
  * ownership matrix is a thing a paying tenant's team maintains, not something a

@@ -156,6 +156,20 @@ export const RBAC_CAPABILITIES: readonly RbacCapability[] = Object.freeze([
       "for a read should not authorise them. Enforced on every write route in " +
       "artifacts/api-server/src/routes/portal-billing.ts and portal-retainer-billing.ts.",
   },
+  {
+    system: "customer",
+    key: "marketplace.browse-full",
+    category: "marketplace",
+    label: "Browse the full marketplace",
+    description:
+      "See the full purchasable catalog in the portal marketplace and in customer search — " +
+      "assessments and the monitoring upsell plus micro-offers, projects and retainers. " +
+      "Without it a caller sees the pre-payment catalog only (assessments + monitoring). " +
+      "Replaces a raw `role === \"Assessment\"` comparison in " +
+      "artifacts/api-server/src/routes/portal-marketplace.ts and portal-customer-search.ts " +
+      "(#3590): the platform mapping grants it to the paid Customer rung and every rung " +
+      "above it, so a prospect gains it the moment payment promotes them from Free to Customer.",
+  },
 ]);
 
 /** Catalog key for a capability — the (system, key) pair, never the key alone. */

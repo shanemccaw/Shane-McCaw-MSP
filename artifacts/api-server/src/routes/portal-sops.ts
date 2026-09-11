@@ -38,8 +38,8 @@
  * ── Role floor ─────────────────────────────────────────────────────────────
  * `requireCapability("ladder.customer-user")`. Note this is a HIGHER floor than the sibling
  * portal-v2 pages (`portal-runbooks.ts`, `portal-change-control.ts` and
- * `portal-remediation-tracker.ts` all sit at `requireCapability("ladder.assessment")`), so an
- * Assessment-tier account that can see Active Runbooks will get a 403 here. That
+ * `portal-remediation-tracker.ts` all sit at `requireCapability("ladder.free")`), so an
+ * Free-tier account that can see Active Runbooks will get a 403 here. That
  * is deliberate: the SOP library is the MSP's own procedure documentation plus
  * whatever the customer's team has written, which is not prospect-tier content.
  *

@@ -30,7 +30,7 @@ import { reportClientEvent } from "./report-client-event";
  * purpose. #1696's re-measure comment on the artifacts being built now is
  * explicit: *"Neither should ever import a role literal. They consume
  * capabilities, not roles."* A union of literals is exactly what makes
- * `mspRole === `CustomerUser`` compile, and this file had two such comparisons
+ * `mspRole === `Customer`` compile, and this file had two such comparisons
  * (`:476`, `:801`) deciding where an impersonated identity landed — an
  * authorization-shaped rule the server could not see.
  *
@@ -271,7 +271,7 @@ async function exchangeImpersonationToken(
  * Where an impersonated identity lands, per the SERVER (#2459, part of #1696).
  *
  * Both call sites used to run their own copy of
- * `mspRole === `Assessment` ? … : mspRole === `CustomerUser` ? … : …`. Two copies
+ * `mspRole === `Assessment` ? … : mspRole === `Customer` ? … : …`. Two copies
  * of an identity rule in a component is the shape #1696 calls *"a rule that
  * exists nowhere the server can enforce it"*, and duplicating it twice in one
  * file is how such a rule ends up disagreeing with itself. The rule now lives in
@@ -547,7 +547,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // sessions have no refresh token), so we navigate client-side by
           // pushing the target URL and letting wouter re-render.
           if (targetSlug) {
-            // Assessment lands on the assessment shell; CustomerUser lands on
+            // Assessment lands on the assessment shell; Customer lands on
             // the Portal v2 Overview; MSP-side roles land on the dashboard —
             // decided server-side for the impersonated identity (#2459).
             const landing = landingSurfaceOf(data);
@@ -658,7 +658,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Git #1315 (Epic #1309, Phase 6) — a `product` hint may ride alongside
     // signupToken (set by the purchase portal-handoff endpoint, #1313,
     // resolved from the session's own services.category). Retainer owns a
-    // real destination beyond the generic CustomerUser landing FlatLoggedInRedirect
+    // real destination beyond the generic Customer landing FlatLoggedInRedirect
     // otherwise picks: "My Architect" (#1285), so a Retainer purchase lands
     // there directly rather than on the Overview and needing a second click.
     // Absent or any other category, this falls through to today's unchanged

@@ -120,7 +120,7 @@ function makeLoginToken(overrides: Record<string, unknown> = {}): string {
       id: 501,
       email: "buyer@contoso.com",
       role: "client",
-      mspRole: "Assessment",
+      mspRole: "Free",
       mspId: 42,
       customerId: TENANT_ID,
       sid: `session-${sessionCounter}`,

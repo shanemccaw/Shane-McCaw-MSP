@@ -108,16 +108,16 @@ describe("users → RBAC membership sync (#3408)", () => {
   it("the #2457 seed roles this suite depends on are present", async () => {
     const [{ n }] = (await tx.execute(sql`
       SELECT count(*)::int AS n FROM msp_roles
-       WHERE msp_id IS NULL AND key IN ('CustomerUser', 'MSPOperator', 'MSPAdmin', 'PlatformAdmin', 'cap.purchases.approve')
+       WHERE msp_id IS NULL AND key IN ('Customer', 'MSPOperator', 'MSPAdmin', 'PlatformAdmin', 'cap.purchases.approve')
     `)).rows as Array<{ n: number }>;
     expect(n).toBe(5);
   });
 
   it("a newly created user holds their rung in both systems", async () => {
     await withSavepoint(async (t) => {
-      const id = await insertUser(t, { mspRole: "CustomerUser" });
-      expect(await heldKeys(t, "msp", id)).toEqual(["CustomerUser"]);
-      expect(await heldKeys(t, "customer", id)).toEqual(["CustomerUser"]);
+      const id = await insertUser(t, { mspRole: "Customer" });
+      expect(await heldKeys(t, "msp", id)).toEqual(["Customer"]);
+      expect(await heldKeys(t, "customer", id)).toEqual(["Customer"]);
     });
   });
 
@@ -142,18 +142,18 @@ describe("users → RBAC membership sync (#3408)", () => {
 
   it("legacy role = 'admin' is promoted to PlatformAdmin, and un-promoted when it goes", async () => {
     await withSavepoint(async (t) => {
-      const id = await insertUser(t, { role: "admin", mspRole: "Assessment" });
+      const id = await insertUser(t, { role: "admin", mspRole: "Free" });
       expect(await heldKeys(t, "msp", id)).toEqual(["PlatformAdmin"]);
 
       await t.execute(sql`UPDATE users SET role = 'client' WHERE id = ${id}`);
-      expect(await heldKeys(t, "msp", id)).toEqual(["Assessment"]);
-      expect(await heldKeys(t, "customer", id)).toEqual(["Assessment"]);
+      expect(await heldKeys(t, "msp", id)).toEqual(["Free"]);
+      expect(await heldKeys(t, "customer", id)).toEqual(["Free"]);
     });
   });
 
-  it("an msp_role that is not one of the seven rungs holds no rung — and cannot name a capability role", async () => {
+  it("an msp_role that is not one of the rungs holds no rung — and cannot name a capability role", async () => {
     await withSavepoint(async (t) => {
-      const id = await insertUser(t, { mspRole: "CustomerUser" });
+      const id = await insertUser(t, { mspRole: "Customer" });
       await t.execute(sql`UPDATE users SET msp_role = 'NotARole' WHERE id = ${id}`);
       expect(await heldKeys(t, "msp", id)).toEqual([]);
       expect(await heldKeys(t, "customer", id)).toEqual([]);
@@ -166,14 +166,14 @@ describe("users → RBAC membership sync (#3408)", () => {
 
   it("cap.changes.approve follows users.can_approve_changes both ways", async () => {
     await withSavepoint(async (t) => {
-      const id = await insertUser(t, { mspRole: "CustomerUser", canApproveChanges: true });
-      expect(await heldKeys(t, "customer", id)).toEqual(["CustomerUser", "cap.changes.approve"].sort());
+      const id = await insertUser(t, { mspRole: "Customer", canApproveChanges: true });
+      expect(await heldKeys(t, "customer", id)).toEqual(["Customer", "cap.changes.approve"].sort());
 
       await t.execute(sql`UPDATE users SET can_approve_changes = false WHERE id = ${id}`);
-      expect(await heldKeys(t, "customer", id)).toEqual(["CustomerUser"]);
+      expect(await heldKeys(t, "customer", id)).toEqual(["Customer"]);
 
       await t.execute(sql`UPDATE users SET can_approve_changes = true WHERE id = ${id}`);
-      expect(await heldKeys(t, "customer", id)).toEqual(["CustomerUser", "cap.changes.approve"].sort());
+      expect(await heldKeys(t, "customer", id)).toEqual(["Customer", "cap.changes.approve"].sort());
     });
   });
 
@@ -183,9 +183,9 @@ describe("users → RBAC membership sync (#3408)", () => {
       await grant(t, "msp", id, "cap.purchases.approve");
       expect(await heldKeys(t, "msp", id)).toEqual(["MSPOperator", "cap.purchases.approve"].sort());
 
-      // The shape direct-tenant-provisioning makes: `.set({ mspRole: CustomerUser })`.
-      await t.execute(sql`UPDATE users SET msp_role = 'CustomerUser' WHERE id = ${id}`);
-      expect(await heldKeys(t, "msp", id)).toEqual(["CustomerUser"]);
+      // The shape direct-tenant-provisioning makes: `.set({ mspRole: Customer })`.
+      await t.execute(sql`UPDATE users SET msp_role = 'Customer' WHERE id = ${id}`);
+      expect(await heldKeys(t, "msp", id)).toEqual(["Customer"]);
     });
   });
 
@@ -204,33 +204,33 @@ describe("users → RBAC membership sync (#3408)", () => {
 
   it("cap.team.manage is the row's own source of truth (#2460) — no re-role touches it", async () => {
     await withSavepoint(async (t) => {
-      const id = await insertUser(t, { mspRole: "CustomerUser" });
+      const id = await insertUser(t, { mspRole: "Customer" });
       await grant(t, "customer", id, "cap.team.manage");
 
-      await t.execute(sql`UPDATE users SET msp_role = 'Assessment' WHERE id = ${id}`);
-      expect(await heldKeys(t, "customer", id)).toEqual(["Assessment", "cap.team.manage"].sort());
+      await t.execute(sql`UPDATE users SET msp_role = 'Free' WHERE id = ${id}`);
+      expect(await heldKeys(t, "customer", id)).toEqual(["Free", "cap.team.manage"].sort());
     });
   });
 
   it("an unrelated column write does not run the sync", async () => {
     await withSavepoint(async (t) => {
-      const id = await insertUser(t, { mspRole: "CustomerUser" });
+      const id = await insertUser(t, { mspRole: "Customer" });
       // A second rung, granted by hand. Any sync run would strip it, so its survival
       // proves the UPDATE trigger stayed quiet for a column it does not watch.
       await grant(t, "msp", id, "Free");
       await t.execute(sql`UPDATE users SET last_login_at = now() WHERE id = ${id}`);
-      expect(await heldKeys(t, "msp", id)).toEqual(["CustomerUser", "Free"]);
+      expect(await heldKeys(t, "msp", id)).toEqual(["Customer", "Free"]);
 
       // ...and a watched column set to its CURRENT value is not a change either.
-      await t.execute(sql`UPDATE users SET msp_role = 'CustomerUser' WHERE id = ${id}`);
-      expect(await heldKeys(t, "msp", id)).toEqual(["CustomerUser", "Free"]);
+      await t.execute(sql`UPDATE users SET msp_role = 'Customer' WHERE id = ${id}`);
+      expect(await heldKeys(t, "msp", id)).toEqual(["Customer", "Free"]);
     });
   });
 
   it("an org's own custom role is left alone by a re-role", async () => {
     await withSavepoint(async (t) => {
       const [tenant] = (await t.execute(sql`SELECT id FROM tenants ORDER BY id LIMIT 1`)).rows as Array<{ id: number }>;
-      const id = await insertUser(t, { mspRole: "CustomerUser" });
+      const id = await insertUser(t, { mspRole: "Customer" });
       await t.execute(sql`UPDATE users SET tenant_id = ${tenant!.id} WHERE id = ${id}`);
       const [role] = (await t.execute(sql`
         INSERT INTO customer_roles (tenant_id, key, name) VALUES (${tenant!.id}, 'zz-3408-engineer', 'Engineer') RETURNING id

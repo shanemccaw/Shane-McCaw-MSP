@@ -48,9 +48,9 @@ import {
 } from "./portal-ownership.ts";
 
 const USERS: UserRow[] = [
-  { id: 39, email: "buyer@example.com", name: "Buy Assessment", jobTitle: null, department: null, mspRole: LEGACY_ROLE.customerUser },
-  { id: 42, email: "joe@example.com", name: "Joe Joe", jobTitle: "IT Manager", department: null, mspRole: LEGACY_ROLE.customerUser },
-  { id: 55, email: "shane@example.com", name: null, jobTitle: null, department: "Operations", mspRole: "Assessment" },
+  { id: 39, email: "buyer@example.com", name: "Buy Assessment", jobTitle: null, department: null, mspRole: LEGACY_ROLE.customer },
+  { id: 42, email: "joe@example.com", name: "Joe Joe", jobTitle: "IT Manager", department: null, mspRole: LEGACY_ROLE.customer },
+  { id: 55, email: "shane@example.com", name: null, jobTitle: null, department: "Operations", mspRole: "Free" },
 ];
 
 const PEOPLE: WireOwnPerson[] = USERS.map((u) => toWirePerson(u, "Halden Materials"));
@@ -86,16 +86,16 @@ describe("toWirePerson()", () => {
 
 describe("personRoleLabel()", () => {
   it("prefers a real job title", () => {
-    expect(personRoleLabel("IT Manager", "Operations", LEGACY_ROLE.customerUser)).toBe("IT Manager");
+    expect(personRoleLabel("IT Manager", "Operations", LEGACY_ROLE.customer)).toBe("IT Manager");
   });
 
   it("falls back to the department before the role", () => {
-    expect(personRoleLabel(null, "Operations", LEGACY_ROLE.customerUser)).toBe("Operations");
+    expect(personRoleLabel(null, "Operations", LEGACY_ROLE.customer)).toBe("Operations");
   });
 
   it("never prints the enum spelling of a portal role", () => {
-    expect(personRoleLabel(null, null, LEGACY_ROLE.customerUser)).toBe("Team member");
-    expect(personRoleLabel(null, null, "Assessment")).toBe("Assessment access");
+    expect(personRoleLabel(null, null, LEGACY_ROLE.customer)).toBe("Team member");
+    expect(personRoleLabel(null, null, LEGACY_ROLE.free)).toBe("Free account");
     expect(personRoleLabel(null, null, null)).toBe("Team member");
   });
 

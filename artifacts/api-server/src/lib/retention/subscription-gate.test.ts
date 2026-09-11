@@ -76,16 +76,16 @@ function state(overrides: Partial<TenantSubscriptionState> = {}): TenantSubscrip
   return { ...base, ...overrides };
 }
 
-const customer: GatePrincipal = { role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 42 };
+const customer: GatePrincipal = { role: "client", mspRole: LEGACY_ROLE.customer, customerId: 42 };
 
 describe("#2765 — who the gate applies to (part 8: no new role, no new permission)", () => {
-  it("gates a CustomerUser session, resolving to its own tenant", () => {
+  it("gates a Customer session, resolving to its own tenant", () => {
     expect(gatedTenantIdFor(customer)).toBe(42);
   });
 
   it("gates Free and Assessment sessions the same way — they are customer principals too", () => {
     expect(gatedTenantIdFor({ mspRole: "Free", customerId: 7 })).toBe(7);
-    expect(gatedTenantIdFor({ mspRole: "Assessment", customerId: 7 })).toBe(7);
+    expect(gatedTenantIdFor({ mspRole: "Free", customerId: 7 })).toBe(7);
   });
 
   it("does NOT gate the operator — the #1571 review queue exists to look at cancelled customers", () => {
@@ -104,7 +104,7 @@ describe("#2765 — who the gate applies to (part 8: no new role, no new permiss
   });
 
   it("does not gate a customer principal with no tenant claim — authentication is requireAuth's job", () => {
-    expect(gatedTenantIdFor({ mspRole: LEGACY_ROLE.customerUser })).toBeNull();
+    expect(gatedTenantIdFor({ mspRole: LEGACY_ROLE.customer })).toBeNull();
   });
 });
 

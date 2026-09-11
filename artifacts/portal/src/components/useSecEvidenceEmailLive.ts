@@ -71,7 +71,7 @@ export function useSecEvidenceEmailLive(enabled = true): SecEvidenceEmailLiveSta
           },
           { silent: true },
         );
-        if (!res.ok) return; // 403 for Assessment-role viewers → honest fixture fallback
+        if (!res.ok) return; // 403 for Free-role viewers → honest fixture fallback
         const data = (await res.json()) as { results?: Record<string, ResolvedMetric> };
         if (!cancelled && data.results && typeof data.results === "object") {
           setMetrics(data.results);

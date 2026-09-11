@@ -35,7 +35,7 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = "msp-retention-queue-test-secret";
 process.env["JWT_SECRET"] = JWT_SECRET;
 
-function mspToken(mspId: number, mspRole: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customerUser = LEGACY_ROLE.mspOperator, userId = 1): string {
+function mspToken(mspId: number, mspRole: typeof LEGACY_ROLE.mspOperator | typeof LEGACY_ROLE.mspAdmin | typeof LEGACY_ROLE.customer = LEGACY_ROLE.mspOperator, userId = 1): string {
   return jwt.sign(
     { id: userId, email: "staff@test.com", name: "Staff Person", role: "client", mspRole, mspId },
     JWT_SECRET,
@@ -151,7 +151,7 @@ describe("GET /msp/retention/queue", () => {
   it("403s below MSPOperator", async () => {
     const res = await request(makeApp())
       .get("/msp/retention/queue")
-      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.customerUser)}`);
+      .set("Authorization", `Bearer ${mspToken(MSP_ID, LEGACY_ROLE.customer)}`);
     expect(res.status).toBe(403);
   });
 

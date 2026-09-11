@@ -157,7 +157,7 @@ before(async () => {
     res.json({ ok: true });
   });
 
-  // CustomerUser-or-above route — the floor that fences the Assessment/Free
+  // Customer-or-above route — the floor that fences the Assessment/Free
   // bottom tier out of customer-and-above functionality (dashboards, engines,
   // signals, monitoring, mission control all sit behind requireCapability("ladder.customer-user")).
   app.get("/test/customer-floor", requireCapability("ladder.customer-user"), (_req, res) => {
@@ -250,39 +250,39 @@ describe("requireCapability() HTTP fence", () => {
 });
 
 // ── 1b. Assessment role fence (RBAC-foundation acceptance) ────────────────────
-// Assessment shares the bottom tier with Free (both below CustomerUser). Every
-// requireRole() floor in the codebase is CustomerUser or higher, so an Assessment
+// Assessment shares the bottom tier with Free (both below Customer). Every
+// requireRole() floor in the codebase is Customer or higher, so an Assessment
 // session must be rejected from all of them, exactly as Free is — while remaining
 // self-scoped-equivalent to Free at assertCustomerAccess (its own customer only).
 
 describe("Assessment role fence", () => {
-  it("Assessment is blocked from CustomerUser-floored route (403)", async () => {
-    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Assessment", customerId: 20 });
+  it("Assessment is blocked from Customer-floored route (403)", async () => {
+    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Free", customerId: 20 });
     assert.equal((await get("/test/customer-floor", token)).status, 403);
   });
 
-  it("CustomerUser passes the CustomerUser-floored route (200) — control", async () => {
-    const token = makeToken({ id: 7, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 20 });
+  it("Customer passes the Customer-floored route (200) — control", async () => {
+    const token = makeToken({ id: 7, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customer, customerId: 20 });
     assert.equal((await get("/test/customer-floor", token)).status, 200);
   });
 
   it("Assessment is blocked from MSPAdmin-required route (403)", async () => {
-    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Assessment", customerId: 20 });
+    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Free", customerId: 20 });
     assert.equal((await get("/test/msp-admin", token)).status, 403);
   });
 
   it("Assessment cannot access any MSP data (403)", async () => {
-    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Assessment", customerId: 20 });
+    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Free", customerId: 20 });
     assert.equal((await get("/test/msps/1/data", token)).status, 403);
   });
 
   it("Assessment (customerId=20) can access its OWN customer route (200) — Free-parity via assertCustomerAccess", async () => {
-    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Assessment", customerId: 20 });
+    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Free", customerId: 20 });
     assert.equal((await get("/test/customers/20/data", token)).status, 200);
   });
 
   it("Assessment (customerId=20) is blocked from a different customer (403)", async () => {
-    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Assessment", customerId: 20 });
+    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Free", customerId: 20 });
     assert.equal((await get("/test/customers/21/data", token)).status, 403);
   });
 });
@@ -340,8 +340,8 @@ describe("requireMspScope() tenant fence", () => {
     assert.equal((await get("/test/msps/6/data", token)).status, 403);
   });
 
-  it("CustomerUser (no mspId claim) cannot access any MSP data (403)", async () => {
-    const token = makeToken({ id: 4, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 99 });
+  it("Customer (no mspId claim) cannot access any MSP data (403)", async () => {
+    const token = makeToken({ id: 4, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customer, customerId: 99 });
     assert.equal((await get("/test/msps/1/data", token)).status, 403);
   });
 
@@ -359,13 +359,13 @@ describe("requireCustomerScope() customer fence", () => {
     assert.equal((await get("/test/customers/777/data", token)).status, 200);
   });
 
-  it("CustomerUser (customerId=10) can access own customer route", async () => {
-    const token = makeToken({ id: 2, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 10 });
+  it("Customer (customerId=10) can access own customer route", async () => {
+    const token = makeToken({ id: 2, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customer, customerId: 10 });
     assert.equal((await get("/test/customers/10/data", token)).status, 200);
   });
 
-  it("CustomerUser (customerId=10) is blocked from customerId=11 (403)", async () => {
-    const token = makeToken({ id: 2, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customerUser, customerId: 10 });
+  it("Customer (customerId=10) is blocked from customerId=11 (403)", async () => {
+    const token = makeToken({ id: 2, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customer, customerId: 10 });
     assert.equal((await get("/test/customers/11/data", token)).status, 403);
   });
 

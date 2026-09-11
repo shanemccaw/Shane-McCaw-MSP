@@ -50,7 +50,7 @@
  * `versionUid` belonging to another tenant 404s exactly like one that does not
  * exist — scoped read first, same discipline as `portal-rbd-document.ts`.
  *
- * ── Role floor: `CustomerUser` ───────────────────────────────────────────
+ * ── Role floor: `Customer` ───────────────────────────────────────────
  * Same reasoning as `portal-rbd-document.ts` / `portal-risk-register.ts`: a
  * signature transfers real weight (the plan of record an insurer or auditor
  * may be shown), so it sits at the higher floor, not a lower-stakes one.
