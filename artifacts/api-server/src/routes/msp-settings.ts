@@ -74,9 +74,9 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, isNull, inArray, gte, lt, count } from "drizzle-orm";
 import { requireAuth, requireCapability, effectiveMspRole } from "../middlewares/requireAuth.ts";
-import { roleClearsLadderFloor } from "../middlewares/rbac-ladder.ts";
+import { roleClearsLadderFloor, userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
 import { setGrantRole, usersHoldingGrantRole } from "../middlewares/rbac-capability.ts";
-import { CAPABILITY_COLUMN_ROLE_KEYS, LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { CAPABILITY_COLUMN_ROLE_KEYS, LADDER, LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import { z } from "zod";
 import { randomBytes, createHash, randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
@@ -148,6 +148,38 @@ async function rejectIfTargetOutranksCaller(req: Request, res: Response, targetR
     return true;
   }
   return false;
+}
+
+// Who may be GRANTED `cap.purchases.approve` (Git #3570).
+//
+// The grant only ever meant something on the MSPOperator rung: the retired
+// `can_approve_purchases` column was honoured on msp-v1.ts's MSPOperator branch alone,
+// #2457's seed carried it forward for MSPOperators alone, and #3408's `users` trigger
+// revokes the role the moment a rung falls below MSPOperator. But the grant route's
+// only target check was MSP membership, and customer-tier users carry the MSP's
+// `msp_id` too — so an MSPAdmin could hand the role to a Customer/Free user, who then
+// comes back from `purchaseApproverUserIds` as a real purchase-approval recipient.
+//
+// The bar is the target clearing `ladder.msp-operator`, asked of the same evaluator
+// #3032's ceiling above asks, with the TARGET as the principal. That is not a second
+// statement of "MSPOperator and above" — it is the decide route's own gate
+// (msp-v1.ts's `requireCapability("ladder.msp-operator")`), so a user this refuses is
+// exactly a user who could never act on the grant. Its seeded allow set is
+// {MSPOperator, MSPAdmin, PlatformAdmin}, the same rungs #3408's `purchase_rungs` and
+// parity-check.ts's PURCHASE_APPROVER_RUNGS name. The rung comes from the target's
+// `users` row (`role`/`msp_role`, with the legacy `admin` promotion), which is that
+// rung's source of truth for anyone who is not the caller.
+//
+// This guards GRANTING only. Revoking stays open for every member, so a stale grant a
+// below-MSPOperator user already holds can still be removed through this surface.
+type PurchaseGrantEligibility = "eligible" | "ineligible" | "unavailable";
+
+async function purchaseGrantEligibility(
+  target: { role: string; mspRole: string | null },
+): Promise<PurchaseGrantEligibility> {
+  const outcome = await userClearsLadderCapability(target, LADDER.mspOperator);
+  if (outcome.kind === "unavailable") return "unavailable";
+  return outcome.kind === "allow" ? "eligible" : "ineligible";
 }
 
 function writeAuditLog(params: {
@@ -604,6 +636,8 @@ router.get("/msp/settings/users", requireCapability("ladder.msp-admin"), async (
       createdAt: usersTable.createdAt,
       email: usersTable.email,
       name: usersTable.name,
+      // Read only to decide `approvePurchasesGrantable` below; not part of the payload.
+      legacyRole: usersTable.role,
     })
     .from(usersTable)
     .where(eq(usersTable.mspId, mspId))
@@ -641,10 +675,23 @@ router.get("/msp/settings/users", requireCapability("ladder.msp-admin"), async (
     return;
   }
 
+  // #3570 — this list is every `users` row carrying the MSP's id, customer-tier users
+  // included, so the toggle must say whose grant would mean anything. Same rule the
+  // PATCH below enforces. `canApprovePurchases` still reports a stale grant truthfully,
+  // so an admin can see it and revoke it.
+  const eligibility = await Promise.all(
+    users.map((u) => purchaseGrantEligibility({ role: u.legacyRole, mspRole: u.mspRole })),
+  );
+  if (eligibility.includes("unavailable")) {
+    apiError(res, 503, "Role data is temporarily unavailable");
+    return;
+  }
+
   res.json(
-    users.map((u) => ({
+    users.map(({ legacyRole: _legacyRole, ...u }, i) => ({
       ...u,
       canApprovePurchases: granted.has(u.userId),
+      approvePurchasesGrantable: eligibility[i] === "eligible",
       // assignedCustomersCount === 0 means unrestricted, NOT "no access".
       assignedCustomersCount: scopeCountByUser.get(u.userId) ?? 0,
     })),
@@ -824,12 +871,23 @@ router.patch("/msp/settings/users/:userId/approve-purchases", requireCapability(
   // the column gone it has to be made explicitly, because the grant row lives in
   // `msp_user_roles` and knows nothing about which MSP a user belongs to.
   const [target] = await db
-    .select({ id: usersTable.id })
+    .select({ id: usersTable.id, role: usersTable.role, mspRole: usersTable.mspRole })
     .from(usersTable)
     .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
 
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+
+  // #3570 — membership alone is not enough to GRANT: customer-tier users carry this
+  // MSP's id too. See purchaseGrantEligibility above. A revoke is never refused.
+  if (parsed.data.canApprovePurchases) {
+    const eligibility = await purchaseGrantEligibility(target);
+    if (eligibility === "unavailable") { apiError(res, 503, "Role data is temporarily unavailable"); return; }
+    if (eligibility === "ineligible") {
+      apiError(res, 400, "Purchase approval can only be granted to MSP staff (MSPOperator or above)");
+      return;
+    }
+  }
 
   // Was `UPDATE users SET can_approve_purchases = $1`. Now a membership of the
   // platform `cap.purchases.approve` role — the same grant #2457's seed carried the
