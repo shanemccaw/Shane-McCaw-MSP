@@ -279,6 +279,17 @@ export const workflowPurger: TenantDataPurgerDeclaration = {
     { table: "portal_sop_custom_steps", column: "customer_id", keySpace: "customerId" },
     { table: "msp_sop_runs", column: "tenant_id", keySpace: "tenantGuid" },
     { table: "remediation_tracker_steps", column: "customer_id", keySpace: "customerId" },
+    // Evidence/screenshot attachments (#3503, migration
+    // `2026-09-10-evidence-attachments-3503.sql`) — a polymorphic child keyed
+    // directly by `customer_id` with NO FK on its `source_ref_id` (soft-link
+    // convention, same as `retainer_work_log`), so there is no ordering
+    // constraint against either `remediation_tracker_steps` or `cr_executions`,
+    // the two sources it can point at. Declared here because
+    // `remediation_tracker_steps` is this module's row; the `change_control`
+    // source rows purge together with the rest of `changeControlPurger` above
+    // via the same `customer_id` scoping. Found and closed in the same build
+    // that filed the gap (Git #3572).
+    { table: "evidence_attachments", column: "customer_id", keySpace: "customerId" },
   ],
 };
 
