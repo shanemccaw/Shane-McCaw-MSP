@@ -316,18 +316,35 @@ namespace BuildConsole.Controls
             var wv = new ChatSafeWebView2 { DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37) };
             wv.NavigationCompleted += async (s, e) =>
             {
+                // Guard against a stale request first — a newer issue/epic click may have
+                // already reassigned ChatColumnHost.Child and disposed this WebView2 by the
+                // time this async continuation runs.
+                if (myRequest != _requestId) return;
                 if (!e.IsSuccess) return;
                 try { await wv.ExecuteScriptAsync(MainWindow.EpicChatPrefillPollScript); }
+                catch (ObjectDisposedException) { /* wv disposed mid-await by a newer click — safe to ignore */ }
                 catch { }
             };
             bool navigated = false;
             wv.Loaded += (s, e) =>
             {
-                if (!navigated && wv.CoreWebView2 != null)
+                // Loaded is deferred to WPF's next layout pass, not immediate — a newer
+                // issue/epic click can reassign ChatColumnHost.Child (disposing this wv)
+                // before it fires. Check the stale-request guard first, and still wrap the
+                // actual CoreWebView2 access in a try/catch as a backstop: accessing
+                // .CoreWebView2 on an already-disposed control is itself what throws
+                // ObjectDisposedException, so the null-check alone isn't a safe read.
+                if (myRequest != _requestId) return;
+                if (navigated) return;
+                try
                 {
-                    navigated = true;
-                    wv.CoreWebView2.Navigate(prefillUrl);
+                    if (wv.CoreWebView2 != null)
+                    {
+                        navigated = true;
+                        wv.CoreWebView2.Navigate(prefillUrl);
+                    }
                 }
+                catch (ObjectDisposedException) { /* disposed between the guard check and this access — safe to ignore */ }
             };
 
             if (myRequest != _requestId) return; // superseded while we were resolving
