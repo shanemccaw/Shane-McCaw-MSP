@@ -51,6 +51,22 @@ interface PendingApproval {
   context: Record<string, unknown>;
 }
 
+// #3565 — generate_script's human-in-the-loop hand-off. Mirrors PendingApproval's
+// shape/lifecycle but carries the target service/document + the script/package
+// Shane links back in once he's generated and tenant-verified it himself.
+interface PendingScriptHandoff {
+  id: number;
+  runId: number;
+  nodeId: string;
+  sourceMode: "service" | "document";
+  targetId: number;
+  targetLabel: string | null;
+  customInstructions: string | null;
+  outputMode: "auto" | "single" | "package";
+  status: string;
+  createdAt: string;
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function RunDetailPage({ runId }: { runId: number }) {
@@ -62,6 +78,13 @@ export default function RunDetailPage({ runId }: { runId: number }) {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [pendingDecisionId, setPendingDecisionId] = useState<number | null>(null);
   const [showRerunDialog, setShowRerunDialog] = useState(false);
+
+  // #3565 — script hand-off banner state
+  const [gsIdMode, setGsIdMode] = useState<"script" | "package">("script");
+  const [gsIdValue, setGsIdValue] = useState("");
+  const [showHandoffCancelModal, setShowHandoffCancelModal] = useState(false);
+  const [handoffCancelNote, setHandoffCancelNote] = useState("");
+  const [pendingHandoffCancelId, setPendingHandoffCancelId] = useState<number | null>(null);
 
   const { data: run, isLoading } = useQuery<WfRunDetail>({
     queryKey: ["wf-run", runId],
@@ -86,6 +109,18 @@ export default function RunDetailPage({ runId }: { runId: number }) {
         (a as unknown as { runId: number }).runId === runId ||
         (a as unknown as { run_id: number }).run_id === runId
       );
+    },
+    enabled: run?.status === "awaiting_approval",
+    refetchInterval: run?.status === "awaiting_approval" ? 5000 : false,
+  });
+
+  const { data: pendingHandoffs = [] } = useQuery<PendingScriptHandoff[]>({
+    queryKey: ["wf-run-script-handoffs", runId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/pending-script-handoffs`);
+      if (!res.ok) return [];
+      const all: PendingScriptHandoff[] = await res.json();
+      return all.filter((h) => h.runId === runId);
     },
     enabled: run?.status === "awaiting_approval",
     refetchInterval: run?.status === "awaiting_approval" ? 5000 : false,
@@ -131,6 +166,45 @@ export default function RunDetailPage({ runId }: { runId: number }) {
       setShowRejectModal(false);
       setRejectNote("");
       setPendingDecisionId(null);
+    },
+  });
+
+  const completeHandoffMut = useMutation({
+    mutationFn: async ({ handoffId, scriptId, packageId }: { handoffId: number; scriptId?: string; packageId?: string }) => {
+      const res = await fetchWithAuth(`/api/admin/workflows/pending-script-handoffs/${handoffId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scriptId, packageId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? "Failed to complete script hand-off");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wf-run", runId] });
+      qc.invalidateQueries({ queryKey: ["wf-run-script-handoffs", runId] });
+      setGsIdValue("");
+    },
+  });
+
+  const cancelHandoffMut = useMutation({
+    mutationFn: async ({ handoffId, note }: { handoffId: number; note?: string }) => {
+      const res = await fetchWithAuth(`/api/admin/workflows/pending-script-handoffs/${handoffId}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note }),
+      });
+      if (!res.ok) throw new Error("Failed to cancel script hand-off");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wf-run", runId] });
+      qc.invalidateQueries({ queryKey: ["wf-run-script-handoffs", runId] });
+      setShowHandoffCancelModal(false);
+      setHandoffCancelNote("");
+      setPendingHandoffCancelId(null);
     },
   });
 
@@ -283,6 +357,88 @@ export default function RunDetailPage({ runId }: { runId: number }) {
         </div>
       )}
 
+      {/* Script Hand-off Banner (#3565) */}
+      {run.status === "awaiting_approval" && pendingHandoffs.length > 0 && (
+        <div className="flex-shrink-0 mx-6 mt-4 rounded-xl border border-sky-500/30 bg-sky-500/10 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sky-300 text-lg">⏸</span>
+            <div>
+              <p className="text-sm font-semibold text-sky-200">Script Generation Required</p>
+              <p className="text-xs text-sky-400/70">
+                This run is paused for a human hand-off — generate and tenant-verify the script yourself, save it
+                to the Script Library, then link it here to resume the run.
+              </p>
+            </div>
+          </div>
+          {pendingHandoffs.map(handoff => (
+            <div key={handoff.id} className="space-y-2.5 border-t border-sky-500/20 pt-2.5 first:border-t-0 first:pt-0">
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <span className="text-sky-300/70 font-mono">Gate: {handoff.nodeId.slice(0, 12)}…</span>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-sky-500/15 border-sky-500/30 text-sky-300">
+                  {handoff.sourceMode === "document" ? "📄 Document" : "⚙️ Service"}
+                </span>
+                <span className="text-foreground font-medium">{handoff.targetLabel ?? `${handoff.sourceMode} #${handoff.targetId}`}</span>
+                <span className="text-sky-400/60">· output: {handoff.outputMode}</span>
+              </div>
+              {handoff.customInstructions && (
+                <p className="text-xs text-sky-400/70 italic">"{handoff.customInstructions}"</p>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                <a
+                  href="/command/scripts"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 bg-accent hover:bg-border text-foreground text-xs font-medium rounded-lg transition-colors"
+                >
+                  Open Script Library ↗
+                </a>
+                <div className="flex rounded-lg overflow-hidden border border-border text-xs">
+                  <button
+                    onClick={() => setGsIdMode("script")}
+                    className={`px-2.5 py-1.5 font-medium transition-colors ${gsIdMode === "script" ? "bg-primary/80 text-white" : "bg-transparent text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Single Script
+                  </button>
+                  <button
+                    onClick={() => setGsIdMode("package")}
+                    className={`px-2.5 py-1.5 font-medium transition-colors ${gsIdMode === "package" ? "bg-primary/80 text-white" : "bg-transparent text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Package
+                  </button>
+                </div>
+                <input
+                  value={gsIdValue}
+                  onChange={(e) => setGsIdValue(e.target.value)}
+                  placeholder={gsIdMode === "script" ? "Saved script ID (uuid)" : "Saved package ID (uuid)"}
+                  className="flex-1 min-w-[220px] bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono text-foreground outline-none focus:border-sky-500/60 placeholder-muted-foreground/60"
+                />
+                <button
+                  onClick={() => completeHandoffMut.mutate(
+                    gsIdMode === "script"
+                      ? { handoffId: handoff.id, scriptId: gsIdValue.trim() }
+                      : { handoffId: handoff.id, packageId: gsIdValue.trim() },
+                  )}
+                  disabled={completeHandoffMut.isPending || gsIdValue.trim().length === 0}
+                  className="px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors"
+                >
+                  ✓ Complete Hand-off
+                </button>
+                <button
+                  onClick={() => { setPendingHandoffCancelId(handoff.id); setShowHandoffCancelModal(true); }}
+                  disabled={cancelHandoffMut.isPending}
+                  className="px-3 py-1.5 bg-red-600/80 hover:bg-red-600 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors"
+                >
+                  ✕ Cancel
+                </button>
+              </div>
+              {completeHandoffMut.isError && (
+                <p className="text-xs text-red-400">{(completeHandoffMut.error as Error).message}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Tab content — RunDetailContent handles its own tabs, polling, error banner */}
       <div className="flex-1 overflow-hidden">
         <RunDetailContent runId={runId} />
@@ -357,6 +513,40 @@ export default function RunDetailPage({ runId }: { runId: number }) {
                 className="px-4 py-2 bg-red-600/80 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
               >
                 {decideMut.isPending ? "Rejecting…" : "Reject Run"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Script Hand-off Cancel Modal (#3565) */}
+      {showHandoffCancelModal && pendingHandoffCancelId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md space-y-4">
+            <h2 className="text-base font-bold text-foreground">Cancel Script Hand-off</h2>
+            <p className="text-sm text-muted-foreground">
+              This will fail the workflow run. Optionally provide a reason.
+            </p>
+            <textarea
+              value={handoffCancelNote}
+              onChange={e => setHandoffCancelNote(e.target.value)}
+              placeholder="Reason for cancelling (optional)"
+              rows={3}
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-red-500/60 placeholder-muted-foreground/60 resize-none"
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowHandoffCancelModal(false); setHandoffCancelNote(""); setPendingHandoffCancelId(null); }}
+                className="px-4 py-2 bg-accent hover:bg-border text-foreground text-sm rounded-lg transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => cancelHandoffMut.mutate({ handoffId: pendingHandoffCancelId, note: handoffCancelNote || undefined })}
+                disabled={cancelHandoffMut.isPending}
+                className="px-4 py-2 bg-red-600/80 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                {cancelHandoffMut.isPending ? "Cancelling…" : "Cancel Hand-off"}
               </button>
             </div>
           </div>

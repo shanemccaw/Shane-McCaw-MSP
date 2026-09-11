@@ -315,19 +315,34 @@ Generates an AI consulting document or report. For `consolidated_sow` type, dele
 
 ### `generate_script`
 
-Generates a PowerShell runbook from a service description or an existing document using AI. The generated script is saved to the Script Library under the `Workflow Generated` category.
+**#3565 — no longer calls Anthropic directly.** Pauses the workflow run for a human
+hand-off and creates a `pending_script_handoffs` DB row. The run's status becomes
+`awaiting_approval` — same mechanism as `approval_gate` above. An admin (Shane)
+generates and tenant-verifies the PowerShell script himself (e.g. in Claude Code,
+against his real tenant), saves it to the Script Library via the existing manual
+`POST /api/admin/ps-scripts[/packages]` routes, then completes the hand-off via
+`POST /api/admin/workflows/pending-script-handoffs/:id/complete` (or the Script
+Hand-off banner on the run detail page), which calls `resumeWorkflowRun()` to
+continue execution.
+
+- **Completed** → `resumeWorkflowRun()` is called with `{ scriptId, packageId, title,
+  category: "workflow-generated" }` merged onto the run's payload — the same shape
+  this node used to produce inline, so downstream nodes reading
+  `{{node.scriptId}}` etc. are unaffected.
+- **Cancelled** → the run is marked `failed` with the cancellation note as the error
+  message.
 
 | Config Field | Type | Description |
 |---|---|---|
 | `sourceMode` | `"service"` \| `"document"` | What to base the script on |
 | `targetId` | string | Service ID or document ID (interpolated) |
-| `customInstructions` | string | Additional instructions for the AI (optional) |
-| `outputMode` | string | `"runbook"` or `"helper"` |
+| `customInstructions` | string | Additional instructions for whoever writes the script (optional) |
+| `outputMode` | `"auto"` \| `"single"` \| `"package"` | Hint for whether the finished result should be a single script or a multi-module package |
 | `label` | string | Display label |
 
-**Outputs:** `{ scriptId, packageId, title }`.
+**Outputs:** `{ scriptId, packageId, title }` (only populated once the hand-off is completed and the run resumes).
 
-**Dry-run:** Returns synthetic output without saving.
+**Dry-run:** Returns synthetic output without pausing or creating a hand-off row.
 
 ---
 

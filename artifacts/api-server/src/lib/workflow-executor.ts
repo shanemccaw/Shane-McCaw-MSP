@@ -24,6 +24,7 @@ import {
   wfTriggersTable,
   wfTriggerEventsTable,
   pendingApprovalsTable,
+  pendingScriptHandoffsTable,
   breakGlassPendingSecretsTable,
   baselineActionTemplatesTable,
   baselineActionTemplateAuditLogTable,
@@ -70,7 +71,6 @@ import {
 
 import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, resolveScriptById, findActiveJobForScript } from "./azure-automation";
 import { getSecretValue } from "./azure-keyvault";
-import { generateScriptFromService, generateScriptFromDocument } from "./ps-script-gen.js";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
 import { createNotification, createNotificationForAllAdmins } from "./notification-center";
@@ -5902,7 +5902,25 @@ async function executeNode(
 
       // ── Generate Script ───────────────────────────────────────────────────
 
+      // #3565 — this node no longer calls Anthropic directly. Per Shane's decision
+      // on #3561, it pauses the run — same pauseForApproval / wf_runs.status =
+      // "awaiting_approval" mechanism approval_gate / break_glass_verification_gate
+      // already use (see resumeWorkflowRun() below) — and creates a
+      // pending_script_handoffs row so Shane can generate + tenant-verify the
+      // script himself (in Claude Code, against his real tenant) before it's
+      // considered done. Resume happens once he saves the finished script/package
+      // to the Script Library (existing POST /admin/ps-scripts[/packages] routes)
+      // and completes the hand-off via
+      // POST /admin/workflows/pending-script-handoffs/:id/complete, which builds
+      // the exact same { scriptId, packageId, title, category } payload shape this
+      // node used to produce inline — so anything downstream reading
+      // {{generate_script_node.scriptId}} etc. is unaffected by the pause.
       case "generate_script": {
+        // NOTE: dryRun never reaches here — the `dryRun && !STRUCTURAL_TYPES.has(...)`
+        // guard above intercepts it and calls makeDryRunOutput() instead, which has
+        // its own generate_script stub. (approval_gate/break_glass_verification_gate
+        // have the same dead `if (dryRun)` shape below for the same reason — #3541-
+        // adjacent, not re-litigated here; filed separately.)
         const gsSourceMode = (node.data.sourceMode as string | undefined) ?? "service";
         const gsTargetRaw  = interp(node.data.targetId as string | undefined, payload) ?? "";
         const gsCustom     = interp(node.data.customInstructions as string | undefined, payload) ?? "";
@@ -5915,16 +5933,73 @@ async function executeNode(
           break;
         }
 
+        let gsTargetLabel: string | null = null;
         try {
-          const gsResult = gsSourceMode === "service"
-            ? await generateScriptFromService(gsTargetId, { customInstructions: gsCustom || undefined, outputMode: gsOutputMode })
-            : await generateScriptFromDocument(gsTargetId, { customInstructions: gsCustom || undefined, outputMode: gsOutputMode });
-          output = { ...gsResult, category: "workflow-generated" };
-        } catch (gsErr) {
-          nodeError = true;
-          output = { error: String(gsErr instanceof Error ? gsErr.message : gsErr) };
+          if (gsSourceMode === "service") {
+            const [svc] = await db.select({ name: servicesTable.name }).from(servicesTable).where(eq(servicesTable.id, gsTargetId)).limit(1);
+            gsTargetLabel = svc?.name ?? null;
+          } else {
+            const [doc] = await db.select({ title: insightsGeneratedDocumentsTable.title }).from(insightsGeneratedDocumentsTable).where(eq(insightsGeneratedDocumentsTable.id, gsTargetId)).limit(1);
+            gsTargetLabel = doc?.title ?? null;
+          }
+        } catch (labelErr) {
+          log.warn({ labelErr, runId, nodeId: node.id }, "generate_script: failed to resolve target label (non-fatal)");
         }
-        break;
+
+        const [handoff] = await db.insert(pendingScriptHandoffsTable).values({
+          runId,
+          nodeId: node.id,
+          sourceMode: gsSourceMode as "service" | "document",
+          targetId: gsTargetId,
+          targetLabel: gsTargetLabel,
+          customInstructions: gsCustom || null,
+          outputMode: gsOutputMode,
+          status: "pending",
+          context: payload,
+        }).returning();
+
+        await db.update(wfRunsTable)
+          .set({ status: "awaiting_approval" })
+          .where(eq(wfRunsTable.id, runId));
+
+        const gsLabel = gsTargetLabel ? `"${gsTargetLabel}"` : `${gsSourceMode} #${gsTargetId}`;
+        const notifTitle = `Script generation required`;
+        const notifBody = `Run #${runId} paused at "Generate Script" — write and tenant-verify a PowerShell script for ${gsLabel}, then complete the hand-off.`;
+        const notifLink = `/admin-panel/workflows/runs/${runId}`;
+        try {
+          await createNotificationForAllAdmins({
+            title: notifTitle,
+            body: notifBody,
+            notifType: "general",
+            category: "approval",
+            linkPath: notifLink,
+          });
+        } catch (notifErr) {
+          log.warn({ notifErr, runId }, "generate_script: failed to insert notifications (non-fatal)");
+        }
+        void sendWebPushToAdmins({ title: notifTitle, body: notifBody, linkPath: notifLink });
+
+        output = { handoffId: handoff!.id, sourceMode: gsSourceMode, targetId: gsTargetId, targetLabel: gsTargetLabel, outputMode: gsOutputMode };
+        const gsDurationMs = Date.now() - startMs;
+        await db.insert(wfRunNodeOutputsTable).values({
+          runId,
+          nodeId: node.id,
+          input: redactSensitivePayloadKeys(payload),
+          output: redactForPersistence(output, payload),
+          durationMs: gsDurationMs,
+          status: "ok",
+        }).catch(() => { });
+        await db.insert(wfRunNodeLogsTable).values({
+          runId,
+          nodeId: node.id,
+          level: "info",
+          message: `generate_script (${node.id}): run paused for script hand-off #${handoff!.id} — ${gsLabel}`,
+        }).catch(() => { });
+
+        // Return sentinel immediately — skip the shared output/sample tail below,
+        // same as approval_gate / break_glass_verification_gate.
+        const nextPayload = { ...payload, ...output, nodes: { ...((payload.nodes as Record<string, unknown>) ?? {}), [node.id]: output }, steps: { ...((payload.nodes as Record<string, unknown>) ?? {}), [node.id]: output } };
+        return { output, nextPayload, cancelRun: false, nodeError: false, pauseForApproval: true };
       }
 
       // ── Content nodes ─────────────────────────────────────────────────────

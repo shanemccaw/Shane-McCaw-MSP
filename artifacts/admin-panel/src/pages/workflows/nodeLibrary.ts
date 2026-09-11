@@ -356,7 +356,7 @@ export const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: stri
   {
     name: "Scripts",
     nodes: [
-      { type: "generate_script",     label: "Generate Script",      description: "AI-generates a PowerShell script from a service or insights document and saves it to the Script Library under Workflow Generated", tags: ["script", "powershell", "ai", "generate", "library", "m365", "azure"] },
+      { type: "generate_script",     label: "Generate Script",      description: "Pauses the run for a human hand-off — an admin generates and tenant-verifies a PowerShell script from a service or insights document, then completes it into the Script Library under Workflow Generated", tags: ["script", "powershell", "generate", "library", "m365", "azure", "human-in-the-loop"] },
       { type: "check_script_output", label: "Check Script Output",  description: "Use Claude AI to evaluate PowerShell / runbook output and branch to Passed or On Failure", tags: ["script", "check", "evaluate", "ai", "branch", "condition", "powershell", "output"] },
     ],
   },

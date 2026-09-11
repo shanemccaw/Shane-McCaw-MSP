@@ -25,6 +25,9 @@
  * POST   /api/admin/workflows/runs/:id/cancel
  * POST   /api/admin/workflows/runs/:id/rerun
  * GET    /api/admin/workflows/runs/:id/nodes
+ * GET    /api/admin/workflows/pending-script-handoffs
+ * POST   /api/admin/workflows/pending-script-handoffs/:id/complete
+ * POST   /api/admin/workflows/pending-script-handoffs/:id/cancel
  * POST   /api/webhooks/workflow/:token              (webhook trigger)
  */
 
@@ -41,6 +44,9 @@ import {
   wfTriggersTable,
   wfTriggerEventsTable,
   pendingApprovalsTable,
+  pendingScriptHandoffsTable,
+  powershellScriptsTable,
+  scriptPackagesTable,
   type WfGraph,
 } from "@workspace/db";
 import { STATIC_NODE_SAMPLES, DYNAMIC_SHAPE_NODE_TYPES } from "../lib/workflow-node-default-samples";
@@ -1474,6 +1480,136 @@ router.post("/admin/workflows/pending-approvals/:id/decide", requireAdmin, async
   } catch (err) {
     req.log.error({ err }, "pending-approvals: decide failed");
     sendError(res, 500, "Failed to process decision");
+  }
+});
+
+// ── Pending Script Hand-offs (#3565) ───────────────────────────────────────────
+// generate_script no longer calls Anthropic directly — it pauses the run (same
+// pauseForApproval / wf_runs.status="awaiting_approval" mechanism as approval_gate
+// above) and creates one of these rows. Shane generates + tenant-verifies the
+// script himself, saves it to the Script Library via the existing manual
+// POST /admin/ps-scripts[/packages] routes, then completes the hand-off here,
+// which resumes the run via the same resumeWorkflowRun() approval_gate uses.
+
+router.get("/admin/workflows/pending-script-handoffs", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({
+        handoff: pendingScriptHandoffsTable,
+        defName: wfDefinitionsTable.name,
+      })
+      .from(pendingScriptHandoffsTable)
+      .leftJoin(wfRunsTable, eq(pendingScriptHandoffsTable.runId, wfRunsTable.id))
+      .leftJoin(wfDefinitionsTable, eq(wfRunsTable.definitionId, wfDefinitionsTable.id))
+      .where(eq(pendingScriptHandoffsTable.status, "pending"))
+      .orderBy(desc(pendingScriptHandoffsTable.createdAt));
+
+    res.json(rows.map(r => ({ ...r.handoff, definitionName: r.defName })));
+  } catch (err) {
+    req.log.error({ err }, "pending-script-handoffs: list failed");
+    sendError(res, 500, "Failed to list pending script hand-offs");
+  }
+});
+
+router.post("/admin/workflows/pending-script-handoffs/:id/complete", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  if (isNaN(id)) return sendError(res, 400, "Invalid id");
+
+  const body = z.object({
+    scriptId: z.string().uuid().optional(),
+    packageId: z.string().uuid().optional(),
+  }).refine(
+    (b) => (b.scriptId ? 1 : 0) + (b.packageId ? 1 : 0) === 1,
+    { message: "Provide exactly one of scriptId or packageId — the script/package you just saved to the Script Library" },
+  ).safeParse(req.body);
+  if (!body.success) return sendError(res, 400, body.error.message);
+
+  try {
+    const [handoff] = await db
+      .select()
+      .from(pendingScriptHandoffsTable)
+      .where(and(eq(pendingScriptHandoffsTable.id, id), eq(pendingScriptHandoffsTable.status, "pending")))
+      .limit(1);
+    if (!handoff) return sendError(res, 404, "Pending script hand-off not found or already resolved");
+
+    let resultTitle: string;
+    if (body.data.scriptId) {
+      const [script] = await db.select({ title: powershellScriptsTable.title }).from(powershellScriptsTable).where(eq(powershellScriptsTable.id, body.data.scriptId)).limit(1);
+      if (!script) return sendError(res, 404, `Script ${body.data.scriptId} not found — save it to the Script Library first`);
+      resultTitle = script.title;
+    } else {
+      const [pkg] = await db.select({ title: scriptPackagesTable.title }).from(scriptPackagesTable).where(eq(scriptPackagesTable.id, body.data.packageId!)).limit(1);
+      if (!pkg) return sendError(res, 404, `Package ${body.data.packageId} not found — save it to the Script Library first`);
+      resultTitle = pkg.title;
+    }
+
+    await db.update(pendingScriptHandoffsTable).set({
+      status: "completed",
+      scriptId: body.data.scriptId ?? null,
+      packageId: body.data.packageId ?? null,
+      resultTitle,
+      completedBy: "admin",
+      completedAt: new Date(),
+    }).where(eq(pendingScriptHandoffsTable.id, id));
+
+    // Same shape { scriptId, packageId, title, category } the node used to
+    // produce inline from generateScriptFromService/Document — downstream nodes
+    // reading {{node.scriptId}} etc. see no difference from before the pause.
+    const resumePayload = {
+      ...((handoff.context as Record<string, unknown>) ?? {}),
+      scriptId: body.data.scriptId ?? null,
+      packageId: body.data.packageId ?? null,
+      title: resultTitle,
+      category: "workflow-generated",
+    };
+
+    setImmediate(() => {
+      resumeWorkflowRun(handoff.runId, handoff.nodeId, resumePayload, `Script hand-off completed: ${resultTitle}`).catch(err => {
+        log.warn({ err, runId: handoff.runId }, "pending-script-handoffs: resume failed (non-fatal)");
+      });
+    });
+
+    req.log.info({ handoffId: id, runId: handoff.runId }, "pending-script-handoffs: completed, resuming run");
+    res.json({ ok: true, runId: handoff.runId, scriptId: body.data.scriptId ?? null, packageId: body.data.packageId ?? null, title: resultTitle });
+  } catch (err) {
+    req.log.error({ err }, "pending-script-handoffs: complete failed");
+    sendError(res, 500, "Failed to complete script hand-off");
+  }
+});
+
+router.post("/admin/workflows/pending-script-handoffs/:id/cancel", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  if (isNaN(id)) return sendError(res, 400, "Invalid id");
+
+  const body = z.object({ note: z.string().optional() }).safeParse(req.body);
+  if (!body.success) return sendError(res, 400, body.error.message);
+
+  try {
+    const [handoff] = await db
+      .select()
+      .from(pendingScriptHandoffsTable)
+      .where(and(eq(pendingScriptHandoffsTable.id, id), eq(pendingScriptHandoffsTable.status, "pending")))
+      .limit(1);
+    if (!handoff) return sendError(res, 404, "Pending script hand-off not found or already resolved");
+
+    await db.update(pendingScriptHandoffsTable).set({
+      status: "cancelled",
+      decisionNote: body.data.note ?? null,
+      completedBy: "admin",
+      completedAt: new Date(),
+    }).where(eq(pendingScriptHandoffsTable.id, id));
+
+    await db.update(wfRunsTable).set({
+      status: "failed",
+      finishedAt: new Date(),
+      errorMessage: `Script generation hand-off cancelled: ${body.data.note ?? "(no reason given)"}`,
+    }).where(eq(wfRunsTable.id, handoff.runId));
+
+    req.log.info({ handoffId: id, runId: handoff.runId }, "pending-script-handoffs: cancelled, run marked failed");
+    res.json({ ok: true, runId: handoff.runId });
+  } catch (err) {
+    req.log.error({ err }, "pending-script-handoffs: cancel failed");
+    sendError(res, 500, "Failed to cancel script hand-off");
   }
 });
 

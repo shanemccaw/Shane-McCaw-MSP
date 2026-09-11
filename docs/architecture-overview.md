@@ -160,11 +160,12 @@ A workflow is a **directed acyclic graph (DAG)** of `WfNode` objects connected b
 |----------|-----------|
 | **Structural** | `start`, `end`, `condition`, `switch_case`, `loop` |
 | **Intelligence engines** | `calculate_priority`, `calculate_health`, `calculate_drift`, `calculate_forecast`, `calculate_crm`, `calculate_msp` |
-| **Document / AI** | `generate_document`, `generate_script`, `analyze_news`, `generate_image` |
+| **Document / AI** | `generate_document`, `analyze_news`, `generate_image` |
 | **Communication** | `send_email`, `send_push` |
 | **Azure** | `azure_automation`, `execute_runbook` |
 | **Platform data** | `create_project`, `create_opportunity`, `add_kanban_card`, `qualify_lead`, `resolve_fulfillment`, `create_kanban_task` |
 | **Flow control** | `run_workflow` (child workflow), `wait`, `check_script_output` |
+| **Human hand-off / gates** | `approval_gate`, `break_glass_verification_gate`, `generate_script` (#3565 — no longer AI-dependent, pauses for a human to generate + tenant-verify the script) |
 | **Data** | `sql_query`, `find_object`, `collect_input`, `http_request` |
 | **Social** | `post_linkedin`, `post_twitter`, `post_facebook` |
 | **MSP billing** | `advance_dunning`, `meter_tenant_overage` |

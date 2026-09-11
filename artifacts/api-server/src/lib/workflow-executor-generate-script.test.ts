@@ -1,15 +1,24 @@
 /**
  * Executor-level tests for the `generate_script` workflow node.
  *
- * These tests call executeWorkflowRun() with a minimal single-node graph so that
- * the full executor try/catch path is exercised — not just generateScriptFromService()
- * in isolation.  Assertions target observable side-effects (wfRunsTable updates)
- * rather than internal state so the tests remain valid as the executor evolves.
+ * #3565 — this node no longer calls Anthropic directly. It now pauses the run
+ * for a human hand-off (same pauseForApproval / wf_runs.status =
+ * "awaiting_approval" mechanism approval_gate / break_glass_verification_gate
+ * already use) instead of generating the script itself. These tests call
+ * executeWorkflowRun() with a minimal single-node graph so that the full
+ * executor try/catch path is exercised — not just the case body in isolation.
+ * Assertions target observable side-effects (wfRunsTable updates,
+ * pending_script_handoffs inserts) rather than internal state so the tests
+ * remain valid as the executor evolves.
  *
- * Two scenarios:
- *   1. AI returns prose (no JSON envelope) → executor must mark run "failed" with
- *      an errorMessage that surfaces the problem; never "completed" silently.
- *   2. AI returns valid PowerShell → executor must mark run "completed".
+ * Scenarios:
+ *   1. Valid target (service) → run pauses ("awaiting_approval"), a
+ *      pending_script_handoffs row is created, run is never silently
+ *      "completed".
+ *   2. Piped {{documentId}} target ("From Document" mode) → the piped
+ *      expression still resolves before the pause.
+ *   3. Missing/invalid target → the run still fails immediately (no AI call
+ *      needed to know the config is broken).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -17,27 +26,10 @@ import type { WfGraph } from "@workspace/db";
 
 // ── Shared state (hoisted so mock factories can reference it) ─────────────────
 
-const psState = vi.hoisted(() => ({
-  shouldThrow: true as boolean,
-  throwMessage: "generate_script: AI did not return a valid JSON envelope — try again",
-  result: { scriptId: "exec-test-script-id", packageId: null as null, title: "Exec Test Script" },
-}));
-
 const dbState = vi.hoisted(() => ({
   selectQueue: [] as unknown[][],
   capturedUpdates: [] as Record<string, unknown>[],
-}));
-
-// ── Mock: ps-script-gen.js ────────────────────────────────────────────────────
-vi.mock("./ps-script-gen.js", () => ({
-  generateScriptFromService: vi.fn(async () => {
-    if (psState.shouldThrow) throw new Error(psState.throwMessage);
-    return psState.result;
-  }),
-  generateScriptFromDocument: vi.fn(async () => {
-    if (psState.shouldThrow) throw new Error(psState.throwMessage);
-    return psState.result;
-  }),
+  capturedInserts: [] as Record<string, unknown>[],
 }));
 
 // ── Mock: drizzle-orm (prevent eq/and/inArray throwing on empty table objects) ─
@@ -88,11 +80,17 @@ vi.mock("@workspace/db", () => {
       },
     }),
     insert: (_table: unknown) => ({
-      values: (_vals: unknown) => ({
-        returning: async () => [],
-        catch: (_fn: unknown) => Promise.resolve(),
-        onConflictDoNothing: () => ({ returning: async () => [] }),
-      }),
+      values: (vals: unknown) => {
+        dbState.capturedInserts.push(vals as Record<string, unknown>);
+        return {
+          // Echo the inserted row back with a fake id — mirrors what a real
+          // `.returning()` gives the executor (it reads `handoff.id` etc.
+          // immediately after inserting).
+          returning: async () => [{ id: 555, ...(vals as Record<string, unknown>) }],
+          catch: (_fn: unknown) => Promise.resolve(),
+          onConflictDoNothing: () => ({ returning: async () => [] }),
+        };
+      },
       onConflictDoNothing: () => ({ returning: async () => [] }),
       catch: (_fn: unknown) => Promise.resolve(),
     }),
@@ -112,6 +110,7 @@ vi.mock("@workspace/db", () => {
     wfRunNodeOutputsTable: noop,
     wfTriggersTable: noop,
     pendingApprovalsTable: noop,
+    pendingScriptHandoffsTable: noop,
     leadsTable: noop,
     usersTable: noop,
     projectsTable: noop,
@@ -161,6 +160,15 @@ vi.mock("./news-fetcher.js", () => ({
 
 vi.mock("./web-push", () => ({ sendWebPushToAdmins: async () => {} }));
 vi.mock("./push", () => ({ sendPushNotifications: async () => {} }));
+
+// generate_script's pause path notifies admins via notification-center, not a
+// direct DB/SSE call — stub the leaf module rather than its (unmocked) own
+// transitive imports (graphEmail, event-bus, sse-channels), same reasoning as
+// ./web-push and ./push above.
+vi.mock("./notification-center", () => ({
+  createNotification: async () => {},
+  createNotificationForAllAdmins: async () => {},
+}));
 
 vi.mock("./sse-channels", () => ({
   broadcastAdminWorkflowEvent: () => {},
@@ -260,104 +268,100 @@ const GENERATE_SCRIPT_PIPED_DOC_GRAPH: WfGraph = {
   edges: [],
 };
 
-// ── Suite 1: Prose-only AI response → executor must fail the run ──────────────
-//
-// When generateScriptFromService() throws (no valid JSON/PS in AI response),
-// the executor's catch block must set nodeError = true, which bubbles up to
-// db.update(wfRunsTable, { status: "failed", errorMessage: "..." }).
-// The run must NEVER be silently completed.
+const MISSING_TARGET_GRAPH: WfGraph = {
+  nodes: [
+    {
+      id: "gs-node-1",
+      type: "generate_script",
+      data: { sourceMode: "service", outputMode: "auto" },
+      position: { x: 0, y: 0 },
+    },
+  ],
+  edges: [],
+};
 
-describe("executor: generate_script node — prose-only AI response causes run failure", () => {
+// ── Suite 1: valid service target → run pauses for the human hand-off ─────────
+
+describe("executor: generate_script node — service source pauses the run for a script hand-off", () => {
   beforeEach(async () => {
-    psState.shouldThrow = true;
     dbState.capturedUpdates = [];
-    // Queue: run row, version row, cancellation check
-    dbState.selectQueue = [[FAKE_RUN], [FAKE_VERSION], [{ status: "running" }]];
+    dbState.capturedInserts = [];
+    // Queue: run row, version row, per-node cancellation check, target-label select.
+    dbState.selectQueue = [[FAKE_RUN], [FAKE_VERSION], [{ status: "running" }], [{ name: "Test Service" }]];
     await executeWorkflowRun(1, { inlineGraph: GENERATE_SCRIPT_GRAPH });
   });
 
-  it("marks the run as failed in wfRunsTable", () => {
-    const failedUpdate = dbState.capturedUpdates.find(
-      (u) => (u as Record<string, unknown>).status === "failed",
-    );
-    expect(failedUpdate).toBeDefined();
+  it("marks the run as awaiting_approval, not completed or failed", () => {
+    const awaitingUpdate = dbState.capturedUpdates.find((u) => u.status === "awaiting_approval");
+    expect(awaitingUpdate).toBeDefined();
+    expect(dbState.capturedUpdates.find((u) => u.status === "completed")).toBeUndefined();
+    expect(dbState.capturedUpdates.find((u) => u.status === "failed")).toBeUndefined();
   });
 
-  it("errorMessage surfaces the generate_script error prefix", () => {
-    const failedUpdate = dbState.capturedUpdates.find(
-      (u) => (u as Record<string, unknown>).status === "failed",
-    );
-    expect(typeof (failedUpdate as Record<string, unknown>)?.errorMessage).toBe("string");
-    expect((failedUpdate as Record<string, unknown>).errorMessage).toContain("generate_script");
+  it("creates a pending_script_handoffs row with the resolved target", () => {
+    const handoffInsert = dbState.capturedInserts.find((i) => i.sourceMode === "service");
+    expect(handoffInsert).toBeDefined();
+    expect(handoffInsert?.targetId).toBe(42);
+    expect(handoffInsert?.targetLabel).toBe("Test Service");
+    expect(handoffInsert?.status).toBe("pending");
   });
 
-  it("does NOT mark the run as completed — no silent success", () => {
-    const completedUpdate = dbState.capturedUpdates.find(
-      (u) => (u as Record<string, unknown>).status === "completed",
-    );
-    expect(completedUpdate).toBeUndefined();
-  });
-});
-
-// ── Suite 2: Valid PowerShell AI response → executor must complete the run ────
-//
-// When generateScriptFromService() returns a valid { scriptId, packageId, title },
-// the executor must reach the completion update — no failed status.
-
-describe("executor: generate_script node — valid PowerShell AI response completes the run", () => {
-  beforeEach(async () => {
-    psState.shouldThrow = false;
-    dbState.capturedUpdates = [];
-    dbState.selectQueue = [[FAKE_RUN], [FAKE_VERSION], [{ status: "running" }]];
-    await executeWorkflowRun(1, { inlineGraph: GENERATE_SCRIPT_GRAPH });
-  });
-
-  it("marks the run as completed in wfRunsTable", () => {
-    const completedUpdate = dbState.capturedUpdates.find(
-      (u) => (u as Record<string, unknown>).status === "completed",
-    );
-    expect(completedUpdate).toBeDefined();
-  });
-
-  it("does NOT mark the run as failed when PS generation succeeds", () => {
-    const failedUpdate = dbState.capturedUpdates.find(
-      (u) => (u as Record<string, unknown>).status === "failed",
-    );
-    expect(failedUpdate).toBeUndefined();
+  it("never calls generateScriptFromService/Document — no AI-generated scriptId in the run's own output", () => {
+    // The node's own paused output carries handoffId, not a scriptId/packageId —
+    // those only appear once Shane completes the hand-off and the run resumes.
+    const handoffInsert = dbState.capturedInserts.find((i) => i.sourceMode === "service");
+    expect(handoffInsert).not.toHaveProperty("scriptId");
   });
 });
 
-// ── Suite 3: Piped {{documentId}} targetId ("From Document" mode) ─────────────
-//
-// The builder now lets the user type a piped expression (e.g. {{documentId}})
-// into targetId when sourceMode === "document" instead of picking a document
-// from the static list. The executor already runs interp() on targetId before
-// parsing it as a number — this confirms that path resolves correctly against
-// the run's payload and reaches generateScriptFromDocument() with the resolved
-// numeric ID, completing the run successfully.
+// ── Suite 2: piped {{documentId}} targetId ("From Document" mode) ─────────────
 
 describe("executor: generate_script node — piped {{documentId}} targetId (From Document mode)", () => {
   beforeEach(async () => {
-    psState.shouldThrow = false;
     dbState.capturedUpdates = [];
+    dbState.capturedInserts = [];
     // Payload simulates an upstream generate_document/find_object node having
     // already populated {{documentId}} before this node runs.
     const runWithDocumentId = { ...FAKE_RUN, payload: { documentId: 77 } };
-    dbState.selectQueue = [[runWithDocumentId], [FAKE_VERSION], [{ status: "running" }]];
+    dbState.selectQueue = [[runWithDocumentId], [FAKE_VERSION], [{ status: "running" }], [{ title: "Test Document" }]];
     await executeWorkflowRun(1, { inlineGraph: GENERATE_SCRIPT_PIPED_DOC_GRAPH });
   });
 
-  it("resolves the piped documentId and completes the run", () => {
-    const completedUpdate = dbState.capturedUpdates.find(
-      (u) => (u as Record<string, unknown>).status === "completed",
-    );
-    expect(completedUpdate).toBeDefined();
+  it("resolves the piped documentId and pauses for the hand-off", () => {
+    const handoffInsert = dbState.capturedInserts.find((i) => i.sourceMode === "document");
+    expect(handoffInsert).toBeDefined();
+    expect(handoffInsert?.targetId).toBe(77);
+    expect(handoffInsert?.targetLabel).toBe("Test Document");
   });
 
   it("does NOT fail the run due to an unresolved targetId", () => {
-    const failedUpdate = dbState.capturedUpdates.find(
-      (u) => (u as Record<string, unknown>).status === "failed",
-    );
+    const failedUpdate = dbState.capturedUpdates.find((u) => u.status === "failed");
     expect(failedUpdate).toBeUndefined();
+  });
+});
+
+// ── Suite 3: missing target → still fails immediately, no hand-off created ────
+
+describe("executor: generate_script node — missing targetId fails the run without pausing", () => {
+  beforeEach(async () => {
+    dbState.capturedUpdates = [];
+    dbState.capturedInserts = [];
+    dbState.selectQueue = [[FAKE_RUN], [FAKE_VERSION], [{ status: "running" }]];
+    await executeWorkflowRun(1, { inlineGraph: MISSING_TARGET_GRAPH });
+  });
+
+  it("marks the run as failed", () => {
+    const failedUpdate = dbState.capturedUpdates.find((u) => u.status === "failed");
+    expect(failedUpdate).toBeDefined();
+    expect(typeof failedUpdate?.errorMessage).toBe("string");
+    expect(failedUpdate?.errorMessage).toContain("generate_script");
+  });
+
+  it("does not create a pending_script_handoffs row", () => {
+    expect(dbState.capturedInserts.find((i) => i.sourceMode != null)).toBeUndefined();
+  });
+
+  it("does not pause the run (no awaiting_approval update)", () => {
+    expect(dbState.capturedUpdates.find((u) => u.status === "awaiting_approval")).toBeUndefined();
   });
 });

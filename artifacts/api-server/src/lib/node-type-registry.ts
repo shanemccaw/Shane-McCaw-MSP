@@ -933,9 +933,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
   },
   {
     nodeType: "generate_script",
-    isAIDependent: true,
-    aiCostOwner: "msp",
-    description: "AI-generated PowerShell script from a service or document — billed to MSP",
+    // #3565 — no longer calls Anthropic. Pauses the run for a human hand-off
+    // (Shane generates + tenant-verifies the script himself) instead of making
+    // an AI call, so it must never gate on an MSP's AI balance.
+    isAIDependent: false,
+    description: "Pauses the run for a human hand-off — an admin generates and tenant-verifies a PowerShell script, then completes it into the Script Library",
   },
   {
     nodeType: "ask_ai",
