@@ -66,9 +66,12 @@ namespace BuildConsole.Services
     /// </summary>
     public static class HomeEtaProjectionService
     {
-        /// <summary>Build the full panel payload. <paramref name="forceRefresh"/> bypasses the
-        /// #2711 5-minute issue-fetch cache (the panel's own manual refresh); the default reuses
-        /// the cache so a tab open doesn't hit GitHub every time.</summary>
+        /// <summary>Build the full panel payload. Git #3577 — <paramref name="forceRefresh"/> no
+        /// longer has anything to bypass: every read behind this (milestone resolution, the
+        /// milestone/epic series, the open-epics list) is now a direct local
+        /// <c>bt_issue_mirror</c>/<c>bt_milestone_mirror</c> read with no in-memory TTL cache and no
+        /// live GitHub fallback, ever (Shane's final decision, 2026-09-11) — kept only so the panel's
+        /// existing manual-refresh call site doesn't need to change.</summary>
         public static async Task<HomeEtaProjection> ComputeAsync(bool forceRefresh = false)
         {
             var now = DateTime.UtcNow;
@@ -79,34 +82,34 @@ namespace BuildConsole.Services
                 return new HomeEtaProjection
                 {
                     Available = false,
-                    UnavailableReason = "No active GitHub milestone could be resolved (no PAT, GitHub unreachable, or no open milestone has issues).",
+                    UnavailableReason = "No active milestone could be resolved from the local mirror (bt_milestone_mirror has no usable data yet).",
                     GeneratedUtc = now,
                 };
             }
 
-            // Milestone-level projected release date, over the milestone's own real daily series
-            // (Git #3512 — already local-mirror-backed via bt_issue_mirror in the common case, no
-            // live GitHub call). Git #3567 — the milestone's own Total/Closed/Open counts are NOT
+            // Milestone-level projected release date, over the milestone's own real daily series —
+            // Git #3577: read ONLY from bt_issue_mirror, gated by a real completeness check, never a
+            // live GitHub call. Git #3567 — the milestone's own Total/Closed/Open counts are NOT
             // taken from that series: bt_issue_mirror only carries the issues an open-issues walk +
             // incremental mark-closed + partial closed-backfill have captured (a real but incomplete
-            // subset — confirmed 986 total mirrored issues repo-wide against 1943 real issues on
-            // milestone #5 alone), so a series built over it undercounts badly. `active` above
-            // already carries the REAL per-milestone counts straight off GitHub's own milestone
-            // object (bt_milestone_mirror when fresh, a live milestones call otherwise — see
+            // subset), so a series built over it undercounts badly. `active` above already carries
+            // the REAL per-milestone counts straight off bt_milestone_mirror (see
             // ResolveActiveMilestoneAsync) — use those for the row's counts and as the ETA
             // projection's real "remaining" input, while still fitting the pace/date over the
-            // series' real daily cumulative-closed curve.
-            var msSeries = await GitHubIssueTimeSeriesService.GetMilestoneSeriesAsync(active.Number, active.Title, forceRefresh);
+            // series' real daily cumulative-closed curve (now either genuinely complete, or the
+            // series reports HasEnoughData = false and BuildRow's existing fail-closed path below
+            // honors it — the exact same fix this readout inherits per #3577's scope amendment).
+            var msSeries = await GitHubIssueTimeSeriesService.GetMilestoneSeriesAsync(active.Number, active.Title);
             var milestoneRow = BuildRow(active.Number, active.Title, msSeries, now, "milestone",
                 totalOverride: active.TotalIssues, closedOverride: active.ClosedIssues, openOverride: active.OpenIssues);
 
-            // One projected completion date per OPEN Epic in the active milestone. The fetch is
-            // already cached from the milestone call above (same 5-minute window) — no force here.
-            var epics = await GitHubIssueTimeSeriesService.GetOpenEpicsInMilestoneAsync(active.Number, false);
+            // One projected completion date per OPEN Epic in the active milestone — same local-only,
+            // completeness-gated reads (Git #3577).
+            var epics = await GitHubIssueTimeSeriesService.GetOpenEpicsInMilestoneAsync(active.Number);
             var epicRows = new List<EtaProjectionRow>(epics.Count);
             foreach (var epic in epics)
             {
-                var epicSeries = await GitHubIssueTimeSeriesService.GetEpicSeriesAsync(epic.Number, false);
+                var epicSeries = await GitHubIssueTimeSeriesService.GetEpicSeriesAsync(epic.Number);
                 epicRows.Add(BuildRow(epic.Number, epic.Title, epicSeries, now, "epic"));
             }
 

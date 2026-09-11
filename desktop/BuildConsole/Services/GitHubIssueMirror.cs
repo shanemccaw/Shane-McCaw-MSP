@@ -624,11 +624,13 @@ namespace BuildConsole.Services
         }
 
         /// <summary>Git #3359 — when the closed-issue backfill last completed, or null if it never
-        /// has. The Home dashboard time series (<see cref="GitHubIssueTimeSeriesService.GetAllIssuesAsync"/>)
-        /// reads this (via <see cref="HasClosedBackfillAsync"/>) to decide whether the mirror's CLOSED
-        /// set is genuinely present (serve mirror) or not yet (fall back to a live ALL walk) — the same
-        /// fail-closed discipline as <see cref="HasUsableDataAsync"/>. Null / any error reads as
-        /// "not backfilled yet".</summary>
+        /// has. <see cref="GitHubIssueTimeSeriesService.GetAllIssuesAsync"/> (its OWN general-purpose
+        /// callers — Focus Mode, the Git Board tree, editor-panes stats; NOT the Home dashboard
+        /// burndown/rate/ETA cards, which as of Git #3577 read the mirror directly and never fall
+        /// back live) reads this (via <see cref="HasClosedBackfillAsync"/>) to decide whether the
+        /// mirror's CLOSED set is genuinely present (serve mirror) or not yet (fall back to a live
+        /// ALL walk) — the same fail-closed discipline as <see cref="HasUsableDataAsync"/>. Null /
+        /// any error reads as "not backfilled yet".</summary>
         public static async Task<DateTime?> GetClosedBackfillAtAsync()
         {
             try

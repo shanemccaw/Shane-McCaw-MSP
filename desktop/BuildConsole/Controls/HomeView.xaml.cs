@@ -190,9 +190,9 @@ namespace BuildConsole.Controls
             // stale after a migration is executed.
             RefreshPendingMigrations();
 
-            // Git #2712 / #2713 — same cadence: the underlying #2711 series is cache-backed
-            // (5-min TTL) so these passive calls are cheap; they just re-render from cache
-            // except on the rare tick the TTL actually expires.
+            // Git #2712 / #2713 — same cadence: Git #3577 replaced the underlying #2711 series'
+            // 5-min TTL GitHub cache with a direct local bt_issue_mirror read (no live call, ever,
+            // for this path) — still cheap on every passive tick since it's a small local DB read.
             RefreshBurndown();
             RefreshOpenCloseRateChart();
             RefreshEpicBurndownCard();
@@ -465,10 +465,11 @@ namespace BuildConsole.Controls
         // ── Projected Completion (#2714) ────────────────────────────────────
         //
         // One honest projected completion date per open Epic in the active Milestone, plus one
-        // Milestone-level projected release date. Every date is fit — from real GitHub
-        // closed-timestamp history (#2711) — with the SAME IssueEtaProjection discipline the
-        // Focus bar uses; a scope with too little real history shows an honest reason, never a
-        // fabricated date. Loaded on Home tab open (cache-reuse) and on the manual ⟳ (force).
+        // Milestone-level projected release date. Every date is fit — from real closed-timestamp
+        // history read ONLY from the local bt_issue_mirror, never live GitHub (Git #3577) — with
+        // the SAME IssueEtaProjection discipline the Focus bar uses; a scope with too little real
+        // (or not-yet-confirmed-complete) local history shows an honest reason, never a fabricated
+        // date. Loaded on Home tab open and on the manual ⟳.
         private bool _etaLoadInFlight;
 
         public async System.Threading.Tasks.Task RefreshEtaProjectionsAsync(bool force = false)
@@ -1170,8 +1171,9 @@ namespace BuildConsole.Controls
         /// <summary>
         /// Real burndown data for the Home dashboard (Git #2712) — the active Milestone's
         /// real daily open-issue count from <see cref="GitHubIssueTimeSeriesService"/> (#2711).
-        /// <paramref name="forceRefresh"/> bypasses that service's 5-minute cache (the manual
-        /// ⟳ button); the passive 10s rollup tick always reads the cache.
+        /// Git #3577 — that service now reads ONLY the local mirror (no live GitHub call, no
+        /// in-memory TTL cache to bypass); <paramref name="forceRefresh"/> is kept only so the
+        /// manual ⟳ button's existing call site doesn't need to change.
         /// </summary>
         public async void RefreshBurndown(bool forceRefresh = false)
         {
@@ -1179,7 +1181,7 @@ namespace BuildConsole.Controls
             _burndownFetchInFlight = true;
             try
             {
-                var series = await GitHubIssueTimeSeriesService.GetActiveMilestoneSeriesAsync(forceRefresh);
+                var series = await GitHubIssueTimeSeriesService.GetActiveMilestoneSeriesAsync();
                 _lastBurndownSeries = series;
                 RenderBurndown(series);
             }
@@ -1350,8 +1352,8 @@ namespace BuildConsole.Controls
         /// selectable here to see their own real burndown) and picks a real default selection: the
         /// Epic with the most real open work right now (a judgement call — no "last active in Focus
         /// Mode" state is persisted anywhere to read instead). Subsequent calls (the passive rollup
-        /// tick, or the manual ⟳) just re-fetch the currently-selected Epic's chart from the
-        /// service's cache.
+        /// tick, or the manual ⟳) just re-fetch the currently-selected Epic's chart — Git #3577: a
+        /// direct local mirror read, no cache, no live GitHub call.
         /// </summary>
         public async void RefreshEpicBurndownCard(bool forceRefresh = false)
         {
@@ -1363,7 +1365,7 @@ namespace BuildConsole.Controls
 
             try
             {
-                var epics = await GitHubIssueTimeSeriesService.GetOpenEpicsAsync(forceRefresh);
+                var epics = await GitHubIssueTimeSeriesService.GetOpenEpicsAsync();
                 if (epics.Count == 0)
                 {
                     ShowBurndownMessage(EpicBurndownCanvas, EpicBurndownSummaryText, EpicBurndownEmptyText,
@@ -1402,7 +1404,7 @@ namespace BuildConsole.Controls
             _epicBurndownFetchInFlight = true;
             try
             {
-                var series = await GitHubIssueTimeSeriesService.GetEpicSeriesAsync(epicNumber, forceRefresh);
+                var series = await GitHubIssueTimeSeriesService.GetEpicSeriesAsync(epicNumber);
                 _lastEpicBurndownSeries = series;
                 RenderBurndown(EpicBurndownScopeText, EpicBurndownCanvas, EpicBurndownSummaryText, EpicBurndownEmptyText, series);
             }
@@ -1440,9 +1442,10 @@ namespace BuildConsole.Controls
         /// Real open/close-rate data for the Home dashboard (Git #2713) — the active
         /// Milestone's real per-day opened/closed counts from
         /// <see cref="GitHubIssueTimeSeriesService"/> (#2711), the exact same shared source
-        /// the burndown chart (#2712) reads. <paramref name="forceRefresh"/> bypasses that
-        /// service's 5-minute cache (the manual ⟳ button); the passive rollup tick always
-        /// reads the cache.
+        /// the burndown chart (#2712) reads. Git #3577 — that service now reads ONLY the
+        /// local mirror (no live GitHub call, no in-memory TTL cache to bypass);
+        /// <paramref name="forceRefresh"/> is kept only so the manual ⟳ button's existing
+        /// call site doesn't need to change.
         /// </summary>
         public async void RefreshOpenCloseRateChart(bool forceRefresh = false)
         {
@@ -1450,7 +1453,7 @@ namespace BuildConsole.Controls
             _rateChartFetchInFlight = true;
             try
             {
-                var series = await GitHubIssueTimeSeriesService.GetActiveMilestoneSeriesAsync(forceRefresh);
+                var series = await GitHubIssueTimeSeriesService.GetActiveMilestoneSeriesAsync();
                 _lastRateChartSeries = series;
                 RenderOpenCloseRateChart(series);
             }

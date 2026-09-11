@@ -143,6 +143,20 @@ namespace BuildConsole.Services
     ///
     /// The daily-reduction core (<see cref="BuildSeries"/>) is a pure static function so it's
     /// independently verifiable and each child can also apply it to a custom issue scope.
+    ///
+    /// Git #3577 — Shane's final decision (2026-09-11): the Home dashboard's own scope/burndown
+    /// consumers (<see cref="GetMilestoneSeriesAsync"/>, <see cref="GetEpicSeriesAsync"/>,
+    /// <see cref="GetActiveMilestoneSeriesAsync"/>, <see cref="GetOpenEpicsAsync"/>,
+    /// <see cref="GetOpenEpicsInMilestoneAsync"/>, <see cref="ResolveActiveMilestoneAsync"/> — every
+    /// one of them confirmed via repo-wide grep to have no caller outside the Home dashboard) read
+    /// ONLY the local <c>bt_issue_mirror</c>/<c>bt_milestone_mirror</c> tables, never a live GitHub
+    /// call, under any circumstance — unlike the general-purpose <see cref="GetAllIssuesAsync"/>
+    /// above (still shared by Focus Mode / the Git Board tree / editor-panes stats, which are NOT
+    /// in this issue's scope and keep their existing live-fallback behavior). Before drawing
+    /// anything, each Home method runs a real completeness check — bt_issue_mirror's own count for
+    /// that scope against an authoritative real aggregate — and returns an honest
+    /// <see cref="IssueTimeSeries.HasEnoughData"/> == false with the real reason when the mirror is
+    /// confirmed incomplete for that scope, rather than a technically-real-but-partial curve.
     /// </summary>
     public static class GitHubIssueTimeSeriesService
     {
@@ -440,63 +454,185 @@ namespace BuildConsole.Services
             };
         }
 
-        /// <summary>Real daily series scoped to one GitHub Milestone (by number). The board fetch's
-        /// own transitive milestone-inheritance (Git #2543) means a sub-issue that belongs to its
-        /// epic's milestone is counted here even when its own milestone field is blank.</summary>
-        public static async Task<IssueTimeSeries> GetMilestoneSeriesAsync(int milestoneNumber, string? milestoneTitle = null, bool forceRefresh = false)
+        /// <summary>Git #3577 — one real, honest "is the local mirror complete enough to trust for
+        /// this scope" verdict. <see cref="Reason"/> is the real, human-readable explanation shown
+        /// on the card when <see cref="IsComplete"/> is false — never null in that case.</summary>
+        private sealed class MirrorCompleteness
+        {
+            public bool IsComplete { get; init; }
+            public string? Reason { get; init; }
+
+            public static readonly MirrorCompleteness Ok = new() { IsComplete = true };
+            public static MirrorCompleteness Incomplete(string reason) => new() { IsComplete = false, Reason = reason };
+        }
+
+        /// <summary>Git #3577 — every real repo issue (open + closed) read ONLY from the local
+        /// <c>bt_issue_mirror</c>, never a live GitHub call. Returns null when the mirror has never
+        /// completed a full sync — the caller renders the honest empty state, it never falls back
+        /// live the way the general-purpose <see cref="GetAllIssuesAsync"/> does for its other
+        /// (out-of-scope-for-this-issue) callers.</summary>
+        private static Task<List<GitBoardIssue>?> TryGetAllIssuesLocalOnlyAsync()
+            => GitHubIssueMirror.TryGetBoardIssuesAsync(openOnly: false);
+
+        /// <summary>Git #3577 — the real completeness cross-check for a MILESTONE scope: the count of
+        /// <paramref name="mirrored"/> rows genuinely tagged to <paramref name="milestoneNumber"/>
+        /// against <c>bt_milestone_mirror</c>'s own real open+closed aggregate for that same number —
+        /// GitHub's own authoritative milestone-level count, independent of whatever
+        /// <c>bt_issue_mirror</c>'s own open-issues-walk + incremental mark-closed + closed-backfill
+        /// have captured so far. A real, live cross-check confirmed milestone #5 currently reads 663
+        /// mirrored vs 2065 real (357+1708) — genuinely incomplete right now; that's the honest state
+        /// this returns, not a bug in the check.</summary>
+        private static async Task<MirrorCompleteness> CheckMilestoneCompletenessAsync(int milestoneNumber, IReadOnlyList<GitBoardIssue> mirrored)
+        {
+            var infos = await GitHubIssueMirror.TryGetMilestoneInfosAsync();
+            var real = infos?.FirstOrDefault(m => m.Number == milestoneNumber);
+            if (real == null)
+                return MirrorCompleteness.Incomplete(
+                    $"no real bt_milestone_mirror aggregate for milestone #{milestoneNumber} yet — can't confirm the local mirror is complete enough to chart.");
+
+            int realTotal = real.OpenIssues + real.ClosedIssues;
+            int mirroredTotal = mirrored.Count(i => i.MilestoneNumber == milestoneNumber);
+            if (mirroredTotal < realTotal)
+                return MirrorCompleteness.Incomplete(
+                    $"historical data not yet fully synced for this milestone — {mirroredTotal} of {realTotal} real issue(s) mirrored locally (Git #3577's own backfill-completion follow-up covers closing this gap).");
+
+            return MirrorCompleteness.Ok;
+        }
+
+        /// <summary>Git #3577 — the real completeness cross-check for an EPIC scope. There's no
+        /// <c>bt_milestone_mirror</c> equivalent for an arbitrary epic's whole transitive subtree, so
+        /// this walks the same real parent→children adjacency <see cref="GitBoardIssueFilters.CollectDescendants"/>
+        /// builds (both real directions the sync reconciles: <see cref="GitBoardIssue.ParentNumber"/>
+        /// and <see cref="GitBoardIssue.ChildIssueNumbers"/>) and, at EVERY real node in the subtree,
+        /// compares how many of that node's children are actually present in <paramref name="mirrored"/>
+        /// against that node's own real GitHub <see cref="GitBoardIssue.SubIssueCount"/> — GraphQL's
+        /// <c>subIssuesSummary.total</c>, an authoritative real per-node truth independent of the
+        /// mirror's own descendant walk. If every node in the tree has ALL its real direct children
+        /// mirrored, the whole transitive subtree is genuinely complete by induction — built up from
+        /// GitHub's own real per-node count, not a re-derivation of the same (possibly incomplete)
+        /// data. One short-of-real node anywhere in the tree fails the whole scope closed.</summary>
+        private static (bool Complete, string? Reason) CheckEpicCompleteness(int epicNumber, IReadOnlyList<GitBoardIssue> mirrored)
+        {
+            var byNumber = GitBoardIssueFilters.BuildByNumberLookup(mirrored);
+            if (!byNumber.TryGetValue(epicNumber, out var root))
+                return (false, $"epic #{epicNumber} itself is not present in the local mirror yet — no real completeness signal to check.");
+
+            var childNumbers = new Dictionary<int, HashSet<int>>();
+            void AddChild(int parent, int child)
+            {
+                if (parent == child) return;
+                if (!childNumbers.TryGetValue(parent, out var set)) { set = new HashSet<int>(); childNumbers[parent] = set; }
+                set.Add(child);
+            }
+            foreach (var issue in mirrored)
+            {
+                if (issue.ParentNumber.HasValue) AddChild(issue.ParentNumber.Value, issue.Number);
+                foreach (var c in issue.ChildIssueNumbers) AddChild(issue.Number, c);
+            }
+
+            var visited = new HashSet<int> { epicNumber };
+            var queue = new Queue<GitBoardIssue>();
+            queue.Enqueue(root);
+            while (queue.Count > 0)
+            {
+                var node = queue.Dequeue();
+                int realDirectChildren = node.SubIssueCount;
+                int mirroredDirectChildren = childNumbers.TryGetValue(node.Number, out var kids)
+                    ? kids.Count(byNumber.ContainsKey)
+                    : 0;
+                if (mirroredDirectChildren < realDirectChildren)
+                {
+                    return (false,
+                        $"issue #{node.Number} \"{node.Title}\" has {mirroredDirectChildren} of its real {realDirectChildren} " +
+                        "direct sub-issue(s) mirrored locally — the epic's transitive subtree isn't fully synced yet (Git #3577).");
+                }
+                if (kids != null)
+                {
+                    foreach (var k in kids)
+                    {
+                        if (!visited.Add(k)) continue;
+                        if (byNumber.TryGetValue(k, out var kidIssue)) queue.Enqueue(kidIssue);
+                    }
+                }
+            }
+            return (true, null);
+        }
+
+        /// <summary>Real daily series scoped to one GitHub Milestone (by number), read ONLY from the
+        /// local mirror — Git #3577's final decision: database only, ever, no live GitHub call for
+        /// this chart under any circumstance. The board fetch's own transitive milestone-inheritance
+        /// (Git #2543) means a sub-issue that belongs to its epic's milestone is counted here even
+        /// when its own milestone field is blank. Fails closed with an honest reason — never a
+        /// partial/wrong chart — when the mirror has no usable data yet or the real completeness
+        /// check (<see cref="CheckMilestoneCompletenessAsync"/>) finds this milestone's local data
+        /// genuinely incomplete.</summary>
+        public static async Task<IssueTimeSeries> GetMilestoneSeriesAsync(int milestoneNumber, string? milestoneTitle = null)
         {
             string label = milestoneTitle ?? $"Milestone #{milestoneNumber}";
-            var fetch = await GetAllIssuesAsync(forceRefresh);
-            if (!fetch.Success)
-                return IssueTimeSeries.NotEnough(label, $"GitHub unreachable: {fetch.Error}");
+            var mirrored = await TryGetAllIssuesLocalOnlyAsync();
+            if (mirrored == null)
+                return IssueTimeSeries.NotEnough(label,
+                    "local issue mirror has no usable data yet (never completed a full sync) — Git #3577: this chart reads only the local database, never live GitHub.");
 
-            var scoped = fetch.Issues.Where(i => i.MilestoneNumber == milestoneNumber).ToList();
-            return BuildSeries(scoped, label, DateTime.UtcNow, fetch.Issues);
+            var completeness = await CheckMilestoneCompletenessAsync(milestoneNumber, mirrored);
+            if (!completeness.IsComplete)
+                return IssueTimeSeries.NotEnough(label, completeness.Reason!);
+
+            var scoped = mirrored.Where(i => i.MilestoneNumber == milestoneNumber).ToList();
+            return BuildSeries(scoped, label, DateTime.UtcNow, mirrored);
         }
 
         /// <summary>Real daily series scoped to one Epic's issue set — every transitive descendant
         /// (children, their children, …) of <paramref name="epicNumber"/> that's present in the
-        /// fetch, excluding the Epic node itself (a container, not a work item). This is the
-        /// per-Epic scope #2714's ETA projection consumes.
+        /// mirror, excluding the Epic node itself (a container, not a work item). Read ONLY from the
+        /// local mirror (Git #3577), gated by the real per-node <see cref="CheckEpicCompleteness"/>
+        /// check — an honest empty state when the subtree isn't fully synced, never a partial curve.
         ///
         /// Git #2776 — passes <paramref name="epicNumber"/> itself as <c>BuildSeries</c>'s
         /// <c>selfRootEpicNumber</c> so a caller charting one internal-tooling Epic's OWN burndown
         /// (e.g. #1202 Build Console) sees that Epic's real work, not an empty series — same
         /// self-rollup principle #2773 established, deliberately NOT the cross-scope exclusion
         /// <see cref="GetMilestoneSeriesAsync"/> still applies.</summary>
-        public static async Task<IssueTimeSeries> GetEpicSeriesAsync(int epicNumber, bool forceRefresh = false)
+        public static async Task<IssueTimeSeries> GetEpicSeriesAsync(int epicNumber)
         {
-            var fetch = await GetAllIssuesAsync(forceRefresh);
-            var epicTitle = fetch.Issues.FirstOrDefault(i => i.Number == epicNumber)?.Title;
-            string label = epicTitle != null ? $"#{epicNumber} {epicTitle}" : $"Epic #{epicNumber}";
-            if (!fetch.Success)
-                return IssueTimeSeries.NotEnough(label, $"GitHub unreachable: {fetch.Error}");
+            var mirrored = await TryGetAllIssuesLocalOnlyAsync();
+            string label = mirrored?.FirstOrDefault(i => i.Number == epicNumber)?.Title is string t
+                ? $"#{epicNumber} {t}" : $"Epic #{epicNumber}";
+            if (mirrored == null)
+                return IssueTimeSeries.NotEnough(label,
+                    "local issue mirror has no usable data yet (never completed a full sync) — Git #3577: this chart reads only the local database, never live GitHub.");
 
-            var descendants = GitBoardIssueFilters.CollectDescendants(fetch.Issues, epicNumber);
-            return BuildSeries(descendants, label, DateTime.UtcNow, fetch.Issues, selfRootEpicNumber: epicNumber);
+            var (complete, reason) = CheckEpicCompleteness(epicNumber, mirrored);
+            if (!complete)
+                return IssueTimeSeries.NotEnough(label, reason!);
+
+            var descendants = GitBoardIssueFilters.CollectDescendants(mirrored, epicNumber);
+            return BuildSeries(descendants, label, DateTime.UtcNow, mirrored, selfRootEpicNumber: epicNumber);
         }
 
         /// <summary>Git #2776 — every real OPEN Epic in the repo (Git #839 definition: top-level
-        /// issue with ≥1 sub-issue), for the Home dashboard's per-Epic burndown picker.
-        /// Deliberately does NOT exclude the internal-tooling Epics (#1202/#1095) the way
-        /// <see cref="GetOpenEpicsInMilestoneAsync"/> does — Shane explicitly wants #1202 selectable
-        /// here so its own real burndown can be viewed (see <see cref="GetEpicSeriesAsync"/>'s
-        /// self-rollup). <see cref="EpicOption.OpenRealWork"/> is each Epic's own real open
-        /// descendant-work count (self-rollup applied) so the caller can pick a sensible default
-        /// selection — the Epic with the most real open work — rather than defaulting to nothing
-        /// selected. Empty on an unreachable GitHub (fail-closed).</summary>
-        public static async Task<List<EpicOption>> GetOpenEpicsAsync(bool forceRefresh = false)
+        /// issue with ≥1 sub-issue), for the Home dashboard's per-Epic burndown picker, read ONLY
+        /// from the local mirror (Git #3577). Deliberately does NOT exclude the internal-tooling
+        /// Epics (#1202/#1095) the way <see cref="GetOpenEpicsInMilestoneAsync"/> does — Shane
+        /// explicitly wants #1202 selectable here so its own real burndown can be viewed (see
+        /// <see cref="GetEpicSeriesAsync"/>'s self-rollup). <see cref="EpicOption.OpenRealWork"/> is
+        /// each Epic's own real open descendant-work count (self-rollup applied) so the caller can
+        /// pick a sensible default selection — the Epic with the most real open work — rather than
+        /// defaulting to nothing selected. Empty when the mirror has no usable data yet (fail-closed;
+        /// listing an epic here doesn't itself draw a chart — the real per-scope completeness gate
+        /// is <see cref="GetEpicSeriesAsync"/>'s own check once one is actually selected).</summary>
+        public static async Task<List<EpicOption>> GetOpenEpicsAsync()
         {
-            var fetch = await GetAllIssuesAsync(forceRefresh);
-            if (!fetch.Success) return new List<EpicOption>();
+            var mirrored = await TryGetAllIssuesLocalOnlyAsync();
+            if (mirrored == null) return new List<EpicOption>();
 
-            var byNumber = GitBoardIssueFilters.BuildByNumberLookup(fetch.Issues);
-            var epics = fetch.Issues.Where(i => i.IsEpic && !i.IsClosed).OrderBy(i => i.Number).ToList();
+            var byNumber = GitBoardIssueFilters.BuildByNumberLookup(mirrored);
+            var epics = mirrored.Where(i => i.IsEpic && !i.IsClosed).OrderBy(i => i.Number).ToList();
 
             var result = new List<EpicOption>();
             foreach (var epic in epics)
             {
-                var descendants = GitBoardIssueFilters.CollectDescendants(fetch.Issues, epic.Number);
+                var descendants = GitBoardIssueFilters.CollectDescendants(mirrored, epic.Number);
                 int openReal = descendants.Count(i =>
                     !i.IsClosed && GitBoardIssueFilters.CountsAsRealWork(i, byNumber, selfRootEpicNumber: epic.Number));
                 result.Add(new EpicOption { Number = epic.Number, Title = $"#{epic.Number} {epic.Title}", OpenRealWork = openReal });
@@ -505,17 +641,18 @@ namespace BuildConsole.Services
         }
 
         /// <summary>The open Epics (Git #839 definition: top-level issue with ≥1 sub-issue) that
-        /// belong to <paramref name="milestoneNumber"/>, so #2714 can produce one real ETA per Epic.
-        /// Empty on an unreachable GitHub (fail-closed — the caller sees no epics rather than a wrong set).
+        /// belong to <paramref name="milestoneNumber"/>, so #2714 can produce one real ETA per Epic,
+        /// read ONLY from the local mirror (Git #3577). Empty when the mirror has no usable data yet
+        /// (fail-closed — the caller sees no epics rather than a wrong set).
         /// Git #2739 — excludes the internal-tooling Epics themselves (#1202/#1095): they're not
         /// customer-facing product work, so Home dashboard shouldn't project an ETA card for them
         /// (their own real descendant series is already filtered to empty by <see cref="BuildSeries"/>
         /// anyway; excluding the row itself avoids rendering an empty/misleading card for it).</summary>
-        public static async Task<List<GitBoardIssue>> GetOpenEpicsInMilestoneAsync(int milestoneNumber, bool forceRefresh = false)
+        public static async Task<List<GitBoardIssue>> GetOpenEpicsInMilestoneAsync(int milestoneNumber)
         {
-            var fetch = await GetAllIssuesAsync(forceRefresh);
-            if (!fetch.Success) return new List<GitBoardIssue>();
-            return fetch.Issues
+            var mirrored = await TryGetAllIssuesLocalOnlyAsync();
+            if (mirrored == null) return new List<GitBoardIssue>();
+            return mirrored
                 .Where(i => i.IsEpic && !i.IsClosed && i.MilestoneNumber == milestoneNumber
                             && !GitBoardIssueFilters.InternalToolingEpicNumbers.Contains(i.Number))
                 .OrderBy(i => i.Number)
@@ -526,75 +663,49 @@ namespace BuildConsole.Services
         /// Resolves the real "active" GitHub Milestone the Home dashboard defaults to: among OPEN
         /// milestones, the one with the most total (open + closed) real issues — the one actually
         /// being worked. Reads GitHub's own milestone object counts, never a label. Returns null
-        /// when no PAT is configured, GitHub is unreachable, or no open milestone has any issues
-        /// (all fail-closed — the caller shows an honest empty state, not a guessed milestone).
+        /// when the local mirror has no usable data yet (fail-closed — the caller shows an honest
+        /// empty state, not a guessed milestone).
         ///
-        /// Git #3468 — served from <see cref="GitHubIssueMirror.TryGetMilestoneInfosAsync"/> (the
-        /// #3358 read, backed by <c>bt_milestone_mirror</c>) first, falling back to a live
-        /// <see cref="GitHubApiClient.GetMilestonesAsync"/> only on a mirror miss. This was
-        /// previously the one milestone-count path #3359 left un-migrated: it fired a live call on
-        /// EVERY invocation (no mirror, no service-level TTL) — including automatically, once a
-        /// minute, off <c>MainWindow</c>'s unconditional editor-panes stats timer.
+        /// Git #3577 — reads ONLY <see cref="GitHubIssueMirror.TryGetMilestoneInfosAsync"/> (the
+        /// #3358 read, backed by <c>bt_milestone_mirror</c>); the live <see cref="GitHubApiClient.GetMilestonesAsync"/>
+        /// fallback #3468 added here has been removed for this Home-dashboard-only resolver per
+        /// Shane's final decision (2026-09-11): no live GitHub call for these charts under any
+        /// circumstance. (Confirmed via repo-wide grep this resolver has no caller outside the Home
+        /// dashboard's burndown/rate/ETA cards, so removing the live fallback here can't regress any
+        /// other consumer.)
         /// </summary>
         public static async Task<ActiveMilestone?> ResolveActiveMilestoneAsync()
         {
             var mirrored = await GitHubIssueMirror.TryGetMilestoneInfosAsync();
-            if (mirrored != null)
-            {
-                var mirroredBest = mirrored
-                    .Where(m => !m.IsClosed && (m.OpenIssues + m.ClosedIssues) > 0)
-                    .OrderByDescending(m => m.OpenIssues + m.ClosedIssues)
-                    .FirstOrDefault();
-                if (mirroredBest != null)
-                {
-                    ActivityLog.Log("git-board.data",
-                        $"active-milestone resolution: #{mirroredBest.Number} \"{mirroredBest.Title}\" served from the local mirror — no live GitHub call (Git #3468).");
-                    return new ActiveMilestone
-                    {
-                        Number = mirroredBest.Number,
-                        Title = mirroredBest.Title,
-                        OpenIssues = mirroredBest.OpenIssues,
-                        ClosedIssues = mirroredBest.ClosedIssues,
-                    };
-                }
-            }
+            if (mirrored == null) return null;
 
-            var settings = BuildConsoleSettings.Load();
-            if (!settings.HasGitHubPat) return null;
-            try
+            var best = mirrored
+                .Where(m => !m.IsClosed && (m.OpenIssues + m.ClosedIssues) > 0)
+                .OrderByDescending(m => m.OpenIssues + m.ClosedIssues)
+                .FirstOrDefault();
+            if (best == null) return null;
+
+            ActivityLog.Log("git-board.data",
+                $"active-milestone resolution: #{best.Number} \"{best.Title}\" served from the local mirror — no live GitHub call, ever, for this resolver (Git #3577).");
+            return new ActiveMilestone
             {
-                var client = new GitHubApiClient(settings.GitHubPat);
-                var milestones = await client.GetMilestonesAsync();
-                var best = milestones
-                    .Where(m => !m.IsClosed && (m.OpenIssues + m.ClosedIssues) > 0)
-                    .OrderByDescending(m => m.OpenIssues + m.ClosedIssues)
-                    .FirstOrDefault();
-                if (best == null) return null;
-                return new ActiveMilestone
-                {
-                    Number = best.Number,
-                    Title = best.Title,
-                    OpenIssues = best.OpenIssues,
-                    ClosedIssues = best.ClosedIssues,
-                };
-            }
-            catch (Exception ex)
-            {
-                ActivityLog.Log("git-board.data", $"active-milestone resolution failed (fail-closed): {ex.Message}");
-                return null;
-            }
+                Number = best.Number,
+                Title = best.Title,
+                OpenIssues = best.OpenIssues,
+                ClosedIssues = best.ClosedIssues,
+            };
         }
 
         /// <summary>Convenience: the real daily series for whatever <see cref="ResolveActiveMilestoneAsync"/>
         /// picks as the active milestone. Fails closed with an honest reason when no active milestone
-        /// resolves.</summary>
-        public static async Task<IssueTimeSeries> GetActiveMilestoneSeriesAsync(bool forceRefresh = false)
+        /// resolves, or when that milestone's local data isn't confirmed complete yet.</summary>
+        public static async Task<IssueTimeSeries> GetActiveMilestoneSeriesAsync()
         {
             var active = await ResolveActiveMilestoneAsync();
             if (active == null)
                 return IssueTimeSeries.NotEnough("Active milestone",
-                    "no active GitHub milestone could be resolved (no PAT, GitHub unreachable, or no open milestone has issues).");
-            return await GetMilestoneSeriesAsync(active.Number, active.Title, forceRefresh);
+                    "no active milestone could be resolved from the local mirror (bt_milestone_mirror has no usable data yet) — Git #3577: this chart reads only the local database, never live GitHub.");
+            return await GetMilestoneSeriesAsync(active.Number, active.Title);
         }
 
     }
