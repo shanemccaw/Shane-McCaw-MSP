@@ -19,10 +19,10 @@ namespace BuildConsole.Behaviors
     /// per-site wiring for this.
     ///
     /// Escape is opt-out via <see cref="HandlesEscapeProperty"/> (default on)
-    /// for the one site — MainWindow's TitleSearchBox — that already owns a
-    /// richer Escape behavior (closing the command-palette dropdown) which
-    /// this must not race with; see MainWindow.UniversalSearch.cs instead,
-    /// which was extended to also clear the text on Escape.
+    /// for any site that already owns a richer Escape behavior this must not
+    /// race with. (Historically that was MainWindow's TitleSearchBox, whose
+    /// dropdown was retired in Git #3622 when Ctrl+K moved to the standalone
+    /// CommandPaletteWindow; no site currently opts out.)
     /// </summary>
     public static class SearchTextBoxBehavior
     {

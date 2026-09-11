@@ -8380,6 +8380,10 @@ namespace BuildConsole.Controls
         private void BtnGitPush_Click(object sender, RoutedEventArgs e) => _ = RunGitCommand("push");
         private void BtnGitPull_Click(object sender, RoutedEventArgs e) => _ = RunGitCommand("pull");
 
+        /// <summary>Git #3622 — the command palette's "Git Pull" quick action runs the
+        /// exact same real pull as the Git panel's own button.</summary>
+        public System.Threading.Tasks.Task<bool> RunGitPullAsync() => RunGitCommand("pull");
+
         /// <summary>
         /// Git #2535 (real commit body) / Git #2575 (extracted so BtnGitCommitAndPush_Click
         /// can chain it) — only clears the message box on a genuine zero-exit commit. A

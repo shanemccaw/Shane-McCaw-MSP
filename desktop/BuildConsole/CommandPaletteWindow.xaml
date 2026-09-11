@@ -1,0 +1,125 @@
+<Window x:Class="BuildConsole.CommandPaletteWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Command Palette"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        Width="960" Height="620"
+        Deactivated="Window_Deactivated"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        ContentRendered="Window_ContentRendered">
+
+    <!-- Git #3622 — the new Ctrl+K command palette dialog shell. Layout ports the
+         real "Smart Command HUD" design (ShaneBuilder wpf-handoff BuildConsole
+         Shell + Shane's 2026-09-11 screenshot): search header, category tab strip
+         with live counts, quick-action tile row, two-pane results/detail body,
+         footer keyboard hints. Category DATA is deliberately unwired in this pass
+         — every category renders an honest zero/empty state until its own build
+         lands (see the issue's own scope note); only the quick-action command
+         entries are real today. -->
+    <Border Margin="20" CornerRadius="12"
+            Background="{StaticResource AppBackgroundBrush}"
+            BorderBrush="{StaticResource BorderDividerBrush}"
+            BorderThickness="1">
+        <Border.Effect>
+            <DropShadowEffect Color="Black" BlurRadius="36" ShadowDepth="10" Opacity="0.55"/>
+        </Border.Effect>
+
+        <DockPanel>
+            <!-- ── Search input row ─────────────────────────────────────── -->
+            <Border DockPanel.Dock="Top" Padding="16,14" BorderThickness="0,0,0,1"
+                    BorderBrush="{StaticResource BorderDividerBrush}">
+                <DockPanel VerticalAlignment="Center">
+                    <TextBlock DockPanel.Dock="Left" Text="&#xE721;" Margin="0,0,10,0"
+                               VerticalAlignment="Center"
+                               FontFamily="Segoe MDL2 Assets" FontSize="14"
+                               Foreground="{StaticResource TextDisabledBrush}"/>
+                    <Border DockPanel.Dock="Right" Background="{StaticResource CardBackgroundBrush}"
+                            BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1"
+                            CornerRadius="5" Padding="8,3" Cursor="Hand" Margin="8,0,0,0"
+                            MouseLeftButtonDown="EscChip_Click">
+                        <TextBlock Text="ESC" FontSize="9" FontWeight="Bold"
+                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </Border>
+                    <Grid>
+                        <TextBox x:Name="PaletteInput" Background="Transparent" BorderThickness="0"
+                                 Foreground="{StaticResource TextPrimaryBrush}"
+                                 CaretBrush="{StaticResource TextPrimaryBrush}"
+                                 FontFamily="Cascadia Code, Consolas, Courier New" FontSize="14"
+                                 TextChanged="PaletteInput_TextChanged"/>
+                        <TextBlock x:Name="PalettePlaceholder" IsHitTestVisible="False"
+                                   Text="Search epics, builds, and chats — # for issue number"
+                                   FontSize="13" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextDisabledBrush}"/>
+                    </Grid>
+                </DockPanel>
+            </Border>
+
+            <!-- ── Category tab strip (counts are real: 0 until each category's
+                     own data source is wired in its own future build) ────── -->
+            <Border DockPanel.Dock="Top" Padding="14,8" BorderThickness="0,0,0,1"
+                    BorderBrush="{StaticResource BorderDividerBrush}">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="PaletteTabs" Orientation="Horizontal"/>
+                </ScrollViewer>
+            </Border>
+
+            <!-- ── Footer hint row ──────────────────────────────────────── -->
+            <Border DockPanel.Dock="Bottom" Padding="14,7" BorderThickness="0,1,0,0"
+                    BorderBrush="{StaticResource BorderDividerBrush}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="Esc Close" FontSize="9.5"
+                               Foreground="{StaticResource TextDisabledBrush}"/>
+                    <TextBlock Text="↑↓ Navigate    ↵ Select    Tab Switch Category" FontSize="9.5"
+                               Foreground="{StaticResource TextDisabledBrush}"/>
+                </DockPanel>
+            </Border>
+
+            <!-- ── Two-pane body: results (left) / detail + primary action (right) ── -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="300"/>
+                </Grid.ColumnDefinitions>
+
+                <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <!-- Quick-action tile row (Git Pull / Paste Manual Build /
+                             Recover Builds — each fires its REAL existing action) -->
+                        <WrapPanel x:Name="PaletteTiles" Margin="12,12,12,0"/>
+                        <StackPanel x:Name="PaletteResults" Margin="8"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <Border Grid.Column="1" BorderThickness="1,0,0,0"
+                        BorderBrush="{StaticResource BorderDividerBrush}">
+                    <DockPanel>
+                        <!-- Primary action button host, pinned to the pane's bottom
+                             (the screenshot's blue "Paste Manual Build ↵" button).
+                             Filled by RenderDetail() only when the selected row has
+                             a real action. -->
+                        <Border x:Name="PaletteDetailActionHost" DockPanel.Dock="Bottom"
+                                Padding="14,0,14,14" Visibility="Collapsed">
+                            <Border x:Name="PaletteDetailActionButton"
+                                    Background="{StaticResource AccentBrush}"
+                                    CornerRadius="8" Padding="0,9" Cursor="Hand"
+                                    MouseLeftButtonDown="DetailAction_Click">
+                                <TextBlock x:Name="PaletteDetailActionLabel"
+                                           HorizontalAlignment="Center"
+                                           FontSize="12.5" FontWeight="SemiBold"
+                                           Foreground="#0D1117"/>
+                            </Border>
+                        </Border>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="PaletteDetail" Margin="16"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </DockPanel>
+    </Border>
+</Window>

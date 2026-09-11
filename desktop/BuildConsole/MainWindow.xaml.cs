@@ -1602,6 +1602,9 @@ namespace BuildConsole
 
             if (e.Key == Key.K && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
+                // Git #3622 — opens the new CommandPaletteWindow (the old in-window
+                // dropdown overlay is retired; the palette window handles its own
+                // Escape/Ctrl+K dismissal).
                 e.Handled = true;
                 ToggleCommandPalette();
             }
@@ -1610,14 +1613,6 @@ namespace BuildConsole
                 e.Handled = true;
                 bool isReverse = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
                 ShowTabSwitcher(isReverse);
-            }
-            else if (CommandPaletteOverlay.Visibility == Visibility.Visible)
-            {
-                if (e.Key == Key.Escape)
-                {
-                    e.Handled = true;
-                    HideCommandPalette();
-                }
             }
             else if (TabSwitcherOverlay.Visibility == Visibility.Visible)
             {

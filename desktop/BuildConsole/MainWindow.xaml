@@ -234,15 +234,13 @@
                                        Visibility="Collapsed"/>
                         </StackPanel>
 
-                        <!-- Universal search box (primary, spans the center). Focusing/typing
-                             opens the grouped results dropdown (CommandPaletteOverlay) below;
-                             Ctrl+K focuses it. IsHitTestVisibleInChrome so clicks reach it
-                             inside the WindowChrome drag bar. Git #1864 - Height is set in
-                             code-behind (SizeSearchBoxToCaptionHeight) against the window's
-                             real WindowChrome.CaptionHeight rather than a guessed pixel value
-                             here; Padding is reduced to near-zero vertically since that fixed
-                             Height plus each child's own VerticalAlignment="Center" now does
-                             the vertical centering. -->
+                        <!-- Command-palette trigger pill (Git #3622). No longer a live
+                             TextBox — clicking it (or Ctrl+K) opens the new
+                             CommandPaletteWindow, which carries its own search input.
+                             IsHitTestVisibleInChrome so clicks reach it inside the
+                             WindowChrome drag bar. Git #1864 - Height is set in
+                             code-behind (SizeSearchBoxToCaptionHeight) against the
+                             window's real WindowChrome.CaptionHeight. -->
                         <Border x:Name="SearchBorder"
                                 Background="{StaticResource Surface0Brush}"
                                 CornerRadius="6"
@@ -254,7 +252,7 @@
                                 MaxWidth="820"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
-                                Cursor="IBeam"
+                                Cursor="Hand"
                                 MouseDown="SearchBorder_MouseDown"
                                 WindowChrome.IsHitTestVisibleInChrome="True">
                             <Grid>
@@ -265,29 +263,13 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="🔍" FontSize="12"
                                            Margin="0,0,7,0" VerticalAlignment="Center"/>
-                                <Grid Grid.Column="1">
-                                    <TextBlock x:Name="SearchPlaceholder"
-                                               Text="Search files, issues, chats…"
-                                               FontSize="12"
-                                               Foreground="{StaticResource Subtext0Brush}"
-                                               VerticalAlignment="Center"
-                                               IsHitTestVisible="False"/>
-                                    <TextBox x:Name="TitleSearchBox"
-                                             Style="{StaticResource SearchTextBox}"
-                                             behaviors:SearchTextBoxBehavior.HandlesEscape="False"
-                                             FontSize="12"
-                                             Background="Transparent"
-                                             Foreground="{StaticResource TextBrush}"
-                                             CaretBrush="{StaticResource TextBrush}"
-                                             BorderThickness="0"
-                                             Padding="0,0,20,0"
-                                             VerticalContentAlignment="Center"
-                                             GotKeyboardFocus="TitleSearchBox_GotKeyboardFocus"
-                                             LostKeyboardFocus="TitleSearchBox_LostKeyboardFocus"
-                                             TextChanged="TitleSearchBox_TextChanged"
-                                             PreviewKeyDown="TitleSearchBox_PreviewKeyDown"/>
-                                </Grid>
-                                <TextBlock x:Name="SearchCtrlKHint" Grid.Column="2" Text="Ctrl+K" FontSize="10"
+                                <TextBlock Grid.Column="1"
+                                           Text="Search epics, builds, and chats…"
+                                           FontSize="12"
+                                           Foreground="{StaticResource Subtext0Brush}"
+                                           VerticalAlignment="Center"
+                                           IsHitTestVisible="False"/>
+                                <TextBlock Grid.Column="2" Text="Ctrl+K" FontSize="10"
                                            Foreground="{StaticResource Subtext1Brush}"
                                            VerticalAlignment="Center" Margin="7,0,2,0"/>
                             </Grid>
@@ -1186,90 +1168,9 @@
             </Border>
         </Grid>
 
-        <!-- ══════════════════════════════════════════════════════════════
-             CTRL+K FIND EVERYTHING FLOATING COMMAND PALETTE
-             ══════════════════════════════════════════════════════════════ -->
-        <!-- Anchored under the title-bar search box; scrim starts below the 36px
-             title bar so the search box stays interactive above it. Input lives in
-             the title bar (TitleSearchBox) — this overlay is just the grouped-by-
-             source results dropdown, VS Code Quick-Open style. -->
-        <Grid x:Name="CommandPaletteOverlay"
-              Visibility="Collapsed"
-              Background="#22000000"
-              Margin="0,36,0,0"
-              Panel.ZIndex="9999"
-              MouseDown="CommandPaletteOverlay_MouseDown">
-
-            <Border Width="680" MaxHeight="520"
-                    VerticalAlignment="Top" HorizontalAlignment="Center"
-                    Margin="0,6,0,0"
-                    Background="{StaticResource CrustBrush}"
-                    BorderBrush="{StaticResource BlueBrush}"
-                    BorderThickness="1.5"
-                    CornerRadius="8"
-                    Padding="10">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*"/>    <!-- Grouped results -->
-                        <RowDefinition Height="Auto"/> <!-- Footer hint -->
-                    </Grid.RowDefinitions>
-
-                    <!-- Empty / no-match state (overlaid with the list in row 0) -->
-                    <TextBlock x:Name="SearchEmptyHint"
-                               Grid.Row="0"
-                               Text="Type to search files, issues, chats, tests &amp; builds…"
-                               FontSize="12"
-                               Foreground="{StaticResource Subtext0Brush}"
-                               Margin="8,10,8,10"/>
-
-                    <!-- Grouped results: one small header per source type -->
-                    <ListBox x:Name="PaletteResultsList"
-                             Grid.Row="0"
-                             MaxHeight="440"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             PreviewMouseLeftButtonUp="PaletteResultsList_PreviewMouseLeftButtonUp"
-                             MouseDoubleClick="PaletteResultsList_MouseDoubleClick">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="Transparent" CornerRadius="4" Padding="8,5" Margin="0,1">
-                                    <DockPanel>
-                                        <TextBlock Text="{Binding Icon}" FontSize="15" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                        <StackPanel VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Text="{Binding Description}" FontSize="11" Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
-                                        </StackPanel>
-                                    </DockPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                        <ListBox.GroupStyle>
-                            <GroupStyle>
-                                <GroupStyle.HeaderTemplate>
-                                    <DataTemplate>
-                                        <Border Margin="2,8,2,3" Padding="0,0,0,3" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1">
-                                            <DockPanel>
-                                                <TextBlock Text="{Binding Name}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding ItemCount}" FontSize="10" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Right"/>
-                                            </DockPanel>
-                                        </Border>
-                                    </DataTemplate>
-                                </GroupStyle.HeaderTemplate>
-                            </GroupStyle>
-                        </ListBox.GroupStyle>
-                    </ListBox>
-
-                    <!-- Footer hint -->
-                    <Border Grid.Row="1" Margin="2,8,2,0" Padding="0,6,0,0" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0">
-                        <DockPanel>
-                            <TextBlock Text="↑↓ navigate  •  Enter / click to open  •  Esc to close" FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
-                            <TextBlock Text="Ctrl+K" FontSize="11" FontWeight="Bold" Foreground="{StaticResource PeachBrush}" HorizontalAlignment="Right"/>
-                        </DockPanel>
-                    </Border>
-                </Grid>
-            </Border>
-        </Grid>
+        <!-- Git #3622 — the old CommandPaletteOverlay dropdown that lived here was
+             retired; Ctrl+K now opens the standalone CommandPaletteWindow (see
+             MainWindow.CommandPalette.cs). -->
 
         <!-- ══════════════════════════════════════════════════════════════
              DOCKING GUIDE OVERLAY FOR TAB DRAG & SPLIT LAYOUTS

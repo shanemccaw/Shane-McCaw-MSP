@@ -1176,10 +1176,29 @@ namespace BuildConsole.Controls
         /// at a time was its own separate mess.
         /// </summary>
         private async void BtnRecoverOrphans_Click(object sender, RoutedEventArgs e)
+            => await RecoverOrphanedBuildsAsync();
+
+        /// <summary>
+        /// Re-queues every crashed/orphaned build (failed rows carrying the orphan
+        /// sweep's -2 sentinel). Public because the Ctrl+K command palette's
+        /// "Recover Builds" quick action (Git #3622) runs this same real recovery;
+        /// unlike the banner button (only visible when orphans exist), the palette
+        /// path can be invoked with nothing to recover, so that case reports
+        /// honestly instead of silently no-oping.
+        /// </summary>
+        public async System.Threading.Tasks.Task RecoverOrphanedBuildsAsync()
         {
-            if (_db == null) return;
+            if (_db == null)
+            {
+                ToastEngine.Warning("Recover Builds", "The build-queue database isn't connected, so nothing can be recovered.");
+                return;
+            }
             var orphaned = _lastItems.Where(i => i.Status == "failed" && i.ExitCode == -2).ToList();
-            if (orphaned.Count == 0) return;
+            if (orphaned.Count == 0)
+            {
+                ToastEngine.Info("Recover Builds", "No crashed/orphaned builds to recover.");
+                return;
+            }
 
             BtnRecoverOrphans.IsEnabled = false;
             int resumed = 0, retried = 0, failed = 0;
