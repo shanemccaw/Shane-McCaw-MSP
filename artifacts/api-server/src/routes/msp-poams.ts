@@ -246,6 +246,10 @@ router.patch(
         apiError(res, 409, ApiErrorCode.CONFLICT, "A POA&M only becomes active through the customer signature ceremony");
         return;
       }
+      if (parsed.data.status === "cancelled") {
+        apiError(res, 409, ApiErrorCode.CONFLICT, "Cancelling a POA&M requires MSPAdmin — use PATCH /api/msp/poams/:poamId/cancel");
+        return;
+      }
       if (existing.status === "cancelled" || existing.status === "completed") {
         apiError(res, 409, ApiErrorCode.CONFLICT, `POA&M is ${existing.status} and cannot be edited`);
         return;
