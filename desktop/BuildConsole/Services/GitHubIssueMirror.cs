@@ -252,8 +252,11 @@ namespace BuildConsole.Services
             {
                 await using var conn = await TryOpenAsync();
                 if (conn == null) return null;
+                // Git #3579 — bt_issue_mirror is now repo-scoped; bound to this repo (defaulted).
                 await using var cmd = new NpgsqlCommand(
-                    $"SELECT {SelectColumns} FROM bt_issue_mirror WHERE issue_number = @n", conn);
+                    $"SELECT {SelectColumns} FROM bt_issue_mirror WHERE repo_owner = @owner AND repo_name = @repo AND issue_number = @n", conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 cmd.Parameters.AddWithValue("@n", number);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 return await reader.ReadAsync() ? MapRow(reader) : null;
@@ -278,8 +281,11 @@ namespace BuildConsole.Services
             {
                 await using var conn = await TryOpenAsync();
                 if (conn == null) return result;
+                // Git #3579 — bt_issue_mirror is now repo-scoped; bound to this repo (defaulted).
                 await using var cmd = new NpgsqlCommand(
-                    $"SELECT {SelectColumns} FROM bt_issue_mirror WHERE issue_number = ANY(@nums)", conn);
+                    $"SELECT {SelectColumns} FROM bt_issue_mirror WHERE repo_owner = @owner AND repo_name = @repo AND issue_number = ANY(@nums)", conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 cmd.Parameters.AddWithValue("@nums", NpgsqlDbType.Array | NpgsqlDbType.Integer, distinct);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -304,8 +310,11 @@ namespace BuildConsole.Services
             {
                 await using var conn = await TryOpenAsync();
                 if (conn == null) return null;
+                // Git #3579 — bt_issue_mirror is now repo-scoped; bound to this repo (defaulted).
                 await using var cmd = new NpgsqlCommand(
-                    "SELECT title FROM bt_issue_mirror WHERE issue_number = @n", conn);
+                    "SELECT title FROM bt_issue_mirror WHERE repo_owner = @owner AND repo_name = @repo AND issue_number = @n", conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 cmd.Parameters.AddWithValue("@n", number);
                 var val = await cmd.ExecuteScalarAsync();
                 var title = val as string;
@@ -333,13 +342,17 @@ namespace BuildConsole.Services
             {
                 await using var conn = await TryOpenAsync();
                 if (conn == null) return;
+                // Git #3579 — bt_issue_mirror's PK is now (repo_owner, repo_name, issue_number);
+                // repo columns written explicitly (defaulted to this repo).
                 await using var cmd = new NpgsqlCommand(@"
-                    INSERT INTO bt_issue_mirror (issue_number, title, last_synced_at, updated_at)
-                    VALUES (@n, @t, NOW(), NOW())
-                    ON CONFLICT (issue_number) DO UPDATE
+                    INSERT INTO bt_issue_mirror (issue_number, title, last_synced_at, updated_at, repo_owner, repo_name)
+                    VALUES (@n, @t, NOW(), NOW(), @owner, @repo)
+                    ON CONFLICT (repo_owner, repo_name, issue_number) DO UPDATE
                        SET title = EXCLUDED.title, updated_at = NOW()", conn);
                 cmd.Parameters.AddWithValue("@n", number);
                 cmd.Parameters.AddWithValue("@t", title);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 await cmd.ExecuteNonQueryAsync();
             }
             catch (Exception ex)
@@ -394,11 +407,14 @@ namespace BuildConsole.Services
                 await using var conn = await TryOpenAsync();
                 if (conn == null) return null;
 
-                string sql = $"SELECT {SelectColumns} FROM bt_issue_mirror WHERE board_status_option_id = @opt";
+                // Git #3579 — bt_issue_mirror is now repo-scoped; bound to this repo (defaulted).
+                string sql = $"SELECT {SelectColumns} FROM bt_issue_mirror WHERE repo_owner = @owner AND repo_name = @repo AND board_status_option_id = @opt";
                 if (!string.IsNullOrEmpty(state)) sql += " AND state = @state";
                 sql += " ORDER BY issue_number";
 
                 await using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 cmd.Parameters.AddWithValue("@opt", boardStatusOptionId);
                 if (!string.IsNullOrEmpty(state)) cmd.Parameters.AddWithValue("@state", state);
 
@@ -447,15 +463,20 @@ namespace BuildConsole.Services
                 await using var conn = await TryOpenAsync();
                 if (conn == null) return null;
 
+                // Git #3579 — bt_issue_mirror is now repo-scoped; the Git Board stays scoped to
+                // this repo (Main-tier repo, per Feature #3578's own design) — bound explicitly.
                 string sql = @"
                     SELECT issue_number, title, state, labels, html_url, body, created_at, closed_at,
                            milestone_title, milestone_number, parent_number, parent_milestone_number,
                            sub_issue_count, sub_issue_completed, sub_issue_percent, child_issue_numbers, database_id
-                      FROM bt_issue_mirror";
-                if (openOnly) sql += " WHERE state = 'open'";
+                      FROM bt_issue_mirror
+                     WHERE repo_owner = @owner AND repo_name = @repo";
+                if (openOnly) sql += " AND state = 'open'";
                 sql += " ORDER BY issue_number DESC";
 
                 await using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 var list = new List<GitBoardIssue>();
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync()) list.Add(MapBoardRow(reader));
@@ -515,8 +536,11 @@ namespace BuildConsole.Services
                 if (!await HasUsableDataAsync()) return null;
                 await using var conn = await TryOpenAsync();
                 if (conn == null) return null;
+                // Git #3579 — bt_milestone_mirror is now repo-scoped; bound to this repo (defaulted).
                 await using var cmd = new NpgsqlCommand(
-                    "SELECT number, title, state, open_issues, closed_issues FROM bt_milestone_mirror ORDER BY number", conn);
+                    "SELECT number, title, state, open_issues, closed_issues FROM bt_milestone_mirror WHERE repo_owner = @owner AND repo_name = @repo ORDER BY number", conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 var list = new List<GitHubApiClient.GitHubMilestoneInfo>();
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -937,16 +961,19 @@ namespace BuildConsole.Services
                 }
 
                 await using var tx = await conn.BeginTransactionAsync();
+                // Git #3579 — bt_issue_mirror's PK is now (repo_owner, repo_name, issue_number);
+                // repo columns written explicitly (defaulted to this repo, the only one this
+                // sync engine talks to today — see RepoIdentity's doc comment).
                 await using (var cmd = new NpgsqlCommand(@"
                     INSERT INTO bt_issue_mirror
                         (issue_number, title, state, board_status_option_id, board_status_name,
                          labels, blocked_by_numbers, blocking_numbers, html_url, created_at, closed_at,
-                         last_synced_at, updated_at)
+                         last_synced_at, updated_at, repo_owner, repo_name)
                     VALUES
                         (@n, @title, @state, @boardOpt, @boardName,
                          @labels, @blockedBy, '{}', @url, @createdAt, @closedAt,
-                         NOW(), NOW())
-                    ON CONFLICT (issue_number) DO UPDATE SET
+                         NOW(), NOW(), @repoOwner, @repoName)
+                    ON CONFLICT (repo_owner, repo_name, issue_number) DO UPDATE SET
                         title  = EXCLUDED.title,
                         state  = EXCLUDED.state,
                         -- Git #3343 — board status is now filled from the targeted per-issue fetch
@@ -982,6 +1009,8 @@ namespace BuildConsole.Services
                     var pClosed = cmd.Parameters.Add(new NpgsqlParameter("@closedAt", NpgsqlDbType.TimestampTz));
                     var pHaveBlockedBy = cmd.Parameters.Add(new NpgsqlParameter("@haveBlockedBy", NpgsqlDbType.Boolean));
                     var pHaveBoard = cmd.Parameters.Add(new NpgsqlParameter("@haveBoard", NpgsqlDbType.Boolean));
+                    cmd.Parameters.AddWithValue("@repoOwner", RepoIdentity.DefaultOwner);
+                    cmd.Parameters.AddWithValue("@repoName", RepoIdentity.DefaultName);
 
                     foreach (var issue in changed)
                     {
@@ -1188,20 +1217,22 @@ namespace BuildConsole.Services
 
                 await using var tx = await conn.BeginTransactionAsync();
 
+                // Git #3579 — bt_issue_mirror's PK is now (repo_owner, repo_name, issue_number);
+                // repo columns written explicitly (defaulted to this repo — see RepoIdentity).
                 await using (var cmd = new NpgsqlCommand(@"
                     INSERT INTO bt_issue_mirror
                         (issue_number, title, state, board_status_option_id, board_status_name,
                          labels, blocked_by_numbers, blocking_numbers, html_url, created_at, closed_at,
                          body, milestone_title, milestone_number, parent_number, parent_milestone_number,
                          sub_issue_count, sub_issue_completed, sub_issue_percent, child_issue_numbers, database_id,
-                         last_synced_at, updated_at)
+                         last_synced_at, updated_at, repo_owner, repo_name)
                     VALUES
                         (@n, @title, 'open', @boardOpt, @boardName,
                          @labels, @blockedBy, @blocking, @url, @createdAt, NULL,
                          @body, @mTitle, @mNumber, @pNumber, @pmNumber,
                          @subCount, @subCompleted, @subPercent, @children, @dbId,
-                         NOW(), NOW())
-                    ON CONFLICT (issue_number) DO UPDATE SET
+                         NOW(), NOW(), @repoOwner, @repoName)
+                    ON CONFLICT (repo_owner, repo_name, issue_number) DO UPDATE SET
                         title  = EXCLUDED.title,
                         state  = 'open',
                         board_status_option_id = CASE WHEN @boardSweepOk THEN EXCLUDED.board_status_option_id ELSE bt_issue_mirror.board_status_option_id END,
@@ -1254,6 +1285,8 @@ namespace BuildConsole.Services
                     var pBoardSweepOk = cmd.Parameters.Add(new NpgsqlParameter("@boardSweepOk", NpgsqlDbType.Boolean) { Value = boardSweepOk });
                     var pHaveBlockedBy = cmd.Parameters.Add(new NpgsqlParameter("@haveBlockedBy", NpgsqlDbType.Boolean));
                     var pBlockingComplete = cmd.Parameters.Add(new NpgsqlParameter("@blockingComplete", NpgsqlDbType.Boolean) { Value = blockedByPassComplete });
+                    cmd.Parameters.AddWithValue("@repoOwner", RepoIdentity.DefaultOwner);
+                    cmd.Parameters.AddWithValue("@repoName", RepoIdentity.DefaultName);
 
                     foreach (var issue in openIssues)
                     {
@@ -1300,11 +1333,17 @@ namespace BuildConsole.Services
                 // depends on it, and PromoteVerifyingToDone's own LIVE open-set check covers the
                 // Verifying→Done transition.)
                 var openNums = openIssues.Select(i => i.Number).ToArray();
+                // Git #3579 — openNums is THIS repo's own fetched open set; bound the mark-closed
+                // sweep to this repo's rows so a same-numbered open issue in a second repo can
+                // never be marked closed based on this repo's walk.
                 await using (var closeCmd = new NpgsqlCommand(@"
                     UPDATE bt_issue_mirror
                        SET state = 'closed', last_synced_at = NOW(), updated_at = NOW()
-                     WHERE state = 'open' AND NOT (issue_number = ANY(@open))", conn, tx))
+                     WHERE repo_owner = @owner AND repo_name = @repo
+                       AND state = 'open' AND NOT (issue_number = ANY(@open))", conn, tx))
                 {
+                    closeCmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                    closeCmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                     closeCmd.Parameters.AddWithValue("@open", NpgsqlDbType.Array | NpgsqlDbType.Integer, openNums);
                     summary.MarkedClosed = await closeCmd.ExecuteNonQueryAsync();
                 }
@@ -1318,10 +1357,13 @@ namespace BuildConsole.Services
                 // header can't linger.
                 if (milestones != null)
                 {
+                    // Git #3579 — bt_milestone_mirror's PK is now (repo_owner, repo_name, number);
+                    // repo columns written explicitly (defaulted to this repo), and the
+                    // replace-in-place delete sweep below is bound to this repo's rows only.
                     await using (var msCmd = new NpgsqlCommand(@"
-                        INSERT INTO bt_milestone_mirror (number, title, state, open_issues, closed_issues, last_synced_at)
-                        VALUES (@num, @title, @state, @open, @closed, NOW())
-                        ON CONFLICT (number) DO UPDATE SET
+                        INSERT INTO bt_milestone_mirror (number, title, state, open_issues, closed_issues, last_synced_at, repo_owner, repo_name)
+                        VALUES (@num, @title, @state, @open, @closed, NOW(), @owner, @repo)
+                        ON CONFLICT (repo_owner, repo_name, number) DO UPDATE SET
                             title = EXCLUDED.title,
                             state = EXCLUDED.state,
                             open_issues = EXCLUDED.open_issues,
@@ -1333,6 +1375,8 @@ namespace BuildConsole.Services
                         var mState = msCmd.Parameters.Add(new NpgsqlParameter("@state", NpgsqlDbType.Text));
                         var mOpen = msCmd.Parameters.Add(new NpgsqlParameter("@open", NpgsqlDbType.Integer));
                         var mClosed = msCmd.Parameters.Add(new NpgsqlParameter("@closed", NpgsqlDbType.Integer));
+                        msCmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                        msCmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                         foreach (var mi in milestones)
                         {
                             mNum.Value = mi.Number;
@@ -1345,8 +1389,10 @@ namespace BuildConsole.Services
                     }
                     var msNums = milestones.Select(m => m.Number).ToArray();
                     await using (var delCmd = new NpgsqlCommand(
-                        "DELETE FROM bt_milestone_mirror WHERE NOT (number = ANY(@nums))", conn, tx))
+                        "DELETE FROM bt_milestone_mirror WHERE repo_owner = @owner AND repo_name = @repo AND NOT (number = ANY(@nums))", conn, tx))
                     {
+                        delCmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                        delCmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                         delCmd.Parameters.AddWithValue("@nums", NpgsqlDbType.Array | NpgsqlDbType.Integer, msNums);
                         await delCmd.ExecuteNonQueryAsync();
                     }

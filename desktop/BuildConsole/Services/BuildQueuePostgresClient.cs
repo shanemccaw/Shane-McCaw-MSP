@@ -711,18 +711,26 @@ namespace BuildConsole.Services
         {
             await using var conn = await OpenAsync();
 
+            // Git #3579 — bt_dispatch_claims' PK is now (repo_owner, repo_name, github_number);
+            // every statement below threads the real repo dimension explicitly (defaulted to
+            // this repo, the only one BuildConsole talks to today) so a second repo's claim on
+            // the same issue number can never collide with this one.
             await using (var purge = new NpgsqlCommand(
-                "DELETE FROM bt_dispatch_claims WHERE github_number = @num AND expires_at <= now()", conn))
+                "DELETE FROM bt_dispatch_claims WHERE repo_owner = @owner AND repo_name = @repo AND github_number = @num AND expires_at <= now()", conn))
             {
+                purge.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                purge.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 purge.Parameters.AddWithValue("@num", githubNumber);
                 await purge.ExecuteNonQueryAsync();
             }
 
             await using (var insert = new NpgsqlCommand(@"
-                INSERT INTO bt_dispatch_claims (github_number, claimed_by, expires_at)
-                VALUES (@num, @by, now() + (@ttl || ' minutes')::interval)
-                ON CONFLICT (github_number) DO NOTHING", conn))
+                INSERT INTO bt_dispatch_claims (repo_owner, repo_name, github_number, claimed_by, expires_at)
+                VALUES (@owner, @repo, @num, @by, now() + (@ttl || ' minutes')::interval)
+                ON CONFLICT (repo_owner, repo_name, github_number) DO NOTHING", conn))
             {
+                insert.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                insert.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 insert.Parameters.AddWithValue("@num", githubNumber);
                 insert.Parameters.AddWithValue("@by", claimedBy);
                 insert.Parameters.AddWithValue("@ttl", ttlMinutes);
@@ -732,8 +740,10 @@ namespace BuildConsole.Services
 
             // Lost the race — report the real current holder so the caller can show WHO and WHEN.
             await using (var select = new NpgsqlCommand(
-                "SELECT claimed_by, claimed_at, expires_at FROM bt_dispatch_claims WHERE github_number = @num", conn))
+                "SELECT claimed_by, claimed_at, expires_at FROM bt_dispatch_claims WHERE repo_owner = @owner AND repo_name = @repo AND github_number = @num", conn))
             {
+                select.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                select.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 select.Parameters.AddWithValue("@num", githubNumber);
                 await using var reader = await select.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
@@ -758,7 +768,11 @@ namespace BuildConsole.Services
         public async Task ReleaseDispatchClaimAsync(int githubNumber)
         {
             await using var conn = await OpenAsync();
-            await using var cmd = new NpgsqlCommand("DELETE FROM bt_dispatch_claims WHERE github_number = @num", conn);
+            // Git #3579 — repo-scoped, see TryClaimDispatchAsync's note above.
+            await using var cmd = new NpgsqlCommand(
+                "DELETE FROM bt_dispatch_claims WHERE repo_owner = @owner AND repo_name = @repo AND github_number = @num", conn);
+            cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+            cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
             cmd.Parameters.AddWithValue("@num", githubNumber);
             await cmd.ExecuteNonQueryAsync();
         }
@@ -2468,11 +2482,16 @@ namespace BuildConsole.Services
             await using var conn = await OpenAsync();
 
             // 1. Fetch Epics
+            // Git #3579 — bt_epics is now repo-scoped; the Chats panel's epic list stays
+            // scoped to this repo (defaulted) so a second repo's epics can't silently mix in.
             const string sqlEpics = @"
                 SELECT id, title, status, github_number
                 FROM bt_epics
+                WHERE repo_owner = @owner AND repo_name = @repo
                 ORDER BY title ASC";
             await using var cmdEpics = new NpgsqlCommand(sqlEpics, conn);
+            cmdEpics.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+            cmdEpics.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
             await using (var reader = await cmdEpics.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
@@ -2734,15 +2753,19 @@ namespace BuildConsole.Services
                 throw new Exception("Failed to insert or find chat in bt_chats");
 
             // Step 3: Insert link into bt_chat_issues with ON CONFLICT DO NOTHING
+            // Git #3579 — bt_chat_issues' uniqueness is now (chat_id, repo_owner, repo_name,
+            // issue_number); repo columns written explicitly (defaulted to this repo).
             const string insertLinkSql = @"
-                INSERT INTO bt_chat_issues (chat_id, issue_number)
-                VALUES (@chatId, @issueNumber)
+                INSERT INTO bt_chat_issues (chat_id, issue_number, repo_owner, repo_name)
+                VALUES (@chatId, @issueNumber, @owner, @repo)
                 ON CONFLICT DO NOTHING";
 
             await using (var cmd = new NpgsqlCommand(insertLinkSql, conn))
             {
                 cmd.Parameters.AddWithValue("@chatId", chatId.Value);
                 cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 await cmd.ExecuteNonQueryAsync();
             }
 
@@ -2786,13 +2809,16 @@ namespace BuildConsole.Services
             // Step 2: If it exists, delete the link from bt_chat_issues and clean up bt_chats
             if (chatId != null)
             {
+                // Git #3579 — repo-scoped (see LinkChatToIssueAsync's insert above).
                 const string deleteLinkSql = @"
                     DELETE FROM bt_chat_issues
-                    WHERE chat_id = @chatId AND issue_number = @issueNumber";
+                    WHERE chat_id = @chatId AND repo_owner = @owner AND repo_name = @repo AND issue_number = @issueNumber";
 
                 await using (var cmd = new NpgsqlCommand(deleteLinkSql, conn))
                 {
                     cmd.Parameters.AddWithValue("@chatId", chatId.Value);
+                    cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                    cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                     cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
                     await cmd.ExecuteNonQueryAsync();
                 }
@@ -2851,10 +2877,16 @@ namespace BuildConsole.Services
         private static async Task<(int? EpicId, int? IssueId)> ResolveAndPersistChatLinkAsync(
             NpgsqlConnection conn, int chatId, int issueNumber, Func<int, LiveBoardIssueInfo?>? resolveLive)
         {
-            const string findEpicSql = "SELECT id FROM bt_epics WHERE github_number = @issueNumber LIMIT 1";
+            // Git #3579 — bt_epics/bt_issues' github_number uniqueness is now (repo_owner,
+            // repo_name, github_number); every lookup/upsert below threads the real repo
+            // dimension explicitly (defaulted to this repo, the only one BuildConsole talks
+            // to today) so a second repo's issue #N can never resolve to this repo's row.
+            const string findEpicSql = "SELECT id FROM bt_epics WHERE repo_owner = @owner AND repo_name = @repo AND github_number = @issueNumber LIMIT 1";
             int? epicId = null;
             await using (var cmd = new NpgsqlCommand(findEpicSql, conn))
             {
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
                 var val = await cmd.ExecuteScalarAsync();
                 if (val != null && val != DBNull.Value) epicId = Convert.ToInt32(val);
@@ -2864,9 +2896,11 @@ namespace BuildConsole.Services
             int? issueEpicId = null;
             if (!epicId.HasValue)
             {
-                const string findIssueSql = "SELECT id, epic_id FROM bt_issues WHERE github_number = @issueNumber LIMIT 1";
+                const string findIssueSql = "SELECT id, epic_id FROM bt_issues WHERE repo_owner = @owner AND repo_name = @repo AND github_number = @issueNumber LIMIT 1";
                 await using (var cmd = new NpgsqlCommand(findIssueSql, conn))
                 {
+                    cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                    cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                     cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
                     await using var reader = await cmd.ExecuteReaderAsync();
                     if (await reader.ReadAsync())
@@ -2887,13 +2921,15 @@ namespace BuildConsole.Services
                     if (live.Value.IsEpic)
                     {
                         const string upsertEpicSql = @"
-                            INSERT INTO bt_epics (title, status, github_number)
-                            VALUES (@title, 'open', @issueNumber)
-                            ON CONFLICT (github_number) DO UPDATE SET title = EXCLUDED.title, updated_at = NOW()
+                            INSERT INTO bt_epics (title, status, github_number, repo_owner, repo_name)
+                            VALUES (@title, 'open', @issueNumber, @owner, @repo)
+                            ON CONFLICT (repo_owner, repo_name, github_number) DO UPDATE SET title = EXCLUDED.title, updated_at = NOW()
                             RETURNING id";
                         await using var cmd = new NpgsqlCommand(upsertEpicSql, conn);
                         cmd.Parameters.AddWithValue("@title", live.Value.Title);
                         cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+                        cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                        cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                         var val = await cmd.ExecuteScalarAsync();
                         if (val != null && val != DBNull.Value)
                         {
@@ -2909,17 +2945,19 @@ namespace BuildConsole.Services
                         int? parentEpicId = null;
                         if (live.Value.ParentEpicGithubNumber.HasValue)
                         {
-                            const string findParentEpicSql = "SELECT id FROM bt_epics WHERE github_number = @parentNumber LIMIT 1";
+                            const string findParentEpicSql = "SELECT id FROM bt_epics WHERE repo_owner = @owner AND repo_name = @repo AND github_number = @parentNumber LIMIT 1";
                             await using var pcmd = new NpgsqlCommand(findParentEpicSql, conn);
+                            pcmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                            pcmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                             pcmd.Parameters.AddWithValue("@parentNumber", live.Value.ParentEpicGithubNumber.Value);
                             var pval = await pcmd.ExecuteScalarAsync();
                             if (pval != null && pval != DBNull.Value) parentEpicId = Convert.ToInt32(pval);
                         }
 
                         const string upsertIssueSql = @"
-                            INSERT INTO bt_issues (title, status, github_number, epic_id)
-                            VALUES (@title, 'backlog', @issueNumber, @epicId)
-                            ON CONFLICT (github_number) DO UPDATE SET title = EXCLUDED.title,
+                            INSERT INTO bt_issues (title, status, github_number, epic_id, repo_owner, repo_name)
+                            VALUES (@title, 'backlog', @issueNumber, @epicId, @owner, @repo)
+                            ON CONFLICT (repo_owner, repo_name, github_number) DO UPDATE SET title = EXCLUDED.title,
                                 epic_id = COALESCE(bt_issues.epic_id, EXCLUDED.epic_id), updated_at = NOW()
                             RETURNING id, epic_id";
                         await using var icmd = new NpgsqlCommand(upsertIssueSql, conn);
@@ -2927,6 +2965,8 @@ namespace BuildConsole.Services
                         icmd.Parameters.AddWithValue("@issueNumber", issueNumber);
                         icmd.Parameters.Add(new NpgsqlParameter("@epicId", NpgsqlDbType.Integer)
                         { Value = parentEpicId.HasValue ? (object)parentEpicId.Value : DBNull.Value });
+                        icmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                        icmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                         await using var reader = await icmd.ExecuteReaderAsync();
                         if (await reader.ReadAsync())
                         {
@@ -2986,16 +3026,20 @@ namespace BuildConsole.Services
             if (string.IsNullOrWhiteSpace(chatUrl) || issueNumbers == null || issueNumbers.Count == 0) return;
 
             await using var conn = await OpenAsync();
+            // Git #3579 — bt_chat_mentioned_issues' uniqueness is now (chat_url, repo_owner,
+            // repo_name, issue_number); repo columns written explicitly (defaulted to this repo).
             const string sql = @"
-                INSERT INTO bt_chat_mentioned_issues (chat_url, issue_number, first_seen_at, last_seen_at)
-                VALUES (@chatUrl, @issueNumber, NOW(), NOW())
-                ON CONFLICT (chat_url, issue_number) DO UPDATE SET last_seen_at = NOW()";
+                INSERT INTO bt_chat_mentioned_issues (chat_url, issue_number, repo_owner, repo_name, first_seen_at, last_seen_at)
+                VALUES (@chatUrl, @issueNumber, @owner, @repo, NOW(), NOW())
+                ON CONFLICT (chat_url, repo_owner, repo_name, issue_number) DO UPDATE SET last_seen_at = NOW()";
 
             foreach (var issueNumber in issueNumbers)
             {
                 await using var cmd = new NpgsqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@chatUrl", chatUrl);
                 cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 await cmd.ExecuteNonQueryAsync();
             }
         }
@@ -3010,10 +3054,16 @@ namespace BuildConsole.Services
         public async Task<int> PruneClosedChatIssueMentionsAsync(IReadOnlyCollection<int> openIssueNumbers)
         {
             await using var conn = await OpenAsync();
+            // Git #3579 — openIssueNumbers is this repo's own live open-issue set; bound the
+            // sweep to this repo's rows so a same-numbered issue in a second repo is never
+            // evicted based on THIS repo's open/closed state.
             const string sql = @"
                 DELETE FROM bt_chat_mentioned_issues
-                WHERE NOT (issue_number = ANY(@openNumbers))";
+                WHERE repo_owner = @owner AND repo_name = @repo
+                  AND NOT (issue_number = ANY(@openNumbers))";
             await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+            cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
             cmd.Parameters.AddWithValue("@openNumbers", (openIssueNumbers ?? Array.Empty<int>()).ToArray());
             return await cmd.ExecuteNonQueryAsync();
         }

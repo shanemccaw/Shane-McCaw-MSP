@@ -57,6 +57,7 @@ function claudeUrl(conversationId: string): string {
 /** GET /admin/build-tracker/epics — all epics with issue_count and chat_count */
 router.get("/admin/build-tracker/epics", requireAdmin, async (_req: Request, res: Response) => {
   try {
+    // Git #3579 — bt_epics is now repo-scoped; this admin listing stays scoped to this repo.
     const epics = await db
       .select({
         id:           btEpicsTable.id,
@@ -71,6 +72,7 @@ router.get("/admin/build-tracker/epics", requireAdmin, async (_req: Request, res
         chatCount:    sql<number>`(SELECT COUNT(*) FROM bt_chats  WHERE epic_id = ${btEpicsTable.id} OR issue_id IN (SELECT id FROM bt_issues WHERE epic_id = ${btEpicsTable.id}))::int`,
       })
       .from(btEpicsTable)
+      .where(and(eq(btEpicsTable.repoOwner, GITHUB_OWNER), eq(btEpicsTable.repoName, GITHUB_REPO_NAME)))
       .orderBy(desc(btEpicsTable.updatedAt));
     res.json(epics);
   } catch (err) {
@@ -346,7 +348,12 @@ router.get("/admin/build-tracker/issues", ingestAuth, async (req: Request, res: 
         chatCount:    sql<number>`(SELECT COUNT(*) FROM bt_chats WHERE issue_id = ${btIssuesTable.id})::int`,
       })
       .from(btIssuesTable)
-      .where(epicId !== undefined ? eq(btIssuesTable.epicId, epicId) : undefined)
+      // Git #3579 — bt_issues is now repo-scoped; this admin listing stays scoped to this repo.
+      .where(
+        epicId !== undefined
+          ? and(eq(btIssuesTable.repoOwner, GITHUB_OWNER), eq(btIssuesTable.repoName, GITHUB_REPO_NAME), eq(btIssuesTable.epicId, epicId))
+          : and(eq(btIssuesTable.repoOwner, GITHUB_OWNER), eq(btIssuesTable.repoName, GITHUB_REPO_NAME)),
+      )
       .orderBy(asc(btIssuesTable.status), desc(btIssuesTable.updatedAt));
     res.json(issues);
   } catch (err) {
@@ -674,6 +681,8 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
     // compute real milestone progress, which has to count closed/done work
     // too (a milestone with everything closed should read 100%, not 0/0).
     const [allEpics, allIssues, allChats, allChatIssues, currentChatRows] = await Promise.all([
+      // Git #3579 — bt_epics/bt_issues are now repo-scoped; this board stays scoped to
+      // this repo (Main-tier repo, per Feature #3578's own design) — bound explicitly.
       db
         .select({
           id: btEpicsTable.id,
@@ -684,6 +693,7 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
           parentEpicId: btEpicsTable.parentEpicId,
         })
         .from(btEpicsTable)
+        .where(and(eq(btEpicsTable.repoOwner, GITHUB_OWNER), eq(btEpicsTable.repoName, GITHUB_REPO_NAME)))
         .orderBy(asc(btEpicsTable.title)),
       db
         .select({
@@ -699,6 +709,7 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
           labels: btIssuesTable.labels,
         })
         .from(btIssuesTable)
+        .where(and(eq(btIssuesTable.repoOwner, GITHUB_OWNER), eq(btIssuesTable.repoName, GITHUB_REPO_NAME)))
         // By Git number, not title (Git #700 — Shane, with 19 issues under
         // one epic: "hard to find" in title-alphabetical order). Filtering
         // this array later (focusEpicOpenIssues, per-epic groups) preserves
@@ -976,10 +987,11 @@ router.post("/admin/build-tracker/extension/quick-sync", ingestAuth, async (req:
       if (gh.state === "closed") patch.status = "closed";
       else if (labels.includes("complete")) patch.status = "done";
 
+      // Git #3579 — bt_issues is now repo-scoped; bound to this repo (GITHUB_OWNER/GITHUB_REPO_NAME).
       const result = await db
         .update(btIssuesTable)
         .set(patch)
-        .where(eq(btIssuesTable.githubNumber, num))
+        .where(and(eq(btIssuesTable.repoOwner, GITHUB_OWNER), eq(btIssuesTable.repoName, GITHUB_REPO_NAME), eq(btIssuesTable.githubNumber, num)))
         .returning({ id: btIssuesTable.id });
       if (result.length > 0) updated++;
     } catch (err) {
@@ -1019,10 +1031,13 @@ async function ghFetchSubIssues(number: number): Promise<GitHubIssuePayload[]> {
 /** Upserts a GitHub issue as an EPIC row (used both for the epic being synced and any nested sub-epic found under it). */
 async function upsertEpicRow(gh: GitHubIssuePayload, parentEpicId: number | null): Promise<number> {
   const milestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
+  // Git #3579 — bt_epics' github_number uniqueness is now (repo_owner, repo_name,
+  // github_number); every lookup/upsert threads GITHUB_OWNER/GITHUB_REPO_NAME (the
+  // one repo this whole route already hardcodes) explicitly.
   const [existing] = await db
     .select({ status: btEpicsTable.status })
     .from(btEpicsTable)
-    .where(eq(btEpicsTable.githubNumber, gh.number))
+    .where(and(eq(btEpicsTable.repoOwner, GITHUB_OWNER), eq(btEpicsTable.repoName, GITHUB_REPO_NAME), eq(btEpicsTable.githubNumber, gh.number)))
     .limit(1);
   const previousStatus = existing?.status;
   // GitHub's own open/closed state is authoritative in both directions —
@@ -1041,11 +1056,13 @@ async function upsertEpicRow(gh: GitHubIssuePayload, parentEpicId: number | null
       description: gh.body,
       status,
       githubNumber: gh.number,
+      repoOwner: GITHUB_OWNER,
+      repoName: GITHUB_REPO_NAME,
       milestoneId,
       parentEpicId,
     })
     .onConflictDoUpdate({
-      target: btEpicsTable.githubNumber,
+      target: [btEpicsTable.repoOwner, btEpicsTable.repoName, btEpicsTable.githubNumber],
       set: {
         title: gh.title,
         description: gh.body,
@@ -1062,10 +1079,12 @@ async function upsertEpicRow(gh: GitHubIssuePayload, parentEpicId: number | null
 async function upsertIssueRow(gh: GitHubIssuePayload, epicId: number | null): Promise<void> {
   const milestoneId = gh.milestone ? (gh.milestone.number ?? gh.milestone.id) : null;
   const labels = gh.labels.map((l) => l.name);
+  // Git #3579 — bt_issues' github_number uniqueness is now (repo_owner, repo_name,
+  // github_number); see upsertEpicRow's matching note above.
   const [existing] = await db
     .select({ status: btIssuesTable.status })
     .from(btIssuesTable)
-    .where(eq(btIssuesTable.githubNumber, gh.number))
+    .where(and(eq(btIssuesTable.repoOwner, GITHUB_OWNER), eq(btIssuesTable.repoName, GITHUB_REPO_NAME), eq(btIssuesTable.githubNumber, gh.number)))
     .limit(1);
   const previousStatus = existing?.status;
   // `complete` means done in code, not yet reviewed/closed by Shane himself
@@ -1092,11 +1111,13 @@ async function upsertIssueRow(gh: GitHubIssuePayload, epicId: number | null): Pr
       epicId,
       milestoneId,
       githubNumber: gh.number,
+      repoOwner: GITHUB_OWNER,
+      repoName: GITHUB_REPO_NAME,
       githubUrl: gh.html_url,
       labels,
     })
     .onConflictDoUpdate({
-      target: btIssuesTable.githubNumber,
+      target: [btIssuesTable.repoOwner, btIssuesTable.repoName, btIssuesTable.githubNumber],
       set: {
         title: gh.title,
         description: gh.body,
@@ -1186,10 +1207,11 @@ router.get("/admin/build-tracker/extension/issue-lookup", ingestAuth, async (req
     const epicLookupNum = isEpic ? gh.number : getParentNumber(gh.parent_issue_url);
     let epic: { id: number; title: string; githubNumber: number | null } | null = null;
     if (epicLookupNum !== null) {
+      // Git #3579 — bt_epics is now repo-scoped; bound to this repo.
       const [epicRow] = await db
         .select({ id: btEpicsTable.id, title: btEpicsTable.title, githubNumber: btEpicsTable.githubNumber })
         .from(btEpicsTable)
-        .where(eq(btEpicsTable.githubNumber, epicLookupNum))
+        .where(and(eq(btEpicsTable.repoOwner, GITHUB_OWNER), eq(btEpicsTable.repoName, GITHUB_REPO_NAME), eq(btEpicsTable.githubNumber, epicLookupNum)))
         .limit(1);
       epic = epicRow ?? null;
     }
@@ -1335,11 +1357,12 @@ router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req
     const lookupNums = Array.from(
       new Set(collected.map(lookupNumberFor).filter((n): n is number => n !== null)),
     );
+    // Git #3579 — bt_epics is now repo-scoped; bound to this repo.
     const epicRows = lookupNums.length > 0
       ? await db
           .select({ id: btEpicsTable.id, title: btEpicsTable.title, githubNumber: btEpicsTable.githubNumber })
           .from(btEpicsTable)
-          .where(inArray(btEpicsTable.githubNumber, lookupNums))
+          .where(and(eq(btEpicsTable.repoOwner, GITHUB_OWNER), eq(btEpicsTable.repoName, GITHUB_REPO_NAME), inArray(btEpicsTable.githubNumber, lookupNums)))
       : [];
     const epicByNumber = new Map(epicRows.map((e) => [e.githubNumber, e]));
 
@@ -2017,10 +2040,11 @@ router.post("/admin/build-tracker/extension/set-issue-state", ingestAuth, async 
     // tracked here at all it's almost certainly because it was complete-
     // labeled (Git #714/#715's own reasoning), and reopening shouldn't
     // silently forget that.
+    // Git #3579 — bt_issues is now repo-scoped; bound to this repo.
     await db
       .update(btIssuesTable)
       .set({ status: state === "closed" ? "closed" : "done", updatedAt: new Date() })
-      .where(eq(btIssuesTable.githubNumber, number));
+      .where(and(eq(btIssuesTable.repoOwner, GITHUB_OWNER), eq(btIssuesTable.repoName, GITHUB_REPO_NAME), eq(btIssuesTable.githubNumber, number)));
     res.json({ number, state });
   } catch (err) {
     log.error({ err, number, state }, "POST /extension/set-issue-state failed");
@@ -2070,10 +2094,11 @@ router.post("/admin/build-tracker/extension/sync-epic", ingestAuth, async (req: 
     let ownParentEpicId: number | null = null;
     const ownParentNum = getParentNumber(ghEpic.parent_issue_url);
     if (ownParentNum !== null) {
+      // Git #3579 — bt_epics is now repo-scoped; bound to this repo.
       const [parentRow] = await db
         .select({ id: btEpicsTable.id })
         .from(btEpicsTable)
-        .where(eq(btEpicsTable.githubNumber, ownParentNum))
+        .where(and(eq(btEpicsTable.repoOwner, GITHUB_OWNER), eq(btEpicsTable.repoName, GITHUB_REPO_NAME), eq(btEpicsTable.githubNumber, ownParentNum)))
         .limit(1);
       ownParentEpicId = parentRow?.id ?? null;
     }
@@ -2206,17 +2231,18 @@ async function resolveChatEpicOrIssue(
   issueNumber: number,
   isEpicOrIssue: boolean,
 ): Promise<{ epicId: number | null; issueId: number | null }> {
+  // Git #3579 — bt_epics/bt_issues are now repo-scoped; every lookup bound to this repo.
   const [epic] = await db
     .select({ id: btEpicsTable.id })
     .from(btEpicsTable)
-    .where(eq(btEpicsTable.githubNumber, issueNumber))
+    .where(and(eq(btEpicsTable.repoOwner, GITHUB_OWNER), eq(btEpicsTable.repoName, GITHUB_REPO_NAME), eq(btEpicsTable.githubNumber, issueNumber)))
     .limit(1);
   if (epic) return { epicId: epic.id, issueId: null };
 
   const [issue] = await db
     .select({ id: btIssuesTable.id, epicId: btIssuesTable.epicId })
     .from(btIssuesTable)
-    .where(eq(btIssuesTable.githubNumber, issueNumber))
+    .where(and(eq(btIssuesTable.repoOwner, GITHUB_OWNER), eq(btIssuesTable.repoName, GITHUB_REPO_NAME), eq(btIssuesTable.githubNumber, issueNumber)))
     .limit(1);
   if (issue) return { epicId: issue.epicId ?? null, issueId: issue.id };
 
@@ -2243,7 +2269,7 @@ async function resolveChatEpicOrIssue(
       const [parentRow] = await db
         .select({ id: btEpicsTable.id })
         .from(btEpicsTable)
-        .where(eq(btEpicsTable.githubNumber, parentNum))
+        .where(and(eq(btEpicsTable.repoOwner, GITHUB_OWNER), eq(btEpicsTable.repoName, GITHUB_REPO_NAME), eq(btEpicsTable.githubNumber, parentNum)))
         .limit(1);
       parentEpicId = parentRow?.id ?? null;
     }
@@ -2251,7 +2277,7 @@ async function resolveChatEpicOrIssue(
     const [newIssue] = await db
       .select({ id: btIssuesTable.id, epicId: btIssuesTable.epicId })
       .from(btIssuesTable)
-      .where(eq(btIssuesTable.githubNumber, issueNumber))
+      .where(and(eq(btIssuesTable.repoOwner, GITHUB_OWNER), eq(btIssuesTable.repoName, GITHUB_REPO_NAME), eq(btIssuesTable.githubNumber, issueNumber)))
       .limit(1);
     log.info({ issueNumber }, "chats: live-fetch self-heal upserted bt_issues for not-yet-synced issue (Git #2075)");
     return { epicId: newIssue?.epicId ?? null, issueId: newIssue?.id ?? null };
@@ -2305,11 +2331,15 @@ router.post("/admin/build-tracker/chats/assign-issue", ingestAuth, async (req: R
       chat = inserted;
     }
 
+    // Git #3579 — bt_chat_issues' uniqueness is now (chat_id, repo_owner, repo_name,
+    // issue_number); repo columns written explicitly (defaulted to this repo).
     await db
       .insert(btChatIssuesTable)
       .values({
         chatId: chat.id,
         issueNumber: issue_number,
+        repoOwner: GITHUB_OWNER,
+        repoName: GITHUB_REPO_NAME,
       })
       .onConflictDoNothing();
 
@@ -2384,9 +2414,15 @@ router.post("/admin/build-tracker/chats/unassign-issue", ingestAuth, async (req:
       return;
     }
 
+    // Git #3579 — repo-scoped (see /chats/assign-issue's insert above).
     await db
       .delete(btChatIssuesTable)
-      .where(and(eq(btChatIssuesTable.chatId, existing[0].id), eq(btChatIssuesTable.issueNumber, issue_number)));
+      .where(and(
+        eq(btChatIssuesTable.chatId, existing[0].id),
+        eq(btChatIssuesTable.repoOwner, GITHUB_OWNER),
+        eq(btChatIssuesTable.repoName, GITHUB_REPO_NAME),
+        eq(btChatIssuesTable.issueNumber, issue_number),
+      ));
 
     const remaining = await db
       .select({ issueNumber: btChatIssuesTable.issueNumber })
@@ -3138,17 +3174,20 @@ router.post("/admin/build-tracker/github-sync", ingestAuth, async (_req: Request
     // refinement with no GitHub-side signal to derive it from. Trusting
     // GitHub's real open/closed state both ways means a genuine reopen is
     // never stuck behind a stale local status.
+    // Git #3579 — bt_epics/bt_issues are now repo-scoped; every read/write in this whole
+    // sync bounds to GITHUB_OWNER/GITHUB_REPO_NAME (the one repo this route already
+    // hardcodes) so a second repo's rows sharing a github_number can never collide here.
     const previousEpicRows = await db
       .select({ githubNumber: btEpicsTable.githubNumber, status: btEpicsTable.status })
       .from(btEpicsTable)
-      .where(sql`github_number IS NOT NULL`);
+      .where(and(eq(btEpicsTable.repoOwner, GITHUB_OWNER), eq(btEpicsTable.repoName, GITHUB_REPO_NAME), sql`github_number IS NOT NULL`));
     const previousEpicStatusByNumber = new Map(
       previousEpicRows.filter((e) => e.githubNumber !== null).map((e) => [e.githubNumber!, e.status]),
     );
     const previousIssueRows = await db
       .select({ githubNumber: btIssuesTable.githubNumber, status: btIssuesTable.status })
       .from(btIssuesTable)
-      .where(sql`github_number IS NOT NULL`);
+      .where(and(eq(btIssuesTable.repoOwner, GITHUB_OWNER), eq(btIssuesTable.repoName, GITHUB_REPO_NAME), sql`github_number IS NOT NULL`));
     const previousIssueStatusByNumber = new Map(
       previousIssueRows.filter((i) => i.githubNumber !== null).map((i) => [i.githubNumber!, i.status]),
     );
@@ -3190,9 +3229,11 @@ router.post("/admin/build-tracker/github-sync", ingestAuth, async (_req: Request
         description,
         status,
         githubNumber: pNum,
+        repoOwner: GITHUB_OWNER,
+        repoName: GITHUB_REPO_NAME,
         milestoneId,
       }).onConflictDoUpdate({
-        target: btEpicsTable.githubNumber,
+        target: [btEpicsTable.repoOwner, btEpicsTable.repoName, btEpicsTable.githubNumber],
         set: { title, description, status, milestoneId, updatedAt: new Date() },
       });
       epicsUpserted++;
@@ -3200,10 +3241,11 @@ router.post("/admin/build-tracker/github-sync", ingestAuth, async (_req: Request
 
     debugLog += `Epics upserted into db: ${epicsUpserted}\n`;
 
-    // Load newly inserted epics to map githubNumber -> DB id
+    // Load newly inserted epics to map githubNumber -> DB id (bound to this repo, Git #3579)
     const dbEpics = await db
       .select({ id: btEpicsTable.id, githubNumber: btEpicsTable.githubNumber })
-      .from(btEpicsTable);
+      .from(btEpicsTable)
+      .where(and(eq(btEpicsTable.repoOwner, GITHUB_OWNER), eq(btEpicsTable.repoName, GITHUB_REPO_NAME)));
     const epicIdByGithubNumber = new Map(
       dbEpics.filter((e) => e.githubNumber !== null).map((e) => [e.githubNumber!, e.id]),
     );
@@ -3223,7 +3265,7 @@ router.post("/admin/build-tracker/github-sync", ingestAuth, async (_req: Request
       await db
         .update(btEpicsTable)
         .set({ parentEpicId: ownParentEpicId, updatedAt: new Date() })
-        .where(eq(btEpicsTable.githubNumber, pNum));
+        .where(and(eq(btEpicsTable.repoOwner, GITHUB_OWNER), eq(btEpicsTable.repoName, GITHUB_REPO_NAME), eq(btEpicsTable.githubNumber, pNum)));
       nestedEpicsLinked++;
     }
     debugLog += `Nested epics linked to their parent epic: ${nestedEpicsLinked}\n`;
@@ -3268,10 +3310,12 @@ router.post("/admin/build-tracker/github-sync", ingestAuth, async (_req: Request
         epicId,
         milestoneId: issueMilestoneId,
         githubNumber: gh.number,
+        repoOwner: GITHUB_OWNER,
+        repoName: GITHUB_REPO_NAME,
         githubUrl: gh.html_url,
         labels,
       }).onConflictDoUpdate({
-        target: btIssuesTable.githubNumber,
+        target: [btIssuesTable.repoOwner, btIssuesTable.repoName, btIssuesTable.githubNumber],
         set: {
           title: gh.title, description: gh.body, status: issueStatus, epicId,
           milestoneId: issueMilestoneId, githubUrl: gh.html_url, labels, updatedAt: new Date(),

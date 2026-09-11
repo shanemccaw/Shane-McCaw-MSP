@@ -4745,11 +4745,17 @@ export const btEpicsTable = pgTable("bt_epics", {
   description:   text("description"),
   /** open | in_progress | closed */
   status:        text("status").notNull().default("open"),
-  /** Non-null when the epic was imported from GitHub. Unique (nulls excepted)
-   * so GitHub sync can upsert by this column instead of delete-then-reinsert
-   * — the delete was destroying bt_chats.epic_id links via their own
+  /** Non-null when the epic was imported from GitHub. Unique per-repo (nulls excepted,
+   * see the composite index below) so GitHub sync can upsert by this column instead of
+   * delete-then-reinsert — the delete was destroying bt_chats.epic_id links via their own
    * onDelete: "set null" foreign key on every sync (Git #693). */
-  githubNumber:  integer("github_number").unique(),
+  githubNumber:  integer("github_number"),
+  /** Git #3579 — real (repo_owner, repo_name) dimension: a bare github_number is no longer
+   * a sound uniqueness boundary once a second real repo's issues coexist locally. Defaulted
+   * to this repo (the only one BuildConsole talks to today) so every existing row backfills
+   * with zero data loss — see lib/db/migrations/manual/2026-09-10-multi-repo-issue-key-dimension-3579.sql. */
+  repoOwner:     text("repo_owner").notNull().default("shanemccaw"),
+  repoName:      text("repo_name").notNull().default("Shane-McCaw-MSP"),
   milestoneId:   integer("milestone_id"),
   /** Non-null when this epic is itself a sub-issue of another tracked epic
    * (GitHub sub-issues can nest — an issue with its own sub-issues gets
@@ -4761,7 +4767,10 @@ export const btEpicsTable = pgTable("bt_epics", {
   parentEpicId:  integer("parent_epic_id").references((): AnyPgColumn => btEpicsTable.id, { onDelete: "set null" }),
   createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:     timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  /** Git #3579 — composite, replacing the old bare github_number unique index. */
+  githubNumberUniq: uniqueIndex("bt_epics_github_number_uniq").on(table.repoOwner, table.repoName, table.githubNumber),
+}));
 
 export type InsertBtEpic = typeof btEpicsTable.$inferInsert;
 export type BtEpic       = typeof btEpicsTable.$inferSelect;
@@ -4774,13 +4783,20 @@ export const btIssuesTable = pgTable("bt_issues", {
   description:   text("description"),
   /** backlog | in_progress | done | closed */
   status:        text("status").notNull().default("backlog"),
-  /** Unique (nulls excepted) — same reason as bt_epics.github_number above. */
-  githubNumber:  integer("github_number").unique(),
+  /** Unique per-repo (nulls excepted, see the composite index below) — same reason as
+   * bt_epics.github_number above. */
+  githubNumber:  integer("github_number"),
+  /** Git #3579 — real (repo_owner, repo_name) dimension, same reasoning as bt_epics above. */
+  repoOwner:     text("repo_owner").notNull().default("shanemccaw"),
+  repoName:      text("repo_name").notNull().default("Shane-McCaw-MSP"),
   githubUrl:     text("github_url"),
   labels:        text("labels").array().notNull().default(sql`'{}'::text[]`),
   createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:     timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  /** Git #3579 — composite, replacing the old bare github_number unique index. */
+  githubNumberUniq: uniqueIndex("bt_issues_github_number_uniq").on(table.repoOwner, table.repoName, table.githubNumber),
+}));
 
 export type InsertBtIssue = typeof btIssuesTable.$inferInsert;
 export type BtIssue       = typeof btIssuesTable.$inferSelect;
@@ -4819,9 +4835,14 @@ export const btChatIssuesTable = pgTable("bt_chat_issues", {
   chatId:          integer("chat_id").references(() => btChatsTable.id, { onDelete: "cascade" }).notNull(),
   /** GitHub issue/epic/milestone number */
   issueNumber:     integer("issue_number").notNull(),
+  /** Git #3579 — real (repo_owner, repo_name) dimension: (chat_id, issue_number) alone is no
+   * longer a sound uniqueness boundary once a second real repo's issue numbers coexist
+   * locally. Defaulted to this repo so every existing row backfills with zero data loss. */
+  repoOwner:       text("repo_owner").notNull().default("shanemccaw"),
+  repoName:        text("repo_name").notNull().default("Shane-McCaw-MSP"),
   associatedAt:    timestamp("associated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  chatIssueUnique: uniqueIndex("bt_chat_issues_chat_issue_unique").on(table.chatId, table.issueNumber),
+  chatIssueUnique: uniqueIndex("bt_chat_issues_chat_issue_unique").on(table.chatId, table.repoOwner, table.repoName, table.issueNumber),
   chatIdIdx:       index("bt_chat_issues_chat_id_idx").on(table.chatId),
   issueNumberIdx:  index("bt_chat_issues_issue_number_idx").on(table.issueNumber),
 }));
@@ -4845,10 +4866,13 @@ export const btChatMentionedIssuesTable = pgTable("bt_chat_mentioned_issues", {
   /** Full https://claude.ai/chat/<uuid> — matches BoardChat.ClaudeUrl. */
   chatUrl:         text("chat_url").notNull(),
   issueNumber:     integer("issue_number").notNull(),
+  /** Git #3579 — real (repo_owner, repo_name) dimension, same reasoning as bt_chat_issues above. */
+  repoOwner:       text("repo_owner").notNull().default("shanemccaw"),
+  repoName:        text("repo_name").notNull().default("Shane-McCaw-MSP"),
   firstSeenAt:     timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt:      timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  chatIssueUnique: uniqueIndex("bt_chat_mentioned_issues_chat_issue_unique").on(table.chatUrl, table.issueNumber),
+  chatIssueUnique: uniqueIndex("bt_chat_mentioned_issues_chat_issue_unique").on(table.chatUrl, table.repoOwner, table.repoName, table.issueNumber),
   chatUrlIdx:      index("bt_chat_mentioned_issues_chat_url_idx").on(table.chatUrl),
   issueNumberIdx:  index("bt_chat_mentioned_issues_issue_number_idx").on(table.issueNumber),
 }));
@@ -4875,6 +4899,13 @@ export const btBuildQueueTable = pgTable("bt_build_queue", {
   cwd:             text("cwd"),
   /** GitHub issue number this build is itself FOR, if any — lets the panel reuse the same epic/issue linking the rest of this file already does. */
   githubNumber:    integer("github_number"),
+  /** Git #3579 — real (repo_owner, repo_name) dimension for #3584's dispatch/worktree
+   * provisioning to resolve the item's own target repo from. Columns only here (no key
+   * change — bt_build_queue's PK is the serial id, never github_number); threading this
+   * through the dedup/blocked_by claim logic itself is #3582/#3584's own explicit scope.
+   * Defaulted to this repo so every existing row backfills with zero data loss. */
+  repoOwner:       text("repo_owner").notNull().default("shanemccaw"),
+  repoName:        text("repo_name").notNull().default("Shane-McCaw-MSP"),
   /** GitHub issue number this build can't start until closed/complete — null means ready to run as soon as a slot frees up. Superseded by blockedByNumbers for anything queued after Git #813 (Shane tried "--blocked-by 807,808,809" — a real multi-blocker need this single column can't express); kept for old rows and as a single-value fallback. */
   blockedByNumber: integer("blocked_by_number"),
   /** Git #813 — real multi-blocker support: null/empty means no extra blockers beyond blockedByNumber (if set). ALL of these must clear before the item is claimable. */
@@ -4909,13 +4940,22 @@ export type BtBuildQueueItem       = typeof btBuildQueueTable.$inferSelect;
 export const buildDispatchLogTable = pgTable("build_dispatch_log", {
   id:           serial("id").primaryKey(),
   issueNumber:  integer("issue_number").notNull(),
+  /** Git #3579 — real (repo_owner, repo_name) dimension so a per-repo re-dispatch count
+   * (bt_dispatch_claims' claim, the #3493 duplicate-BUILD:-comment guard) can't mix rows
+   * across repos once a second repo shares an issue number. Defaulted to this repo. */
+  repoOwner:    text("repo_owner").notNull().default("shanemccaw"),
+  repoName:     text("repo_name").notNull().default("Shane-McCaw-MSP"),
   /** FK -> bt_build_queue(id) — the exact queue row this dispatch came from, so MarkCompleteAsync can write session_id/outcome back onto this same row without a fragile in-memory correlation map. */
   queueItemId:  integer("queue_item_id"),
   dispatchedAt: timestamp("dispatched_at", { withTimezone: true }).notNull().defaultNow(),
   sessionId:    text("session_id"),
   /** Filled in at completion — mirrors bt_build_queue.status's terminal values (done | verifying | failed). Null while the dispatch is still running. */
   outcome:      text("outcome"),
-});
+}, (table) => ({
+  /** Git #3579 — widened to include the repo dimension; replaces the old
+   * (issue_number, dispatched_at) index of the same underlying purpose. */
+  repoIssueDispatchedAtIdx: index("build_dispatch_log_repo_issue_dispatched_at_idx").on(table.repoOwner, table.repoName, table.issueNumber, table.dispatchedAt),
+}));
 
 export type InsertBuildDispatchLogRow = typeof buildDispatchLogTable.$inferInsert;
 export type BuildDispatchLogRow       = typeof buildDispatchLogTable.$inferSelect;

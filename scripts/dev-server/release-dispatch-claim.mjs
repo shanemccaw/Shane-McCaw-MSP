@@ -10,6 +10,10 @@
 
 import { connect } from "../config-state/db.mjs";
 
+// Git #3579 — repo-scoped, same reasoning as claim-dispatch.mjs.
+const REPO_OWNER = "shanemccaw";
+const REPO_NAME = "Shane-McCaw-MSP";
+
 async function main() {
   const issueNumber = Number(process.argv[2]);
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
@@ -19,7 +23,10 @@ async function main() {
   }
   const client = await connect();
   try {
-    const res = await client.query("DELETE FROM bt_dispatch_claims WHERE github_number = $1", [issueNumber]);
+    const res = await client.query(
+      "DELETE FROM bt_dispatch_claims WHERE repo_owner = $1 AND repo_name = $2 AND github_number = $3",
+      [REPO_OWNER, REPO_NAME, issueNumber]
+    );
     console.log(res.rowCount > 0 ? `Released dispatch claim on #${issueNumber}.` : `#${issueNumber} had no dispatch claim to release.`);
   } finally {
     await client.end();

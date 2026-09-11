@@ -28,6 +28,13 @@
 
 import { connect } from "../config-state/db.mjs";
 
+// Git #3579 — bt_dispatch_claims' PK is now (repo_owner, repo_name, github_number), so a
+// bare github_number is no longer a sound uniqueness boundary once a second real repo's
+// issue numbers coexist locally. Defaulted to this repo (the only one this script talks
+// to today) so behavior here is completely unaffected until a real repo registry exists.
+const REPO_OWNER = "shanemccaw";
+const REPO_NAME = "Shane-McCaw-MSP";
+
 function parseArgs(argv) {
   const a = { _: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -55,16 +62,16 @@ async function main() {
     // A claim past its own TTL is abandoned — purge it before attempting a fresh one, so
     // a forgotten ask can never hold an issue's dispatch hostage forever.
     await client.query(
-      "DELETE FROM bt_dispatch_claims WHERE github_number = $1 AND expires_at <= now()",
-      [issueNumber]
+      "DELETE FROM bt_dispatch_claims WHERE repo_owner = $1 AND repo_name = $2 AND github_number = $3 AND expires_at <= now()",
+      [REPO_OWNER, REPO_NAME, issueNumber]
     );
 
     const insert = await client.query(
-      `INSERT INTO bt_dispatch_claims (github_number, claimed_by, expires_at)
-       VALUES ($1, $2, now() + ($3 || ' minutes')::interval)
-       ON CONFLICT (github_number) DO NOTHING
+      `INSERT INTO bt_dispatch_claims (repo_owner, repo_name, github_number, claimed_by, expires_at)
+       VALUES ($1, $2, $3, $4, now() + ($5 || ' minutes')::interval)
+       ON CONFLICT (repo_owner, repo_name, github_number) DO NOTHING
        RETURNING claimed_at, expires_at`,
-      [issueNumber, claimedBy, ttlMinutes]
+      [REPO_OWNER, REPO_NAME, issueNumber, claimedBy, ttlMinutes]
     );
 
     if (insert.rowCount > 0) {
@@ -77,8 +84,8 @@ async function main() {
     }
 
     const existing = await client.query(
-      "SELECT claimed_by, claimed_at, expires_at FROM bt_dispatch_claims WHERE github_number = $1",
-      [issueNumber]
+      "SELECT claimed_by, claimed_at, expires_at FROM bt_dispatch_claims WHERE repo_owner = $1 AND repo_name = $2 AND github_number = $3",
+      [REPO_OWNER, REPO_NAME, issueNumber]
     );
     const row = existing.rows[0];
     if (row) {
