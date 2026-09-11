@@ -9,7 +9,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
-import { db, servicesTable, mspSubscriptionsTable, tenantsTable } from "@workspace/db";
+import { db, servicesTable, mspSubscriptionsTable, tenantsTable, mspPlanCapabilitiesTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
 import { logger } from "./logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
@@ -36,7 +36,17 @@ export class OverageError extends Error {
   }
 }
 
-/** Loads the subscription + service tier for an MSP, or null if none. */
+/**
+ * Loads the subscription + service tier for an MSP, or null if none.
+ *
+ * `tierCapabilities` merges two sources: the typeAttributes JSON baked onto
+ * the service/tier row (the historical default), overlaid with any rows the
+ * PlatformAdmin has set for this service via the Plan Capability Rules admin
+ * UI (`mspPlanCapabilitiesTable`, `/msp/plans`). A capability rule row, when
+ * present, always wins — that table is the data-driven, admin-editable
+ * source of truth (Git #3683); a missing row falls back to the
+ * typeAttributes default, same as before.
+ */
 export async function loadTier(mspId: number) {
   const [sub] = await db
     .select({
@@ -54,6 +64,20 @@ export async function loadTier(mspId: number) {
 
   // Extract MSP platform tier fields from typeAttributes jsonb
   const attrs = (sub.typeAttributes ?? {}) as Record<string, unknown>;
+  const tierCapabilities = { ...(attrs.tierCapabilities ?? {}) } as Record<string, boolean>;
+
+  // Overlay admin-editable capability rules for this service tier.
+  const capabilityRules = await db
+    .select({
+      capabilityKey: mspPlanCapabilitiesTable.capabilityKey,
+      enabled: mspPlanCapabilitiesTable.enabled,
+    })
+    .from(mspPlanCapabilitiesTable)
+    .where(eq(mspPlanCapabilitiesTable.serviceId, sub.serviceId));
+  for (const rule of capabilityRules) {
+    tierCapabilities[rule.capabilityKey] = rule.enabled;
+  }
+
   return {
     ...sub,
     tenantAllowance: typeof attrs.tenantAllowance === "number" ? attrs.tenantAllowance : null,
@@ -61,7 +85,7 @@ export async function loadTier(mspId: number) {
       ? attrs.aiCreditAllowancePlatformValue
       : (typeof attrs.aiCreditAllowance === "number" ? attrs.aiCreditAllowance : null),
     overageRateCents: typeof attrs.overageRateCents === "number" ? attrs.overageRateCents : null,
-    tierCapabilities: (attrs.tierCapabilities ?? {}) as Record<string, boolean>,
+    tierCapabilities,
   };
 }
 

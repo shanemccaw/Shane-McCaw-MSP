@@ -1,8 +1,11 @@
 /**
  * msp-entitlement.test.ts
  *
- * Unit tests for the pure compareTierRank() helper and the TIER_RANK map.
- * These tests do NOT hit the database — compareTierRank is side-effect-free.
+ * Unit tests for the pure compareTierRank() helper and the TIER_RANK map
+ * (these do NOT hit the database — compareTierRank is side-effect-free), plus
+ * loadTier()'s merge of typeAttributes.tierCapabilities with the admin-editable
+ * mspPlanCapabilitiesTable rows (Git #3683 — requirePlanFeature() previously
+ * never read that table at all).
  *
  * Run with: pnpm --filter @workspace/api-server run test
  */
@@ -10,10 +13,16 @@
 import { vi, describe, it, expect } from "vitest";
 
 vi.mock("@workspace/db", () => ({
-  db: {},
-  servicesTable: {},
-  mspSubscriptionsTable: {},
-  tenantsTable: {},
+  db: { select: vi.fn() },
+  servicesTable: { id: "id", name: "name", typeAttributes: "type_attributes" },
+  mspSubscriptionsTable: {
+    serviceId: "service_id",
+    status: "status",
+    dunningState: "dunning_state",
+    mspId: "msp_id",
+  },
+  tenantsTable: { mspId: "msp_id", status: "status" },
+  mspPlanCapabilitiesTable: { serviceId: "service_id", capabilityKey: "capability_key", enabled: "enabled" },
 }));
 
 vi.mock("./logger.ts", () => {
@@ -21,7 +30,29 @@ vi.mock("./logger.ts", () => {
   return { logger: { ...noop, child: () => noop } };
 });
 
-import { compareTierRank, TIER_RANK } from "./msp-entitlement";
+import { compareTierRank, TIER_RANK, loadTier, tierAllowsFeature } from "./msp-entitlement";
+import { db } from "@workspace/db";
+
+type MockDb = { select: ReturnType<typeof vi.fn> };
+const mockDb = db as unknown as MockDb;
+
+/** Chain for the subscription+service join query (`.from().innerJoin().where().limit()`). */
+function subscriptionChain(rows: unknown[]) {
+  return {
+    from: vi.fn().mockReturnThis(),
+    innerJoin: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue(rows),
+  };
+}
+
+/** Chain for the capability-rules query (`.from().where()`, resolves directly). */
+function capabilityRulesChain(rows: unknown[]) {
+  return {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockResolvedValue(rows),
+  };
+}
 
 describe("TIER_RANK map", () => {
   it("starter and basic share rank 0", () => {
@@ -126,5 +157,59 @@ describe("compareTierRank — case insensitivity", () => {
 
   it("handles mixed-case current tier", () => {
     expect(compareTierRank("Enterprise", "enterprise")).toEqual({ ok: true });
+  });
+});
+
+describe("loadTier — mspPlanCapabilitiesTable overlay (Git #3683)", () => {
+  const baseSub = {
+    serviceId: 42,
+    status: "active",
+    dunningState: null,
+    tierName: "Pro",
+  };
+
+  it("falls back to typeAttributes.tierCapabilities when no capability rule rows exist", async () => {
+    mockDb.select = vi.fn()
+      .mockReturnValueOnce(subscriptionChain([
+        { ...baseSub, typeAttributes: { tierCapabilities: { advanced_signals: false } } },
+      ]))
+      .mockReturnValueOnce(capabilityRulesChain([]));
+
+    const tier = await loadTier(1);
+    expect(tier?.tierCapabilities).toEqual({ advanced_signals: false });
+    expect(tierAllowsFeature(tier, "advanced_signals")).toBe(false);
+  });
+
+  it("a capability rule row GATES a feature that typeAttributes left open", async () => {
+    mockDb.select = vi.fn()
+      .mockReturnValueOnce(subscriptionChain([
+        { ...baseSub, typeAttributes: {} },
+      ]))
+      .mockReturnValueOnce(capabilityRulesChain([
+        { capabilityKey: "custom_workflows", enabled: false },
+      ]));
+
+    const tier = await loadTier(1);
+    expect(tier?.tierCapabilities).toEqual({ custom_workflows: false });
+    expect(tierAllowsFeature(tier, "custom_workflows")).toBe(false);
+  });
+
+  it("a capability rule row OVERRIDES typeAttributes to re-open a gated feature", async () => {
+    mockDb.select = vi.fn()
+      .mockReturnValueOnce(subscriptionChain([
+        { ...baseSub, typeAttributes: { tierCapabilities: { sales_offers: false } } },
+      ]))
+      .mockReturnValueOnce(capabilityRulesChain([
+        { capabilityKey: "sales_offers", enabled: true },
+      ]));
+
+    const tier = await loadTier(1);
+    expect(tier?.tierCapabilities).toEqual({ sales_offers: true });
+    expect(tierAllowsFeature(tier, "sales_offers")).toBe(true);
+  });
+
+  it("returns null (no gating) when the MSP has no subscription row", async () => {
+    mockDb.select = vi.fn().mockReturnValueOnce(subscriptionChain([]));
+    expect(await loadTier(1)).toBeNull();
   });
 });
