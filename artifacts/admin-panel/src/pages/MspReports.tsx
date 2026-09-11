@@ -76,7 +76,22 @@ function isTerminal(status: RunStatus): boolean {
   return STATUS_TERMINAL.has(status);
 }
 
-function StatusBadge({ status }: { status: RunStatus }) {
+function StatusBadge({ status, errorMessage }: { status: RunStatus; errorMessage: string | null }) {
+  // A "generated"/"delivered" run can still carry a non-fatal errorMessage — e.g. the PDF
+  // built fine but the configured email leg failed (report-nodes.ts keeps the run out of
+  // "failed" so it stays downloadable in-app). Surface that instead of a plain success badge.
+  if ((status === "delivered" || status === "generated") && errorMessage) {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100"
+        title={errorMessage}
+      >
+        <AlertTriangle className="w-3 h-3" /> {status === "delivered" ? "Delivered" : "Generated"} — delivery issue
+      </Badge>
+    );
+  }
+
   switch (status) {
     case "pending":
       return (
@@ -402,7 +417,7 @@ export default function MspReports() {
                       {DOC_TYPE_LABELS[run.docType] ?? run.docType}
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={run.status} />
+                      <StatusBadge status={run.status} errorMessage={run.errorMessage} />
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {fmtDate(run.generatedAt ?? run.deliveredAt)}
@@ -413,13 +428,24 @@ export default function MspReports() {
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         {(run.status === "delivered" || run.status === "generated") && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void downloadPdf(run.runId, run.title)}
-                          >
-                            <Download className="w-3.5 h-3.5 mr-1.5" /> PDF
-                          </Button>
+                          <>
+                            {run.errorMessage && (
+                              <span
+                                className="text-xs text-amber-700 max-w-[200px] truncate"
+                                title={run.errorMessage}
+                              >
+                                <AlertTriangle className="w-3 h-3 inline mr-1" />
+                                {run.errorMessage}
+                              </span>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void downloadPdf(run.runId, run.title)}
+                            >
+                              <Download className="w-3.5 h-3.5 mr-1.5" /> PDF
+                            </Button>
+                          </>
                         )}
                         {run.status === "failed" && (
                           <div className="flex items-center gap-2">
