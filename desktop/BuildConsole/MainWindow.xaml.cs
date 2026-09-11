@@ -3631,37 +3631,6 @@ namespace BuildConsole
                 VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush")
             });
 
-            var boltBtn = new Button
-            {
-                Content = "⚡",
-                Style = (Style)FindResource("IconButton"),
-                FontSize = 11,
-                Padding = new Thickness(2, 0, 2, 0),
-                Margin = new Thickness(0, 0, 2, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Cursor = Cursors.Hand
-            };
-            void UpdateBoltAppearance()
-            {
-                bool inProgress = BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(chat.ConversationId);
-                boltBtn.Foreground = inProgress ? (Brush)FindResource("YellowBrush") : (Brush)FindResource("Subtext0Brush");
-                boltBtn.ToolTip = inProgress
-                    ? "In Progress (Active in Focus Mode) — click to unmark"
-                    : "Mark as In Progress (keep accessible in Focus Mode)";
-            }
-            UpdateBoltAppearance();
-            // Git #2663 — resolve the chat this tab REALLY shows now (live WebView2 URL),
-            // not the cached BoardChat snapshot, so marking a tab that has navigated to a
-            // new conversation stores the right chat. `boltTab` is assigned to the real
-            // TabItem once it's constructed below (this closure runs only on click).
-            TabItem? boltTab = null;
-            boltBtn.Click += (s, e) =>
-            {
-                ToggleChatInProgressResolved(boltTab, chat.ConversationId, chat.Title, chat.ClaudeUrl);
-                UpdateBoltAppearance();
-            };
-            headerPanel.Children.Add(boltBtn);
-
             var closeBtn = new Button
             {
                 Content = "✕", Style = (Style)FindResource("IconButton"), FontSize = 10,
@@ -3740,7 +3709,6 @@ namespace BuildConsole
             container.SetBody(splitGrid);
 
             var newTab = new TabItem { Tag = chat, Header = headerPanel, Content = container };
-            boltTab = newTab; // Git #2663 — the bolt handler above resolves live off THIS tab
             var state = new ChatTabState
             {
                 GithubNumber = githubNumber,
@@ -5187,9 +5155,6 @@ namespace BuildConsole
             // neither. Both items are attached to EVERY tab and shown/hidden at menu-OPEN
             // time instead, because a plain web tab can navigate to a chat long after this
             // menu was attached — the decision must be made against the tab's current URL.
-            var miInProgress = new MenuItem { Header = "⚡ Mark as In Progress" };
-            miInProgress.Click += async (s, e) =>
-                await MarkChatTabInProgressAsync(tabItem, tabItem.Tag as BuildConsole.Services.BoardChat);
             var miAssignIssue = new MenuItem { Header = "🔗 Assign to Issue..." };
             miAssignIssue.Click += async (s, e) => await AssignChatTabToIssueAsync(tabItem);
             // Git #1837 — starts a successor chat on the same epic, handing it a pointer
@@ -5199,7 +5164,6 @@ namespace BuildConsole
             var miNewSuccessorChat = new MenuItem { Header = "🧵 Start a new chat on an Epic..." };
             miNewSuccessorChat.Click += (s, e) => StartSuccessorChat(tabItem);
             var chatActionsSeparator = new Separator();
-            cm.Items.Add(miInProgress);
             cm.Items.Add(miAssignIssue);
             cm.Items.Add(miNewSuccessorChat);
             cm.Items.Add(chatActionsSeparator);
@@ -5209,7 +5173,6 @@ namespace BuildConsole
                                  || _chatTabs.ContainsKey(tabItem)
                                  || TryGetChatUrlForTab(tabItem) != null;
                 var visibility = isChatTab ? Visibility.Visible : Visibility.Collapsed;
-                miInProgress.Visibility = visibility;
                 miAssignIssue.Visibility = visibility;
                 miNewSuccessorChat.Visibility = visibility;
                 chatActionsSeparator.Visibility = visibility;
