@@ -2,26 +2,27 @@
  * Re-running a logged run.
  *
  * Isolated in its own module on purpose. `runHistoryStore` is imported *by*
- * `deployStore` and `sqlStore` (they report their runs into it), so it must
- * never import them back. Everything that needs to reach into those two
- * stores lives here instead, and only the screen's UI imports this file —
- * so the dependency graph stays acyclic:
+ * `sqlStore` (it reports its runs into it), so it must never import it back.
+ * Everything that needs to reach into that store lives here instead, and
+ * only the screen's UI imports this file — so the dependency graph stays
+ * acyclic:
  *
- *   deployStore ─┐
- *                ├─> runHistoryStore
- *   sqlStore ────┘
+ *   sqlStore ─> runHistoryStore
  *
- *   runHistoryActions ─> deployStore, sqlStore   (nothing imports this but the UI)
+ *   runHistoryActions ─> sqlStore   (nothing imports this but the UI)
  *
  * There is no new execution path here. A re-run goes through exactly the same
- * `runTyped`/`runQueryText`/`runMigrationFile` the original went through, so
- * it is logged again the same way, arrives in the same console/output panel,
- * and is subject to the same real consequences. That is the point: this screen
- * does not get a private, quieter way to run things.
+ * `runQueryText`/`runMigrationFile` the original went through, so it is
+ * logged again the same way, arrives in the same console/output panel, and is
+ * subject to the same real consequences. That is the point: this screen does
+ * not get a private, quieter way to run things.
+ *
+ * The Git & Deploy Console this also used to replay `"deploy"`-kind entries
+ * through was removed in full (Git #3679) — a `"deploy"`-kind row is now
+ * read-only history; there is nowhere left to replay it into.
  */
 
 import { getShellApi } from "../../shell/ShellContext";
-import { openConsole, runTyped, setInput } from "../git/deployStore";
 import { runMigrationFile, runQueryText, setDraftQuery, startDraft } from "../sql/sqlStore";
 import type { RunHistoryEntry } from "./runHistoryTypes";
 
@@ -55,9 +56,10 @@ export function rerunEntry(entry: RunHistoryEntry): void {
     return;
   }
 
-  // Deploy: the console is the only place a command runs, and it shows the
-  // command in its input as it fires — same as clicking one of the six cards.
-  openConsole();
-  setInput(entry.cmd);
-  runTyped();
+  // Deploy: the console this replayed through is gone (Git #3679). A
+  // deploy-kind row is historical read-only data now — there is nowhere left
+  // to replay it into.
+  if (typeof window !== "undefined") {
+    window.alert('The Git & Deploy Console has been removed. This run can no longer be replayed — it is read-only history.');
+  }
 }

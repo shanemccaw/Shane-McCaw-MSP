@@ -17,8 +17,8 @@ import type { LucideIcon } from "lucide-react";
 // ─── Ribbon ───────────────────────────────────────────────────────────────────
 
 /**
- * The thirteen fixed tabs. Home · Inbox · Money · Watch · Active Directory ·
- * CRM · Catalog · Automation · Content · View | Git · Run · Build.
+ * The eleven fixed tabs. Home · Inbox · Money · Watch · Active Directory ·
+ * CRM · Catalog · Automation · Content · View | Run.
  *
  * This list is closed. A new screen does not get a new fixed tab — it
  * contributes groups to the tabs that already exist, and puts anything
@@ -38,6 +38,12 @@ import type { LucideIcon } from "lucide-react";
  *     Fulfillment — the engine/automation side.
  *   - `content`: Documents, AI Prompts, Marketing, Shared Links — things
  *     that get written and shared.
+ *
+ * `git` and `build` were removed (Git #3679) along with the Git Console,
+ * Build Tracker and Project Management screens they belonged to —
+ * BuildConsole replaced Build Tracker/Git tooling, and Project Management
+ * moved to MSP Console as real customer/MSP-ops work, not system
+ * administration.
  */
 export const FIXED_TAB_IDS = [
   "home",
@@ -50,9 +56,7 @@ export const FIXED_TAB_IDS = [
   "automation",
   "content",
   "view",
-  "git",
   "run",
-  "build",
 ] as const;
 export type FixedTabId = (typeof FIXED_TAB_IDS)[number];
 
@@ -71,14 +75,11 @@ export const FIXED_TAB_LABELS: Record<FixedTabId, string> = {
   /** Documents, AI Prompts, Marketing, Shared Links. */
   content: "Content",
   view: "View",
-  git: "Git",
   run: "Run",
-  /** Build Tracker — Claude chats organised against epics and issues. */
-  build: "Build",
 };
 
-/** Git, Run and Build render inside the amber capsule that marks them as the developer set. */
-export const DEV_TAB_IDS: readonly FixedTabId[] = ["git", "run", "build"];
+/** Run renders inside the amber capsule that marks it as the developer set. */
+export const DEV_TAB_IDS: readonly FixedTabId[] = ["run"];
 
 /** The ten ordinary tabs, in ribbon order. */
 export const MAIN_TAB_IDS: readonly FixedTabId[] = [
@@ -344,16 +345,10 @@ export interface ContextualTabSpec {
  * execution a trigger produced) — a trigger outlives any single run and can
  * exist with zero runs behind it, so neither kind can honestly stand in for
  * what editing or deleting *this* record means.
- * `issue` and `chatLink` were added for the Build Tracker screen (`screens/
- * build-tracker/`). A `bt_issues` row — an individual issue under an epic,
- * with a status, description and optional GitHub link — is openable, has a
- * stable numeric id, and needs a name the tab strip and Back group can
- * resolve. It is not `delivery` (a sold fulfilment obligation) and not
- * `workflow` (the automation that might fire on it) — it is the planning
- * unit itself. `chatLink` is a `bt_chats` row — a Claude conversation link
- * tied to an issue, epic, or free-form category. It is not `document` (a
- * generated artefact) and not `lead` (a sales contact) — it is the
- * conversation reference that keeps build context addressable.
+ * `issue`, `chatLink`, `epic` and `milestone` — Build Tracker's own peek
+ * kinds (`bt_issues`/`bt_chats`/`bt_epics`/`bt_milestones` rows) — were
+ * removed along with the Build Tracker, Git and Project Management screens
+ * (Git #3679). No screen resolves them any more.
  *
  * `post` was added for the Content Studio screen (`screens/content-studio/`,
  * Phase B of Git #601) — a LinkedIn post being composed or scheduled, with a
@@ -362,15 +357,6 @@ export interface ContextualTabSpec {
  * (a generated artefact, not authored and timed by a person) and not
  * `campaign` (the marketing effort a post might belong to, not the post
  * itself) — it is the individually schedulable unit of content.
- *
- * `milestone` was added for the Build Tracker screen, alongside `epic`/
- * `issue`/`chatLink` — a `bt_milestones` row (a GitHub milestone, mirrored
- * locally with its own target date and progress). Selecting one in the
- * Explorer used to just flip local state inside whichever doc was already
- * open, so it silently took over the Build Tracker tab instead of opening
- * its own — the same "open like a document" contract every other Build
- * Tracker record already gets. It is not `epic` (one thing a milestone
- * groups, not the grouping itself) — it is the roadmap unit.
  */
 export const PEEK_KINDS = [
   "endpoint",
@@ -402,11 +388,7 @@ export const PEEK_KINDS = [
   "share",
   "workflowRun",
   "trigger",
-  "issue",
-  "chatLink",
-  "epic",
   "post",
-  "milestone",
   // A single line in the retainer hours ledger (Git #1293). No existing kind
   // fitted: it is neither a "customer" (that is the account) nor a "document" —
   // it is one logged unit of consulting work against a retainer, with its own
@@ -604,8 +586,6 @@ export type CommandKind =
   | "campaign"
   | "share"
   | "trigger"
-  | "issue"
-  | "chatLink"
   | "post"
   | "interpretation";
 

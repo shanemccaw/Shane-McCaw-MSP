@@ -1,11 +1,13 @@
 /**
  * Run History's store.
  *
- * A plain external store like `deployStore`/`sqlStore`, for the same reason
- * (ribbon closures are built at `registerScreen()` module-load time and cannot
- * call a hook), plus one of its own: the two things that cause a row to exist
- * — the Deploy Console and the SQL Runner — need to be able to say "something
- * new happened" whether or not `/run-history` has ever been opened.
+ * A plain external store like `sqlStore`, for the same reason (ribbon
+ * closures are built at `registerScreen()` module-load time and cannot call a
+ * hook), plus one of its own: the SQL Runner — the one thing left that causes
+ * a row to exist, now that the Git & Deploy Console is gone (Git #3679) —
+ * needs to be able to say "something new happened" whether or not
+ * `/run-history` has ever been opened. Existing `"deploy"`-kind rows remain
+ * as read-only history.
  *
  * ## The log is server-side
  *

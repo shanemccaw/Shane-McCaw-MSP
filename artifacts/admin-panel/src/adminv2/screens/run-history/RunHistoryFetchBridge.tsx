@@ -5,8 +5,8 @@
  * one: the Watch tab's "Runs that failed" count and the `run` tab's "Recent
  * runs" gallery are both built at `registerScreen()` module-load time, so they
  * need real rows whether or not `/run-history` has ever been the active
- * screen; and `deployStore`/`sqlStore` call `runHistoryChanged()` the moment a
- * run finishes, which can only refresh anything if a fetch has been handed
+ * screen; and `sqlStore` calls `runHistoryChanged()` the moment a run
+ * finishes, which can only refresh anything if a fetch has been handed
  * over by then. Renders nothing.
  */
 

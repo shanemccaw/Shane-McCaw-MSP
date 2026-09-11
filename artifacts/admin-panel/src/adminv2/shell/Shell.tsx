@@ -264,9 +264,6 @@ const rowStyle = {
 };
 
 import { useSyncExternalStore } from "react";
-import {
-  subscribe, getSnapshot, unlinkedChats, setTriageActive,
-} from "../screens/build-tracker/buildTrackerStore";
 import { getShellApi } from "./ShellContext";
 
 export function StartSomethingExplorer() {
@@ -342,8 +339,6 @@ export function StartSomethingExplorer() {
 }
 
 import * as sqlStore from "../screens/sql/sqlStore";
-import * as deployStore from "../screens/git/deployStore";
-import { findDeployOperation } from "../screens/git/deployOperations";
 import * as inboxStore from "../screens/inbox/inboxStore";
 import * as marketingStore from "../screens/marketing/marketingStore";
 
@@ -353,9 +348,7 @@ import * as marketingStore from "../screens/marketing/marketingStore";
  */
 export function NoScreen() {
   const { state } = useShell();
-  const buildState = useSyncExternalStore(subscribe, getSnapshot);
   const sqlState = useSyncExternalStore(sqlStore.subscribe, sqlStore.getSnapshot);
-  const deployState = useSyncExternalStore(deployStore.subscribe, deployStore.getSnapshot);
   const inboxState = useSyncExternalStore(inboxStore.subscribe, inboxStore.getSnapshot);
   const marketingState = useSyncExternalStore(marketingStore.subscribe, marketingStore.getSnapshot);
 
@@ -363,16 +356,6 @@ export function NoScreen() {
   const [migrationDone, setMigrationDone] = useState<string | null>(null);
 
   const recents = state.trail.slice(0, 8);
-  const epics = Array.isArray(buildState?.epics) ? buildState.epics : [];
-  const issues = Array.isArray(buildState?.issues) ? buildState.issues : [];
-  const milestones = Array.isArray(buildState?.milestones) ? buildState.milestones : [];
-
-  const unlinked = unlinkedChats().length;
-  const noEpicIssues = issues.filter((i) => i.epicId === null && i.status !== "closed" && i.status !== "done").length;
-  const inProgressEpics = epics.filter((e) => e.status === "in_progress").length;
-  const inProgressIssues = issues.filter((i) => i.status === "in_progress").length;
-  const inProgressTotal = inProgressEpics + inProgressIssues;
-  const activeMilestones = milestones.filter((m) => m.status !== "closed");
 
   const pendingMigrations = sqlState.migrations.filter((m) => !m.ranAt);
   const activeCampaigns = marketingState.campaigns.filter((c) => c.status === "active" || c.status === "draft");
@@ -407,17 +390,6 @@ export function NoScreen() {
               Live system rollup. Everything below opens in 1 click.
             </p>
           </div>
-
-          <button
-            onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "build-tracker", screenId: "build-tracker", label: "Build Tracker" })}
-            style={{
-              padding: "8px 16px", borderRadius: 6, border: 0,
-              background: ACCENT.info, color: SURFACE.well, fontSize: 13, fontWeight: 700,
-              cursor: "pointer", fontFamily: FONT.sans, display: "flex", alignItems: "center", gap: 6,
-            }}
-          >
-            🚀 Open Build Studio
-          </button>
         </div>
 
         {/* 2 Column Rollup Grid */}
@@ -479,78 +451,6 @@ export function NoScreen() {
                 ⚡ Attention Rollup & Signals
               </span>
 
-              {/* Build Triage Item */}
-              <div
-                onClick={() => {
-                  setTriageActive(true);
-                  getShellApi()?.openDoc({ kind: "screen", id: "build-tracker", screenId: "build-tracker", label: "Build Tracker" });
-                }}
-                style={{
-                  padding: 12, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
-                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 16 }}>🧹</span>
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT.primary }}>
-                      {unlinked} unlinked chats & {noEpicIssues} unassigned issues
-                    </span>
-                    <span style={{ fontSize: 11, color: TEXT.caption }}>
-                      Click to launch 1-click Triage Mode
-                    </span>
-                  </div>
-                </div>
-                <span style={{ fontSize: 11, color: ACCENT.amber, fontWeight: 700 }}>Triage ↗</span>
-              </div>
-
-              {/* In-Progress Work Item */}
-              <div
-                onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "build-tracker", screenId: "build-tracker", label: "Build Tracker" })}
-                style={{
-                  padding: 12, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
-                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 16 }}>🔥</span>
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT.primary }}>
-                      {inProgressTotal} active items in progress
-                    </span>
-                    <span style={{ fontSize: 11, color: TEXT.caption }}>
-                      {inProgressEpics} epics · {inProgressIssues} issues active
-                    </span>
-                  </div>
-                </div>
-                <span style={{ fontSize: 11, color: ACCENT.info, fontWeight: 700 }}>View ↗</span>
-              </div>
-
-              {/* Milestones Roadmap Rollup */}
-              <div
-                onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "project-management", screenId: "project-management", label: "Milestones & Roadmap" })}
-                style={{
-                  padding: 12, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
-                  cursor: "pointer", display: "flex", flexDirection: "column", gap: 6,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 16 }}>🎯</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT.primary }}>
-                      {activeMilestones.length} active GitHub milestones
-                    </span>
-                  </div>
-                  <span style={{ fontSize: 11, color: ACCENT.amber, fontWeight: 700 }}>Gantt ↗</span>
-                </div>
-                {activeMilestones.slice(0, 2).map((m) => (
-                  <div key={m.id} style={{ fontSize: 11, color: TEXT.caption, display: "flex", justifyContent: "space-between", paddingLeft: 24 }}>
-                    <span>#{m.githubNumber ?? m.id} {m.title}</span>
-                    <span>{m.targetDate ? m.targetDate : "No date"}</span>
-                  </div>
-                ))}
-              </div>
-
               {/* SQL Script Migrations Rollup */}
               <div
                 style={{
@@ -596,51 +496,6 @@ export function NoScreen() {
                     </div>
                   );
                 })}
-              </div>
-
-              {/* Git & Deploy Sync Card */}
-              <div
-                style={{
-                  padding: 12, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 16 }}>🐙</span>
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT.primary }}>
-                      Git & Deployment Console
-                    </span>
-                    <span style={{ fontSize: 11, color: TEXT.caption }}>
-                      1-click pull latest changes from remote
-                    </span>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button
-                    onClick={() => {
-                      const op = findDeployOperation("git-pull");
-                      if (op) deployStore.runOperation(op);
-                    }}
-                    style={{
-                      padding: "4px 8px", borderRadius: 4, border: 0,
-                      background: ACCENT.green, color: SURFACE.well, fontSize: 11, fontWeight: 700,
-                      cursor: "pointer", fontFamily: FONT.sans,
-                    }}
-                  >
-                    ⚡ Git Pull
-                  </button>
-                  <button
-                    onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "git", screenId: "git", label: "Git Console" })}
-                    style={{
-                      padding: "4px 8px", borderRadius: 4, border: `1px solid ${LINE.quiet}`,
-                      background: SURFACE.card, color: TEXT.primary, fontSize: 11, fontWeight: 600,
-                      cursor: "pointer", fontFamily: FONT.sans,
-                    }}
-                  >
-                    Git ↗
-                  </button>
-                </div>
               </div>
 
               {/* Inbox & Marketing Quick Rollup */}

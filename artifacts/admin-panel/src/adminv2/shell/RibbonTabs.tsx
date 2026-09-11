@@ -108,14 +108,13 @@ export function RibbonTabs({
           );
         })}
 
-        {/* The developer set. Grouped visually, not functionally — Git and Run
-            are ordinary fixed tabs that follow the same intent rule.
-            Git and Build only work against a local dev checkout (raw git,
-            GitHub-token sync) and are devOnly-gated screens (registry/types.ts)
-            outside import.meta.env.DEV — their tab buttons would otherwise
-            dead-end into an empty tab in production, so they are dropped from
-            this list there too. Run stays in every environment: it hosts SQL
-            Runner, which is used for real in production. */}
+        {/* The developer set. Grouped visually, not functionally — Run is an
+            ordinary fixed tab that follows the same intent rule as any other.
+            Git and Build (Build Tracker/Project Management) used to sit here
+            too, but only worked against a local dev checkout and were
+            devOnly-gated screens (registry/types.ts); both were removed along
+            with those screens (Git #3679). Run stays in every environment: it
+            hosts SQL Runner, which is used for real in production. */}
         <div
           style={{
             display: "flex",
@@ -130,7 +129,7 @@ export function RibbonTabs({
             borderRadius: 12,
           }}
         >
-          {(import.meta.env.DEV ? DEV_TAB_IDS : DEV_TAB_IDS.filter((id) => id === "run")).map((id) => {
+          {DEV_TAB_IDS.map((id) => {
             const on = !contextActive && activeTab === id;
             return (
               <button

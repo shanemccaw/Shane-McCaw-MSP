@@ -137,9 +137,11 @@ describe("routing under the app base", () => {
 });
 
 describe("shell chrome", () => {
-  it("renders all seven fixed tabs", () => {
+  it("renders all six fixed tabs", () => {
     render(<Harness />);
-    for (const label of ["Home", "Inbox", "Money", "Watch", "View", "Git", "Run"]) {
+    // Git and Build were removed along with the Git Console, Build Tracker
+    // and Project Management screens (Git #3679).
+    for (const label of ["Home", "Inbox", "Money", "Watch", "View", "Run"]) {
       expect(screen.getByRole("tab", { name: label })).toBeTruthy();
     }
   });

@@ -24,7 +24,6 @@ import {
 import { screenForRoute } from "./registry/registry";
 
 // Screens register themselves at import time — see SHELL.md.
-import "./screens/git";
 import "./screens/live-scan";
 import "./screens/ad";
 import "./screens/crm";
@@ -45,21 +44,12 @@ import "./screens/shared-links";
 import "./screens/documents";
 import "./screens/workflows";
 import "./screens/workflow-triggers";
-import "./screens/build-tracker";
-import "./screens/project-management";
 import "./screens/content-studio";
 import "./screens/retainer";
 import "./screens/risk-decisions";
 import "./screens/m365-changes";
-// The Git screen's floating console is meant to hover over whatever you are
-// doing, not just show while `/git` itself is the active screen — so it is
-// mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
-// render. `ScreenModule` has no contract yet for "also mount this regardless
-// of route"; this is a direct, documented workaround, the same shape as
-// `getShellApi()` in `ShellContext.tsx`.
-import { FloatingDeployConsole } from "./screens/git/FloatingDeployConsole";
 import { FloatingSqlConsole } from "./screens/sql/FloatingSqlConsole";
-// Same reasoning as FloatingDeployConsole, for the CRM screen's fetch bridge
+// Same reasoning as FloatingSqlConsole, for the CRM screen's fetch bridge
 // — see CrmFetchBridge.tsx's doc comment.
 import { CrmFetchBridge } from "./screens/crm/CrmFetchBridge";
 // Same reasoning again, for the AD screen's two Home-tab ribbon buttons
@@ -92,7 +82,7 @@ import { PackagesFetchBridge } from "./screens/packages/PackagesFetchBridge";
 // synchronous engine peek resolver. See EnginesFetchBridge.tsx.
 import { EnginesFetchBridge } from "./screens/engines/EnginesFetchBridge";
 // Same reasoning again, for the Watch tab's "Runs that failed" count and the
-// Run tab's "Recent runs" gallery — and because deployStore/sqlStore ping the
+// Run tab's "Recent runs" gallery — and because sqlStore pings the
 // run-history store the moment a run finishes, which needs a fetch already
 // handed over. See RunHistoryFetchBridge.tsx.
 import { RunHistoryFetchBridge } from "./screens/run-history/RunHistoryFetchBridge";
@@ -139,7 +129,6 @@ import { WorkflowFetchBridge } from "./screens/workflows/WorkflowFetchBridge";
 // Watch tab's live "trigger errors" count — see
 // WorkflowTriggersFetchBridge.tsx's doc comment.
 import { WorkflowTriggersFetchBridge } from "./screens/workflow-triggers/WorkflowTriggersFetchBridge";
-import { BuildTrackerFetchBridge } from "./screens/build-tracker/BuildTrackerFetchBridge";
 
 const log = logger.child({ channel: "admin.shell" });
 
@@ -208,7 +197,6 @@ function AdminShell() {
       onSelectTenant={(id) => log.info({ tenant: id }, "tenant scope changed")}
     >
       <ActiveScreen />
-      <FloatingDeployConsole />
       <FloatingSqlConsole />
       <CrmFetchBridge />
       <AdAuthBridge />
@@ -231,7 +219,6 @@ function AdminShell() {
       <DocumentsFetchBridge />
       <WorkflowFetchBridge />
       <WorkflowTriggersFetchBridge />
-      <BuildTrackerFetchBridge />
     </Shell>
   );
 }

@@ -634,4 +634,4 @@ export async function syncFromGitHub() {
 |---|---|
 | `shell/undoStore.ts` | The store — `pushUndo`, `undo`, `redo`, `canUndo`, `canRedo`, `undoLabel`, `redoLabel`, `clearHistory` |
 | `AdminV2.tsx` `AdminShell` | Subscribes and wires the title-bar buttons |
-| `screens/build-tracker/buildTrackerStore.ts` | Reference implementation covering every mutation type |
+| `screens/content-studio/contentStudioStore.ts` | Reference implementation covering every mutation type |
