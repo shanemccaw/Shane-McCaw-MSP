@@ -1352,12 +1352,12 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>
-        /// Git #1862 — refreshes the QUEUE header: the four reconciled counts on the left and
-        /// the unchanged "(N active)" running readout on the right (still sourced from
-        /// GetActiveUsageSummary's active-slot count). On a cold start, before the first Git
-        /// Board refresh, the Blocked figure is provisional (computed from declared blockers
-        /// alone) and is rendered muted with a "*" and an explanatory tooltip rather than as a
-        /// confident number.
+        /// Git #1862 / #3615 — refreshes the QUEUE header: a single unified readout in the order
+        /// Queue → Up Next → Active → Blocked → Verifying → Total. "Active" is still sourced from
+        /// GetActiveUsageSummary's active-slot count, now folded inline instead of a separate
+        /// trailing parenthetical. On a cold start, before the first Git Board refresh, the
+        /// Blocked figure is provisional (computed from declared blockers alone) and is rendered
+        /// muted with a "*" and an explanatory tooltip rather than as a confident number.
         /// </summary>
         public void UpdateQueueStatusCounts()
         {
@@ -1366,7 +1366,7 @@ namespace BuildConsole.Controls
 
             string blockedText = c.Provisional ? $"{c.Blocked}*" : c.Blocked.ToString();
             QueueStatusCountsText.Text =
-                $"Total: {c.Total}  ·  In queue: {c.InQueue}  ·  Blocked: {blockedText}  ·  Up next: {c.UpNext}  ·  Verifying: {c.Verifying}";
+                $"Queue: {c.InQueue}  ·  Up Next: {c.UpNext}  ·  Active: {active}  ·  Blocked: {blockedText}  ·  Verifying: {c.Verifying}  ·  Total: {c.Total}";
 
             if (c.Provisional)
             {
@@ -1384,8 +1384,6 @@ namespace BuildConsole.Controls
                     : "blockers not yet checked this session";
                 QueueStatusBorder.ToolTip = $"Live queue status ({freshness}) — click for the next builds to run, in real claim order.";
             }
-
-            QueueActiveSlotsText.Text = $" ({active} active)";
 
             if (QueueNextPopup?.IsOpen == true) _ = RenderNextToRunAsync();
         }

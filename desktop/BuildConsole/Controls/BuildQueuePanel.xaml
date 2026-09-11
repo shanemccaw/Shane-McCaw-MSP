@@ -344,14 +344,8 @@
                                        Foreground="{StaticResource Subtext0Brush}"
                                        HorizontalAlignment="Right"
                                        VerticalAlignment="Center"/>
-                            <TextBlock x:Name="QueueActiveSlotsText" Text=" (0 active)"
-                                       DockPanel.Dock="Right"
-                                       FontSize="10"
-                                       Foreground="{StaticResource Subtext0Brush}"
-                                       HorizontalAlignment="Right"
-                                       VerticalAlignment="Center"/>
                             <TextBlock x:Name="QueueStatusCountsText"
-                                       Text="Total: 0  ·  In queue: 0  ·  Blocked: 0  ·  Up next: 0  ·  Verifying: 0"
+                                       Text="Queue: 0  ·  Up Next: 0  ·  Active: 0  ·  Blocked: 0  ·  Verifying: 0  ·  Total: 0"
                                        FontSize="10.5" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextBrush}"
                                        TextWrapping="Wrap"
