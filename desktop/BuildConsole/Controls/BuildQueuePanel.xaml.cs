@@ -4429,12 +4429,15 @@ namespace BuildConsole.Controls
         /// numbers) with an "OPEN" state — LiveBlockedBy already filtered this number down to a
         /// blocker <see cref="_openIssues"/> reports genuinely still open. Never invents a title:
         /// while the background fetch hasn't landed yet, this shows the bare issue ref only.
-        /// Minimally interactive per the #2062 scope note — clickable to jump to the blocker's
-        /// own card when it has one, but not the full chain-highlight interaction (#2030).</summary>
+        /// Git #3600 — a blocker with no live queue row is no longer a dead end either: it's
+        /// clickable too, just to a different real action (attempt dispatch via
+        /// <see cref="DispatchBlockerFromGhostCardAsync"/> instead of jumping to a card that
+        /// doesn't exist yet) — a distinct blue accent (vs. the live case's pink) tells the two
+        /// apart at a glance.</summary>
         private Border BuildBlockerGhostCard(int blockerNumber)
         {
             var liveNode = FindLiveNodeForBlocker(blockerNumber);
-            bool clickable = liveNode != null;
+            bool isLive = liveNode != null;
 
             string title;
             string statusText;
@@ -4456,18 +4459,23 @@ namespace BuildConsole.Controls
             var card = new Border
             {
                 Background = new SolidColorBrush(Color.FromRgb(0x1A, 0x14, 0x18)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(0x80, 0xF3, 0x8B, 0xA8)),
+                // Git #3600 — blue accent (matches the RUNNING status color already used elsewhere
+                // in this file) marks "click will attempt a real dispatch"; the pink accent stays
+                // reserved for "click jumps to an already-live card".
+                BorderBrush = new SolidColorBrush(isLive
+                    ? Color.FromArgb(0x80, 0xF3, 0x8B, 0xA8)
+                    : Color.FromArgb(0x80, 0x89, 0xB4, 0xFA)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(5),
                 Padding = new Thickness(6, 3, 6, 3),
                 Margin = new Thickness(1, 3, 0, 0),
                 Opacity = 0.68,
-                Cursor = clickable ? Cursors.Hand : Cursors.Arrow,
-                Tag = new BlockerGhostTag(blockerNumber, clickable),
-                ToolTip = clickable
+                Cursor = Cursors.Hand,
+                Tag = new BlockerGhostTag(blockerNumber, isLive),
+                ToolTip = isLive
                     ? $"🔒 Blocked by {FormatIssueRef(blockerNumber)} — {title}\nClick to jump to its own build card."
                     : $"🔒 Blocked by {FormatIssueRef(blockerNumber)}" + (string.IsNullOrEmpty(title) ? "" : $" — {title}") +
-                      "\nOpen on GitHub — not itself a build in this queue."
+                      "\nNot yet dispatched — click to dispatch it now (or see why it can't)."
             };
 
             var stack = new StackPanel();
@@ -4501,11 +4509,11 @@ namespace BuildConsole.Controls
             });
             card.Child = stack;
 
-            if (clickable)
+            card.MouseLeftButtonDown += (s, e) =>
             {
-                card.MouseLeftButtonDown += (s, e) =>
+                e.Handled = true;
+                if (isLive)
                 {
-                    e.Handled = true;
                     // Git #3599 — the blocker may not be in the currently-active filter's
                     // rendered set at all (that's exactly why FindLiveNodeForBlocker had to
                     // fall through to _lastItems above). RevealQueueItem already knows how to
@@ -4516,10 +4524,107 @@ namespace BuildConsole.Controls
                     // before this fix (SelectNode itself no-ops when Item is null).
                     if (liveNode!.Item != null)
                         RevealQueueItem(liveNode.Item.Id);
-                };
-            }
+                }
+                else
+                {
+                    // Git #3600 — no live queue row at all: attempt a real dispatch instead.
+                    _ = DispatchBlockerFromGhostCardAsync(blockerNumber);
+                }
+            };
 
             return card;
+        }
+
+        /// <summary>Git #3600 — guards a ghost-card dispatch click against a second click on the
+        /// same blocker while the first attempt is still in flight (the real cross-flow race is
+        /// already closed by <see cref="BuildQueuePostgresClient.TryClaimDispatchAsync"/> below;
+        /// this just stops the same card from firing the whole sequence twice locally).</summary>
+        private readonly HashSet<int> _ghostDispatchInFlight = new();
+
+        /// <summary>Git #3600 — a not-yet-dispatched blocker ghost card's real click action: reuse
+        /// the exact same "find its own BUILD: comment → claim-before-ask-active-chat if there is
+        /// none yet → dedup-check → queue" path <see cref="IssueDispatchService.DispatchAsync"/>
+        /// already gives <see cref="DispatchPanel"/> and the Git Board hover popover — no second
+        /// dispatch path invented here. Every branch below mirrors DispatchPanel.DispatchAsync's
+        /// own switch verbatim; the only real difference is reporting via <see cref="ToastEngine"/>
+        /// (this panel has no status line of its own) instead of a status TextBlock. A blocker
+        /// whose own blockers are still open is NOT silently no-op'd: IssueDispatchService still
+        /// queues it (same fail-closed convention every other dispatch entry point already uses —
+        /// a real blocker holds a build after queueing, it doesn't refuse to queue it at all), and
+        /// the toast names the real open blocker number(s), which doubles as the honest "why not"
+        /// explanation the issue asked for. A genuinely un-dispatchable case (no PAT, issue not
+        /// found, GitHub unreachable, no DB, or the active-chat ask itself failing/having nowhere
+        /// to go) surfaces as a real toast naming the actual reason — never a silent no-op.</summary>
+        private async Task DispatchBlockerFromGhostCardAsync(int blockerNumber)
+        {
+            if (!_ghostDispatchInFlight.Add(blockerNumber)) return;
+            try
+            {
+                var result = await IssueDispatchService.DispatchAsync(_db, blockerNumber);
+
+                switch (result.Outcome)
+                {
+                    case DispatchOutcome.NoBuildComment:
+                        // Git #3509 — claim BEFORE asking any chat to write+post a BUILD: comment,
+                        // the same guard DispatchPanel's own NoBuildComment branch uses, so a click
+                        // here can never race a concurrent Dispatch-box/Git-Board-popover ask (or
+                        // another ghost-card click elsewhere) targeting the same issue.
+                        var claim = _db != null
+                            ? await _db.TryClaimDispatchAsync(blockerNumber, "BuildConsole:BuildQueuePanel:GhostCard")
+                            : new BuildQueuePostgresClient.DispatchClaimResult { Claimed = true };
+
+                        if (!claim.Claimed)
+                        {
+                            var heldFor = claim.ExistingClaimedAtUtc.HasValue ? DateTime.UtcNow - claim.ExistingClaimedAtUtc.Value : (TimeSpan?)null;
+                            ToastEngine.Info($"Blocker #{blockerNumber}",
+                                $"Already being dispatched (claimed by {claim.ExistingClaimedBy ?? "another flow"}" +
+                                (heldFor.HasValue ? $", {Math.Max(0, (int)heldFor.Value.TotalMinutes)}m ago" : "") +
+                                ") — not asking the active chat again.");
+                            ActivityLog.Log("dispatch", $"Ghost-card dispatch #{blockerNumber} — dispatch claim already held by {claim.ExistingClaimedBy ?? "unknown"}; skipped duplicate ask (Git #3509).");
+                            return;
+                        }
+
+                        ActivityLog.Log("dispatch", $"Ghost-card dispatch #{blockerNumber} \"{result.IssueTitle}\" — no BUILD: comment found, asking active chat.");
+                        var mainWindow = Application.Current.MainWindow as MainWindow;
+                        string askStatus = mainWindow != null
+                            ? await mainWindow.SendToActiveChatAsync(ActiveChatBuildRequestHelper.BuildAskMessage(blockerNumber, result.IssueTitle ?? $"#{blockerNumber}"))
+                            : "no-active-chat";
+
+                        var (message, isError) = ActiveChatBuildRequestHelper.DescribeStatus(askStatus, blockerNumber);
+                        if (isError) ToastEngine.Warning($"Blocker #{blockerNumber}", message);
+                        else ToastEngine.Info($"Blocker #{blockerNumber}", message);
+                        ActivityLog.Log("dispatch", $"Ghost-card dispatch #{blockerNumber} — ask-active-chat status: {askStatus}");
+                        return;
+
+                    case DispatchOutcome.AlreadyTracked:
+                        ToastEngine.Info($"Blocker #{blockerNumber}", result.Message);
+                        return;
+
+                    case DispatchOutcome.Queued:
+                        ToastEngine.Success($"Blocker #{blockerNumber} queued", result.Message);
+                        break;
+
+                    case DispatchOutcome.QueuedButBlocked:
+                        ToastEngine.Warning($"Blocker #{blockerNumber} queued, held", result.Message);
+                        break;
+
+                    default:
+                        // NoPat / GitHubUnreachable / IssueNotFound / NoDb / Failed
+                        ToastEngine.Error($"Blocker #{blockerNumber}", result.Message);
+                        return;
+                }
+
+                await RefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Error($"Blocker #{blockerNumber}", $"Dispatch failed: {ex.Message}");
+                ActivityLog.Log("dispatch", $"Ghost-card dispatch #{blockerNumber} — FAILED: {ex.Message}");
+            }
+            finally
+            {
+                _ghostDispatchInFlight.Remove(blockerNumber);
+            }
         }
 
         /// <summary>Git #2062 — short status label + color for a blocker that is itself a live
