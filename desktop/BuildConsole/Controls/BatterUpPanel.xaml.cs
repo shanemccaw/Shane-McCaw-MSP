@@ -589,6 +589,31 @@ namespace BuildConsole.Controls
                 Foreground = (Brush)Application.Current.FindResource("PeachBrush")
             };
             topRow.Children.Add(numBadge);
+
+            // Git #3582 (Feature #3578, Multi-Repo Support) — a real, visible repo tag for an item
+            // genuinely sourced from a second configured repo (Main/Tinker tiers coexist in one merged
+            // list). The primary repo shows no badge at all, matching today's look exactly.
+            if (r.IsSecondaryRepo)
+            {
+                var repoBadge = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x3A, 0x2E)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x45, 0x5A, 0x49)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1.5, 5, 1.5),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    ToolTip = $"From {r.OwnerRepo} (Git #3578 Multi-Repo Support)",
+                };
+                repoBadge.Child = new TextBlock
+                {
+                    Text = r.RepoName,
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)Application.Current.FindResource("GreenBrush"),
+                };
+                topRow.Children.Add(repoBadge);
+            }
             mainStack.Children.Add(topRow);
 
             mainStack.Children.Add(new TextBlock

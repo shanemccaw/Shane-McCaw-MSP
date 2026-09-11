@@ -418,9 +418,9 @@ namespace BuildConsole.Controls
                 // sourced from the local mirror (which doesn't store the node id), and
                 // SetIssueStatusByNumberAsync resolves it at click-time.
                 if (promote)
-                    await Services.AiBatterUpQueueService.PromoteToBatterUpAsync(gh, r.Number);
+                    await Services.AiBatterUpQueueService.PromoteToBatterUpAsync(gh, r.Number, r.RepoOwner, r.RepoName);
                 else
-                    await Services.AiBatterUpQueueService.DemoteToBacklogAsync(gh, r.Number);
+                    await Services.AiBatterUpQueueService.DemoteToBacklogAsync(gh, r.Number, r.RepoOwner, r.RepoName);
 
                 Services.ActivityLog.Log("ai-batter-up",
                     $"#{r.Number} — {(promote ? "YES: promoted to Batter Up" : "NO: demoted to Backlog")}.");
@@ -472,6 +472,30 @@ namespace BuildConsole.Controls
                 Foreground = (Brush)Application.Current.FindResource("PeachBrush")
             };
             topRow.Children.Add(numBadge);
+
+            // Git #3582 (Feature #3578, Multi-Repo Support) — same real repo tag as BatterUpPanel's
+            // card; the primary repo shows no badge at all, matching today's look exactly.
+            if (r.IsSecondaryRepo)
+            {
+                var repoBadge = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x3A, 0x2E)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x45, 0x5A, 0x49)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1.5, 5, 1.5),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    ToolTip = $"From {r.OwnerRepo} (Git #3578 Multi-Repo Support)",
+                };
+                repoBadge.Child = new TextBlock
+                {
+                    Text = r.RepoName,
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)Application.Current.FindResource("GreenBrush"),
+                };
+                topRow.Children.Add(repoBadge);
+            }
             mainStack.Children.Add(topRow);
 
             mainStack.Children.Add(new TextBlock

@@ -140,14 +140,20 @@ namespace BuildConsole.Services
         /// set, which is exactly wrong for a build-dispatch gate — an unreachable
         /// `gh` CLI must never look identical to "every issue is closed, go ahead."
         /// </summary>
-        public static async Task<LiveOpenIssuesResult> TryGetOpenIssueNumbersAsync(int limit = OpenIssueListLimit)
+        /// <param name="ownerRepo">Git #3582 (Feature #3578, Multi-Repo Support) — optional real
+        /// "owner/repo" override; defaults to this instance's own configured repo (identical to every
+        /// pre-#3582 call). Lets the #1600 launch gate resolve a live open-issue snapshot for a
+        /// SPECIFIC configured repo, so a queued item's own real blockers/own-issue are checked
+        /// against the repo they actually live in, not always this instance's primary repo.</param>
+        public static async Task<LiveOpenIssuesResult> TryGetOpenIssueNumbersAsync(int limit = OpenIssueListLimit, string? ownerRepo = null)
         {
+            var repo = string.IsNullOrWhiteSpace(ownerRepo) ? Repo : ownerRepo;
             // Git #2539 — through SubprocessRunner (shared concurrency gate + crash retry). The
             // fail-closed distinction this method exists for (unreachable gh ≠ "nothing open") is
             // preserved: a spawn failure returns Failure, a non-zero exit returns Failure, only a
             // clean parse returns Ok.
             var res = await SubprocessRunner.RunAsync("gh",
-                new[] { "issue", "list", "--repo", Repo, "--state", "open", "--json", "number", "--limit", limit.ToString() },
+                new[] { "issue", "list", "--repo", repo, "--state", "open", "--json", "number", "--limit", limit.ToString() },
                 logChannel: "github");
             if (!res.Started)
             {

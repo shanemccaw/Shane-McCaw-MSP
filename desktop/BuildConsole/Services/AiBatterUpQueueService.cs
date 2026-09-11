@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -24,6 +25,12 @@ namespace BuildConsole.Services
         /// these under a real "Ungrouped"/"No Epic" section, never silently.</summary>
         public int? EpicNumber { get; init; }
         public string? EpicTitle { get; init; }
+        /// <summary>Git #3582 (Feature #3578, Multi-Repo Support) — the real repo this item's issue
+        /// actually lives in; see <see cref="BatterUpRow.RepoOwner"/> for the full rationale.</summary>
+        public string RepoOwner { get; init; } = RepoIdentity.DefaultOwner;
+        public string RepoName { get; init; } = RepoIdentity.DefaultName;
+        public string OwnerRepo => $"{RepoOwner}/{RepoName}";
+        public bool IsSecondaryRepo => !string.Equals(OwnerRepo, BuildConsoleSettings.Load().GitHubOwnerRepo, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -85,7 +92,7 @@ namespace BuildConsole.Services
             // missing entry (circuit open / batch failed) just means "no BUILD: comment resolved this
             // pass", the same HasBuildComment=false outcome a null parse already produced.
             var buildComments = await BatterUpQueueService.ResolveBuildCommentsAsync(
-                gh, boardItems.Select(b => b.Number).ToList(),
+                gh, boardItems.Select(b => (b.Number, b.RepoOwner, b.RepoName)).ToList(),
                 s => ActivityLog.Log("ai-batter-up", s));
 
             // Git #3336 — resolve each item's real top-level Epic ancestor from the local mirror's
@@ -111,6 +118,8 @@ namespace BuildConsole.Services
                     HasBuildComment = parsed.HasValue,
                     EpicNumber = epic?.Number,
                     EpicTitle = epic?.Title,
+                    RepoOwner = item.RepoOwner,
+                    RepoName = item.RepoName,
                 });
             }
 
@@ -130,16 +139,50 @@ namespace BuildConsole.Services
         /// (see <see cref="PromoteToBatterUpAsync"/> / <see cref="DemoteToBacklogAsync"/>), resolving
         /// the node id at click-time. A click is a live write anyway, not part of the refresh this
         /// issue is keeping off GitHub.
+        ///
+        /// Git #3582 (Feature #3578, Multi-Repo Support) — same primary-repo-mirror-plus-live-merge
+        /// shape as <see cref="BatterUpQueueService.GetBatterUpBoardItemsAsync"/>: the mirror is still
+        /// scoped to only this instance's own primary repo, so every OTHER configured repo is merged
+        /// in via a live scan on a mirror hit, gated to cost nothing until a second repo is configured.
+        /// A secondary-repo scan failure is caught/logged; the primary repo's mirror-backed list is
+        /// unaffected.
         /// </summary>
         private static async Task<List<AiBatterUpBoardIssue>> GetAiBatterUpBoardItemsAsync(GitHubApiClient gh)
         {
+            var settings = BuildConsoleSettings.Load();
+            var primaryOwnerRepo = settings.GitHubOwnerRepo;
+            var secondaryRepoCount = settings.GetAllConfiguredRepos()
+                .Count(r => !string.Equals(r.OwnerRepo, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase));
+
             var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.AiBatterUpOptionId, "open");
             if (mirror != null)
             {
-                ActivityLog.Log("ai-batter-up", $"AI Batter Up board read from local mirror (Git #3134) — {mirror.Count} open item(s), no live project-page walk.");
-                return mirror.Select(m => new AiBatterUpBoardIssue { Number = m.Number, Title = m.Title, HtmlUrl = m.HtmlUrl, ItemId = "" }).ToList();
+                ActivityLog.Log("ai-batter-up", $"AI Batter Up board read from local mirror (Git #3134) — {mirror.Count} open item(s) from the primary repo, no live project-page walk.");
+                var items = mirror.Select(m => new AiBatterUpBoardIssue
+                {
+                    Number = m.Number, Title = m.Title, HtmlUrl = m.HtmlUrl, ItemId = "",
+                    RepoOwner = settings.GitHubOwner, RepoName = settings.GitHubRepoName,
+                }).ToList();
+
+                if (secondaryRepoCount > 0)
+                {
+                    try
+                    {
+                        var liveAll = await gh.GetAiBatterUpIssuesAsync();
+                        var secondaryItems = liveAll
+                            .Where(i => !string.Equals(i.OwnerRepo, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+                        items.AddRange(secondaryItems);
+                        ActivityLog.Log("ai-batter-up", $"AI Batter Up board — merged {secondaryItems.Count} open item(s) from {secondaryRepoCount} secondary configured repo(s) (Git #3582).");
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("ai-batter-up", $"AI Batter Up board — secondary-repo scan failed ({ex.Message}); secondary repo item(s) omitted this pass, primary repo board unaffected (Git #3582 unreachable-repo handling).");
+                    }
+                }
+                return items;
             }
-            ActivityLog.Log("ai-batter-up", "AI Batter Up board — mirror not usable yet; falling back to a live project-page walk this pass.");
+            ActivityLog.Log("ai-batter-up", "AI Batter Up board — mirror not usable yet; falling back to a live project-page walk this pass (already multi-repo-aware, Git #3582).");
             return await gh.GetAiBatterUpIssuesAsync();
         }
 
@@ -199,13 +242,13 @@ namespace BuildConsole.Services
         /// by issue NUMBER (<see cref="GitHubApiClient.SetIssueStatusByNumberAsync"/>, which resolves the
         /// ProjectV2Item node id itself) rather than requiring an item id up front, so the panel can
         /// source its rows from the local mirror (which doesn't store the node id) and still promote.</summary>
-        public static Task PromoteToBatterUpAsync(GitHubApiClient gh, int issueNumber) =>
-            gh.SetIssueStatusByNumberAsync(issueNumber, GitHubApiClient.BatterUpPromoteOptionId);
+        public static Task PromoteToBatterUpAsync(GitHubApiClient gh, int issueNumber, string? repoOwner = null, string? repoName = null) =>
+            gh.SetIssueStatusByNumberAsync(issueNumber, GitHubApiClient.BatterUpPromoteOptionId, repoOwner, repoName);
 
         /// <summary>No — demotes the item's Status to "Backlog", same primitive the existing Cancel action
         /// already uses elsewhere in this app. Git #3134 — by issue NUMBER, see
         /// <see cref="PromoteToBatterUpAsync"/>.</summary>
-        public static Task DemoteToBacklogAsync(GitHubApiClient gh, int issueNumber) =>
-            gh.SetIssueStatusByNumberAsync(issueNumber, GitHubApiClient.BacklogOptionId);
+        public static Task DemoteToBacklogAsync(GitHubApiClient gh, int issueNumber, string? repoOwner = null, string? repoName = null) =>
+            gh.SetIssueStatusByNumberAsync(issueNumber, GitHubApiClient.BacklogOptionId, repoOwner, repoName);
     }
 }

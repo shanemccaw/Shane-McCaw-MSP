@@ -431,13 +431,39 @@ namespace BuildConsole.Services
             // fetch whenever ANY candidate has blockers OR a real own-issue to verify —
             // reusing that single result for both checks, never a second `gh` call.
             bool anyOwnIssueToCheck = candidates.Any(c => c.GithubNumber is int g && g > 0);
-            LiveOpenIssuesResult? live = presuppliedOpen;
-            if ((distinctBlockerNums.Count > 0 || anyOwnIssueToCheck) && live == null)
+
+            // Git #3582 (Feature #3578, Multi-Repo Support) — resolve a live open-issue snapshot PER
+            // REAL REPO represented among today's candidates, not one single snapshot silently assumed
+            // to be this instance's own primary repo. The primary repo's resolution below is BYTE-FOR-
+            // BYTE the pre-#3582 path (presuppliedOpen / liveOpenIssuesFetcher / GitHubIssuesService
+            // default) — zero behavior change for every candidate that existed before this issue, since
+            // every one of them carries the primary repo (bt_build_queue's own column default). A
+            // candidate from a second configured repo (#3581) additionally resolves ITS OWN repo's live
+            // snapshot, so its blockers/own-issue are checked against the repo they actually live in —
+            // this issue's own "confirm dispatch/dedup/blocked_by behave correctly for an item from the
+            // non-Main repo" verification requirement.
+            var primaryOwnerRepo = $"{RepoIdentity.DefaultOwner}/{RepoIdentity.DefaultName}";
+            var liveByRepo = new Dictionary<string, LiveOpenIssuesResult>(StringComparer.OrdinalIgnoreCase);
+            if (distinctBlockerNums.Count > 0 || anyOwnIssueToCheck)
             {
-                live = await (liveOpenIssuesFetcher != null ? liveOpenIssuesFetcher() : GitHubIssuesService.TryGetOpenIssueNumbersAsync());
-                if (!live.Success)
+                foreach (var group in candidates.GroupBy(c => c.OwnerRepo, StringComparer.OrdinalIgnoreCase))
                 {
-                    ActivityLog.Log("watcher", $"Git #1600/#1904: couldn't reach GitHub to re-check blocker(s)/own-issue state ({live.Error}) — holding every candidate that needs a live check this tick (fail closed).");
+                    bool repoNeedsLive = group.SelectMany(EffectiveBlockers).Any() || group.Any(c => c.GithubNumber is int g2 && g2 > 0);
+                    if (!repoNeedsLive) continue;
+
+                    bool isPrimary = string.Equals(group.Key, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase);
+                    LiveOpenIssuesResult result = isPrimary && presuppliedOpen != null
+                        ? presuppliedOpen
+                        : isPrimary
+                            ? await (liveOpenIssuesFetcher != null ? liveOpenIssuesFetcher() : GitHubIssuesService.TryGetOpenIssueNumbersAsync())
+                            // Git #3582 — a secondary repo always resolves via a real `gh` call here; the
+                            // test seam (presuppliedOpen/liveOpenIssuesFetcher) only ever covers the
+                            // primary repo, exactly as it did before this issue.
+                            : await GitHubIssuesService.TryGetOpenIssueNumbersAsync(ownerRepo: group.Key);
+
+                    if (!result.Success)
+                        ActivityLog.Log("watcher", $"Git #1600/#1904: couldn't reach GitHub (repo \"{group.Key}\") to re-check blocker(s)/own-issue state ({result.Error}) — holding every candidate from that repo that needs a live check this tick (fail closed).");
+                    liveByRepo[group.Key] = result;
                 }
             }
 
@@ -453,12 +479,20 @@ namespace BuildConsole.Services
             // fail-closed live snapshot already holds every blocked candidate in the loop below. The
             // verifier itself fails closed on every error, so this can only ever RELEASE work that is
             // provably on origin/main, never work that isn't.
+            //
+            // Git #3582 — scoped to the PRIMARY repo's own candidates/blockers only:
+            // DoneBookendVerifier checks THIS instance's own local git clone's origin/main +
+            // build-journal/ exclusively, so it can only ever be meaningful there. A second configured
+            // repo's own bookends (if any) live entirely in that repo's own clone and are never checked
+            // here — a real, documented limitation, not a silent bypass: an open blocker on a secondary
+            // repo simply stays "still blocking" until GitHub itself reports it closed.
             HashSet<int> satisfiedByDoneBookend = new();
-            if (live != null && live.Success)
+            if (liveByRepo.TryGetValue(primaryOwnerRepo, out var primaryLive) && primaryLive.Success)
             {
                 var stillOpenAcrossAll = candidates
+                    .Where(c => string.Equals(c.OwnerRepo, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase))
                     .SelectMany(EffectiveBlockers)
-                    .Where(b => live.OpenNumbers.Contains(b))
+                    .Where(b => primaryLive.OpenNumbers.Contains(b))
                     .Distinct()
                     .ToList();
                 if (stillOpenAcrossAll.Count > 0)
@@ -479,7 +513,10 @@ namespace BuildConsole.Services
             // next ready candidate; the real limit is applied after the re-check. It only runs when
             // the live open-issue set was actually reached, so the #2815 unreachable branch below is
             // never reached uncapped.
-            bool liveEdgeCheck = liveBlockedByFetcher != null && live != null && live.Success;
+            // Git #3582 — ApplyLiveBlockerEdgesAsync below is itself scoped to just the PRIMARY repo
+            // (its own doc comment: "a row from another repo ... keeps its stored set"), so the gate
+            // here uses primaryLive (not a removed single-repo `live`) — exactly the snapshot it needs.
+            bool liveEdgeCheck = liveBlockedByFetcher != null && primaryLive != null && primaryLive.Success;
             int passLimit = liveEdgeCheck ? int.MaxValue : limit;
 
             foreach (var item in candidates)
@@ -487,10 +524,15 @@ namespace BuildConsole.Services
                 if (ready.Count >= passLimit) break;
                 var blockers = EffectiveBlockers(item);
                 bool hasOwnIssue = item.GithubNumber is int gh && gh > 0;
+                bool itemIsPrimaryRepo = string.Equals(item.OwnerRepo, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase);
 
                 // Nothing to verify against GitHub — no blockers and no real own-issue.
                 // (--notGit sentinel or null github_number, and unblocked.) Ready as before.
                 if (blockers.Count == 0 && !hasOwnIssue) { ready.Add(item); continue; }
+
+                // Git #3582 — this candidate's OWN repo's live snapshot (the primary repo's entry is
+                // identical to the pre-#3582 single `live` variable).
+                LiveOpenIssuesResult? live = liveByRepo.TryGetValue(item.OwnerRepo, out var l) ? l : null;
 
                 // Git #2815 — a blocker-FREE build must NOT be gated on general GitHub health.
                 // The only reason a blocker-free candidate reaches this live check at all is the
@@ -536,7 +578,8 @@ namespace BuildConsole.Services
                 // Git #2225 — held only by blockers that are BOTH still open on GitHub AND not yet
                 // satisfied by a verified DONE bookend. A blocker open on GitHub but proven-landed
                 // (verified bookend) no longer holds a dependent — that's the whole liveness fix.
-                var stillOpen = blockers.Where(b => live.OpenNumbers.Contains(b) && !satisfiedByDoneBookend.Contains(b)).ToList();
+                // Git #3582 — satisfiedByDoneBookend only ever applies to the primary repo (see above).
+                var stillOpen = blockers.Where(b => live.OpenNumbers.Contains(b) && !(itemIsPrimaryRepo && satisfiedByDoneBookend.Contains(b))).ToList();
                 if (stillOpen.Count == 0) { ready.Add(item); continue; }
                 heldReasons[item.Id] = $"waiting on {string.Join(", ", stillOpen.Select(b => $"#{b}"))} (open)";
             }
@@ -544,7 +587,7 @@ namespace BuildConsole.Services
             var missingLive = new Dictionary<int, List<int>>();
             if (liveEdgeCheck && ready.Count > 0)
                 ready = await ApplyLiveBlockerEdgesAsync(
-                    ready, heldReasons, missingLive, live!, satisfiedByDoneBookend, liveBlockedByFetcher!);
+                    ready, heldReasons, missingLive, primaryLive!, satisfiedByDoneBookend, liveBlockedByFetcher!);
             if (ready.Count > limit) ready = ready.Take(limit).ToList();
             return new CandidateSelection(ready, heldReasons, missingLive);
         }
@@ -947,10 +990,18 @@ namespace BuildConsole.Services
         /// far more likely coincidence than Shane re-sending it, and an unbounded scan only grows costlier
         /// over the life of the queue). Returns null when nothing matches.
         /// </summary>
-        public async Task<QueueItem?> FindDedupCandidateAsync(int? githubNumber, string prompt)
+        /// <param name="repoOwner">Git #3582 (Feature #3578, Multi-Repo Support) — the real repo
+        /// <paramref name="githubNumber"/> belongs to. Defaults to this instance's own configured
+        /// repo, so every pre-#3582 caller (single-repo, implicitly the only repo bt_build_queue ever
+        /// held an issue number for) is completely unaffected. Ignored for a local (--notGit) lookup,
+        /// which already keys on the prompt text alone. Threaded through so a same-numbered issue in
+        /// a second configured repo is never mistaken for a dedup match against this repo's row.</param>
+        public async Task<QueueItem?> FindDedupCandidateAsync(int? githubNumber, string prompt, string? repoOwner = null, string? repoName = null)
         {
             await using var conn = await OpenAsync();
             QueueItem? row = null;
+            var owner = string.IsNullOrEmpty(repoOwner) ? RepoIdentity.DefaultOwner : repoOwner;
+            var repo = string.IsNullOrEmpty(repoName) ? RepoIdentity.DefaultName : repoName;
 
             if (githubNumber.HasValue)
             {
@@ -961,9 +1012,12 @@ namespace BuildConsole.Services
                            originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
                     FROM bt_build_queue
                     WHERE github_number = @num
+                      AND repo_owner = @repoOwner AND repo_name = @repoName
                     ORDER BY created_at DESC
                     LIMIT 1", conn);
                 cmd.Parameters.AddWithValue("@num", githubNumber.Value);
+                cmd.Parameters.AddWithValue("@repoOwner", owner);
+                cmd.Parameters.AddWithValue("@repoName", repo);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync()) row = MapRow(reader);
             }
@@ -1106,12 +1160,21 @@ namespace BuildConsole.Services
         /// priority over the githubNumber-based lookup below (which stays unchanged
         /// for every other caller that doesn't pass it).
         /// </summary>
+        /// <param name="repoOwner">Git #3582 (Feature #3578, Multi-Repo Support) — the real repo
+        /// <paramref name="githubNumber"/> belongs to. Defaults to this instance's own configured
+        /// repo (identical to every pre-#3582 call), written into `bt_build_queue`'s real
+        /// `repo_owner`/`repo_name` columns (#3579's schema) so a same-numbered issue in a second
+        /// configured repo is never confused with this repo's own row (see the re-queue lookup and
+        /// <see cref="FindDedupCandidateAsync"/>, both now repo-scoped).</param>
         public async Task<QueueItem> QueueBuildAsync(
             string title, string prompt, string? model, string? effort, string? cwd,
             int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null,
             string? chatUrl = null, string? originatingChatId = null, string? buildSet = null, string? cli = null,
-            string? account = null, bool park = false, int? reuseRowId = null)
+            string? account = null, bool park = false, int? reuseRowId = null,
+            string? repoOwner = null, string? repoName = null)
         {
+            var repoOwnerResolved = string.IsNullOrEmpty(repoOwner) ? RepoIdentity.DefaultOwner : repoOwner;
+            var repoNameResolved = string.IsNullOrEmpty(repoName) ? RepoIdentity.DefaultName : repoName;
             var titleTrimmed = title.Trim();
             var modelTrimmed = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
             var effortTrimmed = string.IsNullOrWhiteSpace(effort) ? null : effort.Trim();
@@ -1175,10 +1238,13 @@ namespace BuildConsole.Services
                 await using var findCmd = new NpgsqlCommand(@"
                     SELECT id FROM bt_build_queue
                      WHERE github_number = @num
+                       AND repo_owner = @repoOwner AND repo_name = @repoName
                        AND status <> 'running'
                      ORDER BY created_at DESC
                      LIMIT 1", conn);
                 findCmd.Parameters.AddWithValue("@num", githubNumber.Value);
+                findCmd.Parameters.AddWithValue("@repoOwner", repoOwnerResolved);
+                findCmd.Parameters.AddWithValue("@repoName", repoNameResolved);
                 var found = await findCmd.ExecuteScalarAsync();
                 if (found != null && found != DBNull.Value) existingId = (int)found;
             }
@@ -1192,12 +1258,14 @@ namespace BuildConsole.Services
                            blocked_by_number = @blockedByNumber, blocked_by_numbers = @blockedByNumbers,
                            resume_session_id = @resumeSessionId, originating_chat_id = @originatingChatId,
                            chat_url = @chatUrl, status = @status, claimed_at = NULL, completed_at = NULL,
-                           exit_code = NULL, updated_at = NOW()
+                           exit_code = NULL, updated_at = NOW(),
+                           repo_owner = @repoOwner, repo_name = @repoName
                       WHERE id = @id
                     RETURNING id, title, prompt, model, effort, cwd,
                               github_number, blocked_by_number, blocked_by_numbers,
                               status, exit_code, session_id, resume_session_id,
-                              originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at", conn);
+                              originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at,
+                              superseded_by_id, repo_owner, repo_name", conn);
                 updateCmd.Parameters.AddWithValue("@title", titleTrimmed);
                 updateCmd.Parameters.AddWithValue("@prompt", prompt);
                 updateCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
@@ -1214,6 +1282,8 @@ namespace BuildConsole.Services
                 updateCmd.Parameters.AddWithValue("@chatUrl", (object?)chatUrlTrimmed ?? DBNull.Value);
                 updateCmd.Parameters.AddWithValue("@status", finalStatus);
                 updateCmd.Parameters.AddWithValue("@id", existingId.Value);
+                updateCmd.Parameters.AddWithValue("@repoOwner", repoOwnerResolved);
+                updateCmd.Parameters.AddWithValue("@repoName", repoNameResolved);
                 await using var reader = await updateCmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync()) row = MapRow(reader);
             }
@@ -1224,15 +1294,18 @@ namespace BuildConsole.Services
                     INSERT INTO bt_build_queue
                         (title, prompt, model, effort, cwd, github_number,
                          blocked_by_number, blocked_by_numbers, resume_session_id,
-                         originating_chat_id, chat_url, build_set, cli, account, status)
+                         originating_chat_id, chat_url, build_set, cli, account, status,
+                         repo_owner, repo_name)
                     VALUES
                         (@title, @prompt, @model, @effort, @cwd, @githubNumber,
                          @blockedByNumber, @blockedByNumbers, @resumeSessionId,
-                         @originatingChatId, @chatUrl, @buildSet, @cli, @account, @status)
+                         @originatingChatId, @chatUrl, @buildSet, @cli, @account, @status,
+                         @repoOwner, @repoName)
                     RETURNING id, title, prompt, model, effort, cwd,
                               github_number, blocked_by_number, blocked_by_numbers,
                               status, exit_code, session_id, resume_session_id,
-                              originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at", conn);
+                              originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at,
+                              superseded_by_id, repo_owner, repo_name", conn);
                 insertCmd.Parameters.AddWithValue("@title", titleTrimmed);
                 insertCmd.Parameters.AddWithValue("@prompt", prompt);
                 insertCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
@@ -1249,6 +1322,8 @@ namespace BuildConsole.Services
                 insertCmd.Parameters.AddWithValue("@cli", (object?)cliTrimmed ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@account", (object?)accountTrimmed ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@status", finalStatus);
+                insertCmd.Parameters.AddWithValue("@repoOwner", repoOwnerResolved);
+                insertCmd.Parameters.AddWithValue("@repoName", repoNameResolved);
                 await using var reader = await insertCmd.ExecuteReaderAsync();
                 await reader.ReadAsync();
                 row = MapRow(reader);

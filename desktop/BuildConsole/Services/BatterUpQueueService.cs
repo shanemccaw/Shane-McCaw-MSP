@@ -67,6 +67,20 @@ namespace BuildConsole.Services
         /// silently.</summary>
         public int? EpicNumber { get; init; }
         public string? EpicTitle { get; init; }
+        /// <summary>
+        /// Git #3582 (Feature #3578, Multi-Repo Support) — the real repo this item's issue actually
+        /// lives in (straight off GitHub's own project-item data, see
+        /// <see cref="GitHubApiClient.BatterUpBoardIssue.RepoOwner"/>), never assumed. Defaults to
+        /// this instance's own configured repo so every pre-#3582 caller/row is unaffected.
+        /// </summary>
+        public string RepoOwner { get; init; } = RepoIdentity.DefaultOwner;
+        public string RepoName { get; init; } = RepoIdentity.DefaultName;
+        public string OwnerRepo => $"{RepoOwner}/{RepoName}";
+        /// <summary>Git #3582 — true when this row's repo is NOT this instance's own primary/default
+        /// repo, i.e. a real secondary ("Tinker"-tier, typically) repo from #3581's registry. Drives
+        /// the repo badge in BatterUpPanel — the primary repo shows no badge (matches today's look
+        /// exactly), a secondary repo gets a real, visible tag.</summary>
+        public bool IsSecondaryRepo => !string.Equals(OwnerRepo, BuildConsoleSettings.Load().GitHubOwnerRepo, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -262,10 +276,13 @@ namespace BuildConsole.Services
         /// Real GitHub issue comments, most-recent-first, so an updated `BUILD:` comment
         /// (Shane editing launch params after the fact) wins over an older one.
         /// </summary>
+        /// <param name="repoOwner">Git #3582 — optional real-repo override; defaults to this instance's
+        /// own configured repo, so every pre-#3582 caller (DispatchPanel, LeftSidebar, IssueDispatchService)
+        /// is completely unaffected.</param>
         public static async Task<(string? RawComment, (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed)>
-            FindBuildCommentAsync(GitHubApiClient gh, int issueNumber)
+            FindBuildCommentAsync(GitHubApiClient gh, int issueNumber, string? repoOwner = null, string? repoName = null)
         {
-            var comments = await gh.GetIssueCommentsAsync(issueNumber);
+            var comments = await gh.GetIssueCommentsAsync(issueNumber, repoOwner, repoName);
             var found = FindBuildCommentInBodies(comments.Select(c => c.Body).ToList());
             return found ?? (null, null);
         }
@@ -311,8 +328,48 @@ namespace BuildConsole.Services
         /// A per-item fallback that throws is logged and left unresolved (absent from the map) rather
         /// than aborting the whole resolve.
         /// </summary>
+        /// <summary>Git #3582 — back-compat overload for a caller with no per-item repo info (treats
+        /// every number as this instance's own primary repo, identical to pre-#3582 behavior).</summary>
+        public static Task<Dictionary<int, (string? RawComment, (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed)>>
+            ResolveBuildCommentsAsync(GitHubApiClient gh, IReadOnlyList<int> issueNumbers, Action<string> log) =>
+            ResolveBuildCommentsAsync(gh, (issueNumbers ?? new List<int>())
+                .Select(n => (Number: n, RepoOwner: RepoIdentity.DefaultOwner, RepoName: RepoIdentity.DefaultName)).ToList(), log);
+
+        /// <summary>
+        /// Git #3582 (Feature #3578, Multi-Repo Support) — the real, repo-aware entry point: groups
+        /// the requested items by their OWN real repo and resolves each group's BUILD: comments
+        /// against that repo specifically, merging the results into one map keyed by issue number
+        /// (matching the pre-#3582 shape every caller already consumes). A repo group that throws
+        /// (unreachable/bad PAT scope on a secondary repo) is caught and logged — its numbers are
+        /// simply left unresolved this pass, exactly like any other "couldn't resolve yet" case; it
+        /// never aborts or corrupts another repo's already-resolved results (Git #3582's "unreachable
+        /// repo never crashes the whole merged view" requirement).
+        /// </summary>
         public static async Task<Dictionary<int, (string? RawComment, (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed)>>
-            ResolveBuildCommentsAsync(GitHubApiClient gh, IReadOnlyList<int> issueNumbers, Action<string> log)
+            ResolveBuildCommentsAsync(GitHubApiClient gh, IReadOnlyList<(int Number, string RepoOwner, string RepoName)> items, Action<string> log)
+        {
+            var merged = new Dictionary<int, (string?, (string?, string?, string?, DateTime?, string)?)>();
+            if (items == null || items.Count == 0) return merged;
+
+            foreach (var group in items.Where(i => i.Number > 0).GroupBy(i => (i.RepoOwner, i.RepoName)))
+            {
+                var numbers = group.Select(i => i.Number).Distinct().ToList();
+                try
+                {
+                    var perRepo = await ResolveBuildCommentsForRepoAsync(gh, numbers, log, group.Key.RepoOwner, group.Key.RepoName);
+                    foreach (var kv in perRepo) merged[kv.Key] = kv.Value;
+                }
+                catch (Exception ex)
+                {
+                    log($"BUILD-comment resolve — repo \"{group.Key.RepoOwner}/{group.Key.RepoName}\" failed ({ex.Message}); " +
+                        $"{numbers.Count} item(s) from that repo left unresolved this pass, other repo(s) unaffected (Git #3582).");
+                }
+            }
+            return merged;
+        }
+
+        private static async Task<Dictionary<int, (string? RawComment, (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed)>>
+            ResolveBuildCommentsForRepoAsync(GitHubApiClient gh, IReadOnlyList<int> issueNumbers, Action<string> log, string repoOwner, string repoName)
         {
             var result = new Dictionary<int, (string?, (string?, string?, string?, DateTime?, string)?)>();
             if (issueNumbers == null || issueNumbers.Count == 0) return result;
@@ -340,7 +397,7 @@ namespace BuildConsole.Services
             Dictionary<int, (List<string> Bodies, int TotalCount)> batch;
             try
             {
-                batch = await gh.BatchGetRecentIssueCommentsAsync(needFetch, 0);
+                batch = await gh.BatchGetRecentIssueCommentsAsync(needFetch, 0, repoOwner, repoName);
             }
             catch (Exception ex)
             {
@@ -371,7 +428,7 @@ namespace BuildConsole.Services
 
             foreach (var n in needFullFetch)
             {
-                try { var found = await FindBuildCommentAsync(gh, n); result[n] = found; StoreInCache(n, found); }
+                try { var found = await FindBuildCommentAsync(gh, n, repoOwner, repoName); result[n] = found; StoreInCache(n, found); }
                 catch (Exception ex)
                 {
                     // Git #3512 — a failed deep fetch falls back to the last-known cached resolution
@@ -427,6 +484,11 @@ namespace BuildConsole.Services
 
             var (boardItems, fromMirror, mirrorRows) = await GetBatterUpBoardItemsAsync(gh, log);
             var rows = new List<BatterUpRow>();
+            // Git #3582 — this instance's own primary/default repo, used below to decide whether a
+            // given item's blocked-by numbers are safe to check against the local DoneBookendVerifier
+            // (which only ever verifies THIS repo's own local git/build-journal, never a second
+            // configured repo's — that repo's own bookends, if any, live in its own clone entirely).
+            var primaryOwnerRepo = BuildConsoleSettings.Load().GitHubOwnerRepo;
 
             // Git #3336 — resolve each item's real top-level Epic ancestor, mirror-first: the mirror
             // path already carries each row's own ParentNumber; the degraded live-walk fallback does
@@ -450,7 +512,8 @@ namespace BuildConsole.Services
             // Git #3497 — this now runs BEFORE the closed-sweep below: under the #2815 circuit, a
             // scarce closed-window's GitHub budget goes to real BUILD-comment dispatch first, not to
             // the purely cosmetic closed-sweep.
-            var buildComments = await ResolveBuildCommentsAsync(gh, boardItems.Select(b => b.Number).ToList(), log);
+            var buildComments = await ResolveBuildCommentsAsync(gh,
+                boardItems.Select(b => (b.Number, b.RepoOwner, b.RepoName)).ToList(), log);
 
             // Git #2557 — auto-sweep: a closed issue sitting in "Batter Up" status is
             // structurally invisible to the OPEN-only board read above (GetBatterUpIssuesAsync),
@@ -537,7 +600,9 @@ namespace BuildConsole.Services
                 {
                     // Degraded fallback (mirror not usable this pass) — keep the pre-#3350 per-item live
                     // read; rare, and this pass already did a live project-page walk to list the items.
-                    var blockers = await gh.GetBlockedByAsync(item.Number);
+                    // Git #3582 — repo-aware: a secondary-repo item's blockers live in ITS OWN repo, not
+                    // always this instance's own configured repo.
+                    var blockers = await gh.GetBlockedByAsync(item.Number, repoOwner: item.RepoOwner, repoName: item.RepoName);
                     blockedByNumbers = blockers.Select(b => b.Number).ToList();
                     openBlockedByNumbers = blockers.Where(b => !b.IsClosed).Select(b => b.Number).ToList();
                 }
@@ -546,7 +611,14 @@ namespace BuildConsole.Services
                 // "satisfied anyway" vs "genuinely still blocking" so the card badge matches the live
                 // #1600 launch gate rather than over-reporting BLOCKED on something that will auto-launch.
                 // OpenBlockedByNumbers is preserved as the honest raw open/closed signal.
-                var satisfiedByBookend = openBlockedByNumbers.Count > 0
+                // Git #3582 — DoneBookendVerifier only ever checks THIS instance's own local git clone's
+                // origin/main + build-journal/, so it can only ever be meaningful for the PRIMARY repo's
+                // own blockers; a secondary repo's blocker bookend (if any) lives in that repo's own
+                // clone entirely and is never checked here — real, documented limitation, not a bypass
+                // (an open blocker on a secondary repo simply stays "still blocking" until GitHub itself
+                // reports it closed, never silently treated as satisfied).
+                bool itemIsPrimaryRepo = string.Equals(item.OwnerRepo, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase);
+                var satisfiedByBookend = (itemIsPrimaryRepo && openBlockedByNumbers.Count > 0)
                     ? await DoneBookendVerifier.GetSatisfiedAsync(openBlockedByNumbers)
                     : new HashSet<int>();
                 var satisfiedByBookendNumbers = openBlockedByNumbers.Where(n => satisfiedByBookend.Contains(n)).ToList();
@@ -569,6 +641,8 @@ namespace BuildConsole.Services
                         BlockingNumbers = blockingNumbers,
                         EpicNumber = epic?.Number,
                         EpicTitle = epic?.Title,
+                        RepoOwner = item.RepoOwner,
+                        RepoName = item.RepoName,
                     });
                     continue;
                 }
@@ -579,7 +653,7 @@ namespace BuildConsole.Services
                 int? trackedTerminalRowId = null;
                 if (queueDb != null)
                 {
-                    var existing = await queueDb.FindDedupCandidateAsync(item.Number, prompt);
+                    var existing = await queueDb.FindDedupCandidateAsync(item.Number, prompt, item.RepoOwner, item.RepoName);
                     if (existing != null)
                     {
                         // Git #1997 — #1808 dropped ANY item with a dedup row, silently, with no way
@@ -627,6 +701,8 @@ namespace BuildConsole.Services
                     TrackedTerminalRowId = trackedTerminalRowId,
                     EpicNumber = epic?.Number,
                     EpicTitle = epic?.Title,
+                    RepoOwner = item.RepoOwner,
+                    RepoName = item.RepoName,
                 });
             }
 
@@ -640,20 +716,58 @@ namespace BuildConsole.Services
         /// (<see cref="GitHubApiClient.GetBatterUpIssuesAsync"/>). Falls back to that live walk only
         /// when the mirror has no usable data yet (never synced) or errored — the same fail-to-live
         /// pattern every #3113 mirror read uses, so this can never be worse than the old behaviour.
+        ///
+        /// Git #3582 (Feature #3578, Multi-Repo Support) — <see cref="GitHubIssueMirror"/> is itself
+        /// still scoped to only this instance's own primary/default repo (its periodic sync never
+        /// captures a second configured repo — a real, documented gap, see the follow-up finding filed
+        /// alongside this issue). So on a mirror HIT, every OTHER real repo in #3581's Settings
+        /// registry is merged in via a live project-board scan (now multi-repo-aware itself, see
+        /// <see cref="GitHubApiClient.GetBatterUpIssuesAsync"/>'s relaxed repo filter) — gated so this
+        /// costs ZERO extra GitHub calls until a second repo is actually configured. On a mirror MISS,
+        /// the live walk fallback already covers every configured repo in one pass, nothing more to do.
+        /// A secondary repo's scan failing (bad PAT scope, deleted, network) is caught and logged —
+        /// that repo's items simply don't appear this pass, the primary repo's mirror-backed list is
+        /// completely unaffected (Git #3582's "unreachable repo never crashes the merged view").
         /// </summary>
         private static async Task<(List<BatterUpBoardIssue> Items, bool FromMirror, List<GitHubIssueMirror.MirrorIssue> MirrorRows)>
             GetBatterUpBoardItemsAsync(GitHubApiClient gh, Action<string> log)
         {
+            var settings = BuildConsoleSettings.Load();
+            var primaryOwnerRepo = settings.GitHubOwnerRepo;
+            var secondaryRepoCount = settings.GetAllConfiguredRepos()
+                .Count(r => !string.Equals(r.OwnerRepo, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase));
+
             var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.BatterUpPromoteOptionId, "open");
             if (mirror != null)
             {
-                log($"Batter Up board read from local mirror (Git #3134) — {mirror.Count} open item(s), no live project-page walk.");
+                log($"Batter Up board read from local mirror (Git #3134) — {mirror.Count} open item(s) from the primary repo, no live project-page walk.");
                 // Git #3350 — carry the mirror rows themselves (labels + blocked_by_numbers) so the
                 // refresh can resolve blocked-by from the mirror instead of one live REST call per item.
-                var items = mirror.Select(m => new BatterUpBoardIssue { Number = m.Number, Title = m.Title, HtmlUrl = m.HtmlUrl }).ToList();
+                var items = mirror.Select(m => new BatterUpBoardIssue
+                {
+                    Number = m.Number, Title = m.Title, HtmlUrl = m.HtmlUrl,
+                    RepoOwner = settings.GitHubOwner, RepoName = settings.GitHubRepoName,
+                }).ToList();
+
+                if (secondaryRepoCount > 0)
+                {
+                    try
+                    {
+                        var liveAll = await gh.GetBatterUpIssuesAsync();
+                        var secondaryItems = liveAll
+                            .Where(i => !string.Equals(i.OwnerRepo, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+                        items.AddRange(secondaryItems);
+                        log($"Batter Up board — merged {secondaryItems.Count} open item(s) from {secondaryRepoCount} secondary configured repo(s) (Git #3582).");
+                    }
+                    catch (Exception ex)
+                    {
+                        log($"Batter Up board — secondary-repo scan failed ({ex.Message}); secondary repo item(s) omitted this pass, primary repo board unaffected (Git #3582 unreachable-repo handling).");
+                    }
+                }
                 return (items, true, mirror);
             }
-            log("Batter Up board — mirror not usable yet; falling back to a live project-page walk this pass.");
+            log("Batter Up board — mirror not usable yet; falling back to a live project-page walk this pass (already multi-repo-aware, Git #3582).");
             return (await gh.GetBatterUpIssuesAsync(), false, new List<GitHubIssueMirror.MirrorIssue>());
         }
 
@@ -935,7 +1049,7 @@ namespace BuildConsole.Services
             if (queueDb == null || !row.HasBuildComment || row.Prompt == null)
                 return false;
 
-            var existing = await queueDb.FindDedupCandidateAsync(row.Number, row.Prompt);
+            var existing = await queueDb.FindDedupCandidateAsync(row.Number, row.Prompt, row.RepoOwner, row.RepoName);
             int? reuseRowId = null;
             if (existing != null)
             {
@@ -1010,7 +1124,9 @@ namespace BuildConsole.Services
                         githubNumber: row.Number,
                         blockedByNumbers: requeueBlockers,
                         buildSet: row.BuildSet,
-                        reuseRowId: reuseRowId);
+                        reuseRowId: reuseRowId,
+                        repoOwner: row.RepoOwner,
+                        repoName: row.RepoName);
 
                     // Git #3521 — consume one auto-attempt for a free-flow supervisory re-queue (see the
                     // loop-safety note above). Not incremented for a manual re-queue (Shane's explicit
@@ -1054,7 +1170,9 @@ namespace BuildConsole.Services
                     githubNumber: row.Number,
                     blockedByNumbers: freshBlockers,
                     buildSet: row.BuildSet,
-                    reuseRowId: reuseRowId);
+                    reuseRowId: reuseRowId,
+                    repoOwner: row.RepoOwner,
+                    repoName: row.RepoName);
                 log($"Batter Up #{row.Number} \"{row.Title}\" — auto-queued " +
                     $"(model={row.Model ?? "default"}, effort={row.Effort ?? "default"}, buildSet={row.BuildSet ?? "none"}" +
                     (freshBlockers.Count > 0 ? $", blocked-by={string.Join(",", freshBlockers)}" : "") + ").");

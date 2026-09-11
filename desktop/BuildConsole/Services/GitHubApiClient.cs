@@ -124,6 +124,17 @@ namespace BuildConsole.Services
         public int Number { get; set; }
         public string Title { get; set; } = "";
         public string HtmlUrl { get; set; } = "";
+        /// <summary>
+        /// Git #3582 (Feature #3578, Multi-Repo Support) — the real repo this item's issue actually
+        /// lives in, straight off the project item's own GraphQL <c>repository {{ nameWithOwner }}</c>
+        /// (never assumed). Defaults to this BuildConsole instance's own configured repo
+        /// (<see cref="RepoIdentity.DefaultOwner"/>/<see cref="RepoIdentity.DefaultName"/>) for any
+        /// code path that hasn't been updated to populate it explicitly, so an unset value reads
+        /// exactly as "the one repo this app always talked to before multi-repo" rather than blank.
+        /// </summary>
+        public string RepoOwner { get; set; } = RepoIdentity.DefaultOwner;
+        public string RepoName { get; set; } = RepoIdentity.DefaultName;
+        public string OwnerRepo => $"{RepoOwner}/{RepoName}";
     }
 
     /// <summary>
@@ -140,6 +151,10 @@ namespace BuildConsole.Services
         public string Title { get; set; } = "";
         public string HtmlUrl { get; set; } = "";
         public string ItemId { get; set; } = "";
+        /// <summary>Git #3582 — see <see cref="BatterUpBoardIssue.RepoOwner"/>; same real, GraphQL-sourced repo identity.</summary>
+        public string RepoOwner { get; set; } = RepoIdentity.DefaultOwner;
+        public string RepoName { get; set; } = RepoIdentity.DefaultName;
+        public string OwnerRepo => $"{RepoOwner}/{RepoName}";
     }
 
     /// <summary>Git #842 (Git Board Phase 4) — the fields of `POST /issues`'s response actually used: the new issue's number/url plus its numeric `id` for the `sub_issues` attach call.</summary>
@@ -252,6 +267,25 @@ namespace BuildConsole.Services
         // own %AppData%\BuildConsole-<name>\settings.json here, so it targets its own real repo.
         private static string Owner => BuildConsoleSettings.Load().GitHubOwner;
         private static string Repo => BuildConsoleSettings.Load().GitHubRepoName;
+
+        /// <summary>
+        /// Git #3582 (Feature #3578, Multi-Repo Support) — real board-item-fetch scope check: is
+        /// <paramref name="nameWithOwner"/> (GraphQL's own <c>repository.nameWithOwner</c>, e.g.
+        /// "shanemccaw/shanes-life") one of the real repos configured in #3581's Settings registry?
+        /// Replaces the old hardcoded "must equal this instance's own Owner/Repo" check that scoped
+        /// every Batter Up / AI Batter Up board read to a single repo even though a GitHub Projects
+        /// v2 board can genuinely hold issues from many repos. Falls back to matching just this
+        /// instance's own configured repo when the registry is somehow empty (shouldn't happen — #3581
+        /// seeds it with at least this repo) so a corrupt/blank settings.json degrades to the old
+        /// single-repo behavior rather than accepting every repo unfiltered.
+        /// </summary>
+        private static bool IsConfiguredRepo(string? nameWithOwner)
+        {
+            if (string.IsNullOrEmpty(nameWithOwner)) return false;
+            var configured = BuildConsoleSettings.Load().GetAllConfiguredRepos();
+            if (configured.Count == 0) return string.Equals(nameWithOwner, $"{Owner}/{Repo}", StringComparison.OrdinalIgnoreCase);
+            return configured.Any(r => string.Equals(r.OwnerRepo, nameWithOwner, StringComparison.OrdinalIgnoreCase));
+        }
 
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
@@ -526,12 +560,18 @@ namespace BuildConsole.Services
         /// like every other launch path already does — not just the one this snapshot
         /// happened to see open first.
         /// </summary>
-        public async Task<List<GitHubIssueResult>> GetBlockedByAsync(int number, bool bypassCache = false)
+        /// <param name="repoOwner">Git #3582 — optional real-repo override ("owner"/"name"); defaults
+        /// to this instance's own configured Owner/Repo. Lets a Batter Up item genuinely sourced from
+        /// a second configured repo resolve its blockers against the repo it actually lives in,
+        /// instead of always this instance's own repo.</param>
+        public async Task<List<GitHubIssueResult>> GetBlockedByAsync(int number, bool bypassCache = false, string? repoOwner = null, string? repoName = null)
         {
+            var owner = string.IsNullOrEmpty(repoOwner) ? Owner : repoOwner;
+            var repo = string.IsNullOrEmpty(repoName) ? Repo : repoName;
             try
             {
                 var blockers = await GetConditionalAsync<List<GitHubIssueResult>>(
-                    $"repos/{Owner}/{Repo}/issues/{number}/dependencies/blocked_by", bypassCache);
+                    $"repos/{owner}/{repo}/issues/{number}/dependencies/blocked_by", bypassCache);
                 return blockers ?? new List<GitHubIssueResult>();
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -866,12 +906,15 @@ namespace BuildConsole.Services
         }
 
         /// <summary>Git #840 (Git Board Phase 2) — real `GET /issues/{n}/comments`; GitHub returns these in chronological order already, no client-side re-sort needed.</summary>
-        public async Task<List<GitHubIssueComment>> GetIssueCommentsAsync(int number)
+        /// <param name="repoOwner">Git #3582 — optional real-repo override; see <see cref="GetBlockedByAsync"/>.</param>
+        public async Task<List<GitHubIssueComment>> GetIssueCommentsAsync(int number, string? repoOwner = null, string? repoName = null)
         {
+            var owner = string.IsNullOrEmpty(repoOwner) ? Owner : repoOwner;
+            var repo = string.IsNullOrEmpty(repoName) ? Repo : repoName;
             try
             {
                 var comments = await GetConditionalAsync<List<GitHubIssueComment>>(
-                    $"repos/{Owner}/{Repo}/issues/{number}/comments");
+                    $"repos/{owner}/{repo}/issues/{number}/comments");
                 return comments ?? new List<GitHubIssueComment>();
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -1232,12 +1275,7 @@ namespace BuildConsole.Services
         public async Task<List<BatterUpBoardIssue>> GetBatterUpIssuesAsync()
         {
             var nodes = await ScanProjectItemsForStatusAsync(BatterUpOptionId, includeItemId: false, "Batter Up");
-            return nodes.Select(n => new BatterUpBoardIssue
-            {
-                Number = n.Content!.Number,
-                Title = n.Content.Title ?? "",
-                HtmlUrl = n.Content.Url ?? "",
-            }).ToList();
+            return nodes.Select(n => MapToBatterUpBoardIssue(n)).ToList();
         }
 
         // ── Git #1710: real "AI Batter Up" review-queue read + promote/demote mutation ──
@@ -1322,13 +1360,46 @@ namespace BuildConsole.Services
         public async Task<List<AiBatterUpBoardIssue>> GetAiBatterUpIssuesAsync()
         {
             var nodes = await ScanProjectItemsForStatusAsync(AiBatterUpOptionId, includeItemId: true, "AI Batter Up");
-            return nodes.Select(n => new AiBatterUpBoardIssue
+            return nodes.Select(n =>
+            {
+                var (repoOwner, repoName) = SplitNameWithOwner(n.Content?.Repository?.NameWithOwner);
+                return new AiBatterUpBoardIssue
+                {
+                    Number = n.Content!.Number,
+                    Title = n.Content.Title ?? "",
+                    HtmlUrl = n.Content.Url ?? "",
+                    ItemId = n.Id ?? "",
+                    RepoOwner = repoOwner,
+                    RepoName = repoName,
+                };
+            }).ToList();
+        }
+
+        /// <summary>Git #3582 — splits GraphQL's real <c>repository.nameWithOwner</c> ("owner/name")
+        /// back into its two parts. Falls back to this instance's own configured repo when the value
+        /// is missing/malformed (shouldn't happen — every match already passed <see cref="IsConfiguredRepo"/>),
+        /// so a board item is never left carrying a blank repo identity.</summary>
+        private static (string Owner, string Name) SplitNameWithOwner(string? nameWithOwner)
+        {
+            if (!string.IsNullOrEmpty(nameWithOwner))
+            {
+                var parts = nameWithOwner.Split('/', 2);
+                if (parts.Length == 2 && parts[0].Length > 0 && parts[1].Length > 0) return (parts[0], parts[1]);
+            }
+            return (Owner, Repo);
+        }
+
+        private static BatterUpBoardIssue MapToBatterUpBoardIssue(ProjectItemNodeData n)
+        {
+            var (repoOwner, repoName) = SplitNameWithOwner(n.Content?.Repository?.NameWithOwner);
+            return new BatterUpBoardIssue
             {
                 Number = n.Content!.Number,
                 Title = n.Content.Title ?? "",
                 HtmlUrl = n.Content.Url ?? "",
-                ItemId = n.Id ?? "",
-            }).ToList();
+                RepoOwner = repoOwner,
+                RepoName = repoName,
+            };
         }
 
         /// <summary>
@@ -1429,7 +1500,11 @@ namespace BuildConsole.Services
                                 $"{label} project scan: skipped a project item whose content matched no `... on Issue` fragment (Draft Issue or Pull Request, not a real Issue) — id={n.Id ?? "?"}.");
                             continue;
                         }
-                        if (!string.Equals(issue.Repository?.NameWithOwner, $"{Owner}/{Repo}", StringComparison.OrdinalIgnoreCase)) continue;
+                        // Git #3582 — relaxed from "must be this instance's own hardcoded Owner/Repo"
+                        // to "must be ONE OF the real repos in #3581's Settings registry": a Projects
+                        // v2 board genuinely can (and, once a second repo is configured, does) hold
+                        // issues from more than one repository.
+                        if (!IsConfiguredRepo(issue.Repository?.NameWithOwner)) continue;
                         if (!string.Equals(issue.State, state, StringComparison.OrdinalIgnoreCase)) continue;
                         if (!string.Equals(n.FieldValueByName?.OptionId, targetOptionId, StringComparison.OrdinalIgnoreCase)) continue;
 
@@ -1554,10 +1629,12 @@ namespace BuildConsole.Services
         /// `issue(number:).projectItems`, so it's cheap enough to call inline from a
         /// button click. Returns null if the issue isn't on this project at all.
         /// </summary>
-        public async Task<string?> GetProjectItemIdForIssueAsync(int issueNumber)
+        public async Task<string?> GetProjectItemIdForIssueAsync(int issueNumber, string? repoOwner = null, string? repoName = null)
         {
+            var owner = string.IsNullOrEmpty(repoOwner) ? Owner : repoOwner;
+            var repo = string.IsNullOrEmpty(repoName) ? Repo : repoName;
             string query = $@"query {{
-  repository(owner: ""{Owner}"", name: ""{Repo}"") {{
+  repository(owner: ""{owner}"", name: ""{repo}"") {{
     issue(number: {issueNumber}) {{
       projectItems(first: 20) {{
         nodes {{ id project {{ id }} }}
@@ -1588,9 +1665,9 @@ namespace BuildConsole.Services
         /// a local-only build (no linked GitHub issue's project card yet) shouldn't
         /// block the local park/un-park it's paired with.
         /// </summary>
-        public async Task<bool> SetIssueStatusByNumberAsync(int issueNumber, string optionId)
+        public async Task<bool> SetIssueStatusByNumberAsync(int issueNumber, string optionId, string? repoOwner = null, string? repoName = null)
         {
-            var itemId = await GetProjectItemIdForIssueAsync(issueNumber);
+            var itemId = await GetProjectItemIdForIssueAsync(issueNumber, repoOwner, repoName);
             if (string.IsNullOrEmpty(itemId)) return false;
             await SetProjectItemStatusAsync(itemId, optionId);
             return true;
@@ -1815,12 +1892,18 @@ namespace BuildConsole.Services
         /// (rare) issues. Each chunk is one HTTP request through the shared rate-limit circuit; a
         /// rate-limited/short-circuited chunk throws so the caller can stop rather than firing the rest.
         /// </summary>
+        /// <param name="repoOwner">Git #3582 — optional real-repo override; see <see cref="GetBlockedByAsync"/>.
+        /// Lets this batched read be pointed at a second configured repo's issues instead of always this
+        /// instance's own repo (the caller groups issue numbers by their real repo and calls this once per
+        /// distinct repo).</param>
         public async Task<Dictionary<int, (List<string> Bodies, int TotalCount)>> BatchGetRecentIssueCommentsAsync(
-            IReadOnlyList<int> issueNumbers, int lastPerIssue)
+            IReadOnlyList<int> issueNumbers, int lastPerIssue, string? repoOwner = null, string? repoName = null)
         {
             var result = new Dictionary<int, (List<string>, int)>();
             if (issueNumbers == null || issueNumbers.Count == 0) return result;
             int last = lastPerIssue <= 0 ? RecentCommentsPerIssue : lastPerIssue;
+            var owner = string.IsNullOrEmpty(repoOwner) ? Owner : repoOwner;
+            var repoNameResolved = string.IsNullOrEmpty(repoName) ? Repo : repoName;
 
             var distinct = issueNumbers.Where(n => n > 0).Distinct().ToList();
 
@@ -1829,7 +1912,7 @@ namespace BuildConsole.Services
                 var chunk = distinct.Skip(offset).Take(CommentBatchLookupChunkSize).ToList();
                 var sb = new StringBuilder();
                 sb.Append("query { ");
-                sb.Append($"repository(owner: \"{Owner}\", name: \"{Repo}\") {{ ");
+                sb.Append($"repository(owner: \"{owner}\", name: \"{repoNameResolved}\") {{ ");
                 for (int i = 0; i < chunk.Count; i++)
                     sb.Append($"a{i}: issue(number: {chunk[i]}) {{ comments(last: {last}) {{ totalCount nodes {{ body }} }} }} ");
                 sb.Append("} }");
@@ -1995,10 +2078,12 @@ namespace BuildConsole.Services
         /// Status field's option id AND display name so the detail view can show real board
         /// status text without a separate options-lookup call.
         /// </summary>
-        public async Task<IssueBoardStatus?> GetIssueBoardStatusAsync(int issueNumber)
+        public async Task<IssueBoardStatus?> GetIssueBoardStatusAsync(int issueNumber, string? repoOwner = null, string? repoName = null)
         {
+            var owner = string.IsNullOrEmpty(repoOwner) ? Owner : repoOwner;
+            var repo = string.IsNullOrEmpty(repoName) ? Repo : repoName;
             string query = $@"query {{
-  repository(owner: ""{Owner}"", name: ""{Repo}"") {{
+  repository(owner: ""{owner}"", name: ""{repo}"") {{
     issue(number: {issueNumber}) {{
       projectItems(first: 20) {{
         nodes {{
