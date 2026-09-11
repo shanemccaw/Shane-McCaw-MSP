@@ -282,6 +282,85 @@
                                 VerticalAlignment="Center"
                                 Margin="0,0,8,0"
                                 WindowChrome.IsHitTestVisibleInChrome="True">
+                        <!-- Git #3659 — Quick Thought topbar pill, ported from ShaneBuilder's "I have
+                             a thought" quick capture. Opening the popup never switches tabs or
+                             touches whatever chat/panel is active; Enter in the composer files the
+                             thought and clears the box without closing the popup, so a run of
+                             thoughts can be captured back-to-back. See QuickThoughtStore for the
+                             persistence and MainWindow.QuickThought.cs for the UI glue. -->
+                        <Border x:Name="QuickThoughtPill"
+                                Background="{StaticResource Surface0Brush}"
+                                BorderBrush="{StaticResource Surface1Brush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="7,2"
+                                Margin="0,0,6,0"
+                                Cursor="Hand"
+                                ToolTip="Quick Thought — capture a one-liner without leaving what you're doing"
+                                MouseLeftButtonUp="QuickThoughtPill_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="&#xE70B;" FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" FontSize="11" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock Text="Quick Thought" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Popup x:Name="QuickThoughtPopup"
+                               PlacementTarget="{Binding ElementName=QuickThoughtPill}"
+                               Placement="Bottom"
+                               StaysOpen="False"
+                               AllowsTransparency="True"
+                               HorizontalOffset="-40"
+                               VerticalOffset="6"
+                               Opened="QuickThoughtPopup_Opened">
+                            <Border Background="{StaticResource Surface0Brush}"
+                                    BorderBrush="{StaticResource Surface1Brush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="10"
+                                    Width="280">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="24" ShadowDepth="10" Opacity="0.5" Color="#000000"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <Grid>
+                                        <TextBox x:Name="QuickThoughtInput"
+                                                 Background="{StaticResource Surface1Brush}"
+                                                 Foreground="{StaticResource TextBrush}"
+                                                 BorderBrush="{StaticResource Surface2Brush}"
+                                                 BorderThickness="1"
+                                                 Padding="6,4"
+                                                 FontSize="12"
+                                                 AcceptsReturn="False"
+                                                 TextChanged="QuickThoughtInput_TextChanged"
+                                                 PreviewKeyDown="QuickThoughtInput_PreviewKeyDown"/>
+                                        <TextBlock x:Name="QuickThoughtPlaceholder"
+                                                   Text="Type a thought, hit Enter…"
+                                                   FontSize="12"
+                                                   Foreground="{StaticResource Subtext0Brush}"
+                                                   Margin="8,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   IsHitTestVisible="False"/>
+                                    </Grid>
+                                    <TextBlock x:Name="QuickThoughtSavedFlag"
+                                               Text="Saved"
+                                               FontSize="10"
+                                               Foreground="{StaticResource StatusRunningBrush}"
+                                               Margin="0,4,0,0"
+                                               Visibility="Collapsed"/>
+                                    <Separator Margin="0,8,0,6"/>
+                                    <TextBlock Text="Recent"
+                                               FontSize="10"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource Subtext0Brush}"
+                                               Margin="0,0,0,4"/>
+                                    <TextBlock x:Name="QuickThoughtEmptyLabel"
+                                               Text="Nothing captured yet."
+                                               FontSize="11"
+                                               Foreground="{StaticResource Subtext0Brush}"
+                                               Visibility="Visible"/>
+                                    <StackPanel x:Name="QuickThoughtRecentList" MaxHeight="240"/>
+                                </StackPanel>
+                            </Border>
+                        </Popup>
                         <!-- shaneapp:// live execution indicator badge in title bar -->
                         <Border x:Name="TopShaneAppIndicator"
                                 Background="#33A6E3A1"
