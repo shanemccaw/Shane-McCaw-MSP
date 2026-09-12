@@ -122,6 +122,21 @@ namespace BuildConsole
                 ActionLabel = "Recover Builds",
                 RunWithResult = () => BuildQueuePanel.RecoverOrphanedBuildsWithResultAsync(),
             },
+            new CommandPaletteWindow.PaletteCommand
+            {
+                Glyph = "", // UpdateRestore
+                Title = "deploy-shanesbuild.cmd",
+                Subtitle = "Rebuild Release & relaunch BuildConsole — same as the Update button",
+                DetailBody = "Runs the real desktop\\BuildConsole\\deploy-shanesbuild.cmd (Process.Start, "
+                           + "detached console window) — the exact same RunDeployScript() the title-bar "
+                           + "Update button already calls. It rebuilds Release, stops the running "
+                           + "instance and relaunches it; its own relaunch replaces this process, so "
+                           + "nothing further happens here. Not gated on the Build Queue (Git #1934) — "
+                           + "in-flight builds survive the restart via #1804's durable-file redirect + "
+                           + "pid-adoption, so this runs immediately regardless of active builds.",
+                ActionLabel = "Run deploy-shanesbuild.cmd",
+                Run = () => RunDeployScript(),
+            },
         };
 
         /// <summary>Git #3826 — runs the sidebar's real git pull and returns its real,
