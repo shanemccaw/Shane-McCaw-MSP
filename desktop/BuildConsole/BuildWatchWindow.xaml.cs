@@ -151,6 +151,21 @@ namespace BuildConsole
         private readonly List<BuildWatchSlot> _slots = new();
         /// <summary>Running builds that couldn't get a slot because all 8 are occupied by still-running builds (nothing completed to evict). Rebuilt every reconcile; drives the waiting banner only. See AdmitNewRunning for the "never force-evict a running build" decision.</summary>
         private readonly List<QueueItem> _waiting = new();
+        /// <summary>
+        /// Git #3837 — queue ids auto-evicted from a Done/Failed slot, keyed to eviction time. Under 8+
+        /// concurrent builds, a build whose process has exited can still read "running" in the queue for a
+        /// while (the reap/MarkComplete write lags the exit). Once evicted, that lagging "running" row made
+        /// AdmitNewRunning re-admit it into the next oldest-completed slot, evicting another lagging build,
+        /// which was re-admitted on the following poll — the same slot flapping Done/Running every 3s and
+        /// firing the completion critter each time. An id here is not re-admitted until a poll sees its row
+        /// leave "running" (a later "running" is then a genuine relaunch, e.g. Retry or limit-resume).
+        /// </summary>
+        private readonly Dictionary<int, DateTime> _evictedCompleted = new();
+        /// <summary>Git #3837 — ids already logged as "row says running but process exited locally", so the diagnostic is written once per episode, not every poll.</summary>
+        private readonly HashSet<int> _loggedExitedButRowRunning = new();
+        /// <summary>Git #3837 — last completion-critter time per queue id; a repeat Done for the same id inside <see cref="CelebrationDedupeWindow"/> is logged as a flap instead of replaying the animation.</summary>
+        private readonly Dictionary<int, DateTime> _lastCelebratedUtc = new();
+        private static readonly TimeSpan CelebrationDedupeWindow = TimeSpan.FromMinutes(2);
         private DispatcherTimer? _pollTimer;
         private DispatcherTimer? _elapsedTimer;
         private bool _polling;
@@ -882,9 +897,19 @@ namespace BuildConsole
 
                 var byId = queue.GroupBy(q => q.Id).ToDictionary(g => g.Key, g => g.First());
 
+                // Git #3837 — an evicted id whose row has genuinely left "running" (or left the queue) is
+                // eligible again: a later "running" for it is a real relaunch, not the old lagging row.
+                foreach (var evictedId in _evictedCompleted.Keys.ToList())
+                {
+                    if (!byId.TryGetValue(evictedId, out var evictedRow) || evictedRow.Status != "running")
+                        _evictedCompleted.Remove(evictedId);
+                }
+                _loggedExitedButRowRunning.RemoveWhere(id => !byId.TryGetValue(id, out var r) || r.Status != "running");
+
                 // 1) Update every occupied slot from this snapshot.
                 foreach (var slot in _slots.Where(s => s.Occupied))
                 {
+                    var stateBefore = slot.State;
                     // Git #1839 — render/context/state key on "renderable" (true for adopted builds
                     // too), not stdin-ownership. Stdin-ownership (OwnsInteractive) only gates the
                     // chat box, handled in ApplyInteractiveState via the adopted flag below.
@@ -971,6 +996,21 @@ namespace BuildConsole
                         // manually dismissable, never auto-evicted) and keep
                         // streaming its output in case it's still writing.
                         if (slot.State != SlotState.Stale) SetSlotState(slot, SlotState.Stale, null);
+                    }
+
+                    // Git #3837 — diagnostic: a slot leaving Done/Failed for Running for the SAME queue id is
+                    // exactly the reported flap. Record every signal this poll read, so a real occurrence
+                    // names which one moved (interactive state, local exit, or the queue row).
+                    if (stateBefore is SlotState.Done or SlotState.Failed && slot.State == SlotState.Running)
+                    {
+                        bool exitedNow = _watcher != null && _watcher.HasExited(slot.QueueItemId, out _);
+                        string rowStatus = byId.TryGetValue(slot.QueueItemId, out var diagRow)
+                            ? $"{diagRow.Status}{(diagRow.ExitCode.HasValue ? $" exit {diagRow.ExitCode}" : "")}"
+                            : "absent";
+                        ActivityLog.Log("build-watch",
+                            $"Git #3837 state reverted {stateBefore.ToString().ToLowerInvariant()}→running: {slot.Title} (queue #{slot.QueueItemId}) " +
+                            $"interactiveState={(ist?.ToString() ?? "null")} renderable={owned} localExited={exitedNow} " +
+                            $"owned={_watcher?.OwnsInteractive(slot.QueueItemId) ?? false} row={rowStatus} verifying={slot.Verifying}");
                     }
 
                     // Render: an owned interactive build streams from the watcher's
@@ -1142,7 +1182,21 @@ namespace BuildConsole
                     // rather than trying to map a slot on another monitor back onto it.
                     if (changed)
                     {
-                        try { IssueChompAnimation.Play(null, slot.Title); } catch { }
+                        // Git #3837 — the upstream flap is fixed in AdmitNewRunning / QueueWatcherService.HasExited;
+                        // this is the backstop so any remaining Done re-entry for the same queue id can never spam
+                        // the animation again, and is logged (the "state reverted" line names the cause).
+                        var nowUtc = DateTime.UtcNow;
+                        if (_lastCelebratedUtc.TryGetValue(slot.QueueItemId, out var lastCelebrated)
+                            && nowUtc - lastCelebrated < CelebrationDedupeWindow)
+                        {
+                            ActivityLog.Log("build-watch",
+                                $"Git #3837 repeat Done for queue #{slot.QueueItemId} ({slot.Title}) {(int)(nowUtc - lastCelebrated).TotalSeconds}s after the last celebration — flap, animation not replayed.");
+                        }
+                        else
+                        {
+                            _lastCelebratedUtc[slot.QueueItemId] = nowUtc;
+                            try { IssueChompAnimation.Play(null, slot.Title); } catch { }
+                        }
                     }
                     break;
 
@@ -1217,7 +1271,7 @@ namespace BuildConsole
             // Order by Id asc: queue ids increase with creation, so older builds
             // get a slot first — a stable, deterministic ordering.
             var pending = queue
-                .Where(q => q.Status == "running" && !occupied.Contains(q.Id))
+                .Where(q => q.Status == "running" && !occupied.Contains(q.Id) && !IsLaggingRunningRow(q))
                 .OrderBy(q => q.Id)
                 .ToList();
 
@@ -1237,10 +1291,31 @@ namespace BuildConsole
                     }
                     ActivityLog.Log("build-watch",
                         $"auto-evicted oldest completed: {oldest.Title} (queue #{oldest.QueueItemId}) to admit {SafeTitle(item)} (queue #{item.Id})");
+                    _evictedCompleted[oldest.QueueItemId] = DateTime.UtcNow;
                     target = oldest;
                 }
                 OccupySlot(target, item);
             }
+        }
+
+        /// <summary>
+        /// Git #3837 — true when a queue row reads "running" but is not a build that genuinely needs a slot:
+        /// either this instance's watcher already knows its process exited (the completion write simply hasn't
+        /// landed on the row yet), or it was auto-evicted from a Done/Failed slot and its row has not left
+        /// "running" since. Admitting either one evicts another completed slot, and the evicted build is itself
+        /// re-admitted next poll — the Done/Running ping-pong the issue reports.
+        /// </summary>
+        private bool IsLaggingRunningRow(QueueItem q)
+        {
+            if (_evictedCompleted.ContainsKey(q.Id)) return true;
+            if (_watcher != null && _watcher.HasExited(q.Id, out int exitCode))
+            {
+                if (_loggedExitedButRowRunning.Add(q.Id))
+                    ActivityLog.Log("build-watch",
+                        $"Git #3837 not admitting queue #{q.Id} ({SafeTitle(q)}): row still reads running but its process already exited locally (exit {exitCode}) — waiting for the completion write instead of evicting a slot for it.");
+                return true;
+            }
+            return false;
         }
 
         /// <summary>

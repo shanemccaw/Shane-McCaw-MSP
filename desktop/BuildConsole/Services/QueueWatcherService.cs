@@ -1567,6 +1567,7 @@ namespace BuildConsole.Services
             // non-idempotent escaping side-effects (durable usage-cost accounting + session-limit
             // parking) are suppressed for the already-processed region — see StartRawTailers.
             StartRawTailers(entry, item.Id, adopt: true);
+            DropSupersededRetained(item.Id);
             _running[item.Id] = entry;
             ArmCompletionTrigger(item.Id, entry);
 
@@ -2719,6 +2720,7 @@ namespace BuildConsole.Services
                 catch (Exception ex) { ActivityLog.Log("interactive-build", $"couldn't write initial prompt to queue #{item.Id}: {ex.Message}"); }
             }
 
+            DropSupersededRetained(item.Id);
             _running[item.Id] = entry;
             ArmCompletionTrigger(item.Id, entry);
 
@@ -3309,35 +3311,56 @@ namespace BuildConsole.Services
         public bool IsAdopted(int id) =>
             _running.TryGetValue(id, out var e) && e.Adopted && !e.Process.HasExited;
 
-        /// <summary>Checks whether this queue id's process has exited locally (either currently retained or completed in _running).</summary>
+        /// <summary>Checks whether this queue id's process has exited locally (either completed in _running or currently retained).
+        /// Git #3837 — a LIVE _running entry wins over a _retained one. The same queue id can be relaunched
+        /// (session-limit auto-restart, Retry) while the previous run's exited entry is still retained; checking
+        /// _retained first reported that live relaunch as exited, so Build Watch flipped its slot to Done on every
+        /// Working poll and back to Running on every WaitingForInput poll — a Done/Running flap firing the
+        /// completion critter each time.</summary>
         public bool HasExited(int id, out int exitCode)
         {
             exitCode = 0;
+            if (_running.TryGetValue(id, out var rn))
+            {
+                if (!rn.Process.HasExited) return false;
+                exitCode = rn.Process.ExitCode;
+                return true;
+            }
             if (_retained.TryGetValue(id, out var r))
             {
                 exitCode = r.Process.ExitCode;
                 return true;
             }
-            if (_running.TryGetValue(id, out var rn) && rn.Process.HasExited)
-            {
-                exitCode = rn.Process.ExitCode;
-                return true;
-            }
             return false;
         }
 
-        /// <summary>Checks whether a running or retained build has hit the session limit.</summary>
+        /// <summary>Checks whether a running or retained build has hit the session limit. A live _running entry wins over a stale retained one (Git #3837, same reason as <see cref="HasExited"/>).</summary>
         public bool IsSessionLimitHit(int id)
         {
-            if (_retained.TryGetValue(id, out var r))
-            {
-                lock (_gate) return r.SessionLimitHit;
-            }
             if (_running.TryGetValue(id, out var rn))
             {
                 lock (_gate) return rn.SessionLimitHit;
             }
+            if (_retained.TryGetValue(id, out var r))
+            {
+                lock (_gate) return r.SessionLimitHit;
+            }
             return false;
+        }
+
+        /// <summary>Git #3837 — a relaunch of the same queue id supersedes any previous run's retained (exited) entry,
+        /// so nothing downstream can read the old run's exit as this run's. Called right before the new entry is
+        /// placed in _running. UI thread only, like _running membership.</summary>
+        private void DropSupersededRetained(int id)
+        {
+            RunningEntry? stale;
+            lock (_gate)
+            {
+                if (!_retained.TryGetValue(id, out stale)) return;
+                _retained.Remove(id);
+            }
+            stale.TailCts?.Cancel();
+            ActivityLog.Log("watcher", $"Git #3837 — dropped the previous run's retained (exited) entry for queue #{id}; it was relaunched and the live run supersedes it.");
         }
 
         /// <summary>The current three-state indicator value for a LIVE interactive build, or null if it isn't one we own and is still running (terminal/retained/legacy/foreign → the caller uses the queue-derived state instead).</summary>
