@@ -78,11 +78,6 @@ namespace BuildConsole
             public Grid ContentGrid = null!;
             public TextBlock EmptyText = null!;
             public ChatSessionPane Pane = null!;
-            /// <summary>Git #3491 — one-shot timer backing the "selected from Build Queue" flash
-            /// (see SelectSlotForQueueItem). Stopped/replaced if a second selection lands on the
-            /// same slot before the first flash finishes, so rapid re-clicks restart cleanly
-            /// instead of stacking timers.</summary>
-            public DispatcherTimer? SelectionFlashTimer;
 
             // ── Interactive chat input (only wired for BuildConsole-owned queue builds) ──
             public bool InteractiveBound;
@@ -184,11 +179,20 @@ namespace BuildConsole
         private readonly Brush _pillErrorTone;
         private readonly Brush _pillWarningTone;
         private readonly Brush _pillSuccessTone;
-        /// <summary>Git #3491 — same BlueBrush BuildQueuePanel already uses for its own selected-card
-        /// border, reused here so a slot flashed from a Build Queue click reads as the same
-        /// "selected" color/language the queue panel already established, not an invented one.</summary>
+        /// <summary>Git #3491/#3847 — same BlueBrush BuildQueuePanel already uses for its own
+        /// selected-card border, reused here so a slot selected from a Build Queue click reads as
+        /// the same "selected" color/language the queue panel already established, not an invented
+        /// one.</summary>
         private readonly Brush _selectionBorder;
         private bool _loaded;
+
+        /// <summary>Git #3847 — the slot currently carrying the persistent "selected from Build
+        /// Queue" highlight, or null if none. Replaces the old self-expiring flash: this selection
+        /// survives real state-driven redraws (SetSlotState/ApplySlotGlow) until a different slot is
+        /// selected (<see cref="SelectSlot"/>) or this one is explicitly cleared
+        /// (<see cref="ClearSelectionIfSlot"/>) — e.g. because its build finished and the slot got
+        /// reassigned to a different build.</summary>
+        private BuildWatchSlot? _selectedSlot;
 
         // Whole-app polish pass — soft, low-intensity slot auras (Shane: bright hurts;
         // no pink). A RUNNING slot gets a faint blue halo so a live build reads as
@@ -199,13 +203,12 @@ namespace BuildConsole
         // to many slots at once, never animated. See ApplySlotGlow.
         private static readonly System.Windows.Media.Effects.DropShadowEffect _runningGlow = BuildGlow("#89B4FA", 12, 0.30);
         private static readonly System.Windows.Media.Effects.DropShadowEffect _doneGlow    = BuildGlow("#34D399", 16, 0.32);
-        /// <summary>Git #3491 — a brighter, wider halo for the brief "just selected from the Build
-        /// Queue panel" flash (see SelectSlotForQueueItem), distinct from the steady per-state
-        /// glows above so a selection reads as a momentary pulse, not a new persistent state.</summary>
-        private static readonly System.Windows.Media.Effects.DropShadowEffect _selectionFlashGlow = BuildGlow("#89B4FA", 22, 0.85);
-        /// <summary>How long the selection-flash border/glow (see SelectSlotForQueueItem) stays on
-        /// before reverting to the slot's normal state styling.</summary>
-        private static readonly TimeSpan SelectionFlashDuration = TimeSpan.FromSeconds(1.8);
+        /// <summary>Git #3491/#3847 — a brighter, wider halo marking a slot as "selected from the
+        /// Build Queue panel" (see SelectSlot), distinct from the steady per-state glows above.
+        /// Persistent — stays on the selected slot indefinitely, layered over whatever the slot's
+        /// real state glow currently is, rather than auto-reverting after a timed flash (the old
+        /// SelectionFlashDuration/DispatcherTimer behavior this replaces).</summary>
+        private static readonly System.Windows.Media.Effects.DropShadowEffect _selectionGlow = BuildGlow("#89B4FA", 22, 0.85);
 
         private static System.Windows.Media.Effects.DropShadowEffect BuildGlow(string hex, double blur, double opacity)
         {
@@ -232,6 +235,52 @@ namespace BuildConsole
                 SlotState.Done    => _doneGlow,
                 _                 => null,
             };
+        }
+
+        /// <summary>Git #3847 — the border/thickness a slot's real current <see cref="SlotState"/>
+        /// calls for on its own, with no selection involved. Mirrors the per-case assignments
+        /// SetSlotState makes inline; factored out so the persistent selection highlight
+        /// (<see cref="ApplySelectionVisual"/>/<see cref="RestoreNormalAppearance"/>) can restore a
+        /// slot's real state styling when selection moves off it, instead of a stale snapshot.</summary>
+        private (Brush border, Thickness thickness) NormalSlotBorder(SlotState state) => state switch
+        {
+            SlotState.Done    => (_ringSuccess, new Thickness(3)),
+            SlotState.Failed  => (_ringDanger, new Thickness(3)),
+            SlotState.Stale   => (_ringWarning, new Thickness(2)),
+            SlotState.Stalled => (_ringWarning, new Thickness(2)),
+            _                 => (_emptyBorder, new Thickness(1)), // Running/Empty
+        };
+
+        /// <summary>Git #3847 — restores `slot`'s real, current-state appearance (border, thickness,
+        /// glow), used when the persistent selection highlight moves off this slot or is cleared.
+        /// Always recomputed from the slot's live <see cref="SlotState"/> — never a snapshot taken
+        /// before the selection was applied — so it reflects whatever real redraws happened while
+        /// selected (item 3: composing correctly with ongoing state-driven redraws).</summary>
+        private void RestoreNormalAppearance(BuildWatchSlot slot)
+        {
+            if (!slot.Occupied)
+            {
+                slot.Container.BorderBrush = _emptyBorder;
+                slot.Container.BorderThickness = new Thickness(1);
+                slot.Container.Effect = null;
+                return;
+            }
+            var (border, thickness) = NormalSlotBorder(slot.State);
+            slot.Container.BorderBrush = border;
+            slot.Container.BorderThickness = thickness;
+            ApplySlotGlow(slot);
+        }
+
+        /// <summary>Git #3847 — applies the persistent "selected" border/glow to `slot`, overlaying
+        /// whatever its real per-state styling currently is. Call sites must not assume this is the
+        /// only place selection styling is (re)applied — <see cref="SetSlotState"/> reapplies it too,
+        /// any time this slot is the one currently selected, so a selected slot's highlight survives
+        /// a real state transition instead of being clobbered by it.</summary>
+        private void ApplySelectionVisual(BuildWatchSlot slot)
+        {
+            slot.Container.BorderBrush = _selectionBorder;
+            slot.Container.BorderThickness = new Thickness(2.5);
+            slot.Container.Effect = _selectionGlow;
         }
 
         /// <summary>#1004 easter egg — during a longer-running quiet stretch, the activity line occasionally reads
@@ -1242,6 +1291,12 @@ namespace BuildConsole
             }
 
             ApplySlotGlow(slot);
+            // Git #3847 item 3 — a real state transition (Running→Done, etc.) just set this slot's
+            // normal border/thickness/glow above; if it's the persistently-selected slot, the
+            // selection highlight must be reapplied on top rather than left clobbered by the state
+            // change (a selected Running slot that goes Done must still show selected, layered over
+            // its new Done styling).
+            if (slot == _selectedSlot) ApplySelectionVisual(slot);
 
             if (changed && newState is SlotState.Done or SlotState.Failed)
             {
@@ -1336,37 +1391,34 @@ namespace BuildConsole
             if (slot == null) return;
 
             slot.Container.BringIntoView();
-            FlashSlotSelection(slot);
+            SelectSlot(slot);
         }
 
-        /// <summary>Brief, brighter halo + accent border pulse marking a slot as "just selected
-        /// from the Build Queue panel" (see SelectSlotForQueueItem) — distinct from the steady
-        /// per-state glow ApplySlotGlow already draws, and reverting back to it automatically
-        /// after SelectionFlashDuration rather than leaving a stale "selected" look behind.</summary>
-        private void FlashSlotSelection(BuildWatchSlot slot)
+        /// <summary>Git #3847 — makes `slot` the persistently-selected slot: restores whatever the
+        /// previously-selected slot's real current state calls for (never a stale pre-selection
+        /// snapshot — see RestoreNormalAppearance), then applies the selection highlight to the new
+        /// one. No timer, no auto-revert — the highlight stays until a different slot is selected or
+        /// this one is explicitly cleared (ClearSelectionIfSlot).</summary>
+        private void SelectSlot(BuildWatchSlot slot)
         {
-            slot.SelectionFlashTimer?.Stop();
+            if (_selectedSlot == slot) return; // already selected — nothing to move
 
-            var originalBorder = slot.Container.BorderBrush;
-            var originalThickness = slot.Container.BorderThickness;
-            slot.Container.BorderBrush = _selectionBorder;
-            slot.Container.BorderThickness = new Thickness(2.5);
-            slot.Container.Effect = _selectionFlashGlow;
+            var previous = _selectedSlot;
+            _selectedSlot = slot;
+            if (previous != null) RestoreNormalAppearance(previous);
+            ApplySelectionVisual(slot);
+        }
 
-            var timer = new DispatcherTimer { Interval = SelectionFlashDuration };
-            timer.Tick += (_, _) =>
-            {
-                timer.Stop();
-                if (slot.SelectionFlashTimer == timer) slot.SelectionFlashTimer = null;
-                // Slot may have changed state (or been cleared) during the flash — reapply
-                // whatever border/glow its current, real state actually calls for rather than
-                // just restoring the pre-flash snapshot.
-                slot.Container.BorderBrush = slot.Occupied ? originalBorder : _emptyBorder;
-                slot.Container.BorderThickness = originalThickness;
-                ApplySlotGlow(slot);
-            };
-            slot.SelectionFlashTimer = timer;
-            timer.Start();
+        /// <summary>Git #3847 item 4 — clears the persistent selection if `slot` is the one
+        /// currently selected, restoring its normal appearance. Called when a selected slot's build
+        /// finishes and the slot is reassigned to a different build, or dismissed/cleared outright:
+        /// the safer, more honest default is to drop the selection rather than silently carry it
+        /// onto content Shane never selected. No-op if `slot` isn't the selected one.</summary>
+        private void ClearSelectionIfSlot(BuildWatchSlot slot)
+        {
+            if (_selectedSlot != slot) return;
+            _selectedSlot = null;
+            RestoreNormalAppearance(slot);
         }
 
         private BuildWatchSlot? FindEmptySlot() => _slots.FirstOrDefault(s => !s.Occupied);
@@ -1382,6 +1434,11 @@ namespace BuildConsole
             // If this slot was reused, drop previous occupant's progress tracker state.
             if (slot.QueueItemId != 0 && slot.QueueItemId != item.Id)
                 BuildProgressTracker.ClearForBuild(slot.QueueItemId);
+
+            // Git #3847 item 4 — this slot is being reassigned to a different build than the one
+            // Shane selected; clear the selection rather than silently carrying it onto new content.
+            if (slot.QueueItemId != item.Id)
+                ClearSelectionIfSlot(slot);
 
             slot.Occupied = true;
             slot.QueueItemId = item.Id;
@@ -1479,6 +1536,10 @@ namespace BuildConsole
             if (!slot.Occupied) return;
             int id = slot.QueueItemId;
             ActivityLog.Log("build-watch", $"{reason}: {slot.Title} (queue #{id})");
+
+            // Git #3847 item 4 — this slot's content is going away; the selection shouldn't
+            // silently persist onto whatever (if anything) reoccupies it later.
+            ClearSelectionIfSlot(slot);
 
             // This build's progress tracking belongs to it — drop it as the slot frees.
             BuildProgressTracker.ClearForBuild(id);
