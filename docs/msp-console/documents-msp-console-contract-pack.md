@@ -95,8 +95,8 @@ msp-documents-hub.ts      insights_generated_documents (read) ── quick_win_r
 **§1's pipeline is forward, linear, non-branching.** A submitted document runs
 `doc_store_html → doc_generate_pdf → doc_save_sharepoint → doc_register_version →
 doc_publish → doc_audit_export → doc_cleanup` (`DEFAULT_DOC_PIPELINE_GRAPH`,
-`doc-pipeline-nodes.ts:708-728`) unconditionally, every time, for every document —
-see §6's honest-empty note on `autoPublish`.
+`doc-pipeline-nodes.ts:708-728`) — every document runs the same node sequence, but
+`doc_publish` itself now branches on `autoPublish` (see §6).
 
 **§2's hub is read-only aggregation over a table this Feature does not own.**
 `msp-documents-hub.ts`'s own file header says so explicitly (`:4-16`): it does not
@@ -162,8 +162,8 @@ no enum gate at the route), `customerId` (optional `tenants.id`; sets
 `ownerType: customerId ? "customer" : "msp"`), `changeNote` (optional), `connectorMode`
 (`"platform" | "msp_owned"`, default `"platform"`), `connectorId` (required when
 `connectorMode === "msp_owned"`, 400 `"connectorId is required when connectorMode is
-msp_owned"`), `autoPublish` (optional boolean, default `false` — **see §6, this field
-has no effect on the pipeline's real behavior**).
+msp_owned"`), `autoPublish` (optional boolean, default `false` — **see §6: `false`
+makes `doc_publish` skip the actual publish step**).
 
 On success: inserts `msp_documents` (`status: "draft"`, `pipelineStatus: "pending"`),
 lazily seeds the `doc.pipeline.default` workflow if it doesn't already exist
@@ -200,10 +200,11 @@ Response: `{ document: MspDocument, currentVersion: MspDocumentVersion | null }`
 archived document" }` if `status === "archived"` — the only guard on this route; a
 `"draft"` or `"active"` document accepts new versions freely, including one already
 `"active"` (re-versioning a published document is allowed, not just draft iteration).
-Body: `htmlContent` (required, 400), `changeNote` (optional). Creates a new
+Body: `htmlContent` (required, 400), `changeNote` (optional), `autoPublish` (optional
+boolean, default `false` — same real effect as §1.1's field, see §6). Creates a new
 `doc.pipeline.default` run the same way as §1.1 (`triggerEventType:
-"msp.document.version"`, always `autoPublish: false` hardcoded in the input payload —
-see §6, this hardcoding is moot given §6's finding), sets
+"msp.document.version"`, `autoPublish` threaded from the request body into the input
+payload — no longer hardcoded), sets
 `pipelineStatus: "pending"` on the parent document, fires `executeRun(runId)`
 unawaited. Response: `202 { documentId, runId, message: "New version pipeline
 started" }`.
@@ -437,7 +438,9 @@ order; `PortalWfEdge.condition` is a declared optional field on the edge type
 (`portal-workflow-engine.ts:78`) but **is never read anywhere in the engine** (grep for
 `.condition` across the file finds one unrelated match, a `conditions` filter-array
 variable in an unrelated query builder) — a dead field on the type, not wired to
-anything that would let a graph branch. See §6 for what this means for `autoPublish`.
+anything that would let the *graph itself* branch — `autoPublish`'s conditional
+behavior (§6) is implemented as an in-node check inside `handleDocPublish`, not as a
+`PortalWfEdge.condition`-driven branch.
 
 ---
 
@@ -472,18 +475,17 @@ anything that would let a graph branch. See §6 for what this means for `autoPub
 
 ## 6. Open gaps — NOT decided (flag, do not resolve)
 
-1. **`autoPublish` is a dead request field — real, confirmed, filed.** `POST
-   /api/msp/documents` accepts `autoPublish` (default `false`, `:84`) and threads it
-   into the workflow run's `inputPayload` (`:138`); `POST .../versions` hardcodes
-   `autoPublish: false` in its own input payload (`:302`). **Neither value is ever
-   read by anything** — `DEFAULT_DOC_PIPELINE_GRAPH` has no conditional edge (§4,
-   `PortalWfEdge.condition` is declared but never evaluated), and `handleDocPublish`
-   (`doc-pipeline-nodes.ts:583-632`) never inspects `ctx.input["autoPublish"]`. Every
-   document submitted through this pipeline runs the full graph to `doc_publish` and
-   is unconditionally published — the flag has zero effect on real behavior in either
-   direction; passing `autoPublish: true` changes nothing (it was already going to
-   publish), and passing `autoPublish: false` (the default) does not skip publishing
-   as its name implies. Filed as **#2724** (sibling sub-issue of #2569, `bug`).
+1. **`autoPublish` is now a real, honored gate — fixed by #2724 (`64e93e5fe`, merged).**
+   `POST /api/msp/documents` accepts `autoPublish` (default `false`, `:84`) and threads
+   it into the workflow run's `inputPayload` (`:138`); `POST .../versions` now reads a
+   real `autoPublish` body param (default `false`) instead of hardcoding `false`, and
+   threads it the same way (`:285-306`). `handleDocPublish`
+   (`doc-pipeline-nodes.ts:580-596`) inspects `ctx.input["autoPublish"]`: when it is
+   `=== false`, the node skips the actual publish (no `status`/`pipelineStatus`/
+   `publishedAt` writes) instead of unconditionally publishing. A document submitted
+   with `autoPublish: false` genuinely stays unpublished; `autoPublish: true` (or the
+   field omitted, since default `false` still runs through the same explicit check)
+   behaves per that same check — no longer a no-op in either direction.
 2. **All 15 routes are orphaned today** (§0.1) — expected pre-Design/pre-scaffolding
    state, not a defect. `artifacts/msp-console` doesn't exist and `Design/msp-console/`
    has no export yet.
@@ -583,8 +585,9 @@ connector library (`sharepoint-connector.ts:1-338`), auth middleware
 (`grep -rln "msp/documents\|msp/sharepoint-connectors"`) across `artifacts/portal`,
 `artifacts/admin-panel`, `artifacts/msp-website` found zero callers; confirmed
 `artifacts/msp-console` does not exist and no test file exists for either route file.
-Real finding filed: **#2724** (`autoPublish` dead field, §6.1), sibling sub-issue of
-#2569, labeled `bug`. No other gap in §6 met this project's finding bar — each either
+Real finding filed and since fixed: **#2724** (`autoPublish` dead field, §6.1; fixed by
+`64e93e5fe`), sibling sub-issue of #2569, labeled `bug`. No other gap in §6 met this
+project's finding bar at the time — each either
 restates an already-filed pattern (#2510) or is an expected pre-Design/
 pre-scaffolding/pre-scale state, not a newly confirmed defect. Read-only pass: no
 product code, schema, or UI was changed.
