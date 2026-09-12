@@ -21,7 +21,15 @@
     <Border x:Name="Pill" Margin="14" Cursor="Hand" CornerRadius="8" Padding="12,8"
             Background="{StaticResource CardBackgroundBrush}"
             BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1"
-            MouseLeftButtonUp="Pill_Click">
+            MouseLeftButtonUp="Pill_Click"
+            PreviewMouseLeftButtonDown="Pill_PreviewMouseLeftButtonDown">
+        <!-- Git #3792 — real right-click Hide + Move. -->
+        <Border.ContextMenu>
+            <ContextMenu>
+                <MenuItem Header="Move" Click="MoveMenuItem_Click"/>
+                <MenuItem Header="Hide" Click="HideMenuItem_Click"/>
+            </ContextMenu>
+        </Border.ContextMenu>
         <Grid>
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="&#xE70B;" FontFamily="Segoe MDL2 Assets" FontSize="12"

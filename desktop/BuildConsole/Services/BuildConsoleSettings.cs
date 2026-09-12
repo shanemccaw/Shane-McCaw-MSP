@@ -220,6 +220,27 @@ namespace BuildConsole.Services
         /// </summary>
         public bool EncouragementCrittersEnabled { get; set; } = false;
 
+        /// <summary>
+        /// Git #3792 — real right-click Hide on the Test Pad pill (<see
+        /// cref="TestPad.TestPadPillWindow"/>). Default <c>true</c> so a fresh/existing
+        /// settings.json (no "testPadPillVisible" key) keeps today's always-visible behavior;
+        /// right-click → Hide sets this false, and the Settings tab's "Show Test Pad pill"
+        /// checkbox is the real, non-dead-end way back.
+        /// </summary>
+        public bool TestPadPillVisible { get; set; } = true;
+
+        /// <summary>
+        /// Git #3792 — real persisted custom position for the Test Pad pill, set by a
+        /// right-click → Move drag. Null/unset (the default for a fresh/existing settings.json)
+        /// means "no custom position yet" — <see cref="TestPad.TestPadPillWindow.Reposition"/>
+        /// falls back to its existing bottom-right anchor logic. Once set, Reposition uses these
+        /// instead, so the pill's own SizeChanged firing (e.g. the unsent-count badge
+        /// appearing/disappearing) never silently snaps a manually-moved pill back to
+        /// bottom-right.
+        /// </summary>
+        public double? TestPadPillLeft { get; set; } = null;
+        public double? TestPadPillTop { get; set; } = null;
+
         // ── Git #1416 — multi-account routing for Claude Code (overflow to secondary) ──
         // Shane runs a primary Max 20x account and a secondary Pro account as SEQUENTIAL
         // overflow (never concurrent). A queue build carries an Account of "primary"

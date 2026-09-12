@@ -343,7 +343,11 @@ namespace BuildConsole
 
             _testPadPill = new BuildConsole.TestPad.TestPadPillWindow { OnTogglePad = ToggleTestPadPad };
             _testPadPill.Closed += (_, _) => _testPadPill = null;
-            _testPadPill.Show();
+
+            // Git #3792 — real right-click Hide: don't force-Show a pill the user has hidden.
+            // RefreshTestPadPillVisibility is what actually decides Show/Hide, both here and
+            // live from the Settings tab's "Show Test Pad pill" checkbox.
+            RefreshTestPadPillVisibility();
 
             // Git #3466 — load persisted Test Pad notes from local Postgres so they survive a
             // restart. One-shot (guarded inside the service), fire-and-forget: the DB read runs off
@@ -351,6 +355,30 @@ namespace BuildConsole
             // with the restored notes reactively. A DB failure is swallowed in the persistence layer
             // (pad simply runs in-memory only, exactly as before this fix).
             _ = BuildConsole.Services.TestPad.TestPadService.InitializeAsync();
+        }
+
+        /// <summary>Git #3792 — applies the current <c>TestPadPillVisible</c> setting to the pill
+        /// window's visibility live, so right-click Hide and the Settings tab's "Show Test Pad
+        /// pill" checkbox take effect immediately without a restart — the same
+        /// <see cref="RefreshUsageReadoutVisibility"/> pattern #2001 established. Creates the pill
+        /// (without necessarily showing it) if it doesn't exist yet, so the Settings checkbox can
+        /// restore a pill that was never shown this session.</summary>
+        public void RefreshTestPadPillVisibility()
+        {
+            if (_testPadPill == null)
+            {
+                EnsureTestPadPill();
+                return;
+            }
+
+            if (BuildConsole.Services.BuildConsoleSettings.Load().TestPadPillVisible)
+            {
+                _testPadPill.Show();
+            }
+            else
+            {
+                _testPadPill.Hide();
+            }
         }
 
         private void ToggleTestPadPad()

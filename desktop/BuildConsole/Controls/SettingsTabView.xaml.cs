@@ -70,6 +70,7 @@ namespace BuildConsole.Controls
             UseSshForSqlCheck.IsChecked = savedSettings.UseSshForSql;
 
             EncouragementCrittersEnabledCheck.IsChecked = savedSettings.EncouragementCrittersEnabled;
+            TestPadPillVisibleCheck.IsChecked = savedSettings.TestPadPillVisible;
             ShowUsageReadoutCheck.IsChecked = savedSettings.ShowUsageReadout;
             PinnedQuestionDetectionEnabledCheck.IsChecked = savedSettings.PinnedQuestionDetectionEnabled;
 
@@ -118,6 +119,20 @@ namespace BuildConsole.Controls
             var settings = BuildConsoleSettings.Load();
             settings.EncouragementCrittersEnabled = EncouragementCrittersEnabledCheck.IsChecked == true;
             settings.Save();
+        }
+
+        /// <summary>
+        /// Git #3792 — the real, non-dead-end way back after a right-click "Hide" on the
+        /// floating Test Pad pill. Takes effect immediately, the same
+        /// <see cref="MainWindow.RefreshUsageReadoutVisibility"/> live-apply pattern #2001
+        /// established, rather than waiting for a restart.
+        /// </summary>
+        private void TestPadPillVisibleCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsoleSettings.Load();
+            settings.TestPadPillVisible = TestPadPillVisibleCheck.IsChecked == true;
+            settings.Save();
+            try { (Application.Current?.MainWindow as BuildConsole.MainWindow)?.RefreshTestPadPillVisibility(); } catch { /* best-effort */ }
         }
 
         /// <summary>
