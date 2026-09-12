@@ -31,6 +31,13 @@ namespace BuildConsole.Services
         public string? IssueTitle { get; init; }
         public List<int> OpenBlockedByNumbers { get; init; } = new();
         public QueueItem? Existing { get; init; }
+        /// <summary>Git #3829 — the real, freshly-queued row for <see cref="DispatchOutcome.Queued"/>
+        /// / <see cref="DispatchOutcome.QueuedButBlocked"/> (the one <see cref="QueueBuildAsync"/>'s
+        /// own return value already carried but this method used to discard). Lets a caller like
+        /// the Command Center's Dispatch mode start the build for real right after dispatching it,
+        /// without a second lookup — <see cref="Existing"/> covers the same real need for
+        /// <see cref="DispatchOutcome.AlreadyTracked"/>.</summary>
+        public QueueItem? QueuedItem { get; init; }
         public bool IsError => Outcome is DispatchOutcome.NoPat or DispatchOutcome.GitHubUnreachable
             or DispatchOutcome.IssueNotFound or DispatchOutcome.NoDb or DispatchOutcome.Failed
             or DispatchOutcome.QueuedButBlocked;
@@ -179,7 +186,7 @@ namespace BuildConsole.Services
                     Existing = existing,
                 };
 
-            await db.QueueBuildAsync(
+            var queuedItem = await db.QueueBuildAsync(
                 title: issue.Title,
                 prompt: prompt,
                 model: model,
@@ -202,6 +209,7 @@ namespace BuildConsole.Services
                     Message = $"#{issueNumber} queued, but held — blocked by #{string.Join(", #", openBlockedByNumbers)}.",
                     IssueTitle = issue.Title,
                     OpenBlockedByNumbers = openBlockedByNumbers,
+                    QueuedItem = queuedItem,
                 };
 
             return new DispatchAttemptResult
@@ -209,6 +217,7 @@ namespace BuildConsole.Services
                 Outcome = DispatchOutcome.Queued,
                 Message = $"#{issueNumber} \"{issue.Title}\" queued.",
                 IssueTitle = issue.Title,
+                QueuedItem = queuedItem,
             };
         }
     }

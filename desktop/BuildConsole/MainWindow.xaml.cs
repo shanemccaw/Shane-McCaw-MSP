@@ -74,13 +74,14 @@ namespace BuildConsole
         private BuildConsole.Services.BuildQueuePostgresClient? _queueDb;
         public BuildConsole.Services.BuildQueuePostgresClient? QueueDb => _queueDb;
 
-        // ── Git #3553: Dispatch — one instance for the app's whole lifetime (was x:Name'd in
-        // MainWindow.xaml, DockPanel.Dock="Top"; now created here in code and re-parented into a
-        // fresh DispatchDialog on every Ctrl+D). Identical field name so every existing
-        // DispatchPanel.* call site (Initialize/Dispatched/RecheckPendingBuildCommentsAsync) is
-        // untouched below.
+        // ── Git #3553 (superseded by #3829's Command Center Dispatch mode below) — this instance
+        // is kept for the app's whole lifetime purely for its existing background mechanics
+        // (Initialize/Dispatched/RecheckPendingBuildCommentsAsync, wired further down) that have no
+        // second caller to share with; it is no longer shown in its own DispatchDialog — Ctrl+D now
+        // opens the real Command Center straight into Dispatch mode (OpenCommandPaletteDispatchMode,
+        // MainWindow.CommandPalette.cs) instead, per #3829's own explicit ask to check for and
+        // resolve exactly this kind of pre-existing Ctrl+D conflict.
         private readonly Controls.DispatchPanel DispatchPanel = new();
-        private DispatchDialog? _dispatchDialog;
 
         // ── Build completion sound (mute toggle: _Sound menu > Mute Completion Sound) ──
         private readonly BuildConsole.Services.BuildCompletionSoundService _buildSound = new();
@@ -1659,29 +1660,6 @@ namespace BuildConsole
             BtnMaximizeRestore.ToolTip = maximized ? "Restore Down" : "Maximize";
         }
 
-        /// <summary>Git #3553 — opens (or refocuses) the modal Dispatch dialog. Re-parents the
-        /// single, app-lifetime DispatchPanel instance into a fresh DispatchDialog each call;
-        /// ShowDialog() blocks reentry naturally (Ctrl+D pressed again while the dialog is
-        /// already open just reactivates it instead of creating a second one).</summary>
-        private void OpenDispatchDialog()
-        {
-            if (_dispatchDialog != null)
-            {
-                _dispatchDialog.Activate();
-                return;
-            }
-
-            _dispatchDialog = new DispatchDialog(DispatchPanel) { Owner = this };
-            try
-            {
-                _dispatchDialog.ShowDialog();
-            }
-            finally
-            {
-                _dispatchDialog = null;
-            }
-        }
-
         // ── Window Preview Key Handlers for Ctrl+K and Ctrl+Tab ─────────────────
         private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
         {
@@ -1704,13 +1682,15 @@ namespace BuildConsole
                 return;
             }
 
-            // Git #3553 — Ctrl+D (no Shift, distinct from the Ctrl+Shift+D mascot chord above):
-            // opens the Dispatch dialog from anywhere in the app, not just when its own control
-            // has focus.
+            // Git #3829 (supersedes #3553's own Ctrl+D binding — confirmed via direct code read
+            // before claiming the key, per this issue's own explicit instruction) — Ctrl+D (no
+            // Shift, distinct from the Ctrl+Shift+D mascot chord above) opens the real Command
+            // Center directly into Dispatch mode from anywhere in the app, not just when its own
+            // control has focus.
             if (e.Key == Key.D && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
             {
                 e.Handled = true;
-                OpenDispatchDialog();
+                OpenCommandPaletteDispatchMode();
                 return;
             }
 

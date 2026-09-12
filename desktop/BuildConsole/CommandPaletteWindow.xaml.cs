@@ -104,6 +104,29 @@ namespace BuildConsole
         private List<BuildConsole.Services.SqlStatementResult>? _sqlResults;
         private bool _sqlShowJson;
 
+        // ── Git #3829 — Dispatch mode state ─────────────────────────────────────
+        // Unlike SQL mode (auto-detected from typed text), Dispatch mode is forced on by the
+        // caller via EnterDispatchMode() — Ctrl+D opens the Command Center directly into it,
+        // separate from Ctrl+K's normal "Smart All" open.
+        private bool _dispatchMode;
+        private bool _dispatchRunning;
+        /// <summary>Real per-chain-member outcome lines from the most recent dispatch attempt
+        /// (empty until one has run for the currently typed issue number).</summary>
+        private List<string> _dispatchResultLines = new();
+        private bool _dispatchAnyError;
+        /// <summary>True once a dispatch attempt has actually run for the CURRENT input text —
+        /// reset on every keystroke so a stale attempt against a previous issue number is never
+        /// carried forward. Enter re-dispatches while this is false; once true and real queued
+        /// rows exist, Enter instead fires the real "Start" step (Git #3829's own step 4).</summary>
+        private bool _dispatchHasRun;
+        /// <summary>The real, freshly-queued (or already-tracked) rows from the last dispatch
+        /// attempt that are still eligible for the "Start" step — cleared after Start runs so a
+        /// third Enter doesn't try to re-start an already-launched build.</summary>
+        private List<BuildConsole.Services.QueueItem> _dispatchStartCandidates = new();
+
+        private readonly BuildConsole.Services.BuildQueuePostgresClient? _queueDb;
+        private readonly BuildConsole.Services.QueueWatcherService? _queueWatcher;
+
         /// <summary>Raised when "Send to Chat" is clicked on the SQL results panel — MainWindow
         /// wires this to the same shared <c>SendTextToActiveClaudeChatAsync</c> path (#937/#940)
         /// the SQL Runner floaty already uses, never a second mechanism.</summary>
@@ -119,15 +142,39 @@ namespace BuildConsole
         public CommandPaletteWindow(
             IEnumerable<PaletteCommand> commands,
             BuildConsole.Services.BuildTrackerApiClient? api = null,
-            IEnumerable<(int Number, string Title)>? epics = null)
+            IEnumerable<(int Number, string Title)>? epics = null,
+            BuildConsole.Services.BuildQueuePostgresClient? queueDb = null,
+            BuildConsole.Services.QueueWatcherService? queueWatcher = null)
         {
             InitializeComponent();
             _commands = commands.ToList();
             _api = api;
             _epics = epics?.ToList() ?? new List<(int Number, string Title)>();
+            _queueDb = queueDb;
+            _queueWatcher = queueWatcher;
             RenderTiles();
             RenderTabs();
             RenderResults();
+        }
+
+        /// <summary>
+        /// Git #3829 — Ctrl+D's real entry point: forces the palette straight into Dispatch mode
+        /// (type an issue number → Enter dispatches → Enter again starts the build → Esc closes),
+        /// distinct from Ctrl+K's normal open. Safe to call on a freshly-constructed window or on
+        /// an already-open one being reactivated.
+        /// </summary>
+        public void EnterDispatchMode()
+        {
+            _dispatchMode = true;
+            _dispatchResultLines = new();
+            _dispatchAnyError = false;
+            _dispatchHasRun = false;
+            _dispatchStartCandidates = new();
+            PalettePlaceholder.Text = "Type a real issue number — Enter dispatches (whole chain, if any), Enter again starts it";
+            RenderTabs();
+            RenderResults();
+            PaletteInput.Focus();
+            Keyboard.Focus(PaletteInput);
         }
 
         /// <summary>Rows a category would show right now. "All" counts the real command
@@ -224,6 +271,27 @@ namespace BuildConsole
                 // No result list / category tabs to navigate while a SQL query fills the panel.
                 e.Handled = true;
             }
+            else if (_dispatchMode && e.Key == Key.Enter)
+            {
+                // Git #3829 — first Enter for a freshly-typed (or edited) issue number dispatches
+                // it (the real chain-aware entry point — Git #3858's ResolveChainAsync); a second
+                // Enter, once that dispatch left real Start-eligible rows behind, fires the real
+                // "Start" step instead (this issue's own step 4). Neither closes the palette —
+                // same "results render right here" discipline as SQL mode above.
+                e.Handled = true;
+                if (!_dispatchRunning)
+                {
+                    if (_dispatchHasRun && _dispatchStartCandidates.Count > 0)
+                        _ = StartDispatchedBuildsAsync();
+                    else
+                        _ = DispatchTypedIssueAsync();
+                }
+            }
+            else if (_dispatchMode && (e.Key == Key.Down || e.Key == Key.Up || e.Key == Key.Tab))
+            {
+                // No result list / category tabs to navigate while Dispatch mode fills the panel.
+                e.Handled = true;
+            }
             else if (e.Key == Key.Down)
             {
                 e.Handled = true;
@@ -263,6 +331,17 @@ namespace BuildConsole
                 _sqlResults = null;
                 _sqlError = null;
                 _sqlShowJson = false;
+            }
+
+            // Git #3829 — a real dispatch/start attempt only ever applies to the exact issue
+            // number it ran against; editing the text (retyping a new number) must not let a
+            // stale "Enter again to Start" carry over onto a different real issue.
+            if (_dispatchMode)
+            {
+                _dispatchResultLines = new();
+                _dispatchAnyError = false;
+                _dispatchHasRun = false;
+                _dispatchStartCandidates = new();
             }
 
             RenderTabs();
@@ -323,6 +402,13 @@ namespace BuildConsole
         private void DetailAction_Click(object sender, MouseButtonEventArgs e)
         {
             if (_sqlMode) { _ = RunSqlQueryAsync(); return; }
+            if (_dispatchMode)
+            {
+                if (_dispatchRunning) return;
+                if (_dispatchHasRun && _dispatchStartCandidates.Count > 0) _ = StartDispatchedBuildsAsync();
+                else _ = DispatchTypedIssueAsync();
+                return;
+            }
             RunSelected();
         }
 
@@ -458,6 +544,13 @@ namespace BuildConsole
         private void RenderResults(bool preserveSelection = false)
         {
             PaletteResults.Children.Clear();
+
+            if (_dispatchMode)
+            {
+                RenderDispatchResultRow();
+                RenderDetail();
+                return;
+            }
 
             if (_sqlMode)
             {
@@ -652,6 +745,12 @@ namespace BuildConsole
         private void RenderDetail()
         {
             PaletteDetail.Children.Clear();
+
+            if (_dispatchMode)
+            {
+                RenderDispatchDetail();
+                return;
+            }
 
             if (_sqlMode)
             {
@@ -983,6 +1082,270 @@ namespace BuildConsole
             };
             btn.MouseLeftButtonDown += (_, e) => { e.Handled = true; onClick(); };
             return btn;
+        }
+
+        // ── Git #3829 — Dispatch mode: type an issue number, Enter dispatches (the real,
+        // chain-aware entry point — Git #3858's ResolveChainAsync BFS over bt_issue_mirror, then
+        // the existing unmodified IssueDispatchService.DispatchAsync per real chain member),
+        // Enter again starts the freshly-queued build(s). ─────────────────────────────────────
+
+        /// <summary>The single "row" the results list shows while Dispatch mode is active — same
+        /// shape as <see cref="RenderSqlResultRow"/>, but there's no query preview, only the typed
+        /// issue number and the real dispatch/start state behind it.</summary>
+        private void RenderDispatchResultRow()
+        {
+            string raw = PaletteInput.Text?.Trim().TrimStart('#') ?? "";
+            string preview = raw.Length == 0 ? "Issue number" : $"#{raw}";
+            string subtitle = _dispatchRunning
+                ? "Working…"
+                : !_dispatchHasRun
+                    ? "Press Enter to dispatch — no click required"
+                    : _dispatchStartCandidates.Count > 0
+                        ? "Dispatched — press Enter again to Start"
+                        : (_dispatchAnyError ? "Dispatch reported a problem — see the right pane" : "Dispatched");
+
+            var dock = new DockPanel();
+            dock.Children.Add(new Border
+            {
+                Width = 30,
+                Height = 30,
+                CornerRadius = new CornerRadius(7),
+                Margin = new Thickness(0, 0, 10, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = (Brush)FindResource("CardBackgroundBrush"),
+                Child = new TextBlock
+                {
+                    Text = "", // Segoe MDL2 "LightningBolt"
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 13,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)FindResource("TextPrimaryBrush"),
+                },
+            });
+            DockPanel.SetDock(dock.Children[0], Dock.Left);
+
+            var tag = new Border
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = (Brush)FindResource(_dispatchAnyError ? "StatusErrorBrush" : "AccentWashLightBrush"),
+                BorderBrush = (Brush)FindResource("AccentBrush"),
+                BorderThickness = new Thickness(1),
+                Child = new TextBlock
+                {
+                    Text = "DISPATCH",
+                    FontSize = 8.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)FindResource("AccentBrush"),
+                },
+            };
+            DockPanel.SetDock(tag, Dock.Right);
+            dock.Children.Add(tag);
+
+            var textStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            textStack.Children.Add(new TextBlock
+            {
+                Text = preview,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)FindResource("TextPrimaryBrush"),
+            });
+            textStack.Children.Add(new TextBlock
+            {
+                Text = subtitle,
+                FontSize = 11,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)FindResource("TextSecondaryBrush"),
+            });
+            dock.Children.Add(textStack);
+
+            var row = new Border
+            {
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10, 8, 10, 8),
+                Margin = new Thickness(0, 2, 0, 2),
+                Background = (Brush)FindResource("AccentWashLightBrush"),
+                BorderThickness = new Thickness(1),
+                BorderBrush = (Brush)FindResource("AccentBrush"),
+                Child = dock,
+            };
+            PaletteResults.Children.Add(row);
+        }
+
+        /// <summary>
+        /// Git #3829 step 3 (per the issue's correction comment) — the real dispatch call is
+        /// chain-aware from day one: resolves the typed issue's whole real <c>blocked_by</c>/
+        /// <c>blocking</c> component via Git #3858's <see cref="Services.IssueDispatchService.ResolveChainAsync"/>
+        /// (a solo issue with no real chain resolves to just itself — no behavior change for the
+        /// common case), then dispatches every real member through the existing, UNCHANGED
+        /// <see cref="Services.IssueDispatchService.DispatchAsync"/> — never a second, invented
+        /// dispatch path. Reports each member's own real outcome rather than collapsing to one
+        /// line, same discipline #3858's own DispatchPanel.DispatchChainAsync already established.
+        /// </summary>
+        private async Task DispatchTypedIssueAsync()
+        {
+            if (_dispatchRunning) return;
+
+            var raw = PaletteInput.Text?.Trim().TrimStart('#') ?? "";
+            if (!int.TryParse(raw, out var issueNumber) || issueNumber <= 0)
+            {
+                _dispatchResultLines = new List<string> { "Enter a valid issue number." };
+                _dispatchAnyError = true;
+                _dispatchHasRun = true;
+                _dispatchStartCandidates = new();
+                RenderResults(preserveSelection: true);
+                return;
+            }
+
+            _dispatchRunning = true;
+            _dispatchResultLines = new List<string> { $"Fetching #{issueNumber}…" };
+            _dispatchAnyError = false;
+            _dispatchStartCandidates = new();
+            RenderResults(preserveSelection: true);
+
+            var lines = new List<string>();
+            bool anyError = false;
+            var startCandidates = new List<BuildConsole.Services.QueueItem>();
+
+            try
+            {
+                var chain = await BuildConsole.Services.IssueDispatchService.ResolveChainAsync(issueNumber);
+                foreach (var member in chain)
+                {
+                    var result = await BuildConsole.Services.IssueDispatchService.DispatchAsync(_queueDb, member);
+                    lines.Add($"#{member}: {result.Message}");
+                    if (result.IsError) anyError = true;
+
+                    var item = result.QueuedItem ?? result.Existing;
+                    if (item != null && result.Outcome is BuildConsole.Services.DispatchOutcome.Queued
+                        or BuildConsole.Services.DispatchOutcome.QueuedButBlocked
+                        or BuildConsole.Services.DispatchOutcome.AlreadyTracked)
+                    {
+                        startCandidates.Add(item);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                lines.Add($"Dispatch failed: {ex.Message}");
+                anyError = true;
+            }
+
+            _dispatchResultLines = lines;
+            _dispatchAnyError = anyError;
+            _dispatchStartCandidates = startCandidates;
+            _dispatchHasRun = true;
+            _dispatchRunning = false;
+            if (_dispatchMode) RenderResults(preserveSelection: true);
+        }
+
+        /// <summary>
+        /// Git #3829 step 4 — the real "Start" action a second Enter fires once dispatch left real
+        /// queued/tracked rows behind: <see cref="Services.QueueWatcherService.StartNowAsync"/>, the
+        /// exact same "⚡ Start Now" mechanic the Build Queue panel's own quick action already uses
+        /// (<c>BuildQueuePanel.QuickDispatchAsync</c>) — not a second, invented launch path. Runs it
+        /// once per real Start-eligible row from the last dispatch (every real chain member that
+        /// actually queued or was already tracked), reporting each one's own real outcome.
+        /// </summary>
+        private async Task StartDispatchedBuildsAsync()
+        {
+            if (_dispatchRunning || _dispatchStartCandidates.Count == 0) return;
+
+            if (_queueWatcher == null)
+            {
+                _dispatchResultLines = _dispatchResultLines
+                    .Append("Start: the in-app watcher isn't active, so Start can't launch locally — the background service will pick it up.")
+                    .ToList();
+                _dispatchAnyError = true;
+                _dispatchStartCandidates = new();
+                RenderResults(preserveSelection: true);
+                return;
+            }
+
+            _dispatchRunning = true;
+            RenderResults(preserveSelection: true);
+
+            var lines = new List<string>(_dispatchResultLines);
+            bool anyError = _dispatchAnyError;
+
+            foreach (var item in _dispatchStartCandidates)
+            {
+                try
+                {
+                    var result = await _queueWatcher.StartNowAsync(item.Id, item.Title);
+                    string label = item.GithubNumber.HasValue ? $"#{item.GithubNumber}" : item.Title;
+                    lines.Add($"Start {label}: {result.Message}");
+                    if (result.Outcome != BuildConsole.Services.QueueWatcherService.StartNowOutcome.Launched)
+                        anyError = true;
+                }
+                catch (Exception ex)
+                {
+                    lines.Add($"Start failed for {item.Title}: {ex.Message}");
+                    anyError = true;
+                }
+            }
+
+            _dispatchResultLines = lines;
+            _dispatchAnyError = anyError;
+            _dispatchStartCandidates = new(); // consumed — a third Enter re-dispatches, not re-starts
+            _dispatchRunning = false;
+            if (_dispatchMode) RenderResults(preserveSelection: true);
+        }
+
+        /// <summary>Right pane while Dispatch mode is active: the typed issue number, real
+        /// per-member outcome lines once dispatched, and the primary action button's label tracks
+        /// exactly which real step Enter would run next (Dispatch vs. Start).</summary>
+        private void RenderDispatchDetail()
+        {
+            PaletteDetailActionHost.Visibility = Visibility.Visible;
+            PaletteDetailActionLabel.Text = _dispatchRunning
+                ? "Working…"
+                : _dispatchHasRun && _dispatchStartCandidates.Count > 0
+                    ? "Start Build  ↵"
+                    : "Dispatch  ↵";
+
+            PaletteDetail.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Background = (Brush)FindResource("AccentWashLightBrush"),
+                Child = new TextBlock
+                {
+                    Text = "DISPATCH",
+                    FontSize = 8.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)FindResource("AccentBrush"),
+                },
+            });
+
+            string raw = PaletteInput.Text?.Trim().TrimStart('#') ?? "";
+            PaletteDetail.Children.Add(new TextBlock
+            {
+                Text = raw.Length == 0 ? "Dispatch an issue" : $"Dispatch #{raw}",
+                Margin = new Thickness(0, 10, 0, 6),
+                FontSize = 15,
+                FontWeight = FontWeights.Bold,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource("TextPrimaryBrush"),
+            });
+
+            string body = _dispatchResultLines.Count > 0
+                ? string.Join("\n", _dispatchResultLines)
+                : "Type a real issue number and press Enter. A real blocked_by/blocking chain "
+                + "dispatches in full (Git #3858), not just the typed issue.";
+            PaletteDetail.Children.Add(new TextBlock
+            {
+                Text = body,
+                FontSize = 11.5,
+                LineHeight = 17,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource(_dispatchAnyError ? "StatusErrorBrush" : "TextSecondaryBrush"),
+            });
         }
     }
 }

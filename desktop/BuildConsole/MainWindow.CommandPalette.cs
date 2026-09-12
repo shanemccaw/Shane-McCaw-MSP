@@ -31,7 +31,41 @@ namespace BuildConsole
                 return;
             }
 
-            var win = new CommandPaletteWindow(BuildPaletteCommands(), BuildTrackerApi, LeftSidebar.GetAllEpics()) { Owner = this };
+            var win = CreateCommandPaletteWindow();
+            win.Show();
+        }
+
+        /// <summary>
+        /// Git #3829 — Ctrl+D's real entry point: opens (or reactivates) the same real Command
+        /// Center window Ctrl+K does, forced straight into Dispatch mode (type an issue number →
+        /// Enter dispatches the real, chain-aware component Git #3858 resolves → Enter again
+        /// starts it → Esc closes) — supersedes #3553's own separate Ctrl+D binding, which opened
+        /// a standalone DispatchDialog instead of this window (confirmed via direct code read
+        /// before claiming the key, per this issue's own explicit instruction).
+        /// </summary>
+        private void OpenCommandPaletteDispatchMode()
+        {
+            if (_commandPaletteWindow != null)
+            {
+                _commandPaletteWindow.Activate();
+                _commandPaletteWindow.EnterDispatchMode();
+                return;
+            }
+
+            var win = CreateCommandPaletteWindow();
+            win.EnterDispatchMode();
+            win.Show();
+        }
+
+        /// <summary>Shared construction for both the normal Ctrl+K open and Ctrl+D's forced
+        /// Dispatch-mode open — every wiring/positioning step below applies identically to both;
+        /// only the caller decides whether <see cref="CommandPaletteWindow.EnterDispatchMode"/>
+        /// runs afterward.</summary>
+        private CommandPaletteWindow CreateCommandPaletteWindow()
+        {
+            var win = new CommandPaletteWindow(
+                BuildPaletteCommands(), BuildTrackerApi, LeftSidebar.GetAllEpics(), QueueDb, QueueWatcher)
+            { Owner = this };
 
             // Git #3850 — the epic-*name* matching branch (sibling #3831 covers epic/issue
             // number smart detection). Reuses OpenOrCreateEpicChat(int) verbatim — the same
@@ -74,7 +108,7 @@ namespace BuildConsole
 
             win.Closed += (_, _) => _commandPaletteWindow = null;
             _commandPaletteWindow = win;
-            win.Show();
+            return win;
         }
 
         /// <summary>Clicking the title-bar search pill opens the palette.</summary>
