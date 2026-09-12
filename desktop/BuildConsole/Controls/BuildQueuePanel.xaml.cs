@@ -13,6 +13,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using Ellipse = System.Windows.Shapes.Ellipse;
 using Polygon = System.Windows.Shapes.Polygon;
+using Path = System.Windows.Shapes.Path;
 using BuildConsole.Services;
 
 namespace BuildConsole.Controls
@@ -142,6 +143,21 @@ namespace BuildConsole.Controls
         public Func<int, Services.BoardEpic?>? ResolveEpicForIssue { get; set; }
 
         private bool _isPinned = true;
+
+        /// <summary>Git #3713 — the real, narrow icon-rail width shown while this panel is
+        /// pinned closed, replacing the old width-0 disappear-entirely collapse. Matches the
+        /// left ActivityBar's own fixed rail width (<c>ColActivityBar</c>/<c>ActivityBar.xaml</c>,
+        /// both <c>Width="48"</c>) closely enough for visual consistency while leaving room for
+        /// this panel's own 1px border.</summary>
+        public const double CollapsedRailWidth = 44;
+
+        /// <summary>Git #3713 — the old fixed <c>MinWidth="220"</c> on the UserControl root
+        /// (previously static XAML, applied at all times) moved here so it can be relaxed to
+        /// <see cref="CollapsedRailWidth"/> while pinned closed. Left at 220 unconditionally, it
+        /// would fight <c>ColQueue</c>'s new 44px collapsed <c>GridLength</c> in MainWindow —
+        /// a fixed-pixel Grid column doesn't grow for a child's MinWidth, so the two constraints
+        /// disagreeing would just visually clip/overflow the rail against the column edge.</summary>
+        private const double ExpandedMinWidth = 220;
 
         // Git #3701 — right-pointing while expanded (panel is on the right side of the
         // window, so collapsing it pushes it off to the right); left-pointing while
@@ -348,6 +364,12 @@ namespace BuildConsole.Controls
         // containers, the offline banner), pooled across renders by identity + everything it
         // displays. See the comment at RenderQueue's step 5.
         private readonly KeyedCardPool _queueCards = new();
+        /// <summary>Git #3713 — separate pool for the collapsed icon-rail's own dots/rings, kept
+        /// distinct from <see cref="_queueCards"/> since the rail's per-item elements (rail icon
+        /// keyed "rail-{id}") are a different shape than the full cards the main pool holds, and
+        /// the two pools go through independent BeginPass/EndPass cycles on every RenderQueue —
+        /// mixing them into one pool would make each cycle retire the other's live elements.</summary>
+        private readonly KeyedCardPool _railIcons = new();
         private bool _hasRenderedQueueOnce = false;
         private int _currentMaxLanes = 1;
 
@@ -370,7 +392,14 @@ namespace BuildConsole.Controls
             if (e.WidthChanged) ApplyTitleMaxWidths(ActiveSessionsList, _sessionsTitleBlocks);
         }
 
-        public BuildQueuePanel() => InitializeComponent();
+        public BuildQueuePanel()
+        {
+            InitializeComponent();
+            // Git #3713 — the rail's expand button always points the "re-open" direction; unlike
+            // CollapseQueueIcon it never flips, so this is set once rather than in TogglePin().
+            RailExpandIcon.Text = ExpandArrowGlyph;
+            MinWidth = ExpandedMinWidth;
+        }
 
         /// <summary>Called once from MainWindow with the shared API client and optional direct-DB client.</summary>
         public void Initialize(BuildTrackerApiClient api, Services.QueueWatcherService? watcher = null, Services.BuildQueuePostgresClient? db = null, Services.SessionLimitAutoRestartService? sessionLimitAutoRestart = null)
@@ -2336,6 +2365,15 @@ namespace BuildConsole.Controls
         // call site was updated to pass _lastItems directly; see the block just below.
         private void RenderQueue(List<QueueItem> rawItems)
         {
+            // Git #3713 — the collapsed icon rail is deliberately driven off the raw, unfiltered
+            // queue rather than anything computed further down in this method (the filtered
+            // `items`/`_currentGraphNodes` scoped to the current status-filter tab / build-set
+            // drill-down / search box) — see RenderIconRail's own doc comment for why. Runs on
+            // every RenderQueue pass regardless of the early-return branches below, so the rail's
+            // KeyedCardPool stays warm (and its own indeterminate-spinner clocks keep ticking
+            // uninterrupted) whether or not the panel is currently showing it.
+            RenderIconRail(rawItems);
+
             var search = _queueSearch.Trim();
             bool searching = search.Length > 0;
 
@@ -5878,9 +5916,24 @@ namespace BuildConsole.Controls
             await RefreshAsync();
         }
 
-        /// <summary>Same body as "🔄 Retry (start over)" below (fresh queue row, resumeSessionId:
-        /// null — the crash-recovery "▶ Resume Session" variant stays right-click-menu-only since
-        /// it's a narrower case than this card's general Failed -> Retry action).</summary>
+        /// <summary>Git #3728 — see <see cref="ResumeOnlyQueueRows"/> for why a reply/continuation
+        /// row cannot be "started over" and what the two title prefixes are.</summary>
+        private const string ReplyTitlePrefix = ResumeOnlyQueueRows.ReplyTitlePrefix;
+
+        /// <summary>Git #3728 — true when this row's <see cref="QueueItem.Prompt"/> is a
+        /// conversational message rather than a standalone build prompt (a "💬 Reply…" row or a
+        /// Build Watch "Continue:" row). Such a row means nothing without the session in
+        /// <see cref="QueueItem.ResumeSessionId"/> — "Retry" on one must re-deliver the same
+        /// message to the same conversation, NOT start a cold session over from a fragment.</summary>
+        private static bool IsResumeOnlyRow(QueueItem item) =>
+            ResumeOnlyQueueRows.IsResumeOnlyTitle(item.Title);
+
+        /// <summary>Same body as "🔄 Retry (start over)" below. A normal row re-queues with
+        /// resumeSessionId: null — a genuine start-over — while a reply row (Git #3728) carries its
+        /// session forward, because "start the original prompt over" is incoherent when the prompt
+        /// is a chat message. The crash-recovery "▶ Resume Session" variant stays
+        /// right-click-menu-only since it's a narrower case than this card's general
+        /// Failed -> Retry action.</summary>
         public async System.Threading.Tasks.Task QuickRetryAsync(QueueItem item)
         {
             if (_db == null)
@@ -5888,17 +5941,52 @@ namespace BuildConsole.Controls
                 ToastEngine.Warning("Retry", "No direct DB connection — can't retry.");
                 return;
             }
+            if (!TryResolveRetryResumeSessionId(item, out string? retryResumeSessionId)) return;
             try
             {
                 var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
-                await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, null, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
-                ToastEngine.Success("Re-queued", $"Re-queued: {item.Title}");
+                await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, retryResumeSessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                ToastEngine.Success("Re-queued", retryResumeSessionId == null
+                    ? $"Re-queued: {item.Title}"
+                    : $"Re-sending your reply to the same session: {item.Title}");
             }
             catch (Exception ex)
             {
                 ToastEngine.Error("Retry Failed", $"Couldn't re-queue build: {ex.Message}");
             }
             await RefreshAsync();
+        }
+
+        /// <summary>Git #3728 — decides what a Retry of <paramref name="item"/> should resume.
+        /// Returns false when the retry must not be queued at all.
+        ///
+        /// Three cases:
+        /// <list type="bullet">
+        /// <item>Ordinary row → <c>null</c>: start over from its own self-contained prompt, unchanged.</item>
+        /// <item>Resume-only row with a session → that session: re-deliver the same message to the
+        /// same conversation, which is the only reading of "retry this reply" that means anything.</item>
+        /// <item>Resume-only row with NO session → refuse. This is the already-damaged row produced
+        /// by the bug itself (live instances: queue #2382 <c>"Retry"</c>, #462 <c>"retry"</c>,
+        /// #480 <c>"try again"</c>). Re-queuing it would mint a second cold session fed the same
+        /// fragment; saying so plainly and pointing at the real fix is honest, silently doing it
+        /// again is not.</item>
+        /// </list></summary>
+        private static bool TryResolveRetryResumeSessionId(QueueItem item, out string? resumeSessionId)
+        {
+            resumeSessionId = null;
+            if (!IsResumeOnlyRow(item)) return true;
+
+            if (string.IsNullOrWhiteSpace(item.ResumeSessionId))
+            {
+                ToastEngine.Warning("Retry",
+                    "This row has no session left to resume, so retrying it would just start a " +
+                    "fresh session with your message and no conversation. Reply to the original " +
+                    "build instead.");
+                return false;
+            }
+
+            resumeSessionId = item.ResumeSessionId;
+            return true;
         }
 
         /// <summary>Same body as "💬 Reply…" below, minus the modal prompt dialog — the
@@ -5919,7 +6007,7 @@ namespace BuildConsole.Controls
             try
             {
                 var replyRow = await _db.QueueBuildAsync(
-                    $"Reply → {item.Title}", message, item.Model, item.Effort, item.Cwd,
+                    ReplyTitlePrefix + item.Title, message, item.Model, item.Effort, item.Cwd,
                     githubNumber: null, blockedByNumbers: null,
                     resumeSessionId: sid, chatUrl: item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
                 // Git #2119 — resolve the ORIGINAL row so its card doesn't sit stuck showing stale
@@ -6021,7 +6109,7 @@ namespace BuildConsole.Controls
                         // out from under — a row that may still be running. resumeSessionId makes
                         // the watcher launch `claude --resume <sid> "<message>"`.
                         var replyRow = await _db.QueueBuildAsync(
-                            $"Reply → {item.Title}", message, item.Model, item.Effort, item.Cwd,
+                            ReplyTitlePrefix + item.Title, message, item.Model, item.Effort, item.Cwd,
                             githubNumber: null, blockedByNumbers: null,
                             resumeSessionId: sid, chatUrl: item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
                         // Git #2119 — resolve the ORIGINAL row so its card doesn't sit stuck showing
@@ -6536,15 +6624,24 @@ namespace BuildConsole.Controls
                     cm.Items.Add(miResumeSession);
                 }
 
-                var miRetry = new MenuItem { Header = "🔄 Retry (start over)" };
+                // Git #3728 — a reply/continuation row cannot be "started over" (its prompt is a
+                // chat message, not a build prompt), so it is relabelled and carries its session
+                // forward.
+                var miRetry = new MenuItem
+                {
+                    Header = IsResumeOnlyRow(item) ? "🔄 Retry (re-send to the same session)" : "🔄 Retry (start over)"
+                };
                 miRetry.Click += async (_, _) =>
                 {
                     if (_db == null) return;
+                    if (!TryResolveRetryResumeSessionId(item, out string? retryResumeSessionId)) return;
                     try
                     {
                         var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
-                        await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, null, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
-                        ToastEngine.Success("Re-queued", $"Re-queued: {item.Title}");
+                        await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, retryResumeSessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                        ToastEngine.Success("Re-queued", retryResumeSessionId == null
+                            ? $"Re-queued: {item.Title}"
+                            : $"Re-sending your reply to the same session: {item.Title}");
                         await RefreshAsync();
                     }
                     catch (Exception ex)
@@ -7856,7 +7953,365 @@ namespace BuildConsole.Controls
         {
             _isPinned = !_isPinned;
             CollapseQueueIcon.Text = _isPinned ? CollapseArrowGlyph : ExpandArrowGlyph;
+
+            // Git #3713 — real third collapse state: MainContentDock (search/filter/DAG/cards)
+            // swaps for IconRailDock (the narrow status-rail) instead of the panel just shrinking
+            // to width 0 with nothing rendered in it. MainWindow's own PinToggled handler is what
+            // actually resizes ColQueue to CollapsedRailWidth; this only swaps which of this
+            // panel's two root views is visible at that width.
+            MainContentDock.Visibility = _isPinned ? Visibility.Visible : Visibility.Collapsed;
+            IconRailDock.Visibility = _isPinned ? Visibility.Collapsed : Visibility.Visible;
+            MinWidth = _isPinned ? ExpandedMinWidth : CollapsedRailWidth;
+            if (!_isPinned)
+            {
+                // Refresh immediately so the rail shows current data the instant it appears,
+                // rather than waiting for the next ~5s local poll tick to call RenderQueue again.
+                try { RenderIconRail(_lastItems); } catch { }
+            }
+            else
+            {
+                RailHoverPopup.IsOpen = false;
+            }
+
             PinToggled?.Invoke(this, _isPinned);
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // ── Icon rail (Git #3713) — collapsed-panel status overview ────────────────
+        // ══════════════════════════════════════════════════════════════════════════
+
+        /// <summary>How many rail icons to draw before folding the rest into a single
+        /// "+N more" tile (click expands the panel rather than trying to keep growing the
+        /// rail downward forever).</summary>
+        private const int MaxRailIcons = 10;
+        private const double RailIconSize = 30;
+
+        /// <summary>
+        /// Git #3713 — the icon rail shown while this panel is collapsed to
+        /// <see cref="CollapsedRailWidth"/>, mirroring the left ActivityBar's own icon-rail
+        /// concept instead of the old width-0 disappear-entirely collapse. Deliberately built
+        /// from <paramref name="rawItems"/> (the RAW, unfiltered queue — the same input
+        /// RenderQueue itself receives) rather than <see cref="_currentGraphNodes"/>: that list
+        /// is scoped to whatever the status-filter combo / build-set drill-down / search box in
+        /// MainContentDock happen to be showing right now, and a persistent overview rail that
+        /// only reflected the currently-selected filter tab would silently hide a Blocked or
+        /// Ask-Shane item sitting under a different tab — exactly the kind of thing this rail
+        /// exists to surface at a glance. Reuses <see cref="BuildItemNode"/> for the exact same
+        /// IsBlocked/IsWaitingForInput/IsAskingShane computation the cards and
+        /// <see cref="GhostStatusLabel"/> already use, and <see cref="KeyedCardPool"/> so a
+        /// running item's indeterminate-spinner clock (see <see cref="BuildRailIcon"/>) survives
+        /// unchanged across a render pass when nothing about that item's own displayed state
+        /// changed, and is properly stopped via <see cref="KeyedSlotCardHost.StopOwnedAnimations"/>
+        /// the moment it does — applying #3689/#3698's own hard-learned Forever-animation-leak
+        /// lesson to this rail's own new animated element.
+        /// </summary>
+        private void RenderIconRail(List<QueueItem> rawItems)
+        {
+            _railIcons.BeginPass();
+            var children = new List<UIElement>();
+
+            var pausedIds = new HashSet<int>(BuildConsoleSettings.Load().PausedBuildIds);
+            var allNotable = rawItems
+                .Select(BuildItemNode)
+                .Where(n => n.Item != null && IsRailNotable(n, pausedIds))
+                .OrderBy(n => RailSortRank(n, pausedIds))
+                .ThenByDescending(n => n.Item!.Id)
+                .ToList();
+
+            var shown = allNotable.Take(MaxRailIcons).ToList();
+            foreach (var node in shown)
+            {
+                string key = $"rail-{node.Item!.Id}";
+                string cacheKey = RailIconCacheKey(node, pausedIds);
+                children.Add(_railIcons.Acquire(key, cacheKey, () => BuildRailIcon(node), out _));
+            }
+
+            int overflowCount = allNotable.Count - shown.Count;
+            if (overflowCount > 0)
+            {
+                children.Add(_railIcons.Acquire("rail-overflow", overflowCount,
+                    () => BuildRailOverflowBadge(overflowCount), out _));
+            }
+
+            KeyedCardPool.SyncChildren(QueueIconRailHost, children);
+            _railIcons.EndPass();
+        }
+
+        /// <summary>Minimum status vocabulary from #3713's own issue body: Running, Blocked,
+        /// Waiting/self-blocked, Needs-input/Ask-Shane — plus the other real "something's
+        /// actively different about this build" states (Verifying, paused, capped,
+        /// limit-paused) that the card/dot/pill vocabulary elsewhere in this file already
+        /// treats as worth calling out. Deliberately excludes plain queued/done/canceled/
+        /// parked/external/archived — an idle queue's rail should stay short and honest, not
+        /// grow to list every historical row.</summary>
+        private static bool IsRailNotable(QueueGraphNode n, HashSet<int> pausedIds)
+        {
+            var item = n.Item!;
+            return n.Status == "running"
+                || n.Status == BuildQueuePostgresClient.VerifyingStatus
+                || n.IsBlocked
+                || n.IsWaitingForInput
+                || n.IsAskingShane
+                || IsWaitingSelfBlocked(item)
+                || pausedIds.Contains(item.Id)
+                || n.Status == Services.AccountCapPolicy.CappedStatus
+                || n.Status == Services.SessionLimitAutoRestartService.LimitPausedStatus;
+        }
+
+        /// <summary>Same priority order <see cref="GhostStatusLabel"/> already uses for which
+        /// pill wins when several are true at once — reused here so the rail's ordering (most
+        /// urgent/needs-Shane items first) never disagrees with what the expanded card would
+        /// show for the same item.</summary>
+        private static int RailSortRank(QueueGraphNode n, HashSet<int> pausedIds)
+        {
+            var item = n.Item!;
+            if (n.IsWaitingForInput) return 0;
+            if (n.IsAskingShane) return 1;
+            if (n.IsBlocked) return 2;
+            if (pausedIds.Contains(item.Id)) return 3;
+            if (n.Status == Services.AccountCapPolicy.CappedStatus) return 4;
+            if (n.Status == Services.SessionLimitAutoRestartService.LimitPausedStatus) return 5;
+            if (n.Status == "running") return 6;
+            if (n.Status == BuildQueuePostgresClient.VerifyingStatus) return 7;
+            if (IsWaitingSelfBlocked(item)) return 8;
+            return 9;
+        }
+
+        /// <summary>Everything that should force a rail icon to actually rebuild (and, for a
+        /// running item's ring, retire its old clock rather than silently drift) rather than
+        /// being reused as-is. Percent is bucketed to whole points — the ring redraws at most
+        /// once per real percentage point, not on every sub-percent float jitter.</summary>
+        private string RailIconCacheKey(QueueGraphNode node, HashSet<int> pausedIds)
+        {
+            var item = node.Item!;
+            int percentBucket = -1;
+            bool hasProgress = false;
+            if (node.Status == "running")
+            {
+                var report = BuildProgressTracker.GetProgress(item.Id);
+                if (report != null && report.Total > 0)
+                {
+                    hasProgress = true;
+                    percentBucket = (int)Math.Round(report.Percent);
+                }
+            }
+            return string.Join('|', node.Status, node.IsBlocked, node.IsWaitingForInput,
+                node.IsAskingShane, pausedIds.Contains(item.Id), hasProgress, percentBucket);
+        }
+
+        /// <summary>One rail icon: a colored circular dot per <see cref="GhostStatusLabel"/>'s
+        /// real status vocabulary, with a progress ring overlay for a Running item — a real
+        /// percentage arc when <see cref="BuildProgressTracker.GetProgress"/> has data, or a
+        /// genuinely indeterminate spinning arc (never a fake percentage) when it doesn't yet,
+        /// per the issue's own explicit fallback rule. The spinner's clock is registered via
+        /// <see cref="KeyedSlotCardHost.BeginOwnedAnimation"/> so <see cref="KeyedCardPool"/>
+        /// stops it the moment this icon is retired (item leaves the notable set, or its cache
+        /// key changes) rather than leaking a Forever storyboard the way #3689/#3698 found.</summary>
+        private FrameworkElement BuildRailIcon(QueueGraphNode node)
+        {
+            var item = node.Item!;
+            var (label, color) = GhostStatusLabel(node);
+            var brush = new SolidColorBrush(color);
+
+            var container = new Grid
+            {
+                Width = RailIconSize,
+                Height = RailIconSize,
+                Margin = new Thickness(0, 0, 0, 8),
+                Cursor = Cursors.Hand
+            };
+
+            var bg = new Ellipse
+            {
+                Width = RailIconSize,
+                Height = RailIconSize,
+                Fill = new SolidColorBrush(Color.FromArgb(0x33, color.R, color.G, color.B)),
+                Stroke = brush,
+                StrokeThickness = 1.6
+            };
+            container.Children.Add(bg);
+
+            string glyphText = label.Split(' ', 2)[0];
+            var glyph = new TextBlock
+            {
+                Text = glyphText,
+                FontSize = 13,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = brush
+            };
+            container.Children.Add(glyph);
+
+            if (node.Status == "running")
+            {
+                var report = BuildProgressTracker.GetProgress(item.Id);
+                var center = new Point(RailIconSize / 2.0, RailIconSize / 2.0);
+                double radius = RailIconSize / 2.0 - 1.5;
+                var ring = new Path
+                {
+                    Stroke = (Brush)Application.Current.FindResource("BlueBrush"),
+                    StrokeThickness = 2.5,
+                    StrokeStartLineCap = PenLineCap.Round,
+                    StrokeEndLineCap = PenLineCap.Round
+                };
+
+                if (report != null && report.Total > 0)
+                {
+                    ring.Data = BuildRingArcGeometry(center, radius, 0, Math.Min(report.Percent, 99.9) / 100.0 * 360.0);
+                }
+                else
+                {
+                    // Git #3713 — no real progress data reported yet for this running build:
+                    // an honest, genuinely indeterminate spinner, never a fabricated percentage.
+                    ring.Data = BuildRingArcGeometry(center, radius, 0, 80);
+                    var rotate = new RotateTransform(0, center.X, center.Y);
+                    ring.RenderTransform = rotate;
+                    var spin = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1.1))
+                    {
+                        RepeatBehavior = RepeatBehavior.Forever
+                    };
+                    KeyedSlotCardHost.BeginOwnedAnimation(container, rotate, RotateTransform.AngleProperty, spin);
+                }
+                container.Children.Add(ring);
+            }
+
+            container.MouseLeftButtonUp += (s, e) =>
+            {
+                e.Handled = true;
+                if (!_isPinned) TogglePin();
+                RevealQueueItem(item.Id);
+            };
+            container.MouseEnter += (s, e) => ShowRailHoverPopup(container, node);
+            container.MouseLeave += (s, e) => { RailHoverPopup.IsOpen = false; };
+
+            return container;
+        }
+
+        /// <summary>A ring-arc <see cref="Geometry"/> from <paramref name="startAngleDeg"/>
+        /// (0 = 12 o'clock) sweeping clockwise by <paramref name="sweepAngleDeg"/>. A full 360°
+        /// sweep is clamped just short of it — <see cref="ArcSegment"/> degenerates when its
+        /// start and end points coincide.</summary>
+        private static Geometry BuildRingArcGeometry(Point center, double radius, double startAngleDeg, double sweepAngleDeg)
+        {
+            sweepAngleDeg = Math.Clamp(sweepAngleDeg, 0.1, 359.9);
+            double startRad = (startAngleDeg - 90) * Math.PI / 180.0;
+            double endRad = (startAngleDeg + sweepAngleDeg - 90) * Math.PI / 180.0;
+            var startPoint = new Point(center.X + radius * Math.Cos(startRad), center.Y + radius * Math.Sin(startRad));
+            var endPoint = new Point(center.X + radius * Math.Cos(endRad), center.Y + radius * Math.Sin(endRad));
+            bool isLargeArc = sweepAngleDeg > 180;
+
+            var figure = new PathFigure { StartPoint = startPoint, IsClosed = false };
+            figure.Segments.Add(new ArcSegment(endPoint, new Size(radius, radius), 0, isLargeArc, SweepDirection.Clockwise, true));
+            var geo = new PathGeometry();
+            geo.Figures.Add(figure);
+            return geo;
+        }
+
+        /// <summary>The "+N more" tile capping the rail at <see cref="MaxRailIcons"/> — clicking
+        /// it just expands the panel (the full card list underneath already shows everything;
+        /// this rail doesn't need its own second pagination scheme).</summary>
+        private FrameworkElement BuildRailOverflowBadge(int count)
+        {
+            var container = new Border
+            {
+                Width = RailIconSize,
+                Height = RailIconSize * 0.6,
+                Margin = new Thickness(0, 0, 0, 8),
+                Background = (Brush)Application.Current.FindResource("Surface0Brush"),
+                BorderBrush = (Brush)Application.Current.FindResource("Surface1Brush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Cursor = Cursors.Hand,
+                ToolTip = $"{count} more notable build{(count == 1 ? "" : "s")} — expand the panel to see all"
+            };
+            container.Child = new TextBlock
+            {
+                Text = $"+{count}",
+                FontSize = 10,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            container.MouseLeftButtonUp += (s, e) => { if (!_isPinned) TogglePin(); };
+            return container;
+        }
+
+        /// <summary>
+        /// Real hover popout for a rail icon (Git #3713): status pill + title, the real
+        /// Feature/Epic chip (<see cref="BuildEpicChipRow"/>), and — when this item is Running
+        /// with real progress data — the same phase-list detail
+        /// <see cref="ChatSessionPane.RefreshProgress"/> renders in Build Watch, reusing its own
+        /// <see cref="ChatSessionPane.BuildProgressStepRow"/> row rendering rather than a new one.
+        /// An item with no progress history yet says so plainly instead of rendering an empty list.
+        /// </summary>
+        private void ShowRailHoverPopup(FrameworkElement target, QueueGraphNode node)
+        {
+            var item = node.Item!;
+            RailHoverContent.Children.Clear();
+
+            var (label, color) = GhostStatusLabel(node);
+            var titleText = new TextBlock
+            {
+                Text = $"{node.DisplayRef} — {node.Title}",
+                FontSize = 11.5,
+                FontWeight = FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                Margin = new Thickness(0, 0, 0, 6)
+            };
+            RailHoverContent.Children.Add(titleText);
+
+            var pillRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+            pillRow.Children.Add(BuildStatusPill(label, Color.FromArgb(0x33, color.R, color.G, color.B), color, color));
+            RailHoverContent.Children.Add(pillRow);
+
+            var epicChip = BuildEpicChipRow(item);
+            if (epicChip != null)
+                RailHoverContent.Children.Add(epicChip);
+
+            var report = BuildProgressTracker.GetProgress(item.Id);
+            if (report != null && report.Total > 0)
+            {
+                var percentText = new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(report.CurrentLabel)
+                        ? $"{report.Step}/{report.Total} ({report.Percent:0}%)"
+                        : $"{report.Step}/{report.Total} ({report.Percent:0}%) — {report.CurrentLabel}",
+                    FontSize = 10.5,
+                    FontWeight = FontWeights.SemiBold,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                    Margin = new Thickness(0, 6, 0, 2)
+                };
+                RailHoverContent.Children.Add(percentText);
+
+                var etaText = new TextBlock
+                {
+                    Text = report.EstimatedRemainingText,
+                    FontSize = 9.5,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
+                    Margin = new Thickness(0, 0, 0, 4)
+                };
+                RailHoverContent.Children.Add(etaText);
+
+                for (int i = 0; i < report.History.Count; i++)
+                    RailHoverContent.Children.Add(ChatSessionPane.BuildProgressStepRow(report.History[i], i == report.History.Count - 1));
+            }
+            else
+            {
+                RailHoverContent.Children.Add(new TextBlock
+                {
+                    Text = "No progress reported yet.",
+                    FontSize = 10,
+                    FontStyle = FontStyles.Italic,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
+                    Margin = new Thickness(0, 4, 0, 0)
+                });
+            }
+
+            RailHoverPopup.PlacementTarget = target;
+            RailHoverPopup.IsOpen = true;
         }
 
         // Git #3702 — guards BtnRefreshCombined_Click against re-entry while the sequential

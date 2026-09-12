@@ -74,6 +74,33 @@ into a chat message or a `bash_tool` `curl` call for anything the connector alre
 - `get_recent_activity` — the audit trail of what each connected chat/session has actually done
   through this server.
 
+### Bulk board/hierarchy management — `batch_*` tools (Git #3709)
+
+Real, direct motivation: a real #1202 sub-issue reorganization needed 166+ individual
+`remove_sub_issue`/`add_sub_issue` call pairs, done via a raw script outside `shanes-git` entirely
+because no batch capability existed. These three cover that class of bulk operation from inside
+the connector itself. Each runs its existing single-item tool's own real logic **one item at a
+time, sequentially** (never in parallel — a burst of concurrent writes against one repo risks
+GitHub's own secondary rate limits), with **independent per-item success/failure reporting —
+never all-or-nothing.** One bad item never blocks or rolls back the others. Every batch tool
+returns `{ totalAttempted, succeededCount, failedCount, results[] }`, each result item carrying
+its own real success/failure and, on failure, the real reason.
+
+- `batch_reparent_sub_issues(moves: [{ issueNumber, fromParent, toParent }], repo?, context)` —
+  per move: `remove_sub_issue(fromParent)` then `add_sub_issue(toParent)`, with the same real
+  Epic/Feature hierarchy enforcement and proactive 100-sub-issue-cap overflow redirect
+  `add_sub_issue` itself applies. GitHub's one-parent-at-a-time rule means this is genuinely two
+  writes per item — if the remove succeeds but the add then fails, that's reported as a distinct
+  `{ success: false, partial: true }` (the child now has no parent at all, not "nothing
+  happened") rather than an ordinary failure.
+- `batch_move_to_status(moves: [{ number, status }], repo?, context)` — bulk board-status moves,
+  same real 5-value vocabulary and per-item validation as `move_to_status`.
+- `batch_close_issues(closures: [{ number, stateReason, comment? }], repo?, context)` — bulk
+  closing, same real per-item `close_issue` logic including the standing NOT_PLANNED-needs-a-
+  comment rule (Git #2167) — this never closes an issue without a genuine, correctly-formed
+  per-item request; "you never close an issue" (Shane's decision, or an explicit instruction on
+  his behalf) is unchanged, this just executes many at once.
+
 ### Reading the actual code — `get_file_contents` / `list_directory` / `search_code` (Git #3697)
 
 Everything listed above is issue-tracker and board metadata. Until #3697 that was the *entire*
@@ -145,8 +172,9 @@ Every write through `shanes-git` authenticates as the same server-side PAT, so o
 always shows as authored by `shanemccaw` regardless of which chat/session made the change —
 there was previously no way to trace which session did what. Every write tool —
 `create_issue`, `update_issue`, `add_sub_issue`, `remove_sub_issue`, `set_blocked_by`,
-`post_comment`, `close_issue`, `move_to_status` — **requires** a `context` string argument.
-A missing or empty `context` is rejected before any GitHub API call fires.
+`post_comment`, `close_issue`, `move_to_status`, `batch_reparent_sub_issues`,
+`batch_move_to_status`, `batch_close_issues` (Git #3709) — **requires** a `context` string
+argument. A missing or empty `context` is rejected before any GitHub API call fires.
 
 - Free text, no fixed vocabulary — describe it as "a build id, a chat/session label, or an
   Epic/issue number." A BuildConsole-dispatched build has a real numeric buildId (e.g.

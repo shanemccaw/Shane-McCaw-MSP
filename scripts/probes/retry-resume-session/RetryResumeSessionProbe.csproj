@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Git #3728 — replays every REAL bt_build_queue row through the REAL classifier
+    (Services/ResumeOnlyQueueRows.cs, compiled in below — not a copy) and reports what
+    "🔄 Retry" would have done before the fix versus after it.
+
+    Deliberately dependency-free: it reads a TSV exported from the live database by
+    run.sh rather than linking a Postgres driver, so the probe adds no package to restore.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>RetryResumeSessionProbe</RootNamespace>
+    <AssemblyName>RetryResumeSessionProbe</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../../desktop/BuildConsole/Services/ResumeOnlyQueueRows.cs" />
+  </ItemGroup>
+
+</Project>

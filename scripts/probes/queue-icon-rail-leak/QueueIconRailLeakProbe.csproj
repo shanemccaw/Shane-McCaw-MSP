@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Git #3713 — kept diagnostic. Standalone probe process; never launches or drives BuildConsole.
+       Measures the collapsed Build Queue icon rail's own new animated element: a Running item with
+       no real BuildProgressTracker data yet falls back to a genuinely indeterminate spinning ring
+       (BuildQueuePanel.BuildRailIcon), registered via KeyedSlotCardHost.BeginOwnedAnimation exactly
+       like #3689/#3698's queue-card mascot float/shimmer. This probe replicates that one animated
+       element (a RotateTransform.Angle Forever animation on a pooled rail-icon Grid) and measures
+       whether KeyedCardPool really stops its clock the moment the icon is retired — the same
+       mechanism #3698 already measured safe for queue-card mascots, exercised here against the
+       rail's own new call site. Compiles the REAL KeyedCardPool.cs/KeyedSlotCardHost.cs from
+       BuildConsole, same as scripts/probes/queue-card-leak.
+       No PackageReferences: builds from the installed .NET 8 SDK alone, nothing downloaded. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\desktop\BuildConsole\Controls\KeyedSlotCardHost.cs" Link="KeyedSlotCardHost.cs" />
+    <Compile Include="..\..\..\desktop\BuildConsole\Controls\KeyedCardPool.cs" Link="KeyedCardPool.cs" />
+  </ItemGroup>
+
+</Project>
