@@ -33,6 +33,8 @@ import {
   CalendarClock, MessageSquare, FilePlus, Inbox,
   // Data Rights (#2633)
   UserX,
+  // Team Management and Invitations (#2640)
+  UserPlus, ShieldOff, UserMinus, Mail, Key, LockOpen, Siren, Smartphone, UserCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -154,6 +156,16 @@ const REGISTRY: Record<string, LucideIcon> = {
   inbox: Inbox,
   // Data Rights (#2633)
   "user-x": UserX,
+  // Team Management and Invitations (#2640)
+  "user-plus": UserPlus,
+  "shield-off": ShieldOff,
+  "user-minus": UserMinus,
+  mail: Mail,
+  key: Key,
+  "lock-open": LockOpen,
+  siren: Siren,
+  smartphone: Smartphone,
+  "user-check": UserCheck,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

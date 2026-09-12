@@ -13,6 +13,7 @@ import { ScreenSlot } from "./ScreenSlot";
 import { Remediation } from "./modules/Remediation";
 import { Webhooks } from "./modules/Webhooks";
 import { DataRights } from "./modules/DataRights";
+import { Team } from "./modules/Team";
 import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
 import { SopsPage } from "@/pages/Sops";
 import { ChangeControl, CHANGE_CONTROL_TABS, type ChangeControlTab } from "@/pages/change-control/ChangeControl";
@@ -245,6 +246,10 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "page" && sel.page === "dr") {
     return <DataRights customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "team") {
+    const customer = customers.find((c) => c.id === sel.tenant);
+    return <Team customerId={sel.tenant} customerName={customer?.name} />;
   }
   if (sel.kind === "page" && sel.page === "bg") {
     return <BreakGlassPage customerId={sel.tenant} />;
