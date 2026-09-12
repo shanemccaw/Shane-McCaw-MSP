@@ -408,6 +408,8 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     expect(piCall["amount"]).toBe(105000); // 70% of 150_000
     expect(piCall["customer"]).toBe("cus_test");
     expect(mockResolveFulfillment).toHaveBeenCalledOnce();
+    // #3633 — the offer is only marked "accepted" after the charge succeeds.
+    expect(mockDbUpdate).toHaveBeenCalledOnce();
   });
 
   // ── Branch 2: subscription with trial ─────────────────────────────────────
@@ -532,6 +534,69 @@ describe("POST /api/portal/offers/:id/checkout", () => {
         payload: expect.objectContaining({ amountCents: 0, customerId: CUSTOMER_ID }),
       }),
     );
+  });
+
+  // ── #3633 regression: offer must not end up "accepted" on a Branch 3 failure ─
+
+  it("#3633: add_on with no default payment method — 400, offer NOT marked accepted", async () => {
+    mockDbSelect
+      .mockReturnValueOnce(selectChain([baseSentOffer])) // offer
+      .mockReturnValueOnce(selectChain([addOnService])) // service
+      .mockReturnValueOnce(selectChain([{ customCustomerAgreement: null }])) // parent MSP custom agreement
+      .mockReturnValueOnce(selectChain([]))             // platform agreements
+      .mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // msp subscription
+    const { getMspDefaultPaymentMethod } = await import("../lib/stripe.ts");
+    vi.mocked(getMspDefaultPaymentMethod).mockResolvedValueOnce(null);
+
+    const app = await makeApp();
+    const res = await request(app)
+      .post("/api/portal/offers/1/checkout")
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
+
+    expect(res.status).toBe(400);
+    expect(mockStripePaymentIntentsCreate).not.toHaveBeenCalled();
+    // The whole point of #3633: no default-payment-method failure must never
+    // reach the sales_offers update that marks the offer "accepted".
+    expect(mockDbUpdate).not.toHaveBeenCalled();
+  });
+
+  it("#3633: add_on with a failed PaymentIntent — 402, offer NOT marked accepted", async () => {
+    mockDbSelect
+      .mockReturnValueOnce(selectChain([baseSentOffer])) // offer
+      .mockReturnValueOnce(selectChain([addOnService])) // service
+      .mockReturnValueOnce(selectChain([{ customCustomerAgreement: null }])) // parent MSP custom agreement
+      .mockReturnValueOnce(selectChain([]))             // platform agreements
+      .mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // msp subscription
+    mockStripePaymentIntentsCreate.mockResolvedValueOnce({ id: "pi_failed", status: "requires_action" });
+
+    const app = await makeApp();
+    const res = await request(app)
+      .post("/api/portal/offers/1/checkout")
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
+
+    expect(res.status).toBe(402);
+    expect(mockDbUpdate).not.toHaveBeenCalled();
+  });
+
+  it("#3633: add_on with Stripe throwing — 500, offer NOT marked accepted", async () => {
+    mockDbSelect
+      .mockReturnValueOnce(selectChain([baseSentOffer])) // offer
+      .mockReturnValueOnce(selectChain([addOnService])) // service
+      .mockReturnValueOnce(selectChain([{ customCustomerAgreement: null }])) // parent MSP custom agreement
+      .mockReturnValueOnce(selectChain([]))             // platform agreements
+      .mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // msp subscription
+    mockStripePaymentIntentsCreate.mockRejectedValueOnce(new Error("stripe down"));
+
+    const app = await makeApp();
+    const res = await request(app)
+      .post("/api/portal/offers/1/checkout")
+      .set("Authorization", `Bearer ${customerToken}`)
+      .send({ captchaToken: "test-turnstile-token" });
+
+    expect(res.status).toBe(500);
+    expect(mockDbUpdate).not.toHaveBeenCalled();
   });
 
   // ── Rate limits ────────────────────────────────────────────────────────────

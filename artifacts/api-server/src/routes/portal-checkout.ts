@@ -134,6 +134,27 @@ async function emitMspEvent(
   }
 }
 
+/**
+ * Mark a sales offer "accepted" and broadcast the state change.
+ *
+ * #3633 — only ever call this after a branch's real success is confirmed
+ * (free checkout resolved, SOW created, Stripe charge succeeded) — never
+ * before. "accepted" is a terminal state (VALID_TRANSITIONS in
+ * sales-offer-engine.ts), so marking it early and then hitting a real
+ * failure left the row stuck accepted with no charge collected.
+ */
+async function markOfferAccepted(offerId: number, customerId: number, mspId: number | null): Promise<void> {
+  await db
+    .update(salesOffersTable)
+    .set({ state: "accepted", acceptedAt: new Date(), updatedAt: new Date() })
+    .where(eq(salesOffersTable.id, offerId));
+
+  broadcastCustomerOfferChange(customerId, { offerId, state: "accepted" });
+  if (mspId) {
+    broadcastMspOfferChange(mspId, { offerId, state: "accepted", tenantId: customerId });
+  }
+}
+
 /** Minimal SOW HTML document (same generator as msp-sow.ts). */
 function generateSowDocument(opts: {
   title: string;
@@ -178,8 +199,13 @@ ${opts.customerAgreementText ? `<div class="section"><h2>Customer Agreement</h2>
 //   price === 0  → skip Stripe, rate-limit, call resolveFulfillment directly
 //   project      → create MSP SOW, return share link
 //
-// Marks the offer as "accepted" before branching so SSE listeners get the state
-// change regardless of the checkout outcome.
+// #3633 — the offer is marked "accepted" (and broadcast) only after each branch's
+// real success is confirmed, never before. "accepted" is a terminal state per
+// VALID_TRANSITIONS in sales-offer-engine.ts, so marking it up front and then hitting
+// a real failure (Stripe not configured, no saved card, no default payment method, a
+// bad subscription/PaymentIntent result, a thrown exception) used to leave the row
+// stuck "accepted" with no charge collected and nothing to revert it. See
+// markOfferAccepted() below and its call site in each branch.
 
 router.post(
   "/portal/offers/:id/checkout",
@@ -280,19 +306,6 @@ router.post(
     // Offer-level trial overrides product-level trial
     const trialPeriodDays: number | null = offerRow.trialPeriodDays ?? productTrialDays;
     const amountCents = offerRow.adjustedPriceCents;
-
-    // ── Mark offer accepted ──────────────────────────────────────────────────
-    // Update state before branching so SSE subscribers see the transition.
-    await db
-      .update(salesOffersTable)
-      .set({ state: "accepted", acceptedAt: new Date(), updatedAt: new Date() })
-      .where(eq(salesOffersTable.id, offerId));
-
-    // Broadcast state change
-    broadcastCustomerOfferChange(customerId, { offerId, state: "accepted" });
-    if (offerRow.mspId) {
-      broadcastMspOfferChange(offerRow.mspId, { offerId, state: "accepted", tenantId: customerId });
-    }
 
     const actorId = (req.user as { id?: number } | undefined)?.id ?? null;
     const actorEmail = (req.user as { email?: string } | undefined)?.email ?? "";
@@ -400,6 +413,11 @@ router.post(
           });
         }
       }
+
+      // ── Mark offer accepted ────────────────────────────────────────────────
+      // Past this point the free path can't fail (no Stripe call, no more gates
+      // below), so it's safe to record acceptance now, same as #3400's free path.
+      await markOfferAccepted(offerId, customerId, mspId);
 
       // Resolve fulfillment
       if (fulfillmentTypeKey) {
@@ -556,6 +574,10 @@ router.post(
         apiErr(res, 500, "Failed to create SOW");
         return;
       }
+
+      // ── Mark offer accepted ────────────────────────────────────────────────
+      // Only now that the SOW row genuinely exists.
+      await markOfferAccepted(offerId, customerId, mspId);
 
       await emitSowEvent(sow.sowId, "sow.created", actorId, LEGACY_ROLE.customer, {
         offerId, mspId, customerId, amountCents,
@@ -727,6 +749,20 @@ router.post(
         }
 
         stripePaymentIntentId = pi.id;
+      }
+
+      // ── Charge confirmed successful — only now mark the offer accepted ──────
+      // #3633 — real money has already moved at this point. If marking the offer
+      // accepted itself fails (rare DB failure), don't tell the client the
+      // purchase failed — that would invite a retry and a double charge. Log
+      // loud enough to reconcile by hand instead.
+      try {
+        await markOfferAccepted(offerId, customerId, offerRow.mspId);
+      } catch (err) {
+        log.error(
+          { err, offerId, customerId, targetMspId, subscriptionId, stripePaymentIntentId },
+          "portal-checkout: CRITICAL — Stripe charge succeeded but marking sales_offers accepted failed; needs manual reconciliation",
+        );
       }
 
       // #3634 — RECORD IT (Git #2847). Gate on the actual Stripe outcome
