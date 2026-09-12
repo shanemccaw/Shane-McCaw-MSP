@@ -2495,7 +2495,12 @@ namespace BuildConsole.Controls
                 });
             }
 
-            _downstreamBlockCounts = ComputeDownstreamBlockCounts(items);
+            // Git #3617 — against the full unfiltered rawItems, not the filtered `items` above,
+            // so the "⛓ blocks N" badge is correct even when a downstream blocked item sits
+            // under a different active filter than the one currently rendered. Same fix shape
+            // already applied for ComputeReverseBlocks just below (Git #3601) and for the
+            // forward blocker ghost cards (Git #3599).
+            _downstreamBlockCounts = ComputeDownstreamBlockCounts(rawItems);
             _maxDownstreamBlockCount = _downstreamBlockCounts.Count > 0 ? _downstreamBlockCounts.Values.Max() : 0;
             // Git #3601 — against the full unfiltered rawItems, not the filtered `items` above,
             // so a "Blocks:" row is correct regardless of which filter is currently active.
