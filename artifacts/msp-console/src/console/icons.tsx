@@ -39,6 +39,8 @@ import {
   ScanLine, Package, ArrowDownUp, FileCode, Star,
   // Executive View (#2659)
   TrendingUp, Sparkles,
+  // Scope and SLA (#2656)
+  Timer, MoveDiagonal, Calculator, TimerOff, ChartNoAxesColumn,
   type LucideIcon,
 } from "lucide-react";
 
@@ -179,6 +181,12 @@ const REGISTRY: Record<string, LucideIcon> = {
   // Executive View (#2659)
   "trending-up": TrendingUp,
   sparkles: Sparkles,
+  // Scope and SLA (#2656)
+  timer: Timer,
+  "move-diagonal": MoveDiagonal,
+  calculator: Calculator,
+  "timer-off": TimerOff,
+  "chart-no-axes-column": ChartNoAxesColumn,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

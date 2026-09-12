@@ -16,6 +16,7 @@ import { Webhooks } from "./modules/Webhooks";
 import { DataRights } from "./modules/DataRights";
 import { Team } from "./modules/Team";
 import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
+import { ScopeSla } from "./modules/ScopeSla";
 import { SopsPage } from "@/pages/Sops";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
 import { ChangeControl, CHANGE_CONTROL_TABS, type ChangeControlTab } from "@/pages/change-control/ChangeControl";
@@ -264,6 +265,14 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "exec") {
     return <ExecutiveView onOpenTenant={(customerId) => navigate({ kind: "tenant", tenant: customerId })} />;
+  }
+  if (sel.kind === "msp" && sel.page === "sla") {
+    return (
+      <ScopeSla
+        customers={customers}
+        onOpenTenant={(customerId) => navigate({ kind: "tenant", tenant: customerId })}
+      />
+    );
   }
   if (sel.kind === "page" && (CHANGE_CONTROL_TABS as readonly string[]).includes(sel.page)) {
     // Change Control (#2579) needs the full customer row too — its Register,
