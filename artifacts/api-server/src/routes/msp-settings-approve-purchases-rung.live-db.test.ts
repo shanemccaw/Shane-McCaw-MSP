@@ -29,7 +29,7 @@ import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import express from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { db, mspsTable, usersTable, mspAuditLogsTable, mspRolesTable, mspUserRolesTable } from "@workspace/db";
+import { db, mspsTable, usersTable, mspAuditLogsTable, mspRolesTable, mspUserRolesTable, tenantsTable } from "@workspace/db";
 import { eq, and, inArray, isNull } from "drizzle-orm";
 import { CAPABILITY_COLUMN_ROLE_KEYS, LEGACY_ROLE, type LegacyRole } from "@workspace/db/rbac/legacy-ladder";
 
@@ -56,14 +56,26 @@ describe.skipIf(!process.env.DATABASE_URL)(
   () => {
     const suffix = `vitest-3570-${Math.floor(Math.random() * 1e9)}`;
     let mspId: number;
+    let tenantId: number;
     let capRoleId: string;
     let mspAdminToken: string;
     const ids = {} as Record<"mspAdmin" | "mspOperator" | "customer" | "free" | "staleCustomer", number>;
 
+    // users_role_scope_check (#3608) requires a tenant for the Customer/Free rungs and
+    // an msp for MSPAdmin/MSPOperator — every user here carries mspId regardless (that's
+    // what the route/listing scope to), so Customer/Free additionally need tenantId set.
+    const TENANT_SCOPED_ROLES: readonly LegacyRole[] = [LEGACY_ROLE.customer, LEGACY_ROLE.free];
+
     async function insertUser(key: keyof typeof ids, mspRole: LegacyRole): Promise<void> {
       const [row] = await db
         .insert(usersTable)
-        .values({ email: `${key}-${suffix}@example.com`, role: "client", mspRole, mspId })
+        .values({
+          email: `${key}-${suffix}@example.com`,
+          role: "client",
+          mspRole,
+          mspId,
+          tenantId: TENANT_SCOPED_ROLES.includes(mspRole) ? tenantId : null,
+        })
         .returning({ id: usersTable.id });
       ids[key] = row.id;
     }
@@ -90,6 +102,12 @@ describe.skipIf(!process.env.DATABASE_URL)(
         .returning({ id: mspsTable.id });
       mspId = msp.id;
 
+      const [tenant] = await db
+        .insert(tenantsTable)
+        .values({ mspId, customerName: `Approve Purchases Rung Test Tenant ${suffix}`, tenantId: suffix })
+        .returning({ id: tenantsTable.id });
+      tenantId = tenant.id;
+
       await insertUser("mspAdmin", LEGACY_ROLE.mspAdmin);
       await insertUser("mspOperator", LEGACY_ROLE.mspOperator);
       await insertUser("customer", LEGACY_ROLE.customer);
@@ -112,6 +130,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await db.delete(mspAuditLogsTable).where(eq(mspAuditLogsTable.mspId, mspId));
       const userIds = Object.values(ids);
       if (userIds.length > 0) await db.delete(usersTable).where(inArray(usersTable.id, userIds));
+      if (tenantId) await db.delete(tenantsTable).where(eq(tenantsTable.id, tenantId));
       await db.delete(mspsTable).where(eq(mspsTable.id, mspId));
       // A user/msp delete fans out over every FK that references them; against a local DB
       // the dev server is also loading, that ran past the suite's 20s hookTimeout and left

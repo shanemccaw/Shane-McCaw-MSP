@@ -63,15 +63,30 @@ async function withSavepoint(fn: (t: Tx) => Promise<void>): Promise<void> {
     });
 }
 
-/** Insert a user the way the product's writers do — only the columns they set. */
+/**
+ * Insert a user the way the product's writers do — only the columns they set —
+ * plus a real seeded `tenant_id` AND a real seeded `msp_id`, whatever the rung
+ * being inserted. `users_role_scope_check` (#3608) only requires whichever one
+ * the current `msp_role` needs, so carrying both is harmless — and several tests
+ * in this file re-role a user from a tenant-scoped rung to an msp-scoped one (or
+ * back) within the same savepoint, which needs both ids present up front rather
+ * than only the one the *initial* rung required.
+ */
 async function insertUser(
   t: Tx,
   fields: { role?: string; mspRole?: string | null; canApproveChanges?: boolean },
 ): Promise<number> {
   const email = `zz-test-3408-${Math.random().toString(36).slice(2)}@example.invalid`;
   const [row] = (await t.execute(sql`
-    INSERT INTO users (email, role, msp_role, can_approve_changes)
-    VALUES (${email}, ${fields.role ?? "client"}, ${fields.mspRole ?? "Free"}, ${fields.canApproveChanges ?? false})
+    INSERT INTO users (email, role, msp_role, can_approve_changes, tenant_id, msp_id)
+    VALUES (
+      ${email},
+      ${fields.role ?? "client"},
+      ${fields.mspRole ?? "Free"},
+      ${fields.canApproveChanges ?? false},
+      (SELECT min(id) FROM tenants),
+      (SELECT min(id) FROM msps)
+    )
     RETURNING id
   `)).rows as Array<{ id: number }>;
   return row!.id;
@@ -123,8 +138,12 @@ describe("users → RBAC membership sync (#3408)", () => {
 
   it("the column default (Free) is a rung too — a bare insert is not left roleless", async () => {
     await withSavepoint(async (t) => {
+      // "Bare" means no role columns set — msp_role still comes from the column
+      // default. tenant_id is supplied because users_role_scope_check (#3608)
+      // requires one for that default (Free) rung; a genuinely bare insert with
+      // no tenant would now be refused by the database itself, not this trigger.
       const [row] = (await t.execute(sql`
-        INSERT INTO users (email) VALUES (${`zz-test-3408-bare-${Date.now()}@example.invalid`}) RETURNING id, msp_role
+        INSERT INTO users (email, tenant_id) VALUES (${`zz-test-3408-bare-${Date.now()}@example.invalid`}, (SELECT min(id) FROM tenants)) RETURNING id, msp_role
       `)).rows as Array<{ id: number; msp_role: string }>;
       expect(await heldKeys(t, "msp", row!.id)).toEqual([row!.msp_role]);
       expect(await heldKeys(t, "customer", row!.id)).toEqual([row!.msp_role]);
@@ -154,6 +173,15 @@ describe("users → RBAC membership sync (#3408)", () => {
   it("an msp_role that is not one of the rungs holds no rung — and cannot name a capability role", async () => {
     await withSavepoint(async (t) => {
       const id = await insertUser(t, { mspRole: "Customer" });
+      // users_role_scope_check (#3608) now refuses any msp_role outside the six
+      // real rungs — 'NotARole' and 'cap.purchases.approve' would be rejected by
+      // the database before this trigger ever ran. That's the scope check's own
+      // coverage (see customer-admin-billing-roles.test.ts / admin.test.ts); this
+      // test is about a different, still-real concern — the sync trigger itself
+      // grants nothing for an out-of-catalog value — so the scope check is
+      // dropped for just this savepoint (DDL is transactional; the outer rollback
+      // restores it, same as every other write this test makes).
+      await t.execute(sql`ALTER TABLE users DROP CONSTRAINT users_role_scope_check`);
       await t.execute(sql`UPDATE users SET msp_role = 'NotARole' WHERE id = ${id}`);
       expect(await heldKeys(t, "msp", id)).toEqual([]);
       expect(await heldKeys(t, "customer", id)).toEqual([]);
