@@ -835,6 +835,17 @@ namespace BuildConsole
             // BuildQueuePanel's own refresh cycle, same idiom as BtnBatterUp/BtnAiBatterUp's
             // CountChanged (Git #1872) — no second DB poll.
             BuildQueuePanel.CappedCountChanged += (s, count) => TopDrainCappedCount.Text = count.ToString();
+            // Git #3864 — global status bar mirror of BuildQueuePanel's own QueueStatusCountsText.
+            // Same already-computed string/foreground/tooltip, no second counting pass.
+            BuildQueuePanel.QueueStatusCountsChanged += (s, display) =>
+            {
+                GlobalQueueStatusText.Text = display.Text;
+                GlobalQueueStatusText.Foreground = display.Provisional
+                    ? (Brush)FindResource("Subtext0Brush")
+                    : (Brush)FindResource("TextBrush");
+                GlobalQueueStatusText.ToolTip = display.ToolTip;
+            };
+            GlobalQueueStatusText.MouseLeftButtonUp += async (s, e) => await BuildQueuePanel.ToggleQueueStatusPopupAsync();
 
             // Git #851 — Shane: "When clicking on an In-Flight Still Open
             // issue, it should open the chat that is associated to that

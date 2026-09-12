@@ -94,6 +94,11 @@ namespace BuildConsole.Controls
         /// without a second DB poll — same "own panel refresh feeds a title-bar badge" idiom
         /// BatterUpPanel/AiBatterUpPanel's CountChanged already established (Git #1872).</summary>
         public event EventHandler<int>? CappedCountChanged;
+        /// <summary>Git #3864 — fires every time <see cref="UpdateQueueStatusCounts"/> recomputes
+        /// the real queue counts, carrying the exact same rendered text/foreground/tooltip this
+        /// panel's own <see cref="QueueStatusCountsText"/> just got, so MainWindow can mirror the
+        /// identical string into the global status bar without a second computation.</summary>
+        public event EventHandler<QueueStatusCountsDisplay>? QueueStatusCountsChanged;
         /// <summary>Git #851 — Opens the chat associated to an in-flight issue.</summary>
         public event EventHandler<int>? IssueChatRequested;
         /// <summary>Opens or focuses the Claude chat that created this Build Queue item.</summary>
@@ -1677,6 +1682,18 @@ namespace BuildConsole.Controls
             }
         }
 
+        /// <summary>Git #3864 — the exact rendered text/foreground-key/tooltip
+        /// <see cref="UpdateQueueStatusCounts"/> just applied to this panel's own
+        /// <see cref="QueueStatusCountsText"/>, carried verbatim to any mirror (e.g. MainWindow's
+        /// global status bar) via <see cref="QueueStatusCountsChanged"/> so it can never drift
+        /// from the panel's own real display.</summary>
+        public readonly struct QueueStatusCountsDisplay
+        {
+            public string Text { get; init; }
+            public bool Provisional { get; init; }
+            public string ToolTip { get; init; }
+        }
+
         /// <summary>Git #1862 — the four reconciled buckets shown in the QUEUE header.</summary>
         private readonly struct QueueStatusCounts
         {
@@ -1772,6 +1789,14 @@ namespace BuildConsole.Controls
 
             if (QueueNextPopup?.IsOpen == true) _ = RenderNextToRunAsync();
             RenderMatrixDrawer();
+
+            // Git #3864 — mirror this exact, already-computed string into the global status bar.
+            QueueStatusCountsChanged?.Invoke(this, new QueueStatusCountsDisplay
+            {
+                Text = QueueStatusCountsText.Text,
+                Provisional = c.Provisional,
+                ToolTip = QueueStatusBorder.ToolTip as string ?? string.Empty,
+            });
         }
 
         /// <summary>Git #2107 — human "2h ago" style relative time for the QUEUE header's
@@ -1784,7 +1809,12 @@ namespace BuildConsole.Controls
             return $"{(int)span.TotalDays}d ago";
         }
 
-        private async void QueueStatusBorder_Click(object sender, MouseButtonEventArgs e)
+        private async void QueueStatusBorder_Click(object sender, MouseButtonEventArgs e) => await ToggleQueueStatusPopupAsync();
+
+        /// <summary>Git #3864 — same next-to-run popup this panel's own QueueStatusBorder opens,
+        /// exposed so MainWindow's mirrored global status bar segment can reuse it verbatim
+        /// instead of duplicating the popup logic.</summary>
+        public async Task ToggleQueueStatusPopupAsync()
         {
             QueueNextPopup.IsOpen = !QueueNextPopup.IsOpen;
             if (QueueNextPopup.IsOpen) await RenderNextToRunAsync();
