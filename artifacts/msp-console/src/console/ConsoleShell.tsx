@@ -12,6 +12,7 @@ import { CommandPalette } from "./CommandPalette";
 import { ScreenSlot } from "./ScreenSlot";
 import { Remediation } from "./modules/Remediation";
 import { Webhooks } from "./modules/Webhooks";
+import { DataRights } from "./modules/DataRights";
 import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
 import { SopsPage } from "@/pages/Sops";
 import { ChangeControl, CHANGE_CONTROL_TABS, type ChangeControlTab } from "@/pages/change-control/ChangeControl";
@@ -241,6 +242,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "page" && sel.page === "wh") {
     return <Webhooks customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "dr") {
+    return <DataRights customerId={sel.tenant} />;
   }
   if (sel.kind === "page" && sel.page === "bg") {
     return <BreakGlassPage customerId={sel.tenant} />;

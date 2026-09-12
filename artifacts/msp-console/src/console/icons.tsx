@@ -31,6 +31,8 @@ import {
   // Signature, Ban, RotateCcw and Loader2 are already imported above.)
   PackageCheck, Stamp, Snowflake, Undo2, Workflow, UserRound,
   CalendarClock, MessageSquare, FilePlus, Inbox,
+  // Data Rights (#2633)
+  UserX,
   type LucideIcon,
 } from "lucide-react";
 
@@ -150,6 +152,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   "message-square": MessageSquare,
   "file-plus": FilePlus,
   inbox: Inbox,
+  // Data Rights (#2633)
+  "user-x": UserX,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});
