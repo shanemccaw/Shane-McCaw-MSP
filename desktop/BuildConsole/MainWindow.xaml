@@ -344,14 +344,20 @@
                              IsHitTestVisibleInChrome so clicks reach it inside the
                              WindowChrome drag bar. Git #1864 - Height is set in
                              code-behind (SizeSearchBoxToCaptionHeight) against the
-                             window's real WindowChrome.CaptionHeight. -->
+                             window's real WindowChrome.CaptionHeight. Git #3840 -
+                             Background moved from Surface0Brush (a distinctly lighter
+                             gray than the window's own root BaseBrush) to MantleBrush,
+                             which sits in the same dark charcoal family as the root
+                             background so the pill blends into the title bar instead of
+                             reading as a separate rectangle; the border keeps it legible
+                             as a clickable element. Width widened 240 -> 320. -->
                         <Border x:Name="SearchBorder"
-                                Background="{StaticResource Surface0Brush}"
+                                Background="{StaticResource MantleBrush}"
                                 CornerRadius="6"
                                 BorderBrush="{StaticResource Surface1Brush}"
                                 BorderThickness="1"
                                 Padding="8,0"
-                                Width="240"
+                                Width="320"
                                 MinWidth="180"
                                 MaxWidth="820"
                                 HorizontalAlignment="Center"
