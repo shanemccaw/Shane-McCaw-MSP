@@ -127,6 +127,11 @@ namespace BuildConsole.Services
             /// gated at the merge-back call site below.</summary>
             public string? OwnerRepo;
             public bool IsMainRepo = true;
+            /// <summary>Git #3628 — the real GitHub issue number this build was dispatched against
+            /// (null for a local/--notGit build). Needed at reap time, BEFORE MarkCompleteAsync's
+            /// returned outcome exists, to check the worktree's own bookend for a self-block — see
+            /// the reap loop's Git #3628 block below.</summary>
+            public int? GithubNumber;
 
             /// <summary>Git #1792 — the per-build Windows Job Object this build's process (and every
             /// process it spawns, including detached node.exe grandchildren) is assigned to at launch.
@@ -1516,6 +1521,7 @@ namespace BuildConsole.Services
                 // instead of defaulting to "Main" for a re-attached Tinker-repo build.
                 OwnerRepo = item.OwnerRepo,
                 IsMainRepo = string.Equals(item.OwnerRepo, BuildConsoleSettings.Load().GitHubOwnerRepo, StringComparison.OrdinalIgnoreCase),
+                GithubNumber = item.GithubNumber,
                 // Seed from the DB's already-persisted early session id (#826); the replay confirms
                 // or overwrites it from the real stream-json.
                 SessionId = string.IsNullOrWhiteSpace(item.SessionId) ? null : item.SessionId,
@@ -1869,6 +1875,52 @@ namespace BuildConsole.Services
                         catch (Exception ex)
                         {
                             ActivityLog.Log("watcher", $"A BuildFinished handler threw for queue item {id}: {ex.Message}");
+                        }
+                    }
+
+                    // Git #3628 — self-block push/board fix. MarkCompleteAsync above has already
+                    // landed this row on 'verifying'/'done' and mirrored the board to Verifying,
+                    // purely because the process exited 0 — indistinguishable, so far, from real
+                    // completed work. But a session that hit the CLAUDE.md "blocked" self-check flow
+                    // exits 0 too, after writing a real 🛑 BLOCKED bookend that the worktree merge-back
+                    // below never pushes anywhere but the LOCAL dev-server checkout. Confirmed live for
+                    // #3584/#3585: the bookend commit sat only on agent/<n>-<id> and the row read
+                    // Verifying. Checked here, right after reap and before the cleanup sweep can
+                    // reclaim the worktree, from the worktree's OWN HEAD (not origin/main — that's
+                    // exactly the ref a stranded bookend hasn't reached yet). On a genuine BLOCKED
+                    // effective status this pushes that HEAD to origin/main and then reuses the EXACT
+                    // Shape-A correction FalseDoneReconciler already applies on a manual refresh
+                    // (canceled + board -> Backlog) — just fired immediately instead of waiting for the
+                    // next manual refresh to notice a bookend that, before this fix, could never even
+                    // be seen from origin/main in the first place.
+                    if (!limitParked && _db != null && entry.IsMainRepo
+                        && entry.GithubNumber is int ghNumber3628 && ghNumber3628 > 0
+                        && !string.IsNullOrWhiteSpace(entry.WorktreePath) && Directory.Exists(entry.WorktreePath)
+                        && exitCode == 0)
+                    {
+                        try
+                        {
+                            var selfBlock = await WorktreeProvisionService.PushBlockedBookendIfAnyAsync(entry.WorktreePath!, ghNumber3628);
+                            if (selfBlock.Blocked)
+                            {
+                                int corrected = await _db.MarkFalseDoneReconciledAsync(id);
+                                string pushNote = selfBlock.Pushed
+                                    ? "bookend pushed to origin/main"
+                                    : $"bookend push FAILED ({selfBlock.Detail}) — still stranded off origin/main, needs a manual push";
+                                if (corrected > 0)
+                                {
+                                    BoardStatusSync.Mirror(ghNumber3628, GitHubApiClient.BacklogOptionId, "Backlog", "watcher (self-block, Git #3628)");
+                                    ActivityLog.Log("watcher", $"Git #3628: queue #{id} (#{ghNumber3628}) exited 0 but its worktree bookend reads BLOCKED — {pushNote}; row corrected to 'canceled' and board moved to Backlog instead of sitting as Verifying/Done.");
+                                }
+                                else
+                                {
+                                    ActivityLog.Log("watcher", $"Git #3628: queue #{id} (#{ghNumber3628}) worktree bookend reads BLOCKED ({pushNote}) but the row was already moved on by something else — no correction applied.");
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            ActivityLog.Log("watcher", $"Git #3628 self-block push/board fix threw for queue #{id} (#{ghNumber3628}): {ex.Message}");
                         }
                     }
 
@@ -2559,6 +2611,7 @@ namespace BuildConsole.Services
                 WorktreeName = worktreeName,
                 OwnerRepo = resolvedOwnerRepo,
                 IsMainRepo = resolvedIsMain,
+                GithubNumber = item.GithubNumber,
             };
 
             // Git #2103 — the actual dispatch call site: this is the moment a queue item's

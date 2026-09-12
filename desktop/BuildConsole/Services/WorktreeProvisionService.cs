@@ -311,5 +311,87 @@ namespace BuildConsole.Services
                 return false;
             }
         }
+
+        /// <summary>
+        /// Git #3628 — a self-blocked build session (the CLAUDE.md "blocked" label flow) correctly
+        /// detects it's genuinely blocked and writes a real 🛑 BLOCKED bookend, then exits cleanly
+        /// (process exit 0). <see cref="MergeBackAsync"/> above only ever publishes into the LOCAL
+        /// dev-server checkout — it never pushes anywhere — so that bookend commit was stranding on
+        /// the agent's own branch and never reaching origin/main (confirmed live for #3584/#3585:
+        /// <c>git show origin/main:build-journal/3585.md</c> came back "path does not exist"), which
+        /// is exactly the ref <see cref="DoneBookendVerifier.GetBlockedAsync"/> reads for the false-done
+        /// reconciler's own Shape-A correction — so that correction could never fire either.
+        ///
+        /// Dispatches to <c>scripts/dev-server/push-blocked-bookend.mjs</c> (no logic reimplemented
+        /// here, same convention as <see cref="MergeBackAsync"/>): it reads
+        /// <c>build-journal/{githubNumber}.md</c> as committed at THIS worktree's own HEAD (not
+        /// origin/main — that file hasn't reached there yet), and — only when its effective (last)
+        /// <c>**Status:**</c> line says BLOCKED — pushes that HEAD directly onto origin/main (one
+        /// fetch+rebase retry if main moved meanwhile, matching what CLAUDE.md already tells a normal
+        /// session to do for its own DONE bookend). Best-effort: any script-level failure (missing
+        /// script, repo root unresolved) is logged and reported as "not blocked" rather than thrown,
+        /// so a hiccup here can never turn a real completion into a false self-block report.
+        /// </summary>
+        public static async Task<(bool Blocked, bool Pushed, string Detail)> PushBlockedBookendIfAnyAsync(string worktreePath, int githubNumber)
+        {
+            string? repoRoot = BuildTrackerConfig.FindRepoRoot();
+            if (repoRoot == null)
+            {
+                ActivityLog.Log(LogChannel, $"Git #3628 self-block check for #{githubNumber}: repo root not found.");
+                return (false, false, "repo root not found");
+            }
+            string scriptPath = Path.Combine(repoRoot, "scripts", "dev-server", "push-blocked-bookend.mjs");
+            if (!File.Exists(scriptPath))
+            {
+                ActivityLog.Log(LogChannel, $"Git #3628 self-block check for #{githubNumber}: push-blocked-bookend.mjs not found.");
+                return (false, false, "push-blocked-bookend.mjs not found");
+            }
+            if (string.IsNullOrWhiteSpace(worktreePath) || !Directory.Exists(worktreePath))
+                return (false, false, "worktree path gone — nothing to check");
+
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "node",
+                    Arguments = $"\"{scriptPath}\" --worktree \"{worktreePath}\" --issue {githubNumber} --json",
+                    WorkingDirectory = worktreePath,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+
+                using var process = Process.Start(psi);
+                if (process == null) return (false, false, "process failed to start");
+                string stdout = await process.StandardOutput.ReadToEndAsync();
+                string stderr = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                if (string.IsNullOrWhiteSpace(stdout))
+                {
+                    ActivityLog.Log(LogChannel, $"Git #3628 self-block check for #{githubNumber}: no JSON output (exit {process.ExitCode}) — {stderr.Trim()}");
+                    return (false, false, $"no output (exit {process.ExitCode}): {stderr.Trim()}");
+                }
+
+                using var doc = JsonDocument.Parse(stdout);
+                var root = doc.RootElement;
+                bool blocked = root.TryGetProperty("blocked", out var b) && b.GetBoolean();
+                bool pushed = root.TryGetProperty("pushed", out var p) && p.GetBoolean();
+                string detail = root.TryGetProperty("detail", out var d) ? (d.GetString() ?? "") : "";
+                if (blocked)
+                {
+                    ActivityLog.Log(LogChannel, pushed
+                        ? $"Git #3628: #{githubNumber}'s worktree bookend reads BLOCKED — {detail}"
+                        : $"Git #3628: #{githubNumber}'s worktree bookend reads BLOCKED but the push FAILED — {detail} (bookend still stranded off origin/main, needs a manual push).");
+                }
+                return (blocked, pushed, detail);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(LogChannel, $"Git #3628 self-block check for #{githubNumber}: exception {ex.Message}");
+                return (false, false, ex.Message);
+            }
+        }
     }
 }

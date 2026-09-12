@@ -396,7 +396,8 @@ gh api -X POST repos/shanemccaw/Shane-McCaw-MSP/issues/<this-number>/dependencie
 1. `gh issue edit <this-number> --add-label "blocked" --remove-label "in-flight"`
 2. Set the real blocked-by dependency via the two commands above, pointing at the issue you're actually waiting on.
 3. Leave a one-line comment on your own issue saying what you're waiting for and why, in plain language — the dependency link is structured data for tooling, the comment is for a human skimming later.
-4. Stop there. Don't spin, don't guess at the blocker's shape, don't start unrelated work under the same issue — end the session/turn cleanly so it's obvious nothing further happened here until unblocked.
+4. Write your `build-journal/<id>.md` bookend's `Status:` as `🛑 BLOCKED <timestamp>` with a real log line, **commit it, and push it to origin/main yourself** — the same discipline as a DONE bookend (§ Mandatory session bookends), rebasing onto the current `origin/main` and retrying if the push is rejected. Do not skip this because you're about to stop: a BLOCKED bookend that never reaches `origin/main` is invisible to the false-done reconciler, which reads it from exactly that ref (Git #3628 — confirmed live for #3584/#3585, where the bookend sat only on the agent's own branch and the queue row read Verifying as if the build had actually completed). BuildConsole's own watcher now also pushes this bookend and corrects the row as a backstop, but that backstop is not a reason to skip the push yourself.
+5. Stop there. Don't spin, don't guess at the blocker's shape, don't start unrelated work under the same issue — end the session/turn cleanly so it's obvious nothing further happened here until unblocked.
 
 **Picking this back up later** (a fresh session, or the same one resuming): before doing anything else, check whether you were left blocked —
 
