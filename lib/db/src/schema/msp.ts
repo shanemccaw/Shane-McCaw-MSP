@@ -9572,3 +9572,71 @@ export type KanbanBucket = typeof kanbanBucketsTable.$inferSelect;
 export type InsertKanbanBucket = typeof kanbanBucketsTable.$inferInsert;
 export type KanbanCard = typeof kanbanCardsTable.$inferSelect;
 export type InsertKanbanCard = typeof kanbanCardsTable.$inferInsert;
+
+// ── Communications Push tracker — backend/data-model only (Git #3769, Feature
+// roadmap #3768) ────────────────────────────────────────────────────────────
+/**
+ * A real project-management tracking tool, not a delivery/send system — per
+ * #3769's own body: Shane initiates a "communications push" (e.g. an upcoming
+ * change/release), assigns it to a customer, and this tracks a cascade of
+ * checkpoint reminders (e.g. 60/45/30 days before the effective date) so he
+ * doesn't forget to send each one. Who it goes out to and how is entirely on
+ * him — no recipient list, no email/Teams integration, no send mechanism of
+ * any kind, and deliberately no FK to #3433/#3770/#3771/kanban yet (same
+ * "independent standalone entity until Phase 2" convention as kanban_cards'
+ * own comment above).
+ *
+ * customerId is tenants.id with no FK, matching the existing "successor
+ * id-space, no FK by design" convention already used by msp_status_reports,
+ * kanban_buckets/kanban_cards and break_glass_pending_secrets above.
+ *
+ * Reminder offsets are NOT hardcoded to exactly 3 — #3769 explicitly calls
+ * out 60/45/30 as a "default suggestion", editable per push. Each offset
+ * becomes its own row in communications_push_checkpoints (child table),
+ * carrying its own real resolved checkpoint date and pending/done state —
+ * same parent/child shape as kanban_buckets -> kanban_cards above.
+ */
+export const COMMUNICATIONS_PUSH_CHECKPOINT_STATES = ["pending", "done"] as const;
+export type CommunicationsPushCheckpointState = (typeof COMMUNICATIONS_PUSH_CHECKPOINT_STATES)[number];
+
+export const communicationsPushesTable = pgTable("communications_pushes", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  effectiveDate: timestamp("effective_date", { withTimezone: true }).notNull(),
+  // The operator who created this push — a real users.id, never a free-text
+  // name, same discipline as msp_status_reports.authoredByUserId.
+  createdByUserId: integer("created_by_user_id").notNull().references(() => usersTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("communications_pushes_msp_id_idx").on(t.mspId),
+  index("communications_pushes_customer_id_idx").on(t.customerId),
+]);
+
+export const communicationsPushCheckpointsTable = pgTable("communications_push_checkpoints", {
+  id: serial("id").primaryKey(),
+  pushId: integer("push_id").notNull().references(() => communicationsPushesTable.id, { onDelete: "cascade" }),
+  // Days before effectiveDate this checkpoint fires — e.g. 60, 45, 30.
+  offsetDays: integer("offset_days").notNull(),
+  // The real resolved calendar date (effectiveDate - offsetDays), stored so
+  // it survives an edit to effectiveDate without silent drift — recomputed
+  // by the route whenever effectiveDate or offsetDays changes.
+  checkpointDate: timestamp("checkpoint_date", { withTimezone: true }).notNull(),
+  state: text("state", { enum: COMMUNICATIONS_PUSH_CHECKPOINT_STATES }).notNull().default("pending"),
+  doneAt: timestamp("done_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("communications_push_checkpoints_push_id_idx").on(t.pushId),
+  index("communications_push_checkpoints_checkpoint_date_idx").on(t.checkpointDate),
+]);
+
+export const insertCommunicationsPushSchema = createInsertSchema(communicationsPushesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCommunicationsPushCheckpointSchema = createInsertSchema(communicationsPushCheckpointsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type CommunicationsPush = typeof communicationsPushesTable.$inferSelect;
+export type InsertCommunicationsPush = typeof communicationsPushesTable.$inferInsert;
+export type CommunicationsPushCheckpoint = typeof communicationsPushCheckpointsTable.$inferSelect;
+export type InsertCommunicationsPushCheckpoint = typeof communicationsPushCheckpointsTable.$inferInsert;
