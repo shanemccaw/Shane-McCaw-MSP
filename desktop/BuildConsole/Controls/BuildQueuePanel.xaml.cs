@@ -383,7 +383,14 @@ namespace BuildConsole.Controls
             if (e.WidthChanged) ApplyTitleMaxWidths(ActiveSessionsList, _sessionsTitleBlocks);
         }
 
-        public BuildQueuePanel() => InitializeComponent();
+        public BuildQueuePanel()
+        {
+            InitializeComponent();
+
+            // Git #3786 — apply the persisted CritterLoungeVisible choice at construction so the
+            // very first paint already reflects the last real toggle, not a flash of the default.
+            ApplyCritterLoungeVisibility(BuildConsoleSettings.Load().CritterLoungeVisible);
+        }
 
         /// <summary>Called once from MainWindow with the shared API client and optional direct-DB client.</summary>
         public void Initialize(BuildTrackerApiClient api, Services.QueueWatcherService? watcher = null, Services.BuildQueuePostgresClient? db = null, Services.SessionLimitAutoRestartService? sessionLimitAutoRestart = null)
@@ -8082,6 +8089,25 @@ namespace BuildConsole.Controls
         // _isPinned/PinToggled toggle. Git #3702 removed the old overflow-menu Pin item this
         // used to stay in sync with — TogglePin() is now this button's only caller.
         private void BtnCollapseQueue_Click(object sender, RoutedEventArgs e) => TogglePin();
+
+        /// <summary>Git #3786 — real, quick show/hide toggle for CritterLoungeControl, persisted
+        /// to <c>BuildConsoleSettings.CritterLoungeVisible</c> and applied immediately (no restart
+        /// needed).</summary>
+        private void BtnToggleCritterLounge_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsoleSettings.Load();
+            var nowVisible = !settings.CritterLoungeVisible;
+            settings.CritterLoungeVisible = nowVisible;
+            settings.Save();
+            ApplyCritterLoungeVisibility(nowVisible);
+        }
+
+        private void ApplyCritterLoungeVisibility(bool visible)
+        {
+            CritterLounge.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            ToggleCritterLoungeIcon.Text = visible ? "" : "";
+            BtnToggleCritterLounge.ToolTip = visible ? "Hide critter scene" : "Show critter scene";
+        }
 
         private void TogglePin()
         {

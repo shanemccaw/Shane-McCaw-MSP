@@ -777,6 +777,14 @@ namespace BuildConsole.Services
         /// switched back on. A settings.json with no key present deserializes to false (hidden).</summary>
         public bool ShowUsageReadout { get; set; } = false;
 
+        /// <summary>Git #3786 — real, quick toggle for the animated <c>CritterLoungeControl</c>
+        /// docked bottom-right in <c>BuildQueuePanel</c>. Default <c>true</c> to match the
+        /// control's pre-existing always-on behavior (no prior setting existed for it), so an
+        /// existing settings.json with no "critterLoungeVisible" key deserializes as shown, not
+        /// silently hidden. A dedicated quick-access button flips this immediately (no restart),
+        /// and the choice persists across app restarts.</summary>
+        public bool CritterLoungeVisible { get; set; } = true;
+
         // ── Git #3069 — real GitHub repo identity, moved off hardcoded constants ─────
         // Shane wants a SECOND, separately-compiled BuildConsole instance pointed at a
         // genuinely different real GitHub repo (a personal/vanity app), running in real

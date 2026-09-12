@@ -648,7 +648,28 @@
             </Border>
 
             <!-- ── Critter Lounge & Picnic/Party Ground ── -->
-            <local:CritterLoungeControl DockPanel.Dock="Bottom" x:Name="CritterLounge" Margin="0"/>
+            <!-- Git #3786 — real, quick, always-reachable show/hide toggle for CritterLounge
+                 right at its own position (not buried in the Settings tab, per Shane's ask).
+                 Docked Top of the same bottom-docked strip so it sits directly above the
+                 control it toggles; flips CritterLoungeVisible immediately (no restart) via
+                 BtnToggleCritterLounge_Click and persists across restarts. -->
+            <DockPanel DockPanel.Dock="Bottom" x:Name="CritterLoungeStrip">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,2,0">
+                    <Button x:Name="BtnToggleCritterLounge"
+                            Style="{StaticResource IconButton}"
+                            ToolTip="Hide critter scene"
+                            Padding="4"
+                            Margin="0,0,0,2"
+                            Click="BtnToggleCritterLounge_Click">
+                        <TextBlock x:Name="ToggleCritterLoungeIcon"
+                                   Text="&#xED1A;"
+                                   FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"/>
+                    </Button>
+                </StackPanel>
+                <local:CritterLoungeControl x:Name="CritterLounge" Margin="0"/>
+            </DockPanel>
 
             <!-- Git #874 - Shane: "the two things out of all of I actually care about:
                  Build Queue, Open issue current associated to this chat. In-Flight I
