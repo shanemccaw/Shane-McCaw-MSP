@@ -1620,6 +1620,49 @@ namespace BuildConsole.Services
             return await cmd.ExecuteNonQueryAsync();
         }
 
+        // ── MarkAdoptedSupersededByResumeAsync ─────────────────────────────────────
+        /// <summary>
+        /// Git #3008 — the ADOPTED-resume counterpart to <see cref="MarkSupersededByReplyAsync"/> and
+        /// <see cref="MarkOrphanSupersededByResumeAsync"/>. Fired by "▶ Resume Session" on an
+        /// AdoptedReadOnly slot (Git #1878): BuildConsole re-attached the build by pid after a console
+        /// restart, so it's renderable, but the interactive stdin pipe died with the old process and can
+        /// never be re-attached — the underlying OS process is often still genuinely alive and finishing
+        /// on its own, so the DB row is typically still <c>running</c>, never <c>failed</c> (unlike the
+        /// crash-recovery orphan case, which writes the <c>exit_code = -2</c> sentinel).
+        ///
+        /// Neither existing guard fires for this shape: <see cref="MarkSupersededByReplyAsync"/> excludes
+        /// <c>running</c> outright (correct in general — a row genuinely still running must be left for the
+        /// watcher to reap, never silently relabeled), and <see cref="MarkOrphanSupersededByResumeAsync"/>
+        /// requires the crash sentinel this row was never given. Left unresolved, the original row sits
+        /// showing stale "running" forever while the real resumed work continues under a brand-new,
+        /// disconnected row — the same original-row-disconnected shape #2119/#2120 already fixed for the
+        /// Reply and crash-recovery flows.
+        ///
+        /// Safe to accept a <c>running</c> row here specifically because the caller only reaches this
+        /// method for a slot BuildConsole itself has already confirmed is adopted (stdin provably gone,
+        /// not a live-owned interactive build) — an ordinary still-running build never calls this. Scoped
+        /// to <c>status = 'running'</c> only (not the terminal states) so a row that already resolved to a
+        /// real outcome (done/failed/canceled) concurrently is left alone, matching the same "never
+        /// overwrite a genuine final result" discipline the sibling methods use.
+        /// </summary>
+        public async Task<int> MarkAdoptedSupersededByResumeAsync(int originalId, int replacementId)
+        {
+            if (originalId == replacementId) return 0;
+
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status           = @superseded,
+                       superseded_by_id = @replacementId,
+                       updated_at       = NOW()
+                 WHERE id = @originalId
+                   AND status = 'running'", conn);
+            cmd.Parameters.AddWithValue("@superseded", SupersededStatus);
+            cmd.Parameters.AddWithValue("@replacementId", replacementId);
+            cmd.Parameters.AddWithValue("@originalId", originalId);
+            return await cmd.ExecuteNonQueryAsync();
+        }
+
         // ── False-done reconciliation (Git #2685 / #2775) ─────────────────────────
         /// <summary>
         /// Git #2685, widened by #2775 — every issue-linked queue row currently sitting in a

@@ -1889,14 +1889,33 @@ namespace BuildConsole
         /// resumeSessionId set, so --resume picks the conversation back up. Deliberately NOT the
         /// SendSlotInput continuation path (which replaces the prompt with typed text and prefixes
         /// "Continue: ") — this is a plain one-click resume, no typed guidance required.
+        ///
+        /// Git #3008 — same original-row-disconnected shape #2119/#2120 already fixed for the Reply
+        /// and crash-recovery flows: resolve the ORIGINAL row (<see cref="BuildWatchSlot.QueueItemId"/>)
+        /// so it doesn't sit stuck showing stale "running" forever while the real resumed work runs
+        /// under this brand-new row. This slot's original is typically still <c>running</c> (BuildConsole
+        /// lost the live process handle, but the row itself was never marked failed), which is exactly
+        /// the shape neither existing guard resolves — see <see cref="Services.BuildQueuePostgresClient.MarkAdoptedSupersededByResumeAsync"/>.
         /// </summary>
         private async void ResumeAdoptedSlot(BuildWatchSlot slot)
         {
             if (_db == null || string.IsNullOrEmpty(slot.SessionId)) return;
+            int originalQueueId = slot.QueueItemId;
             try
             {
-                await _db.QueueBuildAsync(slot.Title, slot.Prompt, slot.Model, slot.Effort, slot.Cwd, slot.GithubNumber,
+                var queued = await _db.QueueBuildAsync(slot.Title, slot.Prompt, slot.Model, slot.Effort, slot.Cwd, slot.GithubNumber,
                     slot.BlockedByNumbers, resumeSessionId: slot.SessionId, buildSet: slot.BuildSet, cli: slot.Cli, account: slot.Account);
+                int newQueueId = queued.Id;
+
+                try
+                {
+                    await _db.MarkAdoptedSupersededByResumeAsync(originalQueueId, newQueueId);
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("build-watch", $"Couldn't mark adopted original #{originalQueueId} superseded by resume #{newQueueId}: {ex.Message}");
+                }
+
                 ToastEngine.Success("Resuming", $"Resuming from where it left off: {slot.Title}");
             }
             catch (Exception ex)
