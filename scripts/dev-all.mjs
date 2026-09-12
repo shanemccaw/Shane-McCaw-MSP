@@ -147,7 +147,11 @@ let shuttingDown = false;
 
 function runStep(cmd, args, cwd, env, tag, svcName) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd, env, shell: false });
+    // windowsHide (Git #3846): dev-all.mjs itself is usually launched detached/
+    // consoleless (see scripts/dev-server/server-process.mjs and
+    // refresh-main-server.mjs), so a real console-subsystem child spawned here
+    // with no inherited console gets its OWN new visible window on Windows.
+    const child = spawn(cmd, args, { cwd, env, shell: false, windowsHide: true });
     child.stdout?.on("data", (d) => tee(process.stdout, `${tag} ${d}`, svcName));
     child.stderr?.on("data", (d) => tee(process.stderr, `${tag} ${d}`, svcName));
     child.on("exit", (code) => {
@@ -167,10 +171,13 @@ async function startApiServer(svc, env) {
     logInfo(`${tag} building...`, svc.name);
     await runStep("node", ["./build.mjs"], cwd, env, tag, svc.name);
     logInfo(`${tag} starting...`, svc.name);
+    // windowsHide (Git #3846): see runStep() above — same consoleless-parent
+    // hazard applies to the real, long-running api-server child.
     const child = spawn("node", ["--enable-source-maps", "./dist/index.mjs"], {
       cwd,
       env,
       shell: false,
+      windowsHide: true,
     });
     runningChildren.set(svc.name, child);
     recordServiceMeta(svc, child.pid, "running");
@@ -188,10 +195,14 @@ async function startApiServer(svc, env) {
 
 function startViteApp(svc, env) {
   const tag = `[${svc.name}:${svc.port}]`;
+  // windowsHide (Git #3846): same consoleless-parent hazard — `shell: true`
+  // here also spawns a real cmd.exe host, which would otherwise get its own
+  // visible console too.
   const child = spawn("pnpm", ["--filter", svc.pkg, "run", "dev"], {
     cwd: repoRoot,
     shell: true,
     env,
+    windowsHide: true,
   });
   runningChildren.set(svc.name, child);
   recordServiceMeta(svc, child.pid, "running");

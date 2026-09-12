@@ -142,6 +142,10 @@ export function startServer(config, { only } = {}) {
     cwd: config.serverWorktree,
     detached: true,
     stdio: "ignore",
+    // windowsHide (Git #3846): belt-and-suspenders alongside detached+ignore —
+    // without it a consoleless launch of this real node.exe process can still
+    // pop its own visible console window on Windows.
+    windowsHide: true,
     env,
   });
   child.unref();

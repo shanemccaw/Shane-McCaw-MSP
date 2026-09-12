@@ -90,9 +90,14 @@ if (pipeDelivered) {
   process.exit(0);
 }
 
-// Fallback: spawn OS protocol handler
+// Fallback: spawn OS protocol handler. windowsHide (Git #3846): this `start`
+// invocation runs through cmd.exe, and this script is routinely invoked with
+// no inherited console (a headless build agent) — without windowsHide that
+// cmd.exe host pops its own new, visible console window every single call,
+// which is exactly the "console windows spawning in rapid succession" symptom
+// across many concurrent builds each reporting progress repeatedly.
 if (process.platform === "win32") {
-  exec(`start "" "${uri}"`, (err) => {
+  exec(`start "" "${uri}"`, { windowsHide: true }, (err) => {
     if (err) {
       console.log(`[reportProgress] Recorded step ${step}/${total} locally (BuildConsole not listening on pipe).`);
     } else {

@@ -171,6 +171,8 @@ async function startFrontendIfDown(config, svc) {
     cwd: root,
     detached: true,
     stdio: "ignore",
+    // windowsHide (Git #3846): see server-process.mjs's startServer() for why.
+    windowsHide: true,
     env: { ...process.env, DEV_ALL_LOG_DIR: config.devAllLogDir, APP_ENV: "dev", NODE_ENV: "development" },
   });
   child.unref();
@@ -228,6 +230,8 @@ async function restartMainApiServer(config) {
     cwd: root,
     detached: true,
     stdio: "ignore",
+    // windowsHide (Git #3846): see server-process.mjs's startServer() for why.
+    windowsHide: true,
     env: { ...process.env, DEV_ALL_LOG_DIR: config.devAllLogDir, APP_ENV: "dev", NODE_ENV: "development" },
   });
   child.unref();
