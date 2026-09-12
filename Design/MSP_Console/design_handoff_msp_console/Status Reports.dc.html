@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>a{color:#60a5fa}a:hover{color:#93c5fd}input::placeholder,textarea::placeholder{color:#475569}</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">STATUS REPORTS</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">{{ customerName }}</span>
+    </div>
+    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPOperator or above</span>
+    <button onClick="{{ toggleEmpty }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ emptyBtnLabel }}</button>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start;min-width:0">
+
+    <!-- List — GET /msp/customers/:customerId/status-reports -->
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+        <span style="display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1">
+          <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Reports for this tenant</span>
+          <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ listCaption }}</span>
+        </span>
+        <button onClick="{{ newDraft }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">New draft</button>
+      </div>
+
+      <sc-if value="{{ hasReports }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <sc-for list="{{ reports }}" as="r" hint-placeholder-count="3">
+            <button onClick="{{ r.select }}" style="display:flex;flex-direction:column;gap:6px;text-align:left;border:1px solid {{ r.line }};border-radius:10px;background:{{ r.bg }};padding:12px;cursor:pointer;font-family:inherit;min-width:0">
+              <span style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;width:100%">
+                <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;flex:1;min-width:120px;text-wrap:pretty">{{ r.periodLabel }}</span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ r.tint }};border:1px solid {{ r.badgeLine }};font-size:10px;font-weight:600;color:{{ r.color }}">{{ r.state }}</span>
+              </span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ r.meta }}</span>
+              <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ r.preview }}</span>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ noReports }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:24px 18px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+          <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">No status reports yet</span>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;max-width:340px">This is the live state: the table holds zero rows for every tenant, because nothing has ever called these routes. The first report on this tenant will be one you write here.</span>
+          <button onClick="{{ newDraft }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 13px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:4px">Write the first one</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasReports }}" hint-placeholder-val="{{ false }}">
+        <div style="border-top:1px solid rgba(148,163,184,.12);padding-top:11px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:11px;color:#64748b;flex:1;min-width:140px;text-wrap:pretty">{{ pageCaption }}</span>
+          <span style="font-size:10.5px;font-family:Menlo,monospace;color:#475569">limit {{ limit }} · offset {{ offset }}</span>
+        </div>
+      </sc-if>
+    </div>
+
+    <!-- Detail / editor -->
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+
+      <sc-if value="{{ isEditing }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(96,165,250,.3);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:13px;min-width:0">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <span style="display:flex;flex-direction:column;gap:3px;min-width:160px;flex:1">
+              <span style="font-size:13.5px;font-weight:700;color:#f1f5f9">{{ editorTitle }}</span>
+              <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ editorSub }}</span>
+            </span>
+            <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:10.5px;font-weight:600;color:#94a3b8">Draft</span>
+          </div>
+
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Period this report covers</span>
+            <input value="{{ periodLabel }}" onChange="{{ setPeriod }}" placeholder="August 2026 · monthly service review" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
+            <span style="font-size:10.5px;color:#475569">Free text, 1 to 200 characters, trimmed. Nothing parses it, so it is the only thing a reader has to recognise the period by.</span>
+          </label>
+
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">As of</span>
+            <input value="{{ asOfDate }}" onChange="{{ setAsOf }}" placeholder="2026-08-31T23:59:00+01:00" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:Menlo,monospace;outline:none;min-width:0" />
+            <span style="font-size:10.5px;color:#475569">Must carry an offset — a bare local datetime is rejected. This is also the sort key for the list, so a late-entered report still files under the period it covers.</span>
+          </label>
+
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">The report</span>
+            <textarea value="{{ content }}" onChange="{{ setContent }}" rows="9" placeholder="What we did, what changed, what needs the customer's attention." style="padding:10px 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;line-height:1.6;font-family:inherit;outline:none;resize:vertical;min-width:0"></textarea>
+            <span style="font-size:10.5px;color:#475569">One text field, no length cap, no structure and no formatting on the wire. Whatever shape the report has, you are writing it in prose.</span>
+          </label>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onClick="{{ save }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:34px;padding:0 13px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">{{ saveLabel }}</button>
+            <button onClick="{{ saveEmpty }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:34px;padding:0 13px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">Save with nothing changed</button>
+            <button onClick="{{ cancel }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:34px;padding:0 13px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isViewing }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <span style="display:flex;flex-direction:column;gap:4px;min-width:170px;flex:1">
+              <span style="font-size:14.5px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9;text-wrap:pretty">{{ viewPeriod }}</span>
+              <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ viewMeta }}</span>
+            </span>
+            <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:{{ viewTint }};border:1px solid {{ viewBadgeLine }};font-size:10.5px;font-weight:600;color:{{ viewColor }}">{{ viewState }}</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+            <sc-for list="{{ viewFacts }}" as="f" hint-placeholder-count="4">
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">{{ f.label }}</span>
+                <span style="font-size:12px;font-weight:600;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+              </span>
+            </sc-for>
+          </div>
+
+          <div style="border-top:1px solid rgba(148,163,184,.12);padding-top:13px;font-size:13px;line-height:1.7;color:#cbd5e1;white-space:pre-wrap;text-wrap:pretty;min-width:0">{{ viewContent }}</div>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid rgba(148,163,184,.12);padding-top:13px">
+            <button onClick="{{ edit }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid {{ editLine }};background:{{ editBg }};color:{{ editFg }};font-size:12px;font-weight:600;cursor:{{ editCursor }};font-family:inherit">Edit</button>
+            <button onClick="{{ publish }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid {{ pubLine }};background:{{ pubBg }};color:{{ pubFg }};font-size:12px;font-weight:600;cursor:{{ pubCursor }};font-family:inherit">{{ pubLabel }}</button>
+          </div>
+
+          <sc-if value="{{ isPublished }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:11.5px;color:#fbbf24;text-wrap:pretty">Published, and that is final. Edits are refused before the request body is even read, and no route anywhere can move it back to draft or restamp it. A correction has to be a new report.</span>
+          </sc-if>
+
+          <sc-if value="{{ confirming }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(251,191,36,.3);border-radius:10px;background:rgba(251,191,36,.08);padding:13px;display:flex;flex-direction:column;gap:9px">
+              <span style="font-size:12px;font-weight:700;color:#fbbf24">Publish this report?</span>
+              <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">There is no unpublish and no edit after this. Read the period label and the as-of date once more — those are the two things a reader uses to place the report, and neither can be corrected afterwards.</span>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button onClick="{{ confirmPublish }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Publish</button>
+                <button onClick="{{ cancelPublish }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Keep it a draft</button>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ nothingOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+          <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">Nothing open</span>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;max-width:330px">Pick a report to read it, or start a draft. Drafts stay editable; published ones never change.</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
+          <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
+          <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+          <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these five routes do and don't give this screen</span>
+          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;customerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Traders&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
+const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
+const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
+const BLUE = ["rgba(96,165,250,.1)", "rgba(96,165,250,.24)", "#60a5fa"];
+const GREY = ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"];
+
+const SEED = [
+  { id: 41, periodLabel: "August 2026 · monthly service review", asOfDate: "2026-08-31T23:59:00+01:00",
+    state: "published", authoredByName: "Shane McCaw", authoredByUserId: 1,
+    createdAt: "2026-09-01T09:12:00Z", updatedAt: "2026-09-02T14:05:00Z", publishedAt: "2026-09-02T14:05:00Z",
+    content: "Monitoring ran without interruption across all 412 seats.\n\nTwo drift findings closed: the legacy mailbox-forwarding rule on the finance shared mailbox, and guest access on the Projects team, both remediated with your approval on 14 August.\n\nOne item needs a decision from you: conditional access still exempts four service accounts. We have held the exemption rather than break the nightly export, but it should not survive another quarter." },
+  { id: 44, periodLabel: "September 2026 · monthly service review", asOfDate: "2026-09-30T23:59:00+01:00",
+    state: "draft", authoredByName: null, authoredByUserId: 57,
+    createdAt: "2026-09-10T16:41:00Z", updatedAt: "2026-09-11T08:20:00Z", publishedAt: null,
+    content: "Draft. Security engine picked up the OAuth consent grant on 8 September; waiting on the tenant's answer before this goes out." }
+];
+
+class Component extends DCLogic {
+  state = {
+    empty: true,
+    reports: SEED,
+    openId: null,
+    editingId: null,
+    creating: false,
+    periodLabel: "",
+    asOfDate: "",
+    content: "",
+    confirming: false,
+    result: null
+  };
+
+  set = (k) => (e) => { const v = e.target.value; this.setState({ [k]: v }); };
+
+  newDraft = () => this.setState({
+    creating: true, editingId: null, openId: null, confirming: false,
+    periodLabel: "", asOfDate: "", content: "", result: null
+  });
+
+  open = (r) => () => this.setState({ openId: r.id, editingId: null, creating: false, confirming: false, result: null });
+
+  edit = () => {
+    const r = this.state.reports.find(x => x.id === this.state.openId);
+    if (!r) return;
+    if (r.state === "published") {
+      return this.setState({ result: ["409 · Published status reports cannot be edited", "The state is checked before the body is parsed, so there is nothing to send. A correction is a new report — this screen offers no other route out.", RED] });
+    }
+    this.setState({ editingId: r.id, creating: false, periodLabel: r.periodLabel, asOfDate: r.asOfDate, content: r.content, result: null });
+  };
+
+  cancel = () => this.setState({ editingId: null, creating: false, result: null });
+
+  save = () => {
+    const st = this.state;
+    const period = st.periodLabel.trim();
+    const content = st.content.trim();
+    if (st.creating) {
+      if (!period || !content || !st.asOfDate) {
+        return this.setState({ result: ["400 · Invalid request body", "All three fields are required on create, and the error comes back as a field-by-field breakdown rather than one message — the form has to place each one itself.", AMBER] });
+      }
+      if (!/[+-]\d{2}:\d{2}$|Z$/.test(st.asOfDate.trim())) {
+        return this.setState({ result: ["400 · Invalid request body", "asOfDate must be an ISO datetime carrying an offset. A bare \"2026-08-31T23:59\" is rejected, so this field can never be a plain date picker.", AMBER] });
+      }
+      const id = 60 + this.state.reports.length;
+      const now = new Date().toISOString().slice(0, 16) + ":00Z";
+      const row = { id, periodLabel: period, asOfDate: st.asOfDate.trim(), state: "draft",
+        authoredByName: "Shane McCaw", authoredByUserId: 1, createdAt: now, updatedAt: now, publishedAt: null, content };
+      return this.setState(s => ({ reports: [row].concat(s.reports), creating: false, empty: false, openId: id,
+        result: ["201 · report created", "Saved as a draft. The author is taken from your session — it is not a field, and it cannot be changed later.", GREEN] }));
+    }
+    const id = st.editingId;
+    if (!period || !content) {
+      return this.setState({ result: ["400 · Invalid request body", "A field that is present must be non-empty after trimming. Clearing the content is not a way to blank a draft.", AMBER] });
+    }
+    this.setState(s => ({
+      reports: s.reports.map(r => r.id === id ? Object.assign({}, r, { periodLabel: period, asOfDate: st.asOfDate.trim(), content, updatedAt: new Date().toISOString().slice(0, 16) + ":00Z" }) : r),
+      editingId: null, openId: id,
+      result: ["200 · report updated", "Only the fields you sent were written, and updatedAt was bumped. State and published-at are untouched — this route cannot publish.", GREEN]
+    }));
+  };
+
+  saveEmpty = () => this.setState({ result: ["400 · No fields to update", "An empty patch is rejected outright rather than returning a quiet 200, so a no-op save has to be caught here before it is sent.", AMBER] });
+
+  publish = () => {
+    const r = this.state.reports.find(x => x.id === this.state.openId);
+    if (!r) return;
+    if (r.state === "published") {
+      return this.setState({ result: ["409 · Status report is already published", "A second publish is refused rather than restamping. The original published-at stands.", RED] });
+    }
+    this.setState({ confirming: true, result: null });
+  };
+
+  confirmPublish = () => {
+    const id = this.state.openId;
+    const now = new Date().toISOString().slice(0, 16) + ":00Z";
+    this.setState(s => ({
+      reports: s.reports.map(r => r.id === id ? Object.assign({}, r, { state: "published", publishedAt: now, updatedAt: now }) : r),
+      confirming: false,
+      result: ["200 · report published", "State moved to published and published-at stamped once. There is no route back — the enum only runs one way.", GREEN]
+    }));
+  };
+
+  renderVals() {
+    const st = this.state;
+    const rows = st.empty ? [] : st.reports;
+    const open = rows.find(r => r.id === st.openId);
+    const editing = st.creating || !!st.editingId;
+
+    const reports = rows.map(r => {
+      const t = r.state === "published" ? GREEN : GREY;
+      const on = r.id === st.openId;
+      return {
+        periodLabel: r.periodLabel, state: r.state,
+        tint: t[0], badgeLine: t[1], color: t[2],
+        meta: "As of " + r.asOfDate.slice(0, 10) + " · " + (r.authoredByName || "Unknown operator") + (r.authoredByName ? "" : " (id " + r.authoredByUserId + ")"),
+        preview: r.content.split("\n")[0].slice(0, 88) + (r.content.length > 88 ? "…" : ""),
+        bg: on ? "rgba(96,165,250,.09)" : "rgba(2,6,23,.4)",
+        line: on ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)",
+        select: this.open(r)
+      };
+    });
+
+    const res = st.result;
+    const t = open ? (open.state === "published" ? GREEN : GREY) : GREY;
+    const canEdit = open && open.state === "draft";
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      rootBg: this.props.rootBg ?? "transparent",
+      showNotes: this.props.showNotes ?? true,
+      customerName: this.props.customerName ?? "Northwind Traders",
+
+      toggleEmpty: () => this.setState(s => ({ empty: !s.empty, openId: null, editingId: null, creating: false, result: null })),
+      emptyBtnLabel: st.empty ? "Show a populated tenant" : "Show the live empty state",
+
+      listCaption: st.empty
+        ? "Newest period first, by the period covered rather than the date written."
+        : rows.length + " report" + (rows.length === 1 ? "" : "s") + " · newest period first, by the period covered",
+      hasReports: reports.length > 0, noReports: reports.length === 0, reports,
+      pageCaption: "One page holds up to 200. A bad page value silently falls back to the default rather than erroring.",
+      limit: 50, offset: 0,
+      newDraft: this.newDraft,
+
+      isEditing: editing,
+      editorTitle: st.creating ? "New status report" : "Editing a draft",
+      editorSub: st.creating
+        ? "Saved straight to draft. Your session is recorded as the author."
+        : "Published reports cannot be edited, so this form only ever opens on a draft.",
+      periodLabel: st.periodLabel, asOfDate: st.asOfDate, content: st.content,
+      setPeriod: this.set("periodLabel"), setAsOf: this.set("asOfDate"), setContent: this.set("content"),
+      save: this.save, saveEmpty: this.saveEmpty, cancel: this.cancel,
+      saveLabel: st.creating ? "Save draft" : "Save changes",
+
+      isViewing: !!open && !editing,
+      nothingOpen: !open && !editing,
+      viewPeriod: open ? open.periodLabel : "",
+      viewMeta: open ? "Report " + open.id + " · " + (open.authoredByName || "Unknown operator — the author's name is unset and no fallback exists on the wire") : "",
+      viewState: open ? open.state : "",
+      viewTint: t[0], viewBadgeLine: t[1], viewColor: t[2],
+      viewContent: open ? open.content : "",
+      viewFacts: open ? [
+        { label: "AS OF", value: open.asOfDate, color: "#f1f5f9" },
+        { label: "CREATED", value: open.createdAt.slice(0, 10), color: "#f1f5f9" },
+        { label: "LAST EDIT", value: open.updatedAt.slice(0, 10), color: "#f1f5f9" },
+        { label: "PUBLISHED", value: open.publishedAt ? open.publishedAt.slice(0, 10) : "— still a draft", color: open.publishedAt ? "#34d399" : "#94a3b8" }
+      ] : [],
+      isPublished: !!open && open.state === "published",
+      edit: this.edit,
+      editBg: canEdit ? "rgba(148,163,184,.06)" : "rgba(148,163,184,.04)",
+      editLine: canEdit ? "rgba(148,163,184,.2)" : "rgba(148,163,184,.12)",
+      editFg: canEdit ? "#cbd5e1" : "#475569",
+      editCursor: canEdit ? "pointer" : "not-allowed",
+      publish: this.publish,
+      pubLabel: open && open.state === "published" ? "Published" : "Publish",
+      pubBg: canEdit ? "#2563eb" : "rgba(148,163,184,.04)",
+      pubLine: canEdit ? "#2563eb" : "rgba(148,163,184,.12)",
+      pubFg: canEdit ? "#fff" : "#475569",
+      pubCursor: canEdit ? "pointer" : "not-allowed",
+      confirming: st.confirming, confirmPublish: this.confirmPublish,
+      cancelPublish: () => this.setState({ confirming: false }),
+
+      hasResult: !!res, resCode: res ? res[0] : "", resText: res ? res[1] : "",
+      resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
+
+      notes: [
+        { dot: "#f87171", text: "Publishing is one-way and permanent. There is no unpublish, no archive, no superseded state, and a published report's period, date and content are all frozen — so the confirm step has to carry the weight that the data model does not." },
+        { dot: "#f87171", text: "The report is a single untyped text field with no length limit and no structure on the wire. Any sections, headings or metrics a reader expects are prose the operator types by hand; nothing validates or renders them." },
+        { dot: "#fbbf24", text: "The author's display name can legitimately be null, with no fallback to email or id on the wire, unlike other surfaces here. \"Unknown operator\" is a real state to render, not an edge case." },
+        { dot: "#fbbf24", text: "The as-of date must carry a UTC offset, and it is also the list's sort key. That makes it load-bearing twice over while being the field most likely to be typed wrong, and it cannot be corrected once published." },
+        { dot: "#60a5fa", text: "A report that belongs to another MSP's customer answers not-found rather than forbidden, and a malformed id answers not-found too. This screen can never tell a caller that a report exists but is not theirs." },
+        { dot: "#60a5fa", text: "An empty save is rejected rather than quietly succeeding, and only the fields actually sent are written, so a form that patches everything on every save would overwrite fields the operator never touched." },
+        { dot: "#94a3b8", text: "Zero rows exist in this table for every tenant today — the empty state is the true current state of the whole feature, not a fixture. Nothing outside this design has ever called these routes." },
+        { dot: "#94a3b8", text: "Nothing in the schema references a status report, and the routes join only the author's name. A report cannot cite a change request, a finding or a runbook, so any link to the work it describes is text." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

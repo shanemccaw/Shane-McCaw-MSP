@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>a{color:#60a5fa}a:hover{color:#93c5fd}textarea::placeholder{color:#64748b}</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">DEAD LETTER QUEUE</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Work that gave up</span>
+    </div>
+    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPOperator or above</span>
+    <button onClick="{{ toggleEmpty }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ emptyBtnLabel }}</button>
+  </div>
+
+  <div style="border:1px solid {{ bannerLine }};border-radius:12px;background:{{ bannerTint }};padding:14px;display:flex;flex-direction:column;gap:7px;min-width:0">
+    <span style="font-size:12px;font-weight:700;color:{{ bannerColor }}">{{ bannerTitle }}</span>
+    <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">{{ bannerText }}</span>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ filters }}" as="f" hint-placeholder-count="4">
+      <button onClick="{{ f.select }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;gap:7px;height:30px;padding:0 12px;border-radius:7px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">{{ f.label }}<span style="font-size:10.5px;color:{{ f.countColor }}">{{ f.count }}</span></button>
+    </sc-for>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:14px;align-items:start;min-width:0">
+
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+        <span style="display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1">
+          <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Parked items</span>
+          <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ listCaption }}</span>
+        </span>
+        <button onClick="{{ bulkReplay }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.16);background:rgba(148,163,184,.04);color:#94a3b8;font-size:12px;font-weight:600;cursor:not-allowed;font-family:inherit">Bulk replay</button>
+      </div>
+
+      <sc-if value="{{ hasItems }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <sc-for list="{{ items }}" as="i" hint-placeholder-count="4">
+            <button onClick="{{ i.select }}" style="display:flex;flex-direction:column;gap:6px;text-align:left;border:1px solid {{ i.line }};border-radius:10px;background:{{ i.bg }};padding:12px;cursor:pointer;font-family:inherit;min-width:0">
+              <span style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;width:100%">
+                <span style="font-size:11.5px;font-family:Menlo,monospace;color:#f1f5f9;flex:1;min-width:130px;word-break:break-all">{{ i.eventType }}</span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ i.tint }};border:1px solid {{ i.badgeLine }};font-size:10px;font-weight:600;color:{{ i.color }}">{{ i.tag }}</span>
+              </span>
+              <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ i.error }}</span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ i.meta }}</span>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noItems }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:24px 18px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+          <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">{{ emptyTitle }}</span>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:340px">{{ emptyBody }}</span>
+        </div>
+      </sc-if>
+
+      <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">The route takes no parameters at all — no filter, no page, no resolved flag. Everything above is this screen narrowing a list it already holds in full, which is fine at thirty-two rows and will not be at three thousand.</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <sc-if value="{{ hasOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <span style="display:flex;flex-direction:column;gap:4px;min-width:170px;flex:1">
+              <span style="font-size:13.5px;font-family:Menlo,monospace;font-weight:700;color:#f1f5f9;word-break:break-all">{{ openType }}</span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ openMeta }}</span>
+            </span>
+            <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:{{ openTint }};border:1px solid {{ openBadgeLine }};font-size:10.5px;font-weight:600;color:{{ openColor }}">{{ openTag }}</span>
+          </div>
+
+          <div style="border:1px solid rgba(248,113,113,.22);border-radius:10px;background:rgba(248,113,113,.07);padding:12px;display:flex;flex-direction:column;gap:5px;min-width:0">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#f87171">WHY IT STOPPED</span>
+            <span style="font-size:12.5px;color:#f1f5f9;text-wrap:pretty">{{ openError }}</span>
+            <sc-if value="{{ hasStack }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:10.5px;font-family:Menlo,monospace;color:#94a3b8;white-space:pre-wrap;word-break:break-all;border-top:1px solid rgba(248,113,113,.18);padding-top:8px;margin-top:3px">{{ openStack }}</span>
+            </sc-if>
+            <sc-if value="{{ noStack }}" hint-placeholder-val="{{ true }}">
+              <span style="font-size:10.5px;color:#94a3b8;border-top:1px solid rgba(248,113,113,.18);padding-top:8px;margin-top:3px">No stack was captured on this row, so the message above is the whole diagnosis.</span>
+            </sc-if>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+            <sc-for list="{{ openFacts }}" as="f" hint-placeholder-count="4">
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">{{ f.label }}</span>
+                <span style="font-size:12px;font-weight:600;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+              </span>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+            <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8;flex:1;min-width:100px">THE PAYLOAD</span>
+              <button onClick="{{ toggleEdit }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">{{ editLabel }}</button>
+            </div>
+            <sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+                <textarea value="{{ draftPayload }}" onChange="{{ setPayload }}" rows="8" style="padding:10px 11px;border-radius:8px;border:1px solid rgba(96,165,250,.35);background:rgba(2,6,23,.7);color:#f1f5f9;font-size:11.5px;line-height:1.6;font-family:Menlo,monospace;outline:none;resize:vertical;min-width:0"></textarea>
+                <span style="font-size:11px;color:#fbbf24;text-wrap:pretty">Saving replaces the stored payload outright — it is not merged, so anything you drop here is gone. There is also no fix-and-replay in one step: the save and the replay are two separate calls, and nothing holds the row still between them.</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button onClick="{{ savePayload }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Save payload</button>
+                  <button onClick="{{ cancelEdit }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ notEditing }}" hint-placeholder-val="{{ true }}">
+              <span style="font-size:11.5px;font-family:Menlo,monospace;color:#cbd5e1;white-space:pre-wrap;word-break:break-all;background:rgba(2,6,23,.5);border:1px solid rgba(148,163,184,.14);border-radius:8px;padding:11px;min-width:0">{{ openPayload }}</span>
+            </sc-if>
+          </div>
+
+          <div style="border:1px solid {{ replayLine }};border-radius:10px;background:{{ replayTint }};padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0">
+            <span style="font-size:11.5px;font-weight:700;color:{{ replayColor }}">{{ replayTitle }}</span>
+            <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ replayText }}</span>
+            <button onClick="{{ replay }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;align-self:flex-start;height:32px;padding:0 13px;border-radius:6px;border:1px solid {{ replayBtnLine }};background:{{ replayBtnBg }};color:{{ replayBtnFg }};font-size:12px;font-weight:600;cursor:{{ replayCursor }};font-family:inherit">{{ replayBtnLabel }}</button>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid rgba(148,163,184,.12);padding-top:13px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">CLOSE IT OUT INSTEAD</span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button onClick="{{ discard }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid {{ resolveLine }};background:{{ resolveBg }};color:{{ resolveFg }};font-size:12px;font-weight:600;cursor:{{ resolveCursor }};font-family:inherit">Discard</button>
+              <button onClick="{{ manual }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid {{ resolveLine }};background:{{ resolveBg }};color:{{ resolveFg }};font-size:12px;font-weight:600;cursor:{{ resolveCursor }};font-family:inherit">Handled by hand</button>
+            </div>
+            <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">These two are the only resolutions a person can write. Replayed is reserved for the replay route itself, so nobody can claim a job was re-run when it wasn't.</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ noOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+          <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">Pick an item</span>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:330px">Each row carries its own error, payload and attempt count. Whether it can be replayed at all depends on what wrote it.</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
+          <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
+          <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+          <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these four routes do and don't give this screen</span>
+          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
+const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
+const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
+const BLUE = ["rgba(96,165,250,.1)", "rgba(96,165,250,.24)", "#60a5fa"];
+const GREY = ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"];
+
+const SEED = [
+  { id: "d-8f21", eventType: "zoho_upsert_lead", error: "Zoho CRM returned 429 after 3 attempts — rate limit not cleared within the retry window",
+    stack: null, attempts: 3, at: "2026-09-11 04:12", tenant: null, mspScoped: true,
+    payload: { leadId: "L-40912", email: "ops@fabrikam.example", source: "diagnostic_quiz", fields: { seats: 220 } } },
+  { id: "d-8f14", eventType: "zoho_upsert_lead", error: "Zoho CRM returned 429 after 3 attempts — rate limit not cleared within the retry window",
+    stack: null, attempts: 3, at: "2026-09-11 04:12", tenant: null, mspScoped: true,
+    payload: { leadId: "L-40908", email: "it@contoso.example", source: "monitoring_signup", fields: { seats: 95 } } },
+  { id: "d-8e77", eventType: "zoho_books_create_expense", error: "Zoho Books rejected the expense: account code 5100 is inactive",
+    stack: null, attempts: 3, at: "2026-09-09 22:40", tenant: null, mspScoped: true,
+    payload: { expenseId: "E-2291", amount: 480, currency: "USD", accountCode: "5100" } },
+  { id: "d-8e51", eventType: "zoho_desk_create_ticket", error: "Zoho Desk timed out after 3 attempts",
+    stack: null, attempts: 3, at: "2026-09-08 11:03", tenant: null, mspScoped: false,
+    payload: { subject: "Mailbox access request", requester: "dana@northwindtraders.com" } },
+  { id: "d-8d90", eventType: "portal_wf.run.failed:msp.report.generation", error: "Error: model returned no content after 3 attempts",
+    stack: "at generateReport (report-nodes.ts:272)\nat executeNode (portal-workflow-engine.ts:611)\nat executeRun (portal-workflow-engine.ts:498)",
+    attempts: 3, at: "2026-09-08 22:11", tenant: "Fabrikam", mspScoped: true,
+    payload: { runId: "wf-7741", workflowKey: "msp.report.generation", inputPayload: { reportRunId: "r-8830", definitionId: "b72f" } } }
+];
+
+class Component extends DCLogic {
+  state = {
+    empty: false,
+    filter: "all",
+    items: SEED,
+    openId: "d-8f21",
+    editing: false,
+    draftPayload: "",
+    resolved: {},
+    result: null
+  };
+
+  open = (i) => () => this.setState({ openId: i.id, editing: false, result: null });
+
+  replayable = (i) => Object.prototype.hasOwnProperty.call(i.payload, "workflowKey");
+
+  replay = () => {
+    const i = this.state.items.find(x => x.id === this.state.openId);
+    if (!i) return;
+    if (this.state.resolved[i.id]) {
+      return this.setState({ result: ["409 · already resolved", "A resolved row cannot be replayed. This one is closed.", RED] });
+    }
+    if (!this.replayable(i)) {
+      return this.setState({ result: ["500 · DLQ item has no workflowKey in payload", "This is what the route really answers for a row like this one — a bare server error with that sentence as its only explanation. The equivalent platform-admin route checks first and returns a clean refusal instead; this one does not, so the button is held closed here rather than sending a call that always fails.", RED] });
+    }
+    this.setState(s => ({ resolved: Object.assign({}, s.resolved, { [i.id]: "replayed" }),
+      result: ["200 · new run wf-7908", "A brand-new workflow run was created and started, and this row was marked replayed. The original run was not re-executed — nothing retried in place, and the only link between the two is the run id in that response. The attempt count on this row stays where it was.", GREEN] }));
+  };
+
+  resolveAs = (kind) => () => {
+    const i = this.state.items.find(x => x.id === this.state.openId);
+    if (!i) return;
+    if (this.state.resolved[i.id]) {
+      return this.setState({ result: ["409 · already resolved", "Resolution is write-once. Nothing reopens a row.", RED] });
+    }
+    this.setState(s => ({ resolved: Object.assign({}, s.resolved, { [i.id]: kind }),
+      result: ["200 · marked " + kind, kind === "discarded"
+        ? "Closed as discarded. The row stays in the table with its payload and error intact — this is a bookkeeping state, not a delete."
+        : "Closed as handled by hand. Use this when the work was completed outside the system, so the queue stops showing it as outstanding.", AMBER] }));
+  };
+
+  toggleEdit = () => {
+    const i = this.state.items.find(x => x.id === this.state.openId);
+    this.setState(s => ({ editing: !s.editing, draftPayload: JSON.stringify(i.payload, null, 2), result: null }));
+  };
+
+  savePayload = () => {
+    let parsed;
+    try { parsed = JSON.parse(this.state.draftPayload); }
+    catch (e) {
+      return this.setState({ result: ["400 · invalid body", "The route validates that the payload is an object, so malformed text is refused before anything is written.", AMBER] });
+    }
+    const id = this.state.openId;
+    this.setState(s => ({ items: s.items.map(x => x.id === id ? Object.assign({}, x, { payload: parsed }) : x), editing: false,
+      result: ["200 · DLQ item updated", "The stored payload was replaced whole. Replay re-reads whatever is stored at the moment it runs, so a save then a replay is two calls with a gap in between.", GREY] }));
+  };
+
+  bulkReplay = () => this.setState({ result: ["404 · route not found", "Bulk replay is registered one level too deep — its path carries an extra prefix, so the address every other route in this file implies does not exist. It answers only at the doubled path, which no client would guess. Filed upstream as #3445; until it is fixed, this control has nothing to call.", RED] });
+
+  renderVals() {
+    const st = this.state;
+    const all = st.empty ? [] : st.items;
+    const resolvedOf = (i) => st.resolved[i.id] || null;
+
+    const counts = {
+      all: all.length,
+      replayable: all.filter(i => this.replayable(i) && !resolvedOf(i)).length,
+      stuck: all.filter(i => !this.replayable(i) && !resolvedOf(i)).length,
+      resolved: all.filter(i => resolvedOf(i)).length
+    };
+
+    const match = (i) => {
+      if (st.filter === "replayable") return this.replayable(i) && !resolvedOf(i);
+      if (st.filter === "stuck") return !this.replayable(i) && !resolvedOf(i);
+      if (st.filter === "resolved") return !!resolvedOf(i);
+      return true;
+    };
+    const rows = all.filter(match);
+
+    const filters = [["all", "Everything", counts.all], ["stuck", "Cannot be replayed", counts.stuck],
+      ["replayable", "Replayable", counts.replayable], ["resolved", "Closed", counts.resolved]].map(([k, label, count]) => {
+      const on = st.filter === k;
+      return { label, count, select: () => this.setState({ filter: k }),
+        bg: on ? "rgba(37,99,235,.18)" : "transparent",
+        border: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+        fg: on ? "#f1f5f9" : "#94a3b8", countColor: on ? "#60a5fa" : "#94a3b8" };
+    });
+
+    const items = rows.map(i => {
+      const r = resolvedOf(i);
+      const ok = this.replayable(i);
+      const t = r ? GREY : ok ? BLUE : RED;
+      return { eventType: i.eventType, error: i.error,
+        meta: i.at + " · " + i.attempts + " attempts · " + (i.tenant ? i.tenant : "no customer attached") + (i.mspScoped ? "" : " · no MSP on the row"),
+        tag: r ? r : ok ? "replayable" : "no workflow key",
+        tint: t[0], badgeLine: t[1], color: t[2],
+        bg: i.id === st.openId ? "rgba(96,165,250,.09)" : "rgba(2,6,23,.4)",
+        line: i.id === st.openId ? "rgba(96,165,250,.4)" : r ? "rgba(148,163,184,.1)" : ok ? "rgba(148,163,184,.14)" : "rgba(248,113,113,.18)",
+        select: this.open(i) };
+    });
+
+    const i = all.find(x => x.id === st.openId);
+    const r = i ? resolvedOf(i) : null;
+    const ok = i ? this.replayable(i) : false;
+    const t = i ? (r ? GREY : ok ? BLUE : RED) : GREY;
+    const res = st.result;
+
+    const stuckCount = counts.stuck;
+    const allStuck = counts.all > 0 && counts.replayable === 0;
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      rootBg: this.props.rootBg ?? "transparent",
+      showNotes: this.props.showNotes ?? true,
+
+      toggleEmpty: () => this.setState(s => ({ empty: !s.empty, result: null })),
+      emptyBtnLabel: st.empty ? "Show the live queue" : "Show an empty queue",
+
+      bannerTitle: st.empty ? "Nothing parked" : allStuck ? "Every item here is unreplayable" : stuckCount > 0 ? stuckCount + " of these cannot be replayed" : "All items can be replayed",
+      bannerText: st.empty
+        ? "An empty queue means no job has exhausted its retries. It does not mean integrations are healthy — a job still retrying, or one whose producer never enqueued it, never appears here at all."
+        : "Replay only works for items written by the workflow engine, because it recreates a workflow run from the key in the payload. Items from the job drainers — every Zoho failure below — carry no such key, and the route offers no way to tell before you click. This screen works it out from the payload and holds the button closed, which is the one thing standing between a technician and a bare server error.",
+      bannerTint: st.empty ? GREY[0] : allStuck ? RED[0] : AMBER[0],
+      bannerLine: st.empty ? GREY[1] : allStuck ? RED[1] : AMBER[1],
+      bannerColor: st.empty ? "#94a3b8" : allStuck ? "#f87171" : "#fbbf24",
+
+      filters,
+      listCaption: st.empty ? "Newest first" : all.length + " items, newest first · " + counts.resolved + " closed",
+      hasItems: items.length > 0, noItems: items.length === 0,
+      items,
+      emptyTitle: st.empty ? "The queue is clear" : "Nothing matches that filter",
+      emptyBody: st.empty
+        ? "No job has run out of retries. Rows land here from four separate writers — the workflow engine, the generic job queue and two integration drainers — none of which knows about the others."
+        : "Try another filter. The route returns everything in one response, so this is only a view, not a fetch.",
+      bulkReplay: this.bulkReplay,
+
+      hasOpen: !!i, noOpen: !i,
+      openType: i ? i.eventType : "",
+      openMeta: i ? "id " + i.id + " · " + i.at + (i.tenant ? " · " + i.tenant : " · no customer on the row") : "",
+      openTag: i ? (r ? r : ok ? "replayable" : "no workflow key") : "",
+      openTint: t[0], openBadgeLine: t[1], openColor: t[2],
+      openError: i ? i.error : "",
+      hasStack: !!(i && i.stack), noStack: !!(i && !i.stack), openStack: i && i.stack ? i.stack : "",
+      openFacts: i ? [
+        { label: "ATTEMPTS", value: i.attempts + " · the ceiling", color: "#f1f5f9" },
+        { label: "LAST TRIED", value: i.at, color: "#f1f5f9" },
+        { label: "CUSTOMER", value: i.tenant || "none on the row", color: i.tenant ? "#f1f5f9" : "#94a3b8" },
+        { label: "STATE", value: r ? r : "open", color: r ? "#94a3b8" : "#fbbf24" }
+      ] : [],
+      openPayload: i ? JSON.stringify(i.payload, null, 2) : "",
+      editing: st.editing, notEditing: !st.editing,
+      editLabel: st.editing ? "Stop editing" : "Edit payload",
+      toggleEdit: this.toggleEdit, draftPayload: st.draftPayload, setPayload: (e) => this.setState({ draftPayload: e.target.value }),
+      savePayload: this.savePayload, cancelEdit: () => this.setState({ editing: false }),
+
+      replayTitle: r === "replayed" ? "Already replayed" : ok ? "This one can be replayed" : "Replay will not work on this item",
+      replayText: r === "replayed"
+        ? "A new run was created from this row and the row was closed. Replaying again is refused."
+        : r
+          ? "This row is closed, so replay is refused regardless of what it holds."
+          : ok
+            ? "The payload carries a workflow key, so the engine can build a fresh run from it. That is a new run, not a retry of the original — the failed run stays as it was."
+            : "The payload has no workflow key, because a job drainer wrote this row rather than the workflow engine. There is nothing for the engine to rebuild, and the route would answer with a bare server error rather than a useful refusal. Close it out below, or fix the underlying job at its source.",
+      replayTint: ok && !r ? BLUE[0] : r ? GREY[0] : RED[0],
+      replayLine: ok && !r ? BLUE[1] : r ? GREY[1] : RED[1],
+      replayColor: ok && !r ? "#60a5fa" : r ? "#94a3b8" : "#f87171",
+      replay: this.replay,
+      replayBtnLabel: r === "replayed" ? "Replayed" : "Replay",
+      replayBtnBg: ok && !r ? "#2563eb" : "rgba(148,163,184,.04)",
+      replayBtnLine: ok && !r ? "#2563eb" : "rgba(148,163,184,.14)",
+      replayBtnFg: ok && !r ? "#fff" : "#94a3b8",
+      replayCursor: ok && !r ? "pointer" : "not-allowed",
+
+      discard: this.resolveAs("discarded"), manual: this.resolveAs("manual"),
+      resolveBg: r ? "rgba(148,163,184,.04)" : "rgba(148,163,184,.06)",
+      resolveLine: r ? "rgba(148,163,184,.14)" : "rgba(148,163,184,.2)",
+      resolveFg: r ? "#94a3b8" : "#cbd5e1",
+      resolveCursor: r ? "not-allowed" : "pointer",
+
+      hasResult: !!res, resCode: res ? res[0] : "", resText: res ? res[1] : "",
+      resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
+
+      notes: [
+        { dot: "#f87171", text: "Replay fails for every row currently in the table. Only the workflow engine writes a payload it can rebuild from, and every live row came from an integration drainer instead — so the headline action on this surface is the one that does not work. The route also gives no signal about which rows those are; this screen derives it from the payload." },
+        { dot: "#f87171", text: "Bulk replay is unreachable. Its path is registered with an extra prefix, so it answers only at a doubled address and returns not-found at the one its own siblings imply. The control is drawn disabled rather than pretending otherwise." },
+        { dot: "#f87171", text: "When replay does fail, the route answers with a bare server error carrying only the raw message. The platform-admin version of the same action checks first and refuses cleanly, which is the behaviour this screen imitates client-side." },
+        { dot: "#fbbf24", text: "Replaying creates a new workflow run rather than retrying the original, and the attempt count on the row is never incremented by anything. A row reading three attempts after several replays is telling the truth about the job queue, not about this screen." },
+        { dot: "#fbbf24", text: "Editing a payload replaces it whole rather than merging, and there is no fix-and-replay in one step — the two calls are separate with no atomicity, so a row can be edited and left unreplayed, or replayed against a payload someone else just changed." },
+        { dot: "#fbbf24", text: "A patch with an empty body validates and returns success while changing nothing. Any save here has to be sure it is actually sending something." },
+        { dot: "#60a5fa", text: "Resolution is write-once and a person can only write discarded or handled-by-hand. Replayed is reserved for the replay route, so the record cannot claim a re-run that never happened." },
+        { dot: "#94a3b8", text: "The list route takes no parameters — no filter, no page, no cap — and returns a bare array rather than a counted envelope. Every filter above is this screen narrowing what it already holds, which does not survive real volume." },
+        { dot: "#94a3b8", text: "Customer is null on every live row and the MSP id can be null too, with no database constraint behind either. A row without an MSP is invisible to this surface entirely, because the scope filter is the only thing narrowing the query." },
+        { dot: "#94a3b8", text: "Three separate surfaces read this same table with three different ideas of what is safe: this one shows everything, the platform-admin one crosses MSPs, and a third sees only workflow rows. A row can look replayable in one and not exist in another." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

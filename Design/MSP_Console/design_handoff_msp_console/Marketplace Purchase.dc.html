@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>a{color:#60a5fa}a:hover{color:#93c5fd}</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">MARKETPLACE · BUY FOR A CUSTOMER</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">{{ customerName }}</span>
+    </div>
+    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:{{ cardTint }};border:1px solid {{ cardLine }};font-size:11px;font-weight:600;color:{{ cardColor }}">{{ cardLabel }}</span>
+    <button onClick="{{ toggleCard }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ cardBtnLabel }}</button>
+  </div>
+
+  <div style="border:1px solid rgba(248,113,113,.28);border-radius:12px;background:rgba(248,113,113,.07);padding:14px;display:flex;flex-direction:column;gap:6px;min-width:0">
+    <span style="font-size:12px;font-weight:700;color:#f87171">The offer is accepted before the card is charged</span>
+    <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">Checkout records an accepted offer and pushes it to the customer's own screens first, then attempts payment. If payment fails for any reason, nothing takes that back — the customer sees an accepted purchase, no money moved, and no audit entry exists. Accepted is a terminal state with no route out of it, so a correction means someone editing the database by hand. That is why this screen confirms before it sends, and says plainly what a failure would leave behind.</span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start;min-width:0">
+
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Catalog for this customer</span>
+        <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">The full customer-facing catalog, never narrowed by what their own plan tier would let them browse — you are acting on their behalf, not as them.</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
+        <sc-for list="{{ items }}" as="i" hint-placeholder-count="4">
+          <button onClick="{{ i.select }}" style="display:flex;flex-direction:column;gap:7px;text-align:left;border:1px solid {{ i.line }};border-radius:10px;background:{{ i.bg }};padding:12px;cursor:pointer;font-family:inherit;min-width:0">
+            <span style="display:flex;align-items:flex-start;gap:9px;flex-wrap:wrap;width:100%">
+              <span style="display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1">
+                <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;text-wrap:pretty">{{ i.name }}</span>
+                <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ i.meta }}</span>
+              </span>
+              <span style="display:flex;flex-direction:column;gap:2px;align-items:flex-end;flex:none">
+                <span style="font-size:13.5px;font-weight:800;letter-spacing:-.02em;color:#f1f5f9;white-space:nowrap">{{ i.price }}</span>
+                <span style="font-size:10px;color:#94a3b8;white-space:nowrap">{{ i.cadence }}</span>
+              </span>
+            </span>
+            <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;align-self:flex-start;height:20px;padding:0 8px;border-radius:999px;background:{{ i.tint }};border:1px solid {{ i.badgeLine }};font-size:10px;font-weight:600;color:{{ i.color }}">{{ i.tag }}</span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <sc-if value="{{ hasOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:13px;min-width:0">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <span style="display:flex;flex-direction:column;gap:3px;min-width:160px;flex:1">
+              <span style="font-size:14px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9;text-wrap:pretty">{{ openName }}</span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ openMeta }}</span>
+            </span>
+            <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:{{ openTint }};border:1px solid {{ openBadgeLine }};font-size:10.5px;font-weight:600;color:{{ openColor }}">{{ openTag }}</span>
+          </div>
+
+          <sc-if value="{{ blocked }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(251,191,36,.3);border-radius:10px;background:rgba(251,191,36,.08);padding:13px;display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:11.5px;font-weight:700;color:#fbbf24">{{ blockTitle }}</span>
+              <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ blockText }}</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ buyable }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+                <sc-for list="{{ money }}" as="m" hint-placeholder-count="3">
+                  <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;flex-direction:column;gap:3px;min-width:0">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">{{ m.label }}</span>
+                    <span style="font-size:17px;font-weight:800;letter-spacing:-.02em;color:{{ m.color }}">{{ m.value }}</span>
+                    <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty">{{ m.note }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <sc-if value="{{ hasBillingWarn }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid rgba(248,113,113,.3);border-radius:10px;background:rgba(248,113,113,.08);padding:13px;display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:11.5px;font-weight:700;color:#f87171">{{ billingWarnTitle }}</span>
+                  <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ billingWarnText }}</span>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ hasFulfilWarn }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid rgba(251,191,36,.3);border-radius:10px;background:rgba(251,191,36,.08);padding:13px;display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:11.5px;font-weight:700;color:#fbbf24">{{ fulfilWarnTitle }}</span>
+                  <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ fulfilWarnText }}</span>
+                </div>
+              </sc-if>
+
+              <div style="border:1px solid rgba(148,163,184,.16);border-radius:10px;background:rgba(2,6,23,.4);padding:13px;display:flex;flex-direction:column;gap:8px;min-width:0">
+                <span style="font-size:11.5px;font-weight:700;color:#f1f5f9">Before you send this</span>
+                <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ confirmText }}</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button onClick="{{ buy }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:34px;padding:0 14px;border-radius:6px;border:1px solid {{ buyLine }};background:{{ buyBg }};color:{{ buyFg }};font-size:12.5px;font-weight:600;cursor:{{ buyCursor }};font-family:inherit">{{ buyLabel }}</button>
+                  <sc-if value="{{ canSimulate }}" hint-placeholder-val="{{ true }}">
+                    <button onClick="{{ buyFail }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:34px;padding:0 14px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">Send with a card that will decline</button>
+                  </sc-if>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasOutcome }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid {{ outLine }};border-radius:14px;background:{{ outTint }};padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+          <span style="font-size:12.5px;font-weight:700;font-family:Menlo,monospace;color:{{ outColor }}">{{ outCode }}</span>
+          <span style="font-size:12px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">{{ outText }}</span>
+          <div style="display:flex;flex-direction:column;gap:7px;border-top:1px solid rgba(148,163,184,.14);padding-top:11px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">WHAT NOW EXISTS</span>
+            <sc-for list="{{ outFacts }}" as="f" hint-placeholder-count="4">
+              <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                <span style="font-size:11px;font-weight:700;color:{{ f.color }};min-width:74px">{{ f.state }}</span>
+                <span style="font-size:11.5px;color:#cbd5e1;flex:1;min-width:150px;text-wrap:pretty">{{ f.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+          <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these two routes do and don't give this screen</span>
+          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;customerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Traders&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
+const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
+const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
+const BLUE = ["rgba(96,165,250,.1)", "rgba(96,165,250,.24)", "#60a5fa"];
+const GREY = ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"];
+
+const CATALOG = [
+  { id: 41, name: "M365 Tenant Health Audit", type: "assessment", cls: "assessment", price: 350000,
+    cadence: "one-off", fulfilment: "assessment", perSeat: false },
+  { id: 118, name: "vCISO / Governance Retainer", type: "retainer", cls: "retainer", price: 450000,
+    cadence: "per month", fulfilment: "retainer", perSeat: false },
+  { id: 77, name: "Tenant Monitoring — Standard", type: "monitoring_tier", cls: "subscription", price: 89000,
+    cadence: "per month", fulfilment: "monitoring_subscription", perSeat: false },
+  { id: 78, name: "Tenant Monitoring — Per user", type: "monitoring_tier", cls: "subscription", price: 800,
+    cadence: "per user, per month", fulfilment: "monitoring_subscription", perSeat: true },
+  { id: 12, name: "Compliance Framework Mapping — ISO 27001", type: "assessment", cls: "project", price: 700000,
+    cadence: "one-off", fulfilment: "project_sow", perSeat: false },
+  { id: 9, name: "Architect Advisory — scoped engagement", type: "retainer", cls: "retainer", price: null,
+    cadence: "priced on consultation", fulfilment: "retainer", perSeat: false },
+  { id: 3, name: "Tenant Governance Snapshot", type: "assessment", cls: "assessment", price: 0,
+    cadence: "free", fulfilment: "assessment", perSeat: false }
+];
+
+const money = (c) => c === null ? "On request" : c === 0 ? "Free" : "$" + (c / 100).toLocaleString("en-US");
+
+class Component extends DCLogic {
+  state = { openId: 41, card: true, outcome: null };
+
+  reason = (i) => {
+    if (i.cls === "project") return ["project", "This one needs the customer's own signature", "A project-class item is only bought through the customer's own checkout, where they sign the statement of work. You cannot sign on their behalf, so this is refused outright rather than half-completed."];
+    if (i.price === null) return ["consult", "No fixed price to charge", "This is priced on consultation. There is nothing for checkout to bill, so it has to be quoted and sold another way."];
+    if (i.perSeat) return ["seat", "A per-seat rate, not a total", "The price on this row is per user per month. Charging it as a flat total would bill a few dollars for a whole tenant, so this route refuses it rather than guessing a seat count."];
+    return null;
+  };
+
+  buy = (fail) => () => {
+    const i = CATALOG.find(x => x.id === this.state.openId);
+    const free = i.price === 0;
+    const noCard = !this.state.card;
+    const recurringMisbilled = i.cls === "retainer";
+    const charged = money(Math.round(i.price * 0.7));
+    const fulfilmentDead = i.fulfilment === "assessment" || i.fulfilment === "retainer";
+
+    if (free) {
+      return this.setState({ outcome: {
+        code: "201 · free_activated",
+        text: "Activated with no charge. Worth knowing: the customer-facing checkout also checks a per-item flag that lets an administrator mark a free item as not freely activatable. This route never reads that flag, so if such an item ever exists, it can still be activated here.",
+        tone: GREEN,
+        facts: [
+          { state: "written", label: "An accepted offer on the customer's record", color: "#34d399" },
+          { state: "written", label: "An audit entry naming you as the staff member who did it", color: "#34d399" },
+          { state: "none", label: "No charge, as expected", color: "#94a3b8" },
+          { state: fulfilmentDead ? "nothing" : "fired", label: fulfilmentDead ? "Fulfilment matched no known type, so nothing was provisioned" : "Fulfilment fired for this item", color: fulfilmentDead ? "#f87171" : "#34d399" }
+        ] } });
+    }
+
+    if (fail || noCard) {
+      return this.setState({ outcome: {
+        code: noCard ? "400 · no payment method on file" : "402 · the card was declined",
+        text: "The payment never completed — but the offer was written and pushed to the customer before this point, and nothing rolls it back. Their own screens now show this purchase as accepted. Accepted is terminal: no route in the system moves an offer out of it, so this can only be corrected in the database by hand. Nothing was written to the audit trail either, so the only record is a line in the server log.",
+        tone: RED,
+        facts: [
+          { state: "written", label: "An accepted offer on the customer's record — wrong, and permanent", color: "#f87171" },
+          { state: "sent", label: "A live update pushed to the customer's own screens", color: "#f87171" },
+          { state: "none", label: "No money collected", color: "#fbbf24" },
+          { state: "none", label: "No audit entry — the failure exists only in the server log", color: "#fbbf24" }
+        ] } });
+    }
+
+    this.setState({ outcome: {
+      code: "201 · payment_processed",
+      text: recurringMisbilled
+        ? "The MSP's card was charged " + charged + " once, the wholesale figure. Despite being a monthly retainer, this item is not treated as a subscription by the billing branch — no recurring charge was set up and no subscription was recorded anywhere, so month two will not bill itself."
+        : "The MSP's card was charged and a real recurring subscription was created, recorded against this customer with the MSP as the billing party.",
+      tone: recurringMisbilled ? AMBER : GREEN,
+      facts: [
+        { state: "written", label: "An accepted offer on the customer's record", color: "#34d399" },
+        { state: "charged", label: charged + " to the MSP's saved card, against " + money(i.price) + " listed to the customer", color: "#34d399" },
+        { state: recurringMisbilled ? "none" : "written", label: recurringMisbilled ? "No recurring subscription — a monthly item billed once" : "A recurring subscription recorded for this customer", color: recurringMisbilled ? "#f87171" : "#34d399" },
+        { state: fulfilmentDead ? "nothing" : "fired", label: fulfilmentDead ? "Fulfilment matched no known type, so nothing was provisioned" : "Fulfilment fired for this item", color: fulfilmentDead ? "#f87171" : "#34d399" }
+      ] } });
+  };
+
+  renderVals() {
+    const st = this.state;
+    const i = CATALOG.find(x => x.id === st.openId);
+    const r = i ? this.reason(i) : null;
+    const buyable = !!i && !r;
+    const free = !!i && i.price === 0;
+    const wholesale = i && i.price ? Math.round(i.price * 0.7) : 0;
+    const out = st.outcome;
+
+    const items = CATALOG.map(x => {
+      const rr = this.reason(x);
+      const t = rr ? GREY : x.price === 0 ? BLUE : GREEN;
+      return { name: x.name,
+        meta: x.type.replace(/_/g, " ") + " · class " + x.cls,
+        price: money(x.price), cadence: x.cadence,
+        tag: rr ? (rr[0] === "project" ? "needs their signature" : rr[0] === "consult" ? "no fixed price" : "per seat — refused") : x.price === 0 ? "free activation" : "can be bought here",
+        tint: t[0], badgeLine: t[1], color: t[2],
+        bg: x.id === st.openId ? "rgba(96,165,250,.09)" : "rgba(2,6,23,.4)",
+        line: x.id === st.openId ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)",
+        select: () => this.setState({ openId: x.id, outcome: null }) };
+    });
+
+    const openTone = r ? GREY : free ? BLUE : GREEN;
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      rootBg: this.props.rootBg ?? "transparent",
+      showNotes: this.props.showNotes ?? true,
+      customerName: this.props.customerName ?? "Northwind Traders",
+
+      cardLabel: st.card ? "Card on file" : "No card on file",
+      cardTint: st.card ? GREEN[0] : RED[0], cardLine: st.card ? GREEN[1] : RED[1], cardColor: st.card ? "#34d399" : "#f87171",
+      toggleCard: () => this.setState(s => ({ card: !s.card, outcome: null })),
+      cardBtnLabel: st.card ? "Remove the saved card" : "Restore the saved card",
+
+      items,
+      hasOpen: !!i,
+      openName: i ? i.name : "",
+      openMeta: i ? "Item " + i.id + " · " + i.type.replace(/_/g, " ") + " · billed " + i.cadence : "",
+      openTag: r ? "cannot be bought here" : free ? "free" : "buyable",
+      openTint: openTone[0], openBadgeLine: openTone[1], openColor: openTone[2],
+
+      blocked: !!r, blockTitle: r ? r[1] : "", blockText: r ? r[2] : "",
+      buyable,
+
+      money: buyable ? [
+        { label: "CUSTOMER PRICE", value: money(i.price), color: "#f1f5f9", note: "What the catalog lists for them." },
+        { label: "YOUR COST", value: free ? "Free" : money(wholesale), color: "#34d399", note: free ? "Nothing is charged." : "Computed server-side from the item's own cost, falling back to seventy per cent of retail when none is recorded." },
+        { label: "CHARGED TO", value: st.card ? "MSP card" : "nothing on file", color: st.card ? "#f1f5f9" : "#f87171", note: "The MSP's own saved card, never the customer's." }
+      ] : [],
+
+      hasBillingWarn: buyable && i.cls === "retainer",
+      billingWarnTitle: "A monthly item that will only ever bill once",
+      billingWarnText: "This is a recurring retainer, but the billing branch only treats an item as a subscription when its class says so — and this one's does not. Buying it here charges the card a single time, sets up no recurring payment, and records no subscription at all. Month two never arrives by itself.",
+
+      hasFulfilWarn: buyable && (i.fulfilment === "assessment" || i.fulfilment === "retainer"),
+      fulfilWarnTitle: "Nothing will be provisioned",
+      fulfilWarnText: "This item's fulfilment type matches nothing the system knows how to act on, so the provisioning step quietly does nothing. The response still reports success, and the route discards the signal that would have said otherwise — so the work has to be started by hand.",
+
+      confirmText: free
+        ? "Activating writes an accepted offer and an audit entry. No payment is attempted, so the failure case above does not apply."
+        : st.card
+          ? "Sending records the accepted offer and notifies the customer first, then charges the card. If the charge fails, the accepted offer stays — check the card and the amount before you send."
+          : "There is no saved card, so this will fail at the payment step — after the accepted offer has already been written and sent to the customer.",
+      buy: this.buy(false), buyFail: this.buy(true),
+      buyLabel: free ? "Activate for this customer" : "Charge " + money(wholesale) + " and buy",
+      buyBg: st.card || free ? "#2563eb" : "rgba(248,113,113,.12)",
+      buyLine: st.card || free ? "#2563eb" : "rgba(248,113,113,.35)",
+      buyFg: st.card || free ? "#fff" : "#f87171",
+      buyCursor: "pointer",
+      canSimulate: buyable && !free && st.card,
+
+      hasOutcome: !!out,
+      outCode: out ? out.code : "", outText: out ? out.text : "",
+      outTint: out ? out.tone[0] : "", outLine: out ? out.tone[1] : "", outColor: out ? out.tone[2] : "",
+      outFacts: out ? out.facts : [],
+
+      notes: [
+        { dot: "#f87171", text: "The accepted offer is written and broadcast to the customer before payment is attempted, and no failure path ever undoes it. Accepted is terminal, so a failed checkout leaves a permanent, wrong record that only a hand-written database change can fix." },
+        { dot: "#f87171", text: "A failed checkout writes nothing to the audit trail — only the two success paths do. The only trace of a customer seeing a purchase they never paid for is a line in the server log." },
+        { dot: "#f87171", text: "Monthly retainers are charged once. The billing branch only creates a recurring subscription when the item's class says subscription, and every live retainer's class says retainer instead — so a four-thousand-a-month engagement bills a single time and records no subscription." },
+        { dot: "#f87171", text: "Most of the audit and assessment catalog has a fulfilment type that matches nothing real, so provisioning silently does nothing. The route discards the result that would have flagged it, and still reports success." },
+        { dot: "#fbbf24", text: "The free path skips the per-item flag that lets an administrator forbid free activation — the customer's own checkout honours it. No live item is affected yet, but the control is simply absent here." },
+        { dot: "#fbbf24", text: "Three refusals are real and airtight: a signature-gated project item, an item with no fixed price, and a per-seat rate. The per-seat one exists specifically so a per-user price is never charged as a whole-tenant total." },
+        { dot: "#60a5fa", text: "The catalog shown is deliberately the full customer-facing set rather than what the customer's own plan tier would let them browse, because staff act on their behalf." },
+        { dot: "#60a5fa", text: "Neither route accepts an MSP identifier from the caller — the owning MSP is always derived from the customer being purchased for, and per-staff customer scoping applies on every call." },
+        { dot: "#94a3b8", text: "Your cost is computed server-side from the item's own recorded cost, falling back to seventy per cent of retail when none is set. No price is ever taken from the caller." },
+        { dot: "#94a3b8", text: "This route has never been used against live data, and its one real consumer was deleted with an earlier version of the app. Exactly one MSP currently has a payment method capable of completing a paid purchase at all." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

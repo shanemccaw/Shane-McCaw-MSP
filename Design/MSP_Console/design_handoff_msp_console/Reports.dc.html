@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>a{color:#60a5fa}a:hover{color:#93c5fd}input::placeholder,textarea::placeholder{color:#64748b}</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">REPORTS</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Definitions, runs and canvases</span>
+    </div>
+    <button onClick="{{ toggleRole }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:{{ roleBg }};border:1px solid {{ roleLine }};font-size:11px;font-weight:600;color:{{ roleFg }};cursor:pointer;font-family:inherit">{{ role }}</button>
+    <button onClick="{{ toggleEmpty }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ emptyBtnLabel }}</button>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+      <button onClick="{{ t.select }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;gap:7px;height:30px;padding:0 12px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+  </div>
+
+  <!-- DEFINITIONS -->
+  <sc-if value="{{ isDefs }}" hint-placeholder-val="{{ true }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start;min-width:0">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+          <span style="display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1">
+            <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Report definitions</span>
+            <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Every row, newest first. No pagination on this route.</span>
+          </span>
+          <button onClick="{{ newDef }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">New definition</button>
+        </div>
+
+        <sc-if value="{{ hasDefs }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+            <sc-for list="{{ defs }}" as="d" hint-placeholder-count="3">
+              <div style="border:1px solid {{ d.line }};border-radius:10px;background:{{ d.bg }};padding:12px;display:flex;flex-direction:column;gap:9px;min-width:0">
+                <div style="display:flex;align-items:flex-start;gap:9px;flex-wrap:wrap">
+                  <span style="display:flex;flex-direction:column;gap:3px;min-width:160px;flex:1">
+                    <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;text-wrap:pretty">{{ d.name }}</span>
+                    <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ d.meta }}</span>
+                  </span>
+                  <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ d.tint }};border:1px solid {{ d.badgeLine }};font-size:10px;font-weight:600;color:{{ d.color }}">{{ d.state }}</span>
+                </div>
+                <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ d.scope }}</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button onClick="{{ d.trigger }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:6px;border:1px solid {{ d.trigLine }};background:{{ d.trigBg }};color:{{ d.trigFg }};font-size:11.5px;font-weight:600;cursor:{{ d.trigCursor }};font-family:inherit">Run now</button>
+                  <button onClick="{{ d.toggle }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">{{ d.toggleLabel }}</button>
+                  <button onClick="{{ d.remove }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:6px;border:1px solid {{ d.delLine }};background:{{ d.delBg }};color:{{ d.delFg }};font-size:11.5px;font-weight:600;cursor:{{ d.delCursor }};font-family:inherit">Delete</button>
+                </div>
+                <sc-if value="{{ d.hasNote }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:11px;color:#fbbf24;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:8px">{{ d.note }}</span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noDefs }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:24px 18px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+            <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">No report definitions</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:330px">This is the live state — nothing has ever been defined. A definition is the template; a run is one execution of it. Nothing generates without one.</span>
+            <button onClick="{{ newDef }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 13px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:4px">Define the first one</button>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+        <sc-if value="{{ isCreating }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(96,165,250,.3);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:13px;min-width:0">
+            <span style="font-size:13.5px;font-weight:700;color:#f1f5f9">New definition</span>
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:11px;font-weight:600;color:#94a3b8">Name</span>
+              <input value="{{ fName }}" onChange="{{ setName }}" placeholder="Monthly executive summary" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
+            </label>
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:11px;font-weight:600;color:#94a3b8">Prompt context</span>
+              <textarea value="{{ fDesc }}" onChange="{{ setDesc }}" rows="3" placeholder="What the generator should emphasise. Left empty, it falls back to general Microsoft 365 best practice." style="padding:10px 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;line-height:1.6;font-family:inherit;outline:none;resize:vertical;min-width:0"></textarea>
+              <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty">This field doubles as the prompt override — it is not just a description, and it reaches the model verbatim.</span>
+            </label>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <span style="font-size:11px;font-weight:600;color:#94a3b8">Document type</span>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <sc-for list="{{ docTypes }}" as="dt" hint-placeholder-count="8">
+                  <button onClick="{{ dt.select }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:27px;padding:0 10px;border-radius:999px;border:1px solid {{ dt.line }};background:{{ dt.bg }};color:{{ dt.fg }};font-size:11px;font-weight:600;cursor:{{ dt.cursor }};font-family:inherit">{{ dt.label }}</button>
+                </sc-for>
+              </div>
+              <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty">{{ docTypeNote }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <span style="font-size:11px;font-weight:600;color:#94a3b8">Delivery</span>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <sc-for list="{{ deliveries }}" as="dv" hint-placeholder-count="3">
+                  <button onClick="{{ dv.select }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:27px;padding:0 10px;border-radius:999px;border:1px solid {{ dv.line }};background:{{ dv.bg }};color:{{ dv.fg }};font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">{{ dv.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+            <sc-if value="{{ needsEmail }}" hint-placeholder-val="{{ false }}">
+              <label style="display:flex;flex-direction:column;gap:5px">
+                <span style="font-size:11px;font-weight:600;color:#94a3b8">Send to</span>
+                <input value="{{ fEmail }}" onChange="{{ setEmail }}" placeholder="reports@northwindtraders.com" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
+                <span style="font-size:10.5px;color:#fbbf24;text-wrap:pretty">Leave this blank and the run still succeeds — it simply never sends, and nothing marks it as undelivered.</span>
+              </label>
+            </sc-if>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button onClick="{{ createDef }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:34px;padding:0 13px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">Create</button>
+              <button onClick="{{ cancelForm }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:34px;padding:0 13px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+            </div>
+            <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty">Both lists are validated on create. On a later edit they are not — the update route accepts any string for either field, so this form has to keep enforcing them itself.</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
+            <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
+            <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+            <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these nineteen routes do and don't give this screen</span>
+            <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+              <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+                <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- RUNS -->
+  <sc-if value="{{ isRuns }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <sc-if value="{{ hasRuns }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+          <sc-for list="{{ runs }}" as="r" hint-placeholder-count="3">
+            <div style="border:1px solid {{ r.line }};border-radius:12px;background:rgba(15,23,42,.6);padding:14px;display:flex;flex-direction:column;gap:11px;min-width:0">
+              <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+                <span style="display:flex;flex-direction:column;gap:3px;min-width:190px;flex:1">
+                  <span style="font-size:13px;font-weight:700;color:#f1f5f9;text-wrap:pretty">{{ r.title }}</span>
+                  <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ r.meta }}</span>
+                </span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:{{ r.tint }};border:1px solid {{ r.badgeLine }};font-size:10.5px;font-weight:600;color:{{ r.color }}">{{ r.status }}</span>
+                <button onClick="{{ r.download }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid {{ r.dlLine }};background:{{ r.dlBg }};color:{{ r.dlFg }};font-size:12px;font-weight:600;cursor:{{ r.dlCursor }};font-family:inherit">Download PDF</button>
+              </div>
+              <sc-if value="{{ r.hasWarning }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid rgba(251,191,36,.3);border-radius:9px;background:rgba(251,191,36,.08);padding:11px;display:flex;flex-direction:column;gap:4px">
+                  <span style="font-size:11.5px;font-weight:700;color:#fbbf24">{{ r.warnTitle }}</span>
+                  <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ r.warnText }}</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{ r.hasError }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid rgba(248,113,113,.3);border-radius:9px;background:rgba(248,113,113,.08);padding:11px;display:flex;flex-direction:column;gap:6px">
+                  <span style="font-size:11.5px;font-weight:700;color:#f87171">Generation failed</span>
+                  <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ r.errorMessage }}</span>
+                  <button onClick="{{ r.retry }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;align-self:flex-start;height:28px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Run it again</button>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:13px">
+          <span style="font-size:11.5px;color:#cbd5e1;flex:1;min-width:180px;text-wrap:pretty">{{ runsPageNote }}</span>
+          <span style="font-size:10.5px;font-family:Menlo,monospace;color:#94a3b8">limit 50 · max 100 · no offset</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noRuns }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+          <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">No runs</span>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:350px">Nothing has been generated or rendered. Runs appear here from two sources: a definition triggered on this screen, and a risk decision document rendered elsewhere — the second kind arrives already generated, with no pending stage to watch.</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <!-- CANVASES + SCHEDULES -->
+  <sc-if value="{{ isCanvases }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start;min-width:0">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+        <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Custom canvases</span>
+        <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">A canvas is a layout of widgets, compiled to HTML for a test send. Four widget types exist and nothing renders a fifth.</span>
+        <sc-if value="{{ hasCanvases }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
+            <sc-for list="{{ canvases }}" as="c" hint-placeholder-count="2">
+              <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;flex-direction:column;gap:9px;min-width:0">
+                <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;text-wrap:pretty">{{ c.name }}</span>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <sc-for list="{{ c.widgets }}" as="w" hint-placeholder-count="3">
+                    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:6px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.24);font-size:10.5px;font-weight:600;color:#60a5fa">{{ w }}</span>
+                  </sc-for>
+                </div>
+                <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ c.delivery }}</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button onClick="{{ c.sendTest }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Send test to me</button>
+                  <button onClick="{{ c.remove }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:6px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.1);color:#f87171;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Delete</button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noCanvases }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
+            <span style="font-size:13px;font-weight:700;color:#cbd5e1">No canvases</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:320px">Editing a canvas overwrites it in place — there is no version history to fall back on, so the first save is the only record.</span>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+        <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Schedules</span>
+        <div style="border:1px solid rgba(251,191,36,.3);border-radius:10px;background:rgba(251,191,36,.07);padding:12px;display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:11.5px;font-weight:700;color:#fbbf24">Nothing runs these</span>
+          <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">A cadence, a recipient list and an enabled flag are all stored faithfully, but no scheduler exists to act on them and the last-run and next-run columns are never written. A schedule here is a stated intention, not a job — so this screen does not show a next send date, because there is no value to show.</span>
+        </div>
+        <sc-if value="{{ hasSchedules }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
+            <sc-for list="{{ schedules }}" as="s" hint-placeholder-count="2">
+              <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;min-width:0">
+                <span style="display:flex;flex-direction:column;gap:3px;min-width:160px;flex:1">
+                  <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;text-wrap:pretty">{{ s.canvas }}</span>
+                  <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ s.meta }}</span>
+                </span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:{{ s.tint }};border:1px solid {{ s.badgeLine }};font-size:10.5px;font-weight:600;color:{{ s.color }}">{{ s.state }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noSchedules }}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">No schedules. Given nothing executes them, a test send is the only way a canvas reaches anyone today.</span>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- LICENSE WASTE -->
+  <sc-if value="{{ isWaste }}" hint-placeholder-val="{{ false }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <span style="font-size:13.5px;font-weight:700;color:#f1f5f9">License waste across the book</span>
+        <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ wasteSub }}</span>
+      </div>
+      <sc-if value="{{ wasteHasData }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:13px">
+          <sc-for list="{{ wasteStats }}" as="w" hint-placeholder-count="3">
+            <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:13px;display:flex;flex-direction:column;gap:4px">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">{{ w.label }}</span>
+              <span style="font-size:21px;font-weight:800;letter-spacing:-.02em;color:{{ w.color }}">{{ w.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ wasteEmpty }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:24px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+          <span style="font-size:13px;font-weight:700;color:#cbd5e1">No licensing data to analyse</span>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:360px">The route returns no-data rather than a zero — a real distinction this screen keeps, because zero waste and no measurement are not the same claim to put in front of a customer.</span>
+        </div>
+      </sc-if>
+      <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:11px">This figure is also one of the eight document types, so the same numbers can be written into a generated report — but the report is produced by a model reading this context, not by this query, and the two can disagree.</span>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
+const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
+const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
+const BLUE = ["rgba(96,165,250,.1)", "rgba(96,165,250,.24)", "#60a5fa"];
+const GREY = ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"];
+
+const DOC_TYPES = [
+  ["executive_summary", "Executive Summary"],
+  ["full_readiness_report", "Full Readiness Report"],
+  ["security_posture_report", "Security Posture"],
+  ["governance_maturity_report", "Governance Maturity"],
+  ["data_exposure_risk_report", "Data Exposure Risk"],
+  ["license_optimization_report", "License Optimization"],
+  ["license_waste_report", "License Waste Analysis Report"],
+  ["risk_decision_document", "Risk Decision Document"]
+];
+const LABEL = {}; DOC_TYPES.forEach(([k, v]) => { LABEL[k] = v; });
+
+const RUN_TONE = { pending: GREY, generating: BLUE, generated: GREEN, delivering: BLUE, delivered: GREEN, failed: RED };
+
+const SEED_DEFS = [
+  { id: "a41c", name: "Monthly executive summary", docType: "executive_summary", delivery: "both", email: "reports@northwindtraders.com",
+    customer: "Northwind Traders", isActive: true, hasPrompt: true },
+  { id: "b72f", name: "Quarterly security posture", docType: "security_posture_report", delivery: "in_app", email: null,
+    customer: null, isActive: true, hasPrompt: false },
+  { id: "c19e", name: "Risk decision documents", docType: "risk_decision_document", delivery: "in_app", email: null,
+    customer: null, isActive: true, hasPrompt: false, machine: true }
+];
+
+const SEED_RUNS = [
+  { id: "r-8841", title: "Executive Summary — Northwind Traders", docType: "executive_summary", status: "generated",
+    at: "2026-09-11 08:14", size: "412 KB", errorMessage: "Email delivery failed: 550 recipient rejected", rbd: false },
+  { id: "r-8839", title: "Security Posture — Portfolio", docType: "security_posture_report", status: "generating",
+    at: "2026-09-12 09:02", size: null, errorMessage: null, rbd: false },
+  { id: "r-8836", title: "Risk Decision Document — Contoso Ltd", docType: "risk_decision_document", status: "generated",
+    at: "2026-09-09 15:40", size: "196 KB", errorMessage: null, rbd: true },
+  { id: "r-8830", title: "Full Readiness Report — Fabrikam", docType: "full_readiness_report", status: "failed",
+    at: "2026-09-08 22:11", size: null, errorMessage: "Error: model returned no content after 3 attempts — retries exhausted, a DLQ entry and an operator task were written", rbd: false }
+];
+
+const SEED_CANVASES = [
+  { id: "cv-1", name: "Monthly board pack", widgets: ["billing", "open_items", "telemetry", "rich_text"],
+    delivery: "HTML email off · PDF attached · recipient type msp_admin (stored, never read)" },
+  { id: "cv-2", name: "Telemetry one-pager", widgets: ["telemetry", "rich_text"],
+    delivery: "HTML email on · PDF attached · recipient type customer_contacts (stored, never read)" }
+];
+
+const SEED_SCHEDULES = [
+  { id: "s-1", canvas: "Monthly board pack", cadence: "monthly", recipients: 3, enabled: true },
+  { id: "s-2", canvas: "Telemetry one-pager", cadence: "weekly", recipients: 1, enabled: false }
+];
+
+class Component extends DCLogic {
+  state = {
+    tab: "defs",
+    role: "MSPOperator",
+    empty: false,
+    defs: SEED_DEFS,
+    runs: SEED_RUNS,
+    creating: false,
+    fName: "", fDesc: "", fEmail: "",
+    fDocType: "executive_summary", fDelivery: "in_app",
+    result: null
+  };
+
+  set = (k) => (e) => { const v = e.target.value; this.setState({ [k]: v }); };
+
+  newDef = () => this.setState({ creating: true, result: null, fName: "", fDesc: "", fEmail: "", fDocType: "executive_summary", fDelivery: "in_app" });
+
+  createDef = () => {
+    const st = this.state;
+    if (!st.fName.trim()) {
+      return this.setState({ result: ["400 · name is required", "The only required field. Everything else falls back to a default, including the document type and the delivery method.", AMBER] });
+    }
+    const row = { id: Math.random().toString(16).slice(2, 6), name: st.fName.trim(), docType: st.fDocType,
+      delivery: st.fDelivery, email: st.fEmail.trim() || null, customer: null, isActive: true, hasPrompt: !!st.fDesc.trim() };
+    this.setState(s => ({ defs: [row].concat(s.defs), creating: false, empty: false,
+      result: ["201 · definition created", "Saved. Your session is recorded as the author, though that field is not a real reference to a user — nothing enforces it.", GREEN] }));
+  };
+
+  trigger = (d) => () => {
+    if (!d.isActive) {
+      return this.setState({ result: ["400 · Report definition is inactive", "The only route that checks the active flag. Turning the definition back on and re-triggering is allowed, by design.", AMBER] });
+    }
+    const id = "r-" + (8850 + this.state.runs.length);
+    const title = LABEL[d.docType] + " — " + (d.customer || "Portfolio");
+    this.setState(s => ({ tab: "runs", runs: [{ id, title, docType: d.docType, status: "pending", at: "just now", size: null, errorMessage: null, rbd: false }].concat(s.runs), empty: false,
+      result: ["202 · accepted", "A run row was written as pending and the response returned before any work started. If generation fails after this point, nothing tells you — you find out by watching the run's status here.", BLUE] }));
+    setTimeout(() => this.setState(s => ({ runs: s.runs.map(r => r.id === id ? Object.assign({}, r, { status: "generating" }) : r) })), 900);
+    setTimeout(() => this.setState(s => ({ runs: s.runs.map(r => r.id === id ? Object.assign({}, r, { status: d.delivery === "in_app" ? "delivered" : "generated", size: "388 KB", at: "just now" }) : r) })), 2600);
+  };
+
+  toggleDef = (d) => () => this.setState(s => ({
+    defs: s.defs.map(x => x.id === d.id ? Object.assign({}, x, { isActive: !x.isActive }) : x),
+    result: ["200 · definition updated", d.isActive
+      ? "Set inactive through the generic edit route. Note the edit route does not re-validate the document type or delivery method the way create does — any string would be accepted there."
+      : "Set active again. Nothing prevents re-activating and re-running a definition that was deactivated.", GREY]
+  }));
+
+  removeDef = (d) => () => {
+    if (this.state.role !== "MSPAdmin") {
+      return this.setState({ result: ["403 · admin only", "Deleting a definition is the one action in this module gated above the operator floor. Creating and editing are not.", RED] });
+    }
+    this.setState(s => ({ defs: s.defs.map(x => x.id === d.id ? Object.assign({}, x, { isActive: false }) : x),
+      result: ["200 · { ok: true }", "This is a soft delete — the row stays and its active flag flips off. It will keep appearing in this list, so \u201cdeleted\u201d and \u201cpaused\u201d are the same state on the wire.", AMBER] }));
+  };
+
+  download = (r) => () => {
+    if (r.status === "pending" || r.status === "generating") {
+      return this.setState({ result: ["409 · not ready", "The document does not exist yet. This is why the button is held closed until a run leaves the generating stage.", AMBER] });
+    }
+    if (r.status === "failed") {
+      return this.setState({ result: ["422 · nothing to download", "The run failed, so there is no document. The error text is the only artefact.", RED] });
+    }
+    this.setState({ result: ["200 · PDF", "Served as a binary attachment. The HTML and the PDF are only ever returned by this route — neither appears on the list or detail responses.", GREEN] });
+  };
+
+  retry = (r) => () => this.setState(s => ({
+    runs: [{ id: "r-" + (8860 + s.runs.length), title: r.title, docType: r.docType, status: "pending", at: "just now", size: null, errorMessage: null, rbd: false }].concat(s.runs),
+    result: ["202 · accepted", "There is no retry route. This is a brand-new run of the same definition — the failed attempt stays as its own row, and nothing links the two.", BLUE]
+  }));
+
+  sendTest = (c) => () => this.setState({ result: ["200 · test sent", "Compiled to HTML and sent through Exchange Online to your own address. The recipient type stored on the canvas is never consulted — a test always goes to whoever asked for it.", GREEN] });
+
+  removeCanvas = (c) => () => this.setState({ result: ["200 · canvas deleted", "Gone outright. There is no version history and no restore.", AMBER] });
+
+  renderVals() {
+    const st = this.state;
+    const isAdmin = st.role === "MSPAdmin";
+    const defs = st.empty ? [] : st.defs;
+    const runs = st.empty ? [] : st.runs;
+    const canvases = st.empty ? [] : SEED_CANVASES;
+    const schedules = st.empty ? [] : SEED_SCHEDULES;
+
+    const tabs = [["defs", "Definitions", defs.length], ["runs", "Runs", runs.length],
+      ["canvases", "Canvases", canvases.length], ["waste", "License waste", ""]].map(([k, label, count]) => {
+      const on = st.tab === k;
+      return { label, count, select: () => this.setState({ tab: k, result: null }),
+        bg: on ? "rgba(37,99,235,.18)" : "transparent",
+        border: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+        fg: on ? "#f1f5f9" : "#94a3b8", countColor: on ? "#60a5fa" : "#94a3b8" };
+    });
+
+    const defRows = defs.map(d => {
+      const t = d.isActive ? GREEN : GREY;
+      return {
+        name: d.name,
+        meta: LABEL[d.docType] + " · " + (d.delivery === "in_app" ? "in-app only" : d.delivery === "email" ? "email to " + (d.email || "nobody configured") : "in-app and email") + (d.hasPrompt ? " · prompt override set" : ""),
+        scope: d.customer ? "Scoped to " + d.customer : "Across every customer in the book",
+        state: d.isActive ? "active" : "inactive",
+        tint: t[0], badgeLine: t[1], color: t[2],
+        bg: "rgba(2,6,23,.4)", line: d.isActive ? "rgba(148,163,184,.14)" : "rgba(148,163,184,.1)",
+        trigger: this.trigger(d), toggle: this.toggleDef(d), remove: this.removeDef(d),
+        toggleLabel: d.isActive ? "Pause" : "Resume",
+        trigBg: d.isActive ? "#2563eb" : "rgba(148,163,184,.04)",
+        trigLine: d.isActive ? "#2563eb" : "rgba(148,163,184,.12)",
+        trigFg: d.isActive ? "#fff" : "#94a3b8",
+        trigCursor: d.isActive ? "pointer" : "not-allowed",
+        delBg: isAdmin ? "rgba(248,113,113,.1)" : "rgba(148,163,184,.04)",
+        delLine: isAdmin ? "rgba(248,113,113,.3)" : "rgba(148,163,184,.12)",
+        delFg: isAdmin ? "#f87171" : "#94a3b8",
+        delCursor: isAdmin ? "pointer" : "not-allowed",
+        hasNote: !!d.machine,
+        note: "Created automatically the first time a risk decision document was rendered, and never meant to be seen here — but nothing marks it as machine-owned, so it lists like any other definition. Triggering it does nothing useful."
+      };
+    });
+
+    const runRows = runs.map(r => {
+      const t = RUN_TONE[r.status];
+      const ready = r.status === "generated" || r.status === "delivered" || r.status === "delivering";
+      const silentEmailFailure = r.status === "generated" && !!r.errorMessage;
+      return {
+        title: r.title,
+        meta: (r.rbd ? "Rendered directly, not generated · " : "") + LABEL[r.docType] + " · " + r.at + (r.size ? " · " + r.size : ""),
+        status: r.status, tint: t[0], badgeLine: t[1], color: t[2],
+        line: r.status === "failed" ? "rgba(248,113,113,.22)" : silentEmailFailure ? "rgba(251,191,36,.22)" : "rgba(148,163,184,.16)",
+        download: this.download(r),
+        dlBg: ready ? "rgba(148,163,184,.06)" : "rgba(148,163,184,.04)",
+        dlLine: ready ? "rgba(148,163,184,.2)" : "rgba(148,163,184,.12)",
+        dlFg: ready ? "#cbd5e1" : "#94a3b8",
+        dlCursor: ready ? "pointer" : "not-allowed",
+        hasWarning: silentEmailFailure,
+        warnTitle: "Generated, but the email never arrived",
+        warnText: r.errorMessage + ". The run is not marked failed — the document is here and downloadable, and the only sign the send failed is this message. A screen that showed the status alone would call this a success.",
+        hasError: r.status === "failed", errorMessage: r.errorMessage, retry: this.retry(r)
+      };
+    });
+
+    const docTypes = DOC_TYPES.map(([k, label]) => {
+      const on = st.fDocType === k;
+      const machine = k === "risk_decision_document";
+      return { label, select: machine ? () => this.setState({ result: ["Not selectable here", "This type is not an AI generation at all — it is a deterministic render of a signed risk decision, written by a different part of the system. Its definition is created automatically.", GREY] }) : () => this.setState({ fDocType: k }),
+        bg: on ? "rgba(37,99,235,.18)" : "rgba(148,163,184,.06)",
+        line: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+        fg: machine ? "#94a3b8" : on ? "#f1f5f9" : "#cbd5e1",
+        cursor: machine ? "not-allowed" : "pointer" };
+    });
+
+    const deliveries = [["in_app", "In-app only"], ["email", "Email"], ["both", "Both"]].map(([k, label]) => {
+      const on = st.fDelivery === k;
+      return { label, select: () => this.setState({ fDelivery: k }),
+        bg: on ? "rgba(37,99,235,.18)" : "rgba(148,163,184,.06)",
+        line: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+        fg: on ? "#f1f5f9" : "#cbd5e1" };
+    });
+
+    const res = st.result;
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      rootBg: this.props.rootBg ?? "transparent",
+      showNotes: this.props.showNotes ?? true,
+
+      role: "Signed in as " + st.role,
+      roleBg: isAdmin ? AMBER[0] : GREY[0], roleLine: isAdmin ? AMBER[1] : GREY[1], roleFg: isAdmin ? "#fbbf24" : "#94a3b8",
+      toggleRole: () => this.setState(s => ({ role: s.role === "MSPAdmin" ? "MSPOperator" : "MSPAdmin", result: null })),
+      toggleEmpty: () => this.setState(s => ({ empty: !s.empty, result: null, creating: false })),
+      emptyBtnLabel: st.empty ? "Show a populated MSP" : "Show the live empty state",
+
+      tabs,
+      isDefs: st.tab === "defs", isRuns: st.tab === "runs", isCanvases: st.tab === "canvases", isWaste: st.tab === "waste",
+
+      hasDefs: defRows.length > 0, noDefs: defRows.length === 0, defs: defRows,
+      newDef: this.newDef,
+      isCreating: st.creating,
+      fName: st.fName, fDesc: st.fDesc, fEmail: st.fEmail,
+      setName: this.set("fName"), setDesc: this.set("fDesc"), setEmail: this.set("fEmail"),
+      docTypes, deliveries,
+      docTypeNote: st.fDocType === "license_waste_report"
+        ? "This one overlaps the license waste figure on its own tab — the report is written by a model reading that data, not by the query itself."
+        : "Eight types exist and no more. Each is a different prompt against the same machinery, not a different renderer.",
+      needsEmail: st.fDelivery !== "in_app",
+      createDef: this.createDef, cancelForm: () => this.setState({ creating: false }),
+
+      hasRuns: runRows.length > 0, noRuns: runRows.length === 0, runs: runRows,
+      runsPageNote: "The count returned alongside this list is the size of this page, not the number of runs that exist. There is no offset parameter, so older runs beyond the cap cannot be reached from here at all.",
+
+      hasCanvases: canvases.length > 0, noCanvases: canvases.length === 0,
+      canvases: canvases.map(c => ({ name: c.name, widgets: c.widgets, delivery: c.delivery, sendTest: this.sendTest(c), remove: this.removeCanvas(c) })),
+      hasSchedules: schedules.length > 0, noSchedules: schedules.length === 0,
+      schedules: schedules.map(s => {
+        const t = s.enabled ? GREEN : GREY;
+        return { canvas: s.canvas, state: s.enabled ? "enabled" : "off",
+          meta: s.cadence + " · " + s.recipients + " recipient" + (s.recipients === 1 ? "" : "s") + " · never run",
+          tint: t[0], badgeLine: t[1], color: t[2] };
+      }),
+
+      wasteHasData: !st.empty, wasteEmpty: st.empty,
+      wasteSub: st.empty
+        ? "Read from each tenant's Microsoft 365 profile. No profile data has been ingested, so this answers honestly rather than estimating."
+        : "Read from each tenant's Microsoft 365 profile, one query across the book. Only tenants whose profile actually flags waste are counted.",
+      wasteStats: [
+        { label: "TENANTS WITH WASTE", value: "2 of 2", color: "#fbbf24" },
+        { label: "ESTIMATED ANNUAL SAVING", value: "$18,240", color: "#34d399" },
+        { label: "UNASSIGNED SEATS", value: "47", color: "#f1f5f9" }
+      ],
+
+      hasResult: !!res, resCode: res ? res[0] : "", resText: res ? res[1] : "",
+      resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
+
+      notes: [
+        { dot: "#f87171", text: "A run whose email delivery fails is left marked generated, with the failure only in an error field. A screen reading the status alone reports success — which is what the one existing consumer does today. This one shows the warning on the row instead." },
+        { dot: "#f87171", text: "Triggering answers accepted before any work happens, and every later failure is logged server-side only. Polling the run list is the sole way to learn that generation failed, so this screen has to keep watching rather than reacting to a response." },
+        { dot: "#f87171", text: "The run list caps at fifty, a hundred at most, and has no offset. The total it returns is the size of that page, so older runs are unreachable and a count shown from it would be wrong the moment volume exists." },
+        { dot: "#fbbf24", text: "Create validates the document type and delivery method; edit does not. The column is plain text with no database constraint, so an update can write a value nothing renders — the form is the only guard." },
+        { dot: "#fbbf24", text: "Delete is a soft flag, not a removal, and the row keeps listing afterwards. Deleted and paused are indistinguishable on the wire, so this screen calls it what it is." },
+        { dot: "#fbbf24", text: "Schedules store a cadence, recipients and an enabled flag, but nothing executes them and the run timestamps are never written. There is no next-send date to display, so none is drawn." },
+        { dot: "#60a5fa", text: "Retry is not a retry. It is a fresh run of the same definition, with no attempt count and no link back to the failure — so the history is two unrelated rows." },
+        { dot: "#60a5fa", text: "A run's title is computed server-side from the type and the customer, never supplied. Whatever this screen shows as a title is that exact string." },
+        { dot: "#94a3b8", text: "Risk decision documents arrive in the same run list from a different writer entirely: rendered deterministically, always already generated, with no pending stage and no delivery leg. The list cannot be designed as if every row came from the trigger flow." },
+        { dot: "#94a3b8", text: "Nine of the nineteen routes — every canvas and schedule route — have no consumer anywhere, and four tables hold zero rows. The empty states here are the live truth, not a placeholder." },
+        { dot: "#94a3b8", text: "A canvas renders four widget types and shows a visible unknown-widget box for anything else, so no fifth type can be invented in the layout. Its stored recipient type is read by nothing." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

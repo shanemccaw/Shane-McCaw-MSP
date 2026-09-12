@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+a{color:#60a5fa}a:hover{color:#93c5fd}
+input::placeholder{color:#475569}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">AUTH + MFA</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Sign in, sign out, recover, change MFA</span>
+    </div>
+    <button onClick="{{ toggleAdmin }}" style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:{{ roleBg }};border:1px solid {{ roleLine }};font-size:11px;font-weight:600;color:{{ roleFg }};white-space:nowrap;cursor:pointer">{{ roleLabel }}</button>
+    <button onClick="{{ toggleGate }}" style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:{{ gateBg }};border:1px solid {{ gateLine }};font-size:11px;font-weight:600;color:{{ gateFg }};white-space:nowrap;cursor:pointer">{{ gateLabel }}</button>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ screens }}" as="s" hint-placeholder-count="5">
+      <button onClick="{{ s.select }}" style="display:flex;align-items:center;height:30px;padding:0 12px;border-radius:7px;border:1px solid {{ s.border }};background:{{ s.bg }};color:{{ s.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ s.label }}</button>
+    </sc-for>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start;min-width:0">
+
+    <!-- ─── The card the user actually sees ─────────────────────────────── -->
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0">
+
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;letter-spacing:-.02em">SM</span>
+        <span style="display:flex;flex-direction:column;gap:1px;min-width:0">
+          <span style="font-size:13px;font-weight:700;color:#f1f5f9">Shane McCaw Consulting</span>
+          <span style="font-size:10.5px;color:#64748b">{{ cardCaption }}</span>
+        </span>
+      </div>
+
+      <!-- Login — POST /api/auth/login -->
+      <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+          <span style="font-size:16px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Sign in to the console</span>
+
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Work email</span>
+            <input value="{{ email }}" onChange="{{ setEmail }}" placeholder="you@tenant.com" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
+          </label>
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Password</span>
+            <input type="password" value="{{ password }}" onChange="{{ setPassword }}" placeholder="••••••••" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
+          </label>
+
+          <sc-if value="{{ hasLoginError }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid {{ loginErrLine }};border-radius:8px;background:{{ loginErrTint }};padding:11px 12px;display:flex;flex-direction:column;gap:4px">
+              <span style="font-size:11.5px;font-weight:700;color:{{ loginErrColor }}">{{ loginErrCode }}</span>
+              <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ loginErrText }}</span>
+              <sc-if value="{{ loginErrExtra }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ loginErrExtra }}</span>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <button onClick="{{ submitLogin }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:38px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Sign in</button>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <button onClick="{{ goForgot }}" style="background:none;border:none;padding:0;color:#60a5fa;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Forgot your password?</button>
+            <span style="font-size:10.5px;color:#475569">No sign-up link — accounts come from a purchase</span>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:7px;border-top:1px solid rgba(148,163,184,.12);padding-top:13px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">SIMULATE AN ACCOUNT STATE</span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{ scenarios }}" as="sc" hint-placeholder-count="5">
+                <button onClick="{{ sc.select }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 9px;border-radius:999px;border:1px solid {{ sc.line }};background:{{ sc.bg }};color:{{ sc.fg }};font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">{{ sc.label }}</button>
+              </sc-for>
+            </div>
+            <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ scenarioNote }}</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- MFA challenge — POST /api/auth/mfa/verify · /passkey/verify-authentication · /bypass -->
+      <sc-if value="{{ isChallenge }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+          <span style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:16px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Two-factor required</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ challengeSub }}</span>
+          </span>
+
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <sc-for list="{{ methodTabs }}" as="m" hint-placeholder-count="3">
+              <button onClick="{{ m.select }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ m.line }};background:{{ m.bg }};color:{{ m.fg }};font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">{{ m.label }}</button>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ needsCode }}" hint-placeholder-val="{{ true }}">
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:11px;font-weight:600;color:#94a3b8">{{ codeLabel }}</span>
+              <input value="{{ code }}" onChange="{{ setCode }}" placeholder="{{ codePlaceholder }}" style="height:40px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:16px;letter-spacing:.22em;font-family:Menlo,monospace;outline:none;min-width:0" />
+            </label>
+          </sc-if>
+
+          <sc-if value="{{ isSmsMethod }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ sendSms }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Send a code to {{ smsMask }}</button>
+          </sc-if>
+
+          <sc-if value="{{ hasChallengeMsg }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid {{ chLine }};border-radius:8px;background:{{ chTint }};padding:11px 12px;display:flex;flex-direction:column;gap:4px">
+              <span style="font-size:11.5px;font-weight:700;color:{{ chColor }}">{{ chCode }}</span>
+              <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ chText }}</span>
+            </div>
+          </sc-if>
+
+          <button onClick="{{ submitChallenge }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:38px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">{{ challengeCta }}</button>
+          <span style="font-size:11px;color:#64748b;text-wrap:pretty">MFA session token expires 10 minutes after the password step. 20 attempts per IP per 15 minutes across every verify route.</span>
+        </div>
+      </sc-if>
+
+      <!-- Session issued -->
+      <sc-if value="{{ isSession }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+          <span style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:16px;font-weight:700;letter-spacing:-.02em;color:{{ sessionTitleColor }}">{{ sessionTitle }}</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ sessionSub }}</span>
+          </span>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+            <sc-for list="{{ sessionFacts }}" as="f" hint-placeholder-count="4">
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">{{ f.label }}</span>
+                <span style="font-size:12.5px;font-weight:600;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+              </span>
+            </sc-for>
+          </div>
+          <sc-if value="{{ isPending }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(251,191,36,.25);border-radius:8px;background:rgba(251,191,36,.08);padding:11px 12px;display:flex;flex-direction:column;gap:6px">
+              <span style="font-size:11.5px;font-weight:700;color:#fbbf24">mfaSetupPending: true</span>
+              <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">The session is real and usable, but requireAuth refuses every route except the MFA enrollment endpoints until a method is enrolled. The flag is recomputed from live enrollment rows on each refresh, so it clears itself.</span>
+              <button onClick="{{ goEnroll }}" style="align-self:flex-start;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Set up two-factor</button>
+            </div>
+          </sc-if>
+          <button onClick="{{ reset }}" style="align-self:flex-start;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Start over</button>
+        </div>
+      </sc-if>
+
+      <!-- Forgot password — POST /api/auth/forgot-password -->
+      <sc-if value="{{ isForgot }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+          <span style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:16px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Reset your password</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">Enter the address on the account. The response is identical whether or not it exists.</span>
+          </span>
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Work email</span>
+            <input value="{{ email }}" onChange="{{ setEmail }}" placeholder="you@tenant.com" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
+          </label>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">SIMULATE THE ACCOUNT BEHIND THAT ADDRESS</span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{ forgotCases }}" as="c" hint-placeholder-count="4">
+                <button onClick="{{ c.select }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 9px;border-radius:999px;border:1px solid {{ c.line }};background:{{ c.bg }};color:{{ c.fg }};font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">{{ c.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <button onClick="{{ submitForgot }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:38px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Send reset link</button>
+          <sc-if value="{{ forgotSent }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="border:1px solid rgba(52,211,153,.25);border-radius:8px;background:rgba(52,211,153,.08);padding:11px 12px;display:flex;flex-direction:column;gap:4px">
+                <span style="font-size:11.5px;font-weight:700;color:#34d399">200 · { ok: true }</span>
+                <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">If an account exists for that address, a link is on its way. Check your inbox.</span>
+              </div>
+              <div style="border:1px dashed rgba(148,163,184,.25);border-radius:8px;padding:11px 12px;display:flex;flex-direction:column;gap:4px">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">WHAT ACTUALLY HAPPENED SERVER-SIDE</span>
+                <span style="font-size:12px;color:{{ forgotTruthColor }};font-weight:600;text-wrap:pretty">{{ forgotTruth }}</span>
+                <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ forgotTruthNote }}</span>
+              </div>
+            </div>
+          </sc-if>
+          <div style="border-top:1px solid rgba(148,163,184,.12);padding-top:13px;display:flex;flex-direction:column;gap:9px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">THE LINK'S LANDING PAGE — POST /auth/reset-password</span>
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:11px;font-weight:600;color:#94a3b8">New password</span>
+              <input type="password" value="{{ newPassword }}" onChange="{{ setNewPassword }}" placeholder="At least 8 characters" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
+            </label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button onClick="{{ submitReset }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Set password</button>
+              <button onClick="{{ expireToken }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">{{ tokenBtnLabel }}</button>
+            </div>
+            <sc-if value="{{ hasResetMsg }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid {{ rsLine }};border-radius:8px;background:{{ rsTint }};padding:11px 12px;display:flex;flex-direction:column;gap:4px">
+                <span style="font-size:11.5px;font-weight:700;color:{{ rsColor }}">{{ rsCode }}</span>
+                <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ rsText }}</span>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- Change MFA — GET/DELETE /api/auth/mfa/* -->
+      <sc-if value="{{ isMfa }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:15px;min-width:0">
+          <span style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:16px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Two-factor methods</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ mfaSub }}</span>
+          </span>
+
+          <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+            <sc-for list="{{ methods }}" as="m" hint-placeholder-count="3">
+              <div style="border:1px solid {{ m.line }};border-radius:10px;background:rgba(2,6,23,.4);padding:13px;display:flex;flex-direction:column;gap:10px;min-width:0">
+                <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+                  <span style="display:flex;flex-direction:column;gap:3px;min-width:170px;flex:1">
+                    <span style="font-size:13px;font-weight:700;color:#f1f5f9">{{ m.name }}</span>
+                    <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ m.detail }}</span>
+                  </span>
+                  <span style="display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:999px;background:{{ m.tint }};border:1px solid {{ m.badgeLine }};font-size:10.5px;font-weight:600;color:{{ m.color }};white-space:nowrap">{{ m.state }}</span>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button onClick="{{ m.primary }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid {{ m.btnLine }};background:{{ m.btnBg }};color:{{ m.btnFg }};font-size:12px;font-weight:600;cursor:{{ m.btnCursor }};font-family:inherit">{{ m.btnLabel }}</button>
+                  <sc-if value="{{ m.canRemove }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ m.remove }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.1);color:#f87171;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">{{ m.removeLabel }}</button>
+                  </sc-if>
+                </div>
+                <sc-if value="{{ m.hasNote }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:11px;color:{{ m.noteColor }};text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:9px">{{ m.note }}</span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ inTotpSetup }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(96,165,250,.3);border-radius:10px;background:rgba(37,99,235,.07);padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0">
+              <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Enrol an authenticator app</span>
+              <div style="display:flex;gap:13px;flex-wrap:wrap;align-items:flex-start">
+                <span style="width:104px;height:104px;border-radius:8px;border:1px dashed rgba(148,163,184,.35);background:rgba(2,6,23,.5);display:flex;align-items:center;justify-content:center;text-align:center;font-size:10px;color:#64748b;padding:8px;line-height:1.4">QR returned by the route as a data URL</span>
+                <span style="display:flex;flex-direction:column;gap:6px;min-width:170px;flex:1">
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">MANUAL SECRET</span>
+                  <span style="font-size:12.5px;font-family:Menlo,monospace;color:#f1f5f9;word-break:break-all">{{ totpSecret }}</span>
+                  <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Issuer "Shane McCaw Consulting", label is your email. Stored AES-256-GCM encrypted only after a code verifies.</span>
+                </span>
+              </div>
+              <label style="display:flex;flex-direction:column;gap:5px">
+                <span style="font-size:11px;font-weight:600;color:#94a3b8">6-digit code from the app</span>
+                <input value="{{ code }}" onChange="{{ setCode }}" placeholder="000000" style="height:38px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:15px;letter-spacing:.22em;font-family:Menlo,monospace;outline:none;min-width:0" />
+              </label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button onClick="{{ verifyTotp }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Verify and enrol</button>
+                <button onClick="{{ cancelSetup }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+              </div>
+              <span style="font-size:11px;color:#64748b;text-wrap:pretty">A ±30s epoch tolerance is applied. Verifying replaces any existing TOTP row, so re-enrolling a new app silently retires the old one.</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ inSmsSetup }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(96,165,250,.3);border-radius:10px;background:rgba(37,99,235,.07);padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0">
+              <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Enrol a phone number</span>
+              <label style="display:flex;flex-direction:column;gap:5px">
+                <span style="font-size:11px;font-weight:600;color:#94a3b8">Mobile number</span>
+                <input value="{{ phone }}" onChange="{{ setPhone }}" placeholder="+1 555 0142" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
+              </label>
+              <label style="display:flex;flex-direction:column;gap:5px">
+                <span style="font-size:11px;font-weight:600;color:#94a3b8">Code we texted</span>
+                <input value="{{ code }}" onChange="{{ setCode }}" placeholder="000000" style="height:38px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:15px;letter-spacing:.22em;font-family:Menlo,monospace;outline:none;min-width:0" />
+              </label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button onClick="{{ sendSetupSms }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Send code</button>
+                <button onClick="{{ verifySms }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Verify and enrol</button>
+                <button onClick="{{ cancelSetup }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+              </div>
+              <span style="font-size:11px;color:#64748b;text-wrap:pretty">The submitted number must match the one the code was sent to — verify-setup compares both. Codes last 10 minutes and only one challenge per method is kept.</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ hasMfaMsg }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid {{ mfLine }};border-radius:8px;background:{{ mfTint }};padding:11px 12px;display:flex;flex-direction:column;gap:4px">
+              <span style="font-size:11.5px;font-weight:700;color:{{ mfColor }}">{{ mfCode }}</span>
+              <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ mfText }}</span>
+            </div>
+          </sc-if>
+
+          <div style="border-top:1px solid rgba(148,163,184,.12);padding-top:13px;display:flex;flex-direction:column;gap:9px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">OPERATOR SIDE — POST /auth/mfa/admin/reset/:userId</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">A PlatformAdmin can clear one method or all of them for a locked-out account. A full reset also deletes pending challenges and every unused emergency bypass code; used codes stay as the record of a real sign-in. The target gets the "mfa-reset" email and an admin_mfa_reset audit entry names the actor.</span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button onClick="{{ adminResetAll }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.1);color:#f87171;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Reset all methods</button>
+              <button onClick="{{ adminResetBad }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Reset method "email"</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- Logout — POST /api/auth/logout + /auth/sessions -->
+      <sc-if value="{{ isLogout }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:15px;min-width:0">
+          <span style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:16px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">{{ logoutTitle }}</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ logoutSub }}</span>
+          </span>
+
+          <sc-if value="{{ hasSessions }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
+              <sc-for list="{{ sessions }}" as="s" hint-placeholder-count="3">
+                <div style="border:1px solid {{ s.line }};border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;min-width:0">
+                  <span style="display:flex;flex-direction:column;gap:3px;min-width:180px;flex:1">
+                    <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;text-wrap:pretty">{{ s.device }}</span>
+                    <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ s.meta }}</span>
+                  </span>
+                  <span style="display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:999px;background:{{ s.tint }};border:1px solid {{ s.badgeLine }};font-size:10.5px;font-weight:600;color:{{ s.color }};white-space:nowrap">{{ s.tag }}</span>
+                  <button onClick="{{ s.revoke }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:6px;border:1px solid {{ s.btnLine }};background:{{ s.btnBg }};color:{{ s.btnFg }};font-size:11.5px;font-weight:600;cursor:{{ s.btnCursor }};font-family:inherit">{{ s.btnLabel }}</button>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noSessions }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:6px;text-align:center;align-items:center">
+              <span style="font-size:13px;font-weight:700;color:#cbd5e1">No active sessions</span>
+              <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;max-width:360px">Every refresh token for this account is revoked or expired. The list is built from session rows, so an impersonation session that was never given a refresh token appears here with no device of its own to revoke.</span>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onClick="{{ doLogout }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:36px;padding:0 14px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">Sign out of this device</button>
+            <button onClick="{{ revokeOthers }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:36px;padding:0 14px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">Sign out everywhere else</button>
+          </div>
+
+          <sc-if value="{{ hasLogoutMsg }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid {{ loLine }};border-radius:8px;background:{{ loTint }};padding:11px 12px;display:flex;flex-direction:column;gap:4px">
+              <span style="font-size:11.5px;font-weight:700;color:{{ loColor }}">{{ loCode }}</span>
+              <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ loText }}</span>
+            </div>
+          </sc-if>
+
+          <div style="border-top:1px solid rgba(148,163,184,.12);padding-top:13px;display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">LOGIN HISTORY — GET /auth/login-history</span>
+            <sc-for list="{{ history }}" as="h" hint-placeholder-count="3">
+              <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                <span style="font-size:11px;font-family:Menlo,monospace;color:{{ h.color }};min-width:62px">{{ h.method }}</span>
+                <span style="font-size:11.5px;color:#cbd5e1;flex:1;min-width:140px;text-wrap:pretty">{{ h.detail }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <!-- ─── Route log + the branches this screen is answerable for ──────── -->
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+        <span style="font-size:12px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9">Route log</span>
+        <sc-if value="{{ hasLog }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
+            <sc-for list="{{ log }}" as="l" hint-placeholder-count="2">
+              <div style="display:flex;flex-direction:column;gap:3px;border-left:2px solid {{ l.codeColor }};padding-left:10px;min-width:0">
+                <span style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                  <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ l.codeColor }}">{{ l.code }}</span>
+                  <span style="font-size:11px;font-family:Menlo,monospace;color:#94a3b8;word-break:break-all">{{ l.path }}</span>
+                </span>
+                <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ l.message }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noLog }}" hint-placeholder-val="{{ true }}">
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Nothing called yet. Every button on the left names the route it hits and what came back.</span>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+          <span style="font-size:12px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9">What the routes do and don't give this screen</span>
+          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
+const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
+const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
+const GREY = ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"];
+
+const SCENARIOS = [
+  ["totp", "TOTP enrolled", "getActiveMfaMethods returns [\"totp\"], so login answers 200 { mfaRequired: true, mfaToken, methods } and issues no session yet."],
+  ["none", "No MFA enrolled", "No enrollment rows. The session is issued anyway — mfaSetupPending follows the enforcement flag, which is on in production or per-account."],
+  ["wrong", "Wrong password", "bcrypt fails. failedLoginAttempts increments, lastFailedLoginAt is stamped, and the message never says which field was wrong."],
+  ["fifth", "5th bad attempt", "The threshold is hit inside the 15-minute window, so this response locks the account rather than repeating the 401."],
+  ["nopass", "Never set a password", "passwordHash is null — a purchase created the account but the setup link was never used."],
+  ["locked", "Already locked", "lockedUntil is in the future, so the password is not even compared."]
+];
+
+const FORGOT_CASES = [
+  ["normal", "Has a password", GREEN, "A password_reset_tokens row is written and the reset email goes out. The link is good for 1 hour."],
+  ["setup", "Passwordless, entitled", AMBER, "client_services has a row, so this is a real buyer mid-setup: an account_setup_tokens row is written instead and the setup email goes out, good for 72 hours."],
+  ["prospect", "Passwordless, no purchase", RED, "A consent-time prospect with nothing in client_services. The route refuses to issue a setup link and logs the refusal — the caller still sees the same { ok: true }."],
+  ["missing", "No such account", GREY, "The lookup returns nothing and the handler returns early. No email, no row, no timing difference — the 200 was already sent before the lookup ran."]
+];
+
+class Component extends DCLogic {
+  state = {
+    screen: "login",
+    scenario: "totp",
+    forgotCase: "normal",
+    email: "dana.whitfield@northwindtraders.com",
+    password: "",
+    newPassword: "",
+    code: "",
+    phone: "",
+    admin: false,
+    gate: true,
+    method: "totp",
+    loginErr: null,
+    challengeMsg: null,
+    sessionKind: null,
+    forgotSent: false,
+    tokenValid: true,
+    resetMsg: null,
+    mfaMsg: null,
+    setup: null,
+    totp: true,
+    sms: false,
+    passkeys: 2,
+    logoutMsg: null,
+    revoked: {},
+    signedOut: false,
+    log: []
+  };
+
+  push = (code, path, message) => this.setState(s => ({ log: [{ code, path, message }].concat(s.log).slice(0, 8) }));
+
+  set = (k) => (e) => { const v = e.target.value; this.setState({ [k]: v }); };
+
+  go = (screen) => () => this.setState({
+    screen, loginErr: null, challengeMsg: null, resetMsg: null, mfaMsg: null, logoutMsg: null, code: ""
+  });
+
+  submitLogin = () => {
+    const p = "POST /api/auth/login";
+    if (!this.state.email || !this.state.password) {
+      this.setState({ loginErr: "missing" });
+      return this.push(400, p, "email and password are required. The field-level check runs before the account lookup, so a blank form never touches the users table.");
+    }
+    const sc = this.state.scenario;
+    if (sc === "locked") {
+      this.setState({ loginErr: "locked" });
+      return this.push(423, p, "accountLocked true, lockedUntil returned. lockedUntil is still in the future so the password was never compared.");
+    }
+    if (sc === "nopass") {
+      this.setState({ loginErr: "nopass" });
+      return this.push(401, p, "\"No password set for this account. Check your email for a setup link.\" — this one message does distinguish account states, unlike the generic 401.");
+    }
+    if (sc === "wrong") {
+      this.setState({ loginErr: "wrong" });
+      return this.push(401, p, "Invalid email or password. failedLoginAttempts incremented; the count resets on its own once the 15-minute window lapses.");
+    }
+    if (sc === "fifth") {
+      this.setState({ loginErr: "locked5" });
+      return this.push(423, p, "Fifth failure inside the window: lockedUntil set 15 minutes out. Nothing self-service unlocks it — the copy has to send the user to an administrator.");
+    }
+    if (sc === "totp") {
+      this.setState({ screen: "challenge", loginErr: null, method: this.state.admin ? "passkey" : "totp" });
+      return this.push(200, p, "mfaRequired true with a 10-minute mfaToken and the enrolled method list. No access token and no refresh cookie are issued at this step.");
+    }
+    const pending = this.state.gate;
+    this.setState({ screen: "session", sessionKind: pending ? "pending" : "full", loginErr: null });
+    this.push(200, p, pending
+      ? "Session issued with mfaSetupPending true — real tokens, but requireAuth refuses everything except the enrollment routes until a method exists."
+      : "Full session: 15-minute access token, 7-day sliding refresh cookie scoped to /api/auth, plus an AUTH_LOGIN event and audit row.");
+  };
+
+  submitChallenge = () => {
+    const m = this.state.method;
+    if (this.state.admin && (m === "totp" || m === "sms")) {
+      this.setState({ challengeMsg: "adminBlocked" });
+      return this.push(403, "POST /api/auth/mfa/verify", "\"Admins must use passkey authentication only\" — the role is re-read from the users row here, after the mfaToken is verified.");
+    }
+    if (m === "passkey") {
+      this.setState({ screen: "session", sessionKind: "full", challengeMsg: null });
+      return this.push(200, "POST /api/auth/mfa/passkey/verify-authentication", "Signature verified against the stored credential, the counter is advanced and the challenge row deleted. Full session issued with loginMethod passkey.");
+    }
+    if (m === "bypass") {
+      if (!this.state.code) {
+        this.setState({ challengeMsg: "noCode" });
+        return this.push(400, "POST /api/auth/mfa/bypass", "mfaToken and code are required.");
+      }
+      this.setState({ screen: "session", sessionKind: "bypass", challengeMsg: null });
+      return this.push(200, "POST /api/auth/mfa/bypass", "usedAt flipped only if still null, so two concurrent attempts with the same code can never both win. Audited as team_member_emergency_bypass_used with the IP.");
+    }
+    if (this.state.code.replace(/\s/g, "").length !== 6) {
+      this.setState({ challengeMsg: "badCode" });
+      return this.push(401, "POST /api/auth/mfa/verify", m === "totp"
+        ? "Invalid code. A \u00b130s epoch tolerance was already applied, so the code was genuinely outside the window."
+        : "Invalid or expired code. The challenge row is single-use — a correct code re-submitted after success fails too.");
+    }
+    this.setState({ screen: "session", sessionKind: "full", challengeMsg: null });
+    this.push(200, "POST /api/auth/mfa/verify", "Code verified, full session issued with loginMethod " + m + ". This is where the refresh cookie is finally set.");
+  };
+
+  sendSms = () => this.push(200, "POST /api/auth/mfa/sms/send", "Returns only phoneLast4, never the full number. A fresh 6-digit code replaces any pending SMS challenge and lasts 10 minutes.");
+
+  submitForgot = () => {
+    const c = FORGOT_CASES.find(x => x[0] === this.state.forgotCase);
+    this.setState({ forgotSent: true });
+    this.push(200, "POST /api/auth/forgot-password", "{ ok: true } is returned before the account is even looked up. Everything after that — token, email, or refusal — happens with the response already sent. " + c[3]);
+  };
+
+  submitReset = () => {
+    const p = "POST /api/auth/reset-password";
+    if (!this.state.tokenValid) {
+      this.setState({ resetMsg: "token" });
+      return this.push(400, p, "\"This reset link is invalid or has expired. Please request a new one.\" One message covers three states: unknown token, already used, past expiry.");
+    }
+    if (this.state.newPassword.length < 8) {
+      this.setState({ resetMsg: "short" });
+      return this.push(400, p, "Password must be at least 8 characters. Length is the only rule the route enforces.");
+    }
+    this.setState({ resetMsg: "ok" });
+    this.push(200, p, "Hash written, token marked used. No session is issued and no other session is revoked — the user lands back on sign-in, and any session opened with the old password stays live.");
+  };
+
+  startSetup = (kind) => () => {
+    if (kind === "sms" && this.state.admin) {
+      this.setState({ mfaMsg: "smsAdmin" });
+      return this.push(403, "POST /api/auth/mfa/sms/setup", "\"Admins must use passkey or authenticator app authentication\" — SMS is refused for admin accounts at setup and again at verify-setup.");
+    }
+    this.setState({ setup: kind, code: "", mfaMsg: null });
+    if (kind === "totp") this.push(200, "POST /api/auth/mfa/totp/setup", "Returns the secret, the otpauth URI and a QR data URL. Nothing is stored yet — the secret only becomes an enrollment once a code verifies.");
+    if (kind === "sms") this.push(200, "POST /api/auth/mfa/sms/setup", "A hashed 6-digit code and the target phone are written to mfa_challenges; the response carries phoneLast4 only.");
+  };
+
+  verifyTotp = () => {
+    if (this.state.code.replace(/\s/g, "").length !== 6) {
+      this.setState({ mfaMsg: "badSetup" });
+      return this.push(400, "POST /api/auth/mfa/totp/verify-setup", "\"Invalid verification code. Please try again.\" No enrollment row is written.");
+    }
+    this.setState({ totp: true, setup: null, code: "", mfaMsg: "totpOn" });
+    this.push(200, "POST /api/auth/mfa/totp/verify-setup", "Any prior TOTP row is deleted and a new enabled enrollment written with the encrypted secret.");
+  };
+
+  verifySms = () => {
+    if (!this.state.phone) {
+      this.setState({ mfaMsg: "noPhone" });
+      return this.push(400, "POST /api/auth/mfa/sms/verify-setup", "phone and code are required.");
+    }
+    if (this.state.code.replace(/\s/g, "").length !== 6) {
+      this.setState({ mfaMsg: "badSetup" });
+      return this.push(400, "POST /api/auth/mfa/sms/verify-setup", "Invalid or expired code — the same message covers a wrong code, an expired challenge and a phone number that does not match the one the code went to.");
+    }
+    this.setState({ sms: true, setup: null, code: "", mfaMsg: "smsOn" });
+    this.push(200, "POST /api/auth/mfa/sms/verify-setup", "Challenge marked used, prior SMS enrollment replaced, phone stored on the new row.");
+  };
+
+  addPasskey = () => {
+    this.setState(s => ({ passkeys: s.passkeys + 1, mfaMsg: "passkeyOn" }));
+    this.push(200, "POST /api/auth/mfa/passkey/verify-registration", "Credential id, public key, counter, device type and transports stored; the passkey enrollment row is re-created so the two tables agree.");
+  };
+
+  remove = (kind) => () => {
+    if (kind === "totp") this.setState({ totp: false, mfaMsg: "off" });
+    if (kind === "sms") this.setState({ sms: false, mfaMsg: "off" });
+    if (kind === "passkey") this.setState({ passkeys: 0, mfaMsg: "passkeyAllOff" });
+    this.push(200, "DELETE /api/auth/mfa/" + kind, kind === "passkey"
+      ? "Deletes every webauthn credential for the account, not one — the route takes no credential id, so removing one key is not expressible."
+      : "Enrollment row deleted. No password re-entry, no re-authentication, and no check that a method is left behind.");
+  };
+
+  adminResetAll = () => {
+    this.setState({ totp: false, sms: false, passkeys: 0, mfaMsg: "adminReset" });
+    this.push(200, "POST /api/auth/mfa/admin/reset/:userId", "clearedMethods echoes what the account actually held. Pending challenges and unused bypass codes are purged too; used ones are kept as audit history.");
+  };
+
+  adminResetBad = () => {
+    this.setState({ mfaMsg: "badMethod" });
+    this.push(400, "POST /api/auth/mfa/admin/reset/:userId", "\"method must be one of: totp, sms, passkey\" — email is not an MFA method in this system.");
+  };
+
+  doLogout = () => {
+    this.setState({ signedOut: true, logoutMsg: "out" });
+    this.push(200, "POST /api/auth/logout", "This refresh token is revoked and its session row closed, the cookie is cleared, and AUTH_LOGOUT is dispatched. Other devices are untouched. The 15-minute access token already issued stays valid until it expires.");
+  };
+
+  revokeOthers = () => {
+    this.setState({ revoked: { s2: true, s3: true }, logoutMsg: "others" });
+    this.push(200, "POST /api/auth/sessions/revoke-others", "revokedCount returned. The current device is identified by the hash of its own refresh cookie — a client that holds no cookie revokes everything, itself included.");
+  };
+
+  revokeOne = (id, current) => () => {
+    if (current) {
+      this.setState({ logoutMsg: "self" });
+      return this.push(404, "DELETE /api/auth/sessions/:id", "Nothing stops a user revoking the session they are sitting in; the route just returns ok and the next refresh fails. Shown here as the guard this screen has to supply itself.");
+    }
+    this.setState(s => ({ revoked: Object.assign({}, s.revoked, { [id]: true }), logoutMsg: "one" }));
+    this.push(200, "DELETE /api/auth/sessions/:id", "Session revoked and audited as AUTH_SESSION_REVOKED. A session id belonging to someone else returns 404, not 403 — ownership is part of the lookup.");
+  };
+
+  renderVals() {
+    const st = this.state;
+    const tint = (t) => ({ tint: t[0], badgeLine: t[1], color: t[2] });
+
+    const screens = [["login", "Sign in"], ["challenge", "Two-factor"], ["forgot", "Forgot password"], ["mfa", "Change MFA"], ["logout", "Sign out"]]
+      .map(([k, label]) => {
+        const on = st.screen === k || (k === "login" && st.screen === "session");
+        return { label, select: this.go(k),
+          bg: on ? "rgba(37,99,235,.18)" : "transparent",
+          border: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+          fg: on ? "#f1f5f9" : "#94a3b8" };
+      });
+
+    const scenarios = SCENARIOS.map(([k, label]) => {
+      const on = st.scenario === k;
+      return { label, select: () => this.setState({ scenario: k, loginErr: null }),
+        bg: on ? "rgba(37,99,235,.18)" : "rgba(148,163,184,.06)",
+        line: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+        fg: on ? "#f1f5f9" : "#94a3b8" };
+    });
+
+    const errs = {
+      missing: ["400 · email and password are required", "Enter both fields.", ""],
+      wrong: ["401 · Invalid email or password", "Invalid email or password.", "Deliberately ambiguous: the same text answers an unknown address and a bad password."],
+      locked: ["423 · accountLocked", "This account is locked due to repeated failed login attempts. Contact your administrator to unlock it.", "lockedUntil is returned, so this screen can show the remaining time — but there is no self-service unlock route to offer."],
+      locked5: ["423 · accountLocked", "This account has been locked due to repeated failed login attempts. Contact your administrator to unlock it.", "Fifth failure within 15 minutes. Threshold, window and duration are all env-tunable, so the copy cannot hard-code \"5\" or \"15 minutes\"."],
+      nopass: ["401 · no password set", "No password set for this account. Check your email for a setup link.", "The account exists but was never set up. Forgot-password will re-send that link only if the purchase is real."]
+    };
+    const err = errs[st.loginErr];
+
+    const methodTabs = [["totp", "Authenticator"], ["sms", "Text message"], ["passkey", "Passkey"], ["bypass", "Emergency code"]]
+      .map(([k, label]) => {
+        const on = st.method === k;
+        return { label, select: () => this.setState({ method: k, challengeMsg: null, code: "" }),
+          bg: on ? "rgba(37,99,235,.18)" : "rgba(148,163,184,.06)",
+          line: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+          fg: on ? "#f1f5f9" : "#94a3b8" };
+      });
+
+    const chMsgs = {
+      adminBlocked: ["403 · passkey only", "Admins must use passkey authentication only.", RED],
+      badCode: ["401 · invalid code", st.method === "totp" ? "Invalid code. Please try again." : "Invalid or expired code.", RED],
+      noCode: ["400 · code required", "mfaToken and code are required.", AMBER]
+    };
+    const ch = chMsgs[st.challengeMsg];
+
+    const fc = FORGOT_CASES.find(x => x[0] === st.forgotCase);
+    const forgotCases = FORGOT_CASES.map(([k, label, tone]) => {
+      const on = st.forgotCase === k;
+      return { label, select: () => this.setState({ forgotCase: k, forgotSent: false }),
+        bg: on ? tone[0] : "rgba(148,163,184,.06)",
+        line: on ? tone[1] : "rgba(148,163,184,.16)",
+        fg: on ? tone[2] : "#94a3b8" };
+    });
+    const forgotTruthText = {
+      normal: "Reset token written · email sent · valid 1 hour",
+      setup: "Account-setup token written instead · email sent · valid 72 hours",
+      prospect: "Refused — no client_services entitlement · nothing sent",
+      missing: "No account · handler returned early · nothing sent"
+    }[st.forgotCase];
+
+    const resetMsgs = {
+      ok: ["200 · { ok: true }", "Password updated. Sign in with your new password.", GREEN],
+      short: ["400 · too short", "Password must be at least 8 characters.", AMBER],
+      token: ["400 · invalid link", "This reset link is invalid or has expired. Please request a new one.", RED]
+    };
+    const rs = resetMsgs[st.resetMsg];
+
+    const passkeyOn = st.passkeys > 0;
+    const enrolledCount = (st.totp ? 1 : 0) + (st.sms ? 1 : 0) + (passkeyOn ? 1 : 0);
+    const methods = [
+      { key: "totp", name: "Authenticator app (TOTP)", on: st.totp,
+        detail: st.totp ? "Enrolled. Secret held AES-256-GCM encrypted; the enrollments route never returns it." : "Not enrolled. Works for both operator and client accounts.",
+        btnLabel: st.totp ? "Replace app" : "Set up",
+        primary: this.startSetup("totp"), removeLabel: "Remove",
+        note: st.totp && enrolledCount === 1 && st.gate ? "This is the only method on the account. Removing it is allowed — the next token refresh simply comes back mfaSetupPending and locks the console until something is enrolled again." : "" },
+      { key: "sms", name: "Text message", on: st.sms,
+        detail: st.sms ? "Enrolled on a number ending 0142. Only the last four digits are ever returned." : (st.admin ? "Blocked for admin accounts — the route refuses it at setup." : "Not enrolled. 6-digit codes, 10-minute lifetime."),
+        btnLabel: st.sms ? "Change number" : "Set up",
+        primary: this.startSetup("sms"), removeLabel: "Remove", note: "" },
+      { key: "passkey", name: "Passkey or security key", on: passkeyOn,
+        detail: passkeyOn ? st.passkeys + " credential" + (st.passkeys === 1 ? "" : "s") + " registered. The list route returns the count only — no names, no dates, no per-key detail." : "Not enrolled. Required for admin accounts.",
+        btnLabel: "Add a passkey", primary: this.addPasskey, removeLabel: "Remove all",
+        note: st.passkeys > 1 ? "Removing is all-or-nothing: the delete route is keyed by user, not credential, so there is no way to retire one lost key and keep the other." : "" }
+    ].map(m => {
+      const t = m.on ? GREEN : GREY;
+      return {
+        name: m.name, detail: m.detail, state: m.on ? "Active" : "Off",
+        tint: t[0], badgeLine: t[1], color: t[2],
+        line: m.on ? "rgba(52,211,153,.18)" : "rgba(148,163,184,.14)",
+        btnLabel: m.btnLabel, primary: m.primary,
+        btnBg: m.on ? "rgba(148,163,184,.08)" : "#2563eb",
+        btnLine: m.on ? "rgba(148,163,184,.2)" : "#2563eb",
+        btnFg: m.on ? "#cbd5e1" : "#fff", btnCursor: "pointer",
+        canRemove: m.on, removeLabel: m.removeLabel, remove: this.remove(m.key),
+        hasNote: !!m.note, note: m.note, noteColor: "#fbbf24"
+      };
+    });
+
+    const mfaMsgs = {
+      totpOn: ["200 · enrolled", "Authenticator app is now active.", GREEN],
+      smsOn: ["200 · enrolled", "Text-message codes are now active.", GREEN],
+      passkeyOn: ["200 · registered", "Passkey added.", GREEN],
+      off: ["200 · removed", "Method removed. No re-authentication was required to do it.", AMBER],
+      passkeyAllOff: ["200 · all passkeys removed", "Every registered credential for this account was deleted — the route cannot target just one.", AMBER],
+      badSetup: ["400 · invalid code", "Invalid verification code. Please try again.", RED],
+      noPhone: ["400 · phone required", "phone and code are required.", AMBER],
+      smsAdmin: ["403 · not for admins", "Admins must use passkey or authenticator app authentication.", RED],
+      adminReset: ["200 · reset applied", "All methods cleared, the account notified by email, and admin_mfa_reset written with the actor's identity.", AMBER],
+      badMethod: ["400 · unknown method", "method must be one of: totp, sms, passkey.", RED]
+    };
+    const mf = mfaMsgs[st.mfaMsg];
+
+    const sessionRows = [
+      { id: "s1", device: "Chrome on macOS · this device", meta: "198.51.100.24 · signed in 12 minutes ago · loginMethod totp", current: true },
+      { id: "s2", device: "Edge on Windows", meta: "203.0.113.7 · last seen 2 days ago · loginMethod passkey", current: false },
+      { id: "s3", device: "Shane McCaw mobile (Expo)", meta: "192.0.2.44 · last seen 6 hours ago · refresh token in body, no cookie", current: false }
+    ];
+    const live = sessionRows.filter(r => !st.revoked[r.id] && !(r.current && st.signedOut));
+    const sessions = live.map(r => {
+      const t = r.current ? tint(GREEN) : tint(GREY);
+      return { device: r.device, meta: r.meta, tag: r.current ? "Current" : "Active",
+        tint: t.tint, badgeLine: t.badgeLine, color: t.color,
+        line: r.current ? "rgba(52,211,153,.18)" : "rgba(148,163,184,.14)",
+        btnLabel: r.current ? "This device" : "Revoke",
+        btnBg: r.current ? "rgba(148,163,184,.06)" : "rgba(248,113,113,.1)",
+        btnLine: r.current ? "rgba(148,163,184,.18)" : "rgba(248,113,113,.3)",
+        btnFg: r.current ? "#64748b" : "#f87171",
+        btnCursor: "pointer", revoke: this.revokeOne(r.id, r.current) };
+    });
+
+    const logoutMsgs = {
+      out: ["200 · { success: true }", "Signed out on this device. The access token already in hand keeps working until its 15 minutes are up — there is no server-side access-token revocation.", AMBER],
+      others: ["200 · revoke-others", "Every other session is closed. Changing your password does exactly the same thing, silently.", GREEN],
+      one: ["200 · session revoked", "That device is out. It keeps API access until its current access token expires.", GREEN],
+      self: ["Guard supplied by this screen", "The route would happily revoke the session you are using and return ok. Nothing server-side stops it, so the UI has to.", AMBER]
+    };
+    const lo = logoutMsgs[st.logoutMsg];
+
+    const sessionFacts = {
+      full: [
+        { label: "ACCESS TOKEN", value: "15 minutes", color: "#f1f5f9" },
+        { label: "REFRESH", value: "7 days, sliding", color: "#f1f5f9" },
+        { label: "COOKIE PATH", value: "/api/auth · httpOnly", color: "#f1f5f9" },
+        { label: "LOGIN METHOD", value: st.method, color: "#34d399" }
+      ],
+      pending: [
+        { label: "ACCESS TOKEN", value: "15 minutes", color: "#f1f5f9" },
+        { label: "REFRESH", value: "7 days, sliding", color: "#f1f5f9" },
+        { label: "REACHABLE", value: "Enrollment routes only", color: "#fbbf24" },
+        { label: "LOGIN METHOD", value: "password", color: "#f1f5f9" }
+      ],
+      bypass: [
+        { label: "ACCESS TOKEN", value: "15 minutes", color: "#f1f5f9" },
+        { label: "REFRESH", value: "7 days, sliding", color: "#f1f5f9" },
+        { label: "CODE", value: "Consumed, single use", color: "#fbbf24" },
+        { label: "LOGIN METHOD", value: "bypass", color: "#fbbf24" }
+      ]
+    }[st.sessionKind || "full"];
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      rootBg: this.props.rootBg ?? "transparent",
+      showNotes: this.props.showNotes ?? true,
+
+      roleLabel: st.admin ? "Admin account" : "Client / operator account",
+      roleBg: st.admin ? AMBER[0] : GREY[0], roleLine: st.admin ? AMBER[1] : GREY[1], roleFg: st.admin ? "#fbbf24" : "#94a3b8",
+      toggleAdmin: () => this.setState(s => ({ admin: !s.admin, mfaMsg: null, challengeMsg: null })),
+      gateLabel: st.gate ? "MFA enforced" : "MFA not enforced",
+      gateBg: st.gate ? GREEN[0] : GREY[0], gateLine: st.gate ? GREEN[1] : GREY[1], gateFg: st.gate ? "#34d399" : "#94a3b8",
+      toggleGate: () => this.setState(s => ({ gate: !s.gate })),
+
+      screens,
+      cardCaption: { login: "Portal sign-in", challenge: "Verification step", session: "Session issued", forgot: "Account recovery", mfa: "Security settings", logout: "Sessions" }[st.screen],
+
+      isLogin: st.screen === "login",
+      isChallenge: st.screen === "challenge",
+      isSession: st.screen === "session",
+      isForgot: st.screen === "forgot",
+      isMfa: st.screen === "mfa",
+      isLogout: st.screen === "logout",
+
+      email: st.email, password: st.password, code: st.code, phone: st.phone, newPassword: st.newPassword,
+      setEmail: this.set("email"), setPassword: this.set("password"), setCode: this.set("code"),
+      setPhone: this.set("phone"), setNewPassword: this.set("newPassword"),
+      submitLogin: this.submitLogin, goForgot: this.go("forgot"), reset: this.go("login"), goEnroll: this.go("mfa"),
+      scenarios, scenarioNote: SCENARIOS.find(s => s[0] === st.scenario)[2],
+      hasLoginError: !!err, loginErrCode: err ? err[0] : "", loginErrText: err ? err[1] : "", loginErrExtra: err ? err[2] : "",
+      loginErrTint: st.loginErr === "wrong" || st.loginErr === "missing" ? AMBER[0] : RED[0],
+      loginErrLine: st.loginErr === "wrong" || st.loginErr === "missing" ? AMBER[1] : RED[1],
+      loginErrColor: st.loginErr === "wrong" || st.loginErr === "missing" ? "#fbbf24" : "#f87171",
+
+      challengeSub: st.admin
+        ? "This is an admin account, so only a passkey will complete the challenge."
+        : "Your password was accepted. The 10-minute verification token is the only thing you hold until this step passes.",
+      methodTabs,
+      needsCode: st.method !== "passkey",
+      isSmsMethod: st.method === "sms", smsMask: "•••• 0142", sendSms: this.sendSms,
+      codeLabel: st.method === "bypass" ? "Emergency bypass code" : "6-digit code",
+      codePlaceholder: st.method === "bypass" ? "XXXX-XXXX" : "000000",
+      challengeCta: st.method === "passkey" ? "Use your passkey" : "Verify",
+      submitChallenge: this.submitChallenge,
+      hasChallengeMsg: !!ch, chCode: ch ? ch[0] : "", chText: ch ? ch[1] : "",
+      chTint: ch ? ch[2][0] : "", chLine: ch ? ch[2][1] : "", chColor: ch ? ch[2][2] : "",
+
+      sessionTitle: st.sessionKind === "pending" ? "Signed in, not yet cleared" : "Signed in",
+      sessionTitleColor: st.sessionKind === "pending" ? "#fbbf24" : "#34d399",
+      sessionSub: st.sessionKind === "bypass"
+        ? "An emergency code was used. It is now spent and an audit row records the IP it was used from."
+        : "The refresh cookie is set and an AUTH_LOGIN event and audit row are written.",
+      sessionFacts, isPending: st.sessionKind === "pending",
+
+      forgotCases, submitForgot: this.submitForgot, forgotSent: st.forgotSent,
+      forgotTruth: forgotTruthText, forgotTruthColor: fc[2][2], forgotTruthNote: fc[3],
+      submitReset: this.submitReset, expireToken: () => this.setState(s => ({ tokenValid: !s.tokenValid, resetMsg: null })),
+      tokenBtnLabel: st.tokenValid ? "Use an expired link" : "Use a valid link",
+      hasResetMsg: !!rs, rsCode: rs ? rs[0] : "", rsText: rs ? rs[1] : "",
+      rsTint: rs ? rs[2][0] : "", rsLine: rs ? rs[2][1] : "", rsColor: rs ? rs[2][2] : "",
+
+      mfaSub: enrolledCount === 0
+        ? (st.gate ? "Nothing is enrolled and this account requires MFA, so the console stays locked until one method is active." : "Nothing is enrolled. MFA is not enforced for this account, so sign-in works without it.")
+        : enrolledCount + " of 3 methods active. Any one of them completes a challenge; there is no primary method.",
+      methods,
+      inTotpSetup: st.setup === "totp", inSmsSetup: st.setup === "sms",
+      totpSecret: "JBSWY3DPEHPK3PXP",
+      verifyTotp: this.verifyTotp, verifySms: this.verifySms, cancelSetup: () => this.setState({ setup: null, code: "" }),
+      sendSetupSms: () => this.push(200, "POST /api/auth/mfa/sms/setup", "Code re-sent. Any pending SMS challenge for this user is deleted first, so only the newest code works."),
+      hasMfaMsg: !!mf, mfCode: mf ? mf[0] : "", mfText: mf ? mf[1] : "",
+      mfTint: mf ? mf[2][0] : "", mfLine: mf ? mf[2][1] : "", mfColor: mf ? mf[2][2] : "",
+      adminResetAll: this.adminResetAll, adminResetBad: this.adminResetBad,
+
+      logoutTitle: st.signedOut ? "You are signed out" : "Where you are signed in",
+      logoutSub: st.signedOut
+        ? "This device's refresh token is revoked and the cookie cleared. Sign in again to continue."
+        : "Built from session rows, newest activity first. Device and location come from the user agent and IP recorded when the token was issued.",
+      hasSessions: sessions.length > 0, noSessions: sessions.length === 0, sessions,
+      doLogout: this.doLogout, revokeOthers: this.revokeOthers,
+      hasLogoutMsg: !!lo, loCode: lo ? lo[0] : "", loText: lo ? lo[1] : "",
+      loTint: lo ? lo[2][0] : "", loLine: lo ? lo[2][1] : "", loColor: lo ? lo[2][2] : "",
+      history: [
+        { method: "totp", detail: "Today 09:14 · Chrome on macOS · 198.51.100.24", color: "#34d399" },
+        { method: "passkey", detail: "Tue 17:02 · Edge on Windows · 203.0.113.7", color: "#34d399" },
+        { method: "bypass", detail: "Mon 08:41 · code issued by an MSP admin · 192.0.2.44", color: "#fbbf24" }
+      ],
+
+      hasLog: st.log.length > 0, noLog: st.log.length === 0,
+      log: st.log.map(l => ({ code: l.code, path: l.path, message: l.message,
+        codeColor: l.code === 200 ? "#34d399" : l.code === 400 ? "#fbbf24" : "#f87171" })),
+
+      notes: [
+        { dot: "#f87171", text: "Nothing unlocks a locked account except waiting out lockedUntil or an administrator. The 423 carries the timestamp but there is no self-service unlock route, so the copy can only point at a person." },
+        { dot: "#f87171", text: "Removing your last MFA method is allowed with no re-authentication and no warning. The account only discovers it on the next refresh, when mfaSetupPending comes back true and every route but enrollment starts refusing." },
+        { dot: "#f87171", text: "DELETE /auth/mfa/passkey is keyed by user, not credential. The enrollments route reports passkeyCount but there is no per-credential delete, so a lost key can only be handled by removing all of them." },
+        { dot: "#fbbf24", text: "Forgot-password answers { ok: true } before it looks anything up, which is right for enumeration but means the UI can never say \"check your inbox\" truthfully — the entitlement refusal for an unpaid prospect is invisible to the caller." },
+        { dot: "#fbbf24", text: "Signing out revokes the refresh token, not the access token. A signed-out device keeps working against the API for up to 15 minutes; anything that must stop immediately needs a different mechanism." },
+        { dot: "#fbbf24", text: "Reset-password issues no session and revokes nothing. Change-password, by contrast, silently ends every other session — the same act of changing a password has two different session outcomes depending on which door it came through." },
+        { dot: "#60a5fa", text: "Admin accounts are passkey-only at every gate: SMS setup is refused, and TOTP or SMS verification at login is refused too. An admin whose only method was TOTP cannot complete a challenge." },
+        { dot: "#60a5fa", text: "Emergency bypass codes are issued by an MSP admin from the team screen, never self-service, and a full MFA reset deletes the unused ones. There is nothing here for a user to generate or view." },
+        { dot: "#94a3b8", text: "The sessions list has no device names or labels, only user agent and IP as captured at issue time, and the mobile client sends its refresh token in the body rather than a cookie — so \"this device\" is a hash comparison that a cookie-less client always loses." },
+        { dot: "#94a3b8", text: "gateRequired on the enrollments route reflects the deployment, not the account; the per-account mfaEnforced flag is set elsewhere (the team screen) and is not readable from here." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

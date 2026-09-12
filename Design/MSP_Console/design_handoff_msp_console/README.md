@@ -6,11 +6,12 @@ The MSP Console is the operator-side surface of the Shane McCaw M365 governance 
 
 It is deliberately not the customer portal. The customer portal shows a tenant its own posture. This console shows an operator *many* tenants at once, and gives them the write actions the customer cannot perform on themselves: granting and revoking consent, running scans, issuing break-glass credentials, resetting MFA, recording customer signatures on risk-acceptance decisions, and deleting a tenant outright.
 
-The design covers 37 screens across two trees, plus the shell they all mount in:
+The design covers 50 screens across two trees, plus the shell they all mount in:
 
 - **Console Shell** — the chrome itself: header, tenant tree, breadcrumb, screen slot, status bar, command palette, and its five states.
 - **Managed Tenants** — a directory, then per tenant 22 pages grouped into Overview, Monitoring, Change Control, Governance, Access & identity, Commercial, and Audit log, plus Ownership.
 - **Operations (MSP-wide)** — 9 cross-tenant pages: MSP settings, Executive view, Activity timeline, Configuration State, Sales, Scope & SLA, SOPs, Documents, SharePoint connectors.
+- **Contract-pack screens** — 13 further surfaces built one-to-one from the UI contract packs in `docs/msp-console/` (screens 38–50). Each was written from a pack that had been extracted from the real route code, so each states on itself what its routes can and cannot do. See the Screens section.
 
 ## About the design files
 
@@ -277,6 +278,32 @@ Five states are on the page as chips: Default, Tree collapsed, Command palette, 
 
 The shell's only state is the selection plus which nodes are expanded. It holds no module data and caches none between nodes; per-staff customer scoping and the MSPAdmin-only screens are enforced by the routes behind each page, not by the tree.
 
+### 38–50. Contract-pack screens
+
+These thirteen were each built from one contract pack in `docs/msp-console/` — documents extracted from the route code, listing every wire field, every real enum, the honest-empty state, and the gaps. **The notes panel at the foot of each of these screens is not filler.** It records what the routes behind that screen genuinely cannot do, and several layout decisions exist only because of those limits. Where a screen holds a guard the server does not, that is called out below; do not quietly drop it in the rebuild.
+
+Each carries `showNotes`, `rootPad` and `rootBg` props so it can be mounted inside the shell's screen slot.
+
+| # | Screen | File | Built from | What the design turns on |
+|---|---|---|---|---|
+| 38 | Authentication | `Authentication.dc.html` | `auth.ts`, `mfa.ts` | Five screens in one: sign in, two-factor, forgot/reset password, change MFA, sign out. Header pills switch account role and MFA enforcement, because the admin passkey-only rule and the enforcement flag change most outcomes. Login covers 400, the generic 401, the distinguishable "no password set" 401, the 423 lockout, and the `mfaSetupPending` session that can reach only the enrollment routes. |
+| 39 | Account Security | `Account Security.dc.html` | `msp-settings.ts` user-security routes | The operator acting on someone else's account: password reset email, temporary password, MFA clear, MFA enforcement, suspend, session revoke. **The target-role ceiling is enforced by this screen only** — the server checks the caller's tier, never the target's (#3032), so selecting the PlatformAdmin row shows what is unprotected. The roster shows each row's scope because four of nine reachable accounts are customer users caught by a legacy id. |
+| 40 | Status Reports | `Status Reports.dc.html` | `msp-status-reports.ts` | Draft → published, one way. Publish carries a confirm step because there is no unpublish and no edit afterwards. A null author renders as "Unknown operator" — the wire has no fallback. Empty is the live state: zero rows exist anywhere. |
+| 41 | POA&Ms | `POA&Ms.dc.html` | `msp-poams.ts` | Plans with milestones. **The role pill is load-bearing**: as an operator, Cancel goes through the generic edit route, which accepts the same status without the admin check the dedicated cancel route enforces (#3452). Overdue and signed are derived client-side because these routes return the bare row. A completed milestone is frozen against edits but still deletable. |
+| 42 | Reports | `Reports.dc.html` | `msp-reports.ts` | Definitions, runs, canvases and schedules, license waste. A run whose email send failed stays marked generated with the failure only in an error field, so **each run row carries an explicit warning rather than reading as success**. Retry is labelled as a brand-new run. Schedules show no next-send date because nothing executes them. |
+| 43 | DLQ | `DLQ.dc.html` | `msp-dlq.ts` | Replay is held closed unless the payload carries a workflow key, because the route has no precheck and returns a bare 500 — and every live row fails that way (#3446). Bulk replay is drawn disabled: it is registered one path level too deep and 404s (#3445). |
+| 44 | Retention Queue | `Retention Queue.dc.html` | `msp-retention-queue.ts` | Opens on its real state: nothing can reach this queue, because no record class is registered and nothing calls soft-delete. Three tiles name what is missing. The populated queue sits behind an explicitly labelled "not live data" view. Approve purges inside the same request — no staged step, no undo. |
+| 45 | Offboarding | `Offboarding.dc.html` | `msp-portal.ts` offboarding routes | A four-step stepper for the whole MSP, forward-only, with one action live at a time. The first step carries the heaviest warning because nothing resets the state. The export route never verifies cancellation happened, so the sequence is enforced by the screen. Archival suspends the MSP with the same status non-payment produces. |
+| 46 | AD OU Assignment | `AD OU Assignment.dc.html` | `msp-active-directory.ts` | Placements and the customer request queue. A manual placement beats the department-name guess, so clearing one hands the person back to it. Placing verifies the address in the real directory; moving does not re-verify. Approving a request that names a non-existent unit writes nothing, so the button reads "Approve (writes nothing)". |
+| 47 | Marketplace Purchase | `Marketplace Purchase.dc.html` | `msp-marketplace-purchase.ts` | Buying for a customer on the MSP's card. **The accepted offer is written and pushed to the customer before payment is attempted and nothing rolls it back** (#3400) — so the screen confirms before sending and shows what a decline leaves. Retainers warn that a monthly item bills once (#3403); items with an unknown fulfilment type warn that nothing will be provisioned (#3404). |
+| 48 | Partner Revenue | `Partner Revenue.dc.html` | `msp-partner-revenue.ts` | Two halves that must never be conflated or totalled: verified platform spend as a solid statement panel, and the resale worksheet as a dashed, muted panel with its disclaimer always present, because MSPs invoice outside the platform and nothing there is charged or reconciled. |
+| 49 | Plan Self-Service | `Plan Self-Service.dc.html` | `msp-plan-self-service.ts` | The MSP's own plan and payment method. |
+| 50 | Policy Engine | `Policy Engine.dc.html` | `msp-policy-decisions.ts`, `msp-standing-policies.ts` | Customer-signed policy decisions and MSP standing policies. Two different reasons both produce the same route outcome, so reason is rendered separately from route. |
+
+Screenshots `38-authentication.png` through `50-policy-engine.png`.
+
+**A pattern shared by all thirteen.** Where a route is missing a guard, these screens supply it in the UI and say so on the face of the screen rather than hiding it. When the corresponding upstream issue lands (#3032, #3400, #3403, #3404, #3405, #3445, #3446, #3452), the guard can move to the server — but until then, removing it from the UI removes it entirely. Each screen also carries a small toggle or two (role, empty state, card on file) that exist **to review states during design and must not ship**, exactly like the STATE chip group described above.
+
 ### 37. Ownership — `37-tenant-ownership.png`
 
 The operator half of RACI, as its own module page (`Ownership.dc.html`): what our staff hold across the book, per-customer coverage including the zero rows, and one customer's matrix with cell detail. Its feature is not architected upstream, which the screen states on itself.
@@ -358,7 +385,9 @@ Named explicitly in the design:
 - `POST /api/msp/rbd/:rbdId/versions/:versionUid/share` — share the current version (returns a token, not a URL; 30-day expiry)
 - `PATCH /api/msp/sales-offers/:id/state` — advance a sales offer
 
-`github.md` in this bundle records the repository, branch, last sync and a screen-to-source map.
+`github.md` in this bundle records the repository, branch, last sync and a screen-to-source map. It also carries a **contract-pack inventory**: all 38 packs under `docs/msp-console/` with the screen each maps to and the pack's blob sha, so a later session can tell which packs changed upstream.
+
+The thirteen contract-pack screens (38–50) each name their own routes in the UI, in the same load-bearing way: the route path and its real response are printed next to the control that calls it, and the route log on several of them shows the exact status and message the server returned.
 
 ## Assets
 
@@ -374,9 +403,10 @@ Named explicitly in the design:
 | `MSP Console.dc.html` | The full interactive prototype. Open it in a browser to click through every screen. |
 | `Console Shell.dc.html` | The shell on its own — chrome, tree, palette, status bar, and its five states. Start here. |
 | 19 module files | `Diagnostics`, `Remediation`, `Change Control`, `Risk Register`, `Runbooks`, `Ownership`, `Data Rights`, `Team`, `Break Glass`, `Launch Control`, `Webhooks`, `Documents`, `Executive View`, `Activity Timeline`, `Configuration State`, `Sales`, `Scope and SLA`, `SOPs` (`.dc.html` each). Each opens standalone and is also mounted inside `MSP Console.dc.html`. |
+| 13 contract-pack screens | `Authentication`, `Account Security`, `Status Reports`, `POA&Ms`, `Reports`, `DLQ`, `Retention Queue`, `Offboarding`, `AD OU Assignment`, `Marketplace Purchase`, `Partner Revenue`, `Plan Self-Service`, `Policy Engine` (`.dc.html` each). Screens 38–50. Each opens standalone; none is mounted inside `MSP Console.dc.html` yet. |
 | `support.js` | The prototype runtime. Required for the HTML to run; not for production. |
 | `_ds/` | Design system tokens, stylesheet and component bundle. |
-| `screenshots/` | 36 PNGs, numbered to match the Screens section. |
+| `screenshots/` | 49 PNGs, numbered to match the Screens section. |
 | `github.md` | Repository, branch, last sync commit, and the screen-to-source map. |
 | `README.md` | This document. |
 

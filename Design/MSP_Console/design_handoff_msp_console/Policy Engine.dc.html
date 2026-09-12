@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">POLICY DECISIONS + POLICY ENGINE</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Policy</span>
+    </div>
+    <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24;white-space:nowrap">MSPOperator or higher</span>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="2">
+      <button onClick="{{ t.select }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+  </div>
+
+  <!-- Tab 1 — GET /api/msp/policy-decisions/:customerId. Signed on create by the customer; this
+       surface reads and resolves manual dependency clearances. There is no MSP-side author route. -->
+  <sc-if value="{{ isDecisions }}" hint-placeholder-val="{{ true }}">
+    <sc-if value="{{ hasDecisions }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:11px;min-width:0">
+        <sc-for list="{{ decisions }}" as="d" hint-placeholder-count="3">
+          <div style="border:1px solid {{ d.line }};border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:12px;min-width:0">
+            <div style="display:flex;align-items:flex-start;gap:11px;flex-wrap:wrap">
+              <span style="display:flex;flex-direction:column;gap:3px;min-width:200px;flex:1">
+                <span style="font-size:13.5px;font-weight:700;color:#f1f5f9;text-wrap:pretty">{{ d.title }}</span>
+                <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">{{ d.obligation }}</span>
+              </span>
+              <span style="display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:999px;background:{{ d.clockTint }};border:1px solid {{ d.clockLine }};font-size:10.5px;font-weight:600;color:{{ d.clockColor }};white-space:nowrap">{{ d.clock }}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+              <sc-for list="{{ d.facts }}" as="f" hint-placeholder-count="4">
+                <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">{{ f.label }}</span>
+                  <span style="font-size:12.5px;font-weight:600;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+                </span>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid rgba(148,163,184,.12);padding-top:11px">
+              <span style="font-size:11.5px;color:#94a3b8;flex:1;min-width:180px;text-wrap:pretty">{{ d.clearanceNote }}</span>
+              <button onClick="{{ d.resolve }}" style="height:30px;padding:0 12px;border-radius:7px;border:1px solid {{ d.btnLine }};background:{{ d.btnBg }};color:{{ d.btnFg }};font-size:12px;font-weight:600;cursor:{{ d.btnCursor }};white-space:nowrap">{{ d.btnLabel }}</button>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+  </sc-if>
+
+  <!-- Tab 2 — GET/POST/PATCH /api/msp/standing-policies. Declarative target state bound to an OU.
+       Default-off: is_active defaults false. Activating fires policy.standing_policy.activated;
+       deactivating fires nothing and waits for the next hourly sweep. -->
+  <sc-if value="{{ isPolicies }}" hint-placeholder-val="{{ false }}">
+    <sc-if value="{{ hasPolicies }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+          <div style="min-width:760px">
+            <div style="display:grid;grid-template-columns:2.2fr 1.4fr 1fr 1fr 0.8fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+              <span>POLICY</span><span>TARGET KIND</span><span>OU</span><span>ENACTMENT</span><span style="text-align:right">STATE</span>
+            </div>
+            <sc-for list="{{ policies }}" as="p" hint-placeholder-count="3">
+              <div onClick="{{ p.select }}" style="display:grid;grid-template-columns:2.2fr 1.4fr 1fr 1fr 0.8fr;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(148,163,184,.08);cursor:pointer;background:{{ p.rowBg }};transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
+                <span style="display:flex;flex-direction:column;min-width:0">
+                  <span style="font-size:13px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ p.title }}</span>
+                  <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.sub }}</span>
+                </span>
+                <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ p.kindTint }};border:1px solid {{ p.kindLine }};font-size:11px;font-weight:600;color:{{ p.kindColor }};white-space:nowrap">{{ p.kind }}</span>
+                <span style="font-size:12px;color:#94a3b8;white-space:nowrap">{{ p.ou }}</span>
+                <span style="font-size:12px;color:{{ p.routeColor }};white-space:nowrap">{{ p.route }}</span>
+                <span style="justify-self:end;font-size:11.5px;font-weight:600;color:{{ p.stateColor }};white-space:nowrap">{{ p.state }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <sc-if value="{{ hasSelected }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid rgba(96,165,250,.3);border-radius:12px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0">
+            <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+              <span data-icon="shield-check" style="display:block;width:32px;height:32px;flex:0 0 32px;border-radius:9px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);color:#60a5fa;padding:7px"></span>
+              <span style="display:flex;flex-direction:column;gap:3px;min-width:180px;flex:1">
+                <span style="font-size:15px;font-weight:700;color:#f1f5f9;text-wrap:pretty">{{ selTitle }}</span>
+                <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">{{ selMeta }}</span>
+              </span>
+              <div style="display:flex;gap:7px;flex-wrap:wrap">
+                <button onClick="{{ evaluate }}" style="height:30px;padding:0 12px;border-radius:7px;border:1px solid rgba(148,163,184,.28);background:transparent;color:#e2e8f0;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="border-color:rgba(96,165,250,.5)">Evaluate now</button>
+                <button onClick="{{ toggleActive }}" style="height:30px;padding:0 12px;border-radius:7px;border:1px solid {{ activeBtnLine }};background:{{ activeBtnBg }};color:{{ activeBtnFg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ activeBtnLabel }}</button>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">TARGET STATE — jsonb, served verbatim</span>
+              <span style="font-family:Menlo,ui-monospace,monospace;font-size:11.5px;color:#cbd5e1;background:rgba(2,6,23,.5);border:1px solid rgba(148,163,184,.12);border-radius:8px;padding:11px;overflow-x:auto;white-space:pre">{{ selTargetState }}</span>
+              <span style="font-size:11px;color:#fbbf24;text-wrap:pretty">{{ selShapeNote }}</span>
+            </div>
+
+            <!-- GET .../:id/enactment — a truth table over three live facts. Two different reasons
+                 can both produce not_evaluated, so the reason is shown next to the route, not folded in. -->
+            <div style="display:flex;flex-direction:column;gap:9px;border-top:1px solid rgba(148,163,184,.12);padding-top:13px">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">ENACTMENT ROUTE — PREVIEW ONLY, DETECTS NOTHING</span>
+              <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                <span style="display:inline-flex;align-items:center;height:26px;padding:0 11px;border-radius:7px;background:{{ routeTint }};border:1px solid {{ routeLine }};font-family:Menlo,ui-monospace,monospace;font-size:12px;font-weight:700;color:{{ routeColor }};white-space:nowrap">{{ routeValue }}</span>
+                <span style="font-family:Menlo,ui-monospace,monospace;font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ reasonValue }}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+                <sc-for list="{{ signals }}" as="s" hint-placeholder-count="3">
+                  <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">{{ s.label }}</span>
+                    <span style="font-size:12.5px;font-weight:600;color:{{ s.color }}">{{ s.value }}</span>
+                  </span>
+                </sc-for>
+              </div>
+            </div>
+
+            <sc-if value="{{ hasRuns }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid rgba(148,163,184,.12);padding-top:13px">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">EVALUATION HISTORY — LAST 200 RUNS</span>
+                <sc-for list="{{ runs }}" as="r" hint-placeholder-count="2">
+                  <span style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;min-width:0">
+                    <span style="font-family:Menlo,ui-monospace,monospace;font-size:11px;font-weight:700;color:{{ r.color }};white-space:nowrap;min-width:120px">{{ r.outcome }}</span>
+                    <span style="font-family:Menlo,ui-monospace,monospace;font-size:11px;color:#64748b;white-space:nowrap">{{ r.trigger }}</span>
+                    <span style="font-size:11.5px;color:#94a3b8;flex:1;min-width:160px;text-wrap:pretty">{{ r.detail }}</span>
+                  </span>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </sc-if>
+
+  <!-- Honest empty: policy_decisions, standing_policies and policy_evaluation_runs all hold zero
+       rows live. Every list route returns [] for every real customer today. -->
+  <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:26px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+      <span data-icon="inbox" style="display:block;width:30px;height:30px;border-radius:9px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.16);color:#94a3b8;padding:7px"></span>
+      <span style="font-size:14px;font-weight:600;color:#f1f5f9">{{ emptyTitle }}</span>
+      <span style="font-size:12px;color:#64748b;max-width:460px;text-wrap:pretty">{{ emptyBody }}</span>
+    </div>
+  </sc-if>
+
+  <!-- PATCH /api/msp/tenants/:tenantId/policy-engine — the one place the opt-in is set. Response is
+       the bare boolean. No customer-facing surface for it exists anywhere in the codebase. -->
+  <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0">
+    <span style="display:flex;flex-direction:column;gap:3px;min-width:200px;flex:1">
+      <span style="font-size:13px;font-weight:700;color:#f1f5f9">Policy Engine opt-in — {{ customerName }}</span>
+      <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">Gates the continuous loop and the enactment route. The on-demand Evaluate button above does not check it — a one-off Graph read runs for a tenant that never opted in.</span>
+    </span>
+    <button onClick="{{ toggleOptIn }}" style="height:30px;padding:0 13px;border-radius:7px;border:1px solid {{ optLine }};background:{{ optBg }};color:{{ optFg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ optLabel }}</button>
+  </div>
+
+  <sc-if value="{{ hasLog }}" hint-placeholder-val="{{ false }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(2,6,23,.4);padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">WIRE LOG — REAL STATUS CODES AND MESSAGE TEXT</span>
+      <sc-for list="{{ log }}" as="l" hint-placeholder-count="2">
+        <span style="display:flex;align-items:flex-start;gap:9px;flex-wrap:wrap;min-width:0">
+          <span style="font-family:Menlo,ui-monospace,monospace;font-size:11px;font-weight:700;color:{{ l.codeColor }};white-space:nowrap">{{ l.code }}</span>
+          <span style="font-family:Menlo,ui-monospace,monospace;font-size:11px;color:#64748b;white-space:nowrap">{{ l.path }}</span>
+          <span style="font-size:11.5px;color:#94a3b8;flex:1;min-width:160px;text-wrap:pretty">{{ l.message }}</span>
+        </span>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <div style="border:1px solid rgba(251,191,36,.2);border-radius:12px;background:rgba(251,191,36,.05);padding:15px;display:flex;flex-direction:column;gap:9px;min-width:0">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#fbbf24">STATE OF THE BACKEND — READ BEFORE BUILDING</span>
+      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+        <span style="display:flex;align-items:flex-start;gap:9px;min-width:0">
+          <span style="width:5px;height:5px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:0 0 5px"></span>
+          <span style="font-size:12px;color:#cbd5e1;flex:1;text-wrap:pretty">{{ n.text }}</span>
+        </span>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:900,&quot;height&quot;:1100},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;sample&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;sample&quot;,&quot;tsType&quot;:&quot;\&quot;sample\&quot;|\&quot;empty\&quot;&quot;,&quot;section&quot;:&quot;Live state&quot;},&quot;policyEngineOptIn&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Live state&quot;},&quot;writeConsent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;granted&quot;,&quot;denied&quot;],&quot;default&quot;:&quot;granted&quot;,&quot;tsType&quot;:&quot;\&quot;granted\&quot;|\&quot;denied\&quot;&quot;,&quot;section&quot;:&quot;Live state&quot;},&quot;customerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Traders&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+// Mirrors msp-policy-decisions.ts (2 routes), msp-standing-policies.ts (6 routes, incl. #3034's
+// PATCH) and msp-policy-engine-settings.ts (2 routes). All 10 are live and mounted; none has a
+// consumer today. Every table below holds zero rows live — the sample rows exist so the layout
+// can be judged, and the dataState tweak switches to the real empty state.
+const DECISIONS = [
+  {
+    id: 41, title: "Retain guest accounts past 90 days in the Vendor OU",
+    obligation: "ISO 27001 A.5.18 — access rights", obligationType: "certification",
+    owner: "Dana Whitfield", signedBy: "Dana Whitfield", signedAt: "2026-08-22",
+    reviewCadence: "Quarterly", reviewDueAt: "2026-11-22", reviewState: "on_track",
+    clearanceCondition: null, clearanceTriggerType: null, clearanceResolvedAt: null
+  },
+  {
+    id: 39, title: "Defer Conditional Access baseline on shared mailboxes",
+    obligation: "Cyber insurance schedule 4(b)", obligationType: "insurance",
+    owner: "Marcus Bell", signedBy: "Marcus Bell", signedAt: "2026-08-14",
+    reviewCadence: null, reviewDueAt: null, reviewState: null,
+    clearanceCondition: "Until the Entra ID P2 licences are provisioned",
+    clearanceTriggerType: "license_sku", clearanceResolvedAt: null
+  },
+  {
+    id: 36, title: "Accept legacy IMAP on two service accounts",
+    obligation: "Internal change schedule — CS-114", obligationType: "internal_schedule",
+    owner: "Priya Raman", signedBy: "Priya Raman", signedAt: "2026-07-30",
+    reviewCadence: null, reviewDueAt: null, reviewState: null,
+    clearanceCondition: "Until the billing integration is migrated off IMAP",
+    clearanceTriggerType: "manual", clearanceResolvedAt: null
+  }
+];
+const POLICIES = [
+  { id: 7, title: "Managers carry a department attribute", kind: "mailbox_attribute", ou: "OU 14", ouName: "Corporate / Managers",
+    isActive: true, sopId: "SOP-0042", catalogItemId: 18, createdByName: "Priya Raman",
+    targetState: { attribute: "department", expected: "Corporate" }, shapeOk: true },
+  { id: 6, title: "Finance staff belong to the Finance-All group", kind: "group_membership", ou: "OU 9", ouName: "Corporate / Finance",
+    isActive: true, sopId: "SOP-0031", catalogItemId: null, createdByName: "Priya Raman",
+    targetState: { groupId: "b41c...e7", mustContainAllMembers: true }, shapeOk: true },
+  { id: 5, title: "Retention label applied to Legal shared mailboxes", kind: "service_policy", ou: "OU 21", ouName: "Corporate / Legal",
+    isActive: false, sopId: null, catalogItemId: null, createdByName: "Marcus Bell",
+    targetState: { labelId: "legal-7y" }, shapeOk: false }
+];
+// EVALUABLE_TARGET_KINDS (policy-compliance.ts:152) — service_policy is deliberately absent.
+const EVALUABLE = ["mailbox_attribute", "group_membership"];
+
+class Component extends DCLogic {
+  state = {
+    tab: "decisions",
+    resolved: {},        // decisionId -> ISO
+    selectedId: 7,
+    active: {},          // policyId -> bool override
+    optIn: null,
+    runs: {},            // policyId -> run[]
+    log: []
+  };
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+  // createIcons() only walks [data-lucide]; this project's convention is [data-icon].
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  empty() { return (this.props.dataState ?? "sample") === "empty"; }
+  optedIn() { return this.state.optIn === null ? (this.props.policyEngineOptIn ?? true) : this.state.optIn; }
+  consent() { return this.props.writeConsent ?? "granted"; }
+  isActive(p) { return this.state.active[p.id] === undefined ? p.isActive : this.state.active[p.id]; }
+
+  push(code, path, message) {
+    this.setState(s => ({ log: [{ code, path, message }].concat(s.log).slice(0, 4) }));
+  }
+
+  // Four guarded states, in the route's own order. A license_sku row belongs to
+  // advancePolicyClearances(); a human cannot force it.
+  resolve = (d) => {
+    const path = "PATCH /msp/policy-decisions/:customerId/" + d.id + "/clearance/resolve";
+    if (!d.clearanceCondition) return this.push(409, path, "No dependency clearance to resolve on this decision");
+    if (d.clearanceTriggerType !== "manual")
+      return this.push(409, path, "Clearance trigger is license_sku — the platform resolves this when the SKU appears");
+    if (this.state.resolved[d.id]) return this.push(409, path, "Clearance already resolved");
+    this.setState(s => ({ resolved: Object.assign({}, s.resolved, { [d.id]: "2026-09-12" }) }));
+    this.push(200, path, "Resolved. Guarded at the DB by WHERE clearance_resolved_at IS NULL — a concurrent second resolve loses the race.");
+  };
+
+  // resolvePolicyEnactmentRoute — three live facts, four reasons, three routes.
+  route(p) {
+    if (!this.isActive(p)) return ["not_evaluated", "policy_inactive"];
+    if (!this.optedIn()) return ["not_evaluated", "tenant_not_opted_in"];
+    if (this.consent() === "granted") return ["engine_enacts", "write_consent_granted"];
+    return ["checklist_item", "write_consent_denied"];
+  }
+
+  evaluate = () => {
+    const p = POLICIES.find(x => x.id === this.state.selectedId);
+    const path = "POST /msp/standing-policies/" + p.id + "/evaluate";
+    const add = (run) => this.setState(s => ({
+      runs: Object.assign({}, s.runs, { [p.id]: [run].concat(s.runs[p.id] || []) })
+    }));
+    if (!this.isActive(p)) {
+      add({ outcome: "not_evaluable", trigger: "event", detail: "Policy is not active — the default-off gate, checked independently of route-level ownership" });
+      return this.push(200, path, "runId null, notEvaluableReason: policy is not active");
+    }
+    if (EVALUABLE.indexOf(p.kind) === -1) {
+      add({ outcome: "not_evaluable", trigger: "event", detail: "No evaluator wired for service_policy — likely needs Exchange Online PowerShell, not a Graph read" });
+      return this.push(200, path, "runId null, notEvaluableReason: target kind has no evaluator");
+    }
+    if (!p.shapeOk) {
+      add({ outcome: "not_evaluable", trigger: "event", detail: "targetState does not parse for this targetKind — never rejected at author time" });
+      return this.push(200, path, "runId null, notEvaluableReason: malformed target state");
+    }
+    add({ outcome: "divergent", trigger: "event", detail: "14 members observed, 11 compliant, 3 divergent — 3 findings written with checkKey policy:" + p.id + ":" + p.kind });
+    this.push(200, path, "Wrote a msp_diagnostic_runs row (package_key policy:compliance) and 3 msp_diagnostic_findings rows.");
+  };
+
+  toggleActive = () => {
+    const p = POLICIES.find(x => x.id === this.state.selectedId);
+    const next = !this.isActive(p);
+    this.setState(s => ({ active: Object.assign({}, s.active, { [p.id]: next }) }));
+    this.push(200, "PATCH /msp/standing-policies/" + p.id, next
+      ? "isActive true. Fires policy.standing_policy.activated for the OU's tenant, fire-and-forget."
+      : "isActive false. No deactivation event exists — the next hourly sweep simply skips the policy.");
+  };
+
+  toggleOptIn = () => {
+    const next = !this.optedIn();
+    this.setState({ optIn: next });
+    this.push(200, "PATCH /msp/tenants/:tenantId/policy-engine", "{ tenantId, policyEngineOptIn: " + next + " } — the bare boolean, nothing else.");
+  };
+
+  renderVals() {
+    const tab = this.state.tab;
+    const empty = this.empty();
+    const kindTone = {
+      mailbox_attribute: ["rgba(96,165,250,.1)", "rgba(96,165,250,.22)", "#60a5fa"],
+      group_membership: ["rgba(52,211,153,.1)", "rgba(52,211,153,.22)", "#34d399"],
+      service_policy: ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"]
+    };
+    const sel = POLICIES.find(p => p.id === this.state.selectedId);
+    const [routeValue, reasonValue] = this.route(sel);
+    const routeTone = { engine_enacts: ["rgba(52,211,153,.1)", "rgba(52,211,153,.24)", "#34d399"],
+      checklist_item: ["rgba(251,191,36,.1)", "rgba(251,191,36,.24)", "#fbbf24"],
+      not_evaluated: ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"] }[routeValue];
+    const runs = this.state.runs[sel.id] || [];
+
+    const decisions = DECISIONS.map(d => {
+      const resolvedAt = this.state.resolved[d.id] || d.clearanceResolvedAt;
+      const dependency = !!d.clearanceCondition;
+      const manual = d.clearanceTriggerType === "manual";
+      const canResolve = dependency && manual && !resolvedAt;
+      let clock = "Review " + (d.reviewCadence || "");
+      let ct = ["rgba(96,165,250,.1)", "rgba(96,165,250,.22)", "#60a5fa"];
+      if (dependency) { clock = resolvedAt ? "Cleared" : "Dependency"; ct = resolvedAt
+        ? ["rgba(52,211,153,.1)", "rgba(52,211,153,.22)", "#34d399"]
+        : ["rgba(251,191,36,.1)", "rgba(251,191,36,.22)", "#fbbf24"]; }
+      let note = "Review-cadence row. No clearance condition, so the resolve route 409s.";
+      if (dependency && resolvedAt) note = "Resolved " + resolvedAt + " — actionable immediately, no scheduled review to wait for.";
+      else if (dependency && manual) note = "Manual trigger: " + d.clearanceCondition;
+      else if (dependency) note = "license_sku trigger, watching " + "ENTRAID_P2" + ". Only the platform clears this one.";
+      return {
+        title: d.title, obligation: d.obligation + " · " + d.obligationType,
+        clock, clockTint: ct[0], clockLine: ct[1], clockColor: ct[2],
+        line: canResolve ? "rgba(251,191,36,.25)" : "rgba(148,163,184,.16)",
+        facts: [
+          { label: "OWNER", value: d.owner, color: "#f1f5f9" },
+          { label: "SIGNED", value: d.signedBy + " · " + d.signedAt, color: "#f1f5f9" },
+          { label: "REVIEW DUE", value: d.reviewDueAt || "— dependency-based", color: d.reviewDueAt ? "#f1f5f9" : "#94a3b8" },
+          { label: "REVIEW STATE", value: d.reviewState || "— null for a dependency row", color: d.reviewState ? "#34d399" : "#94a3b8" }
+        ],
+        clearanceNote: note,
+        resolve: () => this.resolve(d),
+        btnLabel: resolvedAt ? "Resolved" : "Resolve clearance",
+        btnBg: canResolve ? "#2563eb" : "rgba(148,163,184,.08)",
+        btnLine: canResolve ? "#2563eb" : "rgba(148,163,184,.18)",
+        btnFg: canResolve ? "#fff" : "#64748b",
+        btnCursor: canResolve ? "pointer" : "not-allowed"
+      };
+    });
+
+    const policies = POLICIES.map(p => {
+      const [r] = this.route(p);
+      const active = this.isActive(p);
+      const kt = kindTone[p.kind];
+      return {
+        title: p.title, sub: "id " + p.id + " · " + (p.sopId ? p.sopId : "no SOP named") + (p.catalogItemId ? " · catalog " + p.catalogItemId : ""),
+        kind: p.kind, kindTint: kt[0], kindLine: kt[1], kindColor: kt[2],
+        ou: p.ou, route: r,
+        routeColor: r === "engine_enacts" ? "#34d399" : r === "checklist_item" ? "#fbbf24" : "#94a3b8",
+        state: active ? "Active" : "Inactive",
+        stateColor: active ? "#34d399" : "#64748b",
+        rowBg: p.id === this.state.selectedId ? "rgba(96,165,250,.07)" : "transparent",
+        select: () => this.setState({ selectedId: p.id })
+      };
+    });
+
+    const tabs = [["decisions", "Policy decisions", empty ? 0 : DECISIONS.length],
+      ["policies", "Standing policies", empty ? 0 : POLICIES.length]].map(([k, label, count]) => {
+      const on = k === tab;
+      return { label, count, select: () => this.setState({ tab: k }),
+        bg: on ? "rgba(37,99,235,.18)" : "transparent",
+        border: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+        fg: on ? "#f1f5f9" : "#94a3b8", countColor: on ? "#60a5fa" : "#64748b" };
+    });
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      rootBg: this.props.rootBg ?? "transparent",
+      showNotes: this.props.showNotes ?? true,
+      tabs,
+      isDecisions: tab === "decisions" && !empty,
+      isPolicies: tab === "policies" && !empty,
+      hasDecisions: !empty, hasPolicies: !empty,
+      decisions, policies,
+      isEmpty: empty,
+      emptyTitle: tab === "decisions" ? "No policy decisions on this customer" : "No standing policies on this MSP",
+      emptyBody: tab === "decisions"
+        ? "policy_decisions holds zero rows live. Decisions are created and signed by the customer through their own portal; there is no MSP-side author route, by design — an MSP staffer's name in signedBy would misattribute the customer's compliance position."
+        : "standing_policies and policy_evaluation_runs both hold zero rows live. The author route is real and mounted, so the first row comes from this surface once the wire step lands.",
+      hasSelected: true,
+      selTitle: sel.title,
+      selMeta: "OU " + sel.ouName + " · authored by " + sel.createdByName + " · createdByPersonId is on the row but not on the wire",
+      selTargetState: JSON.stringify(sel.targetState, null, 2),
+      selShapeNote: sel.shapeOk
+        ? "No per-targetKind shape validation exists on create or edit. This form has to enforce the shape itself."
+        : "This targetState does not match its targetKind. The backend accepted it anyway — the mismatch only surfaces as not_evaluable on evaluate.",
+      evaluate: this.evaluate,
+      toggleActive: this.toggleActive,
+      activeBtnLabel: this.isActive(sel) ? "Deactivate" : "Activate",
+      activeBtnBg: this.isActive(sel) ? "rgba(248,113,113,.1)" : "#2563eb",
+      activeBtnLine: this.isActive(sel) ? "rgba(248,113,113,.3)" : "#2563eb",
+      activeBtnFg: this.isActive(sel) ? "#f87171" : "#fff",
+      routeValue, reasonValue,
+      routeTint: routeTone[0], routeLine: routeTone[1], routeColor: routeTone[2],
+      signals: [
+        { label: "POLICY IS ACTIVE", value: this.isActive(sel) ? "true" : "false", color: this.isActive(sel) ? "#34d399" : "#f87171" },
+        { label: "TENANT OPT-IN", value: this.optedIn() ? "true" : "false", color: this.optedIn() ? "#34d399" : "#f87171" },
+        { label: "WRITE-BACK CONSENT", value: this.consent(), color: this.consent() === "granted" ? "#34d399" : "#fbbf24" }
+      ],
+      hasRuns: runs.length > 0,
+      runs: runs.map(r => ({ outcome: r.outcome, trigger: r.trigger, detail: r.detail,
+        color: r.outcome === "divergent" ? "#fbbf24" : r.outcome === "compliant" ? "#34d399" : "#94a3b8" })),
+      customerName: this.props.customerName ?? "Northwind Traders",
+      toggleOptIn: this.toggleOptIn,
+      optLabel: this.optedIn() ? "Opted in" : "Opted out",
+      optBg: this.optedIn() ? "rgba(52,211,153,.1)" : "rgba(148,163,184,.08)",
+      optLine: this.optedIn() ? "rgba(52,211,153,.3)" : "rgba(148,163,184,.2)",
+      optFg: this.optedIn() ? "#34d399" : "#94a3b8",
+      hasLog: this.state.log.length > 0,
+      log: this.state.log.map(l => ({ code: l.code, path: l.path, message: l.message,
+        codeColor: l.code === 200 ? "#34d399" : l.code === 404 ? "#94a3b8" : "#f87171" })),
+      notes: [
+        { dot: "#f87171", text: "All 10 routes are live and mounted; none has a consumer. A repo-wide grep of msp-console, admin-panel and mcp-server found zero references to standing-policies, policy-engine or msp/policy-decisions." },
+        { dot: "#fbbf24", text: "targetState takes any object on both create and edit. A mismatched shape is accepted silently and only surfaces as not_evaluable when evaluate runs, so the author form has to enforce the per-kind shape itself." },
+        { dot: "#fbbf24", text: "service_policy can be authored but never evaluated — EVALUABLE_TARGET_KINDS covers mailbox_attribute and group_membership only, and the code's own comment says the third likely needs Exchange Online PowerShell." },
+        { dot: "#60a5fa", text: "Deactivate is the off-switch; there is no DELETE route. A delete would cascade away the whole evaluation history, which is still an open design question." },
+        { dot: "#60a5fa", text: "Two different reasons both produce the not_evaluated route, so the reason has to be rendered separately from the route rather than folded into one label." },
+        { dot: "#94a3b8", text: "OU membership is not just the ou_id. Manual per-object assignments are read first and a department-match guess second, and neither the policy row nor its wire shape discloses that." },
+        { dot: "#94a3b8", text: "The wire carries ouId only — no OU name — so this screen needs a separate lookup to show anything but a bare id." }
+      ]
+    };
+  }
+}
+
+</script>
+</body>
+</html>

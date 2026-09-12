@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>a{color:#60a5fa}a:hover{color:#93c5fd}input::placeholder,textarea::placeholder{color:#64748b}</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">ACTIVE DIRECTORY · OU ASSIGNMENT</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Who sits in which unit</span>
+    </div>
+    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPOperator or above</span>
+    <button onClick="{{ toggleEmpty }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ emptyBtnLabel }}</button>
+  </div>
+
+  <div style="border:1px solid rgba(96,165,250,.26);border-radius:12px;background:rgba(96,165,250,.07);padding:14px;display:flex;flex-direction:column;gap:6px;min-width:0">
+    <span style="font-size:12px;font-weight:700;color:#60a5fa">A manual placement beats the automatic guess</span>
+    <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">Policy evaluation works out who is in a unit two ways: anyone placed here by hand, plus anyone whose directory department happens to match the unit's name and who has not been placed by hand anywhere else. So a placement is not decoration — it removes that person from every other unit's guess. Clearing one hands them straight back to it.</span>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="2">
+      <button onClick="{{ t.select }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;gap:7px;height:30px;padding:0 12px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+  </div>
+
+  <!-- ASSIGNMENTS -->
+  <sc-if value="{{ isAssign }}" hint-placeholder-val="{{ true }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start;min-width:0">
+
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+        <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Organisational units</span>
+        <sc-if value="{{ noOus }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
+            <span style="font-size:13px;font-weight:700;color:#cbd5e1">No units on this book</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:330px">This is the live state: units, placements and requests are all empty. Units are created on the platform side, so there is nothing to place anyone into from here yet.</span>
+          </div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <sc-for list="{{ ous }}" as="o" hint-placeholder-count="3">
+            <button onClick="{{ o.select }}" style="display:flex;flex-direction:column;gap:5px;text-align:left;border:1px solid {{ o.line }};border-radius:10px;background:{{ o.bg }};padding:12px;cursor:{{ o.cursor }};font-family:inherit;min-width:0">
+              <span style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;width:100%">
+                <span style="font-size:12.5px;font-weight:700;color:{{ o.nameColor }};flex:1;min-width:110px;text-wrap:pretty">{{ o.name }}</span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ o.tint }};border:1px solid {{ o.badgeLine }};font-size:10px;font-weight:600;color:{{ o.color }}">{{ o.tag }}</span>
+              </span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ o.meta }}</span>
+            </button>
+          </sc-for>
+        </div>
+        <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">A unit with no customer behind it cannot be opened from this surface at all. There is no column tying such a unit to one MSP, so it could be shared with another MSP's customer — only the platform side can read into it.</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+        <sc-if value="{{ ouOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:13px;min-width:0">
+            <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+              <span style="display:flex;flex-direction:column;gap:3px;min-width:160px;flex:1">
+                <span style="font-size:13.5px;font-weight:700;color:#f1f5f9;text-wrap:pretty">{{ ouName }}</span>
+                <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ ouMeta }}</span>
+              </span>
+              <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:10.5px;font-weight:600;color:#94a3b8">{{ ouCount }}</span>
+            </div>
+
+            <sc-if value="{{ hasMembers }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
+                <sc-for list="{{ members }}" as="m" hint-placeholder-count="3">
+                  <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;flex-direction:column;gap:9px;min-width:0">
+                    <div style="display:flex;align-items:flex-start;gap:9px;flex-wrap:wrap">
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:160px;flex:1">
+                        <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;text-wrap:pretty">{{ m.display }}</span>
+                        <span style="font-size:11px;font-family:Menlo,monospace;color:#94a3b8;word-break:break-all">{{ m.upn }}</span>
+                      </span>
+                      <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.26);font-size:10px;font-weight:600;color:#34d399">placed by hand</span>
+                    </div>
+                    <span style="font-size:10.5px;font-family:Menlo,monospace;color:#94a3b8;word-break:break-all">{{ m.objectId }}</span>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      <button onClick="{{ m.move }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">{{ m.moveLabel }}</button>
+                      <button onClick="{{ m.clear }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:6px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.1);color:#f87171;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Clear placement</button>
+                    </div>
+                    <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:8px">{{ m.note }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ noMembers }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
+                <span style="font-size:13px;font-weight:700;color:#cbd5e1">Nobody placed here by hand</span>
+                <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:330px">That does not mean the unit is empty for policy purposes — anyone whose department matches its name still counts. This list only ever shows deliberate placements, and the automatic ones are not readable from here.</span>
+              </div>
+            </sc-if>
+
+            <div style="border-top:1px solid rgba(148,163,184,.12);padding-top:13px;display:flex;flex-direction:column;gap:9px;min-width:0">
+              <span style="font-size:11.5px;font-weight:700;color:#f1f5f9">Place someone here</span>
+              <label style="display:flex;flex-direction:column;gap:5px">
+                <span style="font-size:11px;font-weight:600;color:#94a3b8">Their sign-in address</span>
+                <input value="{{ upn }}" onChange="{{ setUpn }}" placeholder="dana.whitfield@northwindtraders.com" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:Menlo,monospace;outline:none;min-width:0" />
+              </label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button onClick="{{ assign }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Verify and place</button>
+                <button onClick="{{ assignBogus }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Try an address that does not exist</button>
+              </div>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">The address is looked up in the real directory before anything is written, so a typo is refused rather than stored. If that person is already placed in another unit, this moves them — one object only ever sits in one unit, and no second row is created.</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
+            <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
+            <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- REQUESTS -->
+  <sc-if value="{{ isRequests }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start;min-width:0">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Raised by customers</span>
+          <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Newest first. Customers can ask; only this surface can answer — without it a request would be a write nobody ever reads.</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <sc-for list="{{ statusFilters }}" as="s" hint-placeholder-count="4">
+            <button onClick="{{ s.select }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;border:1px solid {{ s.line }};background:{{ s.bg }};color:{{ s.fg }};font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">{{ s.label }}</button>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ hasRequests }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+            <sc-for list="{{ requests }}" as="r" hint-placeholder-count="3">
+              <button onClick="{{ r.select }}" style="display:flex;flex-direction:column;gap:6px;text-align:left;border:1px solid {{ r.line }};border-radius:10px;background:{{ r.bg }};padding:12px;cursor:pointer;font-family:inherit;min-width:0">
+                <span style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;width:100%">
+                  <span style="font-size:12px;font-weight:700;color:#f1f5f9;flex:1;min-width:120px;text-wrap:pretty">{{ r.who }}</span>
+                  <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ r.tint }};border:1px solid {{ r.badgeLine }};font-size:10px;font-weight:600;color:{{ r.color }}">{{ r.status }}</span>
+                </span>
+                <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ r.ask }}</span>
+                <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ r.meta }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noRequests }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
+            <span style="font-size:13px;font-weight:700;color:#cbd5e1">Nothing to answer</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:320px">No customer has asked for a placement change. A mistyped filter value here is ignored rather than refused, so an empty list is worth a second look at the filter.</span>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+        <sc-if value="{{ reqOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:13px;min-width:0">
+            <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+              <span style="display:flex;flex-direction:column;gap:3px;min-width:160px;flex:1">
+                <span style="font-size:13.5px;font-weight:700;color:#f1f5f9;text-wrap:pretty">{{ reqWho }}</span>
+                <span style="font-size:11px;font-family:Menlo,monospace;color:#94a3b8;word-break:break-all">{{ reqUpn }}</span>
+              </span>
+              <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:{{ reqTint }};border:1px solid {{ reqBadgeLine }};font-size:10.5px;font-weight:600;color:{{ reqColor }}">{{ reqStatus }}</span>
+            </div>
+
+            <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;flex-direction:column;gap:5px;min-width:0">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">WHAT THEY ASKED FOR, AND WHY</span>
+              <span style="font-size:12.5px;color:#f1f5f9;text-wrap:pretty">{{ reqAsk }}</span>
+              <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ reqNote }}</span>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+              <sc-for list="{{ reqFacts }}" as="f" hint-placeholder-count="3">
+                <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">{{ f.label }}</span>
+                  <span style="font-size:12px;font-weight:600;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+                </span>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ reqNameOnly }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid rgba(251,191,36,.3);border-radius:10px;background:rgba(251,191,36,.08);padding:12px;display:flex;flex-direction:column;gap:5px">
+                <span style="font-size:11.5px;font-weight:700;color:#fbbf24">They named a unit that does not exist</span>
+                <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">Approving this changes nothing but the status — there is no real unit to place anyone in, so no placement is written. Create the unit and place them on the other tab first, then answer this.</span>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ reqPending }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid rgba(148,163,184,.12);padding-top:13px;min-width:0">
+                <label style="display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:11px;font-weight:600;color:#94a3b8">Your reply to them (optional)</span>
+                  <textarea value="{{ reply }}" onChange="{{ setReply }}" rows="2" placeholder="What you did, or why not." style="padding:9px 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:12.5px;line-height:1.55;font-family:inherit;outline:none;resize:vertical;min-width:0"></textarea>
+                </label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button onClick="{{ approve }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">{{ approveLabel }}</button>
+                  <button onClick="{{ fulfil }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Mark fulfilled</button>
+                  <button onClick="{{ reject }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.1);color:#f87171;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Reject</button>
+                </div>
+                <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Approved and fulfilled behave identically — both write the real placement when a real unit was named. The difference is only what the customer reads, and neither can be taken back: once answered, a request can never return to waiting.</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ reqSettled }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid {{ settledLine }};border-radius:10px;background:{{ settledTint }};padding:12px;display:flex;flex-direction:column;gap:5px;border-top:1px solid rgba(148,163,184,.12)">
+                <span style="font-size:11.5px;font-weight:700;color:{{ settledColor }}">{{ settledTitle }}</span>
+                <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ settledText }}</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
+            <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
+            <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these six routes do and don't give this screen</span>
+      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+        <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+          <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+          <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
+const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
+const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
+const BLUE = ["rgba(96,165,250,.1)", "rgba(96,165,250,.24)", "#60a5fa"];
+const GREY = ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"];
+
+const OUS = [
+  { id: 11, name: "Finance", customer: "Northwind Traders", tenantless: false },
+  { id: 12, name: "Engineering", customer: "Northwind Traders", tenantless: false },
+  { id: 13, name: "Executive", customer: "Contoso Ltd", tenantless: false },
+  { id: 14, name: "Finance", customer: "Contoso Ltd", tenantless: false },
+  { id: 20, name: "Shared services", customer: null, tenantless: true }
+];
+
+const SEED_MEMBERS = {
+  11: [
+    { id: 301, upn: "dana.whitfield@northwindtraders.com", display: "Dana Whitfield", objectId: "8c41f2a9-…-b704" },
+    { id: 302, upn: "marcus.lee@northwindtraders.com", display: null, objectId: "1f77aa03-…-9c12" }
+  ],
+  12: [{ id: 305, upn: "sam.oyelaran@northwindtraders.com", display: "Sam Oyelaran", objectId: "40b9c7e1-…-2a55" }],
+  13: [{ id: 308, upn: "priya.raman@contosoltd.com", display: "Priya Raman", objectId: "5de1b640-…-7f31" }],
+  14: []
+};
+
+const SEED_REQUESTS = [
+  { id: 51, who: "Priya Raman", upn: "priya.raman@contosoltd.com", customer: "Contoso Ltd",
+    currentOu: "Executive", requestedOuId: 14, requestedOuName: null, status: "pending",
+    note: "I moved to the finance team in August and the old unit's policies still apply to me.", at: "2026-09-10" },
+  { id: 49, who: "Tobi Okafor", upn: "t.okafor@fabrikam.example", customer: "Fabrikam",
+    currentOu: null, requestedOuId: null, requestedOuName: "Field Operations", status: "pending",
+    note: "We need a separate unit for the field engineers — none exists yet.", at: "2026-09-07" },
+  { id: 44, who: "Dana Whitfield", upn: "dana.whitfield@northwindtraders.com", customer: "Northwind Traders",
+    currentOu: "Finance", requestedOuId: 12, requestedOuName: null, status: "rejected",
+    note: "Please move me to Engineering.", at: "2026-08-29" }
+];
+
+class Component extends DCLogic {
+  state = {
+    tab: "assign", empty: false, ouId: 11, members: SEED_MEMBERS,
+    upn: "", requests: SEED_REQUESTS, reqId: 51, filter: "all", reply: "", result: null
+  };
+
+  selectOu = (o) => () => {
+    if (o.tenantless) {
+      return this.setState({ result: ["400 · refused before anything is read", "A unit with no customer behind it is rejected on this surface. There is no column tying it to one MSP, so it cannot be proven to be yours — the platform side is the only place it can be opened.", RED] });
+    }
+    this.setState({ ouId: o.id, result: null, upn: "" });
+  };
+
+  assign = () => {
+    const upn = this.state.upn.trim();
+    const ouId = this.state.ouId;
+    if (!upn) {
+      return this.setState({ result: ["400 · a sign-in address is required", "Trimmed and checked before anything else runs.", AMBER] });
+    }
+    const others = Object.keys(this.state.members).filter(k => Number(k) !== ouId);
+    let movedFrom = null;
+    const next = Object.assign({}, this.state.members);
+    others.forEach(k => {
+      const found = (next[k] || []).find(m => m.upn === upn);
+      if (found) { movedFrom = OUS.find(o => o.id === Number(k)).name; next[k] = next[k].filter(m => m.upn !== upn); }
+    });
+    if ((next[ouId] || []).some(m => m.upn === upn)) {
+      return this.setState({ result: ["200 · already here", "The same object placed in the same unit updates the existing row rather than adding another. One object, one unit.", GREY] });
+    }
+    const id = 400 + Math.floor(Math.random() * 90);
+    next[ouId] = (next[ouId] || []).concat([{ id, upn, display: upn.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase()), objectId: "verified-" + id + "-…" }]);
+    this.setState({ members: next, upn: "", empty: false,
+      result: ["201 · placed", movedFrom
+        ? "Verified in the directory and placed here. They were previously placed in " + movedFrom + ", so this moved them — no second row exists, and that unit now falls back to the department guess for them."
+        : "Verified in the directory and placed here. Their real directory identity was captured at this moment; the display name alongside it is a convenience and is never treated as authoritative.", GREEN] });
+  };
+
+  assignBogus = () => this.setState({ result: ["400 · the directory could not find that address", "Refused with the directory's own message. Nothing is written from what was typed — the object has to resolve for real first, so a typo can never become a stored placement.", AMBER] });
+
+  move = (m) => () => {
+    const from = this.state.ouId;
+    const target = OUS.find(o => !o.tenantless && o.id !== from && o.customer === OUS.find(x => x.id === from).customer);
+    if (!target) {
+      return this.setState({ result: ["400 · no other unit on this customer", "A placement can only move to a unit belonging to the same customer. Nothing crosses customers, and a unit with no customer is refused.", AMBER] });
+    }
+    const next = Object.assign({}, this.state.members);
+    next[from] = next[from].filter(x => x.id !== m.id);
+    next[target.id] = (next[target.id] || []).concat([m]);
+    this.setState({ members: next,
+      result: ["200 · moved to " + target.name, "Only the unit changed. The directory identity captured when they were first placed is carried across untouched — a move is not a re-verification, so a person who has since left the directory moves just as easily.", BLUE] });
+  };
+
+  clear = (m) => () => {
+    const from = this.state.ouId;
+    const next = Object.assign({}, this.state.members);
+    next[from] = next[from].filter(x => x.id !== m.id);
+    this.setState({ members: next,
+      result: ["204 · placement cleared", "Deleted outright — there is no history of placements, so nothing records that they were ever here beyond the audit entry. They now fall back to the department guess, which may well put them straight back in this unit.", AMBER] });
+  };
+
+  resolve = (status) => () => {
+    const r = this.state.requests.find(x => x.id === this.state.reqId);
+    if (!r) return;
+    if (r.status !== "pending") {
+      return this.setState({ result: ["409 · already " + r.status, "A request that has been answered can never be answered again, and it can never go back to waiting.", RED] });
+    }
+    const applied = (status === "approved" || status === "fulfilled") && r.requestedOuId !== null;
+    if (applied) {
+      const target = OUS.find(o => o.id === r.requestedOuId);
+      const next = Object.assign({}, this.state.members);
+      Object.keys(next).forEach(k => { next[k] = next[k].filter(m => m.upn !== r.upn); });
+      next[r.requestedOuId] = (next[r.requestedOuId] || []).concat([{ id: 500 + r.id, upn: r.upn, display: r.who, objectId: "verified-" + r.id + "-…" }]);
+      this.setState(s => ({ members: next,
+        requests: s.requests.map(x => x.id === r.id ? Object.assign({}, x, { status }) : x),
+        result: ["200 · " + status + ", placement written", "The unit was re-checked against the customer and the person re-looked-up in the directory, then the real placement was written into " + target.name + ". Answering is never just a status change when a real unit was named.", GREEN] }));
+      return;
+    }
+    this.setState(s => ({ requests: s.requests.map(x => x.id === r.id ? Object.assign({}, x, { status }) : x),
+      result: ["200 · " + status, status === "rejected"
+        ? "Closed as rejected. No placement was touched, and your reply is what the customer sees."
+        : "Status changed, but no placement was written — they named a unit that does not exist, so there is nothing to place them in. Create it and place them by hand.", status === "rejected" ? GREY : AMBER] }));
+  };
+
+  renderVals() {
+    const st = this.state;
+    const ous = st.empty ? OUS.filter(o => false) : OUS;
+    const ou = OUS.find(o => o.id === st.ouId);
+    const members = st.empty ? [] : (st.members[st.ouId] || []);
+    const requests = st.empty ? [] : st.requests;
+    const pending = requests.filter(r => r.status === "pending");
+
+    const tabs = [["assign", "Placements", st.empty ? 0 : Object.keys(st.members).reduce((a, k) => a + st.members[k].length, 0)],
+      ["requests", "Requests", pending.length]].map(([k, label, count]) => {
+      const on = st.tab === k;
+      return { label, count, select: () => this.setState({ tab: k, result: null }),
+        bg: on ? "rgba(37,99,235,.18)" : "transparent",
+        border: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+        fg: on ? "#f1f5f9" : "#94a3b8", countColor: on ? "#60a5fa" : "#94a3b8" };
+    });
+
+    const ouRows = (st.empty ? [] : OUS).map(o => {
+      const on = o.id === st.ouId && !o.tenantless;
+      const t = o.tenantless ? RED : GREY;
+      const count = st.empty ? 0 : (st.members[o.id] || []).length;
+      return { name: o.name, tag: o.tenantless ? "not readable here" : count + " placed",
+        tint: t[0], badgeLine: t[1], color: t[2],
+        meta: o.customer ? o.customer : "No customer behind this unit",
+        nameColor: o.tenantless ? "#94a3b8" : "#f1f5f9",
+        bg: on ? "rgba(96,165,250,.09)" : "rgba(2,6,23,.4)",
+        line: on ? "rgba(96,165,250,.4)" : o.tenantless ? "rgba(248,113,113,.18)" : "rgba(148,163,184,.14)",
+        cursor: "pointer", select: this.selectOu(o) };
+    });
+
+    const memberRows = members.map(m => ({
+      display: m.display || "No display name recorded",
+      upn: m.upn, objectId: "directory id " + m.objectId,
+      move: this.move(m), moveLabel: "Move to another unit", clear: this.clear(m),
+      note: m.display ? "The display name is a convenience captured at placement time and never refreshed; the directory id beside it is the only identity that counts." : "This row has no display name at all — a real, normal state, so the address is the only thing to show."
+    }));
+
+    const statusFilters = [["all", "All"], ["pending", "Waiting"], ["approved", "Approved"], ["rejected", "Rejected"], ["fulfilled", "Fulfilled"]].map(([k, label]) => {
+      const on = st.filter === k;
+      return { label, select: () => this.setState({ filter: k }),
+        bg: on ? "rgba(37,99,235,.18)" : "rgba(148,163,184,.06)",
+        line: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+        fg: on ? "#f1f5f9" : "#94a3b8" };
+    });
+
+    const tone = { pending: AMBER, approved: GREEN, fulfilled: GREEN, rejected: GREY };
+    const reqRows = requests.filter(r => st.filter === "all" || r.status === st.filter).map(r => {
+      const t = tone[r.status];
+      return { who: r.who, status: r.status,
+        tint: t[0], badgeLine: t[1], color: t[2],
+        ask: r.requestedOuId ? "Wants moving to " + (OUS.find(o => o.id === r.requestedOuId) || {}).name : "Wants a unit called " + r.requestedOuName + ", which does not exist",
+        meta: r.customer + " · asked " + r.at + " · " + (r.currentOu ? "was in " + r.currentOu + " at the time" : "was in no unit at the time"),
+        bg: r.id === st.reqId ? "rgba(96,165,250,.09)" : "rgba(2,6,23,.4)",
+        line: r.id === st.reqId ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)",
+        select: () => this.setState({ reqId: r.id, result: null, reply: "" }) };
+    });
+
+    const r = requests.find(x => x.id === st.reqId);
+    const rt = r ? tone[r.status] : GREY;
+    const res = st.result;
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      rootBg: this.props.rootBg ?? "transparent",
+      showNotes: this.props.showNotes ?? true,
+
+      toggleEmpty: () => this.setState(s => ({ empty: !s.empty, result: null })),
+      emptyBtnLabel: st.empty ? "Show a populated book" : "Show the live empty state",
+
+      tabs, isAssign: st.tab === "assign", isRequests: st.tab === "requests",
+
+      ous: ouRows, noOus: ouRows.length === 0,
+      ouOpen: !st.empty && !!ou && !ou.tenantless,
+      ouName: ou ? ou.name : "",
+      ouMeta: ou ? ou.customer + " · unit " + ou.id : "",
+      ouCount: members.length + " placed by hand",
+      hasMembers: memberRows.length > 0, noMembers: memberRows.length === 0, members: memberRows,
+      upn: st.upn, setUpn: (e) => this.setState({ upn: e.target.value }),
+      assign: this.assign, assignBogus: this.assignBogus,
+
+      statusFilters,
+      hasRequests: reqRows.length > 0, noRequests: reqRows.length === 0, requests: reqRows,
+      reqOpen: !!r,
+      reqWho: r ? r.who : "", reqUpn: r ? r.upn : "",
+      reqStatus: r ? r.status : "",
+      reqTint: rt[0], reqBadgeLine: rt[1], reqColor: rt[2],
+      reqAsk: r ? (r.requestedOuId ? "Move to " + (OUS.find(o => o.id === r.requestedOuId) || {}).name : "Create and move to \u201c" + r.requestedOuName + "\u201d") : "",
+      reqNote: r ? "\u201c" + r.note + "\u201d" : "",
+      reqFacts: r ? [
+        { label: "CUSTOMER", value: r.customer, color: "#f1f5f9" },
+        { label: "UNIT AT THE TIME", value: r.currentOu ? r.currentOu + " — a snapshot, never rechecked" : "none recorded", color: r.currentOu ? "#fbbf24" : "#94a3b8" },
+        { label: "ASKED", value: r.at, color: "#f1f5f9" }
+      ] : [],
+      reqNameOnly: !!r && r.requestedOuId === null,
+      reqPending: !!r && r.status === "pending",
+      reqSettled: !!r && r.status !== "pending",
+      settledTitle: r && r.status === "rejected" ? "Rejected" : "Answered",
+      settledText: r && r.status === "rejected"
+        ? "No placement was changed. The customer can raise another request, but this one is closed for good."
+        : "Closed. If a real unit was named, the placement was written at the same moment — the status and the reality cannot drift apart on this path.",
+      settledTint: rt[0], settledLine: rt[1], settledColor: rt[2],
+      reply: st.reply, setReply: (e) => this.setState({ reply: e.target.value }),
+      approve: this.resolve("approved"), fulfil: this.resolve("fulfilled"), reject: this.resolve("rejected"),
+      approveLabel: r && r.requestedOuId ? "Approve and place them" : "Approve (writes nothing)",
+
+      hasResult: !!res, resCode: res ? res[0] : "", resText: res ? res[1] : "",
+      resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
+
+      notes: [
+        { dot: "#f87171", text: "Clearing a placement is a hard delete with no history anywhere. Nothing records that a person was ever in a unit, and they immediately fall back to the department-name guess — which may put them right back where they were, invisibly." },
+        { dot: "#f87171", text: "A unit with no customer behind it cannot be opened here at all, and the refusal comes before any lookup runs. There is no column tying such a unit to one MSP, so it could be shared with someone else's customer." },
+        { dot: "#fbbf24", text: "Placing someone verifies them in the real directory first, but moving them does not. A move carries the identity captured at first placement, so someone who has since left the directory moves between units as easily as anyone else." },
+        { dot: "#fbbf24", text: "A request records which unit the person was in when they asked, and never rechecks it. On an old request that field can be flatly wrong, so it is labelled as a snapshot rather than shown as current." },
+        { dot: "#fbbf24", text: "Approving a request that names a unit which does not exist changes only the status — nothing is placed. The operator has to create the unit and place the person by hand, and the button says so." },
+        { dot: "#60a5fa", text: "Approved and fulfilled do exactly the same thing on the server, including writing the real placement. The difference is only what the customer reads, and neither can be undone: an answered request never returns to waiting." },
+        { dot: "#60a5fa", text: "Re-placing an object in a different unit moves it rather than duplicating it, enforced by a real uniqueness rule in the database — one object genuinely only ever sits in one unit." },
+        { dot: "#94a3b8", text: "This list only ever shows deliberate placements. Everyone matched by the department guess counts for policy but is not readable from any of these routes, so an empty unit here is not an empty unit in practice." },
+        { dot: "#94a3b8", text: "Anything outside your own book answers not-found rather than forbidden, so the screen can never tell you that a unit or a placement exists but is not yours." },
+        { dot: "#94a3b8", text: "The display name is a convenience captured once and never refreshed; the directory id is the only identity to trust. The audit trail cannot tell an operator from an admin either — the name and the surface are the real signal." },
+        { dot: "#94a3b8", text: "All three tables behind this screen are empty in live data and nothing outside a test file calls these routes. Both the populated and empty views here are first drafts of a surface nobody has used yet." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

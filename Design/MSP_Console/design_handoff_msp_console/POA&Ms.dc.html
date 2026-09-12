@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>a{color:#60a5fa}a:hover{color:#93c5fd}input::placeholder,textarea::placeholder{color:#94a3b8}</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">PLANS OF ACTION &amp; MILESTONES</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">POA&amp;Ms across the book</span>
+    </div>
+    <button onClick="{{ toggleRole }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:{{ roleBg }};border:1px solid {{ roleLine }};font-size:11px;font-weight:600;color:{{ roleFg }};cursor:pointer;font-family:inherit">Signed in as {{ role }}</button>
+    <button onClick="{{ toggleEmpty }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ emptyBtnLabel }}</button>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start;min-width:0">
+
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+        <span style="display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1">
+          <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Plans</span>
+          <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ listCaption }}</span>
+        </span>
+        <button onClick="{{ newPlan }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">New plan</button>
+      </div>
+
+      <sc-if value="{{ hasPlans }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <sc-for list="{{ plans }}" as="p" hint-placeholder-count="3">
+            <button onClick="{{ p.select }}" style="display:flex;flex-direction:column;gap:6px;text-align:left;border:1px solid {{ p.line }};border-radius:10px;background:{{ p.bg }};padding:12px;cursor:pointer;font-family:inherit;min-width:0">
+              <span style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;width:100%">
+                <span style="font-size:10.5px;font-family:Menlo,monospace;color:#60a5fa">{{ p.ref }}</span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ p.tint }};border:1px solid {{ p.badgeLine }};font-size:10px;font-weight:600;color:{{ p.color }};margin-left:auto">{{ p.status }}</span>
+              </span>
+              <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;text-wrap:pretty">{{ p.title }}</span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ p.meta }}</span>
+              <span style="display:flex;gap:7px;flex-wrap:wrap">
+                <span style="font-size:10.5px;color:{{ p.dueColor }}">{{ p.due }}</span>
+                <span style="font-size:10.5px;color:#64748b">{{ p.milestoneCount }}</span>
+              </span>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noPlans }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:24px 18px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+          <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">No plans on this MSP</span>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;max-width:330px">A POA&amp;M can also be raised from the customer's own portal, so an empty list here does not mean the tenant has none coming — it means none exists yet for this MSP.</span>
+        </div>
+      </sc-if>
+
+      <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">Newest first by row id. There is no filter, no search and no pagination on this route — the whole book comes back in one call.</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+
+      <sc-if value="{{ isCreating }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(96,165,250,.3);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:13px;min-width:0">
+          <span style="font-size:13.5px;font-weight:700;color:#f1f5f9">New POA&amp;M</span>
+          <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">The reference code is assigned by the server on insert — you cannot choose it, and two people creating at once cannot collide.</span>
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Title</span>
+            <input value="{{ fTitle }}" onChange="{{ setTitle }}" placeholder="Legacy authentication still enabled on three service accounts" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
+          </label>
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">The weakness</span>
+            <textarea value="{{ fWeakness }}" onChange="{{ setWeakness }}" rows="4" placeholder="What is wrong, in the terms the customer will be asked to sign off." style="padding:10px 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;line-height:1.6;font-family:inherit;outline:none;resize:vertical;min-width:0"></textarea>
+          </label>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px">
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:11px;font-weight:600;color:#94a3b8">Tenant</span>
+              <input value="{{ fTenant }}" onChange="{{ setTenant }}" placeholder="Northwind Traders" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
+            </label>
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:11px;font-weight:600;color:#94a3b8">Target completion</span>
+              <input value="{{ fDue }}" onChange="{{ setDue }}" placeholder="2026-12-31" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:Menlo,monospace;outline:none;min-width:0" />
+            </label>
+          </div>
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Interim compensating control</span>
+            <input value="{{ fControl }}" onChange="{{ setControl }}" placeholder="What holds the risk down until this is fixed" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
+          </label>
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Resources required</span>
+            <input value="{{ fResources }}" onChange="{{ setResources }}" placeholder="Who and what it takes" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
+          </label>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Start it as</span>
+            <div style="display:flex;gap:7px;flex-wrap:wrap">
+              <sc-for list="{{ startStates }}" as="s" hint-placeholder-count="2">
+                <button onClick="{{ s.select }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:999px;border:1px solid {{ s.line }};background:{{ s.bg }};color:{{ s.fg }};font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">{{ s.label }}</button>
+              </sc-for>
+            </div>
+            <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty">Only these two. A plan cannot be created active — that state is reachable only when the customer signs it in their own portal.</span>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onClick="{{ create }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:34px;padding:0 13px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">Create plan</button>
+            <button onClick="{{ cancelForm }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:34px;padding:0 13px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <span style="display:flex;flex-direction:column;gap:4px;min-width:170px;flex:1">
+              <span style="font-size:10.5px;font-family:Menlo,monospace;color:#60a5fa">{{ openRef }}</span>
+              <span style="font-size:14.5px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9;text-wrap:pretty">{{ openTitle }}</span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ openMeta }}</span>
+            </span>
+            <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:{{ openTint }};border:1px solid {{ openBadgeLine }};font-size:10.5px;font-weight:600;color:{{ openColor }}">{{ openStatus }}</span>
+          </div>
+
+          <div style="font-size:12.5px;line-height:1.65;color:#cbd5e1;text-wrap:pretty">{{ openWeakness }}</div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;border-top:1px solid rgba(148,163,184,.12);padding-top:13px">
+            <sc-for list="{{ openFacts }}" as="f" hint-placeholder-count="4">
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">{{ f.label }}</span>
+                <span style="font-size:12px;font-weight:600;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+              </span>
+            </sc-for>
+          </div>
+
+          <div style="border:1px solid {{ sigLine }};border-radius:10px;background:{{ sigTint }};padding:12px;display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11.5px;font-weight:700;color:{{ sigColor }}">{{ sigTitle }}</span>
+            <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ sigText }}</span>
+          </div>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid rgba(148,163,184,.12);padding-top:13px">
+            <button onClick="{{ slip }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid {{ editLine }};background:{{ editBg }};color:{{ editFg }};font-size:12px;font-weight:600;cursor:{{ editCursor }};font-family:inherit">Move the target date</button>
+            <button onClick="{{ complete }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid {{ editLine }};background:{{ editBg }};color:{{ editFg }};font-size:12px;font-weight:600;cursor:{{ editCursor }};font-family:inherit">Mark completed</button>
+            <button onClick="{{ cancelPlan }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid {{ cancelLine }};background:{{ cancelBg }};color:{{ cancelFg }};font-size:12px;font-weight:600;cursor:{{ cancelCursor }};font-family:inherit">Cancel plan</button>
+          </div>
+          <span style="font-size:11px;color:{{ gateColor }};text-wrap:pretty">{{ gateNote }}</span>
+        </div>
+
+        <!-- Milestones -->
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <span style="display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1">
+              <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Milestones</span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ msCaption }}</span>
+            </span>
+            <button onClick="{{ addMilestone }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Add</button>
+          </div>
+
+          <sc-if value="{{ hasMilestones }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
+              <sc-for list="{{ milestones }}" as="m" hint-placeholder-count="3">
+                <div style="border:1px solid {{ m.line }};border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;flex-direction:column;gap:9px;min-width:0">
+                  <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+                    <span style="display:flex;flex-direction:column;gap:3px;min-width:160px;flex:1">
+                      <span style="font-size:12.5px;font-weight:700;color:{{ m.titleColor }};text-wrap:pretty">{{ m.title }}</span>
+                      <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ m.meta }}</span>
+                    </span>
+                    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ m.tint }};border:1px solid {{ m.badgeLine }};font-size:10px;font-weight:600;color:{{ m.color }}">{{ m.status }}</span>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button onClick="{{ m.complete }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:6px;border:1px solid {{ m.doneLine }};background:{{ m.doneBg }};color:{{ m.doneFg }};font-size:11.5px;font-weight:600;cursor:{{ m.doneCursor }};font-family:inherit">{{ m.doneLabel }}</button>
+                    <button onClick="{{ m.remove }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:6px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.1);color:#f87171;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Delete</button>
+                  </div>
+                  <sc-if value="{{ m.hasNote }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:11px;color:#fbbf24;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:8px">{{ m.note }}</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noMilestones }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">No milestones. Nothing requires a plan to have any, and nothing computes the plan's progress from them — a plan with no milestones and one with all of them complete read the same on the wire.</span>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
+          <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
+          <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+          <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these eight routes do and don't give this screen</span>
+          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
+const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
+const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
+const BLUE = ["rgba(96,165,250,.1)", "rgba(96,165,250,.24)", "#60a5fa"];
+const GREY = ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"];
+
+const TONE = { draft: GREY, pending_signature: AMBER, active: GREEN, completed: BLUE, cancelled: RED };
+const TODAY = "2026-09-12";
+
+const SEED = [
+  { id: 12, ref: "POAM-2026-012", tenantName: "Northwind Traders", tenantId: "northwind", title: "Legacy authentication still enabled on three service accounts",
+    weakness: "Basic authentication remains enabled for three service accounts used by the nightly finance export. Any credential replay against those accounts bypasses conditional access entirely.",
+    status: "active", due: "2026-10-31", originalDue: "2026-09-30", control: "Sign-in risk alerts routed to the on-call operator; the accounts are restricted to a single source IP.",
+    resources: "One engineer for two days, plus a finance-side test window.", checkKey: "identity.legacy_auth_enabled", sowId: "8c1f…a204",
+    signedAt: "2026-08-18T10:22:00Z", signedBy: "Dana Whitfield, IT Director", signedStatement: "Accepted on behalf of Northwind Traders.",
+    milestones: [
+      { id: 31, title: "Inventory every process using the three accounts", due: "2026-09-05", status: "completed", completedAt: "2026-09-04", sortOrder: 0 },
+      { id: 32, title: "Move the finance export to a certificate-based app registration", due: "2026-10-15", status: "pending", completedAt: null, sortOrder: 1 },
+      { id: 33, title: "Disable basic auth tenant-wide and confirm no failures", due: "2026-10-31", status: "pending", completedAt: null, sortOrder: 2 }
+    ] },
+  { id: 11, ref: "POAM-2026-011", tenantName: "Contoso Ltd", tenantId: "contoso", title: "No documented owner for the compliance mailbox",
+    weakness: "The compliance mailbox has no named owner and no retention hold, so a subject access request landing there has no route to an accountable person.",
+    status: "pending_signature", due: "2026-11-14", originalDue: "2026-11-14", control: "Mail is copied to the MSP shared inbox until an owner is named.",
+    resources: "A decision from the customer, then one hour of configuration.", checkKey: null, sowId: null,
+    signedAt: null, signedBy: null, signedStatement: null,
+    milestones: [{ id: 28, title: "Customer names an owner", due: "2026-10-01", status: "pending", completedAt: null, sortOrder: 0 }] },
+  { id: 9, ref: "POAM-2026-009", tenantName: "Fabrikam", tenantId: "fabrikam", title: "Guest accounts with no expiry on two collaboration sites",
+    weakness: "Eleven guest accounts across two SharePoint sites have no expiry date and have not signed in for over 180 days.",
+    status: "draft", due: "2026-09-05", originalDue: "2026-09-05", control: "None yet.",
+    resources: "Half a day once the customer confirms which guests are still needed.", checkKey: "sharing.guest_no_expiry", sowId: null,
+    signedAt: null, signedBy: null, signedStatement: null, milestones: [] }
+];
+
+class Component extends DCLogic {
+  state = {
+    role: "MSPOperator",
+    empty: false,
+    plans: SEED,
+    openId: 12,
+    creating: false,
+    startState: "draft",
+    fTitle: "", fWeakness: "", fTenant: "", fDue: "", fControl: "", fResources: "",
+    result: null
+  };
+
+  set = (k) => (e) => { const v = e.target.value; this.setState({ [k]: v }); };
+
+  open = (p) => () => this.setState({ openId: p.id, creating: false, result: null });
+
+  newPlan = () => this.setState({ creating: true, openId: null, result: null,
+    fTitle: "", fWeakness: "", fTenant: "", fDue: "", fControl: "", fResources: "", startState: "draft" });
+
+  create = () => {
+    const st = this.state;
+    const req = [st.fTitle, st.fWeakness, st.fTenant, st.fDue, st.fControl, st.fResources];
+    if (req.some(v => !v.trim())) {
+      return this.setState({ result: ["400 · Invalid request body", "Six fields are required and the error comes back as a field-by-field breakdown. The primary domain is required too but accepts an empty string, so a blank one will save silently.", AMBER] });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(st.fDue.trim())) {
+      return this.setState({ result: ["400 · Invalid request body", "The target date must be a plain calendar date. Anything with a time on it is rejected.", AMBER] });
+    }
+    const id = 13 + st.plans.length;
+    const row = { id, ref: "POAM-2026-0" + id, tenantName: st.fTenant.trim(), tenantId: st.fTenant.trim().toLowerCase().replace(/\s+/g, "-"),
+      title: st.fTitle.trim(), weakness: st.fWeakness.trim(), status: st.startState, due: st.fDue.trim(), originalDue: st.fDue.trim(),
+      control: st.fControl.trim(), resources: st.fResources.trim(), checkKey: null, sowId: null,
+      signedAt: null, signedBy: null, signedStatement: null, milestones: [] };
+    this.setState(s => ({ plans: [row].concat(s.plans), creating: false, empty: false, openId: id,
+      result: ["201 · " + row.ref, "Created. The reference code was assigned server-side after the insert, and the original target date was stamped identical to the current one — that copy can never be rewritten.", GREEN] }));
+  };
+
+  patch = (id, changes, res) => this.setState(s => ({
+    plans: s.plans.map(p => p.id === id ? Object.assign({}, p, changes) : p), result: res
+  }));
+
+  guardTerminal = (p) => {
+    if (p.status === "cancelled" || p.status === "completed") {
+      this.setState({ result: ["409 · POA&M is " + p.status + " and cannot be edited", "Terminal plans are frozen against every field on the edit route. Nothing reopens one.", RED] });
+      return true;
+    }
+    return false;
+  };
+
+  slip = () => {
+    const p = this.plans().find(x => x.id === this.state.openId);
+    if (!p || this.guardTerminal(p)) return;
+    const next = p.due === "2026-10-31" ? "2026-11-30" : "2026-10-31";
+    this.patch(p.id, { due: next }, ["200 · " + p.ref, "Target date moved to " + next + ". The original date is untouched and there is no reason field on this route, so the slip is visible but unexplained.", AMBER]);
+  };
+
+  complete = () => {
+    const p = this.plans().find(x => x.id === this.state.openId);
+    if (!p || this.guardTerminal(p)) return;
+    const open = p.milestones.filter(m => m.status !== "completed").length;
+    this.patch(p.id, { status: "completed" }, ["200 · " + p.ref, open > 0
+      ? "Marked completed with " + open + " milestone" + (open === 1 ? "" : "s") + " still open. Nothing checks them — completion is the generic edit route writing a status, at the operator floor, with no dedicated route and no condition."
+      : "Marked completed. This is the only path to that status anywhere, and it is the same generic edit route an operator uses for a title change.", AMBER]);
+  };
+
+  cancelPlan = () => {
+    const p = this.plans().find(x => x.id === this.state.openId);
+    if (!p) return;
+    if (p.status === "cancelled" || p.status === "completed") {
+      return this.setState({ result: ["409 · already " + p.status, "The dedicated cancel route refuses a plan that is already terminal.", RED] });
+    }
+    if (this.state.role === "MSPAdmin") {
+      return this.patch(p.id, { status: "cancelled" }, ["200 · PATCH /msp/poams/" + p.ref + "/cancel", "Cancelled through the dedicated route, which requires an admin. Only the status changed — the signature and dates are all left standing.", AMBER]);
+    }
+    this.patch(p.id, { status: "cancelled" }, ["200 · PATCH /msp/poams/" + p.ref + " (generic edit)", "Cancelled as an operator. The dedicated cancel route requires an admin, but the generic edit route accepts the same status at the operator floor with no such check — identical database state, no elevated role. Filed upstream as #3452; this screen shows it rather than hiding it.", RED]);
+  };
+
+  addMilestone = () => {
+    const p = this.plans().find(x => x.id === this.state.openId);
+    if (!p) return;
+    const id = 90 + p.milestones.length;
+    const row = { id, title: "New milestone", due: "2026-12-01", status: "pending", completedAt: null, sortOrder: p.milestones.length };
+    this.patch(p.id, { milestones: p.milestones.concat([row]) },
+      ["201 · milestone " + id, "Added as pending. The status is set server-side and cannot be supplied, so a milestone can never be created already complete.", GREEN]);
+  };
+
+  completeMilestone = (mid) => () => {
+    const p = this.plans().find(x => x.id === this.state.openId);
+    const m = p.milestones.find(x => x.id === mid);
+    if (m.status === "completed") {
+      return this.setState({ result: ["409 · already completed", "A completed milestone is refused before the update runs, and the update itself independently guards on the completion stamp, so two concurrent attempts cannot both land.", RED] });
+    }
+    this.patch(p.id, { milestones: p.milestones.map(x => x.id === mid ? Object.assign({}, x, { status: "completed", completedAt: TODAY }) : x) },
+      ["200 · milestone " + mid, "Completed and stamped server-side. There is no way to un-complete it — but it can still be deleted outright, which is the one gap in that write-once discipline.", GREEN]);
+  };
+
+  removeMilestone = (mid) => () => {
+    const p = this.plans().find(x => x.id === this.state.openId);
+    const m = p.milestones.find(x => x.id === mid);
+    this.patch(p.id, { milestones: p.milestones.filter(x => x.id !== mid) },
+      ["200 · milestone " + mid + " deleted", m.status === "completed"
+        ? "A completed milestone was deleted. The delete route has no status check at all, so the record that this step was done is simply gone — no audit, no trace on the plan."
+        : "Removed. Deleting the parent plan would cascade its milestones away too.", m.status === "completed" ? RED : AMBER]);
+  };
+
+  plans = () => this.state.empty ? [] : this.state.plans;
+
+  renderVals() {
+    const st = this.state;
+    const rows = this.plans();
+    const p = rows.find(x => x.id === st.openId);
+    const isAdmin = st.role === "MSPAdmin";
+
+    const overdue = (row) => row.due < TODAY && row.status !== "completed" && row.status !== "cancelled";
+
+    const plans = rows.map(row => {
+      const t = TONE[row.status];
+      const on = row.id === st.openId;
+      const slipped = row.due !== row.originalDue;
+      return { ref: row.ref, title: row.title, status: row.status.replace("_", " "),
+        tint: t[0], badgeLine: t[1], color: t[2],
+        meta: row.tenantName + (row.checkKey ? " · " + row.checkKey : " · no check key"),
+        due: overdue(row) ? "Overdue since " + row.due : "Due " + row.due + (slipped ? " · moved from " + row.originalDue : ""),
+        dueColor: overdue(row) ? "#f87171" : slipped ? "#fbbf24" : "#64748b",
+        milestoneCount: row.milestones.length === 0 ? "No milestones" : row.milestones.filter(m => m.status === "completed").length + " of " + row.milestones.length + " done",
+        bg: on ? "rgba(96,165,250,.09)" : "rgba(2,6,23,.4)",
+        line: on ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)",
+        select: this.open(row) };
+    });
+
+    const startStates = [["draft", "Draft"], ["pending_signature", "Pending signature"]].map(([k, label]) => {
+      const on = st.startState === k;
+      return { label, select: () => this.setState({ startState: k }),
+        bg: on ? "rgba(37,99,235,.18)" : "rgba(148,163,184,.06)",
+        line: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+        fg: on ? "#f1f5f9" : "#94a3b8" };
+    });
+
+    const terminal = p && (p.status === "cancelled" || p.status === "completed");
+    const t = p ? TONE[p.status] : GREY;
+    const signed = p && !!p.signedAt;
+    const res = st.result;
+
+    const milestones = p ? p.milestones.map(m => {
+      const done = m.status === "completed";
+      const mt = done ? GREEN : (m.due < TODAY ? RED : GREY);
+      return { title: m.title, status: done ? "completed" : "pending",
+        titleColor: done ? "#94a3b8" : "#f1f5f9",
+        meta: done ? "Due " + m.due + " · completed " + m.completedAt : (m.due < TODAY ? "Due " + m.due + " — past due" : "Due " + m.due),
+        tint: mt[0], badgeLine: mt[1], color: mt[2],
+        line: done ? "rgba(52,211,153,.18)" : "rgba(148,163,184,.14)",
+        doneLabel: done ? "Completed" : "Mark complete", complete: this.completeMilestone(m.id),
+        doneBg: done ? "rgba(148,163,184,.04)" : "#2563eb",
+        doneLine: done ? "rgba(148,163,184,.12)" : "#2563eb",
+        doneFg: done ? "#475569" : "#fff",
+        doneCursor: done ? "not-allowed" : "pointer",
+        remove: this.removeMilestone(m.id),
+        hasNote: done, note: "Frozen against edits, but delete has no such guard — this row can still be removed outright." };
+    }) : [];
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      rootBg: this.props.rootBg ?? "transparent",
+      showNotes: this.props.showNotes ?? true,
+
+      role: st.role,
+      roleBg: isAdmin ? AMBER[0] : GREY[0], roleLine: isAdmin ? AMBER[1] : GREY[1], roleFg: isAdmin ? "#fbbf24" : "#94a3b8",
+      toggleRole: () => this.setState(s => ({ role: s.role === "MSPAdmin" ? "MSPOperator" : "MSPAdmin", result: null })),
+      toggleEmpty: () => this.setState(s => ({ empty: !s.empty, openId: s.empty ? 12 : null, result: null })),
+      emptyBtnLabel: st.empty ? "Show the populated book" : "Show the empty book",
+
+      listCaption: rows.length === 0 ? "Nothing authored yet" : rows.length + " plan" + (rows.length === 1 ? "" : "s") + " across the book",
+      hasPlans: plans.length > 0, noPlans: plans.length === 0, plans,
+      newPlan: this.newPlan,
+
+      isCreating: st.creating,
+      fTitle: st.fTitle, fWeakness: st.fWeakness, fTenant: st.fTenant, fDue: st.fDue, fControl: st.fControl, fResources: st.fResources,
+      setTitle: this.set("fTitle"), setWeakness: this.set("fWeakness"), setTenant: this.set("fTenant"),
+      setDue: this.set("fDue"), setControl: this.set("fControl"), setResources: this.set("fResources"),
+      startStates, create: this.create, cancelForm: () => this.setState({ creating: false }),
+
+      hasOpen: !!p,
+      openRef: p ? p.ref : "", openTitle: p ? p.title : "",
+      openMeta: p ? p.tenantName + " · tenant id " + p.tenantId + " (free text, not a real reference) · " + (p.sowId ? "SOW " + p.sowId : "no SOW attached") : "",
+      openStatus: p ? p.status.replace("_", " ") : "",
+      openTint: t[0], openBadgeLine: t[1], openColor: t[2],
+      openWeakness: p ? p.weakness : "",
+      openFacts: p ? [
+        { label: "TARGET DATE", value: p.due + (p.due !== p.originalDue ? " · moved" : ""), color: overdue(p) ? "#f87171" : "#f1f5f9" },
+        { label: "ORIGINAL TARGET", value: p.originalDue, color: p.due !== p.originalDue ? "#fbbf24" : "#94a3b8" },
+        { label: "INTERIM CONTROL", value: p.control, color: "#f1f5f9" },
+        { label: "RESOURCES", value: p.resources, color: "#f1f5f9" }
+      ] : [],
+
+      sigTitle: signed ? "Signed by the customer" : "Not signed",
+      sigText: signed
+        ? p.signedBy + " on " + p.signedAt.slice(0, 10) + ". \u201c" + p.signedStatement + "\u201d The signature, the accountable-holder trail and the move to active are all written by the customer's own portal — nothing here can sign, re-sign or undo it."
+        : "This plan has no signature. Only the customer's portal can add one, and that is also the only thing that makes a plan active — no route on this side can set that status.",
+      sigTint: signed ? GREEN[0] : GREY[0], sigLine: signed ? GREEN[1] : GREY[1], sigColor: signed ? "#34d399" : "#94a3b8",
+
+      slip: this.slip, complete: this.complete, cancelPlan: this.cancelPlan,
+      editBg: terminal ? "rgba(148,163,184,.04)" : "rgba(148,163,184,.06)",
+      editLine: terminal ? "rgba(148,163,184,.12)" : "rgba(148,163,184,.2)",
+      editFg: terminal ? "#475569" : "#cbd5e1",
+      editCursor: terminal ? "not-allowed" : "pointer",
+      cancelBg: terminal ? "rgba(148,163,184,.04)" : "rgba(248,113,113,.1)",
+      cancelLine: terminal ? "rgba(148,163,184,.12)" : "rgba(248,113,113,.3)",
+      cancelFg: terminal ? "#475569" : "#f87171",
+      cancelCursor: terminal ? "not-allowed" : "pointer",
+      gateNote: isAdmin
+        ? "Cancelling as an admin goes through the dedicated route, which is the intended path."
+        : "Cancelling as an operator goes through the generic edit route, which accepts the same status without the admin check the dedicated route enforces.",
+      gateColor: isAdmin ? "#64748b" : "#fbbf24",
+
+      msCaption: p && p.milestones.length > 0
+        ? p.milestones.filter(m => m.status === "completed").length + " of " + p.milestones.length + " complete · ordered by sort order, then id"
+        : "Ordered by sort order, then id",
+      hasMilestones: milestones.length > 0, noMilestones: milestones.length === 0, milestones,
+      addMilestone: this.addMilestone,
+
+      hasResult: !!res, resCode: res ? res[0] : "", resText: res ? res[1] : "",
+      resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
+
+      notes: [
+        { dot: "#f87171", text: "Cancelling is supposed to need an admin, and the dedicated route enforces that — but the generic edit route accepts the same status at the operator floor, producing identical state with no elevated check. Filed upstream as #3452. Until it lands, the role gate is this screen's to hold." },
+        { dot: "#f87171", text: "Completed is reachable only through that same generic edit route. There is no dedicated completion route, no elevated role and no condition — a plan can be marked complete with every milestone still open, and nothing anywhere computes progress from the milestones." },
+        { dot: "#f87171", text: "A completed milestone is frozen against edits by two independent guards, yet the delete route has no status check at all, so the record of a finished step can be removed outright with no trace on the plan." },
+        { dot: "#fbbf24", text: "The routes return the bare database row with no derived fields, so overdue and signed are computed here in the client. The customer's own portal computes both server-side for the same table, which means the two surfaces can disagree about the same plan." },
+        { dot: "#fbbf24", text: "Every mutation answers with a bare acknowledgement rather than the updated row, so this screen either re-reads the plan after each action or trusts its own optimistic copy." },
+        { dot: "#60a5fa", text: "The original target date is stamped at creation and can never be rewritten, which makes a slip permanently visible — but there is no reason field on the edit route, so the why of a moved date lives nowhere." },
+        { dot: "#60a5fa", text: "Signature, the accountable-holder trail and the move to active are written exclusively by the customer's portal. This surface authors the plan and reads the signature back; it can never produce one." },
+        { dot: "#94a3b8", text: "The reference code is assigned server-side with a reserved placeholder, so two operators creating at once cannot collide — a deliberate fix over the risk register, where the equivalent id was client-supplied." },
+        { dot: "#94a3b8", text: "The tenant is stored as free text with no real reference, and the check key has no join, so a plan cannot be reliably linked back to the finding or the tenant record it came from." },
+        { dot: "#94a3b8", text: "The list route takes no filter, no search and no pagination, and nothing has ever called any of these eight routes. Every affordance here is the first consumer of them." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

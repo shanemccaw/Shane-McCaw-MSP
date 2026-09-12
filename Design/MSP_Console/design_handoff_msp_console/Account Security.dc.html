@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>a{color:#60a5fa}a:hover{color:#93c5fd}</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">ACCOUNT SECURITY</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Act on another account's credentials</span>
+    </div>
+    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPAdmin or above</span>
+  </div>
+
+  <div style="border:1px solid rgba(248,113,113,.3);border-radius:12px;background:rgba(248,113,113,.07);padding:14px;display:flex;flex-direction:column;gap:7px;min-width:0">
+    <span style="font-size:12px;font-weight:700;color:#f87171">No route here checks the target's role</span>
+    <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">The middleware is a floor on the caller only, and PlatformAdmin sits above MSPAdmin in the same order. The owning PlatformAdmin's row carries this MSP's id, so an MSPAdmin can call temp-password against it and be handed a plaintext password for the highest-privileged account in the system. Filed upstream as #3032. Until it lands, the ceiling below is enforced by this screen alone.</span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start;min-width:0">
+
+    <!-- Roster — resolved by users.mspId, nothing else -->
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Accounts this surface can reach</span>
+        <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ rosterCaption }}</span>
+      </div>
+
+      <sc-if value="{{ hasRoster }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <sc-for list="{{ roster }}" as="u" hint-placeholder-count="5">
+            <button onClick="{{ u.select }}" style="display:flex;flex-direction:column;gap:5px;text-align:left;border:1px solid {{ u.line }};border-radius:10px;background:{{ u.bg }};padding:11px;cursor:pointer;font-family:inherit;min-width:0">
+              <span style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;width:100%">
+                <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;flex:1;min-width:120px;word-break:break-all">{{ u.email }}</span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ u.roleTint }};border:1px solid {{ u.roleLine }};font-size:10px;font-weight:600;color:{{ u.roleColor }}">{{ u.role }}</span>
+              </span>
+              <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ u.scope }}</span>
+              <sc-if value="{{ u.flagged }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:10.5px;color:#fbbf24;text-wrap:pretty">{{ u.flag }}</span>
+              </sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noRoster }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
+          <span style="font-size:13px;font-weight:700;color:#cbd5e1">No staff accounts at this MSP</span>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;max-width:340px">Zero MSPAdmin and zero MSPOperator rows exist live today. Every account this filter returns is either the PlatformAdmin or a leftover from the users-table merge, so a real roster is still hypothetical.</span>
+        </div>
+      </sc-if>
+
+      <div style="border-top:1px solid rgba(148,163,184,.12);padding-top:11px;display:flex;flex-direction:column;gap:5px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">LIVE SHAPE OF THAT FILTER</span>
+        <span style="font-size:11px;color:#94a3b8;line-height:1.55;text-wrap:pretty">Nine rows carry this MSP's id: one PlatformAdmin, five Assessment, four CustomerUser, no MSPAdmin or MSPOperator. The four customer rows also hold their real tenant id — the MSP id on them is a Phase-0 artifact, not a statement that they are this MSP's customers.</span>
+        <button onClick="{{ toggleEmpty }}" style="align-self:flex-start;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">{{ emptyBtnLabel }}</button>
+      </div>
+    </div>
+
+    <!-- Actions on the selected account -->
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <sc-if value="{{ hasSelection }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <span style="display:flex;flex-direction:column;gap:3px;min-width:180px;flex:1">
+              <span style="font-size:13.5px;font-weight:700;color:#f1f5f9;word-break:break-all">{{ selEmail }}</span>
+              <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ selMeta }}</span>
+            </span>
+            <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:{{ selStateTint }};border:1px solid {{ selStateLine }};font-size:10.5px;font-weight:600;color:{{ selStateColor }}">{{ selState }}</span>
+          </div>
+
+          <sc-if value="{{ aboveCeiling }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(248,113,113,.3);border-radius:10px;background:rgba(248,113,113,.08);padding:12px;display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:11.5px;font-weight:700;color:#f87171">Blocked by this screen, not by the server</span>
+              <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ ceilingText }}</span>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+            <sc-for list="{{ actions }}" as="a" hint-placeholder-count="6">
+              <div style="border:1px solid {{ a.line }};border-radius:10px;background:rgba(2,6,23,.4);padding:13px;display:flex;flex-direction:column;gap:9px;min-width:0">
+                <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+                  <span style="display:flex;flex-direction:column;gap:3px;min-width:170px;flex:1">
+                    <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">{{ a.name }}</span>
+                    <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ a.detail }}</span>
+                  </span>
+                  <button onClick="{{ a.run }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid {{ a.btnLine }};background:{{ a.btnBg }};color:{{ a.btnFg }};font-size:12px;font-weight:600;cursor:{{ a.cursor }};font-family:inherit">{{ a.btnLabel }}</button>
+                </div>
+                <span style="font-size:10.5px;font-family:Menlo,monospace;color:#475569;word-break:break-all">{{ a.route }}</span>
+                <sc-if value="{{ a.hasNote }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:11px;color:{{ a.noteColor }};text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:8px">{{ a.note }}</span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ hasTemp }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(251,191,36,.3);border-radius:10px;background:rgba(251,191,36,.08);padding:13px;display:flex;flex-direction:column;gap:7px;min-width:0">
+              <span style="font-size:11.5px;font-weight:700;color:#fbbf24">Shown once — the response is the only copy</span>
+              <span style="font-size:17px;font-family:Menlo,monospace;color:#f1f5f9;word-break:break-all;letter-spacing:.02em">{{ tempPassword }}</span>
+              <span style="font-size:11px;color:#cbd5e1;text-wrap:pretty">Written straight to the password hash, no email sent. You relay it out of band. The response also carries requireChange: true, which nothing in the system enforces — the account can keep this password indefinitely.</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid {{ resLine }};border-radius:10px;background:{{ resTint }};padding:12px;display:flex;flex-direction:column;gap:4px">
+              <span style="font-size:11.5px;font-weight:700;color:{{ resColor }}">{{ resCode }}</span>
+              <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <!-- Sessions -->
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <span style="display:flex;flex-direction:column;gap:3px;min-width:170px;flex:1">
+              <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Their sessions</span>
+              <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ sessionCaption }}</span>
+            </span>
+            <button onClick="{{ revokeSessions }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid {{ revokeLine }};background:{{ revokeBg }};color:{{ revokeFg }};font-size:12px;font-weight:600;cursor:{{ revokeCursor }};font-family:inherit">Revoke all</button>
+          </div>
+          <sc-if value="{{ hasSessions }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:7px;min-width:0">
+              <sc-for list="{{ sessions }}" as="s" hint-placeholder-count="2">
+                <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;border-bottom:1px solid rgba(148,163,184,.1);padding-bottom:7px">
+                  <span style="font-size:11.5px;color:#cbd5e1;flex:1;min-width:140px;text-wrap:pretty">{{ s.device }}</span>
+                  <span style="font-size:10.5px;font-family:Menlo,monospace;color:#64748b">{{ s.method }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noSessions }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">No live sessions. The revoke call still succeeds and returns revokedCount 0 — the count is the only feedback, so a wrong target reads identically to a target who was already signed out.</span>
+          </sc-if>
+          <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">Revoke closes every session row and cascades the refresh tokens, so their next token refresh fails. A userId from another MSP 404s without touching anyone's sessions — that one is genuinely checked.</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ noSelection }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+          <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">Pick an account</span>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;max-width:340px">Every action here is irreversible and audited against your name. Nothing is pre-selected on purpose.</span>
+        </div>
+      </sc-if>
+
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+        <span style="font-size:12px;font-weight:700;color:#f1f5f9">Audit trail</span>
+        <sc-if value="{{ hasLog }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
+            <sc-for list="{{ log }}" as="l" hint-placeholder-count="2">
+              <div style="display:flex;flex-direction:column;gap:3px;border-left:2px solid {{ l.color }};padding-left:10px;min-width:0">
+                <span style="font-size:11px;font-family:Menlo,monospace;color:{{ l.color }};word-break:break-all">{{ l.action }}</span>
+                <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ l.detail }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noLog }}" hint-placeholder-val="{{ true }}">
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Nothing written yet. Every one of these actions writes an audit row naming you, the target and what changed — including the enforcement toggle when it silently matched no rows.</span>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+          <span style="font-size:12px;font-weight:700;color:#f1f5f9">What this surface can and cannot do</span>
+          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
+const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
+const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
+const BLUE = ["rgba(96,165,250,.1)", "rgba(96,165,250,.24)", "#60a5fa"];
+const GREY = ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"];
+
+const ROLE_ORDER = ["Assessment", "Free", "CustomerUser", "ServiceAccount", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
+
+const USERS = [
+  { id: 1, email: "shane@shanemccaw.com", role: "PlatformAdmin", scope: "mspId 1 · no tenant", enforced: true, active: true, sessions: 2,
+    flag: "Carries this MSP's id, so the roster filter returns the owner of the platform." },
+  { id: 39, email: "dana.whitfield@northwindtraders.com", role: "CustomerUser", scope: "tenantId 4 · legacy mspId 1", enforced: true, active: true, sessions: 1,
+    flag: "A real customer account. It appears here only because of the Phase-0 leftover." },
+  { id: 42, email: "marcus.lee@northwindtraders.com", role: "CustomerUser", scope: "tenantId 4 · legacy mspId 1", enforced: false, active: true, sessions: 0,
+    flag: "Same leftover. Nothing on the wire tells you which of the two ids the route matched on." },
+  { id: 57, email: "priya.raman@contosoltd.com", role: "CustomerUser", scope: "tenantId 7 · legacy mspId 1", enforced: false, active: false, sessions: 0, flag: "" },
+  { id: 103, email: "t.okafor@fabrikam.example", role: "CustomerUser", scope: "tenantId 9 · legacy mspId 1", enforced: false, active: true, sessions: 3, flag: "" },
+  { id: 118, email: "assessment-lead-4471@inbound", role: "Assessment", scope: "tenantId 12 · legacy mspId 1", enforced: false, active: true, sessions: 0,
+    flag: "One of five assessment leads the same filter returns." }
+];
+
+class Component extends DCLogic {
+  state = {
+    selectedId: null,
+    callerRole: "MSPAdmin",
+    empty: false,
+    temp: null,
+    result: null,
+    enforced: {},
+    active: {},
+    sessionsRevoked: {},
+    mfaCleared: {},
+    log: []
+  };
+
+  audit = (action, detail, color) => this.setState(s => ({ log: [{ action, detail, color: color || "#34d399" }].concat(s.log).slice(0, 8) }));
+
+  sel = () => USERS.find(u => u.id === this.state.selectedId);
+
+  blocked = (u) => ROLE_ORDER.indexOf(u.role) > ROLE_ORDER.indexOf(this.state.callerRole);
+
+  isActive = (u) => this.state.active[u.id] !== undefined ? this.state.active[u.id] : u.active;
+  isEnforced = (u) => this.state.enforced[u.id] !== undefined ? this.state.enforced[u.id] : u.enforced;
+  liveSessions = (u) => this.state.sessionsRevoked[u.id] ? 0 : u.sessions;
+
+  resetPassword = () => {
+    const u = this.sel();
+    this.setState({ result: ["200 · { ok: true, message: \"Password reset email sent\" }", "A one-hour reset token was written and the templated reset email sent to " + u.email + ". Delivery is fire-and-forget: a failed send is logged and the response still reads ok, so this screen cannot promise the mail arrived.", AMBER] });
+    this.audit("user.password.reset_email_sent", "Target " + u.email + " · token TTL 1 hour · link built from the MSP portal base URL", "#fbbf24");
+  };
+
+  tempPassword = () => {
+    const u = this.sel();
+    this.setState({ temp: "Temp-9F4C21A8E07B!9", result: null });
+    this.audit("user.password.temp_set", "Target " + u.email + " · plaintext returned to the caller, never emailed", "#f87171");
+  };
+
+  resetMfa = () => {
+    const u = this.sel();
+    const cleared = u.id === 1 ? "passkey" : "totp, passkey";
+    this.setState(s => ({ mfaCleared: Object.assign({}, s.mfaCleared, { [u.id]: true }),
+      result: ["200 · { ok: true, message: \"MFA credentials cleared for re-enrollment\" }", "Cleared: " + cleared + ". Four tables were hard-deleted — enrollments, challenges, webauthn credentials and webauthn challenges. There is no undo, and their own Account Security page reads the same rows, so it reflects this on their next load.", AMBER] }));
+    this.audit("user.mfa.reset", "Target " + u.email + " · clearedMethods [" + cleared + "] · inline-HTML notice sent, not the mfa-reset template", "#fbbf24");
+  };
+
+  toggleEnforcement = () => {
+    const u = this.sel();
+    const next = !this.isEnforced(u);
+    this.setState(s => ({ enforced: Object.assign({}, s.enforced, { [u.id]: next }),
+      result: ["200 · { ok: true, enforced: " + next + " }", next
+        ? "Their next sign-in must clear MFA, and a session with no enrollment comes back pending until they enrol. This route never looks the target up first — a userId that does not exist returns this same response with zero rows changed."
+        : "Enforcement off for this account. Production still enforces MFA globally, so this flag only ever relaxes a non-production deployment.", BLUE] }));
+    this.audit("user.mfa.enforcement_toggle", "Target " + u.email + " · mfa_enforced " + next + " · audit row is written even when the update matches nothing", "#60a5fa");
+  };
+
+  toggleStatus = () => {
+    const u = this.sel();
+    if (u.id === 1 && this.state.callerRole === "PlatformAdmin") {
+      this.setState({ result: ["400 · Cannot suspend your own account", "The one target-aware guard in the whole surface, and it only protects the caller's own id — never a role above them.", RED] });
+      return;
+    }
+    const next = !this.isActive(u);
+    this.setState(s => ({ active: Object.assign({}, s.active, { [u.id]: next }),
+      result: ["200 · { ok: true, isActive: " + next + " }", next ? "Reactivated." : "Suspended. This is a boolean, not a status enum — there is no suspension reason, no expiry and no record of who it was done for beyond the audit row.", AMBER] }));
+    this.audit(next ? "user.activate" : "user.suspend", "Target " + u.email + " · isActive " + next, next ? "#34d399" : "#fbbf24");
+  };
+
+  revokeSessions = () => {
+    const u = this.sel();
+    if (this.blocked(u)) return;
+    const count = this.liveSessions(u);
+    this.setState(s => ({ sessionsRevoked: Object.assign({}, s.sessionsRevoked, { [u.id]: true }),
+      result: ["200 · { ok: true, revokedCount: " + count + " }", count > 0
+        ? "Every session row closed and its refresh token cascaded, so the next refresh fails. Access tokens already issued survive their remaining 15 minutes."
+        : "revokedCount 0. Nothing was live, and the response looks the same as a target who had no sessions at all.", count > 0 ? GREEN : GREY] }));
+    this.audit("user.sessions.revoke_all", "Target " + u.email + " · revokedCount " + count, "#34d399");
+  };
+
+  renderVals() {
+    const st = this.state;
+    const roleTone = { PlatformAdmin: RED, MSPAdmin: AMBER, MSPOperator: BLUE, CustomerUser: GREY, Assessment: GREY };
+
+    const roster = (st.empty ? [] : USERS).map(u => {
+      const t = roleTone[u.role] || GREY;
+      const on = u.id === st.selectedId;
+      return { email: u.email, role: u.role, scope: "id " + u.id + " · " + u.scope,
+        roleTint: t[0], roleLine: t[1], roleColor: t[2],
+        flagged: !!u.flag, flag: u.flag,
+        bg: on ? "rgba(96,165,250,.09)" : "rgba(2,6,23,.4)",
+        line: on ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)",
+        select: () => this.setState({ selectedId: u.id, temp: null, result: null }) };
+    });
+
+    const u = this.sel();
+    const has = !!u;
+    const blocked = has && this.blocked(u);
+    const enforced = has && this.isEnforced(u);
+    const activeNow = has && this.isActive(u);
+    const live = has ? this.liveSessions(u) : 0;
+
+    const gate = (fn) => blocked ? () => {} : fn;
+    const btn = (tone) => blocked
+      ? { btnBg: "rgba(148,163,184,.06)", btnLine: "rgba(148,163,184,.16)", btnFg: "#475569", cursor: "not-allowed" }
+      : tone === "danger"
+        ? { btnBg: "rgba(248,113,113,.1)", btnLine: "rgba(248,113,113,.3)", btnFg: "#f87171", cursor: "pointer" }
+        : { btnBg: "#2563eb", btnLine: "#2563eb", btnFg: "#fff", cursor: "pointer" };
+
+    const actions = has ? [
+      Object.assign({ name: "Send a password reset email", detail: "They set their own password from a one-hour link. The only action here that never puts a credential in your hands.",
+        route: "POST /msp/settings/users/" + u.id + "/reset-password", btnLabel: "Send link", run: gate(this.resetPassword),
+        line: "rgba(148,163,184,.14)", hasNote: false, note: "", noteColor: "#fbbf24" }, btn()),
+      Object.assign({ name: "Set a temporary password", detail: "Generated, hashed and written directly to their account. Returned to you in plaintext, once.",
+        route: "POST /msp/settings/users/" + u.id + "/temp-password", btnLabel: "Generate", run: gate(this.tempPassword),
+        line: "rgba(251,191,36,.2)", hasNote: true, noteColor: "#fbbf24",
+        note: "Nothing forces a change at next login. requireChange in the response is advisory and no route in the system reads it." }, btn("danger")),
+      Object.assign({ name: "Clear their MFA", detail: st.mfaCleared[u.id] ? "Already cleared this session. They have nothing enrolled." : "Deletes every enrollment, challenge and passkey credential so they can start again.",
+        route: "POST /msp/settings/users/" + u.id + "/reset-mfa", btnLabel: "Clear MFA", run: gate(this.resetMfa),
+        line: "rgba(248,113,113,.2)", hasNote: true, noteColor: "#f87171",
+        note: "Irreversible, and it strips a passkey they may still physically hold. Pair it with enforcement on, or the account can sign in with a password alone." }, btn("danger")),
+      Object.assign({ name: "Require MFA on this account", detail: enforced ? "On. Sign-in is gated until a method is enrolled." : "Off. They can sign in with a password alone outside production.",
+        route: "PATCH /msp/settings/users/" + u.id + "/mfa-enforcement", btnLabel: enforced ? "Turn off" : "Turn on", run: gate(this.toggleEnforcement),
+        line: enforced ? "rgba(52,211,153,.18)" : "rgba(148,163,184,.14)", hasNote: true, noteColor: "#94a3b8",
+        note: "This route performs no existence check. A bogus or wrong-MSP id still answers ok, so this screen can never confirm the write landed." }, btn()),
+      Object.assign({ name: activeNow ? "Suspend the account" : "Reactivate the account", detail: activeNow ? "A boolean flag. No reason field, no expiry, no scheduled restore." : "Currently suspended. Reactivating restores access immediately.",
+        route: "PATCH /msp/settings/users/" + u.id + "/status", btnLabel: activeNow ? "Suspend" : "Reactivate", run: gate(this.toggleStatus),
+        line: activeNow ? "rgba(148,163,184,.14)" : "rgba(251,191,36,.2)", hasNote: false, note: "", noteColor: "#fbbf24" }, btn(activeNow ? "danger" : ""))
+    ] : [];
+
+    const res = st.result;
+    const sessionRows = [
+      { device: "Chrome on macOS · 198.51.100.24 · 2 hours ago", method: "totp" },
+      { device: "Edge on Windows · 203.0.113.7 · yesterday", method: "passkey" },
+      { device: "Shane McCaw mobile · 192.0.2.44 · 3 days ago", method: "password" }
+    ].slice(0, live);
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      rootBg: this.props.rootBg ?? "transparent",
+      showNotes: this.props.showNotes ?? true,
+
+      rosterCaption: "Resolved by the MSP id on the account and nothing else. No role filter, no tenant filter.",
+      hasRoster: roster.length > 0, noRoster: roster.length === 0, roster,
+      toggleEmpty: () => this.setState(s => ({ empty: !s.empty, selectedId: null })),
+      emptyBtnLabel: st.empty ? "Show the live nine rows" : "Show the zero-staff state",
+
+      hasSelection: has, noSelection: !has,
+      selEmail: has ? u.email : "",
+      selMeta: has ? "id " + u.id + " · " + u.role + " · " + u.scope + " · " + (enforced ? "MFA required" : "MFA not required") : "",
+      selState: has ? (activeNow ? "Active" : "Suspended") : "",
+      selStateTint: activeNow ? GREEN[0] : AMBER[0], selStateLine: activeNow ? GREEN[1] : AMBER[1], selStateColor: activeNow ? "#34d399" : "#fbbf24",
+
+      aboveCeiling: blocked,
+      ceilingText: has ? "This account outranks you. The server would carry out every action below against it and return ok — the middleware only checks that you are MSPAdmin or above, never that the target sits beneath you." : "",
+
+      actions,
+      hasTemp: !!st.temp, tempPassword: st.temp || "",
+      hasResult: !!res, resCode: res ? res[0] : "", resText: res ? res[1] : "",
+      resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
+
+      sessionCaption: live > 0 ? live + " live session" + (live === 1 ? "" : "s") + " · user agent and IP as captured at sign-in" : "Nothing live",
+      hasSessions: sessionRows.length > 0, noSessions: sessionRows.length === 0, sessions: sessionRows,
+      revokeSessions: this.revokeSessions,
+      revokeBg: blocked ? "rgba(148,163,184,.06)" : "rgba(248,113,113,.1)",
+      revokeLine: blocked ? "rgba(148,163,184,.16)" : "rgba(248,113,113,.3)",
+      revokeFg: blocked ? "#475569" : "#f87171",
+      revokeCursor: blocked ? "not-allowed" : "pointer",
+
+      hasLog: st.log.length > 0, noLog: st.log.length === 0, log: st.log,
+
+      notes: [
+        { dot: "#f87171", text: "The five credential routes and the session revoke are the entire surface. They are shared verbatim with the MSP staff roster feature, so this screen and any staff-management screen are two views of one set of routes — a fix to one changes both." },
+        { dot: "#f87171", text: "No role ceiling exists on any of them. The role check is a floor on the caller, and PlatformAdmin ranks above MSPAdmin in the same order, so the platform owner's own account is reachable. The ceiling in this design is a UI-only guard until #3032 lands." },
+        { dot: "#f87171", text: "Nothing here is scoped by tenant. There is no route anywhere that resolves a managed-tenant customer's account for any of these actions, so \"help a customer with their security settings\" is not buildable yet — only accounts carrying this MSP's id are reachable." },
+        { dot: "#fbbf24", text: "Four of the nine reachable accounts are real customer users caught by a leftover id from the users-table merge. Treating this list as \"our staff\" or as \"our customers\" would both be wrong; the screen has to show the scope on each row." },
+        { dot: "#fbbf24", text: "The temp password is handed to the operator, not the account, and no forced change is enforced anywhere. Any screen offering it should push the emailed reset link first — that one never exposes a credential." },
+        { dot: "#fbbf24", text: "MFA reset is a hard delete across four tables with no undo, and the notice it sends is inline HTML rather than the templated email the rest of the system uses, so it will not match the brand." },
+        { dot: "#60a5fa", text: "Every action writes an audit row naming the actor, the target and what changed. The enforcement toggle writes one even when its update matched no rows, so the audit trail can record a change that never happened." },
+        { dot: "#94a3b8", text: "Suspension is a boolean. No reason, no expiry, no scheduled reactivation, and no separate suspended state to distinguish it from an account that was never activated." },
+        { dot: "#94a3b8", text: "Impersonation exists elsewhere and is deliberately out of scope here: the feature's own brief rules out shared or bypass credentials, and it is a different trust model from performing one named, audited action." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
