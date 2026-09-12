@@ -19,6 +19,7 @@ import { Team } from "./modules/Team";
 import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
 import { ScopeSla } from "./modules/ScopeSla";
 import { Ownership } from "./modules/Ownership";
+import { Sales } from "./modules/Sales";
 import { SopsPage } from "@/pages/Sops";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
 import { ChangeControl, CHANGE_CONTROL_TABS, type ChangeControlTab } from "@/pages/change-control/ChangeControl";
@@ -202,7 +203,7 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
         <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Breadcrumbs crumbs={crumbs} />
           <ScreenSlot meta={meta} wire={wire}>
-            {moduleFor(effectiveSel, customers, navigate)}
+            {moduleFor(effectiveSel, customers, navigate, profile)}
           </ScreenSlot>
           <StatusBar left={left} right={right} />
         </main>
@@ -230,7 +231,7 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
  * lead panel, #2630) — the rest of screen 1 (advisory panel, data-rights feed,
  * tenant table) is out of this function's scope until its own issue lands.
  */
-function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (next: Selection) => void): React.ReactNode {
+function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (next: Selection) => void, profile: MspUserProfile): React.ReactNode {
   if (sel.kind === "root") {
     return <BreakGlassWatchlist onOpenTenant={(customerId) => navigate({ kind: "page", tenant: customerId, page: "bg" })} />;
   }
@@ -304,6 +305,13 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
         onOpenTenant={(customerId) => navigate({ kind: "tenant", tenant: customerId })}
       />
     );
+  }
+  if (sel.kind === "msp" && sel.page === "sales") {
+    // Bundle write actions require ladder.msp-admin server-side
+    // (msp-sales-bundles.ts); MSPOperator can read everything but not
+    // create/edit/delete a bundle or assign/revoke a customer on one.
+    const isAdmin = profile.role === "admin" || profile.mspRole === "PlatformAdmin" || profile.mspRole === "MSPAdmin";
+    return <Sales mspId={profile.mspId ?? null} isAdmin={isAdmin} />;
   }
   if (sel.kind === "page" && (CHANGE_CONTROL_TABS as readonly string[]).includes(sel.page)) {
     // Change Control (#2579) needs the full customer row too — its Register,

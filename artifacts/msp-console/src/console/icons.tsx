@@ -45,6 +45,8 @@ import {
   FolderOpen,
   // Ownership / RACI (#2594)
   UserRoundPlus, UserRoundX, UserRoundSearch, Unplug, HardHat, CircleSlash,
+  // Sales (#2643) — Sparkles already imported above (Executive View)
+  Send, FilePen, Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -200,6 +202,10 @@ const REGISTRY: Record<string, LucideIcon> = {
   unplug: Unplug,
   "hard-hat": HardHat,
   "circle-slash": CircleSlash,
+  // Sales (#2643) — sparkles already registered above (Executive View)
+  send: Send,
+  "file-pen": FilePen,
+  "trash-2": Trash2,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

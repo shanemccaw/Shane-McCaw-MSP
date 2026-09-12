@@ -11,6 +11,7 @@
  * Routes:
  *   POST   /api/msp/sows                        — create SOW from accepted offer
  *   GET    /api/msp/sows                        — list SOWs for an MSP/customer
+ *                                                  (filters: status, customerId, offerId)
  *   GET    /api/msp/sows/:sowId                 — get SOW detail (MSP-authenticated)
  *   POST   /api/msp/sows/:sowId/sign            — customer signs the SOW
  *   POST   /api/msp/sows/:sowId/charge          — trigger MSP card charge post-signature
@@ -493,6 +494,13 @@ router.get(
     const offset = parseInt(p(req.query["offset"] as string | undefined) || "0", 10);
     const statusFilter = p(req.query["status"] as string | undefined) || null;
     const customerIdFilter = parseInt(p(req.query["customerId"] as string | undefined) || "", 10) || null;
+    // #2643 — the MSP Console's Sales screen needs to find the SOW an accepted
+    // "project" offer produced (POST /api/msp/offers/:offerId/accept creates
+    // it, but returns only sowId/shareToken — nothing links back to it from
+    // the offer's own detail view afterwards). offerId is already an indexed
+    // column on this table (msp_sows_offer_id_idx); this is a filter addition,
+    // not a schema change.
+    const offerIdFilter = parseInt(p(req.query["offerId"] as string | undefined) || "", 10) || null;
 
     const conditions = [eq(mspSowsTable.mspId, mspId)];
     if (statusFilter) {
@@ -501,10 +509,14 @@ router.get(
     if (customerIdFilter) {
       conditions.push(eq(mspSowsTable.customerId, customerIdFilter));
     }
+    if (offerIdFilter) {
+      conditions.push(eq(mspSowsTable.offerId, offerIdFilter));
+    }
 
     const [rows, [total]] = await Promise.all([
       db.select({
         sowId: mspSowsTable.sowId,
+        offerId: mspSowsTable.offerId,
         title: mspSowsTable.title,
         amountCents: mspSowsTable.amountCents,
         status: mspSowsTable.status,
