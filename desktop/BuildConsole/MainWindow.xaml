@@ -663,8 +663,8 @@
                     <ItemsPanelTemplate>
                         <Grid>
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>  <!-- deploy (Git #3791 — true left edge, excluded from the spring's rightward push) -->
                                 <ColumnDefinition Width="*"/>     <!-- spring -->
-                                <ColumnDefinition Width="Auto"/>  <!-- deploy -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- Claude usage meter (Current Session) — click opens the Weekly · all models popup, Git #3795 -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
@@ -676,7 +676,7 @@
                     </ItemsPanelTemplate>
                 </StatusBar.ItemsPanel>
 
-                <StatusBarItem Grid.Column="1">
+                <StatusBarItem Grid.Column="0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                 Cursor="Hand" MouseLeftButtonUp="DeployStatus_Click"
                                 ToolTip="Click to rebuild &amp; redeploy latest local code to ShanesBuild">
