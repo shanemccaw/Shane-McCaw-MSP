@@ -9471,4 +9471,56 @@ export const policyDecisionsTable = pgTable("policy_decisions", {
 ]);
 
 export type PolicyDecision = typeof policyDecisionsTable.$inferSelect;
+
+// ── MSP Status Reports (Git #3762, Feature #3434 phase 1 of 4) ────────────────
+/**
+ * Operator-authored, per-customer status reports — the real source of truth
+ * behind #3763 (contract pack), #3764 (design) and #3765 (portal wiring),
+ * each real-blocked on this one. Same shape family as `retainerWorkLogTable`
+ * (#1293): a real narrative record of MSP work, scoped by `mspId` + real
+ * ownership check on the customer, not a fixture.
+ *
+ * State machine is deliberately minimal for v1: `draft` → `published`, one
+ * direction only. A published report is edit-locked (enforced in the route,
+ * not just here) and publishing never reverses — "irreversible in v1" per
+ * #3762's own body.
+ */
+export const STATUS_REPORT_STATES = ["draft", "published"] as const;
+export type StatusReportState = (typeof STATUS_REPORT_STATES)[number];
+
+export const mspStatusReportsTable = pgTable("msp_status_reports", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  // tenants.id — the same "successor id-space" customer identity every other
+  // MSP-console table in this file uses (see breakGlassPendingSecretsTable
+  // above); no FK by design, consistent with that precedent.
+  customerId: integer("customer_id").notNull(),
+  // The reporting period this report covers / is as-of. Free-text label
+  // (e.g. "August 2026", "Week of Sep 8"), same "human label, not a derived
+  // computation" discipline `msp_change_requests.scheduledFor` uses — the
+  // operator writes what the period actually means for this customer, and
+  // asOfDate below carries the real sortable/filterable instant.
+  periodLabel: text("period_label").notNull(),
+  asOfDate: timestamp("as_of_date", { withTimezone: true }).notNull(),
+  // The real narrative body an operator writes — this is the report, not a
+  // metadata wrapper around one.
+  content: text("content").notNull(),
+  state: text("state", { enum: STATUS_REPORT_STATES }).notNull().default("draft"),
+  // The authoring operator — a real users.id, never a free-text name, so the
+  // authored-by identity can't drift from who actually holds the session.
+  authoredByUserId: integer("authored_by_user_id").notNull().references(() => usersTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  // NULL while draft; stamped once, at publish, and never cleared — the
+  // irreversible-in-v1 publish action's own real timestamp.
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+}, (t) => [
+  index("msp_status_reports_msp_id_idx").on(t.mspId),
+  index("msp_status_reports_customer_id_idx").on(t.customerId),
+  index("msp_status_reports_customer_state_idx").on(t.customerId, t.state),
+]);
+
+export const insertMspStatusReportSchema = createInsertSchema(mspStatusReportsTable).omit({ id: true, createdAt: true, updatedAt: true, publishedAt: true });
+export type MspStatusReport = typeof mspStatusReportsTable.$inferSelect;
+export type InsertMspStatusReport = typeof mspStatusReportsTable.$inferInsert;
 export type InsertPolicyDecision = typeof policyDecisionsTable.$inferInsert;
