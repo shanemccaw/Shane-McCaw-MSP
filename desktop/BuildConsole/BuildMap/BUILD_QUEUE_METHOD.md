@@ -248,6 +248,8 @@ Posted: <UTC ISO8601>
 
 \- No fixture/hardcoded data
 
+\- \*\*Never launch a background/dev-server process in a new visible console window — no Windows `start` command, no `UseShellExecute=true` for anything not explicitly meant for Shane to watch interactively. Redirect output to a file or run windowlessly instead.\*\* (Git #3846)
+
 ```
 
 &#x20;
