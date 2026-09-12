@@ -17,6 +17,7 @@ import { DataRights } from "./modules/DataRights";
 import { Team } from "./modules/Team";
 import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
 import { SopsPage } from "@/pages/Sops";
+import { ExecutiveView } from "@/pages/executive/ExecutiveView";
 import { ChangeControl, CHANGE_CONTROL_TABS, type ChangeControlTab } from "@/pages/change-control/ChangeControl";
 import { surface } from "./tokens";
 import { RunbooksPage } from "@/pages/runbooks/RunbooksPage";
@@ -260,6 +261,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "sops") {
     return <SopsPage />;
+  }
+  if (sel.kind === "msp" && sel.page === "exec") {
+    return <ExecutiveView onOpenTenant={(customerId) => navigate({ kind: "tenant", tenant: customerId })} />;
   }
   if (sel.kind === "page" && (CHANGE_CONTROL_TABS as readonly string[]).includes(sel.page)) {
     // Change Control (#2579) needs the full customer row too — its Register,

@@ -37,6 +37,8 @@ import {
   UserPlus, ShieldOff, UserMinus, Mail, Key, LockOpen, Siren, Smartphone, UserCheck,
   // Diagnostics and Scripts (#2653)
   ScanLine, Package, ArrowDownUp, FileCode, Star,
+  // Executive View (#2659)
+  TrendingUp, Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
@@ -174,6 +176,9 @@ const REGISTRY: Record<string, LucideIcon> = {
   "arrow-down-up": ArrowDownUp,
   "file-code": FileCode,
   star: Star,
+  // Executive View (#2659)
+  "trending-up": TrendingUp,
+  sparkles: Sparkles,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});
