@@ -138,7 +138,7 @@ namespace BuildConsole.Controls
             _pickerSignature = sig;
 
             MilestoneCombo.Items.Clear();
-            foreach (var m in milestones.Where(m => m.Number.HasValue))
+            foreach (var m in milestones.Where(m => m.Number.HasValue && !m.IsClosed))
             {
                 MilestoneCombo.Items.Add(new ComboBoxItem
                 {

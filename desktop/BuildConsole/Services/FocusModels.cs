@@ -36,6 +36,11 @@ namespace BuildConsole.Services
         /// <see cref="FocusModeBar"/> uses this to show an honest loading state instead of
         /// rendering the fallback number.</summary>
         public bool HasRealCounts { get; set; }
+        /// <summary>Git #3757 — GitHub's real milestone state (closed vs. open), carried through
+        /// from <see cref="GitHubApiClient.GitHubMilestoneInfo.IsClosed"/> so the Focus picker can
+        /// exclude already-closed milestones even when they read 100% complete — completion percent
+        /// and closed state are separate facts.</summary>
+        public bool IsClosed { get; set; }
     }
 
     /// <summary>One bounded, low-commitment thing to do — always scoped to the ACTIVE
