@@ -61,6 +61,14 @@
                     </Border>
                     <TextBlock x:Name="ProgressText" FontSize="10.5" Foreground="{StaticResource Subtext1Brush}"
                                VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <!-- Git #3869 — toggles the tile between the default real count and a stricter
+                         "production scope" that excludes BuildConsole/#1202, MyArchitect/#3454, and
+                         disconnected legacy epics like #1094 from the milestone total. -->
+                    <Border x:Name="ScopeToggle" Background="{StaticResource Surface0Brush}" CornerRadius="8"
+                            Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center" Cursor="Hand"
+                            MouseLeftButtonUp="ScopeToggle_Click">
+                        <TextBlock x:Name="ScopeToggleText" FontSize="9.5" FontWeight="Bold"/>
+                    </Border>
                 </StackPanel>
 
                 <!-- middle: ETA + points + latest achievement -->

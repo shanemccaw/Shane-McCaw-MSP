@@ -63,6 +63,11 @@ namespace BuildConsole.Services
         private List<FocusMilestone> _milestones = new();
         private List<BoardChat> _chats = new();
         private Dictionary<int, BoardEpic> _epicById = new();
+        // Git #3869 — the raw milestone-info + ALL-states issue set from the last real board
+        // snapshot, cached so ToggleProductionScope can rebuild _milestones off the SAME real fetch
+        // instead of needing a fresh board refresh just to switch scope.
+        private List<GitHubApiClient.GitHubMilestoneInfo> _lastMilestoneInfos = new();
+        private List<GitBoardIssue> _lastAllIssuesForCounts = new();
 
         // ---- public read state -----------------------------------------
         public bool IsActive => _state.IsActive && _state.ActiveMilestoneNumber.HasValue;
@@ -70,6 +75,10 @@ namespace BuildConsole.Services
         public string ActiveMilestoneTitle => _state.ActiveMilestoneTitle;
         public int Points => _state.Points;
         public IReadOnlyList<FocusMilestone> Milestones => _milestones;
+        /// <summary>Git #3869 — true when the Focus bar's milestone tile is scoped to just the
+        /// epics that actually ship (see <see cref="GitBoardIssueFilters.ComputeProductionScopedMilestoneCounts"/>).
+        /// Toggle with <see cref="SetProductionScopeOnly"/>.</summary>
+        public bool ProductionScopeOnly => _state.ProductionScopeOnly;
         public IReadOnlyList<FocusAchievement> Achievements => _state.Achievements;
         /// <summary>On-milestone quick-task suggestions. No longer used by the (removed) downtime band
         /// (#1874) or by the (removed, #3568) Immersive view's empty state — currently unconsumed, kept
@@ -428,16 +437,36 @@ namespace BuildConsole.Services
                     g => g.Key,
                     g => (g.First().ParentNumber, g.First().ParentMilestoneNumber));
 
+            // Git #3869 — cache the raw real fetch so SetProductionScopeOnly can rebuild the
+            // milestone list off this SAME snapshot without needing a fresh board refresh.
+            _lastMilestoneInfos = milestoneInfos?.ToList() ?? new();
+            _lastAllIssuesForCounts = allIssuesForCounts?.ToList() ?? new();
+            _milestones = BuildMilestoneList();
+
+            RecomputeGame(trigger);
+            RecomputeSuggestions();
+            RaiseStateChanged();
+            if (IsActive) RaiseFilterChanged();
+        }
+
+        /// <summary>Git #3869 — the real per-milestone list, scoped per <see cref="ProductionScopeOnly"/>.
+        /// Extracted from <see cref="UpdateBoardSnapshot"/> so <see cref="SetProductionScopeOnly"/> can
+        /// rebuild it off the cached last-real-fetch without a fresh board refresh.</summary>
+        private List<FocusMilestone> BuildMilestoneList()
+        {
             // Git #2739 — real, placeholder-filtered open/closed counts per milestone (shared with
             // the Git Board tree's own milestone-node badge via GitBoardIssueFilters — see its doc
             // comment), when the caller could supply the real ALL-states issue set; otherwise fall
             // back to GitHub's raw native open_issues/closed_issues (the pre-#2739 behavior,
-            // includes placeholders).
-            Dictionary<int, (int Open, int Closed)>? realCountsByMilestone = allIssuesForCounts != null && allIssuesForCounts.Count > 0
-                ? GitBoardIssueFilters.ComputeRealMilestoneCounts(allIssuesForCounts)
+            // includes placeholders). Git #3869 — when ProductionScopeOnly is on, use the stricter
+            // reachability-from-shipping-epics count instead of the default real-work count.
+            Dictionary<int, (int Open, int Closed)>? realCountsByMilestone = _lastAllIssuesForCounts.Count > 0
+                ? (_state.ProductionScopeOnly
+                    ? GitBoardIssueFilters.ComputeProductionScopedMilestoneCounts(_lastAllIssuesForCounts)
+                    : GitBoardIssueFilters.ComputeRealMilestoneCounts(_lastAllIssuesForCounts))
                 : null;
 
-            _milestones = (milestoneInfos ?? new List<GitHubApiClient.GitHubMilestoneInfo>())
+            return _lastMilestoneInfos
                 .Select(m =>
                 {
                     if (realCountsByMilestone != null)
@@ -453,11 +482,24 @@ namespace BuildConsole.Services
                 })
                 .OrderBy(m => m.Title, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
 
-            RecomputeGame(trigger);
-            RecomputeSuggestions();
+        /// <summary>Git #3869 — toggles the Focus bar's milestone tile between the default real
+        /// count (<see cref="GitBoardIssueFilters.CountsAsRealWork"/> — every non-placeholder issue
+        /// not under BuildConsole/#1202 or Admin Panel/#1095) and the stricter "production scope"
+        /// (<see cref="GitBoardIssueFilters.ComputeProductionScopedMilestoneCounts"/> — only issues
+        /// reachable from the real epics that actually ship, which excludes BuildConsole/#1202,
+        /// MyArchitect/#3454, and old disconnected legacy epics like #1094 that still carry the
+        /// milestone tag but no longer connect to the real current tree). Persisted so the choice
+        /// survives a restart. Rebuilds off the cached last-real-fetch — no board refresh needed.</summary>
+        public void SetProductionScopeOnly(bool value)
+        {
+            if (_state.ProductionScopeOnly == value) return;
+            _state.ProductionScopeOnly = value;
+            _milestones = BuildMilestoneList();
+            ActivityLog.Log("focus-mode", $"production scope {(value ? "ON" : "OFF")} — milestone tile rescoped");
+            RecomputeGame($"production scope toggled {(value ? "ON" : "OFF")}");
             RaiseStateChanged();
-            if (IsActive) RaiseFilterChanged();
         }
 
         public void UpdateChatSnapshot(IReadOnlyList<BoardChat> chats, IReadOnlyDictionary<int, BoardEpic> epicById)
@@ -632,7 +674,8 @@ namespace BuildConsole.Services
                 Closed = ms.ClosedIssues,
                 Total = ms.TotalIssues,
                 Points = _state.Points,
-                HasRealCounts = ms.HasRealCounts
+                HasRealCounts = ms.HasRealCounts,
+                IsProductionScope = _state.ProductionScopeOnly
             };
 
             int number = ms.Number ?? -1;
@@ -644,8 +687,12 @@ namespace BuildConsole.Services
             // so the fitted slope is "issues closed per hour"; the gates and reason strings are
             // unchanged from what this method has always produced.
             var window = samples.Select(s => new UsageSample { At = s.At, Percent = s.Closed }).ToList();
+            // Git #3869 — the same samples already carry the real Total (closed + open) at each
+            // reading, so the parallel creation series the net-rate ETA needs comes for free —
+            // no new sampling/plumbing, just the OTHER field FocusClosedSample already records.
+            var totalWindow = samples.Select(s => new UsageSample { At = s.At, Percent = s.Total }).ToList();
             int remaining = Math.Max(0, ms.TotalIssues - ms.ClosedIssues);
-            var proj = IssueEtaProjection.Project(window, remaining, "milestone");
+            var proj = IssueEtaProjection.Project(window, remaining, "milestone", totalWindow);
             p.HasEta = proj.HasEta;
             p.Eta = proj.HasEta ? proj.Eta : (TimeSpan?)null;
             p.IssuesPerDay = proj.IssuesPerDay;

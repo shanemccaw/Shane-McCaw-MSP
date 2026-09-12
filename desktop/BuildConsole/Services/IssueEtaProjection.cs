@@ -62,8 +62,21 @@ namespace BuildConsole.Services
         /// with an honest reason rather than guessing when the confidence gates aren't met.
         /// <paramref name="scopeNoun"/> only tailors the "&lt;scope&gt; complete" reason wording
         /// (e.g. "milestone" / "epic"); it never changes the math or the gates.
+        ///
+        /// <paramref name="totalWindow"/> — Git #3869. An optional parallel series, same shape as
+        /// <paramref name="window"/> but with <c>Percent</c> carrying the real cumulative
+        /// opened/created count in scope at each reading (e.g. <c>FocusClosedSample.Total</c> /
+        /// <see cref="GitHubIssueTimeSeriesService.IssueTimeSeriesPoint.CumulativeOpened"/>). A
+        /// milestone's backlog doesn't shrink at the gross close rate alone when new issues keep
+        /// landing in scope just as fast — real measured data: 2,476 closed but 2,836 newly created
+        /// over the same 30 real days, backlog growing despite heavy real progress. When supplied
+        /// and it clears the same sample/span gates as <paramref name="window"/>, the ETA is fit on
+        /// the NET rate (closed rate minus created rate) instead of the gross close rate, and a flat
+        /// or negative net rate is reported honestly rather than presenting a confident small number
+        /// off gross closes alone. Null (the default) preserves the original gross-rate behavior for
+        /// any caller that hasn't supplied a real creation series yet.
         /// </summary>
-        public static IssueEtaResult Project(IReadOnlyList<UsageSample> window, int remaining, string scopeNoun = "milestone")
+        public static IssueEtaResult Project(IReadOnlyList<UsageSample> window, int remaining, string scopeNoun = "milestone", IReadOnlyList<UsageSample>? totalWindow = null)
         {
             if (window.Count < MinEtaSamples)
                 return new IssueEtaResult { EtaReason = $"not enough closed-count history yet ({window.Count}/{MinEtaSamples} readings)" };
@@ -74,9 +87,30 @@ namespace BuildConsole.Services
 
             // Reuse the usage-meter's least-squares slope: feed (time, closed-count) so the fitted
             // slope is "issues closed per hour" (UsageSample.Percent is just the y value here).
-            double perHour = UsageProjection.LeastSquaresSlopePerHour(window);
+            double closedPerHour = UsageProjection.LeastSquaresSlopePerHour(window);
+
+            // Git #3869 — net the real creation rate out, when a trustworthy parallel series was
+            // supplied (same confidence gates as the closed series — a thin/short creation series
+            // isn't trusted any more than a thin closed series would be).
+            double? createdPerHour = null;
+            if (totalWindow != null && totalWindow.Count >= MinEtaSamples)
+            {
+                var totalSpan = totalWindow[^1].At - totalWindow[0].At;
+                if (totalSpan >= MinEtaSpan)
+                    createdPerHour = UsageProjection.LeastSquaresSlopePerHour(totalWindow);
+            }
+
+            double perHour = createdPerHour.HasValue ? closedPerHour - createdPerHour.Value : closedPerHour;
+
             if (perHour <= 0.0001)
+            {
+                if (createdPerHour.HasValue && closedPerHour > 0.0001)
+                    return new IssueEtaResult
+                    {
+                        EtaReason = $"closing {closedPerHour * 24.0:0.#}/day but new issues are landing just as fast — net progress is flat/negative, no honest ETA",
+                    };
                 return new IssueEtaResult { EtaReason = "pace is flat in the current history — no honest ETA" };
+            }
 
             double perDay = perHour * 24.0;
             if (remaining <= 0)

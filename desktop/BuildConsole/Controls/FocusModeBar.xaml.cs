@@ -112,12 +112,23 @@ namespace BuildConsole.Controls
 
                 // ETA — only when the projection cleared its gates (honest, or nothing).
                 if (p.HasEta && p.Eta.HasValue)
-                    EtaText.Text = $"~{FormatEta(p.Eta.Value)} left · {p.IssuesPerDay:0.#}/day";
+                    EtaText.Text = $"~{FormatEta(p.Eta.Value)} left · {p.IssuesPerDay:0.#}/day net";
                 else if (p.Percent >= 100)
                     EtaText.Text = "done 🎉";
                 else
                     EtaText.Text = ""; // withheld; tooltip carries the reason
-                EtaText.ToolTip = p.HasEta ? "Estimated at the current close rate" : p.EtaReason;
+                // Git #3869 — "net" here means closed-minus-created, not gross close rate (the old
+                // wording), so the tooltip stays honest about what the number actually reflects.
+                EtaText.ToolTip = p.HasEta ? "Estimated at the current net rate (issues closed minus new issues filed)" : p.EtaReason;
+
+                // Git #3869 — production-scope toggle: default real count vs. stricter
+                // reachable-from-shipping-epics scope.
+                bool prodScope = svc.ProductionScopeOnly;
+                ScopeToggleText.Text = prodScope ? "PROD" : "ALL";
+                ScopeToggleText.Foreground = (Brush)FindResource(prodScope ? "GreenBrush" : "Subtext1Brush");
+                ScopeToggle.ToolTip = prodScope
+                    ? "Showing production scope only — BuildConsole (#1202), MyArchitect (#3454) and disconnected legacy epics excluded. Click for all real work."
+                    : "Showing all real work (Epics/Features filtered, BuildConsole/Admin Panel excluded). Click for production scope only.";
 
                 // Git #2708 — "Open Last Tabs" SWAPS in for Points/Achievement (not stacked
                 // alongside them) whenever there's a real unrestored last-session tab set.
@@ -167,6 +178,14 @@ namespace BuildConsole.Controls
         }
 
         private void ExitBtn_Click(object sender, RoutedEventArgs e) => FocusModeService.Instance.Deactivate();
+
+        /// <summary>Git #3869 — toggles the milestone tile's production-scope filter. The service
+        /// raises StateChanged itself, which drives the actual re-render.</summary>
+        private void ScopeToggle_Click(object sender, MouseButtonEventArgs e)
+        {
+            var svc = FocusModeService.Instance;
+            svc.SetProductionScopeOnly(!svc.ProductionScopeOnly);
+        }
 
         private void ActiveTitle_Click(object sender, MouseButtonEventArgs e)
         {

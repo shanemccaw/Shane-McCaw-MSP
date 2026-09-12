@@ -171,8 +171,14 @@ namespace BuildConsole.Services
             var window = series.Points
                 .Select(pt => new UsageSample { At = pt.Date.ToDateTime(TimeOnly.MinValue), Percent = pt.ClosedCumulative })
                 .ToList();
+            // Git #3869 — the same real series already carries the real cumulative-opened curve
+            // (the #2721 burn-up chart's own "Total Scope" line), so the shared core's net-rate ETA
+            // gets its creation series for free — same fix, same core, no second definition of it.
+            var totalWindow = series.Points
+                .Select(pt => new UsageSample { At = pt.Date.ToDateTime(TimeOnly.MinValue), Percent = pt.CumulativeOpened })
+                .ToList();
 
-            var proj = IssueEtaProjection.Project(window, open, scopeNoun);
+            var proj = IssueEtaProjection.Project(window, open, scopeNoun, totalWindow);
             return new EtaProjectionRow
             {
                 Number = number, Title = title, TotalIssues = total, ClosedIssues = closed, OpenIssues = open,

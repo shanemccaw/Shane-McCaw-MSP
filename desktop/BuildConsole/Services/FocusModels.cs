@@ -99,6 +99,11 @@ namespace BuildConsole.Services
         /// <see cref="FocusModeBar"/> can show an honest loading state instead of the
         /// potentially-wrong native-counter fallback (Git #3591).</summary>
         public bool HasRealCounts { get; set; }
+        /// <summary>Git #3869 — true when these counts are the stricter "production scope"
+        /// (<see cref="GitBoardIssueFilters.ComputeProductionScopedMilestoneCounts"/>) rather than
+        /// the default real-work count. Mirrors <see cref="FocusModeService.ProductionScopeOnly"/>
+        /// at the moment this progress was built, so the bar can label the tile honestly.</summary>
+        public bool IsProductionScope { get; set; }
     }
 
     // ----- persisted snapshot POCOs (focus-mode.json) --------------------
@@ -145,5 +150,10 @@ namespace BuildConsole.Services
         /// <summary>Chats marked as In Progress (e.g. LinkedIn posts, ad-hoc tasks, side chats)
         /// that remain quickly accessible while in Focus mode.</summary>
         public List<PersistedInProgressChat> InProgressChats { get; set; } = new();
+        /// <summary>Git #3869 — whether the Focus bar's milestone tile is scoped to only the epics
+        /// that actually ship (<see cref="GitBoardIssueFilters.ComputeProductionScopedMilestoneCounts"/>),
+        /// excluding BuildConsole/#1202, MyArchitect/#3454, and disconnected legacy epics. Persisted
+        /// so Shane's choice survives a restart. Defaults false (the existing real-work count).</summary>
+        public bool ProductionScopeOnly { get; set; }
     }
 }

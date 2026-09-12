@@ -30,6 +30,23 @@ namespace BuildConsole.Services
         public static readonly IReadOnlySet<int> InternalToolingEpicNumbers = new HashSet<int> { 1202, 1095 };
 
         /// <summary>
+        /// Git #3869 — the real top-level Epic numbers whose descendant trees are what actually
+        /// ships to production, per the milestone-progress-tile investigation's own recursive
+        /// sub-issue walk: #1571 (Portal Admin), #1485 (Portal), #1281 (v1.1 release gate), #1096
+        /// (Application Core), #1095 (Admin Panel), #1093 (Marketing Website). Used ONLY by
+        /// <see cref="ComputeProductionScopedMilestoneCounts"/> — a dedicated, reachability-based
+        /// "production scope" toggle for the Focus bar's milestone tile, deliberately separate from
+        /// <see cref="InternalToolingEpicNumbers"/>/<see cref="CountsAsRealWork"/> (which already
+        /// treats #1095 as excluded "internal tooling" for the Home dashboard / Git Board rollups —
+        /// see Git #3869's finding filed against that inconsistency). Reachability from these roots
+        /// naturally excludes #1202 (BuildConsole) and #3454 (MyArchitect) — Shane's own dev tooling
+        /// — AND old, closed, organizationally-disconnected legacy epics still carrying the current
+        /// milestone tag (e.g. #1094 "EPIC: Customer Portal", superseded by #1485) without needing a
+        /// separate exclude-list: an issue only counts if it's a real descendant of one of these six.
+        /// </summary>
+        public static readonly IReadOnlyList<int> ProductionRootEpicNumbers = new[] { 1571, 1485, 1281, 1096, 1095, 1093 };
+
+        /// <summary>
         /// True iff <paramref name="issue"/> is a placeholder — a tier-level organizational holder,
         /// not real work — per Git #2739's shared definition:
         ///   - a real Epic, using #2677's exact <see cref="GitBoardIssue.IsEpic"/> definition, or
@@ -154,6 +171,31 @@ namespace BuildConsole.Services
             var byNumber = BuildByNumberLookup(allIssues);
             return allIssues
                 .Where(i => i.MilestoneNumber.HasValue && CountsAsRealWork(i, byNumber))
+                .GroupBy(i => i.MilestoneNumber!.Value)
+                .ToDictionary(g => g.Key, g => (g.Count(i => !i.IsClosed), g.Count(i => i.IsClosed)));
+        }
+
+        /// <summary>
+        /// Git #3869 — the real, transitive-reachability "production scope" milestone counts: only
+        /// issues that are a real descendant of one of <see cref="ProductionRootEpicNumbers"/> count,
+        /// on top of the same placeholder exclusion <see cref="ComputeRealMilestoneCounts"/> already
+        /// applies (an Epic/Feature holder itself is never counted as "1"). This is the live,
+        /// re-runnable version of the issue's own manual recursive sub-issue-tree walk: it reproduces
+        /// the "production epics: 184 open / 929 closed / 1,113 total" reference numbers without a
+        /// hand-maintained exclude-list, so a future re-parenting or a new legacy epic surfacing
+        /// under the milestone doesn't silently rot this count the way a hardcoded exclude-list would.
+        /// A real production epic that gains a NEW child epic just needs that child epic parented
+        /// correctly on GitHub — no code change here is needed for the walk to pick it up.
+        /// </summary>
+        public static Dictionary<int, (int Open, int Closed)> ComputeProductionScopedMilestoneCounts(IReadOnlyList<GitBoardIssue> allIssues)
+        {
+            var reachable = new HashSet<int>(ProductionRootEpicNumbers);
+            foreach (var root in ProductionRootEpicNumbers)
+                foreach (var descendant in CollectDescendants(allIssues, root))
+                    reachable.Add(descendant.Number);
+
+            return allIssues
+                .Where(i => i.MilestoneNumber.HasValue && reachable.Contains(i.Number) && !IsPlaceholder(i))
                 .GroupBy(i => i.MilestoneNumber!.Value)
                 .ToDictionary(g => g.Key, g => (g.Count(i => !i.IsClosed), g.Count(i => i.IsClosed)));
         }
