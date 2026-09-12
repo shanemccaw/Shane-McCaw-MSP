@@ -5720,10 +5720,17 @@ namespace BuildConsole.Controls
         /// blocker <see cref="_openIssues"/> reports genuinely still open. Never invents a title:
         /// while the background fetch hasn't landed yet, this shows the bare issue ref only.
         /// Git #3600 — a blocker with no live queue row is no longer a dead end either: it's
-        /// clickable too, just to a different real action (attempt dispatch via
-        /// <see cref="DispatchBlockerFromGhostCardAsync"/> instead of jumping to a card that
-        /// doesn't exist yet) — a distinct blue accent (vs. the live case's pink) tells the two
-        /// apart at a glance.</summary>
+        /// clickable too, just to a different real action — a distinct blue accent (vs. the
+        /// live case's pink) tells the two apart at a glance.
+        /// Git #3806 — that click is now pure navigate-or-notify, never a side effect: a primary
+        /// click on a non-live ghost card used to attempt a real dispatch directly
+        /// (<see cref="DispatchBlockerFromGhostCardAsync"/>), which could silently compose and
+        /// send a dispatch-ask message into whatever chat happened to be active with zero
+        /// confirmation of which chat that was — confirmed live and confusing. The primary click
+        /// now only shows a real <see cref="ToastEngine"/> notice that the blocker has no build
+        /// yet and isn't queued; the actual dispatch action moved to a separate, explicit "⚡
+        /// Dispatch" control on the card, which still calls
+        /// <see cref="DispatchBlockerFromGhostCardAsync"/> unchanged.</summary>
         private Border BuildBlockerGhostCard(int blockerNumber)
         {
             var (liveNode, title, statusText, statusColor) = BlockerGhostInputs(blockerNumber);
@@ -5748,7 +5755,8 @@ namespace BuildConsole.Controls
                 ToolTip = isLive
                     ? $"🔒 Blocked by {FormatIssueRef(blockerNumber)} — {title}\nClick to jump to its own build card."
                     : $"🔒 Blocked by {FormatIssueRef(blockerNumber)}" + (string.IsNullOrEmpty(title) ? "" : $" — {title}") +
-                      "\nNot yet dispatched — click to dispatch it now (or see why it can't)."
+                      "\nNot yet dispatched and not in the queue — click for status. Use the ⚡ Dispatch " +
+                      "button to ask the active chat to write a BUILD: comment now."
             };
 
             var stack = new StackPanel();
@@ -5770,6 +5778,42 @@ namespace BuildConsole.Controls
                 Margin = new Thickness(4, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center
             });
+
+            if (!isLive)
+            {
+                // Git #3806 — the one real control that still triggers
+                // DispatchBlockerFromGhostCardAsync verbatim. Visually distinct from the rest of
+                // the card (its own border/background, its own tooltip) and stops the click here
+                // so it never falls through to the card's own navigate-or-notify handler below.
+                var dispatchControl = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromArgb(0x40, 0x89, 0xB4, 0xFA)),
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(0xA0, 0x89, 0xB4, 0xFA)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(4, 0, 4, 0),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    Cursor = Cursors.Hand,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = $"Dispatch {FormatIssueRef(blockerNumber)} — asks the active chat " +
+                              "to write and post a BUILD: comment if none exists yet, then queues " +
+                              "it. Acts on whichever chat is currently active."
+                };
+                dispatchControl.Child = new TextBlock
+                {
+                    Text = "⚡ Dispatch",
+                    FontSize = 8,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA))
+                };
+                dispatchControl.MouseLeftButtonDown += (s, e) =>
+                {
+                    e.Handled = true;
+                    _ = DispatchBlockerFromGhostCardAsync(blockerNumber);
+                };
+                topRow.Children.Add(dispatchControl);
+            }
+
             stack.Children.Add(topRow);
             stack.Children.Add(new TextBlock
             {
@@ -5800,8 +5844,12 @@ namespace BuildConsole.Controls
                 }
                 else
                 {
-                    // Git #3600 — no live queue row at all: attempt a real dispatch instead.
-                    _ = DispatchBlockerFromGhostCardAsync(blockerNumber);
+                    // Git #3806 — primary click is pure navigate-or-notify now: no live queue
+                    // row exists for this blocker, so just say so plainly. No text is composed,
+                    // no chat is touched, nothing is sent anywhere — that's what the separate
+                    // "⚡ Dispatch" control (above) is for.
+                    ToastEngine.Info($"Blocker {FormatIssueRef(blockerNumber)}",
+                        $"{FormatIssueRef(blockerNumber)} has no build yet and isn't queued.");
                 }
             };
 
