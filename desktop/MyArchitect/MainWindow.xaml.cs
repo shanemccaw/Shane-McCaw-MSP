@@ -142,6 +142,7 @@ public partial class MainWindow : FluentWindow
 
         InitializeShell();
         InitializeStatusBar();
+        InitializeVersionUpdate();
 
         Loaded += MainWindow_Loaded;
         Closed += MainWindow_Closed;
@@ -151,12 +152,9 @@ public partial class MainWindow : FluentWindow
 
     private void InitializeStatusBar()
     {
-        // App version — from the assembly, never hardcoded (UI_RULES.md §1). Falls back to the
-        // informational version string if the file version isn't set.
-        var asm = Assembly.GetExecutingAssembly();
-        var version = asm.GetName().Version;
-        StatusVersionTextBlock.Text = version != null ? $"MyArchitect v{version.Major}.{version.Minor}.{version.Build}" : "MyArchitect";
-
+        // App version display is owned by InitializeVersionUpdate() (Git #3507, UI_RULES.md §6) —
+        // it sets StatusVersionTextBlock from VersionInfo (git commit count for
+        // desktop/MyArchitect), not the raw assembly version.
         _clockTimer.Tick += (_, _) => StatusClockTextBlock.Text = DateTime.Now.ToString("h:mm tt");
         StatusClockTextBlock.Text = DateTime.Now.ToString("h:mm tt");
         _clockTimer.Start();
@@ -5468,6 +5466,7 @@ public partial class MainWindow : FluentWindow
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
         _clockTimer.Stop();
+        _versionCheckTimer?.Stop();
         _taskQueueSseCts?.Cancel();
         _taskQueueSseCts?.Dispose();
         _trayIconManager.Dispose();
@@ -5839,12 +5838,8 @@ public partial class MainWindow : FluentWindow
         }
     }
 
-    private void UpdateAvailableButton_Click(object sender, RoutedEventArgs e)
-    {
-        // Version-update mechanism (UI_RULES.md §6 — port of BuildConsole's VersionInfo.cs +
-        // MainWindow.VersionUpdate.cs) is not built this session; button stays hidden
-        // (Visibility="Collapsed" in XAML) until it lands. See build-journal/3493.md.
-    }
+    // UpdateAvailableButton_Click is implemented in MainWindow.VersionUpdate.cs (Git #3507 —
+    // version-update mechanism, UI_RULES.md §6).
 
     private void LaunchExternalButton_Click(object sender, RoutedEventArgs e)
     {
