@@ -39,6 +39,9 @@ import {
   type CustomerDiagnosticRunSummary,
   type MspEntitlements,
   type EntitlementOverrideRow,
+  applyMspOverride,
+  isOverrideActive,
+  type MspOverrideRow,
 } from "./active-directory";
 
 const MSPS: MspRow[] = [
@@ -291,6 +294,171 @@ describe("deriveEntitlements", () => {
       overageRateCents: null,
       tierCapabilities: {},
     });
+  });
+});
+
+// Git #3681 — msp_overrides (feature flags + allowance overrides) had a real,
+// fully-wired CRUD surface with zero read-side enforcement. These tests cover
+// the merge that now wires it into both the AdMspCanvas entitlements view
+// (deriveEntitlements) and the actual runtime gate (msp-entitlement.ts's
+// loadTier(), which reuses applyMspOverride() directly).
+describe("isOverrideActive", () => {
+  const NOW = new Date("2026-09-11T12:00:00Z");
+
+  it("is false for a null/undefined override", () => {
+    expect(isOverrideActive(null, NOW)).toBe(false);
+    expect(isOverrideActive(undefined, NOW)).toBe(false);
+  });
+
+  it("is true for an override with no expiry", () => {
+    const override: MspOverrideRow = {
+      featureFlags: {},
+      tenantAllowanceOverride: null,
+      aiCreditAllowanceOverride: null,
+      expiresAt: null,
+    };
+    expect(isOverrideActive(override, NOW)).toBe(true);
+  });
+
+  it("is true when expiresAt is still in the future", () => {
+    const override: MspOverrideRow = {
+      featureFlags: {},
+      tenantAllowanceOverride: null,
+      aiCreditAllowanceOverride: null,
+      expiresAt: new Date("2026-09-12T00:00:00Z"),
+    };
+    expect(isOverrideActive(override, NOW)).toBe(true);
+  });
+
+  it("is false once expiresAt has passed", () => {
+    const override: MspOverrideRow = {
+      featureFlags: {},
+      tenantAllowanceOverride: null,
+      aiCreditAllowanceOverride: null,
+      expiresAt: new Date("2026-09-10T00:00:00Z"),
+    };
+    expect(isOverrideActive(override, NOW)).toBe(false);
+  });
+});
+
+describe("applyMspOverride", () => {
+  const BASE: MspEntitlements = {
+    tenantAllowance: 25,
+    aiCreditAllowance: 5000,
+    overageRateCents: 200,
+    tierCapabilities: { advanced_signals: true, custom_workflows: false },
+  };
+  const NOW = new Date("2026-09-11T12:00:00Z");
+
+  it("is a no-op for a null override — the plan default wins", () => {
+    expect(applyMspOverride(BASE, null, NOW)).toEqual(BASE);
+  });
+
+  it("is a no-op for an expired override", () => {
+    const expired: MspOverrideRow = {
+      featureFlags: { custom_workflows: true },
+      tenantAllowanceOverride: 999,
+      aiCreditAllowanceOverride: 999,
+      expiresAt: new Date("2026-01-01T00:00:00Z"),
+    };
+    expect(applyMspOverride(BASE, expired, NOW)).toEqual(BASE);
+  });
+
+  it("merges featureFlags on top of tierCapabilities, override wins key-for-key", () => {
+    const override: MspOverrideRow = {
+      featureFlags: { custom_workflows: true, white_label_branding: true },
+      tenantAllowanceOverride: null,
+      aiCreditAllowanceOverride: null,
+      expiresAt: null,
+    };
+    const result = applyMspOverride(BASE, override, NOW);
+    expect(result.tierCapabilities).toEqual({
+      advanced_signals: true,
+      custom_workflows: true,
+      white_label_branding: true,
+    });
+    // Allowances untouched when the override doesn't set them.
+    expect(result.tenantAllowance).toBe(25);
+    expect(result.aiCreditAllowance).toBe(5000);
+  });
+
+  it("a numeric tenantAllowanceOverride replaces the plan default", () => {
+    const override: MspOverrideRow = {
+      featureFlags: {},
+      tenantAllowanceOverride: 100,
+      aiCreditAllowanceOverride: null,
+      expiresAt: null,
+    };
+    expect(applyMspOverride(BASE, override, NOW).tenantAllowance).toBe(100);
+  });
+
+  it("a numeric aiCreditAllowanceOverride replaces the plan default", () => {
+    const override: MspOverrideRow = {
+      featureFlags: {},
+      tenantAllowanceOverride: null,
+      aiCreditAllowanceOverride: 50000,
+      expiresAt: null,
+    };
+    expect(applyMspOverride(BASE, override, NOW).aiCreditAllowance).toBe(50000);
+  });
+
+  it("the unlimited_tenants feature flag removes the tenant cap entirely (tenantAllowance -> null)", () => {
+    const override: MspOverrideRow = {
+      featureFlags: { unlimited_tenants: true },
+      tenantAllowanceOverride: null,
+      aiCreditAllowanceOverride: null,
+      expiresAt: null,
+    };
+    expect(applyMspOverride(BASE, override, NOW).tenantAllowance).toBeNull();
+  });
+
+  it("unlimited_tenants wins even over a conflicting numeric tenantAllowanceOverride", () => {
+    const override: MspOverrideRow = {
+      featureFlags: { unlimited_tenants: true },
+      tenantAllowanceOverride: 50,
+      aiCreditAllowanceOverride: null,
+      expiresAt: null,
+    };
+    expect(applyMspOverride(BASE, override, NOW).tenantAllowance).toBeNull();
+  });
+});
+
+describe("deriveEntitlements — with an msp_overrides row (Git #3681)", () => {
+  it("merges an active override on top of the plan-derived entitlements", () => {
+    const override: MspOverrideRow = {
+      featureFlags: { custom_workflows: true },
+      tenantAllowanceOverride: 999,
+      aiCreditAllowanceOverride: null,
+      expiresAt: null,
+    };
+    expect(deriveEntitlements(SUBSCRIPTION, override, new Date("2026-09-11T12:00:00Z"))).toEqual({
+      tenantAllowance: 999,
+      aiCreditAllowance: 5000,
+      overageRateCents: 200,
+      tierCapabilities: { advanced_signals: true, custom_workflows: true },
+    });
+  });
+
+  it("ignores an expired override — falls back to plan defaults", () => {
+    const expired: MspOverrideRow = {
+      featureFlags: { custom_workflows: true },
+      tenantAllowanceOverride: 999,
+      aiCreditAllowanceOverride: null,
+      expiresAt: new Date("2026-01-01T00:00:00Z"),
+    };
+    expect(deriveEntitlements(SUBSCRIPTION, expired, new Date("2026-09-11T12:00:00Z"))).toEqual(
+      deriveEntitlements(SUBSCRIPTION),
+    );
+  });
+
+  it("a null subscription still returns null regardless of an override — no plan means nothing to override", () => {
+    const override: MspOverrideRow = {
+      featureFlags: { custom_workflows: true },
+      tenantAllowanceOverride: 999,
+      aiCreditAllowanceOverride: null,
+      expiresAt: null,
+    };
+    expect(deriveEntitlements(null, override)).toBeNull();
   });
 });
 

@@ -76,6 +76,7 @@ import {
   platformLogStreamTable,
   exceptionOccurrencesTable,
   checkoutSessionsTable,
+  mspOverridesTable,
   type TenantConsentRecord,
 } from "@workspace/db";
 import type { PgTable } from "drizzle-orm/pg-core";
@@ -110,6 +111,7 @@ import {
   planAssignmentChange,
   buildUserEntitlementsView,
   roleLinkageRequirement,
+  type MspOverrideRow,
 } from "../lib/active-directory";
 import { resolveCustomerUserIds } from "../lib/tenant-signals";
 import { userEntitlementOverridesTable } from "@workspace/db";
@@ -118,6 +120,25 @@ import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 // Most recent N diagnostic runs shown in the Customer Object pane's summary —
 // a run-history preview, not a full diagnostics browser (Issue #63 scope).
 const RECENT_DIAGNOSTIC_RUN_LIMIT = 10;
+
+// Fetches the MSP's raw msp_overrides row (if any) for deriveEntitlements()/
+// buildMspDetail()/buildUserDetail() to merge via applyMspOverride() — expiry
+// is checked there, not here, so a fetched-but-expired row is still a correct
+// no-op merge (Git #3681).
+async function loadMspOverride(mspId: number | null | undefined): Promise<MspOverrideRow | null> {
+  if (mspId == null) return null;
+  const [row] = await db
+    .select({
+      featureFlags: mspOverridesTable.featureFlags,
+      tenantAllowanceOverride: mspOverridesTable.tenantAllowanceOverride,
+      aiCreditAllowanceOverride: mspOverridesTable.aiCreditAllowanceOverride,
+      expiresAt: mspOverridesTable.expiresAt,
+    })
+    .from(mspOverridesTable)
+    .where(eq(mspOverridesTable.mspId, mspId))
+    .limit(1);
+  return row ?? null;
+}
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "admin.active-directory" });
@@ -342,7 +363,7 @@ router.get("/admin/active-directory/msp/:id", requireAdmin, async (req: Request,
       return;
     }
 
-    const [subRows, customers, userRows, agreementAcceptances, [currentAgreement]] = await Promise.all([
+    const [subRows, customers, userRows, agreementAcceptances, [currentAgreement], override] = await Promise.all([
       db
         .select({
           status: mspSubscriptionsTable.status,
@@ -397,6 +418,7 @@ router.get("/admin/active-directory/msp/:id", requireAdmin, async (req: Request,
         .from(platformAgreementsTable)
         .where(eq(platformAgreementsTable.isCurrentVersion, true))
         .limit(1),
+      loadMspOverride(mspId),
     ]);
 
     res.json(
@@ -406,6 +428,7 @@ router.get("/admin/active-directory/msp/:id", requireAdmin, async (req: Request,
         customers,
         users: userRows,
         agreementAcceptances,
+        override,
         currentAgreementVersion: currentAgreement?.version ?? null,
       }),
     );
@@ -766,7 +789,7 @@ router.get("/admin/active-directory/user/:id", requireAdmin, async (req: Request
             lastLoginAt: userRow.lastLoginAt,
           };
 
-    const [[mspRow], [customerRow], subRows, sessionRows, mfaRows] = await Promise.all([
+    const [[mspRow], [customerRow], subRows, sessionRows, mfaRows, mspOverride] = await Promise.all([
       mspUserRow?.mspId != null
         ? db.select({ id: mspsTable.id, name: mspsTable.name, slug: mspsTable.slug }).from(mspsTable).where(eq(mspsTable.id, mspUserRow.mspId)).limit(1)
         : Promise.resolve([]),
@@ -813,6 +836,7 @@ router.get("/admin/active-directory/user/:id", requireAdmin, async (req: Request
         .select({ method: mfaEnrollmentsTable.method, createdAt: mfaEnrollmentsTable.createdAt })
         .from(mfaEnrollmentsTable)
         .where(and(eq(mfaEnrollmentsTable.userId, userId), eq(mfaEnrollmentsTable.enabled, true))),
+      loadMspOverride(mspUserRow?.mspId),
     ]);
 
     const linkage: UserMspLinkage | null = mspUserRow
@@ -839,6 +863,7 @@ router.get("/admin/active-directory/user/:id", requireAdmin, async (req: Request
         sessions: sessionRows,
         mfaEnrollments: mfaRows,
         now: new Date(),
+        mspOverride,
       }),
     );
   } catch (err) {
@@ -1028,7 +1053,7 @@ async function loadUserEntitlementsView(userId: number) {
     .where(eq(usersTable.id, userId))
     .limit(1);
 
-  const [subRows, overrideRows] = await Promise.all([
+  const [subRows, overrideRows, mspOverride] = await Promise.all([
     mspUserRow?.mspId != null
       ? db
           .select({
@@ -1058,9 +1083,10 @@ async function loadUserEntitlementsView(userId: number) {
       })
       .from(userEntitlementOverridesTable)
       .where(eq(userEntitlementOverridesTable.userId, userId)),
+    loadMspOverride(mspUserRow?.mspId),
   ]);
 
-  return buildUserEntitlementsView(deriveEntitlements(subRows[0] ?? null), overrideRows);
+  return buildUserEntitlementsView(deriveEntitlements(subRows[0] ?? null, mspOverride), overrideRows);
 }
 
 // GET /admin/active-directory/user/:id/entitlements

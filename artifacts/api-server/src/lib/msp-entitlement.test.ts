@@ -3,9 +3,11 @@
  *
  * Unit tests for the pure compareTierRank() helper and the TIER_RANK map
  * (these do NOT hit the database — compareTierRank is side-effect-free), plus
- * loadTier()'s merge of typeAttributes.tierCapabilities with the admin-editable
- * mspPlanCapabilitiesTable rows (Git #3683 — requirePlanFeature() previously
- * never read that table at all).
+ * loadTier()'s three-way merge: typeAttributes.tierCapabilities (the plan
+ * default), overlaid with the admin-editable mspPlanCapabilitiesTable rows
+ * (Git #3683 — requirePlanFeature() previously never read that table at all),
+ * overlaid last with any still-active msp_overrides row for the specific MSP
+ * (Git #3681 — a fully-built CRUD surface with zero read-side enforcement).
  *
  * Run with: pnpm --filter @workspace/api-server run test
  */
@@ -23,6 +25,13 @@ vi.mock("@workspace/db", () => ({
   },
   tenantsTable: { mspId: "msp_id", status: "status" },
   mspPlanCapabilitiesTable: { serviceId: "service_id", capabilityKey: "capability_key", enabled: "enabled" },
+  mspOverridesTable: {
+    mspId: "msp_id",
+    featureFlags: "feature_flags",
+    tenantAllowanceOverride: "tenant_allowance_override",
+    aiCreditAllowanceOverride: "ai_credit_allowance_override",
+    expiresAt: "expires_at",
+  },
 }));
 
 vi.mock("./logger.ts", () => {
@@ -46,12 +55,36 @@ function subscriptionChain(rows: unknown[]) {
   };
 }
 
+/** Chain for the msp_overrides lookup query (`.from().where().limit()`). */
+function overridesChain(rows: unknown[]) {
+  return {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue(rows),
+  };
+}
+
 /** Chain for the capability-rules query (`.from().where()`, resolves directly). */
 function capabilityRulesChain(rows: unknown[]) {
   return {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockResolvedValue(rows),
   };
+}
+
+/**
+ * loadTier() issues its subscription and msp_overrides queries concurrently
+ * via Promise.all (both db.select() calls happen synchronously, in this
+ * order, before either resolves), then the capability-rules query afterward.
+ * Every test below must mock all three calls in that order — a test that
+ * only stubs two calls silently binds its second mock to the wrong query.
+ */
+function mockLoadTierQueries(sub: unknown[], overrides: unknown[], capabilityRules: unknown[]) {
+  mockDb.select = vi
+    .fn()
+    .mockReturnValueOnce(subscriptionChain(sub))
+    .mockReturnValueOnce(overridesChain(overrides))
+    .mockReturnValueOnce(capabilityRulesChain(capabilityRules));
 }
 
 describe("TIER_RANK map", () => {
@@ -169,11 +202,11 @@ describe("loadTier — mspPlanCapabilitiesTable overlay (Git #3683)", () => {
   };
 
   it("falls back to typeAttributes.tierCapabilities when no capability rule rows exist", async () => {
-    mockDb.select = vi.fn()
-      .mockReturnValueOnce(subscriptionChain([
-        { ...baseSub, typeAttributes: { tierCapabilities: { advanced_signals: false } } },
-      ]))
-      .mockReturnValueOnce(capabilityRulesChain([]));
+    mockLoadTierQueries(
+      [{ ...baseSub, typeAttributes: { tierCapabilities: { advanced_signals: false } } }],
+      [],
+      [],
+    );
 
     const tier = await loadTier(1);
     expect(tier?.tierCapabilities).toEqual({ advanced_signals: false });
@@ -181,13 +214,11 @@ describe("loadTier — mspPlanCapabilitiesTable overlay (Git #3683)", () => {
   });
 
   it("a capability rule row GATES a feature that typeAttributes left open", async () => {
-    mockDb.select = vi.fn()
-      .mockReturnValueOnce(subscriptionChain([
-        { ...baseSub, typeAttributes: {} },
-      ]))
-      .mockReturnValueOnce(capabilityRulesChain([
-        { capabilityKey: "custom_workflows", enabled: false },
-      ]));
+    mockLoadTierQueries(
+      [{ ...baseSub, typeAttributes: {} }],
+      [],
+      [{ capabilityKey: "custom_workflows", enabled: false }],
+    );
 
     const tier = await loadTier(1);
     expect(tier?.tierCapabilities).toEqual({ custom_workflows: false });
@@ -195,13 +226,11 @@ describe("loadTier — mspPlanCapabilitiesTable overlay (Git #3683)", () => {
   });
 
   it("a capability rule row OVERRIDES typeAttributes to re-open a gated feature", async () => {
-    mockDb.select = vi.fn()
-      .mockReturnValueOnce(subscriptionChain([
-        { ...baseSub, typeAttributes: { tierCapabilities: { sales_offers: false } } },
-      ]))
-      .mockReturnValueOnce(capabilityRulesChain([
-        { capabilityKey: "sales_offers", enabled: true },
-      ]));
+    mockLoadTierQueries(
+      [{ ...baseSub, typeAttributes: { tierCapabilities: { sales_offers: false } } }],
+      [],
+      [{ capabilityKey: "sales_offers", enabled: true }],
+    );
 
     const tier = await loadTier(1);
     expect(tier?.tierCapabilities).toEqual({ sales_offers: true });
@@ -209,7 +238,79 @@ describe("loadTier — mspPlanCapabilitiesTable overlay (Git #3683)", () => {
   });
 
   it("returns null (no gating) when the MSP has no subscription row", async () => {
-    mockDb.select = vi.fn().mockReturnValueOnce(subscriptionChain([]));
+    // The msp_overrides lookup still fires (Promise.all issues both queries
+    // concurrently regardless of whether the subscription row exists), so it
+    // needs a mocked chain too even though its result is never used.
+    mockDb.select = vi.fn().mockReturnValueOnce(subscriptionChain([])).mockReturnValueOnce(overridesChain([]));
     expect(await loadTier(1)).toBeNull();
+  });
+});
+
+describe("loadTier — msp_overrides overlay (Git #3681)", () => {
+  const baseSub = {
+    serviceId: 42,
+    status: "active",
+    dunningState: null,
+    tierName: "Pro",
+    typeAttributes: { tenantAllowance: 25, tierCapabilities: { advanced_signals: true, custom_workflows: false } },
+  };
+
+  it("falls back to the plan default when there is no override row", async () => {
+    mockLoadTierQueries([baseSub], [], []);
+
+    const tier = await loadTier(1);
+    expect(tier?.tenantAllowance).toBe(25);
+    expect(tier?.tierCapabilities).toEqual({ advanced_signals: true, custom_workflows: false });
+  });
+
+  it("an active override's featureFlags win over both typeAttributes AND a capability rule for the same key", async () => {
+    mockLoadTierQueries(
+      [baseSub],
+      [{ featureFlags: { custom_workflows: true }, tenantAllowanceOverride: null, aiCreditAllowanceOverride: null, expiresAt: null }],
+      [{ capabilityKey: "custom_workflows", enabled: false }],
+    );
+
+    const tier = await loadTier(1);
+    // The capability rule alone would gate this; the msp_overrides row re-opens it.
+    expect(tierAllowsFeature(tier, "custom_workflows")).toBe(true);
+  });
+
+  it("a numeric tenantAllowanceOverride replaces the plan default", async () => {
+    mockLoadTierQueries(
+      [baseSub],
+      [{ featureFlags: {}, tenantAllowanceOverride: 999, aiCreditAllowanceOverride: null, expiresAt: null }],
+      [],
+    );
+
+    const tier = await loadTier(1);
+    expect(tier?.tenantAllowance).toBe(999);
+  });
+
+  it("an expired override is ignored — plan default still applies", async () => {
+    mockLoadTierQueries(
+      [baseSub],
+      [{
+        featureFlags: { custom_workflows: true },
+        tenantAllowanceOverride: 999,
+        aiCreditAllowanceOverride: null,
+        expiresAt: new Date("2020-01-01T00:00:00Z"),
+      }],
+      [],
+    );
+
+    const tier = await loadTier(1);
+    expect(tier?.tenantAllowance).toBe(25);
+    expect(tierAllowsFeature(tier, "custom_workflows")).toBe(false);
+  });
+
+  it("the unlimited_tenants override flag removes the tenant cap entirely", async () => {
+    mockLoadTierQueries(
+      [baseSub],
+      [{ featureFlags: { unlimited_tenants: true }, tenantAllowanceOverride: null, aiCreditAllowanceOverride: null, expiresAt: null }],
+      [],
+    );
+
+    const tier = await loadTier(1);
+    expect(tier?.tenantAllowance).toBeNull();
   });
 });

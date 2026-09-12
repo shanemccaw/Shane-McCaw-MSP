@@ -285,6 +285,61 @@ export interface MspEntitlements {
   tierCapabilities: Record<string, boolean>;
 }
 
+// ── MSP Overrides (Git #3681) ────────────────────────────────────────────────
+//
+// Ad hoc per-MSP overrides written by PlatformAdmin (`msp_overrides` /
+// mspOverridesTable, `artifacts/api-server/src/routes/msp-admin-settings.ts`)
+// grant feature flags or custom allowances outside the MSP's plan tier. Both
+// the read-only entitlements view below (deriveEntitlements/buildMspDetail,
+// shown on AdMspCanvas) and the actual runtime gate (msp-entitlement.ts's
+// loadTier()/requirePlanFeature()) merge through the same applyMspOverride()
+// so an override that's active in one place is active everywhere.
+
+export interface MspOverrideRow {
+  featureFlags: Record<string, boolean>;
+  tenantAllowanceOverride: number | null;
+  aiCreditAllowanceOverride: number | null;
+  expiresAt: Date | null;
+}
+
+/** An override with no expiry, or one whose expiry hasn't passed yet, is still in force. */
+export function isOverrideActive(
+  override: MspOverrideRow | null | undefined,
+  now: Date = new Date(),
+): override is MspOverrideRow {
+  if (!override) return false;
+  return override.expiresAt == null || override.expiresAt.getTime() > now.getTime();
+}
+
+/**
+ * Merges an active per-MSP override on top of tier-derived entitlements.
+ * `featureFlags` win over `tierCapabilities` key-for-key (same override-wins
+ * shape as buildUserEntitlementsView's per-user merge below). `tenantAllowanceOverride`
+ * / `aiCreditAllowanceOverride` replace the plan default only when set (null = plan
+ * default). The `unlimited_tenants` feature flag, when true, removes the tenant cap
+ * entirely (tenantAllowance -> null, the same "0/null = unlimited" convention
+ * checkTenantAllowance() already uses) — this is exactly the scenario the Admin
+ * Panel's MSP Overrides page presents that flag as granting.
+ * An expired or absent override is a no-op: `base` is returned unchanged.
+ */
+export function applyMspOverride<T extends MspEntitlements>(
+  base: T,
+  override: MspOverrideRow | null | undefined,
+  now: Date = new Date(),
+): T {
+  if (!isOverrideActive(override, now)) return base;
+
+  const tierCapabilities = { ...base.tierCapabilities, ...override.featureFlags };
+  const unlimitedTenants = tierCapabilities["unlimited_tenants"] === true;
+
+  return {
+    ...base,
+    tenantAllowance: unlimitedTenants ? null : (override.tenantAllowanceOverride ?? base.tenantAllowance),
+    aiCreditAllowance: override.aiCreditAllowanceOverride ?? base.aiCreditAllowance,
+    tierCapabilities,
+  };
+}
+
 export interface MspDetail {
   msp: MspProfileRow;
   subscription: Omit<MspSubscriptionRow, "typeAttributes"> | null;
@@ -298,11 +353,19 @@ export interface MspDetail {
   hasAcceptedCurrentAgreement: boolean;
 }
 
-/** Derives the entitlements view of a subscription's typeAttributes jsonb — mirrors msp-entitlement.ts's loadTier(). */
-export function deriveEntitlements(sub: MspSubscriptionRow | null): MspEntitlements | null {
+/**
+ * Derives the entitlements view of a subscription's typeAttributes jsonb — mirrors
+ * msp-entitlement.ts's loadTier(). An optional, still-active `override` (msp_overrides
+ * row) is merged on top via applyMspOverride() — see the section above.
+ */
+export function deriveEntitlements(
+  sub: MspSubscriptionRow | null,
+  override?: MspOverrideRow | null,
+  now: Date = new Date(),
+): MspEntitlements | null {
   if (!sub) return null;
   const attrs = sub.typeAttributes ?? {};
-  return {
+  const base: MspEntitlements = {
     tenantAllowance: typeof attrs.tenantAllowance === "number" ? attrs.tenantAllowance : null,
     aiCreditAllowance:
       typeof attrs.aiCreditAllowancePlatformValue === "number"
@@ -313,6 +376,7 @@ export function deriveEntitlements(sub: MspSubscriptionRow | null): MspEntitleme
     overageRateCents: typeof attrs.overageRateCents === "number" ? attrs.overageRateCents : null,
     tierCapabilities: (attrs.tierCapabilities ?? {}) as Record<string, boolean>,
   };
+  return applyMspOverride(base, override, now);
 }
 
 // ── RBAC/Group Object detail pane (Phase 4) ──────────────────────────────────
@@ -363,8 +427,9 @@ export function buildMspDetail(params: {
   users: MspDetailUser[];
   agreementAcceptances: MspAgreementAcceptanceRow[];
   currentAgreementVersion: string | null;
+  override?: MspOverrideRow | null;
 }): MspDetail {
-  const { msp, subscription, customers, users, agreementAcceptances, currentAgreementVersion } = params;
+  const { msp, subscription, customers, users, agreementAcceptances, currentAgreementVersion, override } = params;
 
   const subscriptionSummary = subscription
     ? {
@@ -386,7 +451,7 @@ export function buildMspDetail(params: {
   return {
     msp,
     subscription: subscriptionSummary,
-    entitlements: deriveEntitlements(subscription),
+    entitlements: deriveEntitlements(subscription, override),
     customers,
     customerCount: customers.length,
     users,
@@ -650,13 +715,15 @@ export function buildUserDetail(params: {
   mfaEnrollments: UserMfaEnrollmentRow[];
   now: Date;
   entitlementOverrides?: EntitlementOverrideRow[];
+  /** The user's own MSP's msp_overrides row, if any — merged into the tier-inherited entitlements before per-user overrides. */
+  mspOverride?: MspOverrideRow | null;
 }): UserDetail {
-  const { profile, linkage, subscriptionForEntitlements, sessions, mfaEnrollments, now, entitlementOverrides = [] } = params;
+  const { profile, linkage, subscriptionForEntitlements, sessions, mfaEnrollments, now, entitlementOverrides = [], mspOverride } = params;
 
   const sortedSessions = [...sessions].sort((a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime());
   const activeSessionCount = sessions.filter((s) => isSessionActive(s, now)).length;
 
-  const inherited = deriveEntitlements(subscriptionForEntitlements);
+  const inherited = deriveEntitlements(subscriptionForEntitlements, mspOverride, now);
 
   return {
     profile,

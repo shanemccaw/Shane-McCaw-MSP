@@ -9,10 +9,11 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
-import { db, servicesTable, mspSubscriptionsTable, tenantsTable, mspPlanCapabilitiesTable } from "@workspace/db";
+import { db, servicesTable, mspSubscriptionsTable, tenantsTable, mspPlanCapabilitiesTable, mspOverridesTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
 import { logger } from "./logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { applyMspOverride, type MspEntitlements } from "./active-directory.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
 
 export class UpgradeRequiredError extends Error {
@@ -39,27 +40,52 @@ export class OverageError extends Error {
 /**
  * Loads the subscription + service tier for an MSP, or null if none.
  *
- * `tierCapabilities` merges two sources: the typeAttributes JSON baked onto
- * the service/tier row (the historical default), overlaid with any rows the
- * PlatformAdmin has set for this service via the Plan Capability Rules admin
- * UI (`mspPlanCapabilitiesTable`, `/msp/plans`). A capability rule row, when
- * present, always wins — that table is the data-driven, admin-editable
- * source of truth (Git #3683); a missing row falls back to the
- * typeAttributes default, same as before.
+ * `tierCapabilities` merges three sources, in precedence order: the
+ * typeAttributes JSON baked onto the service/tier row (the historical
+ * default), overlaid with any rows the PlatformAdmin has set for this
+ * service via the Plan Capability Rules admin UI (`mspPlanCapabilitiesTable`,
+ * `/msp/plans` — a rule row, when present, always wins over the typeAttributes
+ * default; Git #3683), overlaid last with any still-active `msp_overrides`
+ * row for this specific MSP (Git #3681) via applyMspOverride() — the same
+ * merge active-directory.ts's deriveEntitlements() (AdMspCanvas's read-only
+ * Entitlements panel) uses, so what an operator sees there matches what's
+ * enforced here. msp_overrides wins last because it's the explicit, ad hoc,
+ * single-MSP override the Admin Panel's own copy warns "bypasses plan tier
+ * gating" — it's meant to override the tier-wide capability rules too, not
+ * just the typeAttributes default.
+ *
+ * tenantAllowance/aiCreditAllowance have only two sources (typeAttributes and
+ * the msp_overrides numeric overrides) — mspPlanCapabilitiesTable is
+ * capability-key/enabled booleans only, it doesn't touch allowances.
+ *
+ * This is the actual runtime gate — tierAllowsFeature()/requirePlanFeature()/
+ * checkTenantAllowance() all read the result of this function.
  */
 export async function loadTier(mspId: number) {
-  const [sub] = await db
-    .select({
-      serviceId: mspSubscriptionsTable.serviceId,
-      status: mspSubscriptionsTable.status,
-      dunningState: mspSubscriptionsTable.dunningState,
-      typeAttributes: servicesTable.typeAttributes,
-      tierName: servicesTable.name,
-    })
-    .from(mspSubscriptionsTable)
-    .innerJoin(servicesTable, eq(servicesTable.id, mspSubscriptionsTable.serviceId))
-    .where(eq(mspSubscriptionsTable.mspId, mspId))
-    .limit(1);
+  const [[sub], [overrideRow]] = await Promise.all([
+    db
+      .select({
+        serviceId: mspSubscriptionsTable.serviceId,
+        status: mspSubscriptionsTable.status,
+        dunningState: mspSubscriptionsTable.dunningState,
+        typeAttributes: servicesTable.typeAttributes,
+        tierName: servicesTable.name,
+      })
+      .from(mspSubscriptionsTable)
+      .innerJoin(servicesTable, eq(servicesTable.id, mspSubscriptionsTable.serviceId))
+      .where(eq(mspSubscriptionsTable.mspId, mspId))
+      .limit(1),
+    db
+      .select({
+        featureFlags: mspOverridesTable.featureFlags,
+        tenantAllowanceOverride: mspOverridesTable.tenantAllowanceOverride,
+        aiCreditAllowanceOverride: mspOverridesTable.aiCreditAllowanceOverride,
+        expiresAt: mspOverridesTable.expiresAt,
+      })
+      .from(mspOverridesTable)
+      .where(eq(mspOverridesTable.mspId, mspId))
+      .limit(1),
+  ]);
   if (!sub) return null;
 
   // Extract MSP platform tier fields from typeAttributes jsonb
@@ -78,14 +104,22 @@ export async function loadTier(mspId: number) {
     tierCapabilities[rule.capabilityKey] = rule.enabled;
   }
 
-  return {
-    ...sub,
+  const planEntitlements: MspEntitlements = {
     tenantAllowance: typeof attrs.tenantAllowance === "number" ? attrs.tenantAllowance : null,
     aiCreditAllowance: typeof attrs.aiCreditAllowancePlatformValue === "number"
       ? attrs.aiCreditAllowancePlatformValue
       : (typeof attrs.aiCreditAllowance === "number" ? attrs.aiCreditAllowance : null),
     overageRateCents: typeof attrs.overageRateCents === "number" ? attrs.overageRateCents : null,
     tierCapabilities,
+  };
+  const effective = applyMspOverride(planEntitlements, overrideRow ?? null);
+
+  return {
+    ...sub,
+    tenantAllowance: effective.tenantAllowance,
+    aiCreditAllowance: effective.aiCreditAllowance,
+    overageRateCents: effective.overageRateCents,
+    tierCapabilities: effective.tierCapabilities,
   };
 }
 
