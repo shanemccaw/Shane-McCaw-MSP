@@ -1305,6 +1305,54 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
           <dc-import name="Remediation" tenant-name="{{ diagTenantName }}" tenant-index="{{ diagTenantIndex }}" embedded="{{ true }}" hint-size="100%,700px"></dc-import>
         </sc-if>
 
+        <sc-if value="{{ isPoamScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="POA&amp;Ms" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,940px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isAdOuScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="AD OU Assignment" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,940px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isStatusRepScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Status Reports" customer-name="{{ diagTenantName }}" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,900px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isMktScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Marketplace Purchase" customer-name="{{ diagTenantName }}" embedded="{{ true }}" hint-size="100%,940px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isAcctSecScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Account Security" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,900px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isReportsScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Reports" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,940px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isDlqScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="DLQ" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,940px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isRetentionScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Retention Queue" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,900px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isOffboardScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Offboarding" embedded="{{ true }}" hint-size="100%,900px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isRevenueScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Partner Revenue" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,900px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isPlanScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Plan Self-Service" embedded="{{ true }}" hint-size="100%,900px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isPolicyScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Policy Engine" customer-name="{{ diagTenantName }}" embedded="{{ true }}" hint-size="100%,900px"></dc-import>
+        </sc-if>
+
         <sc-if value="{{ isTable }}" hint-placeholder-val="{{ false }}">
           <div style="display:flex;flex-direction:column;gap:12px">
             <sc-if value="{{ showTableToolbar }}" hint-placeholder-val="{{ true }}">
@@ -1671,18 +1719,22 @@ class Component extends DCLogic {
     ] },
     { id: "g.gov", label: "Governance", icon: "scale", children: [
       { id: "risk", label: "Risk Register", icon: "shield-alert" },
+      { id: "poam", label: "POA&Ms", icon: "clipboard-list" },
       { id: "raci", label: "Ownership", icon: "users-round" },
       { id: "run", label: "Runbooks", icon: "book-open" },
       { id: "dr", label: "Data rights", icon: "scale" }
     ] },
     { id: "g.access", label: "Access & identity", icon: "key-round", children: [
       { id: "team", label: "Team", icon: "users" },
+      { id: "adou", label: "OU assignment", icon: "folder-tree" },
       { id: "bg", label: "Break-glass", icon: "key-round" },
       { id: "lc", label: "Launch Control", icon: "rocket" },
       { id: "wh", label: "Webhooks", icon: "webhook" }
     ] },
     { id: "g.comm", label: "Commercial", icon: "receipt", children: [
       { id: "contracts", label: "Contracts", icon: "file-text" },
+      { id: "status", label: "Status reports", icon: "file-text" },
+      { id: "mkt", label: "Marketplace purchase", icon: "shopping-cart" },
       { id: "hub", label: "Documents", icon: "files" },
       { id: "billing", label: "Billing", icon: "receipt" }
     ] },
@@ -1737,7 +1789,15 @@ class Component extends DCLogic {
     { id: "sla", label: "Scope & SLA", icon: "gauge" },
     { id: "sops", label: "SOPs", icon: "scroll-text" },
     { id: "docs", label: "Documents", icon: "files" },
-    { id: "connectors", label: "SharePoint connectors", icon: "plug" }
+    { id: "connectors", label: "SharePoint connectors", icon: "plug" },
+    { id: "policy", label: "Policy engine", icon: "scale" },
+    { id: "acctsec", label: "Account security", icon: "user-cog" },
+    { id: "reports", label: "Reports", icon: "file-chart-column" },
+    { id: "dlq", label: "Dead letter queue", icon: "inbox" },
+    { id: "retention", label: "Retention queue", icon: "timer" },
+    { id: "revenue", label: "Partner revenue", icon: "chart-pie" },
+    { id: "plan", label: "Plan & billing", icon: "credit-card" },
+    { id: "offboard", label: "Offboarding", icon: "door-open" }
   ];
 
   rbds = [
@@ -2104,6 +2164,21 @@ class Component extends DCLogic {
     audit: { eyebrow: "AUDIT LOG", note: "Every console and Graph API action against this tenant.", frames: [
       { name: "Audit trail", note: "actorSurface: msp · actor, action, target, timestamp.", icon: "history", span: 12, h: "340px" }
     ] }
+  };
+
+  packNotes = {
+    poam: "Plans of action and milestones for this tenant, each one signed by their own approver before it becomes active.",
+    adou: "Manual placements into organisational units, and the placement changes this customer has asked for.",
+    status: "Narrative service reports for this customer. Publishing is one-way — there is no edit and no unpublish afterwards.",
+    mkt: "Buy a catalog item for this customer on your own card. The offer is recorded before payment is attempted.",
+    acctsec: "Act on another account's credentials: password, MFA, enforcement, suspension and sessions. Every action is audited against your name.",
+    reports: "Report definitions, their runs, custom canvases and the license-waste figure behind the reports that use it.",
+    dlq: "Work that exhausted its retries. Replay only works for items the workflow engine wrote.",
+    retention: "Requests to delete a record before its holding period ends.",
+    offboard: "This MSP leaving the platform. Forward-only, and nothing resets it.",
+    revenue: "What you pay the platform, kept strictly apart from the resale prices you set yourself.",
+    plan: "This MSP's own plan and payment method.",
+    policy: "Policy decisions your customers signed, and the standing policies this MSP evaluates against their tenants."
   };
 
   stateOptions = [
@@ -2738,6 +2813,10 @@ class Component extends DCLogic {
     const ccChild = ccPage ? this.childPages.find(c => c.id === ccPage) : null;
     const tenantCrs = tIdx == null ? [] : (this.crs[tIdx] || []);
     const emptyMode = s.ccEmpty;
+    // The contract-pack screens that have a real empty state of their own; the shell's
+    // STATE chips drive it, since their own toggle is hidden once embedded.
+    const packStateScreen = ["poam", "adou", "status"].indexOf(page) !== -1
+      || ["acctsec", "reports", "dlq", "retention", "revenue"].indexOf(mspSel) !== -1;
 
     const TONES = {
       blue: { color: "#93c5fd", tint: "rgba(96,165,250,.12)", line: "rgba(96,165,250,.28)" },
@@ -4715,9 +4794,10 @@ class Component extends DCLogic {
         : isRun ? (runSel ? "RUNBOOK · LIVE CYCLE" : holdSel ? "HOLD WINDOW" : "RUNBOOKS")
         : isRbd ? (rbdSel ? "RISK DECISION · " + rbdSel.rbdId : "RISK REGISTER")
         : isMspSet ? "MSP RECORD AND PLATFORM SETTINGS"
-        : mspSel ? (mspSel === "docs" ? (docSel ? "MSP-AUTHORED DOCUMENT" : "MSP-AUTHORED DOCUMENTS") : "SHAREPOINT CONNECTORS · MSPADMIN")
+        : (mspSel === "docs" || mspSel === "connectors") ? (mspSel === "docs" ? (docSel ? "MSP-AUTHORED DOCUMENT" : "MSP-AUTHORED DOCUMENTS") : "SHAREPOINT CONNECTORS · MSPADMIN")
         : isTenantHome ? "TENANT CONTROL · " + t.domain
-        : !t ? "DIRECTORY" : isHub ? "DOCUMENTS HUB" : isTeam ? "TEAM MANAGEMENT AND INVITATIONS" : isDr ? "DATA RIGHTS AND PRIVACY · MSPADMIN" : isBg ? "BREAK-GLASS ACCESS" : ccPage ? (showCrDetail ? "CHANGE REQUEST · " + activeCr.code : "CHANGE CONTROL") : meta.eyebrow,
+        : mspSel ? ((this.mspPages.find(x => x.id === mspSel) || {}).label || "").toUpperCase()
+        : !t ? "DIRECTORY" : isHub ? "DOCUMENTS HUB" : isTeam ? "TEAM MANAGEMENT AND INVITATIONS" : isDr ? "DATA RIGHTS AND PRIVACY · MSPADMIN" : isBg ? "BREAK-GLASS ACCESS" : ccPage ? (showCrDetail ? "CHANGE REQUEST · " + activeCr.code : "CHANGE CONTROL") : (meta ? meta.eyebrow : ((this.childPages.find(x => x.id === page) || (this.mspPages.find(x => x.id === mspSel) || {})).label || "").toUpperCase()),
       pageTitle: isWh ? (whSel ? whSel.label : "Webhooks")
         : isDiag ? "Diagnostics"
         : isRem ? "Remediation"
@@ -4731,9 +4811,10 @@ class Component extends DCLogic {
         : isRun ? (runSel ? runSel.title : holdSel ? holdSel.label : "Runbooks")
         : isRbd ? (rbdSel ? rbdSel.title : "Risk Register")
         : isMspSet ? "Shane McCaw Consulting"
-        : mspSel ? (mspSel === "docs" ? (docSel ? docSel.title : "Documents") : "SharePoint connectors")
+        : (mspSel === "docs" || mspSel === "connectors") ? (mspSel === "docs" ? (docSel ? docSel.title : "Documents") : "SharePoint connectors")
         : isTenantHome ? t.name
-        : !t ? "Managed Tenants" : isHub ? (hubSel ? hubSel.title : "Documents") : isTeam ? "Team" : isDr ? "Data rights" : isBg ? (showBgDetail ? bgSel.ref : "Break-glass") : ccPage ? (showCrDetail ? activeCr.title : ccChild.label) : (this.childPages.find(x => x.id === page) || {}).label,
+        : mspSel ? ((this.mspPages.find(x => x.id === mspSel) || {}).label || "")
+        : !t ? "Managed Tenants" : isHub ? (hubSel ? hubSel.title : "Documents") : isTeam ? "Team" : isDr ? "Data rights" : isBg ? (showBgDetail ? bgSel.ref : "Break-glass") : ccPage ? (showCrDetail ? activeCr.title : ccChild.label) : ((this.childPages.find(x => x.id === page) || this.mspPages.find(x => x.id === mspSel) || {}).label || ""),
       pageNote: isWh ? (whSel ? "Customer-owned endpoint. You can disable and re-enable it; everything else stays with the owner." : "Outbound endpoints a customer registered. One customer at a time — there is no cross-customer list.")
         : isDiag ? (s.diagTab === "findings" && diagSel ? "Findings from " + diagSel.id + " · " + diagSel.pkg + " · " + diagSel.counts : "Every diagnostic run against " + (t ? t.name : "this tenant") + ", what it could read, and what it found.")
         : isRem ? "The thirty-step tracker and the findings-derived checklist for " + (t ? t.name : "this tenant") + ", with the fix route each finding actually has."
@@ -4747,15 +4828,16 @@ class Component extends DCLogic {
         : isRun ? (runSel ? "Tick a step on the live cycle. Authoring and reordering are not available from this console." : holdSel ? "Extending is the only change this console can make to a hold window." : "Recurring runbooks for " + (t ? t.name : "this tenant") + ", and the hold windows their steps wait on.")
         : isRbd ? (rbdSel ? "Accepted risk for " + rbdSel.tenant + ", signed off by their own approver." : "Risk this tenant has accepted, each one signed off by a named customer approver.")
         : isMspSet ? "The MSP record itself — profile, subscription, derived entitlements, platform agreement and the admin actions available against it."
-        : mspSel ? (mspSel === "docs" ? "Documents this MSP authors and publishes through the HTML to PDF to SharePoint pipeline." : "Credentials the pipeline uploads through. Creating, editing and deactivating all require MSPAdmin.")
+        : (mspSel === "docs" || mspSel === "connectors") ? (mspSel === "docs" ? "Documents this MSP authors and publishes through the HTML to PDF to SharePoint pipeline." : "Credentials the pipeline uploads through. Creating, editing and deactivating all require MSPAdmin.")
         : isTenantHome ? "The tenant record itself — subscription, payment state, consent, scanning and every control this console has against it."
+        : mspSel ? (this.packNotes[mspSel] || "")
         : !t ? "Every tenant in your book. Expand one in the tree to work inside it."
         : isHub ? (hubSel ? "Generated for " + t.name + " · read-only on this surface." : "Documents the platform generated for " + t.name + ". This surface reads and shares them, never edits them.")
         : isTeam ? "Operator-side roster for " + t.name + ". MSPOperator and above."
         : isDr ? "Data-export and deletion-request activity for this customer, and the people a request can name."
         : isBg ? (showBgDetail ? "Verification attempts for this one-time credential handoff." : "One-time credential handoffs paused at a verification gate. The plaintext never reaches this surface.")
         : ccPage ? (showCrDetail ? "Raised against " + t.name + " · " + activeCr.psa : this.ccNotes[ccPage])
-        : meta.note,
+        : this.packNotes[page] || this.packNotes[mspSel] || (meta ? meta.note : ""),
 
       isDirectory: sel.kind === "root",
       directoryRows: this.tenantData.map((x, i) => Object.assign({}, x, { people: (this.rosters[i] || []).length, open: () => this.selectNode(i, null) })),
@@ -4792,7 +4874,7 @@ class Component extends DCLogic {
       isBgScreen: isBg && !emptyMode,
       isTeam: isTeam && emptyMode,
       isTeamScreen: isTeam && !emptyMode,
-      showStates: isTeam || !!ccPage || isExec || (isWh && !whSel && s.whTab === "endpoints"),
+      showStates: isTeam || !!ccPage || isExec || packStateScreen || (isWh && !whSel && s.whTab === "endpoints"),
       stateChips: (isExec
         ? [{ id: false, label: "Populated" }, { id: true, label: "Empty" }].map(o => ({
             label: o.label, title: o.id ? "Zero health snapshots and zero open offers today" : "Design data",
@@ -4808,6 +4890,14 @@ class Component extends DCLogic {
             border: o.id === s.whEmpty ? "rgba(96,165,250,.35)" : "rgba(148,163,184,.18)",
             fg: o.id === s.whEmpty ? "#bfdbfe" : "#64748b",
             select: () => this.setState({ whEmpty: o.id, whSel: null })
+          }))
+        : packStateScreen
+        ? [{ id: false, label: "Populated" }, { id: true, label: "Empty" }].map(o => ({
+            label: o.label, title: o.id ? "What this screen's own routes return today" : "Design data",
+            bg: o.id === emptyMode ? "rgba(37,99,235,.2)" : "transparent",
+            border: o.id === emptyMode ? "rgba(96,165,250,.35)" : "rgba(148,163,184,.18)",
+            fg: o.id === emptyMode ? "#bfdbfe" : "#64748b",
+            select: () => this.setState({ ccEmpty: o.id })
           }))
         : ccPage
         ? [{ id: false, label: "Populated" }, { id: true, label: "Empty" }].map(o => ({
@@ -4831,6 +4921,23 @@ class Component extends DCLogic {
       isRunScreen: isRun && !emptyMode,
       isRaciScreen: page === "raci",
       raciBookState: emptyMode ? "empty" : "populated",
+
+      // Contract-pack screens (38-50). Each is mounted embedded, which hides its own
+      // data-state toggle in favour of the shell's STATE chips; the console's single
+      // emptyMode boolean is passed straight through as forceEmpty.
+      isPoamScreen: page === "poam",
+      isAdOuScreen: page === "adou",
+      isStatusRepScreen: page === "status",
+      isMktScreen: page === "mkt",
+      isAcctSecScreen: mspSel === "acctsec",
+      isReportsScreen: mspSel === "reports",
+      isDlqScreen: mspSel === "dlq",
+      isRetentionScreen: mspSel === "retention",
+      isOffboardScreen: mspSel === "offboard",
+      isRevenueScreen: mspSel === "revenue",
+      isPlanScreen: mspSel === "plan",
+      isPolicyScreen: mspSel === "policy",
+      packEmpty: emptyMode,
       isRiskScreen: isRbd && !emptyMode,
       isCcScreen: !!ccPage && !emptyMode,
       ccInitialTab: ({ "cc.register": "register", "cc.catalog": "catalog", "cc.cab": "cab", "cc.calendars": "windows", "cc.deps": "deps", "cc.exec": "exec", "cc.pir": "pir" })[ccPage] || "register",

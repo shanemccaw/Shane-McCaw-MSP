@@ -4,6 +4,17 @@ path: artifacts/api-server/src/routes (plus artifacts/admin-panel/src/components
 
 ## Last sync
 
+date: 2026-09-12T18:34:00Z
+
+### Updated in this project
+
+- Wired twelve of the thirteen contract-pack screens into `MSP Console.dc.html`: POA&Ms under a tenant's Governance, OU assignment under Access & identity, Status reports and Marketplace purchase under Commercial, and Policy engine, Account security, Reports, Dead letter queue, Retention queue, Partner revenue, Plan & billing and Offboarding under Operations. Authentication stays standalone — sign-in precedes the shell.
+- Each mount passes `embedded` (suppresses the screen's own page header and its data-state toggle, since the shell renders the header and its STATE chips drive Populated/Empty) and `forceEmpty` for the eight screens with a real empty state. The permission simulators (role pill, card on file) stay visible when embedded because they gate real branches.
+- Fixed two latent crashes in the console's page-header chain: `meta.eyebrow` and `meta.note` were read unguarded and threw for any page without a frame definition, and the MSP-wide branch assumed anything but Documents was SharePoint connectors, so all eight new Operations pages inherited that title and note.
+- Handoff bundle refreshed: 13 screen files plus the console, updated README (tree placement, the `embedded`/`forceEmpty` contract), and `github.md`.
+
+## Previous sync
+
 date: 2026-09-12T18:12:33Z
 
 ### Updated in this project

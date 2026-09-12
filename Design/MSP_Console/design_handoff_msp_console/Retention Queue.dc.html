@@ -21,12 +21,12 @@
 <div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
 
   <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
-    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+    <sc-if value="{{ showOwnHeader }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
       <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">RETENTION QUEUE</span>
       <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Requests to delete something early</span>
-    </div>
+    </div></sc-if>
     <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPOperator or above</span>
-    <button onClick="{{ toggleShape }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ shapeBtnLabel }}</button>
+    <sc-if value="{{ showToggles }}" hint-placeholder-val="{{ true }}"><button onClick="{{ toggleShape }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ shapeBtnLabel }}</button></sc-if>
   </div>
 
   <!-- The real state today -->
@@ -265,7 +265,7 @@ class Component extends DCLogic {
 
   renderVals() {
     const st = this.state;
-    const live = st.view === "live";
+    const live = this.props.forceEmpty === undefined ? st.view === "live" : !!this.props.forceEmpty;
     const settledOf = (r) => st.settled[r.id] || null;
     const pending = st.rows.filter(r => !settledOf(r));
 
@@ -288,6 +288,8 @@ class Component extends DCLogic {
 
     return {
       rootPad: this.props.rootPad ?? "0",
+      showOwnHeader: !(this.props.embedded ?? false),
+      showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
       showNotes: this.props.showNotes ?? true,
 

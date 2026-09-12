@@ -11,7 +11,7 @@ The design covers 50 screens across two trees, plus the shell they all mount in:
 - **Console Shell** — the chrome itself: header, tenant tree, breadcrumb, screen slot, status bar, command palette, and its five states.
 - **Managed Tenants** — a directory, then per tenant 22 pages grouped into Overview, Monitoring, Change Control, Governance, Access & identity, Commercial, and Audit log, plus Ownership.
 - **Operations (MSP-wide)** — 9 cross-tenant pages: MSP settings, Executive view, Activity timeline, Configuration State, Sales, Scope & SLA, SOPs, Documents, SharePoint connectors.
-- **Contract-pack screens** — 13 further surfaces built one-to-one from the UI contract packs in `docs/msp-console/` (screens 38–50). Each was written from a pack that had been extracted from the real route code, so each states on itself what its routes can and cannot do. See the Screens section.
+- **Contract-pack screens** — 13 further surfaces built one-to-one from the UI contract packs in `docs/msp-console/` (screens 38–50). Each was written from a pack that had been extracted from the real route code, so each states on itself what its routes can and cannot do. **Twelve of the thirteen are mounted in the console navigation** (see "Where they sit in the tree" below); Authentication is standalone, because sign-in happens before the shell exists.
 
 ## About the design files
 
@@ -282,7 +282,30 @@ The shell's only state is the selection plus which nodes are expanded. It holds 
 
 These thirteen were each built from one contract pack in `docs/msp-console/` — documents extracted from the route code, listing every wire field, every real enum, the honest-empty state, and the gaps. **The notes panel at the foot of each of these screens is not filler.** It records what the routes behind that screen genuinely cannot do, and several layout decisions exist only because of those limits. Where a screen holds a guard the server does not, that is called out below; do not quietly drop it in the rebuild.
 
-Each carries `showNotes`, `rootPad` and `rootBg` props so it can be mounted inside the shell's screen slot.
+### Where they sit in the tree
+
+Twelve are real nodes in `MSP Console.dc.html`. Authentication is deliberately not — it is the pre-login surface.
+
+| Tree location | Screens |
+|---|---|
+| Per tenant → Governance | POA&Ms |
+| Per tenant → Access & identity | OU assignment |
+| Per tenant → Commercial | Status reports, Marketplace purchase |
+| Operations (MSP-wide) | Policy engine, Account security, Reports, Dead letter queue, Retention queue, Partner revenue, Plan & billing, Offboarding |
+| Not in the tree | Authentication |
+
+Account security sits under Operations rather than per tenant on purpose: its routes resolve their target by MSP id, never by tenant, so a per-tenant node would have shown the same MSP-wide roster on every tenant.
+
+### The `embedded` contract
+
+Each screen carries `showNotes`, `rootPad`, `rootBg`, plus two props the console passes when it mounts them:
+
+- **`embedded`** — suppresses the screen's own page header (the shell already renders eyebrow, title and note from the tree node) and hides its **data-state** toggle, because the shell's own STATE chip group drives that instead. The standalone file keeps both, which is why the screenshots show a header these mounts do not.
+- **`forceEmpty`** — a boolean the console passes straight through from its STATE chips, so Populated/Empty is chosen once in the shell rather than per screen. Passed to the eight screens that have a real empty state: POA&Ms, OU assignment, Status reports, Account security, Reports, DLQ, Retention queue, Partner revenue.
+
+**`embedded` deliberately does not hide the permission simulators** — the role pill on POA&Ms, Reports and Offboarding, and the card-on-file switch on Marketplace Purchase. Those gate real branches (the cancel-bypass, the admin-only delete, the declined payment), so hiding them would make those paths unreachable inside the console. They are still review affordances and still must not ship; they are simply a different kind of control from a data-state toggle.
+
+In the rebuild, both props disappear: the real app renders one page header from the route, and real data decides whether a list is empty.
 
 | # | Screen | File | Built from | What the design turns on |
 |---|---|---|---|---|
@@ -406,7 +429,7 @@ The thirteen contract-pack screens (38–50) each name their own routes in the U
 | 13 contract-pack screens | `Authentication`, `Account Security`, `Status Reports`, `POA&Ms`, `Reports`, `DLQ`, `Retention Queue`, `Offboarding`, `AD OU Assignment`, `Marketplace Purchase`, `Partner Revenue`, `Plan Self-Service`, `Policy Engine` (`.dc.html` each). Screens 38–50. Each opens standalone; none is mounted inside `MSP Console.dc.html` yet. |
 | `support.js` | The prototype runtime. Required for the HTML to run; not for production. |
 | `_ds/` | Design system tokens, stylesheet and component bundle. |
-| `screenshots/` | 49 PNGs, numbered to match the Screens section. |
+| `screenshots/` | 49 PNGs, numbered to match the Screens section. Screens 38–50 are captured **standalone**, so they show the page header and toggles that the console mount suppresses. |
 | `github.md` | Repository, branch, last sync commit, and the screen-to-source map. |
 | `README.md` | This document. |
 

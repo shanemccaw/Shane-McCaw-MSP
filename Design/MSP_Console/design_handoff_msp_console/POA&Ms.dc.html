@@ -21,12 +21,16 @@
 <div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
 
   <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
-    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
-      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">PLANS OF ACTION &amp; MILESTONES</span>
-      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">POA&amp;Ms across the book</span>
-    </div>
-    <button onClick="{{ toggleRole }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:{{ roleBg }};border:1px solid {{ roleLine }};font-size:11px;font-weight:600;color:{{ roleFg }};cursor:pointer;font-family:inherit">Signed in as {{ role }}</button>
-    <button onClick="{{ toggleEmpty }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ emptyBtnLabel }}</button>
+    <sc-if value="{{ showOwnHeader }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">PLANS OF ACTION &amp; MILESTONES</span>
+        <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">POA&amp;Ms across the book</span>
+      </div>
+    </sc-if>
+    <button onClick="{{ toggleRole }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:{{ roleBg }};border:1px solid {{ roleLine }};font-size:11px;font-weight:600;color:{{ roleFg }};cursor:pointer;font-family:inherit">{{ role }}</button>
+    <sc-if value="{{ showToggles }}" hint-placeholder-val="{{ true }}">
+      <button onClick="{{ toggleEmpty }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ emptyBtnLabel }}</button>
+    </sc-if>
   </div>
 
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start;min-width:0">
@@ -350,7 +354,9 @@ class Component extends DCLogic {
         : "Removed. Deleting the parent plan would cascade its milestones away too.", m.status === "completed" ? RED : AMBER]);
   };
 
-  plans = () => this.state.empty ? [] : this.state.plans;
+  isEmpty = () => this.props.forceEmpty === undefined ? this.state.empty : !!this.props.forceEmpty;
+
+  plans = () => this.isEmpty() ? [] : this.state.plans;
 
   renderVals() {
     const st = this.state;
@@ -407,10 +413,12 @@ class Component extends DCLogic {
 
     return {
       rootPad: this.props.rootPad ?? "0",
+      showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
       showNotes: this.props.showNotes ?? true,
 
-      role: st.role,
+      role: "Signed in as " + st.role,
+      showOwnHeader: !(this.props.embedded ?? false),
       roleBg: isAdmin ? AMBER[0] : GREY[0], roleLine: isAdmin ? AMBER[1] : GREY[1], roleFg: isAdmin ? "#fbbf24" : "#94a3b8",
       toggleRole: () => this.setState(s => ({ role: s.role === "MSPAdmin" ? "MSPOperator" : "MSPAdmin", result: null })),
       toggleEmpty: () => this.setState(s => ({ empty: !s.empty, openId: s.empty ? 12 : null, result: null })),

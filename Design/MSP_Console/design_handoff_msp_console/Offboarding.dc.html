@@ -21,12 +21,12 @@
 <div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
 
   <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
-    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+    <sc-if value="{{ showOwnHeader }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
       <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">OFFBOARDING</span>
       <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">{{ mspName }} leaving the platform</span>
-    </div>
-    <button onClick="{{ toggleRole }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:{{ roleBg }};border:1px solid {{ roleLine }};font-size:11px;font-weight:600;color:{{ roleFg }};cursor:pointer;font-family:inherit">Signed in as {{ role }}</button>
-    <button onClick="{{ reset }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">Back to the live state</button>
+    </div></sc-if>
+    <button onClick="{{ toggleRole }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:{{ roleBg }};border:1px solid {{ roleLine }};font-size:11px;font-weight:600;color:{{ roleFg }};cursor:pointer;font-family:inherit">{{ role }}</button>
+    <sc-if value="{{ showToggles }}" hint-placeholder-val="{{ true }}"><button onClick="{{ reset }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">Back to the live state</button></sc-if>
   </div>
 
   <div style="border:1px solid rgba(248,113,113,.28);border-radius:12px;background:rgba(248,113,113,.07);padding:14px;display:flex;flex-direction:column;gap:6px;min-width:0">
@@ -262,11 +262,13 @@ class Component extends DCLogic {
 
     return {
       rootPad: this.props.rootPad ?? "0",
+      showOwnHeader: !(this.props.embedded ?? false),
+      showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
       showNotes: this.props.showNotes ?? true,
       mspName: this.props.mspName ?? "Shane McCaw Consulting",
 
-      role: st.role,
+      role: "Signed in as " + st.role,
       roleBg: isPlatform ? RED[0] : AMBER[0], roleLine: isPlatform ? RED[1] : AMBER[1], roleFg: isPlatform ? "#f87171" : "#fbbf24",
       toggleRole: () => this.setState(s => ({ role: s.role === "PlatformAdmin" ? "MSPAdmin" : "PlatformAdmin", result: null })),
       reset: this.reset,

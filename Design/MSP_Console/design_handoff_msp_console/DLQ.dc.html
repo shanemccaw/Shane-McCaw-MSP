@@ -21,12 +21,12 @@
 <div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
 
   <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
-    <div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+    <sc-if value="{{ showOwnHeader }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
       <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">DEAD LETTER QUEUE</span>
       <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Work that gave up</span>
-    </div>
+    </div></sc-if>
     <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPOperator or above</span>
-    <button onClick="{{ toggleEmpty }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ emptyBtnLabel }}</button>
+    <sc-if value="{{ showToggles }}" hint-placeholder-val="{{ true }}"><button onClick="{{ toggleEmpty }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ emptyBtnLabel }}</button></sc-if>
   </div>
 
   <div style="border:1px solid {{ bannerLine }};border-radius:12px;background:{{ bannerTint }};padding:14px;display:flex;flex-direction:column;gap:7px;min-width:0">
@@ -258,7 +258,7 @@ class Component extends DCLogic {
   bulkReplay = () => this.setState({ result: ["404 · route not found", "Bulk replay is registered one level too deep — its path carries an extra prefix, so the address every other route in this file implies does not exist. It answers only at the doubled path, which no client would guess. Filed upstream as #3445; until it is fixed, this control has nothing to call.", RED] });
 
   renderVals() {
-    const st = this.state;
+    const st = this.props.forceEmpty === undefined ? this.state : Object.assign({}, this.state, { empty: this.props.forceEmpty });
     const all = st.empty ? [] : st.items;
     const resolvedOf = (i) => st.resolved[i.id] || null;
 
@@ -310,6 +310,8 @@ class Component extends DCLogic {
 
     return {
       rootPad: this.props.rootPad ?? "0",
+      showOwnHeader: !(this.props.embedded ?? false),
+      showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
       showNotes: this.props.showNotes ?? true,
 
