@@ -299,7 +299,15 @@ namespace BuildConsole.Services
                         problems.Add($"jsonPath {jsonPath} isArray={actualIsArray}, expected {expectedIsArray}");
                 }
 
-                if (expect.TryGetProperty("value", out var valueEl))
+                // Git #3052 — "equals" is a real, already-in-use alias for "value" in several
+                // manifests (test-manifests/portal/settings-change-control-departments-persistence.json,
+                // ownership.json). Previously only "value" was read, so an "equals"-shaped assertion
+                // was silently skipped: the whole `if` never ran, no problem was recorded, and the
+                // step reported PASS regardless of what the endpoint actually returned. Both keys are
+                // now honored identically; "value" takes precedence if a step somehow declares both.
+                bool hasValueKey = expect.TryGetProperty("value", out var valueEl);
+                bool hasEqualsKey = !hasValueKey && expect.TryGetProperty("equals", out valueEl);
+                if (hasValueKey || hasEqualsKey)
                 {
                     expectedParts.Add($"{jsonPath} = {valueEl.GetRawText()}");
                     actualParts.Add(resolved ? $"{jsonPath} = {found.GetRawText()}" : $"{jsonPath} did not resolve");
@@ -425,7 +433,23 @@ namespace BuildConsole.Services
 
         private static string CollapseWhitespace(string s) => string.IsNullOrEmpty(s) ? "" : Regex.Replace(s, @"\s+", " ").Trim();
 
-        private static readonly Regex JsonPathTokenPattern = new(@"\.([A-Za-z0-9_]+)|\[(\d+)\]", RegexOptions.Compiled);
+        // Git #3052 — group 3 adds real support for a JSONPath filter-expression segment
+        // (`[?(@.field=='literal')]`), the shape already live in several manifests
+        // (ownership.json, settings-change-control-departments-persistence.json,
+        // security-overview/alert-volume-drilldown.json). Before this, the plain `.field`
+        // tokens the regex still found *inside* the filter clause (e.g. `.type` inside
+        // `[?(@.type=='control')]`) were applied against whatever `current` element the walk
+        // was on at that point — normally the array itself, since the filter segment was never
+        // consumed as its own token — so the whole path always failed to resolve.
+        private static readonly Regex JsonPathTokenPattern = new(@"\.([A-Za-z0-9_]+)|\[(\d+)\]|\[\?\(([^\]]*)\)\]", RegexOptions.Compiled);
+
+        // A single filter clause: @.field == 'literal' | true | false | null | 123(.45)? — the
+        // real shapes seen in every manifest above. Multiple clauses may be joined with `&&`
+        // (all must match); real usage today is a single clause, but the issue's own suggested
+        // fix names `&&` explicitly so it's supported rather than guessed at later.
+        private static readonly Regex FilterClausePattern = new(
+            @"@\.([A-Za-z0-9_]+)\s*==\s*(?:'([^']*)'|""([^""]*)""|(true|false|null)|(-?\d+(?:\.\d+)?))",
+            RegexOptions.Compiled);
 
         private static bool TryResolveJsonPath(JsonElement root, string path, out JsonElement result)
         {
@@ -447,9 +471,79 @@ namespace BuildConsole.Services
                         return false;
                     current = current[idx];
                 }
+                else if (token.Groups[3].Success)
+                {
+                    if (current.ValueKind != JsonValueKind.Array || !TryFilterArray(current, token.Groups[3].Value, out current))
+                        return false;
+                }
             }
             result = current;
             return true;
+        }
+
+        /// <summary>
+        /// Applies a `[?(@.field==...)]` filter clause (or `&&`-joined clauses) to a JSON array,
+        /// returning the FIRST element that satisfies every clause. Every real manifest usage
+        /// filters down to a single matching row before reading one of its fields (e.g.
+        /// `$.objects[?(@.type=='control')].live`), so first-match is the real-world semantic —
+        /// not the full JSONPath spec's "collect all matches," which none of these manifests need.
+        /// </summary>
+        private static bool TryFilterArray(JsonElement array, string filterExpr, out JsonElement result)
+        {
+            result = default;
+            var clauses = new List<Match>();
+            foreach (var clausePart in filterExpr.Split("&&"))
+            {
+                var m = FilterClausePattern.Match(clausePart.Trim());
+                if (!m.Success) return false;
+                clauses.Add(m);
+            }
+            if (clauses.Count == 0) return false;
+
+            foreach (var element in array.EnumerateArray())
+            {
+                if (element.ValueKind != JsonValueKind.Object) continue;
+                bool allMatch = true;
+                foreach (var clause in clauses)
+                {
+                    string field = clause.Groups[1].Value;
+                    if (!element.TryGetProperty(field, out var fieldVal)) { allMatch = false; break; }
+                    if (!FilterValueMatches(fieldVal, clause)) { allMatch = false; break; }
+                }
+                if (allMatch)
+                {
+                    result = element;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool FilterValueMatches(JsonElement fieldVal, Match clause)
+        {
+            if (clause.Groups[2].Success || clause.Groups[3].Success)
+            {
+                string literal = clause.Groups[2].Success ? clause.Groups[2].Value : clause.Groups[3].Value;
+                return fieldVal.ValueKind == JsonValueKind.String && fieldVal.GetString() == literal;
+            }
+            if (clause.Groups[4].Success)
+            {
+                return clause.Groups[4].Value switch
+                {
+                    "true" => fieldVal.ValueKind == JsonValueKind.True,
+                    "false" => fieldVal.ValueKind == JsonValueKind.False,
+                    "null" => fieldVal.ValueKind == JsonValueKind.Null,
+                    _ => false,
+                };
+            }
+            if (clause.Groups[5].Success)
+            {
+                return fieldVal.ValueKind == JsonValueKind.Number
+                    && fieldVal.TryGetDouble(out var d)
+                    && double.TryParse(clause.Groups[5].Value, out var expected)
+                    && d == expected;
+            }
+            return false;
         }
 
         private static bool JsonElementValuesEqual(JsonElement a, JsonElement b)
