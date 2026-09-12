@@ -54,7 +54,10 @@ function apiError(res: Response, status: number, message: string) {
   res.status(status).json({ error: message });
 }
 
-function writeAuditLog(params: {
+// Exported so other route files (e.g. admin-impersonation.ts, Git #3684) can
+// write into the same msp_audit_logs table this canvas's own Activity panel
+// reads from, instead of duplicating this insert shape.
+export function writeAuditLog(params: {
   req: Request;
   actionType: string;
   entityType: string;

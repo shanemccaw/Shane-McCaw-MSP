@@ -3,6 +3,12 @@ import { db, usersTable, mspsTable, impersonationTokensTable, type MspRole } fro
 import { eq, and, inArray, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { createAuditLog } from "../lib/audit.ts";
+// Git #3684: impersonation only wrote to auditLogsTable (audit_logs), a table
+// AdMspCanvas's own Activity panel never reads — it queries msp_audit_logs
+// exclusively (GET /api/msp/audit → msp-audit-log.ts). Writing here too, via
+// the same helper msp-admin-settings.ts's other MSP actions already use, is
+// what makes an impersonation event actually show up on that screen.
+import { writeAuditLog as writeMspAuditLog } from "./msp-admin-settings.ts";
 import { logger } from "../lib/logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "admin.impersonation" });
@@ -39,6 +45,19 @@ router.post("/admin/impersonate/:userId", requireAdmin, async (req: Request, res
     entityId: client.id,
     entityLabel: client.name ?? client.email,
   });
+
+  try {
+    await writeMspAuditLog({
+      req,
+      actionType: "admin_impersonated",
+      entityType: "user",
+      entityId: String(client.id),
+      entityLabel: client.name ?? client.email,
+      mspId: client.mspId ?? undefined,
+    });
+  } catch (err) {
+    log.error({ err, targetUserId: client.id }, "impersonate: failed to write msp_audit_logs entry");
+  }
 
   res.json({ token, client: { id: client.id, email: client.email, name: client.name } });
 });
@@ -94,6 +113,19 @@ router.post("/admin/msps/:mspId/impersonate", requireAdmin, async (req: Request,
     entityId: msp.id,
     entityLabel: msp.name,
   });
+
+  try {
+    await writeMspAuditLog({
+      req,
+      actionType: "admin_impersonated_msp",
+      entityType: "msp",
+      entityId: String(msp.id),
+      entityLabel: msp.name,
+      mspId: msp.id,
+    });
+  } catch (err) {
+    log.error({ err, targetMspId: msp.id }, "impersonate_msp: failed to write msp_audit_logs entry");
+  }
 
   log.info(
     {
