@@ -60,8 +60,6 @@ vi.mock("../lib/service-overview-pdf.ts", () => ({
   generateServiceOverviewPdf: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock("../lib/ai-prompts", () => ({ getPromptText: vi.fn().mockResolvedValue("") }));
-
 let app: Express;
 
 /**
