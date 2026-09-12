@@ -41,8 +41,7 @@ namespace BuildConsole.Controls
     /// </summary>
     public partial class ChatDocumentContainer : UserControl
     {
-        // README §2 budget + estimate constants (kept as an honest two-part shape until a real
-        // tokeniser is wired: 40k fixed overhead + conversation estimate).
+        // README §2 budget + estimate constants.
         // Git #2802 — Shane's real, confirmed decision (2026-09-04): Sonnet 5's real native
         // context window is 1,000,000 tokens (not a separate API-only beta tier), and 300k
         // significantly undersold it. 900_000 is the deliberate safety margin below the full 1M,
@@ -53,7 +52,12 @@ namespace BuildConsole.Controls
         // computed as a percentage of ContextBudget — so they do NOT scale with this value and are
         // intentionally left unchanged here.
         private const double ContextBudget = 900_000;
-        private const double FixedOverhead = 40_000;
+        // Git #3724 — the old flat FixedOverhead = 40_000 was one opaque blob with no breakdown of
+        // what it represented, so a comfortable-looking total could mask real overhead that grew
+        // (e.g. this project's own MCP connectors). Replaced with two separately-documented,
+        // separately-displayed components — see ChatContextOverheadEstimator for what each really
+        // is and is NOT (both are documented approximations, not measurements of what Anthropic's
+        // servers actually send; BuildConsole has no way to measure that from a WebView2 host).
         private const double CharsPerTokenFactor = 0.28;
 
         private readonly BoardChat _chat;
@@ -342,10 +346,19 @@ namespace BuildConsole.Controls
             return (estTokens, turnCount, haveData);
         }
 
-        /// <summary>README §2 context maths. used = 40k overhead + conversation estimate + draft; the
-        /// conversation estimate uses the real meter store when it has one, else the 0.28/char shape.
-        /// The gauge fill + "≈Xk / {budget}k" text stay on this overhead-inclusive scale (Shane
-        /// confirmed this half is correct as-is — Git #2727; budget was 300k, now 900k — Git #2802).
+        /// <summary>README §2 context maths. used = overhead (system prompt baseline + MCP tool-schema
+        /// estimate) + conversation estimate + draft; the conversation estimate uses the real meter
+        /// store when it has one, else the 0.28/char shape. The gauge fill + "≈Xk / {budget}k" text
+        /// stay on this overhead-inclusive scale (Shane confirmed this half is correct as-is —
+        /// Git #2727; budget was 300k, now 900k — Git #2802).
+        ///
+        /// Git #3724 — overhead is no longer one opaque flat number. It's split into and DISPLAYED as
+        /// system-prompt baseline + MCP tool-schema estimate + conversation, so a comfortable-looking
+        /// conversation figure can't mask a genuinely tight real total once overhead is counted (the
+        /// concrete case that motivated this: a 16-message, tool-heavy real chat read "42k/900k" —
+        /// comfortable — while claude.ai was actively compacting it; #3724's build-journal has the
+        /// real activity-log evidence). See ChatContextOverheadEstimator for what each overhead
+        /// component is and its honest documented-approximation-vs-measurement status.
         ///
         /// Git #2727 — colour + Start-New-Chat now use the RAW conversation token count against the
         /// retired `meterState` banner's own real absolute-token tiers (60k/85k/100k/130k), ported
@@ -362,13 +375,22 @@ namespace BuildConsole.Controls
             double conversationTokens = resolvedTokens > 0 ? resolvedTokens : 0;
 
             double draftTokens = (ChatComposer?.Text?.Length ?? 0) * CharsPerTokenFactor;
-            double used = FixedOverhead + conversationTokens + draftTokens;
+
+            // Git #3724 — overhead = documented system-prompt baseline + real/extrapolated MCP
+            // tool-schema estimate (re-read from mcp-tool-inventory.json on every tick — see the
+            // estimator for why that counts as "refreshed when the tool list changes" here).
+            double systemPromptOverhead = ChatContextOverheadEstimator.SystemPromptOverheadTokens;
+            var mcpOverhead = ChatContextOverheadEstimator.GetMcpToolSchemaOverhead();
+            double overheadTotal = systemPromptOverhead + mcpOverhead.TotalTokens;
+
+            double used = overheadTotal + conversationTokens + draftTokens;
             double pct = Math.Min(1.0, used / ContextBudget);
 
-            // Git #2802 — this used to be a literal "300k" string, a SECOND independently-hardcoded
-            // value that silently went stale the moment ContextBudget changed above (exactly the
-            // class of thing Shane asked to be checked for). Derive it from the real constant instead.
-            CtxGauge.Text = $"{FormatK(used)} / {FormatK(ContextBudget)} ctx";
+            // Git #3724 — was one flat "{used}k / {budget}k" number. Now shows conversation and
+            // overhead as separate figures so overhead growth (this project's own MCP connectors,
+            // concretely) can't hide behind a comfortable-looking conversation number.
+            CtxGauge.Text = $"{FormatK(conversationTokens)} conv + {FormatK(overheadTotal)} ovh / {FormatK(ContextBudget)} ctx";
+            CtxGauge.ToolTip = BuildOverheadTooltip(conversationTokens, systemPromptOverhead, mcpOverhead, draftTokens, used);
 
             // Ported tiers (were meterState's 60k/85k/100k/130k, MainWindow.xaml.cs — Git #2727).
             // Hex values match the app's own GreenBrush/YellowBrush/PeachBrush/RedBrush
@@ -395,6 +417,29 @@ namespace BuildConsole.Controls
 
             if (CtxBarBorder.ActualWidth > 0)
                 CtxBarFill.Width = pct * CtxBarBorder.ActualWidth;
+        }
+
+        /// <summary>Git #3724 — the full conversation/overhead breakdown, on hover, so the compact
+        /// gauge text doesn't have to carry every number. Explicitly labels which figures are real
+        /// measurements (the conversation estimate, once #2813's persistence landed) versus
+        /// documented approximations (system-prompt baseline, MCP tool-schema estimate) — the
+        /// dishonesty this issue was filed over was presenting an incomplete estimate as if it were
+        /// the whole real total with no such distinction.</summary>
+        private static string BuildOverheadTooltip(double conversationTokens, double systemPromptOverhead,
+            ChatContextOverheadEstimator.OverheadBreakdown mcpOverhead, double draftTokens, double used)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Conversation (measured estimate): {conversationTokens:N0} tokens");
+            sb.AppendLine($"System prompt baseline (documented external estimate, not measured): {systemPromptOverhead:N0} tokens");
+            sb.AppendLine("MCP tool-schema estimate (from mcp-tool-inventory.json):");
+            foreach (var server in mcpOverhead.Servers)
+            {
+                var tag = server.IsExtrapolated ? "extrapolated, no real per-tool text in this repo" : "real documented tool text";
+                sb.AppendLine($"    {server.Name} ({server.ToolCount} tools, {tag}): {server.Tokens:N0} tokens");
+            }
+            sb.AppendLine($"Draft (unsent composer text): {draftTokens:N0} tokens");
+            sb.Append($"Total: {used:N0} tokens");
+            return sb.ToString();
         }
 
         private static string FormatK(double v)

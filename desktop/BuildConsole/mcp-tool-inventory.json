@@ -1,0 +1,46 @@
+{
+  "_readme": "Git #3724 — real, hand-maintained inventory of MCP servers connected to Shane's claude.ai account for chat sessions in this project. BuildConsole/ChatContextMeterScript has NO way to enumerate claude.ai's live connector list — no DOM surface renders a connector's full tool schema during a normal chat, and no API exposes it to a WebView2 host. This file is the source of truth instead, and it is re-read from disk on every context-gauge computation (ChatContextOverheadEstimator), so editing it takes effect on the very next gauge tick with no BuildConsole restart. Update it whenever a connector is added/removed/changed, or a documented server's real tool list changes. 'documented: true' servers carry REAL tool name+description text copied from an actual in-repo reference doc (sourceDoc) — never invented. 'documented: false' servers record only a real known fact (toolCount, sourced from where that count came from) with NO per-tool text, because none exists anywhere in this codebase for them; their overhead is extrapolated (see ChatContextOverheadEstimator) from the documented servers' real measured average tokens/tool, not fabricated per-tool schemas.",
+  "servers": [
+    {
+      "name": "shanes-git",
+      "documented": true,
+      "sourceDoc": "desktop/BuildConsole/BuildConsole-Chat-Tools-Reference.md",
+      "toolCount": 24,
+      "note": "Real current tool surface as of Git #3709/#3697 (24 tools). The issue body's cited '18 tools' is this server's tool count from an earlier point before batch_*/get_file_contents/list_directory/search_code landed — kept here as the real, current count rather than the stale figure.",
+      "tools": [
+        { "name": "server_status", "description": "health check; reports patConfigured as a boolean only, never the value" },
+        { "name": "github_whoami", "description": "proves the server-side credential works; returns identity and scopes only" },
+        { "name": "get_issue", "description": "fetch one issue by number, optional repo override" },
+        { "name": "create_issue", "description": "create an issue with title, body, milestone number, labels, optional repo" },
+        { "name": "update_issue", "description": "update title, body, milestone number, labels (full replace), or state, optional repo" },
+        { "name": "search_issues", "description": "real passthrough to GitHub's search syntax, scoped automatically to the target repo" },
+        { "name": "post_comment", "description": "post a comment on an issue by number, optional repo" },
+        { "name": "list_comments", "description": "paginate through every comment on an issue, oldest first" },
+        { "name": "close_issue", "description": "close an issue with a required state_reason; not_planned is rejected unless a non-empty comment is supplied" },
+        { "name": "move_to_status", "description": "move an issue or epic to one of the real Projects v2 board columns, validated against the exact vocabulary" },
+        { "name": "get_board_status", "description": "read counterpart to move_to_status" },
+        { "name": "list_board_column", "description": "query the shared Projects v2 board node directly for every issue in one status column" },
+        { "name": "add_sub_issue", "description": "attach a child issue under a parent, real sub-issue hierarchy" },
+        { "name": "remove_sub_issue", "description": "detach a child issue from its parent" },
+        { "name": "list_sub_issues", "description": "list the real sub-issues of a given issue" },
+        { "name": "set_blocked_by", "description": "make an issue's real blocked_by edges match a given list exactly, adding missing and removing stale" },
+        { "name": "list_blocked_by", "description": "real current blockers of an issue plus their live GitHub state" },
+        { "name": "get_recent_activity", "description": "the audit trail of what each connected chat or session has actually done through this server" },
+        { "name": "batch_reparent_sub_issues", "description": "bulk remove/add sub-issue parent moves, sequential, independent per-item success/failure reporting" },
+        { "name": "batch_move_to_status", "description": "bulk board-status moves, same real 5-value vocabulary and per-item validation as move_to_status" },
+        { "name": "batch_close_issues", "description": "bulk closing, same real per-item close_issue logic including the NOT_PLANNED-needs-a-comment rule" },
+        { "name": "get_file_contents", "description": "one real file's actual text by repo-root-relative case-sensitive path, optional ref pins a branch tag or commit sha, reports truncated or binary honestly instead of returning mangled or empty text" },
+        { "name": "list_directory", "description": "one directory's real entries (name, path, type, size), non-recursive, capped at 1000 entries with truncated reporting" },
+        { "name": "search_code", "description": "GitHub code-search syntax scoped to the repo, reports which of two real backends (code-search index or repo-tree-paths fallback) actually answered" }
+      ]
+    },
+    {
+      "name": "Shanes-Life-Production",
+      "documented": false,
+      "sourceDoc": null,
+      "toolCount": 92,
+      "note": "Shane's personal 'Shane's Life' app — entirely outside this repo. No per-tool name/description text exists anywhere in this codebase for it. The real tool COUNT (92) is Shane's own direct observation, recorded verbatim in Git #3724's issue body — not fabricated — but the per-tool schema text genuinely is not available here, so its token overhead is extrapolated from shanes-git's own real measured average tokens/tool (see ChatContextOverheadEstimator.cs), not measured directly.",
+      "tools": []
+    }
+  ]
+}

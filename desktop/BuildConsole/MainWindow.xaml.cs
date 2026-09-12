@@ -7922,7 +7922,7 @@ namespace BuildConsole
             return true;
         }
 
-        private void UpdateContextMeter(Microsoft.Web.WebView2.Wpf.WebView2 wv, double estTokens, int turnCount, int heavyTurnCount, bool selectorsLikelyStale = false, string? conversationId = null)
+        private void UpdateContextMeter(Microsoft.Web.WebView2.Wpf.WebView2 wv, double estTokens, int turnCount, int heavyTurnCount, bool selectorsLikelyStale = false, string? conversationId = null, int wordCount = 0, int heavyCharCount = 0)
         {
             if (!_contextMeters.TryGetValue(wv, out var meterState))
             {
@@ -7949,7 +7949,7 @@ namespace BuildConsole
             if (!string.IsNullOrEmpty(conversationId))
             {
                 meterState.ConversationId = conversationId;
-                var hw = BuildConsole.Services.ChatContextMeterStore.Merge(conversationId, estTokens, turnCount, heavyTurnCount);
+                var hw = BuildConsole.Services.ChatContextMeterStore.Merge(conversationId, estTokens, turnCount, heavyTurnCount, wordCount, heavyCharCount);
                 estTokens = hw.EstTokens;
                 turnCount = hw.TurnCount;
                 heavyTurnCount = hw.HeavyTurnCount;
@@ -8348,13 +8348,35 @@ namespace BuildConsole
                     {
                         int turnCount = Int("turnCount") ?? 0;
                         int charCount = Int("charCount") ?? 0;
+                        int wordCount = Int("wordCount") ?? 0;             // Git #3724
+                        int heavyCharCount = Int("heavyCharCount") ?? 0;   // Git #3724
                         int heavyTurnCount = Int("heavyTurnCount") ?? 0;
                         bool selectorsLikelyStale = Bool("selectorsLikelyStale");
                         // Git #1628 — the conversation the accumulator is keyed to; drives the
                         // per-conversation high-water clamp/persist inside UpdateContextMeter.
                         string? conversationId = Str("conversationId");
 
-                        double estTokens = charCount / 4.0;
+                        // Git #3724 — replaces the flat charCount/4.0 heuristic. Still an
+                        // APPROXIMATION, not real BPE tokenization (the client has no way to invoke
+                        // Claude's actual tokenizer) — documented, reasoned ratios, not a measurement.
+                        //   - Baseline: ~4 chars/token and ~0.75 words/token are both commonly-cited
+                        //     rough averages for English text across BPE tokenizers. Take the LARGER
+                        //     of the two whole-conversation estimates, so an unusually short/long
+                        //     average word length doesn't let one signal alone silently under-read.
+                        //   - heavyCharCount (turns isHeavy() flagged as containing <pre>/<code> or a
+                        //     very long block — code/JSON/structured data) tokenizes DENSER per
+                        //     character than prose (punctuation/symbols/short identifiers are
+                        //     frequently their own tokens). The JS scraper doesn't track a separate
+                        //     heavy-only word count, so instead of double-counting by adding a second
+                        //     full estimate on top, compute heavy content's OWN denser estimate
+                        //     (heavyCharCount/3.0), compare it to the "fair share" of the baseline
+                        //     already attributable to those same chars, and add only the excess.
+                        double proseEstimate = Math.Max(charCount / 4.0, wordCount / 0.75);
+                        double heavyShareOfBaseline = charCount > 0
+                            ? proseEstimate * (heavyCharCount / (double)charCount)
+                            : 0;
+                        double heavyDenseEstimate = heavyCharCount / 3.0;
+                        double estTokens = proseEstimate + Math.Max(0, heavyDenseEstimate - heavyShareOfBaseline);
 
                         // Git #2808 — LINK 2 diagnostic: the JS scraper's message genuinely reached
                         // the host handler for this tab. Log once per wv (not every 2s poll) with the
@@ -8367,7 +8389,7 @@ namespace BuildConsole
                                 $"[link 2] First BT_CHAT_STATS reached the host for wv={ContextMeterWvId(activeWv)} — convId={(string.IsNullOrEmpty(conversationId) ? "<EMPTY>" : conversationId)} charCount={charCount} turnCount={turnCount} estTokens={estTokens:0}. (The injected scraper is alive and its messages are being received.)");
                         }
 
-                        UpdateContextMeter(activeWv, estTokens, turnCount, heavyTurnCount, selectorsLikelyStale, conversationId);
+                        UpdateContextMeter(activeWv, estTokens, turnCount, heavyTurnCount, selectorsLikelyStale, conversationId, wordCount, heavyCharCount);
                     }
                 }
                 else if (type == "BT_CHAT_METER_DIAG")

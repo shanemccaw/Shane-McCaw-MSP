@@ -55,9 +55,12 @@ namespace BuildConsole.Services
       s = window.__bcCtxStore = {
         convId: convId,
         observedChars: Object.create(null), // stable-identity key -> max observed char length
+        observedWords: Object.create(null), // Git #3724 — stable-identity key -> max observed word count
         observedHeavy: Object.create(null), // stable-identity key -> true once ever heavy
         trueTotal: 0,                        // high-water aria-setsize (conversation's real turn total)
         hwChar: 0,                           // per-conversation monotonic high-water char total
+        hwWord: 0,                           // Git #3724 — per-conversation monotonic high-water word total
+        hwHeavyChar: 0,                      // Git #3724 — per-conversation monotonic high-water HEAVY-turn char total (code/JSON tokenizes denser per char than prose — kept separate so the host can weight it differently instead of one flat chars/4)
         hwTurn: 0,                           // per-conversation monotonic high-water turn count
         hwHeavy: 0                           // per-conversation monotonic high-water heavy-turn count
       };
@@ -117,15 +120,52 @@ namespace BuildConsole.Services
       const pos = parseInt(el.getAttribute('aria-posinset'), 10);
       if (isNaN(pos)) return;
       const key = 'p' + pos;
-      const txt = (el.innerText || el.textContent || "").trim();
+      // Git #3724 — textContent FIRST, not innerText. innerText respects CSS layout/visibility
+      // (display:none, collapsed height:0/overflow:hidden accordions, etc.), so a real turn
+      // containing a COLLAPSED tool-use/tool-result block (claude.ai renders these as
+      // collapsible disclosure widgets, collapsed by default) would have that content silently
+      // excluded from innerText even though it's genuinely part of the turn's real token cost.
+      // textContent walks every text node regardless of visibility, so it captures collapsed
+      // content too. This is a mechanical DOM-API fact, true independent of claude.ai's exact
+      // markup/class names — it does not require live-confirming the specific tool-block
+      // structure (this session had no way to do that; see the build-journal note on #3724).
+      const txt = (el.textContent || el.innerText || "").trim();
       const len = txt.length;
+      const words = len > 0 ? (txt.match(/\S+/g) || []).length : 0;
       // Monotonic per key: a streaming turn only grows, and a transiently-empty
       // mid-render read must never shrink an already-observed length.
       if (len > (s.observedChars[key] || 0)) s.observedChars[key] = len;
+      if (words > (s.observedWords[key] || 0)) s.observedWords[key] = words;
       if (isHeavy(el, len)) s.observedHeavy[key] = true;
 
       const setsize = parseInt(el.getAttribute('aria-setsize'), 10);
       if (!isNaN(setsize) && setsize > s.trueTotal) s.trueTotal = setsize;
+    });
+
+    // Git #3724 — defensive net for tool-use/tool-result content that might render as a
+    // structurally SEPARATE element from message articles rather than nested inside one (a
+    // real possibility this issue raised: claude.ai may render a tool call/result as its own
+    // block outside the [role="article"] the scraper already walks above). This session had no
+    // live-DOM way to confirm one way or the other (no browser/DOM-inspection tool is reachable
+    // from a Claude Code build session — see AGENT_PROTOCOLS.md's real surface), so this is a
+    // best-effort, UNVERIFIED-against-live-markup addition, not a confirmed fix. el.closest()
+    // guards against double-counting the more likely case (a tool block nested INSIDE its turn's
+    // own article), where the textContent walk above already includes it.
+    const toolBlockSelectors = [
+      '[data-testid*="tool" i]',
+      '[data-testid*="mcp" i]',
+      '[aria-label*="tool" i]'
+    ].join(', ');
+    Array.from(document.querySelectorAll(toolBlockSelectors)).forEach((el, i) => {
+      if (el.closest('[role="article"][aria-posinset]')) return; // already counted above
+      const txt = (el.textContent || "").trim();
+      if (txt.length === 0) return;
+      const key = 'tb' + i;
+      const len = txt.length;
+      const words = (txt.match(/\S+/g) || []).length;
+      if (len > (s.observedChars[key] || 0)) s.observedChars[key] = len;
+      if (words > (s.observedWords[key] || 0)) s.observedWords[key] = words;
+      if (isHeavy(el, len)) s.observedHeavy[key] = true;
     });
 
     // Fallback ONLY when the aria markup is entirely absent (no article carries
@@ -135,11 +175,14 @@ namespace BuildConsole.Services
     if (articles.length === 0) {
       const rows = Array.from(document.querySelectorAll('[data-testid="transcript-row"]'));
       rows.forEach((row, i) => {
-        const txt = (row.innerText || row.textContent || "").trim();
+        // Git #3724 — textContent first, same reasoning as the primary article walk above.
+        const txt = (row.textContent || row.innerText || "").trim();
         const len = txt.length;
         if (len === 0) return;
         const key = 'r' + i;
+        const words = (txt.match(/\S+/g) || []).length;
         if (len > (s.observedChars[key] || 0)) s.observedChars[key] = len;
+        if (words > (s.observedWords[key] || 0)) s.observedWords[key] = words;
         if (isHeavy(row, len)) s.observedHeavy[key] = true;
       });
       // aria-setsize text fallback ("Message 1228 of 1238") when no attribute carries it.
@@ -157,7 +200,13 @@ namespace BuildConsole.Services
     const keys = Object.keys(s.observedChars);
     const observedCount = keys.length;
     let observedSum = 0;
-    for (const k of keys) observedSum += s.observedChars[k];
+    let observedWordSum = 0;          // Git #3724
+    let observedHeavyCharSum = 0;     // Git #3724 — chars belonging to heavy (code/JSON-flagged) keys only
+    for (const k of keys) {
+      observedSum += s.observedChars[k];
+      observedWordSum += (s.observedWords[k] || 0);
+      if (s.observedHeavy[k]) observedHeavyCharSum += s.observedChars[k];
+    }
     let observedHeavy = 0;
     for (const k of Object.keys(s.observedHeavy)) if (s.observedHeavy[k]) observedHeavy++;
 
@@ -166,8 +215,12 @@ namespace BuildConsole.Services
     // watched). observedSum + avgObserved × (trueTotal − observedCount) — NOT
     // avgObserved × trueTotal, which would re-estimate turns we already measured exactly.
     const avgObserved = observedCount > 0 ? observedSum / observedCount : 0;
+    const avgWordObserved = observedCount > 0 ? observedWordSum / observedCount : 0;          // Git #3724
+    const avgHeavyCharObserved = observedCount > 0 ? observedHeavyCharSum / observedCount : 0; // Git #3724
     const unobserved = Math.max(0, s.trueTotal - observedCount);
     const estCharCount = observedSum + avgObserved * unobserved;
+    const estWordCount = observedWordSum + avgWordObserved * unobserved;           // Git #3724
+    const estHeavyCharCount = observedHeavyCharSum + avgHeavyCharObserved * unobserved; // Git #3724
     const turnCount = Math.max(s.trueTotal, observedCount);
     const heavyEstimate = observedHeavy + (observedCount > 0
       ? Math.round((observedHeavy / observedCount) * unobserved)
@@ -178,6 +231,8 @@ namespace BuildConsole.Services
     // never shrinks per key, but the extrapolation term can wobble as the average
     // shifts — the high-water is the belt-and-suspenders floor. The host clamps too.
     if (estCharCount > s.hwChar) s.hwChar = estCharCount;
+    if (estWordCount > s.hwWord) s.hwWord = estWordCount;                    // Git #3724
+    if (estHeavyCharCount > s.hwHeavyChar) s.hwHeavyChar = estHeavyCharCount; // Git #3724
     if (turnCount > s.hwTurn) s.hwTurn = turnCount;
     if (heavyEstimate > s.hwHeavy) s.hwHeavy = heavyEstimate;
 
@@ -201,6 +256,8 @@ namespace BuildConsole.Services
         conversationId: s.convId,
         turnCount: s.hwTurn,
         charCount: Math.round(s.hwChar),
+        wordCount: Math.round(s.hwWord),           // Git #3724 — word-aware estimate input
+        heavyCharCount: Math.round(s.hwHeavyChar), // Git #3724 — code/JSON-flagged chars, tokenize denser than prose
         heavyTurnCount: s.hwHeavy,
         selectorsLikelyStale: selectorsLikelyStale
       }));

@@ -27,6 +27,14 @@ namespace BuildConsole.Services
             public double EstTokens { get; set; }
             public int TurnCount { get; set; }
             public int HeavyTurnCount { get; set; }
+            /// <summary>Git #3724 — word-aware estimate input; 0 on entries persisted before this
+            /// field existed (System.Text.Json defaults a missing property, so old
+            /// context-meter-highwater.json files deserialize fine).</summary>
+            public double WordCount { get; set; }
+            /// <summary>Git #3724 — chars belonging to code/JSON-flagged (heavy) turns only, tracked
+            /// separately because that content tokenizes denser per character than prose. Same
+            /// backward-compat default-to-0 as <see cref="WordCount"/>.</summary>
+            public double HeavyCharCount { get; set; }
         }
 
         private static readonly ConcurrentDictionary<string, Entry> _byConversation = new();
@@ -49,16 +57,23 @@ namespace BuildConsole.Services
         /// new maximum when one arrives (per field, independently — a transcript only grows), and
         /// returns the resulting high-water values. Nothing here ever lets a value decrease.
         /// </summary>
-        public static Entry Merge(string conversationId, double estTokens, int turnCount, int heavyTurnCount)
+        public static Entry Merge(string conversationId, double estTokens, int turnCount, int heavyTurnCount,
+            double wordCount = 0, double heavyCharCount = 0)
         {
             var updated = _byConversation.AddOrUpdate(
                 conversationId,
-                _ => new Entry { EstTokens = estTokens, TurnCount = turnCount, HeavyTurnCount = heavyTurnCount },
+                _ => new Entry
+                {
+                    EstTokens = estTokens, TurnCount = turnCount, HeavyTurnCount = heavyTurnCount,
+                    WordCount = wordCount, HeavyCharCount = heavyCharCount
+                },
                 (_, existing) => new Entry
                 {
                     EstTokens = Math.Max(existing.EstTokens, estTokens),
                     TurnCount = Math.Max(existing.TurnCount, turnCount),
-                    HeavyTurnCount = Math.Max(existing.HeavyTurnCount, heavyTurnCount)
+                    HeavyTurnCount = Math.Max(existing.HeavyTurnCount, heavyTurnCount),
+                    WordCount = Math.Max(existing.WordCount, wordCount),
+                    HeavyCharCount = Math.Max(existing.HeavyCharCount, heavyCharCount)
                 });
             Save();
             return updated;

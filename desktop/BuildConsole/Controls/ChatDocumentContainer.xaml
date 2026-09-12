@@ -124,9 +124,9 @@
                                        Foreground="{StaticResource Cool.Verifying}"/>
                         </Border>
                         <!-- context-used gauge (two-part estimate, §2; real tokeniser via ChatContextMeterStore when present) -->
-                        <TextBlock x:Name="CtxGauge" Text="≈40k / 300k ctx" VerticalAlignment="Center"
+                        <TextBlock x:Name="CtxGauge" Text="0 conv + 0 ovh / 900k ctx" VerticalAlignment="Center"
                                    FontFamily="Consolas" FontSize="11" Foreground="{StaticResource Warm.TextDim}"
-                                   ToolTip="Estimated context used (40k overhead + conversation). Uses the real meter when available."/>
+                                   ToolTip="Estimated context used — conversation + overhead (system prompt + MCP tool schemas). Uses the real meter when available. Git #3724."/>
                         <TextBlock x:Name="CtxMessages" Margin="12,0,0,0" VerticalAlignment="Center"
                                    FontSize="10.5" Foreground="{StaticResource Warm.TextMuted}"/>
                         <TextBlock x:Name="CtxActive" Margin="10,0,0,0" VerticalAlignment="Center"
