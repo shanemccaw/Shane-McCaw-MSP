@@ -501,6 +501,19 @@ namespace BuildConsole.Services
                 }
             }
 
+            // Git #3865 — priority-aware reorder, shared by both callers of this method
+            // (GetNextAsync's real claim path and PeekNextAsync's read-only preview) so the
+            // two can never drift. BuildSetPriorityStore's flag (Git #1636) previously drove
+            // only a completion notification; this is the second, real consultation the issue
+            // asks for. A STABLE partition — priority-marked build sets first, everything else
+            // after — preserves `created_at ASC` (the SQL's own order) within each tier: rows
+            // in a priority set stay FIFO among themselves, and non-priority rows stay FIFO
+            // among themselves. OrderBy is a stable sort in .NET, so this is exactly a
+            // partition, not a re-sort by any other key.
+            candidates = candidates
+                .OrderByDescending(c => BuildSetPriorityStore.IsPriority(c.BuildSet))
+                .ToList();
+
             return await EvaluateCandidatesAsync(
                 candidates, heldReasons, limit, presuppliedOpen, liveOpenIssuesFetcher, liveBlockedByFetcher);
         }

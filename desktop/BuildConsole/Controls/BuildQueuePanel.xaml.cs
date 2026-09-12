@@ -2179,11 +2179,18 @@ namespace BuildConsole.Controls
             });
             if (!string.IsNullOrWhiteSpace(item.BuildSet))
             {
+                // Git #3865 — the preview must show honestly WHY a row claims ahead of an
+                // earlier-queued one: BuildSetPriorityStore.IsPriority now actually reorders
+                // BuildQueuePostgresClient's real claim scan (SelectClaimCandidatesAsync), so a
+                // priority-marked row waiting here is no longer a plain FIFO wait — it needs to
+                // look different, not identical, to one.
+                bool isPriority = BuildSetPriorityStore.IsPriority(item.BuildSet);
                 stack.Children.Add(new TextBlock
                 {
-                    Text = $"set: {item.BuildSet.Trim()}",
+                    Text = isPriority ? $"set: {item.BuildSet.Trim()} ★ priority" : $"set: {item.BuildSet.Trim()}",
                     FontSize = 9.5,
-                    Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
+                    FontWeight = isPriority ? FontWeights.SemiBold : FontWeights.Normal,
+                    Foreground = (Brush)Application.Current.FindResource(isPriority ? "YellowBrush" : "Subtext0Brush"),
                     TextTrimming = TextTrimming.CharacterEllipsis,
                 });
             }
