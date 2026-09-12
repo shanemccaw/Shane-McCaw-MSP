@@ -1820,7 +1820,9 @@ namespace BuildConsole
                 {
                     int originalQueueId = slot.QueueItemId;
                     var queued = await _db.QueueBuildAsync(
-                        $"Continue: {slot.Title}",
+                        // Git #3728 — shared prefix, so BuildQueuePanel's Retry can recognise this
+                        // row as resume-only and carry its session forward instead of nulling it.
+                        ResumeOnlyQueueRows.ContinueTitlePrefix + slot.Title,
                         text,
                         slot.Model,
                         slot.Effort,

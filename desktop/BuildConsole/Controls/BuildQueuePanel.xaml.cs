@@ -5878,9 +5878,24 @@ namespace BuildConsole.Controls
             await RefreshAsync();
         }
 
-        /// <summary>Same body as "🔄 Retry (start over)" below (fresh queue row, resumeSessionId:
-        /// null — the crash-recovery "▶ Resume Session" variant stays right-click-menu-only since
-        /// it's a narrower case than this card's general Failed -> Retry action).</summary>
+        /// <summary>Git #3728 — see <see cref="ResumeOnlyQueueRows"/> for why a reply/continuation
+        /// row cannot be "started over" and what the two title prefixes are.</summary>
+        private const string ReplyTitlePrefix = ResumeOnlyQueueRows.ReplyTitlePrefix;
+
+        /// <summary>Git #3728 — true when this row's <see cref="QueueItem.Prompt"/> is a
+        /// conversational message rather than a standalone build prompt (a "💬 Reply…" row or a
+        /// Build Watch "Continue:" row). Such a row means nothing without the session in
+        /// <see cref="QueueItem.ResumeSessionId"/> — "Retry" on one must re-deliver the same
+        /// message to the same conversation, NOT start a cold session over from a fragment.</summary>
+        private static bool IsResumeOnlyRow(QueueItem item) =>
+            ResumeOnlyQueueRows.IsResumeOnlyTitle(item.Title);
+
+        /// <summary>Same body as "🔄 Retry (start over)" below. A normal row re-queues with
+        /// resumeSessionId: null — a genuine start-over — while a reply row (Git #3728) carries its
+        /// session forward, because "start the original prompt over" is incoherent when the prompt
+        /// is a chat message. The crash-recovery "▶ Resume Session" variant stays
+        /// right-click-menu-only since it's a narrower case than this card's general
+        /// Failed -> Retry action.</summary>
         public async System.Threading.Tasks.Task QuickRetryAsync(QueueItem item)
         {
             if (_db == null)
@@ -5888,17 +5903,52 @@ namespace BuildConsole.Controls
                 ToastEngine.Warning("Retry", "No direct DB connection — can't retry.");
                 return;
             }
+            if (!TryResolveRetryResumeSessionId(item, out string? retryResumeSessionId)) return;
             try
             {
                 var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
-                await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, null, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
-                ToastEngine.Success("Re-queued", $"Re-queued: {item.Title}");
+                await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, retryResumeSessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                ToastEngine.Success("Re-queued", retryResumeSessionId == null
+                    ? $"Re-queued: {item.Title}"
+                    : $"Re-sending your reply to the same session: {item.Title}");
             }
             catch (Exception ex)
             {
                 ToastEngine.Error("Retry Failed", $"Couldn't re-queue build: {ex.Message}");
             }
             await RefreshAsync();
+        }
+
+        /// <summary>Git #3728 — decides what a Retry of <paramref name="item"/> should resume.
+        /// Returns false when the retry must not be queued at all.
+        ///
+        /// Three cases:
+        /// <list type="bullet">
+        /// <item>Ordinary row → <c>null</c>: start over from its own self-contained prompt, unchanged.</item>
+        /// <item>Resume-only row with a session → that session: re-deliver the same message to the
+        /// same conversation, which is the only reading of "retry this reply" that means anything.</item>
+        /// <item>Resume-only row with NO session → refuse. This is the already-damaged row produced
+        /// by the bug itself (live instances: queue #2382 <c>"Retry"</c>, #462 <c>"retry"</c>,
+        /// #480 <c>"try again"</c>). Re-queuing it would mint a second cold session fed the same
+        /// fragment; saying so plainly and pointing at the real fix is honest, silently doing it
+        /// again is not.</item>
+        /// </list></summary>
+        private static bool TryResolveRetryResumeSessionId(QueueItem item, out string? resumeSessionId)
+        {
+            resumeSessionId = null;
+            if (!IsResumeOnlyRow(item)) return true;
+
+            if (string.IsNullOrWhiteSpace(item.ResumeSessionId))
+            {
+                ToastEngine.Warning("Retry",
+                    "This row has no session left to resume, so retrying it would just start a " +
+                    "fresh session with your message and no conversation. Reply to the original " +
+                    "build instead.");
+                return false;
+            }
+
+            resumeSessionId = item.ResumeSessionId;
+            return true;
         }
 
         /// <summary>Same body as "💬 Reply…" below, minus the modal prompt dialog — the
@@ -5919,7 +5969,7 @@ namespace BuildConsole.Controls
             try
             {
                 var replyRow = await _db.QueueBuildAsync(
-                    $"Reply → {item.Title}", message, item.Model, item.Effort, item.Cwd,
+                    ReplyTitlePrefix + item.Title, message, item.Model, item.Effort, item.Cwd,
                     githubNumber: null, blockedByNumbers: null,
                     resumeSessionId: sid, chatUrl: item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
                 // Git #2119 — resolve the ORIGINAL row so its card doesn't sit stuck showing stale
@@ -6021,7 +6071,7 @@ namespace BuildConsole.Controls
                         // out from under — a row that may still be running. resumeSessionId makes
                         // the watcher launch `claude --resume <sid> "<message>"`.
                         var replyRow = await _db.QueueBuildAsync(
-                            $"Reply → {item.Title}", message, item.Model, item.Effort, item.Cwd,
+                            ReplyTitlePrefix + item.Title, message, item.Model, item.Effort, item.Cwd,
                             githubNumber: null, blockedByNumbers: null,
                             resumeSessionId: sid, chatUrl: item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
                         // Git #2119 — resolve the ORIGINAL row so its card doesn't sit stuck showing
@@ -6536,15 +6586,24 @@ namespace BuildConsole.Controls
                     cm.Items.Add(miResumeSession);
                 }
 
-                var miRetry = new MenuItem { Header = "🔄 Retry (start over)" };
+                // Git #3728 — a reply/continuation row cannot be "started over" (its prompt is a
+                // chat message, not a build prompt), so it is relabelled and carries its session
+                // forward.
+                var miRetry = new MenuItem
+                {
+                    Header = IsResumeOnlyRow(item) ? "🔄 Retry (re-send to the same session)" : "🔄 Retry (start over)"
+                };
                 miRetry.Click += async (_, _) =>
                 {
                     if (_db == null) return;
+                    if (!TryResolveRetryResumeSessionId(item, out string? retryResumeSessionId)) return;
                     try
                     {
                         var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
-                        await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, null, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
-                        ToastEngine.Success("Re-queued", $"Re-queued: {item.Title}");
+                        await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, retryResumeSessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                        ToastEngine.Success("Re-queued", retryResumeSessionId == null
+                            ? $"Re-queued: {item.Title}"
+                            : $"Re-sending your reply to the same session: {item.Title}");
                         await RefreshAsync();
                     }
                     catch (Exception ex)

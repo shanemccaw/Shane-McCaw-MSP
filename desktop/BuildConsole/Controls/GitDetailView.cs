@@ -2204,7 +2204,8 @@ namespace BuildConsole.Controls
                 if (db != null)
                 {
                     var queued = await db.QueueBuildAsync(
-                        $"Continue: {_associatedBuild?.Title ?? "Build"}",
+                        // Git #3728 — shared prefix so Retry can recognise this row as resume-only.
+                        ResumeOnlyQueueRows.ContinueTitlePrefix + (_associatedBuild?.Title ?? "Build"),
                         text,
                         model,
                         effort,
@@ -2245,7 +2246,8 @@ namespace BuildConsole.Controls
                 else if (api != null)
                 {
                     var res = await api.QueueBuildAsync(
-                        $"Continue: {_associatedBuild?.Title ?? "Build"}",
+                        // Git #3728 — shared prefix so Retry can recognise this row as resume-only.
+                        ResumeOnlyQueueRows.ContinueTitlePrefix + (_associatedBuild?.Title ?? "Build"),
                         text,
                         model,
                         effort,
