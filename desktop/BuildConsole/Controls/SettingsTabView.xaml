@@ -502,7 +502,7 @@
                                     <StackPanel>
                                         <TextBlock Text="Max Concurrent Build Slots" FontSize="11" FontWeight="SemiBold"
                                                    Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
-                                        <TextBlock Text="How many queued builds can run at once. Persists to scripts\build-queue-watcher.config.json (the same file build-queue-watcher.ps1's own -MaxConcurrent default reads) and applies LIVE to a running queue watcher on its next ~10s poll — no restart needed."
+                                        <TextBlock Text="How many queued builds can run at once. Persists to scripts\build-queue-watcher.config.json (the same file build-queue-watcher.ps1's own -MaxConcurrent default reads) and applies LIVE to a running queue watcher on its next ~30s poll — no restart needed."
                                                    FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
                                         <Grid HorizontalAlignment="Left">
                                             <Grid.ColumnDefinitions>

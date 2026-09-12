@@ -1046,7 +1046,7 @@ namespace BuildConsole.Controls
         /// Git #2122 — persists the max concurrent build slots to
         /// scripts\build-queue-watcher.config.json (the same file build-queue-watcher.ps1's own
         /// -MaxConcurrent default reads) AND live-applies it to a running QueueWatcherService via
-        /// MainWindow, so it takes effect on the watcher's next ~10s poll tick with no restart.
+        /// MainWindow, so it takes effect on the watcher's next ~30s poll tick with no restart.
         /// </summary>
         private void BtnSaveMaxConcurrent_Click(object sender, RoutedEventArgs e)
         {
@@ -1075,7 +1075,7 @@ namespace BuildConsole.Controls
 
             MaxConcurrentSavedText.Foreground = (Brush)FindResource("GreenBrush");
             MaxConcurrentSavedText.Text = liveApplied
-                ? $"✓ Saved and applied live — {value} max concurrent (takes effect on the watcher's next ~10s poll, no restart needed)."
+                ? $"✓ Saved and applied live — {value} max concurrent (takes effect on the watcher's next ~30s poll, no restart needed)."
                 : $"✓ Saved — {value} max concurrent. No queue watcher is running yet in this session; it will read this on next launch.";
             ActivityLog.Log("settings.tab", $"Max concurrent build slots set to {value} (config persisted{(liveApplied ? " + live-applied" : "")}).");
         }

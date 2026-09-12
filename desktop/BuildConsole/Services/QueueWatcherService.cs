@@ -291,7 +291,7 @@ namespace BuildConsole.Services
         /// first rebuild is still finishing and :8080 hasn't bound yet.</summary>
         private DateTime _lastApiServerStartUtc = DateTime.MinValue;
         /// <summary>Git #3113 — cheap local throttle on the GitHub-issue-mirror sync trigger fired from
-        /// TickAsync, so we don't even build a client / read the sync-state row on every ~10s tick. The
+        /// TickAsync, so we don't even build a client / read the sync-state row on every periodic tick. The
         /// real interval gates (#3337: a 5 min incremental + a 30 min full-walk reconciliation) +
         /// failed-attempt backoff + single-flight all live in
         /// <see cref="GitHubIssueMirror.MaybeSyncAsync"/>; this is just a fast pre-filter.</summary>
@@ -402,7 +402,7 @@ namespace BuildConsole.Services
 
         /// <summary>
         /// Git #2122 — live-apply path for the Settings UI's max concurrent build slots control.
-        /// TickAsync re-reads <see cref="_maxConcurrent"/> fresh on every ~10s poll
+        /// TickAsync re-reads <see cref="_maxConcurrent"/> fresh on every tick (every 30s, Git #3824)
         /// (<c>freeSlots = _maxConcurrent - _running.Count</c>), and Start Now's capacity check
         /// reads it fresh too — neither holds a stale copy across a cycle, so a change here takes
         /// effect on the very next check with no restart required. A plain int field swap is safe
@@ -437,11 +437,10 @@ namespace BuildConsole.Services
         /// PopulateGitTrackerBoard's own fresh GitHub fetch — the Build Queue panel's
         /// own refresh button, or the Git Board's own Refresh, both land here).
         ///
-        /// Git #3774 — this is now one of exactly TWO real triggers into TickAsync's
-        /// claim-check (the other is a build actually completing, see
-        /// <see cref="ArmCompletionTrigger"/>): there is no timer to wait out anymore,
-        /// so this is the honest "manual refresh" half of that pair, not a shortcut
-        /// around a slower automatic path. TickAsync's own live blocker re-check (not
+        /// Git #3774 / #3824 — the immediate "manual refresh" trigger into TickAsync's
+        /// claim-check, alongside a build completing (<see cref="ArmCompletionTrigger"/>)
+        /// and the periodic backstop (<see cref="QueueTickInterval"/>) — so a refresh
+        /// doesn't wait out the interval. TickAsync's own live blocker re-check (not
         /// this board fetch's issue list, which can be scoped/filtered differently —
         /// see GetNextAsync) does the real work. A no-op if a tick is already in
         /// flight (TickAsync's own _ticking guard).
@@ -462,7 +461,7 @@ namespace BuildConsole.Services
         /// this process's OS handle signals, TickAsync's reap loop picks it up and, once slots free,
         /// the very same tick's claim path re-checks whatever else is queued — the real mechanism
         /// that keeps a chained dependent build (Build A finishes → Build B's blocker just cleared)
-        /// launching promptly without ever polling GitHub on a clock.
+        /// launching promptly instead of waiting out the next periodic tick (Git #3824).
         ///
         /// The callback itself fires on a thread-pool wait-callback thread, NOT the UI thread — marshaled
         /// onto the UI thread via <see cref="Application.Current"/>'s Dispatcher so TickAsync/_running/
@@ -489,7 +488,7 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 // Fails open to the manual-refresh trigger, never crashes a launch over it.
-                ActivityLog.Log("watcher", $"Couldn't arm the Git #3774 completion trigger for queue #{id}: {ex.Message} — this build's completion will rely on the manual refresh button instead of firing an immediate re-check.");
+                ActivityLog.Log("watcher", $"Couldn't arm the Git #3774 completion trigger for queue #{id}: {ex.Message} — this build's completion will be picked up by the next periodic tick (Git #3824) instead of an immediate re-check.");
             }
         }
 
@@ -549,7 +548,7 @@ namespace BuildConsole.Services
         /// <summary>
         /// Git #3009 — how old the forwarded Git Board snapshot may be before the claim path stops
         /// trusting it and falls back to its own live `gh issue list` fetch. Long enough that a
-        /// non-empty queue with a free slot doesn't refire a live call on every single ~10s tick;
+        /// non-empty queue with a free slot doesn't refire a live call on every single periodic tick;
         /// short enough that a claim decision (an irreversible build launch) is never made off a
         /// snapshot that's many minutes old. Deliberately NOT unbounded like the board/BuildWatch/
         /// BuildQueuePanel display consumers (Git #1632/#1862, which trust the snapshot indefinitely
@@ -670,6 +669,9 @@ namespace BuildConsole.Services
             if (_appReady) return;
             _appReady = true;
             ActivityLog.Log("watcher", "App signaled genuine full readiness (#1882) — the queue pickup loop's launch gate is now lifted.");
+            // Git #3824 — Start()'s first tick usually lands before readiness and returns at the
+            // _appReady gate, so claim now rather than waiting out the first periodic interval.
+            RequestTickOnUiThread();
         }
 
         /// <summary>Raised whenever the pause state actually changes (deduped) — lets any UI reflecting the toggle stay in sync. Argument: the new paused value.</summary>
@@ -692,8 +694,23 @@ namespace BuildConsole.Services
             }
             ActivityLog.Log("watcher", paused
                 ? "Queue PAUSED — already-running builds continue; no new queued items will be claimed/started until resumed."
-                : "Queue RESUMED — the pickup loop will claim and start queued items again on the next tick.");
+                : $"Queue RESUMED — re-evaluating the queue now; the pickup loop keeps claiming and starting queued items every {QueueTickInterval.TotalSeconds:0}s and on each build completion.");
             PausedStateChanged?.Invoke(paused);
+            // Git #3824 — resuming re-evaluates immediately instead of waiting for an external
+            // trigger. (If a tick is already mid-flight this is dropped by its single-flight guard;
+            // the periodic timer still picks the queue up within one interval.)
+            if (!paused) RequestTickOnUiThread();
+        }
+
+        /// <summary>Git #3824 — fires one TickAsync on the UI thread from any caller thread, keeping
+        /// TickAsync's "UI thread only" invariant (same marshaling as <see cref="ArmCompletionTrigger"/>).</summary>
+        private void RequestTickOnUiThread()
+        {
+            if (!_started) return; // Start() does its own first tick once recovery finishes.
+            var app = Application.Current;
+            if (app == null) { _ = TickAsync(); return; }
+            if (app.Dispatcher.CheckAccess()) _ = TickAsync();
+            else app.Dispatcher.BeginInvoke(new Action(() => { _ = TickAsync(); }));
         }
 
         /// <summary>Raised right after a queued build's completion is reported (MarkQueueItemCompleteAsync succeeds) in TickAsync — the genuine "this build is done" moment, success or failure alike (exitCode 0 = success). Wired by MainWindow to trigger BuildCompletionSoundService.Play.</summary>
@@ -797,7 +814,7 @@ namespace BuildConsole.Services
             if (!string.IsNullOrWhiteSpace(heldReason))
                 ActivityLog.Log("watcher", $"Start Now: queue #{queueItemId} ({title}) — bypassed a real hold: {heldReason}.");
             else
-                ActivityLog.Log("watcher", $"Start Now: queue #{queueItemId} ({title}) — no real blocker was holding it; it was only waiting for the next completion event or manual refresh (Git #3774: no automatic timer). Launching immediately.");
+                ActivityLog.Log("watcher", $"Start Now: queue #{queueItemId} ({title}) — no real blocker was holding it; it was only waiting for the next periodic tick, completion event or manual refresh. Launching immediately.");
 
             ForceLaunch(claimed);
             return new StartNowResult(StartNowOutcome.Launched, $"Launched: {title}");
@@ -808,7 +825,7 @@ namespace BuildConsole.Services
         /// unawaited launch (e.g. a worktree-provisioning hiccup, Git #1371) can't crash the app.
         ///
         /// Git #1881 — both callers (<see cref="ForceLaunch"/>, <see cref="LaunchItemExplicit"/>) are
-        /// invoked directly from UI-thread event handlers (a context-menu Click, or — pre-#3774 — a
+        /// invoked directly from UI-thread event handlers (a context-menu Click, or a
         /// DispatcherTimer tick) via `_ = SafeLaunch(...)`. Any C# async method's body runs SYNCHRONOUSLY on the
         /// calling thread up to its first genuinely-suspending await — and <see cref="LaunchItem"/>'s
         /// own tail, <see cref="RedirectedProcessLauncher.Launch"/>, is a plain synchronous method (a
@@ -1093,7 +1110,7 @@ namespace BuildConsole.Services
         /// <see cref="GitHubIssueMirror.MaybeSyncAsync"/> (persisted intervals — #3337: a 5 min cheap
         /// incremental issue-level pass and a 30 min full board-walk reconciliation pass — plus
         /// failed-attempt backoff, single-flight), so this method is safe to call every tick; the cheap local throttle
-        /// here just avoids constructing a client / touching the DB on the ~10s ticks in between. The
+        /// here just avoids constructing a client / touching the DB on the periodic ticks in between. The
         /// first (heavy, full-board) sync is routed through <see cref="StartupGitHubCoordinator"/> so it
         /// is staggered against the other cold-start GitHub bursts (#3022) rather than joining them.
         /// Best-effort: never throws into the caller (it is fire-and-forget on a background thread).
@@ -1239,10 +1256,21 @@ namespace BuildConsole.Services
         }
 
         private bool _starting;
-        /// <summary>Git #3774 — replaces the old <c>_timer != null</c> "already started" check now that
-        /// there's no timer instance to test. Set once Start() has run past its one-shot startup
-        /// sequence; <see cref="_starting"/> still covers the narrower in-flight window (see below).</summary>
-        private bool _started;
+        /// <summary>Git #3774 — set once Start() has run past its one-shot startup sequence;
+        /// <see cref="_starting"/> still covers the narrower in-flight window (see below).</summary>
+        private volatile bool _started;
+
+        /// <summary>
+        /// Git #3824 — the periodic claim-check interval. #3774 removed the old 10s timer outright,
+        /// which also removed the queue's only autonomous path: with nothing running (so no
+        /// completion event can fire) and no manual refresh, a resumed queue never claimed anything.
+        /// Reinstated at 30s — one batched live GitHub check per tick in GetNextAsync (not one per
+        /// candidate) is at most 120 calls/hour against the 5000/hour budget, versus 360/hour at the
+        /// original 10s. The completion-event and manual-refresh triggers stay as additional,
+        /// immediate paths; this timer is the backstop that keeps the queue autonomous between them.
+        /// </summary>
+        private static readonly TimeSpan QueueTickInterval = TimeSpan.FromSeconds(30);
+        private System.Windows.Threading.DispatcherTimer? _tickTimer;
 
         /// <summary>
         /// Git #847 — Shane: "834 is currently in progress on the Queue...
@@ -1261,17 +1289,15 @@ namespace BuildConsole.Services
         /// starts, so there is no window where the two can race over the same
         /// row.
         ///
-        /// Git #3774 — no automatic timer, period. Start() used to arm a 10s
-        /// DispatcherTimer here that fired TickAsync forever, independent of
-        /// whether anything had actually happened; that's gone. The single
-        /// `_ = TickAsync()` at the end of this method is a one-shot startup
-        /// evaluation (claim whatever's already queued and unblocked when the
-        /// app opens) — not a recurring trigger. From here on, TickAsync's
-        /// claim-check only fires off two real events: a build this queue is
-        /// tracking actually finishing (see
+        /// Git #3824 (correcting #3774) — TickAsync's claim-check fires from three
+        /// real sources: the periodic <see cref="_tickTimer"/> armed at the end of
+        /// this method (every <see cref="QueueTickInterval"/>, the autonomous
+        /// backstop), a build this queue is tracking actually finishing (see
         /// <see cref="BuildProcessHandle.RegisterExitCallback"/>, armed on every
-        /// launch/adopt below) and the manual refresh path (#3767,
-        /// <see cref="RequestImmediateReevaluation"/>).
+        /// launch/adopt below), and the immediate paths — manual refresh (#3767,
+        /// <see cref="RequestImmediateReevaluation"/>), resuming the queue
+        /// (<see cref="SetPaused"/>) and the app-readiness gate lifting
+        /// (<see cref="MarkAppReady"/>).
         /// </summary>
         public async void Start()
         {
@@ -1282,7 +1308,7 @@ namespace BuildConsole.Services
                 ActivityLog.Log("watcher", $"Neither claude.exe nor gemini.exe was found - in-app watcher disabled.");
                 return;
             }
-            ActivityLog.Log("watcher", $"In-app build queue watcher starting - max {_maxConcurrent} concurrent. Git #3774: no automatic timer — the claim-check fires only off a real build completing or a manual refresh.");
+            ActivityLog.Log("watcher", $"In-app build queue watcher starting - max {_maxConcurrent} concurrent. Claim-check runs every {QueueTickInterval.TotalSeconds:0}s (Git #3824), and immediately on a build completing, a manual refresh, or resuming the queue.");
             await RecoverOrphanedRunningItemsAsync();
             await ReclaimLegacyHeldRowsAsync();
             // Git #1371 — reclaim agent worktrees orphaned by a prior BuildConsole session (their
@@ -1294,8 +1320,14 @@ namespace BuildConsole.Services
             // gc, stray C:\wt\* dir reconcile); throttled to at most once per 6h internally.
             MaybeRunGitMaintenance();
             _started = true;
-            // One-shot: claim whatever's already queued and unblocked right now. Everything after
-            // this is event-driven (see the Git #3774 note above) — nothing re-arms this on a clock.
+            // Git #3824 — the periodic backstop. Start() runs on the UI thread (and resumes there
+            // after the awaits above), so the DispatcherTimer's Tick lands on the UI thread too,
+            // preserving the "TickAsync/_running mutated on the UI thread" invariant.
+            _tickTimer = new System.Windows.Threading.DispatcherTimer { Interval = QueueTickInterval };
+            _tickTimer.Tick += (_, _) => { _ = TickAsync(); };
+            _tickTimer.Start();
+            // Claim whatever's already queued and unblocked right now, rather than waiting out the
+            // first interval.
             _ = TickAsync();
         }
 
@@ -2165,10 +2197,10 @@ namespace BuildConsole.Services
                         try { buildSetExpected = await _db.CountBuildSetMembersAsync(item.BuildSet); }
                         catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't count build-set members for '{item.BuildSet}': {ex.Message}"); }
                     }
-                    // Git #2096 — TickAsync fires on the UI thread — pre-#3774 via DispatcherTimer.Tick,
-                    // now via the manual-refresh call sites and the Git #3774 exit-callback trigger
-                    // (marshaled onto the UI thread with Application.Current.Dispatcher.BeginInvoke,
-                    // exactly to preserve this invariant with no timer left doing it) — same as the
+                    // Git #2096 — TickAsync fires on the UI thread — via the periodic DispatcherTimer.Tick
+                    // (Git #3824), the manual-refresh/resume call sites, and the Git #3774 exit-callback
+                    // trigger (marshaled onto the UI thread with Application.Current.Dispatcher.BeginInvoke
+                    // to preserve this invariant) — same as the
                     // Click handlers #1881 fixed via SafeLaunch's Task.Run wrap. LaunchItem's tail
                     // (RedirectedProcessLauncher.Launch, a synchronous Win32 CreateProcess call) and any
                     // synchronous prefix before its first await ran directly on that UI thread here too —

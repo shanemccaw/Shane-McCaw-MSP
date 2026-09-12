@@ -974,7 +974,7 @@ namespace BuildConsole
 
             // Git #3009 — same free open-issue set forwarded into the watcher itself, so its
             // claim path (GetNextAsync, via TickAsync) can reuse this fetch instead of firing its
-            // OWN independent `gh issue list` on every ~10s tick with a non-empty queue and a free
+            // OWN independent `gh issue list` on every ~30s tick with a non-empty queue and a free
             // slot. See QueueWatcherService.BuildLiveOpenIssuesFetcher for the freshness bound.
             LeftSidebar.GitBoardOpenIssuesRefreshed += (s, openNumbers) => _queueWatcher?.ApplyOpenIssueSet(openNumbers);
 
