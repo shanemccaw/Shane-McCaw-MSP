@@ -84,6 +84,7 @@ namespace BuildConsole.Controls
             B("Brush.Border.Card", "#313244");
             B("Brush.Border.Strong", "#45475A");
             B("Brush.Claude.Accent", "#FAB387");
+            B("Brush.Danger.Soft", "#EBA0AC");
             B("Brush.Epic.AppCore", "#89B4FA");
             B("Brush.Epic.Gate", "#F38BA8");
             B("Brush.LogSource.Console", "#94E2D5");
@@ -650,7 +651,7 @@ namespace BuildConsole.Controls
             var deleteBtn = new Button
             {
                 Content = $"Delete {pickedCount} selected — backup tag first", Height = 32, Padding = new Thickness(14, 0, 14, 0), Margin = new Thickness(0, 0, 6, 6),
-                Background = (Brush)FindResource("Brush.Epic.AppCore"), Foreground = Brushes.Black, BorderThickness = new Thickness(0),
+                Background = (Brush)FindResource("Brush.Danger.Soft"), Foreground = Brushes.Black, BorderThickness = new Thickness(0),
                 FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11.5"), FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand
             };
             deleteBtn.Click += (s, e) => _ = DeleteSelectedBranchesAsync();
