@@ -75,7 +75,9 @@
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="BuildSetsColumn" Width="0"/>
-                <ColumnDefinition Width="*"/>
+                <!-- Git #3807 — named so ApplyBuildSetsPanelState can pin its MinWidth while
+                     Build Sets is open; see the comment there for the measured reason. -->
+                <ColumnDefinition x:Name="QueueContentColumn" Width="*"/>
             </Grid.ColumnDefinitions>
 
             <!-- ══ Build Sets slide-out panel — Git #3785: RenderBuildSetRollup's real

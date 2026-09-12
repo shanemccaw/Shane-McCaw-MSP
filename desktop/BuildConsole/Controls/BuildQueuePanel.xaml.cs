@@ -8449,6 +8449,11 @@ namespace BuildConsole.Controls
         // completely untouched by this relocation.
         private void BtnToggleBuildSets_Click(object sender, RoutedEventArgs e)
         {
+            // Git #3807 — real wall-clock timing of the toggle, from click to the dispatcher
+            // going idle again (so it includes the layout/render pass the toggle causes, not
+            // just this handler). Logged so a slow toggle in the live app leaves a real number
+            // behind instead of an impression.
+            var toggleTimer = System.Diagnostics.Stopwatch.StartNew();
             _buildSetsPanelOpen = !_buildSetsPanelOpen;
             ApplyBuildSetsPanelState();
             try
@@ -8462,10 +8467,30 @@ namespace BuildConsole.Controls
             // Git #3805 — tell MainWindow to grow/shrink its own outer ColQueue column;
             // this control has no reach into its own host's layout on its own.
             BuildSetsPanelToggled?.Invoke(this, _buildSetsPanelOpen);
+
+            bool openedNow = _buildSetsPanelOpen;
+            double handlerMs = toggleTimer.Elapsed.TotalMilliseconds;
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+                ActivityLog.Log("build-queue.build-sets-panel",
+                    $"Git #3807: Build Sets panel {(openedNow ? "opened" : "closed")} — handler {handlerMs:F0}ms, click-to-idle {toggleTimer.Elapsed.TotalMilliseconds:F0}ms (queue content column {QueueContentColumn.ActualWidth:F0}px)")));
         }
 
         private void ApplyBuildSetsPanelState()
         {
+            // Git #3807 — measured cause of the multi-second toggle hang: opening Build Sets
+            // re-partitioned this panel's own width, squeezing the Queue content column from
+            // 300px to 60px. Every wrapping TextBlock in the queue cards then breaks roughly one
+            // character per line, so re-measuring the real card list went from ~0.1s at 260px
+            // to ~3.3s at 60px (cards grew to ~19,700px tall), and the open took 4.2-7.1s end to
+            // end with a Running & Queued view of the real queue. The non-virtualized rollup
+            // StackPanel was measured too and was not the cause (~0.1-0.4s cold, ~1-13ms warm).
+            // MainWindow now grows ColQueue to make room (Git #3805), but that only holds while
+            // the host actually has the width to give; pinning the Queue column at the width it
+            // had before opening means opening Build Sets can never force that reflow, whatever
+            // the outer layout does. Too narrow a host now clips instead of hanging.
+            QueueContentColumn.MinWidth = _buildSetsPanelOpen
+                ? QueueContentColumn.ActualWidth
+                : 0;
             BuildSetsColumn.Width = _buildSetsPanelOpen ? new GridLength(BuildSetsPanelWidth) : new GridLength(0);
             BuildSetsPanelBorder.Visibility = _buildSetsPanelOpen ? Visibility.Visible : Visibility.Collapsed;
             ToggleBuildSetsIcon.Foreground = _buildSetsPanelOpen
