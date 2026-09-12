@@ -52,7 +52,7 @@
                                  FontFamily="Cascadia Code, Consolas, Courier New" FontSize="14"
                                  TextChanged="PaletteInput_TextChanged"/>
                         <TextBlock x:Name="PalettePlaceholder" IsHitTestVisible="False"
-                                   Text="Search epics, builds, and chats — # for issue number"
+                                   Text="Search epics, builds, and chats — # for issue number, or type/paste a SQL query"
                                    FontSize="13" VerticalAlignment="Center"
                                    Foreground="{StaticResource TextDisabledBrush}"/>
                     </Grid>

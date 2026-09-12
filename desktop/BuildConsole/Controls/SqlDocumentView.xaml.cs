@@ -644,11 +644,10 @@ namespace BuildConsole.Controls
             return sb.ToString().TrimEnd();
         }
 
-        /// <summary>RFC 4180 field quoting — quotes (doubling embedded quotes) any field containing a comma, quote, or newline.</summary>
-        private static string EscapeCsvCell(string value) =>
-            value.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0
-                ? "\"" + value.Replace("\"", "\"\"") + "\""
-                : value;
+        /// <summary>RFC 4180 field quoting — quotes (doubling embedded quotes) any field containing a comma, quote, or newline.
+        /// Git #3828 — delegates to <see cref="SqlResultFormatter.EscapeCsvCell"/> so this and the
+        /// Command Center palette's SQL results panel stay byte-identical on CSV escaping.</summary>
+        private static string EscapeCsvCell(string value) => SqlResultFormatter.EscapeCsvCell(value);
 
         // ── Auto-RETURNING * (Git #939) ────────────────────────────────────────
         // A plain INSERT/UPDATE/DELETE with no RETURNING clause returns zero fields
@@ -854,13 +853,7 @@ namespace BuildConsole.Controls
             return statements;
         }
 
-        private static string JsonElementToDisplayString(JsonElement el) => el.ValueKind switch
-        {
-            JsonValueKind.Null => "NULL",
-            JsonValueKind.String => el.GetString() ?? "",
-            JsonValueKind.True => "true",
-            JsonValueKind.False => "false",
-            _ => el.GetRawText(),
-        };
+        /// <summary>Git #3828 — delegates to <see cref="SqlResultFormatter.JsonElementToDisplayString"/>, kept in sync with the palette's own SQL results rendering.</summary>
+        private static string JsonElementToDisplayString(JsonElement el) => SqlResultFormatter.JsonElementToDisplayString(el);
     }
 }

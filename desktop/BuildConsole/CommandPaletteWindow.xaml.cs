@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -69,6 +70,7 @@ namespace BuildConsole
         };
 
         private readonly List<PaletteCommand> _commands;
+        private readonly BuildConsole.Services.BuildTrackerApiClient? _api;
         private string _categoryKey = "All";
         private List<PaletteCommand> _filtered = new();
         private int _selectedIndex = -1;
@@ -81,10 +83,23 @@ namespace BuildConsole
         /// on a different command.</summary>
         private string? _liveResultText;
 
-        public CommandPaletteWindow(IEnumerable<PaletteCommand> commands)
+        // ── Git #3828 — SQL detection/execution state ──────────────────────────
+        private bool _sqlMode;
+        private bool _sqlRunning;
+        private string? _sqlError;
+        private List<BuildConsole.Services.SqlStatementResult>? _sqlResults;
+        private bool _sqlShowJson;
+
+        /// <summary>Raised when "Send to Chat" is clicked on the SQL results panel — MainWindow
+        /// wires this to the same shared <c>SendTextToActiveClaudeChatAsync</c> path (#937/#940)
+        /// the SQL Runner floaty already uses, never a second mechanism.</summary>
+        public event EventHandler<string>? SqlSendToChatRequested;
+
+        public CommandPaletteWindow(IEnumerable<PaletteCommand> commands, BuildConsole.Services.BuildTrackerApiClient? api = null)
         {
             InitializeComponent();
             _commands = commands.ToList();
+            _api = api;
             RenderTiles();
             RenderTabs();
             RenderResults();
@@ -135,6 +150,19 @@ namespace BuildConsole
                 e.Handled = true;
                 CloseOnce();
             }
+            else if (_sqlMode && e.Key == Key.Enter)
+            {
+                // Git #3828 — keyboard-only: Enter runs the query without a click, and
+                // (unlike a quick-action row) does NOT close the palette — results render
+                // right here so Shane can keep typing/re-running without reopening it.
+                e.Handled = true;
+                _ = RunSqlQueryAsync();
+            }
+            else if (_sqlMode && (e.Key == Key.Down || e.Key == Key.Up || e.Key == Key.Tab))
+            {
+                // No result list / category tabs to navigate while a SQL query fills the panel.
+                e.Handled = true;
+            }
             else if (e.Key == Key.Down)
             {
                 e.Handled = true;
@@ -164,6 +192,18 @@ namespace BuildConsole
             PalettePlaceholder.Visibility =
                 PaletteInput.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             _liveResultText = null;
+
+            // Git #3828 — real SQL detection: switching in/out of SQL mode resets any
+            // stale results from a previous query rather than showing them against new text.
+            bool looksLikeSql = BuildConsole.Services.SqlDetection.LooksLikeSqlQuery(PaletteInput.Text);
+            if (looksLikeSql != _sqlMode)
+            {
+                _sqlMode = looksLikeSql;
+                _sqlResults = null;
+                _sqlError = null;
+                _sqlShowJson = false;
+            }
+
             RenderTabs();
             RenderResults();
         }
@@ -219,7 +259,11 @@ namespace BuildConsole
             }
         }
 
-        private void DetailAction_Click(object sender, MouseButtonEventArgs e) => RunSelected();
+        private void DetailAction_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (_sqlMode) { _ = RunSqlQueryAsync(); return; }
+            RunSelected();
+        }
 
         // ── Category tabs ───────────────────────────────────────────────────
 
@@ -353,6 +397,13 @@ namespace BuildConsole
         private void RenderResults(bool preserveSelection = false)
         {
             PaletteResults.Children.Clear();
+
+            if (_sqlMode)
+            {
+                RenderSqlResultRow();
+                RenderDetail();
+                return;
+            }
 
             if (_categoryKey != "All")
             {
@@ -520,6 +571,12 @@ namespace BuildConsole
         {
             PaletteDetail.Children.Clear();
 
+            if (_sqlMode)
+            {
+                RenderSqlDetail();
+                return;
+            }
+
             if (_selectedIndex < 0 || _selectedIndex >= _filtered.Count)
             {
                 PaletteDetailActionHost.Visibility = Visibility.Collapsed;
@@ -581,6 +638,269 @@ namespace BuildConsole
             {
                 PaletteDetailActionHost.Visibility = Visibility.Collapsed;
             }
+        }
+
+        // ── Git #3828 — SQL query detection, execution, CSV/JSON results ───────
+
+        /// <summary>The single "row" the results list shows while SQL input is detected — not a
+        /// PaletteCommand, since there's real async query state (running/error/results) behind it
+        /// that the fixed quick-action model doesn't carry.</summary>
+        private void RenderSqlResultRow()
+        {
+            string query = BuildConsole.Services.SqlDetection.ExtractQuery(PaletteInput.Text);
+            string preview = query.Length > 90 ? query[..90] + "…" : query;
+            string subtitle = _sqlRunning
+                ? "Running…"
+                : _sqlError != null
+                    ? $"Error — {_sqlError}"
+                    : _sqlResults != null
+                        ? BuildConsole.Services.SqlResultFormatter.SummaryLine(_sqlResults)
+                        : "Press Enter to run this query — no click required";
+
+            var dock = new DockPanel();
+            dock.Children.Add(new Border
+            {
+                Width = 30,
+                Height = 30,
+                CornerRadius = new CornerRadius(7),
+                Margin = new Thickness(0, 0, 10, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = (Brush)FindResource("CardBackgroundBrush"),
+                Child = new TextBlock
+                {
+                    Text = "", // Segoe MDL2 "Tag" — placeholder DB glyph, purely cosmetic
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 13,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)FindResource("TextPrimaryBrush"),
+                },
+            });
+            DockPanel.SetDock(dock.Children[0], Dock.Left);
+
+            var tag = new Border
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = (Brush)FindResource("AccentWashLightBrush"),
+                BorderBrush = (Brush)FindResource("AccentBrush"),
+                BorderThickness = new Thickness(1),
+                Child = new TextBlock
+                {
+                    Text = "SQL",
+                    FontSize = 8.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)FindResource("AccentBrush"),
+                },
+            };
+            DockPanel.SetDock(tag, Dock.Right);
+            dock.Children.Add(tag);
+
+            var textStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            textStack.Children.Add(new TextBlock
+            {
+                Text = preview.Length == 0 ? "SQL query" : preview,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)FindResource("TextPrimaryBrush"),
+            });
+            textStack.Children.Add(new TextBlock
+            {
+                Text = subtitle,
+                FontSize = 11,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)FindResource("TextSecondaryBrush"),
+            });
+            dock.Children.Add(textStack);
+
+            var row = new Border
+            {
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10, 8, 10, 8),
+                Margin = new Thickness(0, 2, 0, 2),
+                Background = (Brush)FindResource("AccentWashLightBrush"),
+                BorderThickness = new Thickness(1),
+                BorderBrush = (Brush)FindResource("AccentBrush"),
+                Child = dock,
+            };
+            PaletteResults.Children.Add(row);
+        }
+
+        /// <summary>
+        /// Runs the typed query through the exact same real execution path the SQL Runner floaty
+        /// uses (<see cref="BuildConsole.Services.LocalSqlExecutor.ExecuteAsync"/> — Dev target
+        /// environment runs directly against local Postgres, Staging/Production go through the
+        /// existing api-server HTTP pipe) — never a second, parallel execution mechanism.
+        /// </summary>
+        private async Task RunSqlQueryAsync()
+        {
+            if (_sqlRunning) return;
+            string query = BuildConsole.Services.SqlDetection.ExtractQuery(PaletteInput.Text);
+            if (query.Length == 0) return;
+
+            _sqlRunning = true;
+            _sqlError = null;
+            RenderResults(preserveSelection: true);
+
+            try
+            {
+                var statements = await BuildConsole.Services.LocalSqlExecutor.ExecuteAsync(_api!, query);
+                _sqlResults = statements;
+            }
+            catch (Exception ex)
+            {
+                _sqlError = ex.Message;
+                _sqlResults = null;
+            }
+            finally
+            {
+                _sqlRunning = false;
+                if (_sqlMode) RenderResults(preserveSelection: true);
+            }
+        }
+
+        /// <summary>Right pane while SQL input is detected: query preview, real CSV/JSON results
+        /// (toggle tabs), and real Copy + Send-to-Chat actions — Send-to-Chat reuses the exact
+        /// shared <c>SendTextToActiveClaudeChatAsync</c> path via <see cref="SqlSendToChatRequested"/>,
+        /// same as the SQL Runner floaty's own "Send to Chat" (Git #940).</summary>
+        private void RenderSqlDetail()
+        {
+            PaletteDetailActionHost.Visibility = Visibility.Visible;
+            PaletteDetailActionLabel.Text = _sqlRunning ? "Running…" : "Run Query  ↵";
+
+            PaletteDetail.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Background = (Brush)FindResource("AccentWashLightBrush"),
+                Child = new TextBlock
+                {
+                    Text = "SQL QUERY",
+                    FontSize = 8.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)FindResource("AccentBrush"),
+                },
+            });
+
+            if (_sqlResults == null)
+            {
+                PaletteDetail.Children.Add(new TextBlock
+                {
+                    Text = _sqlError != null ? $"Execute failed: {_sqlError}" : "Press Enter to run this query for real against the current target database.",
+                    Margin = new Thickness(0, 10, 0, 0),
+                    FontSize = 11.5,
+                    LineHeight = 17,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = (Brush)FindResource(_sqlError != null ? "RedBrush" : "TextSecondaryBrush"),
+                });
+                return;
+            }
+
+            var statements = _sqlResults;
+            bool hasRows = BuildConsole.Services.SqlResultFormatter.HasRows(statements);
+
+            PaletteDetail.Children.Add(new TextBlock
+            {
+                Text = BuildConsole.Services.SqlResultFormatter.SummaryLine(statements),
+                Margin = new Thickness(0, 10, 0, 8),
+                FontSize = 11.5,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource("TextSecondaryBrush"),
+            });
+
+            if (hasRows)
+            {
+                // CSV / JSON toggle chips
+                var toggle = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+                toggle.Children.Add(SqlViewChip("CSV", !_sqlShowJson, () => { _sqlShowJson = false; RenderResults(preserveSelection: true); }));
+                toggle.Children.Add(SqlViewChip("JSON", _sqlShowJson, () => { _sqlShowJson = true; RenderResults(preserveSelection: true); }));
+                PaletteDetail.Children.Add(toggle);
+
+                string resultText = _sqlShowJson
+                    ? BuildConsole.Services.SqlResultFormatter.ToJson(statements)
+                    : BuildConsole.Services.SqlResultFormatter.ToCsv(statements);
+
+                var resultBox = new TextBox
+                {
+                    Text = resultText,
+                    IsReadOnly = true,
+                    TextWrapping = TextWrapping.NoWrap,
+                    AcceptsReturn = true,
+                    FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                    FontSize = 10.5,
+                    Background = (Brush)FindResource("CardBackgroundBrush"),
+                    BorderThickness = new Thickness(1),
+                    BorderBrush = (Brush)FindResource("BorderDividerBrush"),
+                    Foreground = (Brush)FindResource("TextPrimaryBrush"),
+                    Padding = new Thickness(8),
+                    MaxHeight = 260,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                };
+                PaletteDetail.Children.Add(resultBox);
+
+                var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+                actions.Children.Add(SqlActionButton("Copy", () =>
+                {
+                    Clipboard.SetText(resultText);
+                    ToastEngine.Success("Command Center", $"Copied {(_sqlShowJson ? "JSON" : "CSV")} to clipboard.");
+                }));
+                actions.Children.Add(SqlActionButton("Send to Chat", () =>
+                {
+                    SqlSendToChatRequested?.Invoke(this, resultText);
+                }));
+                PaletteDetail.Children.Add(actions);
+            }
+        }
+
+        private Border SqlViewChip(string label, bool active, Action onClick)
+        {
+            var chip = new Border
+            {
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(10, 4, 10, 4),
+                Margin = new Thickness(0, 0, 6, 0),
+                Cursor = Cursors.Hand,
+                Background = active ? (Brush)FindResource("AccentWashLightBrush") : Brushes.Transparent,
+                BorderThickness = new Thickness(1),
+                BorderBrush = active ? (Brush)FindResource("AccentBrush") : (Brush)FindResource("BorderDividerBrush"),
+                Child = new TextBlock
+                {
+                    Text = label,
+                    FontSize = 10.5,
+                    FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal,
+                    Foreground = (Brush)FindResource(active ? "TextPrimaryBrush" : "TextSecondaryBrush"),
+                },
+            };
+            chip.MouseLeftButtonDown += (_, e) => { e.Handled = true; onClick(); };
+            return chip;
+        }
+
+        private Border SqlActionButton(string label, Action onClick)
+        {
+            var btn = new Border
+            {
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(12, 6, 12, 6),
+                Margin = new Thickness(0, 0, 8, 0),
+                Cursor = Cursors.Hand,
+                Background = (Brush)FindResource("CardBackgroundBrush"),
+                BorderThickness = new Thickness(1),
+                BorderBrush = (Brush)FindResource("BorderDividerBrush"),
+                Child = new TextBlock
+                {
+                    Text = label,
+                    FontSize = 11,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("TextPrimaryBrush"),
+                },
+            };
+            btn.MouseLeftButtonDown += (_, e) => { e.Handled = true; onClick(); };
+            return btn;
         }
     }
 }

@@ -31,7 +31,23 @@ namespace BuildConsole
                 return;
             }
 
-            var win = new CommandPaletteWindow(BuildPaletteCommands()) { Owner = this };
+            var win = new CommandPaletteWindow(BuildPaletteCommands(), BuildTrackerApi) { Owner = this };
+
+            // Git #3828 — SQL results panel's "Send to Chat" reuses the exact same shared
+            // SendTextToActiveClaudeChatAsync path the SQL Runner floaty's own Send to Chat
+            // already uses (#937/#940) — never a second mechanism. The palette itself has no
+            // inline status strip, so the outcome surfaces as a toast instead.
+            win.SqlSendToChatRequested += async (_, text) =>
+                await SendTextToActiveClaudeChatAsync(
+                    text,
+                    showMessage: (msg, isError) =>
+                    {
+                        if (isError) ToastEngine.Warning("Command Center", msg);
+                        else ToastEngine.Success("Command Center", msg);
+                    },
+                    onInserted: null,
+                    logChannel: "command-palette.sql.send-to-chat",
+                    whatSingular: "SQL results");
 
             // Center horizontally over this window's REAL on-screen bounds and sit
             // near the top, palette-style. Left/Top on a maximized WPF window still
