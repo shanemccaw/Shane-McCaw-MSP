@@ -42,6 +42,7 @@ public partial class MainWindow : FluentWindow
     private readonly IVipClassificationsService _vipClassificationsService;
     private readonly ILaunchControlActionsService _launchControlActionsService;
     private readonly IAdminRetainerService _adminRetainerService;
+    private readonly IAutomationRegistryService _automationRegistryService;
     private readonly IRunbooksService _runbooksService;
     private readonly IDocumentHubService _documentHubService;
     private readonly IVaultService _vaultService;
@@ -87,6 +88,7 @@ public partial class MainWindow : FluentWindow
         _vipClassificationsService = new VipClassificationsService();
         _launchControlActionsService = new LaunchControlActionsService();
         _adminRetainerService = new AdminRetainerService();
+        _automationRegistryService = new AutomationRegistryService();
         _runbooksService = new RunbooksService();
         _documentHubService = new DocumentHubService();
         _vaultService = new VaultService();
@@ -339,6 +341,35 @@ public partial class MainWindow : FluentWindow
                     Intent = RibbonIntent.Create,
                     ToolTip = "POST /api/admin/retainer/:customerId/unscoped — work not tied to a tracker step or change request (#3464)",
                     OnSelect = () => OpenLogAdHocHoursRecord(),
+                },
+            },
+        });
+
+        _shellRegistry.RegisterFixedTabGroup(FixedTab.Home, new RibbonGroupSpec
+        {
+            Label = "Automation Registry",
+            Order = 41,
+            Large =
+            {
+                new RibbonCommandSpec
+                {
+                    Label = "Browse",
+                    Intent = RibbonIntent.Open,
+                    ToolTip = "Real GET /api/admin/automation-registry/:customerId (Git #3771)",
+                    Gallery = new GallerySpec
+                    {
+                        Title = "Automation Registry",
+                        Searchable = true,
+                        GetRowsAsync = BuildAutomationRegistryRowsAsync,
+                    },
+                    OnSelect = () => { },
+                },
+                new RibbonCommandSpec
+                {
+                    Label = "Add Automation",
+                    Intent = RibbonIntent.Create,
+                    ToolTip = "POST /api/admin/automation-registry/:customerId — Power Automate flow or Power Platform/Azure AI Studio agent (Git #3771)",
+                    OnSelect = () => OpenAddAutomationRecord(),
                 },
             },
         });
@@ -3553,6 +3584,235 @@ public partial class MainWindow : FluentWindow
 
     private static string? Nullify(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
+    /// <summary>Automation Registry (Git #3771) — Home-tab "Browse" gallery rows, one per
+    /// automation registered against the current customer. Same real "GET list + row OnSelect
+    /// opens a record" shape <see cref="BuildCabMeetingRowsAsync"/> already uses.</summary>
+    private async System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<GalleryRowSpec>> BuildAutomationRegistryRowsAsync()
+    {
+        if (!TryResolveLaunchControlScope(out _, out var customerId))
+        {
+            return new[] { new GalleryRowSpec { Id = "blocked", Name = "Sign in and pick a customer to browse its automation registry", OnSelect = () => { } } };
+        }
+
+        System.Collections.Generic.IReadOnlyList<AutomationRegistryEntry> entries;
+        try
+        {
+            entries = await _automationRegistryService.GetEntriesAsync(customerId).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            return new[] { new GalleryRowSpec { Id = "error", Name = $"Could not load: {ex.Message}", OnSelect = () => { } } };
+        }
+
+        if (entries.Count == 0)
+        {
+            return new[] { new GalleryRowSpec { Id = "empty", Name = "No automations registered for this customer yet", OnSelect = () => { } } };
+        }
+
+        return entries.Select(e => new GalleryRowSpec
+        {
+            Id = e.Id.ToString(),
+            Tile = e.Type == "ai_studio_agent" ? "AI" : "PA",
+            Name = e.Name,
+            Sub = $"{(e.Type == "ai_studio_agent" ? "AI Studio agent" : "Power Automate flow")} · {e.Status}",
+            OnSelect = () => OpenAutomationRegistryRecord(customerId, e),
+        }).ToList();
+    }
+
+    /// <summary>Opens one automation registry entry for editing — real PATCH/DELETE against the
+    /// row selected from <see cref="BuildAutomationRegistryRowsAsync"/>, or the entry just created
+    /// by <see cref="OpenAddAutomationRecord"/>. Same "write-through Edits + confirm-armed
+    /// Actions" shape as <see cref="OpenLogAdHocHoursRecord"/>, targeting
+    /// <see cref="IAutomationRegistryService.UpdateEntryAsync"/> and
+    /// <see cref="IAutomationRegistryService.DeleteEntryAsync"/> instead.</summary>
+    private void OpenAutomationRegistryRecord(int customerId, AutomationRegistryEntry entry)
+    {
+        var fields = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["type"] = entry.Type,
+            ["name"] = entry.Name,
+            ["status"] = entry.Status,
+            ["notes"] = entry.Notes ?? string.Empty,
+        };
+
+        _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+        {
+            Kind = "automation-registry-entry",
+            Id = entry.Id.ToString(),
+            Eyebrow = "Automation Registry",
+            Title = entry.Name,
+            Sub = $"#{entry.Id} · added {entry.CreatedAt:yyyy-MM-dd}",
+            Edits =
+            {
+                new WorkspaceEdit
+                {
+                    Key = "type",
+                    Label = "Type",
+                    Value = fields["type"],
+                    Options = new System.Collections.Generic.List<string> { "power_automate_flow", "ai_studio_agent" },
+                    OnChange = v => fields["type"] = v,
+                },
+                new WorkspaceEdit { Key = "name", Label = "Name", Value = fields["name"], OnChange = v => fields["name"] = v },
+                new WorkspaceEdit
+                {
+                    Key = "status",
+                    Label = "Status",
+                    Value = fields["status"],
+                    Options = new System.Collections.Generic.List<string> { "active", "inactive", "in_development" },
+                    OnChange = v => fields["status"] = v,
+                },
+                new WorkspaceEdit { Key = "notes", Label = "Notes", Value = fields["notes"], OnChange = v => fields["notes"] = v },
+            },
+            Actions =
+            {
+                new WorkspaceAction
+                {
+                    Label = "Save",
+                    Confirm = true,
+                    OnSelect = async () =>
+                    {
+                        ShowDocument(ConsolePanel);
+                        try
+                        {
+                            var updated = await _automationRegistryService
+                                .UpdateEntryAsync(entry.Id, fields["type"], fields["name"], fields["status"], Nullify(fields["notes"]))
+                                .ConfigureAwait(true);
+                            ConsolePanel.AppendExternal($"[Automation Registry] Saved #{updated.Id} · {updated.Name} · {updated.Status}");
+                            OpenAutomationRegistryRecord(customerId, updated);
+                        }
+                        catch (AutomationRegistryException ex)
+                        {
+                            ConsolePanel.AppendExternal($"[Automation Registry] Save failed: {ex.Message}");
+                        }
+                        catch (Exception ex)
+                        {
+                            ConsolePanel.AppendExternal($"[Automation Registry] Exception: {ex.Message}");
+                        }
+                    },
+                },
+                new WorkspaceAction
+                {
+                    Label = "Delete",
+                    Confirm = true,
+                    Danger = true,
+                    OnSelect = async () =>
+                    {
+                        ShowDocument(ConsolePanel);
+                        try
+                        {
+                            await _automationRegistryService.DeleteEntryAsync(entry.Id).ConfigureAwait(true);
+                            ConsolePanel.AppendExternal($"[Automation Registry] Deleted #{entry.Id} · {entry.Name}");
+                        }
+                        catch (AutomationRegistryException ex)
+                        {
+                            ConsolePanel.AppendExternal($"[Automation Registry] Delete failed: {ex.Message}");
+                        }
+                        catch (Exception ex)
+                        {
+                            ConsolePanel.AppendExternal($"[Automation Registry] Exception: {ex.Message}");
+                        }
+                    },
+                },
+            },
+        });
+    }
+
+    /// <summary>Home-tab "Add Automation" — real POST against the current customer. Same
+    /// gallery-less "workspace with locally-collected Edits + a confirm-armed Create Action"
+    /// shape <see cref="OpenLogAdHocHoursRecord"/> already uses.</summary>
+    private void OpenAddAutomationRecord()
+    {
+        if (!TryResolveLaunchControlScope(out _, out var customerId))
+        {
+            var reason = !_authService.IsAuthenticated
+                ? "Sign in to register an automation"
+                : "Registering an automation needs a customer selected — pick one from the tenant switcher";
+            _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+            {
+                Kind = "automation-registry-new",
+                Id = "blocked",
+                Eyebrow = "Automation Registry",
+                Title = "Add Automation",
+                Sub = reason,
+            });
+            return;
+        }
+
+        var fields = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["type"] = "power_automate_flow",
+            ["name"] = string.Empty,
+            ["status"] = "active",
+            ["notes"] = string.Empty,
+        };
+
+        _shellRegistry.OpenRecord(new RecordWorkspaceSpec
+        {
+            Kind = "automation-registry-new",
+            Id = "new",
+            Eyebrow = "Automation Registry",
+            Title = "Add Automation",
+            Edits =
+            {
+                new WorkspaceEdit
+                {
+                    Key = "type",
+                    Label = "Type",
+                    Value = fields["type"],
+                    Options = new System.Collections.Generic.List<string> { "power_automate_flow", "ai_studio_agent" },
+                    OnChange = v => fields["type"] = v,
+                },
+                new WorkspaceEdit { Key = "name", Label = "Name", Value = fields["name"], OnChange = v => fields["name"] = v },
+                new WorkspaceEdit
+                {
+                    Key = "status",
+                    Label = "Status",
+                    Value = fields["status"],
+                    Options = new System.Collections.Generic.List<string> { "active", "inactive", "in_development" },
+                    OnChange = v => fields["status"] = v,
+                },
+                new WorkspaceEdit { Key = "notes", Label = "Notes", Value = fields["notes"], OnChange = v => fields["notes"] = v },
+            },
+            Actions =
+            {
+                new WorkspaceAction
+                {
+                    Label = "Add",
+                    Confirm = true,
+                    OnSelect = async () =>
+                    {
+                        if (string.IsNullOrWhiteSpace(fields["name"]))
+                        {
+                            ShowDocument(ConsolePanel);
+                            ConsolePanel.AppendExternal("[Automation Registry] Name is required — nothing added.");
+                            return;
+                        }
+
+                        ShowDocument(ConsolePanel);
+                        ConsolePanel.AppendExternal($"[Automation Registry] Adding \"{fields["name"]}\"…");
+
+                        try
+                        {
+                            var entry = await _automationRegistryService
+                                .CreateEntryAsync(customerId, fields["type"], fields["name"], fields["status"], Nullify(fields["notes"]))
+                                .ConfigureAwait(true);
+                            ConsolePanel.AppendExternal($"[Automation Registry] Added #{entry.Id} · {entry.Name} · {entry.Status}");
+                            OpenAutomationRegistryRecord(customerId, entry);
+                        }
+                        catch (AutomationRegistryException ex)
+                        {
+                            ConsolePanel.AppendExternal($"[Automation Registry] Add failed: {ex.Message}");
+                        }
+                        catch (Exception ex)
+                        {
+                            ConsolePanel.AppendExternal($"[Automation Registry] Exception: {ex.Message}");
+                        }
+                    },
+                },
+            },
+        });
+    }
+
     /// <summary>#3471's unified item browser — both real sources (checklist-style remediation
     /// tracker steps and catalog-backed change requests) in one gallery, real instruction/action
     /// text per item (the issue's own words), instead of the two separate galleries the shell's
@@ -5095,6 +5355,7 @@ public partial class MainWindow : FluentWindow
         _auditLogService.AuthToken = token;
         _cabService.AuthToken = token;
         _adminRetainerService.AuthToken = token;
+        _automationRegistryService.AuthToken = token;
         _remediationTrackerService.AuthToken = token;
         _vipClassificationsService.AuthToken = token;
         _retainerService.AuthToken = token;

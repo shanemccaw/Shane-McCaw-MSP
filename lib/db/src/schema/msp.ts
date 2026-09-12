@@ -9687,3 +9687,39 @@ export const trainingSessionsTable = pgTable("training_sessions", {
 export const insertTrainingSessionSchema = createInsertSchema(trainingSessionsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type TrainingSession = typeof trainingSessionsTable.$inferSelect;
 export type InsertTrainingSession = typeof trainingSessionsTable.$inferInsert;
+
+// ── Automation registry (Git #3771) ─────────────────────────────────────────
+//
+// A persistent, browsable list of the Microsoft-ecosystem automations Shane
+// builds for a customer — Power Automate flows and Power Platform/Azure AI
+// Studio agents, same shape, distinguished by `type`. Deliberately NOT a
+// time-log stream: that already exists (retainerWorkLogTable above, #1293)
+// and stays the place ad-hoc hours get logged. This table answers "what
+// automations does Customer X have running, and what's their status" —
+// MyArchitect (desktop/MyArchitect, Epic #3454) is the primary client
+// creating/updating entries here.
+export const AUTOMATION_REGISTRY_TYPES = ["power_automate_flow", "ai_studio_agent"] as const;
+export type AutomationRegistryType = typeof AUTOMATION_REGISTRY_TYPES[number];
+
+// Plain text, no CHECK — same convention as RETAINER_WORK_STATES above, so the
+// vocabulary can widen in code without a migration.
+export const AUTOMATION_REGISTRY_STATUSES = ["active", "inactive", "in_development"] as const;
+export type AutomationRegistryStatus = typeof AUTOMATION_REGISTRY_STATUSES[number];
+
+export const automationRegistryTable = pgTable("automation_registry", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  type: text("type", { enum: AUTOMATION_REGISTRY_TYPES }).notNull(),
+  name: text("name").notNull(),
+  status: text("status", { enum: AUTOMATION_REGISTRY_STATUSES }).notNull().default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("automation_registry_customer_id_idx").on(t.customerId),
+  index("automation_registry_msp_id_idx").on(t.mspId),
+]);
+
+export type AutomationRegistryRow = typeof automationRegistryTable.$inferSelect;
+export type InsertAutomationRegistryRow = typeof automationRegistryTable.$inferInsert;
