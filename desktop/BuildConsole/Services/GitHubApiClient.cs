@@ -235,6 +235,16 @@ namespace BuildConsole.Services
         /// <summary>GraphQL databaseId — the numeric REST id GitHub's sub_issues endpoint wants as `sub_issue_id` (NOT the issue Number). Populated by ListBoardIssuesAsync for Git #844.</summary>
         public long DatabaseId { get; set; }
 
+        /// <summary>Git #3627 — the real number of <c>blocked_by</c> dependency edges this issue declares
+        /// (GraphQL <c>blockedBy(first: 1) { totalCount }</c>, open AND closed blockers, straight off the
+        /// board walk). This is the cheap, LABEL-INDEPENDENT signal the mirror's full sync uses to decide
+        /// which issues to fetch real blocker numbers for — a dependency edge wired before the issue's
+        /// <c>blocked</c> label lands still has <see cref="BlockedByCount"/> &gt; 0, so it is no longer
+        /// invisible to the mirror the way the old label-gated fetch made it (#3585's incident class).
+        /// Zero here means the issue provably has no blockers, so the mirror can safely store an empty set
+        /// without a per-issue fetch.</summary>
+        public int BlockedByCount { get; set; }
+
         /// <summary>Git #2677 — a real Epic is top-level (<see cref="ParentNumber"/> is null) AND has at
         /// least one sub-issue (Git #839, no title-text convention). Post-restructure, a Feature also
         /// carries its own child Issues as real GitHub sub-issues, so the old sub-issue-count-only check
@@ -1123,6 +1133,7 @@ namespace BuildConsole.Services
         parent {{ number milestone {{ number }} }}
         subIssuesSummary {{ total completed percentCompleted }}
         subIssues(first: 50) {{ nodes {{ number }} }}
+        blockedBy(first: 1) {{ totalCount }}
       }}
     }}
   }}
@@ -1153,6 +1164,7 @@ namespace BuildConsole.Services
                             SubIssuePercent = n.SubIssuesSummary?.PercentCompleted ?? 0,
                             ChildIssueNumbers = childNums,
                             DatabaseId = n.DatabaseId,
+                            BlockedByCount = n.BlockedBy?.TotalCount ?? 0,
                         });
                     }
                 }
@@ -2466,7 +2478,13 @@ namespace BuildConsole.Services
             public ParentData? Parent { get; set; }
             public SubIssuesSummaryData? SubIssuesSummary { get; set; }
             public SubIssuesConnection? SubIssues { get; set; }
+            /// <summary>Git #3627 — the issue's <c>blockedBy</c> connection requested as
+            /// <c>blockedBy(first: 1) {{ totalCount }}</c>; only <see cref="BlockedByConnectionData.TotalCount"/>
+            /// is read (a cheap, label-independent "does this issue have any dependency edges?" signal).
+            /// Null on queries that don't request it (it stays 0 downstream).</summary>
+            public BlockedByConnectionData? BlockedBy { get; set; }
         }
+        private class BlockedByConnectionData { public int TotalCount { get; set; } }
         private class LabelConnection { public List<LabelNode> Nodes { get; set; } = new(); }
         private class LabelNode { public string Name { get; set; } = ""; }
         private class MilestoneData { public string? Title { get; set; } public int? Number { get; set; } }

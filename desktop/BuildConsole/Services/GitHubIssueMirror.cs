@@ -878,9 +878,10 @@ namespace BuildConsole.Services
         /// Projects v2's board-status query would have been — see the class doc comment). Upserts just
         /// that (normally tiny) changed set:
         ///   • title/state/labels/html_url/created_at/closed_at are refreshed directly from the batch.
-        ///   • blocked_by IS refreshed for any changed issue carrying the <c>blocked</c> label (or that
-        ///     just lost it), mirroring <see cref="SyncAsync"/>'s own per-blocked-issue REST fetch —
-        ///     cheap here because the batch is small.
+        ///   • blocked_by IS refreshed for EVERY changed issue (Git #3627 — no longer gated on the
+        ///     <c>blocked</c> label), so a dependency edge wired before its label lands is mirrored this
+        ///     pass instead of being stored as {} until the label catches up (#3585). Cheap here because
+        ///     the changed set is tiny and the fetch is batched (25/GraphQL, #3477).
         ///   • board_status_option_id/board_status_name are TARGETED-FETCHED for just this changed set
         ///     (Git #3343 — <see cref="GitHubApiClient.BatchGetProjectItemStatusesAsync"/>), so a
         ///     new/just-moved item gets its real board status this pass instead of sitting NULL until
@@ -975,23 +976,31 @@ namespace BuildConsole.Services
                 }
             }
 
-            // blocked_by refresh, scoped to this small changed batch only (mirrors SyncAsync's own logic).
+            // blocked_by refresh, scoped to this small changed batch only. Git #3627 — fetch real
+            // blocked_by for EVERY changed issue, NOT just ones already carrying the `blocked` label. The
+            // changed set here is the tiny since= delta (adding/removing a dependency edge bumps the
+            // issue's updated_at, so a freshly-wired edge lands this issue in `changed`), so a per-issue
+            // fetch — batched 25/GraphQL by #3477 — is cheap. This closes the incident class where a
+            // dependency edge wired before its `blocked` label was stored as {} because the label hadn't
+            // landed yet, leaving the queue to dispatch a genuinely-blocked issue (#3585). The batch
+            // returns [] for a changed issue that genuinely has no edge (fresh, correct data) and the real
+            // blocker numbers for one that does; issues past the cap, or any the batch didn't return
+            // (e.g. a PR number, or a partial GraphQL failure), fall through to haveBlockedBy=false below
+            // and PRESERVE their existing mirrored blocked_by rather than being wiped. (Unlike the full
+            // walk, which selects on the real GitBoardIssue.BlockedByCount, the since= REST shape carries
+            // no edge-count — hence the direct per-changed-issue fetch, bounded by the same cap.)
             var blockedByMap = new Dictionary<int, List<int>>();
             var blockedNumbers = changed
-                .Where(i => i.Labels.Any(l => string.Equals(l.Name, "blocked", StringComparison.OrdinalIgnoreCase)))
                 .Select(i => i.Number)
+                .Where(n => n > 0)
                 .Distinct()
                 .Take(MaxBlockedByFetchesPerSync)
                 .ToList();
-            var blockedSet = new HashSet<int>(blockedNumbers);
-            foreach (var i in changed)
-                if (!blockedSet.Contains(i.Number))
-                    blockedByMap[i.Number] = new List<int>();
             // Git #3477 — batch the blocked_by POPULATION into a handful of aliased GraphQL reads
-            // instead of one live REST call per blocked-labeled issue (the real remaining rate-limit
-            // burst that #3467's READ-side mirror move did not remove). Issues the batch didn't return
-            // keep their existing mirrored blocked_by (haveBlockedBy=false below), same as the old
-            // per-item catch preserved a single failed fetch.
+            // instead of one live REST call per issue (the real remaining rate-limit burst that #3467's
+            // READ-side mirror move did not remove). Issues the batch didn't return keep their existing
+            // mirrored blocked_by (haveBlockedBy=false below), same as the old per-item catch preserved a
+            // single failed fetch.
             if (blockedNumbers.Count > 0)
             {
                 try
@@ -1141,8 +1150,10 @@ namespace BuildConsole.Services
         ///      → every OPEN issue's number/title/state/labels/url/timestamps.
         ///   2. ONE paginated project-items sweep (<see cref="GitHubApiClient.GetAllIssueBoardStatusesAsync"/>)
         ///      → every issue's current board Status option id + name.
-        ///   3. blocked_by only for issues carrying the <c>blocked</c> label (a handful), inverted to
-        ///      derive the <c>blocking</c> direction — no per-issue call for the thousands that aren't.
+        ///   3. blocked_by only for issues that actually DECLARE a dependency edge (Git #3627 — keyed off
+        ///      the real <c>blockedBy</c> edge count carried on the board walk, NOT the <c>blocked</c>
+        ///      label), inverted to derive the <c>blocking</c> direction — still no per-issue call for the
+        ///      thousands with no edge, but an edge wired before its label is no longer stored as {}.
         /// Then upserts every open issue and marks any previously-open mirror row that is no longer in
         /// the open set as closed. Fail-safe: if the board sweep or a blocked_by fetch fails, those
         /// columns are PRESERVED (CASE-guarded) rather than wiped, and the issues walk failing aborts
@@ -1206,12 +1217,23 @@ namespace BuildConsole.Services
                 ActivityLog.Log("issue-mirror", $"sync: milestone-counts fetch failed ({ex.Message}) — preserving existing mirrored milestone counts this pass (Git #3358).");
             }
 
-            // 3. blocked_by for blocked-labeled issues only, inverted to blocking.
+            // 3. blocked_by for every issue that actually DECLARES a dependency edge, inverted to
+            // blocking. Git #3627 — the selector is the real `blockedBy` edge COUNT off the board walk
+            // (GitBoardIssue.BlockedByCount, a cheap label-independent `blockedBy(first:1){totalCount}`
+            // pulled in the same paginated fetch — zero extra requests), NOT the `blocked` LABEL. The old
+            // label gate wrote blocked_by = {} for any issue whose dependency edge was wired before its
+            // `blocked` label landed, so that edge was invisible to every mirror reader until the label
+            // caught up — the exact mechanism behind #3585 reaching bt_build_queue with no blockers (see
+            // the issue body's timeline: two blocked_by_added events, then a mirror sync that stored {}
+            // because the label wasn't on yet). Selecting by real edge count catches that case: a labeled
+            // issue with no live edge (count 0) correctly gets [], and an edge wired before its label
+            // (count > 0) is fetched regardless. Only issues with a real edge are fetched, so this stays
+            // as cheap as the old label-gated fetch — the whole open set is never fetched per-issue.
             bool blockedByPassComplete = true;
             var blockedByMap = new Dictionary<int, List<int>>();   // number -> declared blockers
             var blockingMap = new Dictionary<int, List<int>>();    // number -> what it blocks (inverse)
             var blockedNumbers = openIssues
-                .Where(i => i.Labels.Any(l => string.Equals(l.Name, "blocked", StringComparison.OrdinalIgnoreCase)))
+                .Where(i => i.BlockedByCount > 0)
                 .Select(i => i.Number)
                 .Distinct()
                 .ToList();
@@ -1219,10 +1241,11 @@ namespace BuildConsole.Services
             {
                 blockedByPassComplete = false;
                 ActivityLog.Log("issue-mirror",
-                    $"sync: {blockedNumbers.Count} blocked-labeled issues exceed the {MaxBlockedByFetchesPerSync} per-sync cap — fetching the first {MaxBlockedByFetchesPerSync}; blocking edges preserved this pass.");
+                    $"sync: {blockedNumbers.Count} edge-declaring issues exceed the {MaxBlockedByFetchesPerSync} per-sync cap — fetching the first {MaxBlockedByFetchesPerSync}; blocking edges preserved this pass.");
                 blockedNumbers = blockedNumbers.Take(MaxBlockedByFetchesPerSync).ToList();
             }
-            // Non-blocked issues genuinely have no active blockers, so record [] for them (fresh data).
+            // Issues with no declared dependency edge genuinely have no blockers, so record [] for them
+            // (fresh data) — Git #3627: this is now keyed off the real edge count, not the label.
             var blockedSet = new HashSet<int>(blockedNumbers);
             foreach (var i in openIssues)
                 if (!blockedSet.Contains(i.Number))
