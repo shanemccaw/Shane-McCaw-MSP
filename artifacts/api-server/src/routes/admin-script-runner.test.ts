@@ -93,6 +93,9 @@ function makeMockDb() {
 mock.module("@workspace/db", {
   namedExports: {
     db: makeMockDb(),
+    // Raw pg pool — used by other routes in the same file for pool.query();
+    // not exercised by these tests, so an empty-result stub is enough.
+    pool: { query: async () => ({ rows: [] }) },
     // Tables exported as sentinel objects so the route can reference them
     kanbanTasksTable:          mockKanbanTasksTable,
     runbookJobHistoryTable:    mockRunbookJobHistoryTable,
@@ -105,6 +108,7 @@ mock.module("@workspace/db", {
     projectsTable:                {},
     powershellScriptsTable:       {},
     scriptModulesTable:           {},
+    scriptDownloadTokensTable:    {},
   },
 });
 

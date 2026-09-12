@@ -46,7 +46,20 @@ function makeMockDb() {
       }),
     }),
     insert: (_table: unknown) => ({
-      values: async (_vals: unknown) => [],
+      // Awaitable directly (`await db.insert(t).values(v)`), but also chainable
+      // with `.returning()` / `.onConflictDoUpdate().returning()` — both real
+      // shapes exercised transitively via session-tracking.ts / exception-tracker.ts.
+      values: (_vals: unknown) => {
+        const result = Promise.resolve([]) as Promise<unknown[]> & {
+          returning: (cols?: unknown) => Promise<unknown[]>;
+          onConflictDoUpdate: (opts: unknown) => { returning: (cols?: unknown) => Promise<unknown[]> };
+        };
+        result.returning = async (_cols?: unknown) => [];
+        result.onConflictDoUpdate = (_opts: unknown) => ({
+          returning: async (_cols?: unknown) => [],
+        });
+        return result;
+      },
     }),
     update: (_table: unknown) => ({
       set: (_vals: unknown) => ({
@@ -75,6 +88,15 @@ mock.module("@workspace/db", {
     mspAuditLogsTable: {},
     mspServiceAccountsTable: {},
     tenantsTable: {},
+    printTokensTable: {},
+    documentPrintTokensTable: {},
+    signupExchangeTokensTable: {},
+    clientServicesTable: {},
+    servicesTable: {},
+    platformLogStreamTable: {},
+    exceptionGroupsTable: {},
+    exceptionOccurrencesTable: {},
+    userSessionsTable: {},
   },
 });
 
@@ -102,7 +124,10 @@ mock.module("../lib/portal-url.ts", {
 
 // auth.ts now uses .ts extensions on local imports — mocks must match
 mock.module("./mfa.ts", {
-  namedExports: { signMfaToken: () => "mfa-token" },
+  namedExports: {
+    signMfaToken: () => "mfa-token",
+    getActiveMfaMethods: async (_userId: number) => [],
+  },
 });
 
 mock.module("../lib/event-bus.ts", {
@@ -193,11 +218,14 @@ const fakeTargetUser = {
   addressZip: null,
 };
 
+// Represents the row getMspClaims() selects from usersTable
+// ({ mspRole, mspId, tenantId }) — customerId in the JWT comes from
+// usersTable.tenantId post-refactor, not a separate msp_users lookup.
 const fakeMspUserRow = {
   id: 200,
   userId: TARGET_USER_ID,
   mspId: TARGET_MSP_ID,
-  customerId: TARGET_CUSTOMER_ID,
+  tenantId: TARGET_CUSTOMER_ID,
   mspRole: LEGACY_ROLE.customer,
   isActive: true,
 };

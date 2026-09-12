@@ -74,6 +74,9 @@ mock.module("@workspace/db", {
     clientServicesTable: {},
     servicesTable: {},
     platformLogStreamTable: {},
+    printTokensTable: {},
+    documentPrintTokensTable: {},
+    signupExchangeTokensTable: {},
   },
 });
 
@@ -100,7 +103,10 @@ mock.module("../lib/portal-url.ts", {
 });
 
 mock.module("./mfa.ts", {
-  namedExports: { signMfaToken: () => "mfa-token" },
+  namedExports: {
+    signMfaToken: () => "mfa-token",
+    getActiveMfaMethods: async (_userId: number) => [],
+  },
 });
 
 mock.module("../lib/event-bus.ts", {

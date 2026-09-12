@@ -52,12 +52,45 @@ mock.module("@workspace/db", {
     mspDlqStoreTable: {},
     mspsTable: { id: "id_col" },
     tenantsTable: { id: "id_col", mspId: "msp_id_col", status: "status_col", customerName: "customer_name_col", createdAt: "ca_col" },
+    // Remaining tables/values pulled in transitively via msp-v1.ts's import
+    // graph (portal workflow engine, AI billing, RBAC, webhooks, etc.) —
+    // not exercised by these msp-api-foundation tests, sentinel stubs only.
+    pool: { query: async () => ({ rows: [] }) },
+    aiBalanceLedgerTable: {},
+    aiUsageEventsTable: {},
+    customerFeatureRoleMappingTable: {},
+    customerRolesTable: {},
+    customerUserRolesTable: {},
+    exceptionGroupsTable: {},
+    exceptionOccurrencesTable: {},
+    mspAiPurchasesTable: {},
+    mspEventStoreTable: {},
+    mspFeatureRoleMappingTable: {},
+    mspRolesTable: {},
+    mspStaffCustomerScopesTable: {},
+    mspSubscriptionsTable: {},
+    mspUserRolesTable: {},
+    outboundWebhookDeliveriesTable: {},
+    outboundWebhooksTable: {},
+    pendingApprovalsTable: {},
+    platformLogStreamTable: {},
+    portalWfIdempotencyTable: {},
+    portalWfNodeOutputsTable: {},
+    portalWfOperatorTasksTable: {},
+    portalWfRunsTable: {},
+    portalWfStartMappingsTable: {},
+    portalWfWorkflowsTable: {},
+    servicesTable: {},
+    usersTable: {},
+    wfDefinitionsTable: {},
+    wfRunsTable: {},
   },
 });
 
 mock.module("drizzle-orm", {
   namedExports: {
     and: (..._args: unknown[]) => "and_clause",
+    or: (..._args: unknown[]) => "or_clause",
     eq: (_c: unknown, _v: unknown) => "eq_clause",
     ne: (_c: unknown, _v: unknown) => "ne_clause",
     desc: (_c: unknown) => "desc_clause",
@@ -68,6 +101,10 @@ mock.module("drizzle-orm", {
     gt: (_c: unknown, _v: unknown) => "gt_clause",
     inArray: (_c: unknown, _v: unknown) => "inArray_clause",
     lte: (_c: unknown, _v: unknown) => "lte_clause",
+    lt: (_c: unknown, _v: unknown) => "lt_clause",
+    gte: (_c: unknown, _v: unknown) => "gte_clause",
+    like: (_c: unknown, _v: unknown) => "like_clause",
+    sum: (_c: unknown) => "sum_clause",
   },
 });
 
