@@ -175,6 +175,34 @@ paste, request, or reconstruct a raw PAT.
 If `shanes-git` isn't connected in a given chat, say so plainly and ask to have it connected —
 don't fall back to a raw PAT + `bash_tool`/`curl` as a workaround.
 
+### Reading the repository's actual code from a chat (Git #3697)
+
+Retiring PAT-in-chat also removed the only way a chat had to read the repo at all — the raw PAT
+was what let it `git clone`/`curl` a now-private repository. For a while nothing replaced that,
+and a chat connected only to `shanes-git` could manage the board while being unable to see a
+single line of the code it was discussing. **Three real tools close that gap, and they are the
+correct way to read code from a chat:**
+
+- **`get_file_contents(path, ref?, repo?)`** — one real file's actual text. Repo-root-relative,
+  case-sensitive path; `ref` optionally pins a branch/tag/commit. A file over GitHub's ~1MB
+  inline limit, or a binary file, comes back as `content: null` with `truncated`/`binary` set
+  and a real `downloadUrl` — it never silently returns empty or mangled text as if it were the
+  file.
+- **`list_directory(path?, ref?, repo?)`** — one directory's real entries, for navigating to a
+  path before reading it. Omit `path` for the repo root; non-recursive.
+- **`search_code(query, perPage?, page?, ref?, repo?)`** — **check the `source` field.**
+  `"code-search"` is GitHub's own index (real content search, with matching fragments).
+  `"repo-tree-paths"` is a real path search over the repo's git tree, used when that index
+  returns nothing — which on `shanemccaw/Shane-McCaw-MSP` is *always*, because GitHub genuinely
+  does not have this repo indexed (`total_count: 0` with `incomplete_results: true` on every
+  query tried). **So an empty `search_code` result on this repo is not evidence the code doesn't
+  exist** — it means no file *path* matched. Search content by narrowing with `list_directory`
+  and reading candidates with `get_file_contents`.
+
+All three run on the same server-side `GITHUB_MCP_PAT`, are read-only (no `context` argument),
+and take the same optional `repo`. A chat that needs to read code asks for these — it does not
+ask for a PAT, and it does not treat "I can't see the repo" as a limitation to work around.
+
 ## Mandatory: file every finding as its own GitHub issue
 
 **A build that discovers a real problem and does not file it has lost the finding.** Mentioning

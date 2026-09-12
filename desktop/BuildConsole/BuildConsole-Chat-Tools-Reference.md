@@ -74,6 +74,56 @@ into a chat message or a `bash_tool` `curl` call for anything the connector alre
 - `get_recent_activity` — the audit trail of what each connected chat/session has actually done
   through this server.
 
+### Reading the actual code — `get_file_contents` / `list_directory` / `search_code` (Git #3697)
+
+Everything listed above is issue-tracker and board metadata. Until #3697 that was the *entire*
+tool surface, which meant a chat connected only to `shanes-git` could manage the board but could
+not read a single line of the code it was discussing. That was survivable only while a chat could
+be handed a raw PAT and `git clone` the repo itself — once the repo went private and PAT-in-chat
+was retired (#3556/#3559), nothing replaced the capability. **These three tools are the
+replacement, and they are how a chat reads real repository code. Do not ask for a PAT to do it.**
+
+All three use the same server-side `GITHUB_MCP_PAT` every write tool already authenticates with,
+so the private repo is readable without any credential entering chat. All three are read-only, so
+none takes `context`. All three take the optional `repo` parameter below.
+
+- `get_file_contents(path, ref?, repo?)` — one real file's actual text. `path` is
+  repo-root-relative and **case-sensitive**; `ref` pins a branch/tag/commit SHA (default branch
+  when omitted). Real text comes back in `content`.
+
+  It never hands back text it didn't actually get. A file over GitHub's ~1MB Contents API inline
+  limit returns `content: null, truncated: true` with the real byte size and a real `downloadUrl`
+  — **not** an empty string that looks like an empty file. A binary file returns
+  `content: null, binary: true` rather than a mangled UTF-8 decoding. A directory, a symlink, a
+  submodule, or a missing path each get their own plain-English message naming the real path.
+
+- `list_directory(path?, ref?, repo?)` — one directory's real entries (name, path, type, size).
+  Omit `path` for the repo root. Non-recursive — call again with a subdirectory's path. This is
+  how you navigate to a path before reading it; `get_file_contents` is only useful once you know
+  one. Capped by GitHub at 1000 entries per directory, reported as `truncated: true` if hit.
+
+- `search_code(query, perPage?, page?, ref?, repo?)` — GitHub code-search syntax, repo scoped in
+  automatically. **Read the `source` field on the result**, because there are two real backends:
+
+  - `source: "code-search"` — GitHub's own code-search index. Real *content* search, with real
+    matching fragments per hit. Default branch only.
+  - `source: "repo-tree-paths"` — a real *path* search over the repository's whole git tree,
+    used when the index returns nothing usable.
+
+  **The fallback exists because GitHub's code-search index genuinely returns nothing for
+  `shanemccaw/Shane-McCaw-MSP`** — `total_count: 0` with `incomplete_results: true` on every query
+  tried (verified 2026-09-11 over seven distinct queries and three repeats; the identical call
+  against a public repo returned real hits). So in practice, on this repo today, `search_code`
+  answers from the tree and matches **file paths, not file contents**. An empty result from it is
+  *not* evidence the code doesn't exist — it means no path matched. To search content, narrow with
+  `list_directory` and read candidates with `get_file_contents`. The result's own `note` says all
+  of this every time; the limitation is tracked as its own finding under Feature #3377.
+
+  Path-search qualifiers that genuinely work: `path:`, `filename:` (with `*`), `extension:`.
+  Anything a path alone can't answer (`language:`, `in:file`, …) is reported back in
+  `ignoredQualifiers` rather than silently dropped, and a query made only of those returns nothing
+  rather than the entire repo.
+
 ### Optional `repo` parameter (Git #3580, Feature #3378: Multi-Repo Support)
 
 Every repo-scoped tool listed above now takes an optional `repo` argument, `"owner/repo"` shape.
@@ -113,7 +163,8 @@ A missing or empty `context` is rejected before any GitHub API call fires.
 
 Read-only tools (`get_issue`, `search_issues`, `list_sub_issues`, `list_blocked_by`,
 `list_comments`, `get_recent_activity`, `server_status`, `github_whoami`, `get_board_status`,
-`list_board_column`) do not take `context` — nothing to trace on a read.
+`list_board_column`, `get_file_contents`, `list_directory`, `search_code`) do not take `context` —
+nothing to trace on a read.
 
 ### Connecting
 
