@@ -941,8 +941,8 @@ router.post("/auth/impersonate-exchange", async (req: Request, res: Response) =>
 
   const now = new Date();
 
-  if (!record || record.usedAt || record.expiresAt < now) {
-    res.status(401).json({ error: "Invalid, expired, or already-used impersonation token" });
+  if (!record || record.usedAt || record.expiresAt < now || record.revokedAt) {
+    res.status(401).json({ error: "Invalid, expired, revoked, or already-used impersonation token" });
     return;
   }
 

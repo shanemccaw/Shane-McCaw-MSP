@@ -31,11 +31,11 @@ import {
   mspOverridesTable,
   mspPlanCapabilitiesTable,
   mspRefreshTokensTable,
-  mspImpersonationTokensTable,
+  impersonationTokensTable,
   mspAuditLogsTable,
   servicesTable,
 } from "@workspace/db";
-import { eq, and, desc, asc, count, sql, ilike, or, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, desc, asc, count, sql, ilike, or, isNull, isNotNull, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import { randomUUID } from "crypto";
@@ -483,6 +483,14 @@ router.delete(
 );
 
 // ── Sessions (refresh tokens + impersonation tokens) ──────────────────────────
+//
+// Impersonation sessions read from the real `impersonation_tokens` table (the one
+// every impersonation-minting route actually writes: /admin/impersonate/:userId,
+// /admin/msps/:mspId/impersonate, the AD/testbed portal-mirror route, and the MSP
+// staff customer-impersonate route) — NOT `msp_impersonation_tokens`, which nothing
+// in the codebase ever inserts into and made this list permanently empty (Git #3680).
+// Scoped to this MSP by joining the target (clientUserId) against usersTable.mspId,
+// since impersonation_tokens itself has no targetMspId column.
 
 router.get("/admin/msps/:mspId/sessions", requireAdmin, async (req: Request, res: Response) => {
   const mspId = parseInt(p(req.params["mspId"]), 10);
@@ -512,16 +520,26 @@ router.get("/admin/msps/:mspId/sessions", requireAdmin, async (req: Request, res
       )
       .orderBy(desc(mspRefreshTokensTable.issuedAt))
       .limit(50),
+    // Deliberately excludes the raw `token` column — this is an admin listing, and
+    // the live single-use token value must never be exposed on the wire.
     db
-      .select()
-      .from(mspImpersonationTokensTable)
+      .select({
+        id: impersonationTokensTable.id,
+        actorUserId: impersonationTokensTable.adminUserId,
+        targetUserId: impersonationTokensTable.clientUserId,
+        issuedAt: impersonationTokensTable.createdAt,
+        expiresAt: impersonationTokensTable.expiresAt,
+        usedAt: impersonationTokensTable.usedAt,
+        revokedAt: impersonationTokensTable.revokedAt,
+      })
+      .from(impersonationTokensTable)
       .where(
         and(
-          eq(mspImpersonationTokensTable.targetMspId, mspId),
-          isNull(mspImpersonationTokensTable.revokedAt),
+          inArray(impersonationTokensTable.clientUserId, userIds),
+          isNull(impersonationTokensTable.revokedAt),
         ),
       )
-      .orderBy(desc(mspImpersonationTokensTable.issuedAt))
+      .orderBy(desc(impersonationTokensTable.createdAt))
       .limit(20),
   ]);
 
@@ -543,10 +561,31 @@ router.delete(
         .set({ revokedAt: new Date() })
         .where(eq(mspRefreshTokensTable.tokenHash, sessionId));
     } else if (type === "impersonation") {
-      await db
-        .update(mspImpersonationTokensTable)
-        .set({ revokedAt: new Date() })
-        .where(eq(mspImpersonationTokensTable.tokenId, sessionId));
+      const impersonationSessionId = parseInt(sessionId, 10);
+      if (isNaN(impersonationSessionId)) { apiError(res, 400, "Invalid session id"); return; }
+
+      // Verify the token's target actually belongs to this MSP before revoking —
+      // impersonation_tokens has no targetMspId of its own to scope the WHERE by.
+      const [record] = await db
+        .select({ clientUserId: impersonationTokensTable.clientUserId })
+        .from(impersonationTokensTable)
+        .where(eq(impersonationTokensTable.id, impersonationSessionId))
+        .limit(1);
+
+      if (record) {
+        const [targetUser] = await db
+          .select({ mspId: usersTable.mspId })
+          .from(usersTable)
+          .where(eq(usersTable.id, record.clientUserId))
+          .limit(1);
+
+        if (targetUser?.mspId === mspId) {
+          await db
+            .update(impersonationTokensTable)
+            .set({ revokedAt: new Date() })
+            .where(eq(impersonationTokensTable.id, impersonationSessionId));
+        }
+      }
     } else {
       apiError(res, 400, "type must be 'refresh' or 'impersonation'");
       return;

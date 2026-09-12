@@ -5,7 +5,10 @@
 -- early by a PlatformAdmin. This adds the missing column; the read route and the
 -- revoke handler are switched to the real table in the same commit.
 
-ALTER TABLE impersonation_tokens ADD COLUMN IF NOT EXISTS revoked_at timestamptz;
+-- Naive timestamp (no tz) to match every other column already on this table
+-- (expires_at, used_at, created_at) — see the drizzle-naive-vs-timestamptz-drift
+-- lesson; a mixed table is its own bug class.
+ALTER TABLE impersonation_tokens ADD COLUMN IF NOT EXISTS revoked_at timestamp;
 
 INSERT INTO simulator_migration_runs (filename, ran_at)
 VALUES ('2026-09-11-impersonation-tokens-revoked-at-3680.sql', now())
