@@ -732,7 +732,9 @@
                      MainWindow.xaml.cs so the two never drift apart. Click reuses the queue
                      panel's own next-to-run popup. -->
                 <StatusBarItem Grid.Column="2">
-                    <TextBlock x:Name="GlobalQueueStatusText" Text="" VerticalAlignment="Center" Cursor="Hand"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="GlobalQueueStatusText" Text="" VerticalAlignment="Center" Cursor="Hand"/>
+                    </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="3"/>
                 <!-- Claude usage meter: always-visible percent used, with a smoothly-ticking
