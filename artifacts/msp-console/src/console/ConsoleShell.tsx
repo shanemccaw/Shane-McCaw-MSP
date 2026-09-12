@@ -14,6 +14,7 @@ import { Diagnostics } from "./modules/Diagnostics";
 import { Remediation } from "./modules/Remediation";
 import { Webhooks } from "./modules/Webhooks";
 import { DataRights } from "./modules/DataRights";
+import { Documents } from "./modules/Documents";
 import { Team } from "./modules/Team";
 import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
 import { ScopeSla } from "./modules/ScopeSla";
@@ -259,6 +260,20 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "page" && sel.page === "bg") {
     return <BreakGlassPage customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "hub") {
+    // Documents (#2647), README screen 22 — the tenant-scoped hub, "Ours" and
+    // "SharePoint connectors" tabs all mount from this one shared component.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    return <Documents scopeCustomerId={sel.tenant} scopeCustomerName={customer?.name} initialTab="hub" />;
+  }
+  if (sel.kind === "msp" && sel.page === "docs") {
+    // Documents (#2647), README screen 32 — the MSP-wide library, unscoped.
+    return <Documents initialTab="hub" />;
+  }
+  if (sel.kind === "msp" && sel.page === "connectors") {
+    // Documents (#2647), README screen 33 — SharePoint connectors, unscoped.
+    return <Documents initialTab="connectors" />;
   }
   if (sel.kind === "msp" && sel.page === "sops") {
     return <SopsPage />;

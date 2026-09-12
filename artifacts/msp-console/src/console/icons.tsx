@@ -41,6 +41,8 @@ import {
   TrendingUp, Sparkles,
   // Scope and SLA (#2656)
   Timer, MoveDiagonal, Calculator, TimerOff, ChartNoAxesColumn,
+  // Documents (#2647)
+  FolderOpen,
   type LucideIcon,
 } from "lucide-react";
 
@@ -187,6 +189,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   calculator: Calculator,
   "timer-off": TimerOff,
   "chart-no-axes-column": ChartNoAxesColumn,
+  // Documents (#2647)
+  "folder-open": FolderOpen,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});
