@@ -137,7 +137,7 @@ export async function assertDeleteAllowed(
     entityType: target.recordType,
     entityId: target.recordId,
     entityLabel: target.label ?? null,
-    clientId: target.tenantId,
+    clientId: actor.userId ?? null,
     metadata: { blockers: result.blockers, message: result.message },
   });
 
@@ -287,7 +287,7 @@ export async function softDelete(input: SoftDeleteInput): Promise<RecordDeletion
     entityType: input.recordType,
     entityId: input.recordId,
     entityLabel: snapshot.label,
-    clientId: snapshot.tenantId,
+    clientId: input.actor.userId ?? null,
     metadata: {
       reason,
       stage,
@@ -371,7 +371,7 @@ export async function restore(input: {
     entityType: row.recordType,
     entityId: row.recordId,
     entityLabel: row.recordLabel,
-    clientId: row.tenantId,
+    clientId: input.actor.userId ?? null,
     metadata: { reason, restoredFromStage: row.stage },
   });
 
@@ -454,7 +454,7 @@ export async function requestAcceleration(input: {
     entityType: row.recordType,
     entityId: row.recordId,
     entityLabel: row.recordLabel,
-    clientId: row.tenantId,
+    clientId: input.actor.userId ?? null,
     metadata: { reasonKind: input.reasonKind, reason, supersededBy: input.supersededBy ?? null },
   });
 
@@ -503,7 +503,7 @@ export async function decideAcceleration(input: {
     entityType: row.recordType,
     entityId: row.recordId,
     entityLabel: row.recordLabel,
-    clientId: row.tenantId,
+    clientId: input.actor.userId ?? null,
     metadata: { note: input.note ?? null },
   });
 
@@ -567,7 +567,7 @@ export async function purgeNow(input: {
     entityType: row.recordType,
     entityId: row.recordId,
     entityLabel: row.recordLabel,
-    clientId: row.tenantId,
+    clientId: input.actor.userId ?? null,
     metadata: { cause: input.cause, deletedAt: row.deletedAt, deleteReason: row.deleteReason },
   });
 
