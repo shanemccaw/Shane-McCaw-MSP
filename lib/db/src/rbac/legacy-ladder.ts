@@ -301,7 +301,8 @@ export function ladderCapabilityLabel(role: LegacyRole): string {
 export function ladderCapabilityDescription(role: LegacyRole): string {
   return (
     `Transitional transcription of the ROLE_ORDER ladder in ` +
-    `artifacts/api-server/src/middlewares/requireAuth.ts:80-93 — true exactly when ` +
+    `artifacts/api-server/src/middlewares/requireAuth.ts:115-123, 135-138 as of 3dddd4b26^ ` +
+    `(ROLE_ORDER, roleIndex, pre-#2460) — true exactly when ` +
     `roleIndex(effective role) >= roleIndex("${role}"). Seeded as data by #2457, read by ` +
     `#2458 when requireRole's decision source moves onto the evaluator, retired with ` +
     `MSP_ROLES by #2460.`

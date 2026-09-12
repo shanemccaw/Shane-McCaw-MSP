@@ -13,7 +13,8 @@
 -- Today's model is two mechanisms bolted together:
 --
 --   1. A privilege LADDER — `ROLE_ORDER` in
---      artifacts/api-server/src/middlewares/requireAuth.ts:80-93 — where
+--      artifacts/api-server/src/middlewares/requireAuth.ts:115-123, 135-138 as of
+--      3dddd4b26^ (pre-#2460) — where
 --      `requireRole(min)` is `roleIndex(effective) >= roleIndex(min)`.
 --   2. THREE per-user boolean columns bolted on beside it, because the ladder
 --      structurally cannot express a sideways permission: `can_approve_purchases`,
@@ -92,7 +93,8 @@ SELECT 'msp',
        'legacy-ladder',
        'Passes requireRole("' || role_key || '")',
        'Transitional transcription of the ROLE_ORDER ladder in '
-         || 'artifacts/api-server/src/middlewares/requireAuth.ts:80-93 — true exactly when '
+         || 'artifacts/api-server/src/middlewares/requireAuth.ts:115-123, 135-138 as of 3dddd4b26^ '
+         || '(ROLE_ORDER, roleIndex, pre-#2460) — true exactly when '
          || 'roleIndex(effective role) >= roleIndex("' || role_key || '"). Seeded as data by #2457, read by '
          || '#2458 when requireRole''s decision source moves onto the evaluator, retired with '
          || 'MSP_ROLES by #2460.',
