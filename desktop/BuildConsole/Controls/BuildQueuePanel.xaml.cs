@@ -1785,9 +1785,15 @@ namespace BuildConsole.Controls
 
         private void BtnMatrixChip_Click(object sender, MouseButtonEventArgs e)
         {
+            // Git #3825 — CS0162 here is real but not dead code: the compiler proves the code
+            // below unreachable BECAUSE BuildMatrixDisabled is a const, but the flag is a
+            // deliberate, temporary gate (see its own comment above) meant to flip back to
+            // false once the app is confirmed stable — narrowly suppressed, not project-wide.
+#pragma warning disable CS0162
             if (BuildMatrixDisabled) return;
             _matrixDrawerOpen = !_matrixDrawerOpen;
             RenderMatrixDrawer();
+#pragma warning restore CS0162
         }
 
         private void RenderMatrixDrawer()
@@ -1797,6 +1803,8 @@ namespace BuildConsole.Controls
                 if (MatrixDrawer != null) MatrixDrawer.Visibility = Visibility.Collapsed;
                 return;
             }
+            // Git #3825 — same BuildMatrixDisabled temporary-gate rationale as BtnMatrixChip_Click above.
+#pragma warning disable CS0162
             if (MatrixDrawer == null || MatrixChipCount == null) return;
             MatrixDrawer.Visibility = _matrixDrawerOpen ? Visibility.Visible : Visibility.Collapsed;
             if (MatrixChipCaret != null)
@@ -1860,6 +1868,7 @@ namespace BuildConsole.Controls
                 keys[slot] = MatrixSlotKey(slot, slotItems[slot]);
             }
             _matrixSlotCards.Reconcile(keys, slot => MatrixSlotCard(slot, slotItems[slot]));
+#pragma warning restore CS0162
         }
 
         /// <summary>Git #3689 — everything <see cref="MatrixSlotCard"/> displays for a slot. Equal keys

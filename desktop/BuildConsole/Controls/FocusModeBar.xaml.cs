@@ -23,14 +23,13 @@ namespace BuildConsole.Controls
 
         /// <summary>The active-milestone chip was clicked — open its detail tab.</summary>
         public event Action<int>? MilestoneOpenRequested;
-        /// <summary>The achievements chip was clicked — show the earned list.</summary>
-        public event Action? AchievementsRequested;
-        /// <summary>An in-progress chat chip was clicked in the bar — open/switch to that chat tab.</summary>
-        public event Action<PersistedInProgressChat>? InProgressChatActivated;
-        /// <summary>Git #2663 — "Replace with active tab" was chosen on an in-progress chip:
-        /// MainWindow unmarks this chip's chat and marks whatever chat tab is currently active,
-        /// in one action (kills the old open-old-tab → unmark → find-new-tab → mark round trip).</summary>
-        public event Action<PersistedInProgressChat>? InProgressChatReplaceRequested;
+        // Git #3825 — AchievementsRequested/InProgressChatActivated/InProgressChatReplaceRequested
+        // were removed here: #3566 already deleted the PointsChip/AchvChip/InProgressStrip UI that
+        // used to raise them (nothing in this bar's current XAML can fire them), leaving them as
+        // real CS0067 "event never used" warnings. #3566 kept them declared, and MainWindow.FocusMode.cs
+        // subscribed, because deleting them meant touching that file too — out of scope then, in
+        // scope for this issue. See MainWindow.FocusMode.cs (Git #3825) for the matching removal of
+        // the subscriptions and their now-orphaned handlers.
         /// <summary>Git #2708 — the "Open Last Tabs" chip was clicked: MainWindow owns the real
         /// remembered-tab list (_chatTabsAtLaunch) and the reopen logic, so this bar only raises intent.</summary>
         public event Action? OpenLastTabsRequested;

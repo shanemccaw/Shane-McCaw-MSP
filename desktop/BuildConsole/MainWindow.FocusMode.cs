@@ -27,18 +27,12 @@ namespace BuildConsole
             {
                 _focusBar = new FocusModeBar();
                 _focusBar.MilestoneOpenRequested += OnFocusMilestoneOpen;
-                _focusBar.AchievementsRequested += OnFocusAchievementsRequested;
-                _focusBar.InProgressChatActivated += item =>
-                {
-                    var boardChat = LeftSidebar.FindChatByConversationId(item.ConversationId) ?? new BuildConsole.Services.BoardChat
-                    {
-                        ConversationId = item.ConversationId,
-                        Title = item.Title,
-                        ClaudeUrl = item.ClaudeUrl
-                    };
-                    OpenChatTab(boardChat, boardChat.IssueGithubNumber);
-                };
-                _focusBar.InProgressChatReplaceRequested += ReplaceInProgressChatWithActiveTab;
+                // Git #3825 — AchievementsRequested/InProgressChatActivated/InProgressChatReplaceRequested
+                // subscriptions removed: #3566 deleted the PointsChip/AchvChip/InProgressStrip UI in
+                // FocusModeBar that used to raise them, so FocusModeBar no longer declares these events
+                // (see its own Git #3825 comment). Their handlers (OnFocusAchievementsRequested,
+                // ReplaceInProgressChatWithActiveTab, the inline InProgressChatActivated lambda) were
+                // genuinely dead — unreachable from any real UI — and removed with them.
                 // Git #2708 — "Open Last Tabs" reuses the SAME real reopen-all logic #2707 built
                 // (Home_ReopenAllRequested → Home_ResumeChatRequested per tab → OpenChatTab), fed
                 // the same _chatTabsAtLaunch list #2707's Home "Reopen All" button consumes.
@@ -66,55 +60,6 @@ namespace BuildConsole
             catch (Exception ex)
             {
                 ActivityLog.Log("focus-mode", $"InitFocusMode failed: {ex.Message}");
-            }
-        }
-
-        /// <summary>Git #2663 — the real one-action "Replace" behind an in-progress chip's
-        /// right-click "Replace with active tab": unmark the chip's own chat and mark whatever
-        /// chat tab is currently active, resolving the active tab's identity through the ONE
-        /// shared resolver (<see cref="ResolveChatIdentity"/>) so it stores the chat that tab
-        /// really shows. Kills the old open-old-tab → unmark → find-new-tab → mark round trip
-        /// Shane described.</summary>
-        private void ReplaceInProgressChatWithActiveTab(PersistedInProgressChat oldItem)
-        {
-            try
-            {
-                var active = GetActiveChatTab();
-                if (active == null)
-                {
-                    ToastEngine.Warning("Replace In Progress",
-                        "No active chat tab — select the chat tab you want to mark In Progress, then try Replace again.");
-                    return;
-                }
-                var (cid, url) = ResolveChatIdentity(active, null, null);
-                if (string.IsNullOrEmpty(cid))
-                {
-                    ToastEngine.Warning("Replace In Progress",
-                        "The active tab isn't showing a claude.ai conversation yet — a brand-new chat has no conversation id until its first message is sent.");
-                    return;
-                }
-                if (string.Equals(cid, oldItem.ConversationId, StringComparison.OrdinalIgnoreCase))
-                {
-                    ToastEngine.Info("Replace In Progress", "That chat is already the active tab — nothing to replace.");
-                    return;
-                }
-
-                var svc = FocusModeService.Instance;
-                // Unmark the old (a chip is In Progress by construction) then mark the new,
-                // both through the same service the four entry points use.
-                if (svc.IsChatInProgress(oldItem.ConversationId))
-                    svc.ToggleChatInProgress(oldItem.ConversationId, oldItem.Title, oldItem.ClaudeUrl);
-                var newTitle = (active.Tag as BoardChat)?.Title ?? TabTitleOf(active);
-                if (!svc.IsChatInProgress(cid))
-                    svc.ToggleChatInProgress(cid, newTitle, url);
-
-                ToastEngine.Success("Replace In Progress", $"Now tracking \"{newTitle}\" (was \"{oldItem.Title}\")");
-                ActivityLog.Log("focus-mode",
-                    $"Replaced in-progress chat \"{oldItem.Title}\" ({oldItem.ConversationId}) with active tab \"{newTitle}\" ({cid})");
-            }
-            catch (Exception ex)
-            {
-                ToastEngine.Error("Replace In Progress", $"Failed to replace: {ex.Message}");
             }
         }
 
@@ -188,17 +133,5 @@ namespace BuildConsole
             _focusBar?.SetUnrestoredTabCount(0);
         }
 
-        private void OnFocusAchievementsRequested()
-        {
-            var list = FocusModeService.Instance.Achievements.OrderByDescending(a => a.UnlockedAt).ToList();
-            if (list.Count == 0)
-            {
-                ToastEngine.Info("🎯 Focus", "No achievements yet — close some issues under your milestone.");
-                return;
-            }
-            var body = string.Join("\n", list.Take(8).Select(a => $"{a.Emoji} {a.Title} — {a.Detail}"));
-            ToastEngine.Info($"🎯 Focus achievements ({list.Count}) · {FocusModeService.Instance.Points} pts", body,
-                             TimeSpan.FromSeconds(8));
-        }
     }
 }
