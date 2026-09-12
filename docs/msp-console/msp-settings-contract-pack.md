@@ -14,6 +14,15 @@ preferences gap Shane flagged (no per-MSP-staff-user preference surface existed 
 this build). Everything else in this pack is unchanged from the 2026-09-06 extraction; only §0, a
 new §1l, §7, and this note were touched.
 
+**Updated 2026-09-11 (Git #3686):** re-verified the auth-model framing (§0), the `mspRole` enum
+row (§1e), the invite-role note (§1k) and the role-hierarchy row (§2) against `main` — all four had
+drifted since the pack's original 2026-09-06 generation. `requireRole()`/`ROLE_ORDER` were removed
+outright by #2460; every route here now gates on `requireCapability("ladder.*")` against seeded
+`msp_feature_role_mapping` rows. The role hierarchy itself is now **6 values**, not 7: Git #3590
+(landed the same week as this correction) renamed `CustomerUser`→`Customer` and folded the old
+`Assessment` rung into `Free`. No route behavior, wire shape, or endpoint changed — this is a
+documentation-only correction; the underlying contract in §1 was already accurate.
+
 **The one fact that changes how Design must read every field below:** the entire backend — 41
 routes across 12 functional groups, ~1,860 lines — is real, finished, and live on `main`
 (`artifacts/api-server/src/routes/msp-settings.ts`), but **`artifacts/msp-console` (the MSP
@@ -31,14 +40,23 @@ backend is finished, so the pack is not documenting absence.
 
 All 41 routes live in one file, `artifacts/api-server/src/routes/msp-settings.ts`, registered at
 `artifacts/api-server/src/routes/index.ts:153,478`. Every route (except the OAuth callback) is
-gated `requireRole("MSPAdmin")` — a **floor**, not an exact match: `requireRole()` does a
-`ROLE_ORDER` index comparison (`requireAuth.ts:81-89,206+`), so `PlatformAdmin` (the one role above
-`MSPAdmin` in the 7-value hierarchy `Assessment < Free < CustomerUser < ServiceAccount <
-MSPOperator < MSPAdmin < PlatformAdmin`) also passes every gate in this module. `MSPOperator` does
+gated `requireCapability("ladder.msp-admin")` — a **floor**, not an exact match, but not the
+`requireRole()`/`ROLE_ORDER` index comparison a prior version of this pack described either:
+`requireRole()` and its backing `ROLE_ORDER` array were removed outright by #2460
+(`requireAuth.ts:84-118`, a comment block titled *"MSP privilege ladder — RETIRED HERE"*).
+`requireCapability()` (`requireAuth.ts:271-307`) instead asks a capability-evaluator lookup —
+`userClearsLadderCapability()` (`artifacts/api-server/src/middlewares/rbac-ladder.ts`) — against
+the seeded `msp_feature_role_mapping` rows. `ladder.msp-admin`'s seeded allow set is `{MSPAdmin,
+PlatformAdmin}` (`LADDER_CAPABILITY_KEYS`, `lib/db/src/rbac/legacy-ladder.ts:247-253`), so
+`PlatformAdmin` (the one rung above `MSPAdmin` in the current **6-value** hierarchy `Free <
+Customer < ServiceAccount < MSPOperator < MSPAdmin < PlatformAdmin`, `LEGACY_ROLE_ORDER` at
+`lib/db/src/rbac/legacy-ladder.ts:46-53`) also passes every gate in this module. `MSPOperator` does
 **not** pass — every write and every read here is MSPAdmin-or-above only, with two documented
 exceptions: Group A's alias GET (`ladder.free`, open to every authenticated role) and Group L's
 notification-preferences pair (`ladder.msp-operator` — deliberately open to MSPOperator too, since
-these are a staff member's own preferences, not an MSP-level admin setting).
+these are a staff member's own preferences, not an MSP-level admin setting). (Git #3590, landed
+this week: the old bottom rung `Assessment` was folded into `Free`, and `CustomerUser` was renamed
+`Customer` — the hierarchy this pack now cites is the post-#3590 one.)
 
 | # | Group | Routes | Writes? |
 |---|---|---|---|
@@ -65,11 +83,14 @@ session-scoped module: there is no cross-MSP view here, by design (`resolve-msp-
 
 ### 1a. Profile (Group A)
 
-**`GET /api/msp/profile`** (`msp-settings.ts:157-180`) — role floor **`Assessment`**, the lowest
-in the hierarchy, not `MSPAdmin`. Comment at `:148-155` explains why: this is a thin alias the
-frontend's `app-shell.tsx` calls for every authenticated page (white-label branding only — name,
-logo, color), so it is deliberately open to every authenticated role. The canonical route,
-`GET /api/msp/settings/profile` (`:184-207`), is byte-identical in shape but gated `MSPAdmin`.
+**`GET /api/msp/profile`** (`msp-settings.ts:246-269`) — gated `requireCapability("ladder.free")`,
+the lowest rung in the hierarchy, not `MSPAdmin`. Comment at `:237-244` explains why: this is a
+thin alias the frontend's `app-shell.tsx` calls for every authenticated page (white-label branding
+only — name, logo, color), so it is deliberately open to every authenticated role. (That same
+comment block still names the rung `Assessment` — stale in-code, since `Assessment` was folded
+into `Free` by #3590; the gate itself already reads `ladder.free`.) The canonical route,
+`GET /api/msp/settings/profile` (`:273-296`), is byte-identical in shape but gated
+`requireCapability("ladder.msp-admin")`.
 
 Both return one object, straight off `mspsTable`:
 
@@ -173,7 +194,7 @@ signed into. Returns `{ consentUrl, state, expiresAt }` (`:1346`). Audit:
 `mailbox_connector.connect.initiated` (`:1337-1344`).
 
 **`GET /connector/mailbox/callback`** (`:1350-1431`) — **the one unauthenticated route in this
-module** (no `requireRole`, Microsoft calls it directly). Three real branches:
+module** (no `requireCapability` guard at all, Microsoft calls it directly). Three real branches:
 
 1. **Declined** (`:1356-1366`) — `error === "access_denied"` or `error_subcode === "cancel"`:
    burns the state row if present, redirects to
@@ -246,7 +267,7 @@ filtered — suspended users still appear), newest-first. Fields (`:548-557`):
 | Field | Type | Note | Line |
 |---|---|---|---|
 | `id` / `userId` | `number` | **same value, twice** — see the code comment (`:542-547`): a pre-refactor artifact from when `msp_users.id` and `users.id` were two different id-spaces; `msp_users` is gone, both keys now alias `users.id`, and the frontend historically read them interchangeably (`u.userId ?? u.id`). Kept as-is rather than collapsed, since a consuming UI could depend on either key. | `548-549` |
-| `mspRole` | `"PlatformAdmin"\|"MSPAdmin"\|"MSPOperator"\|"CustomerUser"\|"ServiceAccount"\|"Free"\|"Assessment"` (`MSP_ROLES`, `schema/index.ts:37`) | full 7-value global enum, though only `MSPAdmin`/`MSPOperator` are realistically ever seen on this roster (users table's own check constraint ties `CustomerUser`/`Free`/`Assessment` to `tenantId`, not `mspId`) | `550` |
+| `mspRole` | `"PlatformAdmin"\|"MSPAdmin"\|"MSPOperator"\|"Customer"\|"ServiceAccount"\|"Free"` (`MspRole` = `LegacyRole`, `LEGACY_ROLE_ORDER` at `lib/db/src/rbac/legacy-ladder.ts:46-53`) | full 6-value global enum (Git #3590 renamed `CustomerUser`→`Customer` and folded `Assessment` into `Free`), though only `MSPAdmin`/`MSPOperator` are realistically ever seen on this roster (users table's own `users_role_scope_check` ties `Customer`/`Free` to `tenantId`, not `mspId` — `schema/index.ts:175-181`) | `550` |
 | `canApprovePurchases` | `boolean` | | `551` |
 | `isActive` | `boolean` | | `552` |
 | `lastLoginAt` | `string \| null` | | `553` |
@@ -395,8 +416,9 @@ same cross-tenant IDOR pattern as Group G. Sets `revokedAt: now` (`:1600-1603`).
 
 **`POST /invites`** (`:1631-1727`) — body `createInviteSchema` (`:1626-1629`): `{ email: string,
 mspRole: "MSPAdmin"|"MSPOperator" }` — note this is the **narrower, invite-local** 2-value role
-enum (`msp.ts:647`), distinct from the 7-value global `MSP_ROLES`; you cannot invite a
-`CustomerUser`/`ServiceAccount`/etc. through this route by construction. 409s if the email is
+enum (`msp.ts:647`), distinct from the 6-value global `MspRole`/`LEGACY_ROLE_ORDER`
+(`lib/db/src/rbac/legacy-ladder.ts:46-53`); you cannot invite a `Customer`/`ServiceAccount`/etc.
+through this route by construction. 409s if the email is
 already an **active** member of this MSP (`:1650-1659`, a suspended member can still be
 re-invited); 409s if an unexpired, unused invite already exists for the same email
 (`:1663-1680`, message: `"...Revoke it first if you need to resend."`). Mints a 32-byte-hex token,
@@ -487,7 +509,7 @@ scope, not an oversight).
 
 | Enum | Values | Source |
 |---|---|---|
-| MSP role hierarchy (7-value, global) | `Assessment < Free < CustomerUser < ServiceAccount < MSPOperator < MSPAdmin < PlatformAdmin` | `requireAuth.ts:81-89` |
+| MSP role hierarchy (6-value, global; renamed/collapsed from 7 by Git #3590) | `Free < Customer < ServiceAccount < MSPOperator < MSPAdmin < PlatformAdmin` | `LEGACY_ROLE_ORDER`, `lib/db/src/rbac/legacy-ladder.ts:46-53` |
 | Invite-local `mspRole` (2-value) | `MSPAdmin`, `MSPOperator` | `msp.ts:647` |
 | `msps.status` | `active`, `suspended`, `trial` | `msp.ts:41` |
 | `msps.offboardingState` | `cancellation_requested`, `export_ready`, `archival_flagged` | `msp.ts:31` |
