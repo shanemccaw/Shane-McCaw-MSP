@@ -11,6 +11,7 @@ import { StatusBar } from "./StatusBar";
 import { CommandPalette } from "./CommandPalette";
 import { ScreenSlot } from "./ScreenSlot";
 import { Remediation } from "./modules/Remediation";
+import { Webhooks } from "./modules/Webhooks";
 import { SopsPage } from "@/pages/Sops";
 import { surface } from "./tokens";
 import { RunbooksPage } from "@/pages/runbooks/RunbooksPage";
@@ -227,6 +228,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[]): React.ReactN
     // the register scopes on), not just the numeric id the other modules take.
     const customer = customers.find((c) => c.id === sel.tenant);
     return customer ? <RiskRegister customer={customer} /> : undefined;
+  }
+  if (sel.kind === "page" && sel.page === "wh") {
+    return <Webhooks customerId={sel.tenant} />;
   }
   if (sel.kind === "msp" && sel.page === "sops") {
     return <SopsPage />;

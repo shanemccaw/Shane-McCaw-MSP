@@ -22,6 +22,8 @@ import {
   // Risk Register (#2582)
   ArrowDown, ArrowRight, Camera, Printer, Link, FileClock, Signature, Ban,
   CircleDot, BellOff, Shield, FileCheck, FileX,
+  // Webhooks (#2612)
+  Radio, Power, PowerOff,
   type LucideIcon,
 } from "lucide-react";
 
@@ -119,6 +121,10 @@ const REGISTRY: Record<string, LucideIcon> = {
   shield: Shield,
   "file-check": FileCheck,
   "file-x": FileX,
+  // Webhooks (#2612)
+  radio: Radio,
+  power: Power,
+  "power-off": PowerOff,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});
