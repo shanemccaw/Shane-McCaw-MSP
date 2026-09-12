@@ -46,6 +46,7 @@ import {
 import { pidAlive } from "./lock.mjs";
 import { findAndUnlinkWorktreeJunctions } from "./link-deps.mjs";
 import { scanSharedStore, repairSharedStore } from "./store-doctor.mjs";
+import { secondaryReposRoot } from "./repo-clone.mjs";
 
 // markWorktreeStale() drops this untracked marker into a retained worktree; it is
 // BuildConsole bookkeeping, never real work, so preservation must not count it as "dirty".
@@ -392,7 +393,7 @@ export function detectWorktreeWork(config, wtPath, repoRoot = config.mainRepoRoo
   return { dirty, unpushed, hasWork: dirty || unpushed, head };
 }
 
-export function preserveWorktreeWork(config, wtPath, rec) {
+export function preserveWorktreeWork(config, wtPath, rec, repoRootHint = null) {
   try {
     if (!existsSync(wtPath) || !isGitRepo(wtPath)) {
       return { preserved: false, reason: "path gone or not a git worktree" };
@@ -400,7 +401,10 @@ export function preserveWorktreeWork(config, wtPath, rec) {
 
     // Git #3584 — resolve against the worktree's OWN real repo (main, or its
     // secondary/Tinker clone), not always the main repo.
-    const repoRoot = rec?.repoRoot || config.mainRepoRoot;
+    // Git #3630 — `repoRootHint` (the sweep's own resolved repo root for this exact
+    // worktree) is the fallback before config.mainRepoRoot, for a recordless
+    // secondary-clone worktree the sweep is rescuing.
+    const repoRoot = rec?.repoRoot || repoRootHint || config.mainRepoRoot;
     const { dirty, unpushed } = detectWorktreeWork(config, wtPath, repoRoot);
 
     if (!dirty && !unpushed) {
@@ -470,14 +474,19 @@ export function preserveWorktreeWork(config, wtPath, rec) {
  *   6. Deletes the ephemeral agent branch if requested (e.g. `agent/*`).
  *   7. Logs the action durably.
  */
-export function removeWorktreeSafe(config, nameOrPath, { reason = "completed build", force = true, deleteBranch: shouldDeleteBranch = true } = {}) {
+export function removeWorktreeSafe(config, nameOrPath, { reason = "completed build", force = true, deleteBranch: shouldDeleteBranch = true, repoRootHint = null } = {}) {
   const rec = getWorktreeRecord(config, nameOrPath);
   const wtPath = rec ? rec.path : path.resolve(nameOrPath);
   // Git #3584 — the worktree's OWN real checkout (main repo, or its secondary/Tinker
   // clone); every git operation below (worktree remove, prune, branch delete) must run
   // there, not always against the main repo. Falls back to config.mainRepoRoot for a
   // record that predates this field — exactly today's (single-repo) behavior.
-  const repoRoot = rec?.repoRoot || config.mainRepoRoot;
+  //
+  // Git #3630 — `repoRootHint` (the sweep's own `git worktree list <repoRoot>` result
+  // that found this exact path) is the fallback BEFORE config.mainRepoRoot, so a
+  // recordless secondary-clone worktree still resolves to its real repo instead of
+  // silently misresolving to the main repo.
+  const repoRoot = rec?.repoRoot || repoRootHint || config.mainRepoRoot;
   const normTarget = normalizePath(wtPath);
   const normMain = normalizePath(config.mainRepoRoot);
   const normServer = normalizePath(config.serverWorktree);
@@ -492,7 +501,7 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
 
   // Git #1971 — preserve unpublished work BEFORE any destructive step (junction unlink, worktree
   // remove, branch delete). Best-effort; never blocks removal.
-  const preservation = preserveWorktreeWork(config, wtPath, rec);
+  const preservation = preserveWorktreeWork(config, wtPath, rec, repoRootHint);
 
   // Git #1988 — junctions MUST all be gone before anything destructive runs; removal
   // tooling that follows reparse points deletes THROUGH them into the shared store
@@ -724,7 +733,59 @@ export function worktreeLastActivityMs(wtPath) {
 }
 
 /**
+ * Git #3630 (Feature #3578, Multi-Repo Support) — every real local git checkout the
+ * periodic sweep must inspect, not just `config.mainRepoRoot`. #3584 made the explicit,
+ * by-name removal path (`removeWorktreeSafe` et al) resolve each worktree's OWN real
+ * `repoRoot` (main repo, or a secondary/Tinker clone under the secondary-repos root),
+ * but left the sweep's enumeration hardcoded to the main repo alone — a worktree
+ * provisioned against a secondary clone was structurally invisible to it (found, not
+ * fixed, by #3584; this closes it).
+ *
+ * Sources, deduped:
+ *   1. `config.mainRepoRoot` — always swept, unconditionally (today's only root).
+ *   2. every distinct `repoRoot` recorded on a tracked worktree (`listWorktreeRecords`)
+ *      — covers any secondary clone with at least one live tracking record.
+ *   3. every real git checkout directly under the secondary-repos root
+ *      (`secondaryReposRoot`) — covers the case #3630's own issue body calls out: a
+ *      worktree whose owning process died before ever writing/keeping a tracking
+ *      record, so its clone has zero records pointing at it and (2) alone would still
+ *      miss it entirely.
+ *
+ * Best-effort: an unreadable secondary-repos root contributes nothing (never throws),
+ * since the main repo and every recorded repoRoot are already covered independently.
+ */
+export function repoRootsForSweep(config) {
+  const roots = new Map(); // normalized path -> real path
+  roots.set(normalizePath(config.mainRepoRoot), config.mainRepoRoot);
+
+  for (const rec of listWorktreeRecords(config)) {
+    if (rec.repoRoot) roots.set(normalizePath(rec.repoRoot), rec.repoRoot);
+  }
+
+  try {
+    const secRoot = secondaryReposRoot(config.mainRepoRoot);
+    if (existsSync(secRoot)) {
+      for (const entry of readdirSync(secRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const candidate = path.join(secRoot, entry.name);
+        if (isGitRepo(candidate)) roots.set(normalizePath(candidate), candidate);
+      }
+    }
+  } catch {
+    /* best effort — the main repo + recorded repoRoots above are still swept */
+  }
+
+  return [...roots.values()];
+}
+
+/**
  * Periodic / manual sweep: finds and removes worktrees not tied to active or recently-completed builds.
+ *
+ * Git #3630 — multi-repo-aware: inspects every real repo root from `repoRootsForSweep`
+ * (the main repo, every recorded secondary/Tinker `repoRoot`, and every real clone under
+ * the secondary-repos root), not just `config.mainRepoRoot`. Single-repo installs (no
+ * secondary repo ever configured/provisioned) see `repoRootsForSweep` return exactly
+ * `[config.mainRepoRoot]` — identical behavior to before this change.
  *
  * @param config      loadConfig() result
  * @param opts        { dryRun, maxAgeMs, force, all }
@@ -736,7 +797,13 @@ export function sweepWorktrees(config, opts = {}) {
   const debugMaxAgeMs = opts.debugMaxAgeMs ?? (24 * 60 * 60 * 1000); // 24h debug grace period
   const now = Date.now();
 
-  const allGitWorktrees = listWorktrees(config.mainRepoRoot);
+  const repoRoots = repoRootsForSweep(config);
+  // Each entry tagged with the real repoRoot `git worktree list` was run against, so an
+  // untracked worktree (no tracking record) still resolves its OWN repo below instead of
+  // silently falling back to the main repo.
+  const allGitWorktrees = repoRoots.flatMap((repoRoot) =>
+    listWorktrees(repoRoot).map((wt) => ({ ...wt, __repoRoot: repoRoot }))
+  );
   const records = listWorktreeRecords(config);
   const recordByPath = new Map();
   for (const r of records) recordByPath.set(normalizePath(r.path), r);
@@ -754,6 +821,11 @@ export function sweepWorktrees(config, opts = {}) {
     if (norm === normServer) continue; // Protected dev-server
 
     const rec = recordByPath.get(norm);
+    // Git #3630 — the worktree's OWN real repo: its tracking record's repoRoot if one
+    // exists, else the repo root `git worktree list` actually found it under (never
+    // always config.mainRepoRoot, which would misresolve a secondary-clone worktree
+    // that lost its tracking record).
+    const wtRepoRoot = rec?.repoRoot || wt.__repoRoot || config.mainRepoRoot;
     const isExplicitAgentBranch = wt.branch && wt.branch.startsWith("agent/");
 
     // Ownership gate (Git #1371): only worktrees THIS coordinator owns are ever
@@ -838,7 +910,7 @@ export function sweepWorktrees(config, opts = {}) {
       const alreadyParked =
         !!(rec && rec.keepForDebug) || existsSync(path.join(wt.path, ".stale-worktree.json"));
       if (!alreadyParked) {
-        const work = detectWorktreeWork(config, wt.path);
+        const work = detectWorktreeWork(config, wt.path, wtRepoRoot);
         if (work.hasWork) {
           const kind = work.dirty && work.unpushed ? "uncommitted+unpushed" : work.dirty ? "uncommitted" : "unpushed";
           if (!dryRun) {
@@ -859,6 +931,10 @@ export function sweepWorktrees(config, opts = {}) {
       branch: wt.branch,
       detached: wt.detached,
       record: rec,
+      // Git #3630 — carried through even when there is no tracking record, so removal
+      // below still targets the worktree's OWN real repo (main, or its secondary/Tinker
+      // clone) instead of misresolving to config.mainRepoRoot for a recordless entry.
+      repoRoot: wtRepoRoot,
     });
   }
 
@@ -885,6 +961,10 @@ export function sweepWorktrees(config, opts = {}) {
           reason,
           force: true,
           deleteBranch: !!c.branch,
+          // Git #3630 — only used as a fallback when c.record is absent (a recordless
+          // agent/* worktree); removeWorktreeSafe still prefers the tracking record's
+          // own repoRoot when one exists, unchanged from before this option existed.
+          repoRootHint: c.repoRoot,
         });
         removed.push(res);
       } catch (e) {
@@ -894,7 +974,11 @@ export function sweepWorktrees(config, opts = {}) {
   }
 
   if (!dryRun) {
-    try { pruneWorktrees(config.mainRepoRoot); } catch {}
+    // Git #3630 — prune every real repo root actually swept, not just the main repo, so
+    // a secondary clone's own stale worktree-admin entries are cleared too.
+    for (const repoRoot of repoRoots) {
+      try { pruneWorktrees(repoRoot); } catch {}
+    }
   }
 
   return {

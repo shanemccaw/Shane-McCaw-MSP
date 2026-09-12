@@ -217,6 +217,67 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #3630 (Feature #3578, Multi-Repo Support) — real cleanup of a secondary/Tinker
+        /// repo's persistent local clone (`C:\repos\&lt;owner&gt;__&lt;repo&gt;`, created once by
+        /// repo-clone.mjs's resolveRepoCheckout and reused forever) once that repo is removed
+        /// from Settings > Repos (#3581's registry). #3581's own issue body flagged this exact
+        /// gap as a stated follow-up; this is that follow-up.
+        ///
+        /// Dispatches to scripts/dev-server/evict-repo-clones.mjs, which reads the registry
+        /// straight back out of THIS settings.json (no duplicate registry, no risk of the two
+        /// disagreeing) and only removes a clone once it confirms no live worktree tracking
+        /// record still points at it — a build genuinely in progress against a repo Shane just
+        /// removed is never deleted out from under it.
+        ///
+        /// Called fire-and-forget right after <see cref="BuildConsoleSettings.Save"/> removes
+        /// the entry from <see cref="BuildConsoleSettings.ConfiguredRepos"/> in
+        /// <c>SettingsTabView.BtnRemoveRepo_Click</c> — this is real disk cleanup, not something
+        /// that blocks the UI while it runs.
+        /// </summary>
+        public static async Task<WorktreeCleanupResult> EvictRemovedRepoCloneAsync()
+        {
+            string? repoRoot = BuildTrackerConfig.FindRepoRoot();
+            if (repoRoot == null)
+            {
+                ActivityLog.Log(LogChannel, "Cannot evict removed-repo clones: repo root not found.");
+                return new WorktreeCleanupResult { Ok = false, Error = "Repo root not found" };
+            }
+
+            string scriptPath = Path.Combine(repoRoot, "scripts", "dev-server", "evict-repo-clones.mjs");
+            if (!File.Exists(scriptPath))
+            {
+                ActivityLog.Log(LogChannel, $"evict-repo-clones script missing at {scriptPath}");
+                return new WorktreeCleanupResult { Ok = false, Error = "Script not found" };
+            }
+
+            string args = $"\"{scriptPath}\" --json";
+            if (!string.IsNullOrEmpty(InstanceMode.InstanceName))
+            {
+                args += $" --instance \"{InstanceMode.InstanceName}\"";
+            }
+
+            var result = await RunScriptAsync(repoRoot, args, "Evict removed-repo clones");
+            try
+            {
+                using var doc = JsonDocument.Parse(result.RawOutput);
+                var root = doc.RootElement;
+                int evictedCount = root.TryGetProperty("evicted", out var ev) && ev.ValueKind == JsonValueKind.Array ? ev.GetArrayLength() : 0;
+                int retainedCount = root.TryGetProperty("retained", out var rt) && rt.ValueKind == JsonValueKind.Array ? rt.GetArrayLength() : 0;
+                if (result.Ok)
+                {
+                    ActivityLog.Log(LogChannel, $"Repo-clone eviction: evicted {evictedCount}, retained {retainedCount}.");
+                }
+            }
+            catch
+            {
+                // Best-effort log enrichment only — RunScriptAsync's own Ok/Error already
+                // reflects the real outcome regardless of whether this parse succeeds.
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// Mark a worktree as stale for debugging.
         /// </summary>
         public static async Task<WorktreeCleanupResult> MarkWorktreeStaleAsync(string pathOrName, string reason)

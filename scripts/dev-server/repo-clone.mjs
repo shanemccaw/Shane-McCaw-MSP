@@ -57,7 +57,11 @@ export function resolveMainOwnerRepo(mainRepoRoot) {
   return "shanemccaw/Shane-McCaw-MSP";
 }
 
-function secondaryReposRoot(mainRepoRoot) {
+// Git #3630 — exported so worktree-lifecycle.mjs's sweep (and evict-repo-clones.mjs's
+// registry-eviction pass) can enumerate every real secondary-repo clone directory
+// without re-deriving this path independently and risking drift from the one actual
+// clone location resolveRepoCheckout below uses.
+export function secondaryReposRoot(mainRepoRoot) {
   return (
     process.env.DEV_SERVER_SECONDARY_REPOS_ROOT ||
     (isWindows() ? "C:\\repos" : path.join(path.dirname(mainRepoRoot), "repos"))

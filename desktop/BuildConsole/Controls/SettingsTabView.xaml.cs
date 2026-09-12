@@ -1481,6 +1481,14 @@ namespace BuildConsole.Controls
             settings.ConfiguredRepos.RemoveAll(r => r.OwnerRepo == repos[index].OwnerRepo);
             settings.Save();
             RenderReposSettingsList();
+
+            // Git #3630 — the removed repo's own persistent local clone
+            // (C:\repos\<owner>__<repo>, per #3584's repo-clone.mjs) otherwise lingers on
+            // disk forever with no cleanup path (#3581's own stated follow-up). Fire-and-
+            // forget: this is real but non-blocking disk cleanup, and the script itself
+            // reads the registry fresh (post-Save) and only evicts a clone with no live
+            // worktree still pointing at it.
+            _ = WorktreeCleanupService.EvictRemovedRepoCloneAsync();
         }
 
         /// <summary>
