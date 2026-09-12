@@ -72,12 +72,12 @@
   ],
 
   "uiSteps": [
-    { "name": "UI-LOGIN1 - goto the real login page (#2991).", "action": "goto", "target": "/login" },
+    { "name": "UI-LOGIN1 - goto the real login page (#2991).", "action": "goto", "target": "/portal/login" },
     { "name": "UI-LOGIN2 - wait for the login form to hydrate.", "action": "expect", "selector": "[data-testid='login-email']", "state": "visible" },
     { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_PORTAL_EMAIL}}" },
     { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_PORTAL_PASSWORD}}" },
     { "name": "UI-LOGIN3 - submit.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
-    { "name": "UI-GOTO - go to Account security.", "action": "goto", "target": "/account-security" },
+    { "name": "UI-GOTO - go to Account security.", "action": "goto", "target": "/portal/account-security" },
     { "name": "UI-MFA1 - the Multifactor methods section rendered with all three real method cards.", "action": "expect", "selector": "[data-testid='account-security-mfa-passkey']", "state": "present", "critical": true },
     { "name": "UI-MFA2 - the Authenticator app card is present.", "action": "expect", "selector": "[data-testid='account-security-mfa-app']", "state": "present" },
     { "name": "UI-MFA3 - the Text message card is present (this test account is not an admin, so it is not gated - see notes).", "action": "expect", "selector": "[data-testid='account-security-mfa-sms']", "state": "present" },
