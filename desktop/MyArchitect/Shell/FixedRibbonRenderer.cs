@@ -2,11 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using Button = Fluent.Button;
 using RibbonGroupBox = Fluent.RibbonGroupBox;
 using RibbonTabItem = Fluent.RibbonTabItem;
 using DropDownButton = Fluent.DropDownButton;
 using RibbonControlSize = Fluent.RibbonControlSize;
+using TextBox = System.Windows.Controls.TextBox;
 
 namespace MyArchitect.Shell;
 
@@ -144,42 +147,106 @@ public sealed class FixedRibbonRenderer
             ToolTip = gallery.Title,
         };
 
-        void RenderRows(IReadOnlyList<GalleryRowSpec> rows)
+        // #3539 — Searchable galleries get a real filter TextBox pinned above the rows, kept as
+        // its own item so re-filtering (RenderFilteredRows) never rebuilds it and drops focus/
+        // caret position mid-keystroke. Non-searchable galleries are unaffected (no TextBox item).
+        var allRows = (IReadOnlyList<GalleryRowSpec>)Array.Empty<GalleryRowSpec>();
+        TextBox? searchBox = null;
+
+        MenuItem BuildRowMenuItem(GalleryRowSpec row)
         {
-            dropDown.Items.Clear();
-            if (rows.Count == 0)
+            var header = new StackPanel();
+            header.Children.Add(new TextBlock
             {
-                dropDown.Items.Add(new System.Windows.Controls.MenuItem
+                Text = row.Tile != null ? $"[{row.Tile}] {row.Name}" : row.Name,
+                FontWeight = row.IsCurrent ? FontWeights.Bold : FontWeights.Normal,
+            });
+            if (!string.IsNullOrEmpty(row.Sub))
+            {
+                header.Children.Add(new TextBlock
                 {
-                    Header = "Nothing here yet",
+                    Text = row.Sub,
+                    FontSize = 10,
+                    Foreground = System.Windows.Media.Brushes.Gray,
+                });
+            }
+
+            var menuItem = new MenuItem { Header = header };
+            var onSelect = row.OnSelect;
+            menuItem.Click += (_, _) => onSelect();
+            return menuItem;
+        }
+
+        void RenderFilteredRows(string filter)
+        {
+            // Drop everything after the search-box item (index 0) instead of Items.Clear(), so the
+            // TextBox itself — and the caret/focus the user is actively typing with — survives.
+            var keep = searchBox != null ? 1 : 0;
+            while (dropDown.Items.Count > keep)
+            {
+                dropDown.Items.RemoveAt(dropDown.Items.Count - 1);
+            }
+
+            var filtered = string.IsNullOrWhiteSpace(filter)
+                ? allRows
+                : allRows.Where(r =>
+                        r.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                        (r.Sub?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false))
+                    .ToList();
+
+            if (filtered.Count == 0)
+            {
+                dropDown.Items.Add(new MenuItem
+                {
+                    Header = allRows.Count == 0 ? "Nothing here yet" : "No matches",
                     IsEnabled = false,
                 });
                 return;
             }
 
-            foreach (var row in rows)
+            foreach (var row in filtered)
             {
-                var header = new System.Windows.Controls.StackPanel();
-                header.Children.Add(new System.Windows.Controls.TextBlock
-                {
-                    Text = row.Tile != null ? $"[{row.Tile}] {row.Name}" : row.Name,
-                    FontWeight = row.IsCurrent ? System.Windows.FontWeights.Bold : System.Windows.FontWeights.Normal,
-                });
-                if (!string.IsNullOrEmpty(row.Sub))
-                {
-                    header.Children.Add(new System.Windows.Controls.TextBlock
-                    {
-                        Text = row.Sub,
-                        FontSize = 10,
-                        Foreground = System.Windows.Media.Brushes.Gray,
-                    });
-                }
-
-                var menuItem = new System.Windows.Controls.MenuItem { Header = header };
-                var onSelect = row.OnSelect;
-                menuItem.Click += (_, _) => onSelect();
-                dropDown.Items.Add(menuItem);
+                dropDown.Items.Add(BuildRowMenuItem(row));
             }
+        }
+
+        void RenderRows(IReadOnlyList<GalleryRowSpec> rows)
+        {
+            allRows = rows;
+            dropDown.Items.Clear();
+            searchBox = null;
+
+            if (gallery.Searchable)
+            {
+                searchBox = new TextBox
+                {
+                    MinWidth = 180,
+                    Margin = new Thickness(4, 4, 4, 6),
+                    ToolTip = $"Filter {gallery.Title}",
+                };
+                searchBox.TextChanged += (_, _) => RenderFilteredRows(searchBox.Text);
+                // Real keystrokes only — never let the hosting Menu's arrow-key/access-key
+                // navigation steal input while the operator is typing a filter.
+                searchBox.PreviewKeyDown += (_, e) =>
+                {
+                    if (e.Key is Key.Up or Key.Down or Key.Left or Key.Right)
+                    {
+                        e.Handled = true;
+                    }
+                };
+                searchBox.Loaded += (_, _) => searchBox.Focus();
+
+                var searchHost = new MenuItem
+                {
+                    Header = searchBox,
+                    Focusable = false,
+                    StaysOpenOnClick = true,
+                    IsHitTestVisible = true,
+                };
+                dropDown.Items.Add(searchHost);
+            }
+
+            RenderFilteredRows(string.Empty);
         }
 
         // #3554 — async row source (a network-backed gallery) loads without a synchronous
