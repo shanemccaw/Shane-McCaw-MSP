@@ -215,6 +215,17 @@ namespace BuildConsole.Controls
             ShowStatus($"Fetching #{issueNumber}…", (Brush)Application.Current.FindResource("Subtext0Brush"));
             try
             {
+                // Git #3858 — resolve the real blocked_by/blocking chain (bt_issue_mirror) BEFORE
+                // dispatching. A chain of 1 (just the typed issue — the common case) falls straight
+                // through to the exact single-issue path below, unchanged (the issue's own
+                // no-regression requirement). A real chain of 2+ dispatches every real member.
+                var chain = await Services.IssueDispatchService.ResolveChainAsync(issueNumber);
+                if (chain.Count > 1)
+                {
+                    await DispatchChainAsync(issueNumber, chain);
+                    return;
+                }
+
                 // Git #2682 — the real fetch/build-comment/dedup/queue mechanics now live in
                 // IssueDispatchService, shared with the Detected panel's per-item Dispatch button.
                 var result = await Services.IssueDispatchService.DispatchAsync(_db, issueNumber);
@@ -311,6 +322,59 @@ namespace BuildConsole.Controls
                 _dispatching = false;
                 BtnDispatch.IsEnabled = true;
             }
+        }
+
+        /// <summary>
+        /// Git #3858 — dispatched when <see cref="Services.IssueDispatchService.ResolveChainAsync"/>
+        /// finds the typed issue belongs to a real <c>blocked_by</c>/<c>blocking</c> chain of more
+        /// than one member. Reuses <see cref="Services.IssueDispatchService.DispatchAsync"/> UNCHANGED
+        /// once per real chain member — including <paramref name="typedIssueNumber"/> itself — rather
+        /// than a second, invented dispatch mechanic. Reports each member's own real outcome (Queued /
+        /// QueuedButBlocked / NoBuildComment / AlreadyTracked / etc.) instead of collapsing to one
+        /// status line, so a member with no BUILD: comment yet is a visible problem, not a silent skip.
+        /// Deliberately skips this panel's single-issue interactive extras (asking the active chat to
+        /// write a missing BUILD: comment, the "Dispatch anyway" override) for chain members — those
+        /// stay exactly where they are for the single-issue (chain-of-1) path above; a chain member
+        /// needing one of those still shows up honestly in the aggregate report so it can be dispatched
+        /// again on its own once ready.
+        /// </summary>
+        private async System.Threading.Tasks.Task DispatchChainAsync(int typedIssueNumber, List<int> chain)
+        {
+            ShowStatus($"Real chain of {chain.Count} found (#{string.Join(", #", chain)}) — dispatching all…",
+                (Brush)Application.Current.FindResource("Subtext0Brush"));
+            Services.ActivityLog.Log("dispatch",
+                $"Dispatch #{typedIssueNumber} — resolved real blocked_by/blocking chain of {chain.Count}: #{string.Join(", #", chain)}.");
+
+            var lines = new List<string>();
+            var anyError = false;
+            var anyQueued = false;
+
+            foreach (var member in chain)
+            {
+                try
+                {
+                    var result = await Services.IssueDispatchService.DispatchAsync(_db, member);
+                    lines.Add($"#{member}: {result.Message}");
+                    if (result.IsError) anyError = true;
+                    if (result.Outcome is Services.DispatchOutcome.Queued or Services.DispatchOutcome.QueuedButBlocked)
+                    {
+                        anyQueued = true;
+                        try { Dispatched?.Invoke(member); }
+                        catch { /* best-effort visual refresh of the sibling queue panel */ }
+                    }
+                    Services.ActivityLog.Log("dispatch",
+                        $"Dispatch chain #{typedIssueNumber} — #{member}: {result.Outcome} — {result.Message}");
+                }
+                catch (Exception ex)
+                {
+                    anyError = true;
+                    lines.Add($"#{member}: dispatch failed — {ex.Message}");
+                    Services.ActivityLog.Log("dispatch", $"Dispatch chain #{typedIssueNumber} — #{member} FAILED: {ex.Message}");
+                }
+            }
+
+            ShowStatus(string.Join("\n", lines), (Brush)Application.Current.FindResource(anyError ? "RedBrush" : "GreenBrush"));
+            if (anyQueued) TxtIssueNumber.Text = "";
         }
 
         /// <summary>

@@ -47,6 +47,60 @@ namespace BuildConsole.Services
     /// </summary>
     public static class IssueDispatchService
     {
+        /// <summary>
+        /// Git #3858 — starting from <paramref name="issueNumber"/>, walks BOTH real dependency
+        /// directions already populated on <c>bt_issue_mirror</c> (<see
+        /// cref="GitHubIssueMirror.MirrorIssue.BlockedByNumbers"/> and the inverse <see
+        /// cref="GitHubIssueMirror.MirrorIssue.BlockingNumbers"/> the full sync computes) to return
+        /// the WHOLE real connected component — not just <paramref name="issueNumber"/>'s immediate
+        /// neighbors, so a chain of 6 resolves fully from any single member. No new GitHub calls: this
+        /// is a pure local-mirror read, same fail-closed shape as every other mirror consumer
+        /// (<see cref="Controls.LeftSidebar"/>'s hover-popover relationship walk, #3467) — a never-synced
+        /// mirror, a miss, or any error returns just <c>[issueNumber]</c> so a caller falls back to
+        /// today's single-issue behavior rather than dispatching nothing or throwing.
+        ///
+        /// Batched by BFS level (<see cref="GitHubIssueMirror.GetManyAsync"/> per frontier, not one
+        /// <see cref="GitHubIssueMirror.TryGetAsync"/> call per node) so a real 6-member chain costs a
+        /// small, bounded number of round trips rather than one per node.
+        /// </summary>
+        public static async Task<List<int>> ResolveChainAsync(int issueNumber)
+        {
+            var soloResult = new List<int> { issueNumber };
+            if (issueNumber <= 0) return soloResult;
+
+            try
+            {
+                // Same fail-closed gate the #3467 hover-popover mirror read uses — a never-synced
+                // mirror is indistinguishable from "no chain data" here, not an empty chain.
+                if (!await GitHubIssueMirror.HasUsableDataAsync()) return soloResult;
+
+                var visited = new HashSet<int> { issueNumber };
+                var frontier = new List<int> { issueNumber };
+
+                while (frontier.Count > 0)
+                {
+                    var rows = await GitHubIssueMirror.GetManyAsync(frontier);
+                    var next = new List<int>();
+                    foreach (var current in frontier)
+                    {
+                        if (!rows.TryGetValue(current, out var row)) continue;
+                        foreach (var related in row.BlockedByNumbers.Concat(row.BlockingNumbers))
+                        {
+                            if (related > 0 && visited.Add(related)) next.Add(related);
+                        }
+                    }
+                    frontier = next;
+                }
+
+                return visited.OrderBy(n => n).ToList();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("dispatch", $"ResolveChainAsync(#{issueNumber}) failed ({ex.Message}) — dispatching just this issue.");
+                return soloResult;
+            }
+        }
+
         public static async Task<DispatchAttemptResult> DispatchAsync(BuildQueuePostgresClient? db, int issueNumber)
         {
             var settings = BuildConsoleSettings.Load();
