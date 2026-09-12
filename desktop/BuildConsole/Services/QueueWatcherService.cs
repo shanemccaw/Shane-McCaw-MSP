@@ -2403,22 +2403,42 @@ namespace BuildConsole.Services
             // genuinely forced back onto the secondary CLAUDE_CONFIG_DIR's own logged-in session.
             if (string.Equals(item.Account, "secondary", StringComparison.OrdinalIgnoreCase))
             {
+                // Git #2006 — FAIL CLOSED. A "secondary" build must never silently launch on
+                // primary. Previously a blank SecondaryClaudeConfigDir just logged a line and let
+                // the launch continue with CLAUDE_CONFIG_DIR unset (primary), and a SET-but-bad dir
+                // (missing directory, no .credentials.json, or a logged-out session with no
+                // accessToken) had NO check at all — CLAUDE_CONFIG_DIR pointed at a dead path and
+                // Claude Code fell back to whatever it could find, silently burning the wrong
+                // account's quota. Validate all three real conditions before ever setting
+                // CLAUDE_CONFIG_DIR: non-blank, Directory.Exists, and real signed-in credentials —
+                // reusing ClaudeUsageMeterService.ReadAccessToken (already internal static, same
+                // check the usage meter uses to distinguish "not configured" from "config dir not
+                // found" rather than substituting the other account). Any failure aborts the
+                // launch outright via MarkLaunchFailedAsync with the specific reason, exactly like
+                // the worktree-provisioning and repo-root failures above — never a silent
+                // fall-through to primary.
                 string secondaryDir = ExpandUserPath(settings.SecondaryClaudeConfigDir);
-                if (string.IsNullOrWhiteSpace(secondaryDir))
+                string? secondaryFailReason =
+                    string.IsNullOrWhiteSpace(secondaryDir) ? "SecondaryClaudeConfigDir is unset/blank in settings" :
+                    !Directory.Exists(secondaryDir) ? $"secondary config dir not found: {secondaryDir}" :
+                    string.IsNullOrEmpty(ClaudeUsageMeterService.ReadAccessToken(secondaryDir)) ? $"secondary config dir has no valid signed-in credentials: {secondaryDir}" :
+                    null;
+
+                if (secondaryFailReason != null)
                 {
-                    ActivityLog.Log("watcher", $"Queue #{item.Id} requested the secondary account but SecondaryClaudeConfigDir is unset in settings — launching against the DEFAULT account instead.");
+                    ActivityLog.Log("watcher", $"Queue #{item.Id} requested the SECONDARY account but it's not usable ({secondaryFailReason}) — refusing to launch on primary instead. Fix the secondary account in Settings, then Retry.");
+                    await MarkLaunchFailedAsync(item.Id, $"secondary account unusable: {secondaryFailReason}");
+                    return;
                 }
-                else
-                {
-                    envOverrides["CLAUDE_CONFIG_DIR"] = secondaryDir;
-                    // null value => RedirectedProcessLauncher removes the key from the child's env.
-                    bool hadOAuthToken = Environment.GetEnvironmentVariable("CLAUDE_CODE_OAUTH_TOKEN") != null;
-                    bool hadApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") != null;
-                    envOverrides["CLAUDE_CODE_OAUTH_TOKEN"] = null;
-                    envOverrides["ANTHROPIC_API_KEY"] = null;
-                    ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) routed to the SECONDARY Claude account — CLAUDE_CONFIG_DIR={secondaryDir}" +
-                        (hadOAuthToken || hadApiKey ? $" (stripped inherited {(hadOAuthToken ? "CLAUDE_CODE_OAUTH_TOKEN" : "")}{(hadOAuthToken && hadApiKey ? " + " : "")}{(hadApiKey ? "ANTHROPIC_API_KEY" : "")} so the secondary config dir's own session is actually used)" : "") + ".");
-                }
+
+                envOverrides["CLAUDE_CONFIG_DIR"] = secondaryDir;
+                // null value => RedirectedProcessLauncher removes the key from the child's env.
+                bool hadOAuthToken = Environment.GetEnvironmentVariable("CLAUDE_CODE_OAUTH_TOKEN") != null;
+                bool hadApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") != null;
+                envOverrides["CLAUDE_CODE_OAUTH_TOKEN"] = null;
+                envOverrides["ANTHROPIC_API_KEY"] = null;
+                ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) routed to the SECONDARY Claude account — CLAUDE_CONFIG_DIR={secondaryDir}" +
+                    (hadOAuthToken || hadApiKey ? $" (stripped inherited {(hadOAuthToken ? "CLAUDE_CODE_OAUTH_TOKEN" : "")}{(hadOAuthToken && hadApiKey ? " + " : "")}{(hadApiKey ? "ANTHROPIC_API_KEY" : "")} so the secondary config dir's own session is actually used)" : "") + ".");
             }
 
             // Git #1986 — Home/Rental network gate. Inject BUILD_NETWORK into EVERY launched
