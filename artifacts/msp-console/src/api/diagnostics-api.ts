@@ -3,7 +3,7 @@
  * (Git #2653, Feature #2571) — wired against the real, current routes in
  * `artifacts/api-server/src/routes/msp-diagnostics.ts`:
  *
- *   GET  /api/msp/monitoring-packages
+ *   GET  /api/msp/monitoring-packages/runnable
  *   GET  /api/msp/customers/:customerId/monitoring-package
  *   POST /api/msp/customers/:customerId/diagnostics/run
  *   GET  /api/msp/customers/:customerId/diagnostics/runs
@@ -146,7 +146,7 @@ export function useMonitoringPackages() {
   return useQuery({
     queryKey: monitoringPackagesKey,
     queryFn: async () => {
-      const res = await fetchWithAuth("/api/msp/monitoring-packages");
+      const res = await fetchWithAuth("/api/msp/monitoring-packages/runnable");
       return parseJsonOrThrow<MonitoringPackagesResponse>(res);
     },
     staleTime: 60_000,

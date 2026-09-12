@@ -366,13 +366,14 @@ export function useAcceptOffer(mspId: number | null) {
 }
 
 // ── Monitoring packages catalog (Packages tab + bundle builder) ─────────────────
-// NOTE: this is a genuinely different route registration than
-// diagnostics-api.ts's useMonitoringPackages — both files call
-// GET /api/msp/monitoring-packages, but msp-sales-bundles.ts's version (this
-// one — the full catalog incl. dashboard-only "cat-*" rows) is mounted first
-// in routes/index.ts, so it always wins; msp-diagnostics.ts's scan-bundle-only
-// version is unreachable dead code. Filed as a finding (Git #2568 sub-issue) —
-// not fixed here, since renaming either route is out of this module's scope.
+// NOTE: this is a genuinely different route than diagnostics-api.ts's
+// useMonitoringPackages. The two used to collide on the same bare path
+// (Git #3787) — msp-sales-bundles.ts's version here (the full catalog incl.
+// dashboard-only "cat-*" rows) always won, leaving msp-diagnostics.ts's
+// scan-bundle-only picker unreachable. Fixed by moving the diagnostics-only
+// picker to its own `/msp/monitoring-packages/runnable` path; this route
+// keeps the bare path since sales-api.ts and the bundle-builder UI depend on
+// the full catalog.
 
 export function useSalesMonitoringPackages() {
   const { fetchWithAuth } = useAuth();

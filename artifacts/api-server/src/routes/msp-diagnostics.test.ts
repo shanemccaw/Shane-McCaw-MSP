@@ -246,10 +246,11 @@ describe("msp-diagnostics routes", () => {
     expect(res.body).toMatchObject({ runId: expect.any(String), status: "pending" });
   });
 
-  // #1770 — GET /msp/monitoring-packages: the real catalog list the AdminV2
-  // AD screen's run-scan picker reads from.
-  it("GET /msp/monitoring-packages returns the real package catalog", async () => {
-    const res = await request(app).get("/msp/monitoring-packages").expect(200);
+  // #1770 — GET /msp/monitoring-packages/runnable: the real catalog list the
+  // AdminV2 AD screen's run-scan picker reads from. Moved off the bare
+  // `/msp/monitoring-packages` path in Git #3787 (route collision).
+  it("GET /msp/monitoring-packages/runnable returns the real package catalog", async () => {
+    const res = await request(app).get("/msp/monitoring-packages/runnable").expect(200);
 
     expect(res.body).toMatchObject({
       packages: [{ key: "core:security-baseline", label: "Security Baseline", checkCount: 28 }],

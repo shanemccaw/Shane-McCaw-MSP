@@ -7,9 +7,12 @@
  *   POST /api/msp/customers/:customerId/diagnostics/run
  *     — Trigger a diagnostics run. Fire-and-forget; returns runId immediately.
  *
- *   GET  /api/msp/monitoring-packages
- *     — List real monitoring packages (key, display name, real check count)
- *       an operator can choose from when triggering a run above. #1770.
+ *   GET  /api/msp/monitoring-packages/runnable
+ *     — List real, runnable monitoring packages (key, display name, real
+ *       check count) an operator can choose from when triggering a run
+ *       above. #1770. (Moved off the bare `/msp/monitoring-packages` path
+ *       in Git #3787 — that path collided with msp-sales-bundles.ts's
+ *       full-catalog route and always lost.)
  *
  *   GET  /api/msp/customers/:customerId/diagnostics
  *     — List runs for a customer (most recent first).
@@ -237,7 +240,7 @@ const findingSeverityRank = sql`case ${mspDiagnosticFindingsTable.severity}
   else 4
 end`;
 
-// ── GET /api/msp/monitoring-packages ───────────────────────────────────────────
+// ── GET /api/msp/monitoring-packages/runnable ─────────────────────────────────
 // #1770 — the real gap: the run route above already accepts a packageKey
 // override (has since before this route existed), but nothing listed the real
 // catalog an operator could pick from, so the AdminV2 AD screen's "Run scan"
@@ -257,9 +260,14 @@ end`;
 // shouldn't be offered — but the `kind` filter is now the primary, load-
 // bearing one so this route no longer has to re-derive "runnable" from a
 // check-count join alone.
+//
+// Path is `/runnable`, not the bare `/msp/monitoring-packages` — that bare
+// path is msp-sales-bundles.ts's full-catalog route (Git #3787: the two used
+// to collide on the same path, with the sales-bundles version always winning
+// and this one permanently unreachable).
 
 router.get(
-  "/msp/monitoring-packages",
+  "/msp/monitoring-packages/runnable",
   requireCapability("ladder.msp-operator"),
   async (_req: Request, res: Response) => {
     try {
