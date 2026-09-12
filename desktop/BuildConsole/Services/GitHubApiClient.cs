@@ -47,6 +47,12 @@ namespace BuildConsole.Services
         /// detail path carries the same real close timestamp the time-series foundation exposes.</summary>
         [JsonPropertyName("closed_at")]
         public DateTimeOffset? ClosedAt { get; set; }
+        /// <summary>Git #3823 — REST's real `state_reason` on a closed issue: "completed" or
+        /// "not_planned" (null while open). This is the exact distinction the remote-branch-cleanup
+        /// safety check needs: only these two closed reasons count as "genuinely done", matching the
+        /// same rule the manual cleanup pass this issue follows up on used by hand.</summary>
+        [JsonPropertyName("state_reason")]
+        public string? StateReason { get; set; }
         public GitHubUser? User { get; set; }
         public List<GitHubLabel> Labels { get; set; } = new();
     }
@@ -913,6 +919,22 @@ namespace BuildConsole.Services
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Git #3823 — deletes the real remote ref for an ephemeral `agent/*` branch, once
+        /// <see cref="Services.WorktreeCleanupService"/>'s sweep has already verified it's safe
+        /// (the branch's issue is closed completed/not_planned, or a verified DONE bookend exists).
+        /// `DELETE /repos/{owner}/{repo}/git/refs/heads/{branch}` — a 404 (already gone, e.g. deleted
+        /// by hand or a prior sweep) is treated as success since the end state is identical.
+        /// </summary>
+        public async Task<bool> DeleteBranchRefAsync(string branch)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Delete,
+                $"repos/{Owner}/{Repo}/git/refs/heads/{Uri.EscapeDataString(branch)}");
+            using var res = await _http.SendAsync(req);
+            if (res.StatusCode == HttpStatusCode.NotFound) return true;
+            return res.IsSuccessStatusCode;
         }
 
         /// <summary>Git #840 (Git Board Phase 2) — real `GET /issues/{n}/comments`; GitHub returns these in chronological order already, no client-side re-sort needed.</summary>

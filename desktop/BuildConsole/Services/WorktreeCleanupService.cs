@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace BuildConsole.Services
@@ -52,7 +54,141 @@ namespace BuildConsole.Services
             if (force) args += " --force";
             if (dryRun) args += " --dry-run";
 
-            return await RunScriptAsync(repoRoot, args, "Worktree sweep");
+            var result = await RunScriptAsync(repoRoot, args, "Worktree sweep");
+
+            // Git #3823 — real, confirmed follow-up to the manual cleanup of 243 accumulated
+            // agent/* branches: cleanup-worktree.mjs's sweep above already deletes the LOCAL
+            // agent/* branch for anything it genuinely removes, but never touched the matching
+            // REMOTE branch on GitHub — the exact reason those 243 branches accumulated while
+            // local cleanup worked the entire time. Mirror each local deletion to the remote,
+            // but ONLY once the same real safety check the manual pass used by hand passes.
+            // Same event-driven trigger as the sweep itself (this method), no new timer.
+            if (result.Ok && !dryRun)
+            {
+                await DeleteRemoteBranchesForSweepAsync(result.RawOutput);
+            }
+
+            return result;
+        }
+
+        // Git #3823 — matches the leading numeric issue id off an `agent/<id>-qNNNN` (or bare
+        // `agent/<id>`) branch name. A --notGit local build's id is base-26 letters (see the
+        // notGit-ids memory) and simply won't match — those have no GitHub issue to check, so
+        // they're left alone rather than guessed at.
+        private static readonly Regex AgentBranchIssueRx = new(@"^agent/(\d+)", RegexOptions.Compiled);
+
+        /// <summary>
+        /// Git #3823 — parses cleanup-worktree.mjs --sweep's real JSON `removed` array for every
+        /// local `agent/*` branch it just deleted (`branchDeleted`), then checks each one against
+        /// the real safety gate before deleting the matching remote ref. Never touches anything
+        /// that isn't already a local branch this exact sweep just removed — in particular this
+        /// never runs for the <see cref="MarkWorktreeStaleAsync"/> (failed-build) path, which
+        /// never deletes a local branch at all.
+        /// </summary>
+        private static async Task DeleteRemoteBranchesForSweepAsync(string rawJson)
+        {
+            var locallyDeletedBranches = new List<string>();
+            try
+            {
+                using var doc = JsonDocument.Parse(rawJson);
+                if (doc.RootElement.TryGetProperty("removed", out var removedArr) && removedArr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in removedArr.EnumerateArray())
+                    {
+                        if (item.TryGetProperty("branchDeleted", out var bd) && bd.ValueKind == JsonValueKind.String)
+                        {
+                            var branch = bd.GetString();
+                            if (!string.IsNullOrWhiteSpace(branch)) locallyDeletedBranches.Add(branch!);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(LogChannel, $"Git #3823: couldn't parse sweep output for remote-branch cleanup ({ex.Message}) — no remote branches touched this pass.");
+                return;
+            }
+
+            foreach (var branch in locallyDeletedBranches)
+            {
+                await MaybeDeleteRemoteBranchAsync(branch);
+            }
+        }
+
+        /// <summary>
+        /// Git #3823 — real safety check, in order: (a) the branch's issue is closed with
+        /// state_reason completed/not_planned, delete; (b) else <see cref="DoneBookendVerifier"/>
+        /// confirms a real, git-verified DONE bookend for that issue, delete; (c) otherwise leave
+        /// the remote branch alone. Fails CLOSED on every uncertainty (no PAT, API error, no
+        /// numeric issue id) — a remote branch surviving one extra sweep is the safe direction,
+        /// deleting one that shouldn't have been is not.
+        /// </summary>
+        private static async Task MaybeDeleteRemoteBranchAsync(string branch)
+        {
+            if (string.IsNullOrWhiteSpace(branch) || !branch.StartsWith("agent/", StringComparison.Ordinal))
+                return; // only ever the ephemeral per-build branch this sweep itself just deleted locally
+
+            var m = AgentBranchIssueRx.Match(branch);
+            if (!m.Success)
+            {
+                ActivityLog.Log(LogChannel, $"Git #3823: '{branch}' has no leading numeric issue id (a --notGit local build) — no GitHub issue to verify, leaving the remote branch alone.");
+                return;
+            }
+            int issueNumber = int.Parse(m.Groups[1].Value);
+
+            BuildConsoleSettings settings;
+            try { settings = BuildConsoleSettings.Load(); }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(LogChannel, $"Git #3823: couldn't load settings to verify #{issueNumber} is safe — leaving remote branch '{branch}' alone: {ex.Message}");
+                return;
+            }
+            if (!settings.HasGitHubPat)
+            {
+                ActivityLog.Log(LogChannel, $"Git #3823: no GitHub PAT configured — cannot verify #{issueNumber} is safe. Leaving remote branch '{branch}' alone.");
+                return;
+            }
+
+            string? safetyReason = null;
+            try
+            {
+                var client = new GitHubApiClient(settings.GitHubPat);
+                var issue = await client.GetIssueAsync(issueNumber);
+                if (issue != null && string.Equals(issue.State, "closed", StringComparison.OrdinalIgnoreCase) &&
+                    (string.Equals(issue.StateReason, "completed", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(issue.StateReason, "not_planned", StringComparison.OrdinalIgnoreCase)))
+                {
+                    safetyReason = $"issue #{issueNumber} closed ({issue.StateReason})";
+                }
+                else if (await DoneBookendVerifier.IsSatisfiedAsync(issueNumber))
+                {
+                    safetyReason = $"build-journal/{issueNumber}.md carries a real, git-verified DONE bookend";
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(LogChannel, $"Git #3823: safety check for #{issueNumber} failed ({ex.Message}) — leaving remote branch '{branch}' alone (fail closed).");
+                return;
+            }
+
+            if (safetyReason == null)
+            {
+                ActivityLog.Log(LogChannel, $"Git #3823: #{issueNumber} is neither closed (completed/not_planned) nor has a verified DONE bookend — leaving remote branch '{branch}' alone.");
+                return;
+            }
+
+            try
+            {
+                var client = new GitHubApiClient(settings.GitHubPat);
+                bool deleted = await client.DeleteBranchRefAsync(branch);
+                ActivityLog.Log(LogChannel, deleted
+                    ? $"Deleted remote branch '{branch}' — safe per {safetyReason}."
+                    : $"Attempted to delete remote branch '{branch}' ({safetyReason}) but GitHub did not confirm success.");
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(LogChannel, $"Git #3823: failed to delete remote branch '{branch}' ({safetyReason}): {ex.Message}");
+            }
         }
 
         /// <summary>
