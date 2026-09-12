@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, crApprovalsTable, mspChangeRequestsTable, portalChangeControlPolicyTable, tenantsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, asc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
@@ -8,6 +8,7 @@ import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
 import { logRetainerWorkFromTracker, pillarHintForCategory } from "../lib/retainer-work-logger.ts";
 import { CHANGE_REQUEST_CATEGORIES, workloadForCategory } from "../lib/portal-change-control.ts";
+import { toWireApproval, type WireApprovalRecord } from "../lib/portal-change-approvals.ts";
 import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "../lib/portal-change-freeze-store.ts";
 import { maintenanceCoverageForBookedSpan } from "../lib/portal-change-maintenance-store.ts";
 import { collidingChangeRequestForSubmit } from "../lib/portal-change-collision-store.ts";
@@ -92,6 +93,15 @@ function parseCrId(crId: string): number | null {
 
 // GET /api/msp/change-requests
 // List change requests for the caller's MSP
+//
+// #2579 — every row now carries its `cr_approvals` ledger (`approvals`), not
+// just the raw CR columns. The MSP Console register needs the approval pips,
+// the approved/pending/rejected counts, and the full stage list for its detail
+// drawer; before this the console would have had to call the timeline route
+// once per row (there is no per-approval timeline event) or reimplement the
+// #1496 ledger read itself. One batched second query for the whole page,
+// mirroring the batching `eligibleChangesForAgenda` and
+// `dependencyEdgesForMany` already use elsewhere in this module — not N+1.
 router.get(
   "/msp/change-requests",
   requireAuth,
@@ -110,9 +120,25 @@ router.get(
         .where(eq(mspChangeRequestsTable.mspId, mspId))
         .orderBy(desc(mspChangeRequestsTable.id));
 
+      const approvalsByChangeId = new Map<number, WireApprovalRecord[]>();
+      if (rows.length > 0) {
+        const now = new Date();
+        const approvalRows = await db
+          .select()
+          .from(crApprovalsTable)
+          .where(inArray(crApprovalsTable.changeRequestId, rows.map((r) => r.id)))
+          .orderBy(asc(crApprovalsTable.changeRequestId), asc(crApprovalsTable.stage));
+        for (const row of approvalRows) {
+          const list = approvalsByChangeId.get(row.changeRequestId) ?? [];
+          list.push(toWireApproval(row, now));
+          approvalsByChangeId.set(row.changeRequestId, list);
+        }
+      }
+
       const formatted = rows.map((r) => ({
         ...r,
         id: formatCrId(r.id),
+        approvals: approvalsByChangeId.get(r.id) ?? [],
       }));
 
       res.json(formatted);

@@ -14,6 +14,7 @@ import { Remediation } from "./modules/Remediation";
 import { Webhooks } from "./modules/Webhooks";
 import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
 import { SopsPage } from "@/pages/Sops";
+import { ChangeControl, CHANGE_CONTROL_TABS, type ChangeControlTab } from "@/pages/change-control/ChangeControl";
 import { surface } from "./tokens";
 import { RunbooksPage } from "@/pages/runbooks/RunbooksPage";
 import { BreakGlassPage } from "@/pages/break-glass/BreakGlassPage";
@@ -246,6 +247,21 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "sops") {
     return <SopsPage />;
+  }
+  if (sel.kind === "page" && (CHANGE_CONTROL_TABS as readonly string[]).includes(sel.page)) {
+    // Change Control (#2579) needs the full customer row too — its Register,
+    // Windows, Dependencies, Executions and PIRs tabs all filter this MSP's
+    // whole book down to the real M365 tenantId GUID, same reason Risk
+    // Register needs it above.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    const tab = sel.page as ChangeControlTab;
+    return (
+      <ChangeControl
+        tab={tab}
+        customer={customer}
+        onNavigateTab={(nextTab) => navigate({ kind: "page", tenant: sel.tenant, page: nextTab })}
+      />
+    );
   }
   return undefined;
 }

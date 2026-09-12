@@ -26,6 +26,11 @@ import {
   Radio, Power, PowerOff,
   // Break Glass (#2630)
   Hourglass, EyeOff, CircleAlert, Clock, RotateCcw,
+  // Change Control (#2579) — the design's own icon names, verbatim. (X,
+  // CircleCheckBig, CircleX, CircleDashed, Zap, Eye, Lock, Image, Camera,
+  // Signature, Ban, RotateCcw and Loader2 are already imported above.)
+  PackageCheck, Stamp, Snowflake, Undo2, Workflow, UserRound,
+  CalendarClock, MessageSquare, FilePlus, Inbox,
   type LucideIcon,
 } from "lucide-react";
 
@@ -133,6 +138,18 @@ const REGISTRY: Record<string, LucideIcon> = {
   "circle-alert": CircleAlert,
   clock: Clock,
   "rotate-ccw": RotateCcw,
+  // Change Control (#2579) — the rest of the design's icon set not already
+  // registered above.
+  "package-check": PackageCheck,
+  stamp: Stamp,
+  snowflake: Snowflake,
+  "undo-2": Undo2,
+  workflow: Workflow,
+  "user-round": UserRound,
+  "calendar-clock": CalendarClock,
+  "message-square": MessageSquare,
+  "file-plus": FilePlus,
+  inbox: Inbox,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

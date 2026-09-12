@@ -22,7 +22,14 @@ import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
-import { createDependency, deleteDependency, dependencyEdgesFor, type DependencyEdge } from "../lib/portal-change-dependencies-store.ts";
+import {
+  createDependency,
+  deleteDependency,
+  dependencyEdgesFor,
+  dependencyEdgesForMany,
+  type DependencyEdge,
+} from "../lib/portal-change-dependencies-store.ts";
+import { formatChangeRequestCode } from "../lib/portal-change-control.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 
@@ -68,6 +75,78 @@ async function loadScopedCr(dbId: number, mspId: number) {
     .limit(1);
   return row ?? null;
 }
+
+// GET /api/msp/change-control/dependencies?tenantId=<m365 tenant guid>
+//
+// #2579 — the aggregate view the MSP Console's Dependencies tab needs: every
+// `blocked_by` edge across this MSP's change requests in one call, instead of
+// the per-CR route above called once per row. `tenantId` (the M365 tenant
+// identifier, `tenants.tenant_id` — the same field `DirectoryCustomer.tenantId`
+// carries on the console's own tree) narrows to one tenant's changes; omitted,
+// every change request this MSP owns is in scope. Reuses the already-batched
+// `dependencyEdgesForMany` store function (built for the customer register)
+// rather than a new query shape.
+router.get(
+  "/msp/change-control/dependencies",
+  requireAuth,
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response): Promise<void> => {
+    const mspId = resolveMspIdStrict(req);
+    if (mspId === null) {
+      res.status(403).json({ error: "MSP context required" });
+      return;
+    }
+    const tenantId = typeof req.query.tenantId === "string" && req.query.tenantId.trim().length > 0
+      ? req.query.tenantId.trim()
+      : null;
+    try {
+      const crs = await db
+        .select({ id: mspChangeRequestsTable.id, title: mspChangeRequestsTable.title, tenantId: mspChangeRequestsTable.tenantId })
+        .from(mspChangeRequestsTable)
+        .where(eq(mspChangeRequestsTable.mspId, mspId));
+      const titleById = new Map(crs.map((c) => [c.id, c.title] as const));
+      const scopedIds = (tenantId ? crs.filter((c) => c.tenantId === tenantId) : crs).map((c) => c.id);
+
+      const edgesById = await dependencyEdgesForMany(scopedIds, mspId);
+      const dependencies: {
+        id: number;
+        blockedChangeRequestId: number;
+        blockedChangeCode: string;
+        blockedTitle: string;
+        blockerChangeRequestId: number;
+        blockerChangeCode: string;
+        blockerTitle: string;
+        blockerStatus: string;
+        note: string | null;
+        createdBy: string | null;
+        createdAt: string;
+      }[] = [];
+      for (const id of scopedIds) {
+        const edges = edgesById.get(id);
+        if (!edges) continue;
+        for (const e of edges.blockedBy) {
+          dependencies.push({
+            id: e.id,
+            blockedChangeRequestId: id,
+            blockedChangeCode: formatChangeRequestCode(id),
+            blockedTitle: titleById.get(id) ?? formatChangeRequestCode(id),
+            blockerChangeRequestId: e.otherChangeRequestId,
+            blockerChangeCode: e.otherChangeRequestCode,
+            blockerTitle: titleById.get(e.otherChangeRequestId) ?? e.otherChangeRequestCode,
+            blockerStatus: e.otherStatus,
+            note: e.note,
+            createdBy: e.createdBy,
+            createdAt: e.createdAt.toISOString(),
+          });
+        }
+      }
+      res.json({ dependencies });
+    } catch (err) {
+      log.error({ err, mspId, tenantId }, "GET /msp/change-control/dependencies failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, "Failed to load dependencies");
+    }
+  },
+);
 
 // GET /api/msp/change-requests/:id/dependencies
 router.get(
