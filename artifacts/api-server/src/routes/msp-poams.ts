@@ -267,7 +267,15 @@ router.patch(
         apiError(res, 409, ApiErrorCode.CONFLICT, "Cancelling a POA&M requires MSPAdmin — use PATCH /api/msp/poams/:poamId/cancel");
         return;
       }
-      if (existing.status === "cancelled" || existing.status === "completed") {
+      if (parsed.data.status === "converted_to_risk_acceptance") {
+        apiError(res, 409, ApiErrorCode.CONFLICT, "Converting a POA&M to a risk acceptance requires MSPAdmin — use POST /api/msp/poams/:poamId/convert-to-risk-acceptance");
+        return;
+      }
+      if (
+        existing.status === "cancelled" ||
+        existing.status === "completed" ||
+        existing.status === "converted_to_risk_acceptance"
+      ) {
         apiError(res, 409, ApiErrorCode.CONFLICT, `POA&M is ${existing.status} and cannot be edited`);
         return;
       }

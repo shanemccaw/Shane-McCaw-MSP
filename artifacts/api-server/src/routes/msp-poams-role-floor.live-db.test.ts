@@ -39,7 +39,7 @@ function makeToken(overrides: Record<string, unknown> = {}): string {
   );
 }
 
-describe.skipIf(!process.env.DATABASE_URL)("PATCH /api/msp/poams/:poamId role floor — live Postgres (#3452)", () => {
+describe.skipIf(!process.env.DATABASE_URL)("PATCH /api/msp/poams/:poamId role floor — live Postgres (#3452, #3635)", () => {
   const suffix = `vitest-3452-${Math.floor(Math.random() * 1e9)}`;
   let mspId: number;
   const tenantMsId = `${suffix}.onmicrosoft.com`;
@@ -139,5 +139,48 @@ describe.skipIf(!process.env.DATABASE_URL)("PATCH /api/msp/poams/:poamId role fl
     const [updated] = await db.select().from(mspPoamsTable).where(eq(mspPoamsTable.id, poam.id));
     expect(updated.resourcesRequired).toBe("3 engineer-days");
     expect(updated.status).toBe("active");
+  });
+
+  // ── Git #3635 — same role-floor class as #3452, but the second reserved
+  // terminal state: `converted_to_risk_acceptance`. Reachable ONLY via the
+  // `MSPAdmin`-gated POST /convert-to-risk-acceptance route (the only place
+  // that also creates the linked `msp_risk_decisions` row). The generic
+  // `MSPOperator` PATCH must never set it directly (which would orphan the
+  // status), and must never edit a row that already carries it.
+  it("refuses an MSPOperator's generic PATCH with status:'converted_to_risk_acceptance' (409), and the row is left active", async () => {
+    const poam = await makeActivePoam(`CONVERT-BYPASS-${suffix}`);
+    const app = await mountPoamsApp();
+    const token = makeToken({ mspId });
+
+    const res = await request(app)
+      .patch(`/api/msp/poams/${poam.poamId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "converted_to_risk_acceptance" });
+
+    expect(res.status).toBe(409);
+
+    const [unchanged] = await db.select().from(mspPoamsTable).where(eq(mspPoamsTable.id, poam.id));
+    expect(unchanged.status).toBe("active");
+  });
+
+  it("refuses an MSPOperator's generic PATCH against a row already converted_to_risk_acceptance (409, terminal/uneditable)", async () => {
+    const poam = await makeActivePoam(`CONVERT-TERMINAL-${suffix}`);
+    // Simulate a genuine, completed conversion — the real conversion route sets
+    // this status together with the linked risk-decision row. Here we only need
+    // the terminal status on the row to prove the generic PATCH refuses to touch it.
+    await db.update(mspPoamsTable).set({ status: "converted_to_risk_acceptance" }).where(eq(mspPoamsTable.id, poam.id));
+
+    const app = await mountPoamsApp();
+    const token = makeToken({ mspId });
+
+    const res = await request(app)
+      .patch(`/api/msp/poams/${poam.poamId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ resourcesRequired: "9 engineer-days" });
+
+    expect(res.status).toBe(409);
+    const [unchanged] = await db.select().from(mspPoamsTable).where(eq(mspPoamsTable.id, poam.id));
+    expect(unchanged.status).toBe("converted_to_risk_acceptance");
+    expect(unchanged.resourcesRequired).toBe("2 engineer-days");
   });
 });
