@@ -3,6 +3,11 @@
   "compilerOptions": {
     "composite": true,
     "declarationMap": true,
+    // Git #3641 — relative imports carry an explicit `.ts` extension (mechanically,
+    // via the orval codegen post-step — see lib/api-spec/package.json's `codegen`
+    // script) so this package loads under Node's own ESM loader, not only under a
+    // bundler. Same class as lib/db (#2458, #3409) and api-server (#3574).
+    "allowImportingTsExtensions": true,
     "emitDeclarationOnly": true,
     "outDir": "dist",
     "rootDir": "src"

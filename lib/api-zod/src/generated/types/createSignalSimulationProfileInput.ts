@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { CreateSignalSimulationProfileInputProfileUpdates } from './createSignalSimulationProfileInputProfileUpdates';
+import type { CreateSignalSimulationProfileInputProfileUpdates } from './createSignalSimulationProfileInputProfileUpdates.ts';
 
 export interface CreateSignalSimulationProfileInput {
   name: string;

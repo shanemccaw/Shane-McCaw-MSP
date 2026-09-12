@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SignalProjectsPreviewPayloadExcludedItemProject } from './signalProjectsPreviewPayloadExcludedItemProject';
+import type { SignalProjectsPreviewPayloadExcludedItemProject } from './signalProjectsPreviewPayloadExcludedItemProject.ts';
 
 export type SignalProjectsPreviewPayloadExcludedItem = {
   project?: SignalProjectsPreviewPayloadExcludedItemProject;

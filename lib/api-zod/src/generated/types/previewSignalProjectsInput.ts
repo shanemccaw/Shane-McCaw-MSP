@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { PreviewSignalProjectsInputProfileUpdates } from './previewSignalProjectsInputProfileUpdates';
+import type { PreviewSignalProjectsInputProfileUpdates } from './previewSignalProjectsInputProfileUpdates.ts';
 
 export interface PreviewSignalProjectsInput {
   /** Explicit list of fired signal keys (overrides evaluation) */

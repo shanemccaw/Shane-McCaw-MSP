@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { RunbookOutputLine } from './runbookOutputLine';
+import type { RunbookOutputLine } from './runbookOutputLine.ts';
 
 export interface RunbookJobOutput {
   status: string;

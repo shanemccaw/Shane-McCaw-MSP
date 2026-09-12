@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SignalSimulationRunResultExcludedProjectsItemProject } from './signalSimulationRunResultExcludedProjectsItemProject';
+import type { SignalSimulationRunResultExcludedProjectsItemProject } from './signalSimulationRunResultExcludedProjectsItemProject.ts';
 
 export type SignalSimulationRunResultExcludedProjectsItem = {
   project?: SignalSimulationRunResultExcludedProjectsItemProject;

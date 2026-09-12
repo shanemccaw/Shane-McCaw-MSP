@@ -5,10 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SignalSimulationRunResultExcludedProjectsItem } from './signalSimulationRunResultExcludedProjectsItem';
-import type { SignalSimulationRunResultFiredSignalsItem } from './signalSimulationRunResultFiredSignalsItem';
-import type { SignalSimulationRunResultIncludedProjectsItem } from './signalSimulationRunResultIncludedProjectsItem';
-import type { SignalSimulationRunResultRuleTraceItem } from './signalSimulationRunResultRuleTraceItem';
+import type { SignalSimulationRunResultExcludedProjectsItem } from './signalSimulationRunResultExcludedProjectsItem.ts';
+import type { SignalSimulationRunResultFiredSignalsItem } from './signalSimulationRunResultFiredSignalsItem.ts';
+import type { SignalSimulationRunResultIncludedProjectsItem } from './signalSimulationRunResultIncludedProjectsItem.ts';
+import type { SignalSimulationRunResultRuleTraceItem } from './signalSimulationRunResultRuleTraceItem.ts';
 
 export interface SignalSimulationRunResult {
   firedSignals?: SignalSimulationRunResultFiredSignalsItem[];

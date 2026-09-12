@@ -5,9 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SignalDerivationRule } from './signalDerivationRule';
-import type { SignalRuleGroup } from './signalRuleGroup';
-import type { SignalRuleListResponseBySignal } from './signalRuleListResponseBySignal';
+import type { SignalDerivationRule } from './signalDerivationRule.ts';
+import type { SignalRuleGroup } from './signalRuleGroup.ts';
+import type { SignalRuleListResponseBySignal } from './signalRuleListResponseBySignal.ts';
 
 export interface SignalRuleListResponse {
   bySignal?: SignalRuleListResponseBySignal;

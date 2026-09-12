@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { LeadInputSource } from './leadInputSource';
+import type { LeadInputSource } from './leadInputSource.ts';
 
 export interface LeadInput {
   /** @minLength 1 */

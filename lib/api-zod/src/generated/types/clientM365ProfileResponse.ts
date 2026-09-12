@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { ClientM365ProfileResponseProfile } from './clientM365ProfileResponseProfile';
+import type { ClientM365ProfileResponseProfile } from './clientM365ProfileResponseProfile.ts';
 
 export interface ClientM365ProfileResponse {
   profile: ClientM365ProfileResponseProfile;

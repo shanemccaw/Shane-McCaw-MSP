@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { LeadUpdateStatus } from './leadUpdateStatus';
+import type { LeadUpdateStatus } from './leadUpdateStatus.ts';
 
 export interface LeadUpdate {
   status?: LeadUpdateStatus;

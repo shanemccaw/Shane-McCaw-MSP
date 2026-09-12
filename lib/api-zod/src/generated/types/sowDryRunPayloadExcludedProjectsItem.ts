@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SowDryRunPayloadExcludedProjectsItemProject } from './sowDryRunPayloadExcludedProjectsItemProject';
+import type { SowDryRunPayloadExcludedProjectsItemProject } from './sowDryRunPayloadExcludedProjectsItemProject.ts';
 
 export type SowDryRunPayloadExcludedProjectsItem = {
   project?: SowDryRunPayloadExcludedProjectsItemProject;

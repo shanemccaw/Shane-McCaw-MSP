@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { AzureCredentialInputCredentialType } from './azureCredentialInputCredentialType';
+import type { AzureCredentialInputCredentialType } from './azureCredentialInputCredentialType.ts';
 
 export interface AzureCredentialInput {
   displayName: string;

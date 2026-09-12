@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { Lead } from './lead';
+import type { Lead } from './lead.ts';
 
 export interface LeadList {
   leads: Lead[];

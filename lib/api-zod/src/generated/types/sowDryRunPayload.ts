@@ -5,10 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SowDryRunPayloadExcludedProjectsItem } from './sowDryRunPayloadExcludedProjectsItem';
-import type { SowDryRunPayloadFiredSignalsItem } from './sowDryRunPayloadFiredSignalsItem';
-import type { SowDryRunPayloadIncludedProjectsItem } from './sowDryRunPayloadIncludedProjectsItem';
-import type { SowDryRunPayloadRuleTraceItem } from './sowDryRunPayloadRuleTraceItem';
+import type { SowDryRunPayloadExcludedProjectsItem } from './sowDryRunPayloadExcludedProjectsItem.ts';
+import type { SowDryRunPayloadFiredSignalsItem } from './sowDryRunPayloadFiredSignalsItem.ts';
+import type { SowDryRunPayloadIncludedProjectsItem } from './sowDryRunPayloadIncludedProjectsItem.ts';
+import type { SowDryRunPayloadRuleTraceItem } from './sowDryRunPayloadRuleTraceItem.ts';
 
 export interface SowDryRunPayload {
   firedSignals?: SowDryRunPayloadFiredSignalsItem[];

@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { IngestedEmail } from './ingestedEmail';
+import type { IngestedEmail } from './ingestedEmail.ts';
 
 export interface IngestedEmailRow {
   email: IngestedEmail;

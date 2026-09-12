@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SignalConflictReportConflictsItem } from './signalConflictReportConflictsItem';
+import type { SignalConflictReportConflictsItem } from './signalConflictReportConflictsItem.ts';
 
 export interface SignalConflictReport {
   conflicts?: SignalConflictReportConflictsItem[];

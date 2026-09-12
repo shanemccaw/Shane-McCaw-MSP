@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SignalRuleAuditLogResponseRowsItem } from './signalRuleAuditLogResponseRowsItem';
+import type { SignalRuleAuditLogResponseRowsItem } from './signalRuleAuditLogResponseRowsItem.ts';
 
 export interface SignalRuleAuditLogResponse {
   rows?: SignalRuleAuditLogResponseRowsItem[];

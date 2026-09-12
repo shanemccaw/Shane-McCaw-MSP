@@ -5,8 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { PublicServiceBillingType } from './publicServiceBillingType';
-import type { PublicServiceServiceType } from './publicServiceServiceType';
+import type { PublicServiceBillingType } from './publicServiceBillingType.ts';
+import type { PublicServiceServiceType } from './publicServiceServiceType.ts';
 
 export interface PublicService {
   id: number;

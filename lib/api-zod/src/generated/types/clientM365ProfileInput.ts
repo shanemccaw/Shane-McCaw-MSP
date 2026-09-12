@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { ClientM365ProfileInputProfile } from './clientM365ProfileInputProfile';
+import type { ClientM365ProfileInputProfile } from './clientM365ProfileInputProfile.ts';
 
 export interface ClientM365ProfileInput {
   profile: ClientM365ProfileInputProfile;

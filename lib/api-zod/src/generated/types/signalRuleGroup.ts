@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SignalRuleGroupLogic } from './signalRuleGroupLogic';
+import type { SignalRuleGroupLogic } from './signalRuleGroupLogic.ts';
 
 export interface SignalRuleGroup {
   id: number;

@@ -5,8 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { CreateSignalRuleInput } from './createSignalRuleInput';
-import type { SignalRuleImportInputGroupsItem } from './signalRuleImportInputGroupsItem';
+import type { CreateSignalRuleInput } from './createSignalRuleInput.ts';
+import type { SignalRuleImportInputGroupsItem } from './signalRuleImportInputGroupsItem.ts';
 
 export interface SignalRuleImportInput {
   rules: CreateSignalRuleInput[];

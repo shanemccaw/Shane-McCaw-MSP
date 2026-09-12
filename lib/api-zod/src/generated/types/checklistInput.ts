@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { ChecklistItem } from './checklistItem';
+import type { ChecklistItem } from './checklistItem.ts';
 
 export interface ChecklistInput {
   title: string;

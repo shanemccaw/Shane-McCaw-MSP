@@ -5,12 +5,12 @@
  * MSP Portal API specification — covers authentication, MSP CRUD, customer management, and portal-facing endpoints.
  * OpenAPI spec version: 0.1.0
  */
-import type { MspDashboardAi } from './mspDashboardAi';
-import type { MspDashboardCustomers } from './mspDashboardCustomers';
-import type { MspDashboardMsp } from './mspDashboardMsp';
-import type { MspDashboardOffers } from './mspDashboardOffers';
-import type { MspDashboardRevenue } from './mspDashboardRevenue';
-import type { MspDashboardSignals } from './mspDashboardSignals';
+import type { MspDashboardAi } from './mspDashboardAi.ts';
+import type { MspDashboardCustomers } from './mspDashboardCustomers.ts';
+import type { MspDashboardMsp } from './mspDashboardMsp.ts';
+import type { MspDashboardOffers } from './mspDashboardOffers.ts';
+import type { MspDashboardRevenue } from './mspDashboardRevenue.ts';
+import type { MspDashboardSignals } from './mspDashboardSignals.ts';
 
 export interface MspDashboard {
   msp?: MspDashboardMsp;

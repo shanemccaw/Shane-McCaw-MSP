@@ -5,8 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SignalSimulationProfileLastRunResult } from './signalSimulationProfileLastRunResult';
-import type { SignalSimulationProfileProfileUpdates } from './signalSimulationProfileProfileUpdates';
+import type { SignalSimulationProfileLastRunResult } from './signalSimulationProfileLastRunResult.ts';
+import type { SignalSimulationProfileProfileUpdates } from './signalSimulationProfileProfileUpdates.ts';
 
 export interface SignalSimulationProfile {
   id: number;

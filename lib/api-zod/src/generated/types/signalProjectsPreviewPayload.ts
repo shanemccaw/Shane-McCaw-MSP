@@ -5,9 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SignalProjectsPreviewPayloadExcludedItem } from './signalProjectsPreviewPayloadExcludedItem';
-import type { SignalProjectsPreviewPayloadFiredSignalsItem } from './signalProjectsPreviewPayloadFiredSignalsItem';
-import type { SignalProjectsPreviewPayloadIncludedItem } from './signalProjectsPreviewPayloadIncludedItem';
+import type { SignalProjectsPreviewPayloadExcludedItem } from './signalProjectsPreviewPayloadExcludedItem.ts';
+import type { SignalProjectsPreviewPayloadFiredSignalsItem } from './signalProjectsPreviewPayloadFiredSignalsItem.ts';
+import type { SignalProjectsPreviewPayloadIncludedItem } from './signalProjectsPreviewPayloadIncludedItem.ts';
 
 export interface SignalProjectsPreviewPayload {
   firedSignals?: SignalProjectsPreviewPayloadFiredSignalsItem[];

@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { ListPublicServicesType } from './listPublicServicesType';
+import type { ListPublicServicesType } from './listPublicServicesType.ts';
 
 export type ListPublicServicesParams = {
 type?: ListPublicServicesType;
