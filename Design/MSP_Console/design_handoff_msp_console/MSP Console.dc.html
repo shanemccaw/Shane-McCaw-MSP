@@ -636,6 +636,83 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
           </div>
         </sc-if>
 
+        <sc-if value="{{ isSignals }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <sc-if value="{{ hasSigView }}" hint-placeholder-val="{{ true }}">
+              <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:14px">
+                <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+                  <span style="display:flex;align-items:baseline;gap:7px">
+                    <span style="font-size:34px;font-weight:800;line-height:1;color:{{ sigView.compositeColor }}">{{ sigView.composite }}</span>
+                    <span style="font-size:11px;font-weight:700;letter-spacing:.1em;color:#64748b">COMPOSITE</span>
+                  </span>
+                  <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                    <span style="font-family:Menlo,monospace;font-size:12px;color:#93c5fd;word-break:break-all">{{ sigView.runId }}</span>
+                    <span style="font-size:11.5px;color:#64748b">{{ sigView.meta }}</span>
+                  </span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:9px;border-top:1px solid rgba(148,163,184,.12);padding-top:13px">
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#475569">PRIORITY ITEMS · WORST SEVERITY FIRST</span>
+                  <sc-for list="{{ sigView.priorityItems }}" as="i" hint-placeholder-count="4">
+                    <div style="display:flex;gap:11px;align-items:flex-start">
+                      <span style="width:7px;height:7px;border-radius:99px;background:{{ i.dot }};flex:0 0 7px;margin-top:6px"></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                        <span style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                          <span style="font-size:13px;font-weight:600;color:#f1f5f9">{{ i.title }}</span>
+                          <span style="font-family:Menlo,monospace;font-size:11px;color:#64748b;word-break:break-all">{{ i.checkKey }}</span>
+                        </span>
+                        <span style="font-size:12px;line-height:1.5;color:#94a3b8;text-wrap:pretty">{{ i.description }}</span>
+                      </span>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ sigView.noPriorityItems }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:12px;color:#64748b">No critical or warning findings from the latest diagnostic run.</span>
+                  </sc-if>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#64748b">PILLARS</span>
+                  <span style="font-size:11.5px;color:#475569">Every engine's own score, and what it actually found — not just the worst of it</span>
+                </div>
+                <sc-for list="{{ sigView.pillars }}" as="p" hint-placeholder-count="6">
+                  <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:14px 15px;display:flex;flex-direction:column;gap:10px">
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                      <span style="font-size:13px;font-weight:700;color:#f1f5f9;flex:1;min-width:120px">{{ p.name }}</span>
+                      <span style="font-size:16px;font-weight:800;color:{{ p.color }}">{{ p.score }}</span>
+                      <div style="height:4px;width:120px;border-radius:99px;background:rgba(148,163,184,.14);overflow:hidden">
+                        <div style="height:4px;width:{{ p.bar }};background:{{ p.color }}"></div>
+                      </div>
+                    </div>
+                    <sc-if value="{{ p.hasFindings }}" hint-placeholder-val="{{ true }}">
+                      <div style="display:flex;flex-direction:column;gap:5px">
+                        <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#475569">FINDINGS</span>
+                        <sc-for list="{{ p.findings }}" as="f" hint-placeholder-count="2">
+                          <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">· {{ f }}</span>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ p.hasRecommendations }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:5px">
+                        <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#475569">RECOMMENDATIONS</span>
+                        <sc-for list="{{ p.recommendations }}" as="r" hint-placeholder-count="2">
+                          <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">· {{ r }}</span>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ p.clean }}" hint-placeholder-val="{{ false }}">
+                      <span style="font-size:12px;color:#64748b">Nothing wrong here — no findings from the latest run.</span>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ noSigView }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:14px 15px;font-size:12.5px;color:#64748b">{{ sigViewEmpty }}</div>
+            </sc-if>
+          </div>
+        </sc-if>
+
         <sc-if value="{{ isFrames }}" hint-placeholder-val="{{ false }}">
           <div style="display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px">
             <sc-for list="{{ frames }}" as="f" hint-placeholder-count="4">
@@ -2325,11 +2402,24 @@ class Component extends DCLogic {
     return this.remData[tIdx] || { steps: [], checklist: [], fix: [], bypass: [], pillars: [] };
   }
 
+  /**
+   * Per-engine `findings`/`recommendations` mirror the real
+   * `pillars[engineKey]` shape `GET /msp/customers/:id/scores` returns —
+   * derived server-side from `tenant_engine_snapshots.breakdown` (each row's
+   * `finding`/`message`/`label` and `recommendation`/`action`). An engine
+   * with neither array populated is a real clean pillar, not a missing one.
+   */
   tenantScores = {
     0: { runId: "run_8f14e45f_20260905", generatedAt: "5 Sep 2026, 6:12 AM UTC", status: "complete",
       engines: [
-        { key: "security", score: 68 }, { key: "health", score: 81 }, { key: "governance", score: 74 },
-        { key: "drift", score: 63 }, { key: "sla", score: 92 }, { key: "scope_creep", score: 77 }
+        { key: "security", score: 68,
+          findings: ["Two Global Administrators without MFA", "Anonymous sharing links on four sites"],
+          recommendations: ["Require a strong authentication method on every standing Global Administrator", "Set an expiry on every anonymous link and block new ones by policy"] },
+        { key: "health", score: 81, findings: [], recommendations: [] },
+        { key: "governance", score: 74, findings: ["Windows compliance policy not assigned"], recommendations: ["Assign the existing compliance policy to a device group"] },
+        { key: "drift", score: 63, findings: ["Legacy authentication still permitted"], recommendations: ["Add a Conditional Access policy blocking basic authentication protocols"] },
+        { key: "sla", score: 92, findings: [], recommendations: [] },
+        { key: "scope_creep", score: 77, findings: [], recommendations: [] }
       ],
       items: [
         { checkKey: "identity.mfa_admin_gap", severity: "critical", title: "Two Global Administrators without MFA", description: "Both accounts hold standing Global Administrator and have no strong authentication method registered." },
@@ -2339,8 +2429,14 @@ class Component extends DCLogic {
       ] },
     1: { runId: "run_b21d9c07_20260903", generatedAt: "3 Sep 2026, 11:40 PM UTC", status: "complete",
       engines: [
-        { key: "security", score: 54 }, { key: "health", score: 66 }, { key: "governance", score: 48 },
-        { key: "drift", score: 71 }, { key: "sla", score: 59 }, { key: "scope_creep", score: 71 }
+        { key: "security", score: 54, findings: [], recommendations: [] },
+        { key: "health", score: 66, findings: ["External access open to all domains"], recommendations: ["Restrict Teams external access to an allow-list of trusted domains"] },
+        { key: "governance", score: 48,
+          findings: ["No retention policy on clinical records", "Locum accounts with no expiry"],
+          recommendations: ["Apply a retention label policy to every clinical records library, mapped to the tenant's HIPAA framework", "Set an account expiry or review date on every temporary-staff account"] },
+        { key: "drift", score: 71, findings: [], recommendations: [] },
+        { key: "sla", score: 59, findings: [], recommendations: [] },
+        { key: "scope_creep", score: 71, findings: [], recommendations: [] }
       ],
       items: [
         { checkKey: "compliance.retention_clinical", severity: "critical", title: "No retention policy on clinical records", description: "Clinical records libraries have no retention label policy applied, against the tenant's own HIPAA framework mapping." },
@@ -2349,8 +2445,14 @@ class Component extends DCLogic {
       ] },
     2: { runId: "run_d0c4a9b6_20260828", generatedAt: "28 Aug 2026, 3:05 PM UTC", status: "complete",
       engines: [
-        { key: "security", score: 31 }, { key: "health", score: 52 }, { key: "governance", score: 44 },
-        { key: "drift", score: 40 }, { key: "sla", score: 61 }, { key: "scope_creep", score: 48 }
+        { key: "security", score: 31,
+          findings: ["MFA not enforced for any administrator", "Nine standing privileged assignments"],
+          recommendations: ["Require multifactor authentication for every privileged role through Conditional Access", "Move standing privileged role assignments to PIM-activated, time-bound assignments"] },
+        { key: "health", score: 52, findings: [], recommendations: [] },
+        { key: "governance", score: 44, findings: ["No DLP policy for financial data"], recommendations: ["Add a DLP policy in SharePoint and Exchange matching the financial data sensitive-info types"] },
+        { key: "drift", score: 40, findings: [], recommendations: [] },
+        { key: "sla", score: 61, findings: [], recommendations: [] },
+        { key: "scope_creep", score: 48, findings: [], recommendations: [] }
       ],
       items: [
         { checkKey: "identity.mfa_admin_gap", severity: "critical", title: "MFA not enforced for any administrator", description: "No Conditional Access policy requires multifactor authentication for privileged roles." },
@@ -2465,6 +2567,7 @@ class Component extends DCLogic {
     const t = tIdx == null ? null : this.tenantData[tIdx];
     const page = sel.kind === "page" ? sel.page : null;
     const isTeam = page === "team";
+    const isSignals = page === "signals";
     const st = s.uiState;
     const tq = s.treeQuery.trim().toLowerCase();
 
@@ -3118,6 +3221,55 @@ class Component extends DCLogic {
         { icon: "pencil", color: "#94a3b8", tint: "rgba(148,163,184,.06)", line: "rgba(148,163,184,.18)", title: "Business unit is the only editable field here", body: "It backs the Security Plan assembly's scope dimension the same way pillar and framework do. Everything else on this screen is read-only, and the write actions are routes, not fields.", wire: "PATCH /admin/customers/:id/business-unit" }
       ];
     }
+
+    // Signals — the expanded scores + findings view. Same route and same
+    // engine-snapshot source as the Tenant Home "Scores and results" block
+    // (GET /msp/customers/:id/scores), but per-pillar: every engine's own
+    // findings and recommendations, not just the flat worst-severity list.
+    // An engine with neither array is a real clean pillar, said as one.
+    let sigView = null, sigViewEmpty = "";
+    if (isSignals && t) {
+      const sc = this.tenantScores[tIdx];
+      if (sc) {
+        const vals = sc.engines.filter(e => typeof e.score === "number");
+        const comp = vals.length ? Math.round(vals.reduce((a, e) => a + e.score, 0) / vals.length) : null;
+        const priorityItems = sc.items.map(i => ({
+          checkKey: i.checkKey, title: i.title, description: i.description, severity: i.severity,
+          dot: i.severity === "critical" ? "#f87171" : "#fbbf24"
+        }));
+        sigView = {
+          composite: comp === null ? "—" : String(comp),
+          compositeColor: comp === null ? "#64748b" : comp < 60 ? "#fca5a5" : comp < 80 ? "#fcd34d" : "#6ee7b7",
+          runId: sc.runId,
+          meta: sc.status === "running" ? "Scan in progress" : "Latest run · " + sc.generatedAt,
+          priorityItems,
+          noPriorityItems: priorityItems.length === 0,
+          pillars: sc.engines.map(e => {
+            const findings = e.findings || [];
+            const recommendations = e.recommendations || [];
+            return {
+              key: e.key,
+              name: this.engineLabels[e.key] || e.key,
+              score: String(e.score),
+              bar: e.score + "%",
+              color: e.score < 60 ? "#fca5a5" : e.score < 80 ? "#fcd34d" : "#6ee7b7",
+              findings, recommendations,
+              hasFindings: findings.length > 0,
+              hasRecommendations: recommendations.length > 0,
+              clean: findings.length === 0 && recommendations.length === 0
+            };
+          })
+        };
+      } else {
+        sigViewEmpty = "No engine snapshot yet for this tenant — scores and findings appear here after the first completed scan.";
+      }
+      notes = [
+        { icon: "eye", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "The customer's free-tier paywall does not apply to this console", body: "The customer portal redacts finding and recommendation text behind a paid assessment, but scores are never gated. On the MSP side the operator is the one doing the work, so full finding and recommendation text shows regardless of the customer's paid status.", wire: "GET /msp/customers/:id/scores" },
+        { icon: "layers", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Findings and recommendations are per pillar, not one flat list", body: "The route derives them from each engine snapshot's own breakdown array (finding / message / label, recommendation / action). A pillar with an empty breakdown shows a score with nothing under it — a real clean result, not a missing one.", wire: "tenant_engine_snapshots.breakdown" },
+        { icon: "radar", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Priority items are worst-severity-first, capped at five", body: "Pulled from the tenant's latest diagnostic findings run — critical before warning, newest within each — a different real source than the per-pillar breakdown above.", wire: "msp_diagnostic_findings · latest runId, severity in (critical, warning)" }
+      ];
+    }
+
     if (isOverview && t) {
       const crs = this.crs[tIdx] || [];
       const roster = this.rosters[tIdx] || [];
@@ -4600,6 +4752,7 @@ class Component extends DCLogic {
         : isRbd ? (rbdSel ? "RISK DECISION · " + rbdSel.rbdId : "RISK REGISTER")
         : isMspSet ? "MSP RECORD AND PLATFORM SETTINGS"
         : mspSel ? (mspSel === "docs" ? (docSel ? "MSP-AUTHORED DOCUMENT" : "MSP-AUTHORED DOCUMENTS") : "SHAREPOINT CONNECTORS · MSPADMIN")
+        : isSignals ? "SIGNALS"
         : isTenantHome ? "TENANT CONTROL · " + t.domain
         : !t ? "DIRECTORY" : isHub ? "DOCUMENTS HUB" : isTeam ? "TEAM MANAGEMENT AND INVITATIONS" : isDr ? "DATA RIGHTS AND PRIVACY · MSPADMIN" : isBg ? "BREAK-GLASS ACCESS" : ccPage ? (showCrDetail ? "CHANGE REQUEST · " + activeCr.code : "CHANGE CONTROL") : meta.eyebrow,
       pageTitle: isWh ? (whSel ? whSel.label : "Webhooks")
@@ -4616,6 +4769,7 @@ class Component extends DCLogic {
         : isRbd ? (rbdSel ? rbdSel.title : "Risk Register")
         : isMspSet ? "Shane McCaw Consulting"
         : mspSel ? (mspSel === "docs" ? (docSel ? docSel.title : "Documents") : "SharePoint connectors")
+        : isSignals ? "Signals"
         : isTenantHome ? t.name
         : !t ? "Managed Tenants" : isHub ? (hubSel ? hubSel.title : "Documents") : isTeam ? "Team" : isDr ? "Data rights" : isBg ? (showBgDetail ? bgSel.ref : "Break-glass") : ccPage ? (showCrDetail ? activeCr.title : ccChild.label) : (this.childPages.find(x => x.id === page) || {}).label,
       pageNote: isWh ? (whSel ? "Customer-owned endpoint. You can disable and re-enable it; everything else stays with the owner." : "Outbound endpoints a customer registered. One customer at a time — there is no cross-customer list.")
@@ -4632,6 +4786,7 @@ class Component extends DCLogic {
         : isRbd ? (rbdSel ? "Accepted risk for " + rbdSel.tenant + ", signed off by their own approver." : "Risk this tenant has accepted, each one signed off by a named customer approver.")
         : isMspSet ? "The MSP record itself — profile, subscription, derived entitlements, platform agreement and the admin actions available against it."
         : mspSel ? (mspSel === "docs" ? "Documents this MSP authors and publishes through the HTML to PDF to SharePoint pipeline." : "Credentials the pipeline uploads through. Creating, editing and deactivating all require MSPAdmin.")
+        : isSignals ? "The same engine snapshot behind Tenant Control's scores, expanded to what each pillar actually found — every engine's real findings and recommendations, not just the worst of them."
         : isTenantHome ? "The tenant record itself — subscription, payment state, consent, scanning and every control this console has against it."
         : !t ? "Every tenant in your book. Expand one in the tree to work inside it."
         : isHub ? (hubSel ? "Generated for " + t.name + " · read-only on this surface." : "Documents the platform generated for " + t.name + ". This surface reads and shares them, never edits them.")
@@ -4663,8 +4818,11 @@ class Component extends DCLogic {
       hasConsentNote: !!consentNote,
       hasScans: tenScans.length > 0, hasServices: tenServices.length > 0, hasUsers: tenUsers.length > 0,
       noScans: isTenantHome && tenScans.length === 0, noServices: isTenantHome && tenServices.length === 0, noUsers: isTenantHome && tenUsers.length === 0,
-      isFrames: !!meta && !isOverview,
+      isFrames: !!meta && !isOverview && !isSignals,
       frames: meta ? meta.frames : [],
+
+      isSignals, sigView, sigViewEmpty,
+      hasSigView: !!sigView, noSigView: isSignals && !sigView,
 
       isTeam,
       showStates: isTeam || !!ccPage || isExec || (isWh && !whSel && s.whTab === "endpoints"),
@@ -4730,7 +4888,7 @@ class Component extends DCLogic {
       crApprovalSummary: activeCr ? activeCr.approvals : "",
       crApprovalColor: activeCr && activeCr.approvalState === "waiting" ? "#fcd34d" : "#6ee7b7",
 
-      hasNotes: (isTenantHome || !!ccPage || isBg || isDr || isHub || !!mspSel || isWh || isLc || isRem || isRbd || isRun || isDiag) && notes.length > 0,
+      hasNotes: (isTenantHome || isSignals || !!ccPage || isBg || isDr || isHub || !!mspSel || isWh || isLc || isRem || isRbd || isRun || isDiag) && notes.length > 0,
 
       isMspSet, mspProfile, mspContact, mspPlanF, mspEnt, mspActions, mspAgree, mspActivity, mspNotesText,
 
