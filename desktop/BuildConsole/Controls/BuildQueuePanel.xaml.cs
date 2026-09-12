@@ -156,6 +156,15 @@ namespace BuildConsole.Controls
 
         private bool _isPinned = true;
 
+        // Git #3785 — new "Build Sets" slide-out panel to the LEFT of this whole control
+        // (BuildSetsColumn/BuildSetsPanelBorder in the XAML). Same GridLength(0)<->fixed-
+        // width column toggle FloatingChatWindow's DockColumn/BtnToggleDock (Git #2195)
+        // already established for a slide-out side panel, mirrored to open on the left
+        // instead of the right. Open/closed state is real, persisted app state
+        // (BuildConsoleSettings.BuildSetsPanelOpen), not re-derived each launch.
+        private bool _buildSetsPanelOpen;
+        private const double BuildSetsPanelWidth = 240;
+
         // Git #3701 — right-pointing while expanded (panel is on the right side of the
         // window, so collapsing it pushes it off to the right); left-pointing while
         // collapsed (re-expanding pulls it back in from the right). Mirrors #3606's
@@ -390,6 +399,12 @@ namespace BuildConsole.Controls
             // Git #3786 — apply the persisted CritterLoungeVisible choice at construction so the
             // very first paint already reflects the last real toggle, not a flash of the default.
             ApplyCritterLoungeVisibility(BuildConsoleSettings.Load().CritterLoungeVisible);
+
+            // Git #3785 — real last-closed state, persisted across restarts (mirrors
+            // FloatingChatDockExpanded's #2195 pattern); default false/closed per the
+            // issue's own ask for a reasonable first-launch default.
+            try { _buildSetsPanelOpen = BuildConsoleSettings.Load().BuildSetsPanelOpen; } catch { }
+            ApplyBuildSetsPanelState();
         }
 
         /// <summary>Called once from MainWindow with the shared API client and optional direct-DB client.</summary>
@@ -8114,6 +8129,37 @@ namespace BuildConsole.Controls
             _isPinned = !_isPinned;
             CollapseQueueIcon.Text = _isPinned ? CollapseArrowGlyph : ExpandArrowGlyph;
             PinToggled?.Invoke(this, _isPinned);
+        }
+
+        // Git #3785 — "Build Sets" slide-out toggle. Real relocation target for
+        // RenderBuildSetRollup's existing output (BuildSetRollupList et al, now living in
+        // BuildSetsPanelBorder/Grid.Column="0"), out of the old 180px-capped strip. Purely a
+        // local column-width/visibility flip plus a persisted-setting write — no re-render
+        // of the rollup itself, since its population logic in RenderBuildSetRollup is
+        // completely untouched by this relocation.
+        private void BtnToggleBuildSets_Click(object sender, RoutedEventArgs e)
+        {
+            _buildSetsPanelOpen = !_buildSetsPanelOpen;
+            ApplyBuildSetsPanelState();
+            try
+            {
+                var settings = BuildConsoleSettings.Load();
+                settings.BuildSetsPanelOpen = _buildSetsPanelOpen;
+                settings.Save();
+            }
+            catch { /* best-effort persistence — the toggle still works this session either way */ }
+        }
+
+        private void ApplyBuildSetsPanelState()
+        {
+            BuildSetsColumn.Width = _buildSetsPanelOpen ? new GridLength(BuildSetsPanelWidth) : new GridLength(0);
+            BuildSetsPanelBorder.Visibility = _buildSetsPanelOpen ? Visibility.Visible : Visibility.Collapsed;
+            ToggleBuildSetsIcon.Foreground = _buildSetsPanelOpen
+                ? (Brush)FindResource("BlueBrush")
+                : (Brush)FindResource("Subtext1Brush");
+            BtnToggleBuildSets.ToolTip = _buildSetsPanelOpen
+                ? "Hide Build Sets panel"
+                : "Show Build Sets panel";
         }
 
         // Git #3767 — separate re-entry guards for the two narrow buttons (was one shared

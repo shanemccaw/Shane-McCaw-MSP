@@ -64,7 +64,98 @@
     <Border Background="{StaticResource MantleBrush}"
             BorderBrush="{StaticResource Surface0Brush}"
             BorderThickness="1,0,0,0">
-        <DockPanel LastChildFill="True">
+        <!-- Git #3785 — real second column added to the panel so the new "Build Sets"
+             slide-out can live to the LEFT of the existing Queue content, mirroring the
+             exact FloatingChatWindow DockColumn/BtnToggleDock convention (Git #2195)
+             already used elsewhere in this app for a slide-out side panel — just mirrored
+             (that one opens on the right; this one opens on the left). BuildSetsColumn
+             toggles between 0 and BuildSetsPanelWidth in code-behind
+             (ApplyBuildSetsPanelState); the main Queue content column is unaffected and
+             keeps its own real internal layout exactly as before. -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="BuildSetsColumn" Width="0"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ══ Build Sets slide-out panel — Git #3785: RenderBuildSetRollup's real
+                 population logic (code-behind) is untouched; this is a relocation of its
+                 existing children (BuildSetRollupList/RollupActivityFilterChips/
+                 BuildSetRollupClearText), OUT of the old ScrollViewer MaxHeight="180" strip
+                 that used to sit above the Queue header. That cap was the #2179 mitigation
+                 for a wide/active queue's 15-20+ concurrent build sets pushing the real
+                 queue graph off-screen; giving the rollup its own full-height column here
+                 solves that structurally instead of capping it. Hidden (BuildSetsColumn
+                 Width=0, this Border Collapsed) until BtnToggleBuildSets is clicked;
+                 open/closed state persists via BuildConsoleSettings.BuildSetsPanelOpen. ══ -->
+            <Border x:Name="BuildSetsPanelBorder"
+                    Grid.Column="0"
+                    Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,0,1,0"
+                    Visibility="Collapsed">
+                <!-- Git #3785 — kept the exact x:Name (BuildSetRollupSection) RenderBuildSetRollup
+                     already toggles Visible/Collapsed on when no build set has real current
+                     activity (Git #1834's original "hide the whole section when there's nothing to
+                     show" rule), so that logic keeps working identically, unchanged, at its new
+                     address. BuildSetsPanelBorder above is the manual open/close the header button
+                     controls; this inner DockPanel is the activity-driven show/hide within it —
+                     the two compose exactly like they always implicitly did (an idle queue shows
+                     an empty bordered panel if Shane has it manually pinned open). -->
+                <DockPanel x:Name="BuildSetRollupSection" LastChildFill="True">
+                    <Border DockPanel.Dock="Top"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="0,0,0,1"
+                            Padding="10,8,10,10">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,6">
+                                <TextBlock Text="BUILD SETS"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource Subtext1Brush}"/>
+                                <!-- Git #1834 addendum, relocated by #3785 — the "clear it"
+                                     affordance for a row-driven queue-graph drill-down
+                                     (composes with QueueFilterCombo + the search box as AND,
+                                     see ApplyFilter); hidden while no drill-down is active. -->
+                                <TextBlock x:Name="BuildSetRollupClearText"
+                                           DockPanel.Dock="Right"
+                                           FontSize="10.5"
+                                           Foreground="{StaticResource BlueBrush}"
+                                           Cursor="Hand"
+                                           HorizontalAlignment="Right"
+                                           Visibility="Collapsed"
+                                           MouseLeftButtonDown="BuildSetRollupClear_Click"/>
+                            </DockPanel>
+                            <!-- Git #2693 — activity filter chips, relocated by #3785. Narrows
+                                 which rollup rows below render by real running/verifying
+                                 activity within each set; a separate concept from the
+                                 drill-down clear text above, composing with it. -->
+                            <StackPanel x:Name="RollupActivityFilterChips"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Left">
+                                <Border x:Name="RollupFilterChipAll" Style="{StaticResource RollupFilterChipStyle}" Tag="all" MouseLeftButtonDown="RollupActivityFilterChip_Click">
+                                    <TextBlock Text="All" Style="{StaticResource RollupFilterChipTextStyle}"/>
+                                </Border>
+                                <Border x:Name="RollupFilterChipRunning" Style="{StaticResource RollupFilterChipStyle}" Tag="running" MouseLeftButtonDown="RollupActivityFilterChip_Click">
+                                    <TextBlock Text="Running" Style="{StaticResource RollupFilterChipTextStyle}"/>
+                                </Border>
+                                <Border x:Name="RollupFilterChipVerifying" Style="{StaticResource RollupFilterChipStyle}" Tag="verifying" MouseLeftButtonDown="RollupActivityFilterChip_Click">
+                                    <TextBlock Text="Verifying" Style="{StaticResource RollupFilterChipTextStyle}"/>
+                                </Border>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <!-- Git #2179's original cap (ScrollViewer MaxHeight="180") is gone —
+                         this ScrollViewer now gets the new panel's real full available
+                         height instead of a fixed, separately-scrolling strip. -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="BuildSetRollupList" Margin="10,8,10,10"/>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <DockPanel Grid.Column="1" LastChildFill="True">
 
             <!-- ── Header ── -->
             <Border DockPanel.Dock="Top"
@@ -90,6 +181,23 @@
                                 Click="BtnCollapseQueue_Click">
                             <TextBlock x:Name="CollapseQueueIcon"
                                        Text="&#xE76C;"
+                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontSize="13"
+                                       VerticalAlignment="Center"/>
+                        </Button>
+                        <!-- Git #3785 — new toggle for the "Build Sets" slide-out panel
+                             (relocated BuildSetRollupList, now to the LEFT of this whole
+                             panel). Icon/tooltip flip in code-behind
+                             (ApplyBuildSetsPanelState), same convention as
+                             CollapseQueueIcon above. -->
+                        <Button x:Name="BtnToggleBuildSets"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Show Build Sets panel"
+                                Padding="4"
+                                Margin="0,0,4,0"
+                                Click="BtnToggleBuildSets_Click">
+                            <TextBlock x:Name="ToggleBuildSetsIcon"
+                                       Text="&#xE8B7;"
                                        FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
                                        FontSize="13"
                                        VerticalAlignment="Center"/>
@@ -201,79 +309,12 @@
                 </DockPanel>
             </Border>
 
-            <!-- ── Build Set Rollup — Git #1834: collapsible per-buildSet status summary,
-                 filling the space #1816 freed up when Batter Up/AI Batter Up collapsed to a
-                 single header row when empty (MainWindow docks AiBatterUpPanel →
-                 BatterUpPanel → BuildQueuePanel top-to-bottom, so this is the next thing on
-                 screen after them). Lives here rather than on a sibling Batter Up panel's
-                 header because the data (bt_build_queue via _lastItems) is already owned by
-                 this panel, and their post-#1816 header only has room for a short count
-                 string, not a rollup list. Docked Top (not inside the ScrollViewer below) so
-                 it stays visible regardless of scroll position. Populated entirely in
-                 code-behind (RenderBuildSetRollup) — hidden outright when no build set has
-                 any real current activity, so an idle queue doesn't grow this back into dead
-                 space either. -->
-            <Border x:Name="BuildSetRollupSection"
-                    DockPanel.Dock="Top"
-                    Background="{StaticResource MantleBrush}"
-                    BorderBrush="{StaticResource Surface0Brush}"
-                    BorderThickness="0,0,0,1"
-                    Padding="10,8,10,10"
-                    Visibility="Collapsed">
-                <StackPanel>
-                    <DockPanel Margin="0,0,0,6">
-                        <TextBlock Text="BUILD SETS"
-                                   FontSize="11"
-                                   FontWeight="SemiBold"
-                                   Foreground="{StaticResource Subtext1Brush}"/>
-                        <!-- Git #1834 addendum — clicking a row below drills the queue graph
-                             down to that build set (composes with QueueFilterCombo + the
-                             search box as AND, doesn't override either — see ApplyFilter).
-                             This is the "clear it" affordance; hidden while no drill-down is
-                             active. -->
-                        <TextBlock x:Name="BuildSetRollupClearText"
-                                   DockPanel.Dock="Right"
-                                   FontSize="10.5"
-                                   Foreground="{StaticResource BlueBrush}"
-                                   Cursor="Hand"
-                                   HorizontalAlignment="Right"
-                                   Visibility="Collapsed"
-                                   MouseLeftButtonDown="BuildSetRollupClear_Click"/>
-                        <!-- Git #2693 — activity filter chips: which rollup rows below show, by
-                             real running/verifying activity within each set. A SEPARATE concept
-                             from _buildSetFilter/BuildSetRollupClearText above (which drills the
-                             queue graph down to one chosen set) — this only narrows which of the
-                             existing rollup rows render, composing with the any-activity filter
-                             RenderBuildSetRollup already applies. -->
-                        <StackPanel x:Name="RollupActivityFilterChips"
-                                    Orientation="Horizontal"
-                                    Margin="10,0,0,0"
-                                    HorizontalAlignment="Left">
-                            <Border x:Name="RollupFilterChipAll" Style="{StaticResource RollupFilterChipStyle}" Tag="all" MouseLeftButtonDown="RollupActivityFilterChip_Click">
-                                <TextBlock Text="All" Style="{StaticResource RollupFilterChipTextStyle}"/>
-                            </Border>
-                            <Border x:Name="RollupFilterChipRunning" Style="{StaticResource RollupFilterChipStyle}" Tag="running" MouseLeftButtonDown="RollupActivityFilterChip_Click">
-                                <TextBlock Text="Running" Style="{StaticResource RollupFilterChipTextStyle}"/>
-                            </Border>
-                            <Border x:Name="RollupFilterChipVerifying" Style="{StaticResource RollupFilterChipStyle}" Tag="verifying" MouseLeftButtonDown="RollupActivityFilterChip_Click">
-                                <TextBlock Text="Verifying" Style="{StaticResource RollupFilterChipTextStyle}"/>
-                            </Border>
-                        </StackPanel>
-                    </DockPanel>
-                    <!-- Git #2179 — Shane: a wide/active queue can have 15-20+ concurrent build
-                         sets, and this section was unbounded (Dock=Top, no MaxHeight), so it grew
-                         tall enough to push the real queue graph below it clean off the visible
-                         panel — "blocking my view of the actual build queue and cannot manage the
-                         queue items." Cap it and let IT scroll instead of the whole panel, so the
-                         queue graph below always stays reachable regardless of how many build
-                         sets are active. -->
-                    <ScrollViewer MaxHeight="180"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                        <StackPanel x:Name="BuildSetRollupList"/>
-                    </ScrollViewer>
-                </StackPanel>
-            </Border>
+            <!-- Git #3785 — the Build Set Rollup section that used to live here (Git #1834,
+                 capped at #2179) has moved OUT to the new BuildSetsPanelBorder slide-out
+                 column above (Grid.Column="0" of this panel's root Grid). Its removal from
+                 this Dock="Top" stack is exactly what lets the QUEUE header immediately
+                 below genuinely reflow up into the freed vertical space — real layout
+                 change, not dead space left behind. -->
 
             <!-- ══ QUEUE header — Git #3552: pinned to the top of the Queue section
                  (title, live stats border, issue-mirror sync countdown, status filter
@@ -880,6 +921,7 @@
                 </StackPanel>
             </ScrollViewer>
 
-        </DockPanel>
+            </DockPanel>
+        </Grid>
     </Border>
 </UserControl>

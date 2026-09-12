@@ -450,6 +450,14 @@ namespace BuildConsole.Services
         /// in this app.</summary>
         public bool FloatingChatDockExpanded { get; set; } = false;
 
+        /// <summary>Git #3785 — whether the Build Queue panel's new "Build Sets" slide-out (the
+        /// relocated <c>BuildSetRollupList</c>, freed from its old 180px-capped strip — see #2179)
+        /// was open when last closed. Same "new panel starts hidden until Shane opts in" default as
+        /// <see cref="FloatingChatDockExpanded"/> above; a pre-#3785 settings.json (no
+        /// "buildSetsPanelOpen" key) deserializes with this default intact, i.e. closed at first
+        /// launch after the update.</summary>
+        public bool BuildSetsPanelOpen { get; set; } = false;
+
         /// <summary>
         /// Git #2105 — active pinned-question detection. When on, each open floating-chat tab, on
         /// every settled assistant turn (the real "turn completed" event, not polling), is probed
