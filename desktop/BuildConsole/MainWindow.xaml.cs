@@ -7343,6 +7343,16 @@ namespace BuildConsole
         // only ever one CreateAsync call for the app's whole lifetime.
         private static System.Threading.Tasks.Task<Microsoft.Web.WebView2.Core.CoreWebView2Environment>? _sharedWv2EnvTask;
 
+        // Git #3744 — every WebView2 that has gone through EnsureWebViewInitializedAsync,
+        // tracked with a WEAK key so a BrowserProcessExited recovery (below) can find and
+        // attempt to revive every currently-open tab without keeping any of them alive past
+        // their normal WPF lifetime. The value is the ProcessFailed handler actually wired to
+        // that instance's CoreWebView2, so a forced re-init can unsubscribe the previous one
+        // instead of double-subscribing on every recovery attempt.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+            Microsoft.Web.WebView2.Wpf.WebView2,
+            EventHandler<Microsoft.Web.WebView2.Core.CoreWebView2ProcessFailedEventArgs>> _webViewProcessFailedHandlers = new();
+
         private static System.Threading.Tasks.Task<Microsoft.Web.WebView2.Core.CoreWebView2Environment> GetSharedWebView2EnvironmentAsync()
         {
             _sharedWv2EnvTask ??= CreateSharedWebView2EnvironmentAsync();
@@ -7372,14 +7382,23 @@ namespace BuildConsole
             }
         }
 
-        public static async System.Threading.Tasks.Task<bool> EnsureWebViewInitializedAsync(Microsoft.Web.WebView2.Wpf.WebView2 wv)
+        /// <param name="wv">The control to initialize.</param>
+        /// <param name="forceReinit">
+        /// Git #3744 — normally this method is a cheap idempotent no-op once
+        /// <c>wv.CoreWebView2</c> is set (the guard immediately below). A
+        /// <see cref="Microsoft.Web.WebView2.Core.CoreWebView2ProcessFailedKind.BrowserProcessExited"/>
+        /// recovery needs to bypass that guard and force every already-initialized tab back
+        /// through real init against the freshly-recreated shared environment — this is that
+        /// escape hatch. Never set true from a normal call site.
+        /// </param>
+        public static async System.Threading.Tasks.Task<bool> EnsureWebViewInitializedAsync(Microsoft.Web.WebView2.Wpf.WebView2 wv, bool forceReinit = false)
         {
             try
             {
                 // Never flash bright white during initialization / loading
                 wv.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
 
-                if (wv.CoreWebView2 != null) return true;
+                if (wv.CoreWebView2 != null && !forceReinit) return true;
 
                 var env = await GetSharedWebView2EnvironmentAsync();
                 await wv.EnsureCoreWebView2Async(env);
@@ -7399,6 +7418,20 @@ namespace BuildConsole
                     wv.CoreWebView2.PermissionRequested -= WebView_PermissionRequested;
                     wv.CoreWebView2.PermissionRequested += WebView_PermissionRequested;
 
+                    // Git #3744 — zero crash/OOM handling existed anywhere in the app before
+                    // this (confirmed via full-repo grep for ProcessFailed/BrowserProcessExited
+                    // — no hits). Wired here since this is the one real init path every WebView2
+                    // host in the app already goes through (chat tabs, FloatingChatWindow,
+                    // ClaudeTerminalView, UiTestExecutor) — no per-call-site duplication needed.
+                    if (_webViewProcessFailedHandlers.TryGetValue(wv, out var previousHandler))
+                    {
+                        wv.CoreWebView2.ProcessFailed -= previousHandler;
+                    }
+                    EventHandler<Microsoft.Web.WebView2.Core.CoreWebView2ProcessFailedEventArgs> processFailedHandler =
+                        (_, args) => WebView_ProcessFailed(wv, args);
+                    wv.CoreWebView2.ProcessFailed += processFailedHandler;
+                    _webViewProcessFailedHandlers.AddOrUpdate(wv, processFailedHandler);
+
                     // Immediately enforce dark background on every document navigation so pages don't flash white before CSS loads
                     await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                         "(() => { try { const setDark = () => { if (document.documentElement && !document.documentElement.style.backgroundColor) { document.documentElement.style.backgroundColor = '#181825'; } if (document.body && !document.body.style.backgroundColor) { document.body.style.backgroundColor = '#181825'; } }; setDark(); document.addEventListener('DOMContentLoaded', setDark); } catch (e) {} })();"
@@ -7413,6 +7446,152 @@ namespace BuildConsole
                 BuildConsole.Services.ActivityLog.Log("startup", $"WebView2 init error: {ex.Message}");
             }
             return false;
+        }
+
+        /// <summary>
+        /// Git #3744 — WebView2's real, built-in crash/OOM signal (<c>CoreWebView2.ProcessFailed</c>).
+        /// This is precisely why a failure previously required Shane to notice a broken/blank
+        /// tab and manually reload it — the live, reported symptom being WebView2 tabs running
+        /// Claude Design (heavier live-rendered content than plain chat) periodically going out
+        /// of memory. Subscribed once per WebView2 inside <see cref="EnsureWebViewInitializedAsync"/>.
+        /// </summary>
+        private static void WebView_ProcessFailed(Microsoft.Web.WebView2.Wpf.WebView2 wv, Microsoft.Web.WebView2.Core.CoreWebView2ProcessFailedEventArgs e)
+        {
+            // Log the real reason/exit code every time — including kinds we don't auto-recover
+            // from — so a genuine pattern (e.g. Design sessions specifically) is diagnosable
+            // later from ActivityLog history rather than only from anecdotal impression.
+            BuildConsole.Services.ActivityLog.Log("webview2",
+                $"CoreWebView2.ProcessFailed — kind={e.ProcessFailedKind}, reason={e.Reason}, exitCode={e.ExitCode}, source={SafeWebViewSource(wv)}.");
+
+            switch (e.ProcessFailedKind)
+            {
+                case Microsoft.Web.WebView2.Core.CoreWebView2ProcessFailedKind.BrowserProcessExited:
+                    // The shared environment's own browser process died. Every WebView2 host in
+                    // the app (chat tabs, FloatingChatWindow, ClaudeTerminalView, UiTestExecutor)
+                    // is built against the ONE cached environment from
+                    // GetSharedWebView2EnvironmentAsync, so this is a whole-app event affecting
+                    // every open tab at once — the higher-priority branch per the issue.
+                    _ = RecoverFromBrowserProcessExitedAsync(e);
+                    break;
+
+                case Microsoft.Web.WebView2.Core.CoreWebView2ProcessFailedKind.RenderProcessExited:
+                    // Only this tab's renderer died — the common, per-tab OOM case. WebView2
+                    // already auto-created a fresh render process and navigated it to an error
+                    // page; reload the tab to recover.
+                    _ = RecoverFromRenderProcessExitedAsync(wv, e);
+                    break;
+
+                default:
+                    // FrameRenderProcessExited / RenderProcessUnresponsive / GPU process kinds —
+                    // real and now on record via the log line above, but no auto-recovery is
+                    // attempted for these (out of this issue's scope).
+                    break;
+            }
+        }
+
+        private static string SafeWebViewSource(Microsoft.Web.WebView2.Wpf.WebView2 wv)
+        {
+            try { return wv.Source?.ToString() ?? "(none)"; }
+            catch { return "(unavailable)"; }
+        }
+
+        /// <summary>
+        /// Git #3744 — RenderProcessExited recovery: reload just the one affected tab via the
+        /// SDK's own documented <c>Reload()</c> method, and surface it via toast so Shane knows
+        /// an automatic reload happened rather than just seeing the tab's content flicker.
+        /// </summary>
+        private static async System.Threading.Tasks.Task RecoverFromRenderProcessExitedAsync(
+            Microsoft.Web.WebView2.Wpf.WebView2 wv, Microsoft.Web.WebView2.Core.CoreWebView2ProcessFailedEventArgs e)
+        {
+            string source = SafeWebViewSource(wv);
+            try
+            {
+                await wv.Dispatcher.InvokeAsync(() => wv.CoreWebView2?.Reload()).Task;
+
+                BuildConsole.Services.ActivityLog.Log("webview2",
+                    $"Tab renderer crashed (reason={e.Reason}, exitCode={e.ExitCode}) — auto-reloaded {source}.");
+                ToastEngine.Warning("Chat tab recovered",
+                    $"A tab's renderer process crashed ({e.Reason}) and was reloaded automatically.");
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("webview2",
+                    $"Tab renderer crashed (reason={e.Reason}, exitCode={e.ExitCode}) but auto-reload of {source} failed: {ex.Message}");
+                ToastEngine.Error("Chat tab crashed",
+                    $"A tab's renderer process crashed ({e.Reason}) and could not be auto-reloaded — please reload it manually.");
+            }
+        }
+
+        /// <summary>
+        /// Git #3744 — BrowserProcessExited recovery. Per the WebView2 SDK's own docs
+        /// (<see cref="Microsoft.Web.WebView2.Core.CoreWebView2ProcessFailedKind.BrowserProcessExited"/>):
+        /// "the app has to recreate a new WebView to recover from this failure" — the browser
+        /// process backing the shared environment is gone, and since every WebView2 host in the
+        /// app shares that one environment (see <see cref="GetSharedWebView2EnvironmentAsync"/>),
+        /// this affects every open tab, not just one. Resets the cached environment task so the
+        /// next call builds a genuinely fresh environment, then forces every currently-tracked
+        /// WebView2 back through <see cref="EnsureWebViewInitializedAsync"/> against it and
+        /// reloads each one to its own last real URL. A tab that still can't come back after
+        /// that is logged honestly by name rather than silently dropped — one tab failing to
+        /// recover never stops the rest from being tried.
+        /// </summary>
+        private static async System.Threading.Tasks.Task RecoverFromBrowserProcessExitedAsync(Microsoft.Web.WebView2.Core.CoreWebView2ProcessFailedEventArgs e)
+        {
+            BuildConsole.Services.ActivityLog.Log("webview2",
+                $"Shared WebView2 browser process exited (reason={e.Reason}, exitCode={e.ExitCode}) — every open tab is affected. Recreating the shared environment.");
+
+            // Force the next GetSharedWebView2EnvironmentAsync() call to build a brand-new
+            // environment instead of handing back the now-dead cached one.
+            _sharedWv2EnvTask = null;
+
+            var tabs = new System.Collections.Generic.List<Microsoft.Web.WebView2.Wpf.WebView2>();
+            foreach (var kvp in _webViewProcessFailedHandlers) tabs.Add(kvp.Key);
+
+            int recovered = 0;
+            var failures = new System.Collections.Generic.List<string>();
+
+            foreach (var wv in tabs)
+            {
+                string source = SafeWebViewSource(wv);
+                try
+                {
+                    bool ok = await EnsureWebViewInitializedAsync(wv, forceReinit: true);
+                    if (ok && wv.CoreWebView2 != null && wv.Source != null)
+                    {
+                        wv.CoreWebView2.Navigate(wv.Source.ToString());
+                    }
+
+                    if (ok) recovered++;
+                    else failures.Add(source);
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"{source} ({ex.Message})");
+                }
+            }
+
+            BuildConsole.Services.ActivityLog.Log("webview2",
+                $"Shared WebView2 environment recreated — {recovered}/{tabs.Count} tab(s) re-initialized." +
+                (failures.Count > 0 ? $" Failed to recover: {string.Join("; ", failures)}." : string.Empty));
+
+            if (tabs.Count == 0)
+            {
+                // Nothing was open when the browser process died — nothing to recover, but the
+                // crash itself is still worth a toast since it explains any weirdness Shane is
+                // about to see the moment he opens a new tab.
+                ToastEngine.Warning("WebView2 browser process crashed",
+                    $"The shared browser process crashed ({e.Reason}). It will be recreated the next time a tab is opened.");
+            }
+            else if (failures.Count == 0)
+            {
+                ToastEngine.Warning("Chat tabs recovered",
+                    $"The shared browser process crashed ({e.Reason}) — {recovered} open tab(s) were automatically recovered.");
+            }
+            else
+            {
+                ToastEngine.Error("Chat tabs crashed",
+                    $"The shared browser process crashed ({e.Reason}) — {recovered}/{tabs.Count} tab(s) recovered automatically; {failures.Count} need a manual reload.");
+            }
         }
 
         /// <summary>
