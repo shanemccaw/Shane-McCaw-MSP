@@ -93,6 +93,7 @@ export interface OperatorTask {
   readonly id: string;
   readonly type: "sla_breach" | "scope_creep_violation";
   readonly category: string;
+  readonly timerId: string | null;
   readonly customerId: number | null;
   readonly customerName: string | null;
   readonly description: string;

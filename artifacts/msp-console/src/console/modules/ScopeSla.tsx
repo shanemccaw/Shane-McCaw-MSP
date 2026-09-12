@@ -1015,6 +1015,7 @@ function TaskDrawer({
   onOpenTenant: (customerId: number) => void;
 }) {
   const resolveViolation = useResolveScopeCreepViolation();
+  const resolveTimer = useResolveSlaTimer();
   const tt = taskTone(task);
   const ageMin = (Date.now() - new Date(task.createdAt).getTime()) / 60_000;
 
@@ -1025,13 +1026,21 @@ function TaskDrawer({
     { label: "RAISED", value: formatDateTime(task.createdAt), color: text.muted },
   ];
 
-  const primaryLabel = task.type === "scope_creep_violation" ? "Resolve the violation" : "Open in Admin Panel";
-  const primaryIcon: IconName = task.type === "scope_creep_violation" ? "check" : "external-link";
+  const canResolveTimer = task.type === "sla_breach" && task.timerId != null;
+  const primaryLabel = task.type === "scope_creep_violation"
+    ? "Resolve the violation"
+    : canResolveTimer ? "Stop the clock" : "Open in Admin Panel";
+  const primaryIcon: IconName = task.type === "scope_creep_violation" || canResolveTimer ? "check" : "external-link";
   const runPrimary = () => {
     if (task.type === "scope_creep_violation") {
       resolveViolation.mutate({ violationId: task.id }, {
         onSuccess: onClose,
         onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to resolve."),
+      });
+    } else if (canResolveTimer) {
+      resolveTimer.mutate({ timerId: task.timerId! }, {
+        onSuccess: onClose,
+        onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to stop the clock."),
       });
     } else {
       window.open(task.deepLink, "_blank", "noopener,noreferrer");
@@ -1039,7 +1048,9 @@ function TaskDrawer({
   };
   const note = task.type === "scope_creep_violation"
     ? "Resolving closes every escalation hanging off this violation too."
-    : "This console can't stop the specific clock behind this breach from a queue task alone — open it in Admin Panel to resolve the underlying timer.";
+    : canResolveTimer
+      ? "Stopping the clock records this queue as who resolved it and when."
+      : "This console can't stop the specific clock behind this breach from a queue task alone — open it in Admin Panel to resolve the underlying timer.";
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(2,6,23,.65)", backdropFilter: "blur(2px)", zIndex: 90, display: "flex", justifyContent: "flex-end" }}>
@@ -1068,7 +1079,7 @@ function TaskDrawer({
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
               onClick={runPrimary}
-              disabled={resolveViolation.isPending}
+              disabled={resolveViolation.isPending || resolveTimer.isPending}
               style={{ display: "flex", alignItems: "center", gap: 7, height: 34, padding: "0 12px", borderRadius: 8, border: "1px solid #2563eb", background: "#2563eb", color: "#fff", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
             >
               <Icon name={primaryIcon} size={13} />
