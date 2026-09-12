@@ -7,6 +7,23 @@ file:line — nothing here is authored or invented. Per #1598's sequencing corre
 this surface's backend already existed before this pack, so it skips #1578 steps 1–2
 (schema / honest read) and starts at step 3 (this pack) → Claude Design → wire.
 
+**Corrected 2026-09-12 (#3782), read-only, no product/schema/UI changed:** full
+line-by-line re-audit per the #1642 pattern found two real drifts:
+
+1. §4's "honest exception" (`invoicesTable.amount` as decimal dollars) was fixed by
+   **#1610** roughly 1.5 hours after this pack closed, and the old decimal column was
+   dropped entirely by a follow-up migration (#1623). §1.1's field table, §1.3, and §4
+   are corrected below; §1.1's render-shape snippet is also corrected to include
+   `BillingReceiptRow.paid`, a real field already current in code at pack-close but
+   missing from the original snippet.
+2. §1.6's "zero `client_services` rows in `recurring_monthly`" premise was already
+   inaccurate at pack-close time (one synthetic/testbed row pre-dated it) — corrected
+   in place in §1.6; the practical "nothing real to wire the tier cards to" conclusion
+   is unaffected.
+
+Everything else in this pack (§1.2, §1.4–§1.5, §2–§3, §5–§8) was re-checked against
+current code and remains accurate as originally written.
+
 Backend route: `artifacts/api-server/src/routes/portal-billing.ts`
 Portal wire/model files (path stale — `artifacts/msp-portal` was retired for
 `artifacts/portal` in `f40438cdc`; see #1921): `artifacts/portal/src/components/billingWire.ts`,
@@ -51,7 +68,7 @@ real column types, from `invoicesTable` (`lib/db/src/schema/index.ts:730-757`):
 | `id` | `id` (serial) | `number` | no | CURRENT |
 | `invoiceNumber` | `invoice_number` | `string` | no | CURRENT |
 | `description` | `description` | `string \| null` | yes | CURRENT |
-| `amount` | `amount` (numeric 10,2) | decimal string, e.g. `"1180.00"` — **dollars, not cents** (see §4) | no | CURRENT |
+| `amount` | `amount` (integer) | integer cents (see §4 — **corrected 2026-09-12 (#3782)**, migrated from decimal dollars by #1610 the same day this pack closed) | no | CURRENT |
 | `status` | `status` | enum, see §3 | no | CURRENT |
 | `invoiceType` | `invoice_type` | enum, see §3 | no | CURRENT |
 | `pdfFilename` | `pdf_filename` | `string \| null` | yes | CURRENT |
@@ -59,21 +76,27 @@ real column types, from `invoicesTable` (`lib/db/src/schema/index.ts:730-757`):
 | `createdAt` | `created_at` | `Date` (ISO on the wire) | no | CURRENT |
 | — (unused by this list view) | `currency`, `dueDate`, `stripeSessionId`, `sharepointFileUrl`, `couponCode`, `discountAmount`, `stripeInvoiceId`, `billingCycleStart/End`, `stripeSubscriptionId`, `zohoBooksInvoiceId`, `projectId`, `clientUserId`, `updatedAt` | — | — | CURRENT on the row, not surfaced through `WireInvoice` today |
 
-`billingWire.ts`'s `toBillingReceipts` (`:89-92`) maps this to the render shape:
+`billingWire.ts`'s `toBillingReceipts` (`:97-`) maps this to the render shape:
 
 ```ts
-// billingWire.ts:30-38
+// billingWire.ts:29-42
 interface BillingReceiptRow {
   readonly id: number;
-  readonly date: string;    // fmtDate(paidAt ?? createdAt) — "29 Jul 2026" style, billingWire.ts:53-58
-  readonly what: string;    // description, else a generic label by invoiceType — billingWire.ts:60-71
-  readonly ref: string;     // invoiceNumber, else `inv_${id}` — billingWire.ts:80
-  readonly amount: string;  // "$" + formatted amount — billingWire.ts:44-51
-  readonly downloadable: boolean; // !!pdfFilename — billingWire.ts:82
+  readonly date: string;    // fmtDate(paidAt ?? createdAt) — "29 Jul 2026" style
+  readonly what: string;    // description, else a generic label by invoiceType
+  readonly ref: string;     // invoiceNumber, else `inv_${id}`
+  readonly amount: string;  // "$" + formatted amount, cents→dollars — see §4
+  readonly downloadable: boolean; // !!pdfFilename
+  // Corrected 2026-09-12 (#3782): a `paid` field exists on this interface today
+  // that was not in this pack's original snippet — invoicesTable.status narrowed
+  // to a boolean (`status === "paid"`), same pattern as receiptWire.ts's
+  // Stripe-sourced rows; anything but "paid" renders as "Pending" rather than a
+  // four-way status pill.
+  readonly paid: boolean;
 }
 ```
 
-A row with a non-numeric/missing `id` is dropped entirely (`billingWire.ts:74-75`) — an
+A row with a non-numeric/missing `id` is dropped entirely (`billingWire.ts:81-82`) — an
 id is what makes a receipt clickable, so an unusable one is not rendered as a dead row.
 
 ### 1.2 Invoice detail — `GET /api/portal/invoices/:id`
@@ -94,10 +117,11 @@ response shape as served:
 ### 1.3 Pay an invoice — `POST /api/portal/invoices/:id/pay`
 
 `portal-billing.ts:133-186`. Creates a Stripe Checkout session (`mode: "payment"`), one
-line item priced from `invoice.amount` converted to cents at the call boundary
-(`portal-billing.ts:172` — see §4). Response: `{ url: string }` (`:185`). Unwired in
-portal-v2 today (no pay button on `portal-v2-billing.tsx`'s receipt rows — the button
-there triggers download, not pay).
+line item priced straight from `invoice.amount` — **corrected 2026-09-12 (#3782):** since
+#1610 (landed the same day this pack closed), `invoice.amount` is already integer cents, so
+this is now a direct pass-through, not a dollars-to-cents conversion — see §4. Response:
+`{ url: string }` (`:185`). Unwired in portal-v2 today (no pay button on
+`portal-v2-billing.tsx`'s receipt rows — the button there triggers download, not pay).
 
 ### 1.4 Download a receipt PDF — `GET /api/portal/invoices/:id/download`
 
@@ -170,6 +194,18 @@ empty or require inventing a monitoring/retainer/add-on categorization the schem
 not carry. **DECIDED not to wire it there yet — left alone rather than fabricated**,
 tracked on #1594, blocked on #1128.
 
+**Correction 2026-09-12 (#3782):** the "zero rows" premise above is not quite accurate —
+re-verified via direct `psql`: **one** `client_services` row (`id=27`, `status='active'`,
+`purchased_at` 2026-08-28 14:56, i.e. already present before this pack closed) joins to a
+`recurring_monthly` service (`services.name = "Premier Monitoring — Enterprise"`), owned
+by `shanemccaw+buyassessment@outlook.com` — a `+`-tagged synthetic/testbed address, not a
+real customer's. That row has no `stripeSubscriptionId`, so §1.6's response shape would
+still resolve `stripe: null` for it (`portal-billing.ts:282-283`) — a real row exists, but
+still not one with enough linked Stripe data to drive a real plan-state view. The
+practical conclusion (nothing to wire the tier cards to yet) stands; the literal "zero
+rows" claim does not, and future re-verification should say "no row with a linked Stripe
+subscription" rather than "no row at all."
+
 Sibling plan-state endpoints, real and CURRENT, also unwired into `portal-v2-billing.tsx`:
 
 - `POST /portal/billing/subscriptions/:id/cancel` (`:332-384`) — sets
@@ -191,6 +227,7 @@ Sibling plan-state endpoints, real and CURRENT, also unwired into `portal-v2-bil
 | Surface | Field/behavior | Status | Issue |
 |---|---|---|---|
 | Receipts (invoices) | `WireInvoice` fields, `id`/`invoiceNumber`/`description`/`amount`/`status`/`invoiceType`/`pdfFilename`/`paidAt`/`createdAt` | CURRENT | #1237 |
+| Receipts | `BillingReceiptRow.paid` (boolean, narrowed from `status === "paid"`) — added to this pack 2026-09-12 (#3782), was already CURRENT in code at pack close but omitted from the original render-shape snippet | CURRENT | #1237 |
 | Receipts | `dataState` = `rows !== null ? "live" : "fixture"` (zero real rows is still `"live"`) | CURRENT (fixed) | #1463 |
 | Receipt detail page | Stripe-sourced live match via `stripe-receipts` | CURRENT | #1242 |
 | Receipt detail page | Fixture fallback on no route-id match | CURRENT (by design, not a gap) | #1242 |
@@ -256,20 +293,22 @@ platform Stripe account, no Stripe Connect.**
   endpoint (`portal-billing.ts:308`) — both are Stripe's own integer-cent values,
   untouched. `receiptWire.ts:33` converts it to a dollar float only at render time:
   `const amountDollars = Math.round(entry.amount) / 100`.
-- **Honest exception, worth stating plainly for Design: `invoicesTable.amount` — the
-  field the Receipts list itself actually renders — is NOT integer cents.** It is
-  `numeric("amount", { precision: 10, scale: 2 })` (`lib/db/src/schema/index.ts:736`), a
-  Postgres decimal that arrives on the wire as a **dollar string** (e.g. `"1180.00"`),
-  not an integer. `billingWire.ts:47` parses it with `Number.parseFloat`, not integer
-  cent math. The route itself only converts to cents at the Stripe API boundary, once,
-  when actually calling Stripe: `Math.round(parseFloat(String(invoice.amount)) * 100)`
-  (`portal-billing.ts:172`, inside `POST /invoices/:id/pay`'s `price_data.unit_amount`).
-  **Design should not assume every money field on this page is integer cents** — the
-  platform-wide cents rule holds for the services catalog
-  (`servicesTable.priceCents`/`annualPriceCents`/`internalCostCents`, all
-  `integer(...)`, `lib/db/src/schema/index.ts:457-462`) and for anything read straight
-  off Stripe's own API, but the one real historical-invoice ledger this page reads is a
-  decimal-dollar column, extracted as such.
+- **Corrected 2026-09-12 (#3782) — the exception below no longer holds.** This pack
+  originally documented `invoicesTable.amount` as a decimal-dollar exception to the
+  platform's integer-cents rule. That was accurate when this pack closed
+  (2026-09-03) but was fixed roughly 1.5 hours later, the same night, by **#1610**
+  ("Migrate invoicesTable.amount to integer cents"): the column is now
+  `integer("amount")` (`lib/db/src/schema/index.ts:796`), backfilled via
+  `ROUND(amount_old * 100)`, with the retired decimal column dropped entirely in a
+  follow-up migration (#1623) — there is no `amount_old_numeric` column left to fall
+  back to. `billingWire.ts`'s `fmtAmount` (`:48-56`) now converts cents to display
+  dollars the same way `receiptWire.ts` always did (`Math.round(cents) / 100`), not
+  `Number.parseFloat` on a decimal string. `POST /invoices/:id/pay`'s
+  `price_data.unit_amount` (`portal-billing.ts:185-188`) now passes `invoice.amount`
+  straight through with an explicit comment stating why no `* 100` conversion
+  happens anymore. **Design can now treat every money field on this page as integer
+  cents, without exception** — the one documented carve-out from the platform-wide
+  cents rule is gone.
 - `services.price` / `services.basePrice` / `services.maxPrice` are also decimal
   dollars (`numeric(10,2)`, `lib/db/src/schema/index.ts:454-456`), not cents — used by
   the resubscribe/pay-invoice flows' own `parseFloat(...).toFixed(2)` /
