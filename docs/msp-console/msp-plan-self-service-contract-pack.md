@@ -28,6 +28,19 @@ platform tiers in the catalog — Free (`id=120`), Growth (`121`), Pro (`122`) �
 live subscriptions point at any of them**. See §7 for what this means for this surface's
 own two tier-lookup queries.
 
+**Corrected 2026-09-12 (#3782):** §7 below originally documented `GET /msp/plan/available`
+and the `POST /msp/plan/change` target lookup as returning `[]`/404 against every real
+tier — that was accurate when this pack closed (2026-09-03) but was fixed the same day by
+**#2701**, landed *after* this pack. Both routes now use the shared
+`platformTierWhere()`/`isGenuinePlatformTier()` helpers (extracted to
+`artifacts/api-server/src/lib/platform-tier.ts`), which OR in `fulfillmentTypeKey` — the
+real tiers' actual discriminator — alongside the legacy `fulfillmentType` column. Re-verified
+live 2026-09-12: the fix is present in both `msp-plan-self-service.ts` and
+`msp-plan-management.ts`. §7 below is rewritten to describe the fix, not the bug it
+replaced. §7.2 (the separate `annual_price_cents IS NULL` gap) is unaffected by #2701 and
+is still real and current — re-confirmed by direct `psql` against local `DATABASE_URL`
+2026-09-12: all three real tiers (120/121/122) still have `annual_price_cents` unset.
+
 ---
 
 ## 0. What this surface is, and what it is not
@@ -69,12 +82,16 @@ and `requireRole(min)` checks `roleIndex(effectiveRole) >= roleIndex(min)` (`:21
 | `/api/msp/plan/cancel-pending-change` | POST | `msp-plan-self-service.ts:381-453` | **Nothing found** | **Yes** |
 
 Confirmed by `grep -rn "msp/plan/"` across every `artifacts/*/src` app: zero hits outside
-this route file and its own test file. `artifacts/msp-console` — the app these routes exist
-to serve (per #1692/#1598) — does not exist yet (`ls artifacts/`: `admin-panel`,
-`api-server`, `mcp-server`, `msp-website`, `portal`, `shane-mccaw-consulting`,
-`shane-mccaw-consulting` — no `msp-console`). Same root cause and same shape as the
-`msp-sops.ts` MSP-console pack's own §0.1 finding (#2595): the frontend has no home yet, not
-a wiring gap in the backend itself.
+this route file and its own test file.
+
+**Corrected 2026-09-12 (#3782):** at pack time (2026-09-03), `artifacts/msp-console` — the
+app these routes exist to serve (per #1692/#1598) — did not exist yet. **It has since been
+scaffolded** (`68ae2c22b`, "MSP Console scaffolding: create artifacts/msp-console") and has
+had real modules wired to other endpoints since (SOPs, Runbooks, Remediation Tracking). Its
+existence no longer explains this surface's orphan status the way it did on 2026-09-03 — but
+re-confirmed live 2026-09-12: `grep -rn "msp/plan/" artifacts/msp-console/src` still returns
+zero hits. These four routes are genuinely unwired into an app that now exists and consumes
+other endpoints, not merely "no frontend home yet."
 
 ---
 
@@ -124,8 +141,11 @@ is always identical to the outer `currentPeriodEnd` — there is no independentl
 ### 1.2 Available tiers — `GET /api/msp/plan/available` (`:188-220`)
 
 No auth scoping beyond the role gate — same list for every MSP. Filters
-`fulfillmentType = "msp_monthly_subscription" AND isPublic = true`, ordered by `price` ASC.
-**Against live data this returns `[]` — see §7, a confirmed live bug, not a hypothetical.**
+`(fulfillmentType = "msp_monthly_subscription" OR fulfillmentTypeKey = "msp_monthly_subscription")
+AND isPublic = true`, via the shared `platformTierWhere()` helper, then excludes add-on
+rows client-side with `isGenuinePlatformTier()`, ordered by `price` ASC. **Fixed by #2701
+(see §7) — against live data this now returns the 3 real platform tiers** (Free/Growth/Pro,
+`id` 120/121/122).
 
 ```ts
 // Response shape, res.json() call site :207-215
@@ -157,10 +177,11 @@ Order of checks, all real, all short-circuiting with a specific status:
    already in flight → 400 `"You are already on this plan and interval"`. Note: if a
    pending change already exists (`hasPendingChange`), re-submitting the *same* target is
    allowed through (re-schedules idempotently) — only the truly-no-change case is blocked.
-6. Target tier looked up, same `fulfillmentType = "msp_monthly_subscription"` filter as
-   §1.2, **plus** `isPublic OR id === currentServiceId` (`:290`) — a private tier is only
-   reachable as a target if it's the tier you're already on. 404 `"Target tier not found"`
-   otherwise. **Same live-data bug as §1.2 blocks every real tier from ever matching.**
+6. Target tier looked up, same `platformTierWhere()` fulfillment filter as §1.2, **plus**
+   `isPublic OR id === currentServiceId` (`:290`) — a private tier is only reachable as a
+   target if it's the tier you're already on. 404 `"Target tier not found"` otherwise.
+   **Fixed by #2701 (see §7) — a real tier now matches** (subject to §7.2's separate
+   annual-price gap for `targetInterval: "year"`).
 7. Downgrade guardrail (`downgradeBlockReason`, pure, exported for testing, `:82-103`):
    computed from `countActiveTenants(mspId)` (active `tenantsTable` rows) against the
    target tier's `tenantAllowance`. Hard cap = `targetAllowance × 2` (mirrors
@@ -223,7 +244,7 @@ interface WireCancelResult { ok: true; }
 | `MspBillingInterval` | `month`, `year` | Yes — `text({ enum: MSP_BILLING_INTERVALS })`, `msp.ts:1476,1495,1501` | CURRENT |
 | `MspDunningState` | `reminder_sent`, `suspended`, `access_revoked`, `archival_flagged` (or `null` = fully operational, `msp.ts:1507` comment) | Yes — `text({ enum: MSP_DUNNING_STATES })`, `msp.ts:1479,1508` | CURRENT — read-only on this surface; this surface never writes `dunningState` |
 | `POST /msp/plan/change` body `targetInterval` | `month`, `year` | Zod `z.enum(["month", "year"])`, `:226` — matches the DB enum exactly | CURRENT |
-| `services.fulfillmentType` | `standard`, `msp_monthly_subscription` | Yes — `text({ enum })`, `index.ts:514-516` | CURRENT, but see §7 — the real platform tiers do not use this value; `fulfillmentTypeKey` (plain `text`, **not** a DB enum) is the real live discriminator |
+| `services.fulfillmentType` | `standard`, `msp_monthly_subscription` | Yes — `text({ enum })`, `index.ts:514-516` | CURRENT, but see §7 — the real platform tiers carry `"manual"` on this legacy column; `fulfillmentTypeKey` (plain `text`, **not** a DB enum) is the real live discriminator, and both routes now OR it in (#2701) |
 
 There is no separate "plan change reason" or "cancellation reason" enum anywhere on this
 surface — a change or cancellation carries no free-text or categorized justification field,
@@ -254,30 +275,35 @@ already cleared from the row means "not ours / already handled", `:833`):
 having taken effect (as opposed to merely having been scheduled, which only the audit log
 in §1.3 step 12 records).
 
-### 3.2 `msp-plan-management.ts` — the PlatformAdmin contrast surface, same live bug
+### 3.2 `msp-plan-management.ts` — the PlatformAdmin contrast surface, same fix
 
-`GET /api/admin/plan-management/tiers` (`msp-plan-management.ts:74`) and
-`POST /api/admin/plan-management/tiers/:id/migrate-subscriber`'s target lookup (`:116`) use
-**the identical** `eq(servicesTable.fulfillmentType, "msp_monthly_subscription")` filter as
-this surface's §1.2/§1.3 — and it is a **real, live-used** page:
-`artifacts/admin-panel/src/pages/PlanManagement.tsx:96` calls
+`GET /api/admin/plan-management/tiers` (`msp-plan-management.ts:75`) and
+`POST /api/admin/plan-management/tiers/:id/migrate-subscriber`'s target lookup (`:124`) now
+use **the identical** `platformTierWhere()` helper as this surface's §1.2/§1.3 — and it is a
+**real, live-used** page: `artifacts/admin-panel/src/pages/PlanManagement.tsx:96` calls
 `GET /api/admin/plan-management/tiers` directly, mounted at `/msp/plans` in
 `admin-panel/src/App.tsx:408-410`. This is not a second orphaned surface — it is the
-platform's one existing UI that a `PlatformAdmin` uses today, and it is subject to the exact
-same §7 bug: it shows zero tiers against the real catalog.
+platform's one existing UI that a `PlatformAdmin` uses today, and **it was fixed by the
+same #2701 commit** (`6fd0fb532`) that fixed §1.2/§1.3 — it now shows the 3 real tiers
+against the real catalog instead of zero.
 
-### 3.3 `msp-signup.ts` already carries the fix this surface is missing
+### 3.3 `msp-signup.ts` was the origin of the OR-arm fix this surface now shares
 
-`msp-signup.ts:42-87` documents (comment block, `:28-52`) precisely the failure this surface
-has: "a genuine platform tier's `fulfillmentType`/`fulfillmentTypeKey` lifecycle value is
+`msp-signup.ts` documents (comment block) precisely the failure this surface used to have:
+"a genuine platform tier's `fulfillmentType`/`fulfillmentTypeKey` lifecycle value is
 `msp_monthly_subscription` — but that value alone isn't sufficient." Its real WHERE clause
-(`:84-86`) is `eq(fulfillmentType, "msp_monthly_subscription") OR eq(fulfillmentTypeKey,
+was `eq(fulfillmentType, "msp_monthly_subscription") OR eq(fulfillmentTypeKey,
 "msp_monthly_subscription")` — the OR-arm this surface (§1.2, §1.3) and `msp-plan-
-management.ts` (§3.2) both lack. This OR-arm was hardened further under #2509 (an add-on row
-that had `fulfillmentType` incorrectly set to `msp_monthly_subscription` was leaking into
-signup) with an additional `isGenuinePlatformTier()` exclusion filter
-(`typeAttributes.addOnType`/`grantsCapabilityKey`) — that hardening also only touched
-`msp-signup.ts`, not this surface or `msp-plan-management.ts`.
+management.ts` (§3.2) originally lacked. That OR-arm, plus the `isGenuinePlatformTier()`
+exclusion filter (`typeAttributes.addOnType`/`grantsCapabilityKey`) hardened under #2509,
+have both since been extracted to the shared `artifacts/api-server/src/lib/platform-tier.ts`
+module by #2701. `isGenuinePlatformTier()` is now imported from there by all three surfaces
+— `msp-signup.ts`, this surface, and `msp-plan-management.ts`. The OR-arm WHERE predicate
+itself is imported as `platformTierWhere()` by this surface and `msp-plan-management.ts`;
+`msp-signup.ts` still inlines its own equivalent `or(eq(fulfillmentType, ...),
+eq(fulfillmentTypeKey, ...))` clause rather than calling `platformTierWhere()` — functionally
+identical, just not yet consolidated onto the shared helper for that one call site.
+`platform-tier.ts`'s own header states the extraction reason directly.
 
 ### 3.4 `msp-entitlement.ts` shares the join shape, not the code
 
@@ -325,10 +351,11 @@ surfaced as this route's 400) — see §7.2 for why that throws for every real t
 - **`tenantAllowance`**: `0` and `null` are both "unlimited," collapsed to the same meaning
   by `tenantAllowanceOf()` (`:71-74`) and `downgradeBlockReason` (`:87-88`) — the wire never
   distinguishes *why* a tier is unlimited (explicit `0` vs. the attribute being absent).
-- **`GET /msp/plan/available` empty array**: on live data today this is **always** `[]`
-  (§7) — a genuinely empty catalog and "the fulfillmentType filter matched nothing" are
-  indistinguishable on the wire; there is no separate signal for "the catalog has tiers but
-  none matched this query's filter."
+- **`GET /msp/plan/available` empty array**: fixed by #2701 (§7) — on live data today this
+  returns the 3 real platform tiers, not `[]`. The wire still has no separate signal for "the
+  catalog has tiers but none matched this query's filter" vs. a genuinely empty catalog,
+  should that ever recur — worth Design knowing the ambiguity exists structurally, even
+  though it isn't presently triggered.
 
 ---
 
@@ -357,10 +384,10 @@ surfaced as this route's 400) — see §7.2 for why that throws for every real t
 
 ---
 
-## 7. Confirmed live bug — filed as a finding, not fixed here (read-only pack)
+## 7. Fixed — was a confirmed live bug, corrected by #2701 (2026-09-03, after this pack closed)
 
-**`GET /api/msp/plan/available` returns `[]` and `POST /api/msp/plan/change`'s target lookup
-404s for every real platform tier, against live data, today.** Verified directly:
+**Was:** `GET /api/msp/plan/available` returned `[]` and `POST /api/msp/plan/change`'s
+target lookup 404'd for every real platform tier, against live data. Verified at pack time:
 
 ```
 psql> SELECT id, name, fulfillment_type, fulfillment_type_key, is_public FROM services WHERE id IN (120,121,122);
@@ -375,21 +402,35 @@ The three real tiers were migrated to use `fulfillmentTypeKey` as the actual dis
 (the #2509 precedent, §3.3) — their legacy `fulfillmentType` column is `"manual"`, not
 `"msp_monthly_subscription"`. This surface's §1.2/§1.3 queries, and `msp-plan-management.ts`'s
 identical queries (§3.2, which **is** live-used by `admin-panel`'s Plan Management page),
-check only the legacy column. `msp-signup.ts` already carries the OR-arm fix (§3.3); this
-surface and `msp-plan-management.ts` do not. This is a genuine, confirmed defect — filed as
-**#2701**, sibling sub-issue of #1692, labeled `bug`.
+checked only the legacy column. `msp-signup.ts` already carried the OR-arm fix (§3.3); this
+surface and `msp-plan-management.ts` did not. Filed as **#2701**, sibling sub-issue of
+#1692, labeled `bug`.
 
-### 7.2 Yearly interval is unreachable for every real tier today (not filed — self-documenting)
+**Now:** #2701 (`6fd0fb532`, 2026-09-03) fixed both surfaces by extracting the OR-arm and
+the `isGenuinePlatformTier()` guard into a shared `artifacts/api-server/src/lib/platform-tier.ts`
+module (`platformTierWhere()`), imported by `msp-plan-self-service.ts` (§1.2, §1.3) and
+`msp-plan-management.ts` (§3.2). **Re-verified live 2026-09-12 (#3782):** both route files
+now call `platformTierWhere()`/`isGenuinePlatformTier()`; against the same live `services`
+rows above, `GET /msp/plan/available` now returns the 3 real tiers (Free/Growth/Pro) and a
+`POST /msp/plan/change` targeting any of them by id now resolves the target tier
+successfully (for `targetInterval: "month"` — see §7.2 for the separate, still-open
+`year`-interval gap).
 
-`annual_price_cents` is `NULL` on all three real tiers (`120`/`121`/`122`), confirmed by the
-same query. `resolveUnitAmountCents()` (§4) throws `PlanPricingError` — surfaced as this
-route's own clear 400 ("Tier ... has no annual price configured. Set it in Plan Management
-first.") — for any `targetInterval: "year"` request against a real tier. This is not filed
-as a separate defect: the code already handles the missing configuration honestly (a clear
-400, not a crash or a silent wrong price), and the fix is an admin data-entry action (set
-`annualPriceCents` via Plan Management), not a code change. Recorded here so Design knows a
-yearly-billing toggle in a future MSP-console UI would 400 for every tier until that admin
-step happens — not evidence the toggle itself is broken.
+### 7.2 Yearly interval is unreachable for every real tier today — still real, still current (not filed — self-documenting)
+
+`annual_price_cents` is `NULL` on all three real tiers (`120`/`121`/`122`) — confirmed by the
+same query at pack time (2026-09-03) and **re-confirmed live, unchanged, on 2026-09-12
+(#3782)**. This is unrelated to and unaffected by #2701's fix (§7): #2701 fixed the tier
+*lookup* filter, not the price data. `resolveUnitAmountCents()` (§4) throws
+`PlanPricingError` — surfaced as this route's own clear 400 ("Tier ... has no annual price
+configured. Set it in Plan Management first.") — for any `targetInterval: "year"` request
+against a real tier. This is not filed as a separate defect: the code already handles the
+missing configuration honestly (a clear 400, not a crash or a silent wrong price), and the
+fix is an admin data-entry action (set `annualPriceCents` via Plan Management), not a code
+change. **Recorded here so Design knows a yearly-billing toggle in a future MSP-console UI
+would honestly 400 for every real tier until that admin step happens** — the monthly path
+is genuinely wired end-to-end today (§7); the annual path has real route logic but no
+populated data to serve yet. Not evidence the toggle itself is broken.
 
 ---
 
@@ -400,17 +441,22 @@ step happens — not evidence the toggle itself is broken.
    so a later webhook event for that schedule ID would find no owning row and silently
    no-op (`findSubscriptionBySchedule` returns `null`, both handlers early-return). Not
    verified as having happened in practice; flagged for whoever hardens this surface next.
-2. **No UI exists yet for any of these four routes** (§0.1) — the expected pre-Design state
-   for an MSP-console-scoped surface (#1680, the scaffolding issue, is still open per the
-   #2595 SOPs pack's own finding) — not a defect, but Design should know nothing is wired
-   to these routes today.
-3. **The catalog-filter bug (§7) means this pack's own request/response examples (§1.1-1.3)
-   are drawn from route code, not from a live successful `POST /msp/plan/change` call** —
-   no such call can succeed against the current live tier catalog. The shapes are accurate
-   to the code; they are not independently confirmed against a real 200 response for
-   `/change` specifically (the `/current` and `/available` shapes ARE confirmed against live
-   data — `/current` returns the real single row, `/available` returns the real, confirmed
-   `[]`).
+2. **No UI exists yet for any of these four routes** (§0.1). **Corrected 2026-09-12
+   (#3782):** #1680 (the `artifacts/msp-console` scaffolding issue) is no longer open — it
+   closed once the app was scaffolded, and the app now has real modules (SOPs, Runbooks,
+   Remediation Tracking) wired to other endpoints. This surface's four routes remain
+   unwired into an app that exists and is actively being built out — see §0.1's correction.
+   Filed as **#3796**, sibling sub-issue of #1692: the plan-self-service UI is a real gap
+   in an app that otherwise has momentum, not an unstarted surface waiting on scaffolding.
+3. **(Resolved by #2701, 2026-09-03 — recorded for history.)** At pack time the
+   catalog-filter bug (§7) meant this pack's request/response examples (§1.1–1.3) were
+   drawn from route code, not a live successful `POST /msp/plan/change` call — no such call
+   could succeed against the live tier catalog then. That's no longer true for
+   `targetInterval: "month"`: with #2701 landed, a `POST /msp/plan/change` targeting a real
+   tier's monthly interval can now succeed end-to-end. It still cannot succeed for
+   `targetInterval: "year"` against any real tier, for the separate, still-open reason in
+   §7.2 (`annual_price_cents IS NULL`) — that remains genuinely unconfirmed against a live
+   200 response, and will stay that way until an admin sets an annual price.
 
 ---
 
@@ -438,3 +484,21 @@ fulfillmentType/fulfillmentTypeKey mismatch, #2701, sibling sub-issue of #1692);
 neither meets this project's finding bar (self-documenting via existing error handling, or
 unverified as a live occurrence). Read-only pass: no product code, schema, or UI was
 changed.
+
+**Corrected 2026-09-12 (#3782, read-only, no product/schema/UI changed):** §7's own bug was
+fixed the same day this pack closed — #2701 (`6fd0fb532`) landed at 20:38 on 2026-09-03,
+after this pack's extraction. Re-read `msp-plan-self-service.ts`, `msp-plan-management.ts`,
+`msp-signup.ts`, and the new `artifacts/api-server/src/lib/platform-tier.ts` module; re-ran
+the same `psql` query against local `DATABASE_URL` (2026-09-12) confirming the three real
+tiers are unchanged (`fulfillment_type='manual'`, `fulfillment_type_key='msp_monthly_
+subscription'`) and that `annual_price_cents` is still `NULL` on all three. §0.1's
+"Nothing found" consumer sweep, §3.1, §4, §6, and §8 items 1–2 were re-checked against
+current code and remain accurate as originally written — no other section required
+correction. §7 and §3.2/§3.3 rewritten to describe the fix rather than the bug it replaced;
+§7.2, §5's `available`-empty-array note, and §8 item 3 updated to reflect that the monthly
+path is now live while the annual-price gap remains open and unrelated. §0.1's own premise
+was also found stale — `artifacts/msp-console` now exists (scaffolded by #1680, closed) with
+real modules wired to other endpoints, while these four routes remain unwired; that gap is
+real and actionable in a way "no frontend home yet" was not, so it was filed as **#3796**,
+sibling sub-issue of #1692, board status "AI Batter Up." One new finding filed
+(#3796); the original §7 bug was already filed as #2701 and is now fixed, not re-filed.
