@@ -111,12 +111,12 @@ namespace BuildConsole.Controls
             var result = LocalSqlExecutor.CheckReachable(_selectedDatabaseKey);
             if (result.IsReachable)
             {
-                DatabaseReachabilityDot.Fill = (Brush)FindResource("GreenBrush");
+                DatabaseReachabilityDot.Fill = (Brush)FindResource("StatusSuccessBrush");
                 DatabaseSelector.ToolTip = "Which real database this tab's queries run against";
             }
             else
             {
-                DatabaseReachabilityDot.Fill = (Brush)FindResource("RedBrush");
+                DatabaseReachabilityDot.Fill = (Brush)FindResource("StatusErrorBrush");
                 DatabaseSelector.ToolTip = result.Error ?? "This database is unavailable.";
                 ExecStatus.Text = result.Error ?? "Selected database is unavailable.";
             }
@@ -343,7 +343,7 @@ namespace BuildConsole.Controls
                         Text = $"Statement {stmtNum}: OK",
                         FontWeight = FontWeights.Bold,
                         FontSize = 12,
-                        Foreground = (Brush)FindResource("GreenBrush"),
+                        Foreground = (Brush)FindResource("StatusSuccessBrush"),
                         VerticalAlignment = VerticalAlignment.Center
                     });
 
@@ -381,7 +381,7 @@ namespace BuildConsole.Controls
                     var errorBorder = new Border
                     {
                         Background = (Brush)FindResource("MantleBrush"),
-                        BorderBrush = (Brush)FindResource("RedBrush"),
+                        BorderBrush = (Brush)FindResource("StatusErrorBrush"),
                         BorderThickness = new Thickness(1),
                         CornerRadius = new CornerRadius(6),
                         Padding = new Thickness(12, 8, 12, 8),
@@ -395,7 +395,7 @@ namespace BuildConsole.Controls
                         Text = $"Statement {stmtNum}: Failed ({stmt.ExecutionMs}ms)",
                         FontWeight = FontWeights.Bold,
                         FontSize = 12,
-                        Foreground = (Brush)FindResource("RedBrush"),
+                        Foreground = (Brush)FindResource("StatusErrorBrush"),
                         VerticalAlignment = VerticalAlignment.Center
                     });
                     sp.Children.Add(row1);
@@ -404,7 +404,7 @@ namespace BuildConsole.Controls
                     {
                         Text = stmt.Error ?? "Execution error",
                         FontSize = 11.5,
-                        Foreground = (Brush)FindResource("RedBrush"),
+                        Foreground = (Brush)FindResource("StatusErrorBrush"),
                         TextWrapping = TextWrapping.Wrap,
                         Margin = new Thickness(0, 0, 0, 4)
                     });

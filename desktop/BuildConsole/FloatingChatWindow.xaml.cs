@@ -1073,7 +1073,7 @@ namespace BuildConsole
         public void ShowInlineMessage(string message, bool isError)
         {
             InlineMessage.Text = message;
-            InlineMessage.Foreground = (Brush)FindResource(isError ? "RedBrush" : "GreenBrush");
+            InlineMessage.Foreground = (Brush)FindResource(isError ? "StatusErrorBrush" : "StatusSuccessBrush");
             InlineMessage.Visibility = Visibility.Visible;
         }
 

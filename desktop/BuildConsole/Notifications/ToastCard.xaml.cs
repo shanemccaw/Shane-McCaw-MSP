@@ -69,9 +69,9 @@ namespace BuildConsole
         // (DeviceCodeWindow uses ✓ / ⚠ / ✕), so they render reliably in Segoe UI Symbol.
         private static (Brush accent, string glyph) StyleFor(ToastKind kind) => kind switch
         {
-            ToastKind.Success => (Res("GreenBrush"), "✓"), // ✓
-            ToastKind.Warning => (Res("PeachBrush"), "⚠"), // ⚠
-            ToastKind.Error   => (Res("RedBrush"),   "✕"), // ✕
+            ToastKind.Success => (Res("StatusSuccessBrush"), "✓"), // ✓
+            ToastKind.Warning => (Res("StatusWarningBrush"), "⚠"), // ⚠
+            ToastKind.Error   => (Res("StatusErrorBrush"),   "✕"), // ✕
             _                 => (Res("BlueBrush"),  "ℹ"), // ℹ
         };
 

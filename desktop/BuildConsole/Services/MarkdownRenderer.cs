@@ -520,7 +520,7 @@ namespace BuildConsole.Services
 
             var border = new Border
             {
-                BorderBrush = getBrush(isWarning ? "PeachBrush" : "BlueBrush"),
+                BorderBrush = getBrush(isWarning ? "StatusWarningBrush" : "BlueBrush"),
                 BorderThickness = new Thickness(3, 0, 0, 0),
                 Background = getBrush("Surface0Brush"),
                 CornerRadius = new CornerRadius(0, 4, 4, 0),

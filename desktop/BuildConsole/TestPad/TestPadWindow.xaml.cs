@@ -425,7 +425,7 @@ namespace BuildConsole.TestPad
                     Text = "SENT",
                     FontSize = 9,
                     FontWeight = FontWeights.SemiBold,
-                    Foreground = (Brush)FindResource("GreenBrush"),
+                    Foreground = (Brush)FindResource("StatusSuccessBrush"),
                 };
                 Grid.SetColumn(badge, 3);
                 grid.Children.Add(badge);

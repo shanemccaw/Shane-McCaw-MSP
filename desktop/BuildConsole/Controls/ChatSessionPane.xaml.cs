@@ -168,7 +168,7 @@ namespace BuildConsole.Controls
                 FontSize = 11,
                 Margin = new Thickness(0, 0, 6, 0),
                 VerticalAlignment = VerticalAlignment.Top,
-                Foreground = isLatest ? (Brush)FindResource("YellowBrush") : (Brush)FindResource("GreenBrush"),
+                Foreground = isLatest ? (Brush)FindResource("StatusRunningBrush") : (Brush)FindResource("StatusSuccessBrush"),
             };
             Grid.SetColumn(glyph, 0);
             grid.Children.Add(glyph);

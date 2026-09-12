@@ -71,7 +71,7 @@ namespace BuildConsole.Controls
                 bool isOpen = await DevServicesManager.IsPortOpenAsync(_port);
                 if (isOpen)
                 {
-                    StatusDot.Fill = (Brush)FindResource("GreenBrush");
+                    StatusDot.Fill = (Brush)FindResource("StatusSuccessBrush");
                     BtnStartService.IsEnabled = false;
                     BtnStopService.IsEnabled = true;
                     BtnBrowseService.IsEnabled = true;

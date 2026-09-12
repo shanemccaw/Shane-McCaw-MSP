@@ -99,7 +99,7 @@ namespace BuildConsole
                 || string.Equals(value.Trim(), TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal))
             {
                 // Don't accept an empty value or the literal <unset> placeholder — that's not a real value.
-                HintText.Foreground = (Brush)FindResource("RedBrush");
+                HintText.Foreground = (Brush)FindResource("StatusErrorBrush");
                 HintText.Text = "Enter a real value (not blank or \"" + TestManifestVariableScanner.AutoDefaultValue + "\"), or press Dismiss to fail this step.";
                 try { ValueBox.Focus(); } catch { }
                 return;

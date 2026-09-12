@@ -297,23 +297,23 @@ namespace BuildConsole.Controls
                 if (statusCode >= 200 && statusCode < 300)
                 {
                     BorderHttpStatus.Background = new SolidColorBrush(Color.FromArgb(0x33, 0xA6, 0xE3, 0xA1));
-                    BorderHttpStatus.BorderBrush = FindResource("GreenBrush") as Brush;
+                    BorderHttpStatus.BorderBrush = FindResource("StatusSuccessBrush") as Brush;
                     BorderHttpStatus.BorderThickness = new Thickness(1);
-                    TxtHttpStatus.Foreground = FindResource("GreenBrush") as Brush;
+                    TxtHttpStatus.Foreground = FindResource("StatusSuccessBrush") as Brush;
                 }
                 else if (statusCode >= 400)
                 {
                     BorderHttpStatus.Background = new SolidColorBrush(Color.FromArgb(0x33, 0xF3, 0x8B, 0xA8));
-                    BorderHttpStatus.BorderBrush = FindResource("RedBrush") as Brush;
+                    BorderHttpStatus.BorderBrush = FindResource("StatusErrorBrush") as Brush;
                     BorderHttpStatus.BorderThickness = new Thickness(1);
-                    TxtHttpStatus.Foreground = FindResource("RedBrush") as Brush;
+                    TxtHttpStatus.Foreground = FindResource("StatusErrorBrush") as Brush;
                 }
                 else
                 {
                     BorderHttpStatus.Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFA, 0xB3, 0x87));
-                    BorderHttpStatus.BorderBrush = FindResource("PeachBrush") as Brush;
+                    BorderHttpStatus.BorderBrush = FindResource("StatusWarningBrush") as Brush;
                     BorderHttpStatus.BorderThickness = new Thickness(1);
-                    TxtHttpStatus.Foreground = FindResource("PeachBrush") as Brush;
+                    TxtHttpStatus.Foreground = FindResource("StatusWarningBrush") as Brush;
                 }
 
                 TxtHttpStatus.Text = statusText;
@@ -338,9 +338,9 @@ namespace BuildConsole.Controls
             {
                 sw.Stop();
                 BorderHttpStatus.Background = new SolidColorBrush(Color.FromArgb(0x33, 0xF3, 0x8B, 0xA8));
-                BorderHttpStatus.BorderBrush = FindResource("RedBrush") as Brush;
+                BorderHttpStatus.BorderBrush = FindResource("StatusErrorBrush") as Brush;
                 BorderHttpStatus.BorderThickness = new Thickness(1);
-                TxtHttpStatus.Foreground = FindResource("RedBrush") as Brush;
+                TxtHttpStatus.Foreground = FindResource("StatusErrorBrush") as Brush;
                 TxtHttpStatus.Text = "ERROR";
                 TxtElapsed.Text = $"{sw.ElapsedMilliseconds}ms";
                 TxtHeaders.Text = "";
@@ -398,7 +398,7 @@ namespace BuildConsole.Controls
 
             if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
             {
-                TxtLoginStatus.Foreground = FindResource("RedBrush") as Brush;
+                TxtLoginStatus.Foreground = FindResource("StatusErrorBrush") as Brush;
                 TxtLoginStatus.Text = "Enter email and password first.";
                 return;
             }
@@ -418,7 +418,7 @@ namespace BuildConsole.Controls
                 if (TxtBearerTokenPlain.Visibility == Visibility.Visible)
                     TxtBearerTokenPlain.Text = result.AccessToken;
 
-                TxtLoginStatus.Foreground = FindResource("GreenBrush") as Brush;
+                TxtLoginStatus.Foreground = FindResource("StatusSuccessBrush") as Brush;
                 TxtLoginStatus.Text = result.CustomerId != null
                     ? $"✓ Token filled (customer {result.CustomerId})"
                     : "✓ Token filled successfully.";
@@ -428,7 +428,7 @@ namespace BuildConsole.Controls
             }
             else
             {
-                TxtLoginStatus.Foreground = FindResource("RedBrush") as Brush;
+                TxtLoginStatus.Foreground = FindResource("StatusErrorBrush") as Brush;
                 TxtLoginStatus.Text = result.MfaRequired
                     ? "MFA required — use a non-MFA testbed account."
                     : $"Login failed: {result.Error}";

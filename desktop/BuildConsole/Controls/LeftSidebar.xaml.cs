@@ -812,13 +812,13 @@ namespace BuildConsole.Controls
                         _ => $"Send failed ({status}).",
                     };
                     inlineStatus.Text = msg;
-                    inlineStatus.Foreground = GetBrush("RedBrush");
+                    inlineStatus.Foreground = GetBrush("StatusErrorBrush");
                     inlineStatus.Visibility = Visibility.Visible;
                 }
                 catch (Exception ex)
                 {
                     inlineStatus.Text = $"Send failed: {ex.Message}";
-                    inlineStatus.Foreground = GetBrush("RedBrush");
+                    inlineStatus.Foreground = GetBrush("StatusErrorBrush");
                     inlineStatus.Visibility = Visibility.Visible;
                 }
                 finally
@@ -1053,14 +1053,14 @@ namespace BuildConsole.Controls
             else if (env == TargetEnvironment.Staging)
             {
                 TargetEnvWarningBadge.Visibility = Visibility.Visible;
-                TargetEnvWarningBadge.Background = (System.Windows.Media.Brush)FindResource("PeachBrush");
+                TargetEnvWarningBadge.Background = (System.Windows.Media.Brush)FindResource("StatusWarningBrush");
                 TargetEnvWarningText.Text = "⚠️ STAGING";
                 TargetEnvWarningText.Foreground = (System.Windows.Media.Brush)FindResource("CrustBrush");
             }
             else
             {
                 TargetEnvWarningBadge.Visibility = Visibility.Visible;
-                TargetEnvWarningBadge.Background = (System.Windows.Media.Brush)FindResource("RedBrush");
+                TargetEnvWarningBadge.Background = (System.Windows.Media.Brush)FindResource("StatusErrorBrush");
                 TargetEnvWarningText.Text = "🚨 PROD";
                 TargetEnvWarningText.Foreground = (System.Windows.Media.Brush)FindResource("CrustBrush");
             }
@@ -1494,11 +1494,11 @@ namespace BuildConsole.Controls
             {
                 case ManifestRunStatus.Passed:
                     iconGlyph = "✓";
-                    iconBrushKey = "GreenBrush";
+                    iconBrushKey = "StatusSuccessBrush";
                     break;
                 case ManifestRunStatus.Failed:
                     iconGlyph = "✕";
-                    iconBrushKey = "RedBrush";
+                    iconBrushKey = "StatusErrorBrush";
                     break;
                 default:
                     iconGlyph = "○";
@@ -3596,7 +3596,7 @@ namespace BuildConsole.Controls
                     Child = new TextBlock
                     {
                         Text = $"⚠ Offline — cached chats from {_chatsCachedAtUtc?.ToLocalTime():MMM d, h:mm tt}",
-                        Foreground = GetBrush("PeachBrush"),
+                        Foreground = GetBrush("StatusWarningBrush"),
                         FontSize = 11,
                         TextWrapping = TextWrapping.Wrap,
                     }
@@ -4560,12 +4560,12 @@ namespace BuildConsole.Controls
                         // issue" — display text changes to VERIFY (same green styling) to read
                         // as an open action item instead.
                         statusText = "VERIFY";
-                        statusFg = GetBrush("GreenBrush");
+                        statusFg = GetBrush("StatusSuccessBrush");
                         statusBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1AA6E3A1"));
                         break;
                     case "ERROR":
                     case "FAILED":
-                        statusFg = GetBrush("RedBrush");
+                        statusFg = GetBrush("StatusErrorBrush");
                         statusBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1AF38BA8"));
                         break;
                     case "BLOCKED":
@@ -7268,7 +7268,7 @@ namespace BuildConsole.Controls
             var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
             headerRow.Children.Add(new Border
             {
-                Background = isClosed ? GetBrush("GreenBrush") : GetBrush("BlueBrush"),
+                Background = isClosed ? GetBrush("StatusSuccessBrush") : GetBrush("BlueBrush"),
                 CornerRadius = new CornerRadius(3),
                 Padding = new Thickness(4, 1, 4, 1),
                 Margin = new Thickness(0, 0, 6, 0),
@@ -7609,7 +7609,7 @@ namespace BuildConsole.Controls
 
             Brush statusBrush = build.Status switch
             {
-                "done" => GetBrush("GreenBrush"),
+                "done" => GetBrush("StatusSuccessBrush"),
                 "failed" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F38BA8")),
                 _ => GetBrush("Subtext0Brush")
             };
@@ -7630,7 +7630,7 @@ namespace BuildConsole.Controls
                     });
                     if (state.IsStale)
                     {
-                        panel.Children.Add(new TextBlock { Text = "⚠ " + state.StalenessText, FontSize = 10, Foreground = GetBrush("PeachBrush"), Margin = new Thickness(0, 0, 0, 6) });
+                        panel.Children.Add(new TextBlock { Text = "⚠ " + state.StalenessText, FontSize = 10, Foreground = GetBrush("StatusWarningBrush"), Margin = new Thickness(0, 0, 0, 6) });
                     }
                 }
             }
@@ -9543,7 +9543,7 @@ namespace BuildConsole.Controls
                 Dispatcher.Invoke(() =>
                 {
                     GraphApiTree.Items.Clear();
-                    GraphApiTree.Items.Add(new TreeViewItem { Header = $"Error loading APIs: {ex.Message}", Foreground = (Brush)FindResource("RedBrush") });
+                    GraphApiTree.Items.Add(new TreeViewItem { Header = $"Error loading APIs: {ex.Message}", Foreground = (Brush)FindResource("StatusErrorBrush") });
                 });
             }
         }

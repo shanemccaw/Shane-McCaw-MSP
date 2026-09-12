@@ -92,7 +92,7 @@ namespace BuildConsole.Controls
                         Text = $"⚠ GitHub unreachable this pass ({data.GitHubError ?? "unknown error"}) — showing every mentioned issue as still-relevant rather than dropping any.",
                         FontSize = 10.5,
                         TextWrapping = TextWrapping.Wrap,
-                        Foreground = GetBrush("PeachBrush"),
+                        Foreground = GetBrush("StatusWarningBrush"),
                     },
                 });
             }
@@ -178,7 +178,7 @@ namespace BuildConsole.Controls
                 {
                     Text = "state unknown",
                     FontSize = 9.5,
-                    Foreground = GetBrush("PeachBrush"),
+                    Foreground = GetBrush("StatusWarningBrush"),
                     VerticalAlignment = VerticalAlignment.Center,
                 };
                 Grid.SetColumn(unknownBadge, 1);
@@ -256,12 +256,12 @@ namespace BuildConsole.Controls
                 {
                     var status = await onDispatch(item);
                     actionStatus.Text = status;
-                    actionStatus.Foreground = GetBrush(status.StartsWith("Dispatch failed", StringComparison.OrdinalIgnoreCase) ? "RedBrush" : "GreenBrush");
+                    actionStatus.Foreground = GetBrush(status.StartsWith("Dispatch failed", StringComparison.OrdinalIgnoreCase) ? "StatusErrorBrush" : "StatusSuccessBrush");
                 }
                 catch (Exception ex)
                 {
                     actionStatus.Text = $"Dispatch failed: {ex.Message}";
-                    actionStatus.Foreground = GetBrush("RedBrush");
+                    actionStatus.Foreground = GetBrush("StatusErrorBrush");
                 }
                 finally
                 {
@@ -453,7 +453,7 @@ namespace BuildConsole.Controls
                     if (!resolved)
                     {
                         inlineStatus.Text = "Send failed — try again, or reply in the chat directly.";
-                        inlineStatus.Foreground = GetBrush("RedBrush");
+                        inlineStatus.Foreground = GetBrush("StatusErrorBrush");
                         inlineStatus.Visibility = Visibility.Visible;
                         sendBtn.IsEnabled = true;
                         replyBox.IsEnabled = true;
@@ -463,7 +463,7 @@ namespace BuildConsole.Controls
                 catch (Exception ex)
                 {
                     inlineStatus.Text = $"Send failed: {ex.Message}";
-                    inlineStatus.Foreground = GetBrush("RedBrush");
+                    inlineStatus.Foreground = GetBrush("StatusErrorBrush");
                     inlineStatus.Visibility = Visibility.Visible;
                     sendBtn.IsEnabled = true;
                     replyBox.IsEnabled = true;

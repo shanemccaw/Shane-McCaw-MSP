@@ -149,7 +149,7 @@ namespace BuildConsole.Controls
             GitDoctorNightmareLabel.Text = open.Count > 0 ? "End this git nightmare" : "Nothing left to fix";
             BtnGitDoctorNightmare.IsEnabled = open.Count > 0;
             BtnGitDoctorNightmare.Background = open.Count > 0
-                ? (Brush)FindResource("RedBrush")
+                ? (Brush)FindResource("StatusErrorBrush")
                 : (Brush)FindResource("Brush.Local.Bg.Card");
             GitDoctorNightmareLabel.Foreground = open.Count > 0 ? Brushes.Black : (Brush)FindResource("OverlayBrush");
             int totalSteps = open.Sum(f => RemedyFor(f)?.Steps.Count ?? 0);
@@ -175,14 +175,14 @@ namespace BuildConsole.Controls
         {
             GitDoctorSeverity.Low => (Brush)FindResource("Subtext1Brush"),
             GitDoctorSeverity.Medium => (Brush)FindResource("BlueBrush"),
-            _ => (Brush)FindResource("RedBrush")
+            _ => (Brush)FindResource("StatusErrorBrush")
         };
 
         private Brush RiskBrush(GitDoctorRisk r) => r switch
         {
-            GitDoctorRisk.Safe => (Brush)FindResource("GreenBrush"),
+            GitDoctorRisk.Safe => (Brush)FindResource("StatusSuccessBrush"),
             GitDoctorRisk.Careful => (Brush)FindResource("BlueBrush"),
-            _ => (Brush)FindResource("RedBrush")
+            _ => (Brush)FindResource("StatusErrorBrush")
         };
 
         private void RenderGitDoctorFindingsList() => RenderGitDoctorFindingsList(GitDoctorFindingsPanel);
@@ -235,7 +235,7 @@ namespace BuildConsole.Controls
                     TextDecorations = f.Fixed ? TextDecorations.Strikethrough : null,
                     FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11.5"),
                     FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
-                    Foreground = f.Fixed ? (Brush)FindResource("GreenBrush") : (Brush)FindResource("TextBrush")
+                    Foreground = f.Fixed ? (Brush)FindResource("StatusSuccessBrush") : (Brush)FindResource("TextBrush")
                 });
                 textCol.Children.Add(new TextBlock
                 {
@@ -262,7 +262,7 @@ namespace BuildConsole.Controls
                     }
                 };
 
-                var ellipse = new Ellipse { Width = 7, Height = 7, VerticalAlignment = VerticalAlignment.Center, Fill = f.Fixed ? (Brush)FindResource("GreenBrush") : SeverityBrush(f.Severity) };
+                var ellipse = new Ellipse { Width = 7, Height = 7, VerticalAlignment = VerticalAlignment.Center, Fill = f.Fixed ? (Brush)FindResource("StatusSuccessBrush") : SeverityBrush(f.Severity) };
                 Grid.SetColumn(ellipse, 0);
                 var textColWrap = new Border { Margin = new Thickness(8, 0, 8, 0), Child = textCol };
                 Grid.SetColumn(textColWrap, 1);
@@ -629,8 +629,8 @@ namespace BuildConsole.Controls
                 rowStack.Children.Add(new Border
                 {
                     CornerRadius = new CornerRadius(3), Padding = new Thickness(5, 1, 5, 1), Margin = new Thickness(6, 0, 0, 0),
-                    Background = new SolidColorBrush(((SolidColorBrush)(b.Merged ? FindResource("GreenBrush") : FindResource("RedBrush"))).Color) { Opacity = 0.14 },
-                    Child = new TextBlock { Text = b.Merged ? "merged" : $"{b.Ahead} unmerged", FontSize = 8.5, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = b.Merged ? (Brush)FindResource("GreenBrush") : (Brush)FindResource("RedBrush") }
+                    Background = new SolidColorBrush(((SolidColorBrush)(b.Merged ? FindResource("StatusSuccessBrush") : FindResource("StatusErrorBrush"))).Color) { Opacity = 0.14 },
+                    Child = new TextBlock { Text = b.Merged ? "merged" : $"{b.Ahead} unmerged", FontSize = 8.5, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = b.Merged ? (Brush)FindResource("StatusSuccessBrush") : (Brush)FindResource("StatusErrorBrush") }
                 });
                 if (b.RemoteGone || b.InWorktree)
                     rowStack.Children.Add(new TextBlock { Text = b.RemoteGone ? "remote gone" : "in a worktree", Margin = new Thickness(6, 0, 0, 0), FontSize = 8.5, Foreground = new SolidColorBrush(Color.FromRgb(0xA3, 0x74, 0xEA)) });
@@ -692,8 +692,8 @@ namespace BuildConsole.Controls
             top.Children.Add(new Border
             {
                 CornerRadius = new CornerRadius(4), Padding = new Thickness(7, 3, 7, 3), Margin = new Thickness(0, 0, 9, 0),
-                Background = new SolidColorBrush(((SolidColorBrush)(hit.Reachable ? FindResource("GreenBrush") : FindResource("RedBrush"))).Color) { Opacity = 0.16 },
-                Child = new TextBlock { Text = hit.Reachable ? "REACHABLE" : "UNREACHABLE", FontSize = 8.5, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = hit.Reachable ? (Brush)FindResource("GreenBrush") : (Brush)FindResource("RedBrush") }
+                Background = new SolidColorBrush(((SolidColorBrush)(hit.Reachable ? FindResource("StatusSuccessBrush") : FindResource("StatusErrorBrush"))).Color) { Opacity = 0.16 },
+                Child = new TextBlock { Text = hit.Reachable ? "REACHABLE" : "UNREACHABLE", FontSize = 8.5, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = hit.Reachable ? (Brush)FindResource("StatusSuccessBrush") : (Brush)FindResource("StatusErrorBrush") }
             });
             top.Children.Add(new TextBlock { Text = hit.Sha[..Math.Min(9, hit.Sha.Length)], FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 15, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("TextBrush") });
             GitDoctorDetailPanel.Children.Add(top);

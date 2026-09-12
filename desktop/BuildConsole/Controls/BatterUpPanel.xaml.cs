@@ -445,14 +445,14 @@ namespace BuildConsole.Controls
             if (freeFlow)
             {
                 BtnFreeFlow.Content = "▶ Free flow";
-                BtnFreeFlow.Foreground = (Brush)Application.Current.FindResource("GreenBrush");
-                BtnFreeFlow.BorderBrush = (Brush)Application.Current.FindResource("GreenBrush");
+                BtnFreeFlow.Foreground = (Brush)Application.Current.FindResource("StatusSuccessBrush");
+                BtnFreeFlow.BorderBrush = (Brush)Application.Current.FindResource("StatusSuccessBrush");
                 BtnFreeFlow.ToolTip = "Free flow is ON — approved Batter Up items auto-queue on every refresh. Click to gate the feed.";
             }
             else
             {
                 BtnFreeFlow.Content = "⏸ Gated";
-                BtnFreeFlow.Foreground = (Brush)Application.Current.FindResource("PeachBrush");
+                BtnFreeFlow.Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush");
                 BtnFreeFlow.BorderBrush = (Brush)Application.Current.FindResource("Surface1Brush");
                 BtnFreeFlow.ToolTip = "Free flow is OFF — nothing auto-queues; queue rows by hand with the card's Queue button. Click to allow free flow.";
             }
@@ -502,7 +502,7 @@ namespace BuildConsole.Controls
             // Immediate feedback rather than a card that looks inert for up to 90s (#1870): mark
             // the button, then refresh — the row drops off on the next list per #1808.
             btn.Content = queued ? "Queued ✓" : "Already queued";
-            btn.Foreground = (Brush)Application.Current.FindResource(queued ? "GreenBrush" : "Subtext0Brush");
+            btn.Foreground = (Brush)Application.Current.FindResource(queued ? "StatusSuccessBrush" : "Subtext0Brush");
 
             if (queued)
             {

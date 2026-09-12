@@ -456,7 +456,7 @@ namespace BuildConsole.Controls
         {
             var border = new Border
             {
-                Background = escalate ? GetBrush("RedBrush") : GetBrush("CrustBrush"),
+                Background = escalate ? GetBrush("StatusErrorBrush") : GetBrush("CrustBrush"),
                 Padding = new Thickness(10, 5, 10, 5),
                 Margin = new Thickness(0, 0, 0, 8),
                 CornerRadius = new CornerRadius(3),
@@ -602,7 +602,7 @@ namespace BuildConsole.Controls
                 {
                     badge = new Border
                     {
-                        Background = GetBrush("GreenBrush", 0x25),
+                        Background = GetBrush("StatusSuccessBrush", 0x25),
                         CornerRadius = new CornerRadius(3),
                         Padding = new Thickness(6, 2, 6, 2),
                         HorizontalAlignment = HorizontalAlignment.Left,
@@ -611,7 +611,7 @@ namespace BuildConsole.Controls
                             Text = $"✅ PASSED ({lastRun.Passed}/{lastRun.Total})",
                             FontSize = 10,
                             FontWeight = FontWeights.Bold,
-                            Foreground = GetBrush("GreenBrush")
+                            Foreground = GetBrush("StatusSuccessBrush")
                         }
                     };
                 }
@@ -619,7 +619,7 @@ namespace BuildConsole.Controls
                 {
                     badge = new Border
                     {
-                        Background = GetBrush("RedBrush", 0x25),
+                        Background = GetBrush("StatusErrorBrush", 0x25),
                         CornerRadius = new CornerRadius(3),
                         Padding = new Thickness(6, 2, 6, 2),
                         HorizontalAlignment = HorizontalAlignment.Left,
@@ -628,7 +628,7 @@ namespace BuildConsole.Controls
                             Text = $"❌ FAILED ({lastRun.Passed}/{lastRun.Total})",
                             FontSize = 10,
                             FontWeight = FontWeights.Bold,
-                            Foreground = GetBrush("RedBrush")
+                            Foreground = GetBrush("StatusErrorBrush")
                         }
                     };
                 }
@@ -637,7 +637,7 @@ namespace BuildConsole.Controls
             {
                 badge = new Border
                 {
-                    Background = GetBrush("PeachBrush", 0x25),
+                    Background = GetBrush("StatusWarningBrush", 0x25),
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(6, 2, 6, 2),
                     HorizontalAlignment = HorizontalAlignment.Left,
@@ -646,7 +646,7 @@ namespace BuildConsole.Controls
                         Text = "⚠️ NEVER RAN",
                         FontSize = 10,
                         FontWeight = FontWeights.Bold,
-                        Foreground = GetBrush("PeachBrush")
+                        Foreground = GetBrush("StatusWarningBrush")
                     }
                 };
             }
@@ -767,7 +767,7 @@ namespace BuildConsole.Controls
             {
                 badge = new Border
                 {
-                    Background = GetBrush("GreenBrush", 0x25),
+                    Background = GetBrush("StatusSuccessBrush", 0x25),
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(6, 2, 6, 2),
                     HorizontalAlignment = HorizontalAlignment.Left,
@@ -776,7 +776,7 @@ namespace BuildConsole.Controls
                         Text = "✅ EXECUTED",
                         FontSize = 10,
                         FontWeight = FontWeights.Bold,
-                        Foreground = GetBrush("GreenBrush")
+                        Foreground = GetBrush("StatusSuccessBrush")
                     }
                 };
             }
@@ -784,7 +784,7 @@ namespace BuildConsole.Controls
             {
                 badge = new Border
                 {
-                    Background = GetBrush("RedBrush", 0x25),
+                    Background = GetBrush("StatusWarningBrush", 0x25),
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(6, 2, 6, 2),
                     HorizontalAlignment = HorizontalAlignment.Left,
@@ -793,7 +793,7 @@ namespace BuildConsole.Controls
                         Text = "⚠️ NEEDS EXECUTION",
                         FontSize = 10,
                         FontWeight = FontWeights.Bold,
-                        Foreground = GetBrush("RedBrush")
+                        Foreground = GetBrush("StatusWarningBrush")
                     }
                 };
             }

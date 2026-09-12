@@ -104,7 +104,7 @@ namespace BuildConsole
             {
                 CurrentVersionText.Text =
                     $"Current: {VersionInfo.Format(_currentBuild.Value)} · running {VersionInfo.RunningVersion} ({behind} behind)";
-                CurrentVersionText.Foreground = (Brush)Application.Current.FindResource("PeachBrush");
+                CurrentVersionText.Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush");
             }
             else if (behind == 0)
             {

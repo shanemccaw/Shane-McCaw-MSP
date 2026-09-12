@@ -3772,7 +3772,7 @@ namespace BuildConsole
             var buildStatusText = new TextBlock
             {
                 Text = "Build running…", FontSize = 11, FontWeight = FontWeights.SemiBold,
-                Foreground = (Brush)FindResource("PeachBrush")
+                Foreground = (Brush)FindResource("StatusRunningBrush")
             };
             buildHeader.Child = buildStatusText;
             var buildOutputBox = new TextBox
@@ -5542,7 +5542,7 @@ namespace BuildConsole
                     var bolt = panel.Children.OfType<Button>().FirstOrDefault(b => b.Content?.ToString() == "⚡");
                     if (bolt != null)
                     {
-                        bolt.Foreground = (Brush)FindResource("YellowBrush");
+                        bolt.Foreground = (Brush)FindResource("StatusRunningBrush");
                         bolt.ToolTip = "In Progress (Active in Focus Mode) — click to unmark";
                     }
                 }

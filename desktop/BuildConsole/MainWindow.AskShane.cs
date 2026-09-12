@@ -299,8 +299,8 @@ namespace BuildConsole
                 {
                     statusText.Text = msg;
                     statusText.Foreground = isError
-                        ? (Brush)Application.Current.FindResource("RedBrush")
-                        : (Brush)Application.Current.FindResource("GreenBrush");
+                        ? (Brush)Application.Current.FindResource("StatusErrorBrush")
+                        : (Brush)Application.Current.FindResource("StatusSuccessBrush");
                     statusText.Visibility = Visibility.Visible;
                 });
                 sendButton.IsEnabled = true;

@@ -42,11 +42,11 @@ namespace BuildConsole.Controls
                 : "Queue resumed via header toggle.");
         }
 
-        /// <summary>Reflects the current pause state onto the header toggle: glyph, colour and tooltip. Paused reads in the app's peach accent so it's unmistakable; running is the quiet default GreenBrush foreground.</summary>
+        /// <summary>Reflects the current pause state onto the header toggle: glyph, colour and tooltip. Paused reads in the app's warning accent so it's unmistakable; running reads in the running-status accent.</summary>
         private void SyncPauseToggleVisual(bool paused)
         {
-            var accent = (Brush)Application.Current.FindResource("PeachBrush");
-            var runningAccent = (Brush)Application.Current.FindResource("GreenBrush");
+            var accent = (Brush)Application.Current.FindResource("StatusWarningBrush");
+            var runningAccent = (Brush)Application.Current.FindResource("StatusRunningBrush");
             PlayPauseQueueIcon.Text = paused ? "\uE768" : "\uE769";
             PlayPauseQueueIcon.Foreground = paused ? accent : runningAccent;
             BtnPlayPauseQueue.ToolTip = paused

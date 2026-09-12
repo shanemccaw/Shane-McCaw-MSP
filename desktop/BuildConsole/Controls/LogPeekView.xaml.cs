@@ -173,7 +173,7 @@ namespace BuildConsole.Controls
             };
             LogPeekStatusPill.Foreground = _streamMode switch
             {
-                LogStreamMode.Live => (Brush)FindResource("GreenBrush"),
+                LogStreamMode.Live => (Brush)FindResource("StatusRunningBrush"),
                 LogStreamMode.Burst => (Brush)FindResource("PeachBrush"),
                 _ => (Brush)FindResource("Subtext0Brush")
             };

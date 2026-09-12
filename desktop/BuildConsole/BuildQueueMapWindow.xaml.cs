@@ -295,15 +295,15 @@ namespace BuildConsole
             // Row 4 — badges (deadlock / error / waiting-on).
             var badges = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
             if (it.IsInCycle)
-                badges.Children.Add(MakeChip("DEADLOCK", Brush("RedBrush")));
+                badges.Children.Add(MakeChip("DEADLOCK", Brush("StatusErrorBrush")));
             if (it.IsError)
-                badges.Children.Add(MakeChip(ErrorLabel(it.ErrorKind), Brush("RedBrush")));
+                badges.Children.Add(MakeChip(ErrorLabel(it.ErrorKind), Brush("StatusErrorBrush")));
             var unresolved = it.UnresolvedBlockers;
             if (unresolved.Count > 0)
             {
                 var wait = "waiting on " + string.Join(" ", unresolved.Take(3).Select(b => "#" + b.Number)) +
                            (unresolved.Count > 3 ? " +" + (unresolved.Count - 3) : "");
-                badges.Children.Add(MakeChip(wait, Brush("YellowBrush")));
+                badges.Children.Add(MakeChip(wait, Brush("StatusWarningBrush")));
             }
             if (badges.Children.Count > 0)
                 stack.Children.Add(badges);
@@ -336,8 +336,8 @@ namespace BuildConsole
         {
             var (from, to) = Anchor(sRect, tRect);
 
-            Brush stroke = deadlock ? (Brush("RedBrush") ?? Brushes.Red)
-                          : stillBlocking ? (Brush("YellowBrush") ?? Brushes.Goldenrod)
+            Brush stroke = deadlock ? (Brush("StatusErrorBrush") ?? Brushes.Red)
+                          : stillBlocking ? (Brush("StatusWarningBrush") ?? Brushes.Goldenrod)
                           : (Brush("Surface2Brush") ?? Brushes.Gray);
 
             var line = new Line
@@ -408,15 +408,15 @@ namespace BuildConsole
         // ── Styling helpers ──────────────────────────────────────────────────────────────
         private Brush AccentFor(BuildQueueMapItem it)
         {
-            if (it.IsInCycle) return Brush("RedBrush") ?? Brushes.Red;
+            if (it.IsInCycle) return Brush("StatusErrorBrush") ?? Brushes.Red;
             if (it.IsError)
                 return it.ErrorKind == QueueMapErrorKind.SessionLimit
-                    ? (Brush("PeachBrush") ?? Brushes.Orange)
-                    : (Brush("RedBrush") ?? Brushes.Red);
+                    ? (Brush("StatusWarningBrush") ?? Brushes.Orange)
+                    : (Brush("StatusErrorBrush") ?? Brushes.Red);
             var s = it.Status ?? "";
-            if (string.Equals(s, "running", StringComparison.OrdinalIgnoreCase)) return Brush("GreenBrush") ?? Brushes.LightGreen;
+            if (string.Equals(s, "running", StringComparison.OrdinalIgnoreCase)) return Brush("StatusRunningBrush") ?? Brushes.LightGreen;
             if (string.Equals(s, BuildQueuePostgresClient.VerifyingStatus, StringComparison.OrdinalIgnoreCase)) return Brush("TealBrush") ?? Brushes.Teal;
-            if (it.IsBlocked) return Brush("YellowBrush") ?? Brushes.Goldenrod;
+            if (it.IsBlocked) return Brush("StatusWarningBrush") ?? Brushes.Goldenrod;
             return Brush("BlueBrush") ?? Brushes.CornflowerBlue;
         }
 
@@ -487,12 +487,12 @@ namespace BuildConsole
         private void BuildLegend()
         {
             LegendPanel.Children.Clear();
-            AddLegend(Brush("GreenBrush"),  "Running");
+            AddLegend(Brush("StatusRunningBrush"),  "Running");
             AddLegend(Brush("BlueBrush"),   "Queued");
-            AddLegend(Brush("YellowBrush"), "Blocked");
+            AddLegend(Brush("StatusWarningBrush"), "Blocked");
             AddLegend(Brush("TealBrush"),   "Verifying");
-            AddLegend(Brush("RedBrush"),    "Error / Deadlock");
-            AddLegend(Brush("PeachBrush"),  "Limit-paused");
+            AddLegend(Brush("StatusErrorBrush"),    "Error / Deadlock");
+            AddLegend(Brush("StatusWarningBrush"),  "Limit-paused");
         }
 
         private void AddLegend(Brush? swatch, string label)

@@ -877,7 +877,7 @@ namespace BuildConsole
                     FontSize = 11.5,
                     LineHeight = 17,
                     TextWrapping = TextWrapping.Wrap,
-                    Foreground = (Brush)FindResource(_sqlError != null ? "RedBrush" : "TextSecondaryBrush"),
+                    Foreground = (Brush)FindResource(_sqlError != null ? "StatusErrorBrush" : "TextSecondaryBrush"),
                 });
                 return;
             }

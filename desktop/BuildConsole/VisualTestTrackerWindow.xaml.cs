@@ -215,7 +215,7 @@ namespace BuildConsole
                 stack.Children.Add(new TextBlock
                 {
                     Text = $"(couldn't load thumbnail: {ex.Message})",
-                    Foreground = (Brush)FindResource("RedBrush"),
+                    Foreground = (Brush)FindResource("StatusErrorBrush"),
                     FontSize = 10,
                     TextWrapping = TextWrapping.Wrap
                 });
@@ -410,7 +410,7 @@ namespace BuildConsole
         {
             InlineMessage.Text = message;
             InlineMessage.Visibility = string.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible;
-            InlineMessage.Foreground = (Brush)FindResource(isError ? "RedBrush" : "GreenBrush");
+            InlineMessage.Foreground = (Brush)FindResource(isError ? "StatusErrorBrush" : "StatusSuccessBrush");
         }
 
         private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

@@ -159,7 +159,7 @@ namespace BuildConsole
             // Narration.
             NarrationStep.Text = $"Step {item.StepIndex}: {item.What}";
             VerdictText.Text = item.Verdict;
-            VerdictChip.Background = item.Passed ? Brush("GreenBrush") : Brush("RedBrush");
+            VerdictChip.Background = item.Passed ? Brush("StatusSuccessBrush") : Brush("StatusErrorBrush");
             VerdictText.Foreground = Brush("CrustBrush");
             NarrationWhat.Text = $"Captured because: {ReasonText(item.Reason)}.";
             NarrationDiff.Text = $"Baseline: {item.DiffNote}.";
@@ -168,19 +168,19 @@ namespace BuildConsole
             if (!item.HasBaseline)
             {
                 DiffChipText.Text = "NO BASELINE";
-                DiffChip.Background = Brush("PeachBrush");
+                DiffChip.Background = Brush("StatusWarningBrush");
                 DiffChipText.Foreground = Brush("CrustBrush");
             }
             else if (item.NeedsReview)
             {
                 DiffChipText.Text = "DIFF";
-                DiffChip.Background = Brush("RedBrush");
+                DiffChip.Background = Brush("StatusErrorBrush");
                 DiffChipText.Foreground = Brush("CrustBrush");
             }
             else
             {
                 DiffChipText.Text = "MATCHES";
-                DiffChip.Background = Brush("GreenBrush");
+                DiffChip.Background = Brush("StatusSuccessBrush");
                 DiffChipText.Foreground = Brush("CrustBrush");
             }
 
@@ -426,7 +426,7 @@ namespace BuildConsole
         private void ShowStatus(string message, bool isError)
         {
             StatusText.Text = message;
-            StatusText.Foreground = isError ? Brush("RedBrush") : Brush("GreenBrush");
+            StatusText.Foreground = isError ? Brush("StatusErrorBrush") : Brush("StatusSuccessBrush");
         }
     }
 }

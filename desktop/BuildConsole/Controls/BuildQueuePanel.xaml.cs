@@ -2699,7 +2699,7 @@ namespace BuildConsole.Controls
                     var staleBanner = new Border
                     {
                         Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFA, 0xB3, 0x87)),
-                        BorderBrush = (Brush)Application.Current.FindResource("PeachBrush"),
+                        BorderBrush = (Brush)Application.Current.FindResource("StatusWarningBrush"),
                         BorderThickness = new Thickness(1),
                         CornerRadius = new CornerRadius(4),
                         Padding = new Thickness(8, 4, 8, 4),
@@ -2709,7 +2709,7 @@ namespace BuildConsole.Controls
                     {
                         Text = staleText,
                         FontSize = 10.5,
-                        Foreground = (Brush)Application.Current.FindResource("PeachBrush"),
+                        Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush"),
                         TextWrapping = TextWrapping.Wrap
                     };
                     return staleBanner;
@@ -3444,9 +3444,9 @@ namespace BuildConsole.Controls
         {
             var mantle = (Brush)Application.Current.FindResource("MantleBrush");
             var blue = (Brush)Application.Current.FindResource("BlueBrush");
-            var green = (Brush)Application.Current.FindResource("GreenBrush");
+            var green = (Brush)Application.Current.FindResource("StatusSuccessBrush");
             var red = (Brush)Application.Current.FindResource("RedBrush");
-            var yellow = (Brush)Application.Current.FindResource("YellowBrush");
+            var yellow = (Brush)Application.Current.FindResource("StatusWarningBrush");
             var mauve = (Brush)Application.Current.FindResource("MauveBrush");
 
             if (node.IsWaitingForInput)
@@ -3539,7 +3539,7 @@ namespace BuildConsole.Controls
                 {
                     Width = QueueGraphDotRadius * 2,
                     Height = QueueGraphDotRadius * 2,
-                    Fill = red,
+                    Fill = (Brush)Application.Current.FindResource("StatusErrorBrush"),
                     Stroke = mantle,
                     StrokeThickness = 1.5,
                     ToolTip = $"✕ Build {node.DisplayRef} (FAILED)"
@@ -3960,7 +3960,7 @@ namespace BuildConsole.Controls
                     FontSize = 10,
                     Margin = new Thickness(8, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = (Brush)Application.Current.FindResource("YellowBrush"),
+                    Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush"),
                     ToolTip = $"Verifying, but no verified DONE bookend yet — not reported as landed: {string.Join(", ", allNeedsAttentionNumbers.Select(FormatIssueRef))}"
                 });
             }
@@ -3999,7 +3999,7 @@ namespace BuildConsole.Controls
                     if (toSend.Count == 0)
                     {
                         statusText.Text = $"Nothing sent — {heldBack.Count} item(s) still need attention (no verified DONE bookend yet): {string.Join(", ", heldBack.Select(FormatIssueRef))}";
-                        statusText.Foreground = (Brush)Application.Current.FindResource("YellowBrush");
+                        statusText.Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush");
                         statusText.Visibility = Visibility.Visible;
                         return;
                     }
@@ -4031,8 +4031,8 @@ namespace BuildConsole.Controls
                         }
                         statusText.Text = heldBack.Count > 0 ? $"{msg} ({heldBack.Count} still need attention: {string.Join(", ", heldBack.Select(FormatIssueRef))})" : msg;
                         statusText.Foreground = isError
-                            ? (Brush)Application.Current.FindResource("RedBrush")
-                            : (Brush)Application.Current.FindResource("GreenBrush");
+                            ? (Brush)Application.Current.FindResource("StatusErrorBrush")
+                            : (Brush)Application.Current.FindResource("StatusSuccessBrush");
                         statusText.Visibility = Visibility.Visible;
                         // Same deferred-rebuild pattern as the per-set button: let Shane see the
                         // outcome message before RenderBuildSetRollup rebuilds this header out from
@@ -4426,7 +4426,7 @@ namespace BuildConsole.Controls
                     FontSize = 10,
                     Margin = new Thickness(6, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = (Brush)Application.Current.FindResource("YellowBrush"),
+                    Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush"),
                     ToolTip = $"{needsAttention.Count} Verifying item(s) with no verified DONE bookend yet — not reported as landed: {string.Join(", ", needsAttention.Select(FormatIssueRef))}"
                 };
                 Grid.SetColumn(needsAttentionPill, 2);
@@ -4480,7 +4480,7 @@ namespace BuildConsole.Controls
                     if (toSend.Count == 0)
                     {
                         statusText.Text = $"Nothing sent — {heldBack.Count} item(s) still need attention (no verified DONE bookend yet): {string.Join(", ", heldBack.Select(FormatIssueRef))}";
-                        statusText.Foreground = (Brush)Application.Current.FindResource("YellowBrush");
+                        statusText.Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush");
                         statusText.Visibility = Visibility.Visible;
                         return;
                     }
@@ -4510,8 +4510,8 @@ namespace BuildConsole.Controls
                         }
                         statusText.Text = heldBack.Count > 0 ? $"{msg} ({heldBack.Count} still need attention: {string.Join(", ", heldBack.Select(FormatIssueRef))})" : msg;
                         statusText.Foreground = isError
-                            ? (Brush)Application.Current.FindResource("RedBrush")
-                            : (Brush)Application.Current.FindResource("GreenBrush");
+                            ? (Brush)Application.Current.FindResource("StatusErrorBrush")
+                            : (Brush)Application.Current.FindResource("StatusSuccessBrush");
                         statusText.Visibility = Visibility.Visible;
                         // Rebuilding this row right now (RenderBuildSetRollup's own re-render,
                         // which — now that "sent" is recorded — computes a different RollupRowKey

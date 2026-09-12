@@ -162,12 +162,12 @@ namespace BuildConsole.Controls
             if (success)
             {
                 ConfettiBurst(14);
-                Banner("🎉", "Build done!", Res("GreenBrush"));
+                Banner("🎉", "Build done!", Res("StatusSuccessBrush"));
                 HappyHop("🦊");
             }
             else
             {
-                Banner("🌧️", "Build ended — shake it off", Res("PeachBrush"));
+                Banner("🌧️", "Build ended — shake it off", Res("StatusErrorBrush"));
                 HappyHop("🐢");
             }
             // spawn Copilot critters alongside the emoji celebration — positive on success, cute-grumpy on failure

@@ -676,8 +676,8 @@ namespace BuildConsole.Controls
         {
             ClaudeStatusLabel.Text = statusText;
             ClaudeStatusDot.Fill = isOperational
-                ? (Brush)FindResource("GreenBrush")
-                : (Brush)FindResource("RedBrush");
+                ? (Brush)FindResource("StatusSuccessBrush")
+                : (Brush)FindResource("StatusErrorBrush");
         }
 
         // ── Fast Button Click Handlers ──────────────────────────────────────
@@ -882,7 +882,7 @@ namespace BuildConsole.Controls
             PendingMigrationsCountText.Text = "(?)";
             MigrationsHintText.Visibility = Visibility.Collapsed;
             PendingMigrationsEmpty.Text = message;
-            PendingMigrationsEmpty.Foreground = (Brush)FindResource("PeachBrush");
+            PendingMigrationsEmpty.Foreground = (Brush)FindResource("StatusWarningBrush");
             PendingMigrationsEmpty.Visibility = Visibility.Visible;
         }
 
@@ -907,7 +907,7 @@ namespace BuildConsole.Controls
         public async System.Threading.Tasks.Task RefreshHealthAsync()
         {
             OverallHealthPillText.Text = "Checking…";
-            OverallHealthPillText.Foreground = (Brush)FindResource("YellowBrush");
+            OverallHealthPillText.Foreground = (Brush)FindResource("StatusRunningBrush");
 
             try
             {
@@ -918,7 +918,7 @@ namespace BuildConsole.Controls
             catch (Exception ex)
             {
                 OverallHealthPillText.Text = "Check Failed";
-                OverallHealthPillText.Foreground = (Brush)FindResource("RedBrush");
+                OverallHealthPillText.Foreground = (Brush)FindResource("StatusErrorBrush");
                 ActivityLog.Log("system.health", $"Error during health refresh: {ex.Message}");
             }
         }
@@ -930,13 +930,13 @@ namespace BuildConsole.Controls
             {
                 OverallHealthPill.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E3A2F"));
                 OverallHealthPillText.Text = "🟢 ALL HEALTHY";
-                OverallHealthPillText.Foreground = (Brush)FindResource("GreenBrush");
+                OverallHealthPillText.Foreground = (Brush)FindResource("StatusSuccessBrush");
             }
             else
             {
                 OverallHealthPill.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3E2723"));
                 OverallHealthPillText.Text = "⚠️ ATTENTION NEEDED";
-                OverallHealthPillText.Foreground = (Brush)FindResource("PeachBrush");
+                OverallHealthPillText.Foreground = (Brush)FindResource("StatusWarningBrush");
             }
 
             // 1. Dev Server
@@ -1005,17 +1005,17 @@ namespace BuildConsole.Controls
                 case HealthStatus.Healthy:
                     badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E3A2F"));
                     badgeText.Text = string.IsNullOrEmpty(customText) ? "OK" : customText;
-                    badgeText.Foreground = (Brush)FindResource("GreenBrush");
+                    badgeText.Foreground = (Brush)FindResource("StatusSuccessBrush");
                     break;
                 case HealthStatus.Degraded:
                     badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3E2E1E"));
                     badgeText.Text = string.IsNullOrEmpty(customText) ? "WARN" : customText;
-                    badgeText.Foreground = (Brush)FindResource("YellowBrush");
+                    badgeText.Foreground = (Brush)FindResource("StatusWarningBrush");
                     break;
                 case HealthStatus.Unhealthy:
                     badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3E1E1E"));
                     badgeText.Text = string.IsNullOrEmpty(customText) ? "ERROR" : customText;
-                    badgeText.Foreground = (Brush)FindResource("RedBrush");
+                    badgeText.Foreground = (Brush)FindResource("StatusErrorBrush");
                     break;
                 case HealthStatus.NotConfigured:
                     badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2A2B3D"));

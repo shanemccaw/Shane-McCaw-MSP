@@ -434,8 +434,8 @@ namespace BuildConsole
             // Status Banner
             bool allPassed = entry.AllPassed;
             TxtRunStatusLarge.Text = allPassed ? "✅ ALL PASSED" : $"❌ {entry.Failed} OF {entry.Total} FAILED";
-            BadgeRunStatus.Background = allPassed ? GetBrush("GreenBrush", 0x25) : GetBrush("RedBrush", 0x25);
-            TxtRunStatusLarge.Foreground = allPassed ? GetBrush("GreenBrush") : GetBrush("RedBrush");
+            BadgeRunStatus.Background = allPassed ? GetBrush("StatusSuccessBrush", 0x25) : GetBrush("StatusErrorBrush", 0x25);
+            TxtRunStatusLarge.Foreground = allPassed ? GetBrush("StatusSuccessBrush") : GetBrush("StatusErrorBrush");
 
             // Title
             TxtDetailTitle.Text = entry.Issue > 0 ? $"Issue #{entry.Issue} — {entry.Feature}" : entry.Feature;
@@ -457,39 +457,39 @@ namespace BuildConsole
                 if (_currentReliability.Category == TestReliabilityCategory.Flaky)
                 {
                     BannerReliabilityAlert.Visibility = Visibility.Visible;
-                    BannerReliabilityAlert.Background = GetBrush("PeachBrush", 0x25);
-                    BannerReliabilityAlert.BorderBrush = GetBrush("PeachBrush", 0x80);
+                    BannerReliabilityAlert.Background = GetBrush("StatusWarningBrush", 0x25);
+                    BannerReliabilityAlert.BorderBrush = GetBrush("StatusWarningBrush", 0x80);
                     BannerReliabilityAlert.BorderThickness = new Thickness(1);
                     TxtReliabilityAlertGlyph.Text = "⚠️";
-                    TxtReliabilityAlertGlyph.Foreground = GetBrush("PeachBrush");
+                    TxtReliabilityAlertGlyph.Foreground = GetBrush("StatusWarningBrush");
                     TxtReliabilityAlertTitle.Text = "⚠️ FLAKY TEST MANIFEST DETECTED (INTERMITTENT RESULTS)";
-                    TxtReliabilityAlertTitle.Foreground = GetBrush("PeachBrush");
+                    TxtReliabilityAlertTitle.Foreground = GetBrush("StatusWarningBrush");
                     TxtReliabilityAlertBody.Text = $"This manifest exhibits inconsistent results across recent runs ({_currentReliability.FlipsCount} flips, {_currentReliability.RecentPassCount}/{_currentReliability.RecentRunsEvaluated} passed). Recent pattern: {_currentReliability.PatternSummary}. This failure is likely test instability rather than an application break.";
                     TxtReliabilityAlertBody.Foreground = GetBrush("TextBrush");
                 }
                 else if (_currentReliability.Category == TestReliabilityCategory.Regression)
                 {
                     BannerReliabilityAlert.Visibility = Visibility.Visible;
-                    BannerReliabilityAlert.Background = GetBrush("RedBrush", 0x25);
-                    BannerReliabilityAlert.BorderBrush = GetBrush("RedBrush", 0x80);
+                    BannerReliabilityAlert.Background = GetBrush("StatusErrorBrush", 0x25);
+                    BannerReliabilityAlert.BorderBrush = GetBrush("StatusErrorBrush", 0x80);
                     BannerReliabilityAlert.BorderThickness = new Thickness(1);
                     TxtReliabilityAlertGlyph.Text = "🚨";
-                    TxtReliabilityAlertGlyph.Foreground = GetBrush("RedBrush");
+                    TxtReliabilityAlertGlyph.Foreground = GetBrush("StatusErrorBrush");
                     TxtReliabilityAlertTitle.Text = "🚨 GENUINE REGRESSION DETECTED (APPLICATION BROKEN)";
-                    TxtReliabilityAlertTitle.Foreground = GetBrush("RedBrush");
+                    TxtReliabilityAlertTitle.Foreground = GetBrush("StatusErrorBrush");
                     TxtReliabilityAlertBody.Text = $"This manifest previously passed but has consistently failed in its last {_currentReliability.CurrentStreak} consecutive runs (recent pattern: {_currentReliability.PatternSummary}). This indicates a real regression in the application or API.";
                     TxtReliabilityAlertBody.Foreground = GetBrush("TextBrush");
                 }
                 else if (_currentReliability.Category == TestReliabilityCategory.StablePass)
                 {
                     BannerReliabilityAlert.Visibility = Visibility.Visible;
-                    BannerReliabilityAlert.Background = GetBrush("GreenBrush", 0x15);
-                    BannerReliabilityAlert.BorderBrush = GetBrush("GreenBrush", 0x40);
+                    BannerReliabilityAlert.Background = GetBrush("StatusSuccessBrush", 0x15);
+                    BannerReliabilityAlert.BorderBrush = GetBrush("StatusSuccessBrush", 0x40);
                     BannerReliabilityAlert.BorderThickness = new Thickness(1);
                     TxtReliabilityAlertGlyph.Text = "✅";
-                    TxtReliabilityAlertGlyph.Foreground = GetBrush("GreenBrush");
+                    TxtReliabilityAlertGlyph.Foreground = GetBrush("StatusSuccessBrush");
                     TxtReliabilityAlertTitle.Text = "✅ STABLE TEST MANIFEST";
-                    TxtReliabilityAlertTitle.Foreground = GetBrush("GreenBrush");
+                    TxtReliabilityAlertTitle.Foreground = GetBrush("StatusSuccessBrush");
                     TxtReliabilityAlertBody.Text = $"Consistent pass streak: {_currentReliability.CurrentStreak} consecutive runs (pattern: {_currentReliability.PatternSummary}).";
                     TxtReliabilityAlertBody.Foreground = GetBrush("Subtext1Brush");
                 }
@@ -549,7 +549,7 @@ namespace BuildConsole
             var cardBorder = new Border
             {
                 Background = GetBrush("Surface0Brush"),
-                BorderBrush = step.Passed ? GetBrush("Surface1Brush") : GetBrush("RedBrush", 0x80),
+                BorderBrush = step.Passed ? GetBrush("Surface1Brush") : GetBrush("StatusErrorBrush", 0x80),
                 BorderThickness = new Thickness(step.Passed ? 1 : 1.5),
                 CornerRadius = new CornerRadius(6),
                 Padding = new Thickness(12, 10, 12, 10),
@@ -643,7 +643,7 @@ namespace BuildConsole
 
             var statusPill = new Border
             {
-                Background = step.Passed ? GetBrush("GreenBrush", 0x25) : GetBrush("RedBrush", 0x25),
+                Background = step.Passed ? GetBrush("StatusSuccessBrush", 0x25) : GetBrush("StatusErrorBrush", 0x25),
                 CornerRadius = new CornerRadius(3),
                 Padding = new Thickness(6, 1, 6, 1),
                 VerticalAlignment = VerticalAlignment.Center,
@@ -652,7 +652,7 @@ namespace BuildConsole
                     Text = step.Passed ? "✔ PASS" : "✖ FAIL",
                     FontSize = 10,
                     FontWeight = FontWeights.Bold,
-                    Foreground = step.Passed ? GetBrush("GreenBrush") : GetBrush("RedBrush")
+                    Foreground = step.Passed ? GetBrush("StatusSuccessBrush") : GetBrush("StatusErrorBrush")
                 }
             };
             rightHeader.Children.Add(statusPill);
@@ -670,8 +670,8 @@ namespace BuildConsole
                 {
                     var errBanner = new Border
                     {
-                        Background = GetBrush("RedBrush", 0x18),
-                        BorderBrush = GetBrush("RedBrush", 0x40),
+                        Background = GetBrush("StatusErrorBrush", 0x18),
+                        BorderBrush = GetBrush("StatusErrorBrush", 0x40),
                         BorderThickness = new Thickness(1),
                         CornerRadius = new CornerRadius(4),
                         Padding = new Thickness(8, 6, 8, 6),
@@ -681,7 +681,7 @@ namespace BuildConsole
                             Text = $"Error: {step.Detail}",
                             FontSize = 11,
                             FontWeight = FontWeights.SemiBold,
-                            Foreground = GetBrush("RedBrush"),
+                            Foreground = GetBrush("StatusErrorBrush"),
                             TextWrapping = TextWrapping.Wrap
                         }
                     };
@@ -965,7 +965,7 @@ namespace BuildConsole
 
                 var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
                 info.Children.Add(new TextBlock { Text = $"#{shot.StepIndex}: {shot.StepLabel}", FontSize = 10.5, FontWeight = FontWeights.SemiBold, Foreground = GetBrush("TextBrush"), TextTrimming = TextTrimming.CharacterEllipsis });
-                info.Children.Add(new TextBlock { Text = shot.Reason, FontSize = 9.5, Foreground = shot.Passed ? GetBrush("GreenBrush") : GetBrush("RedBrush") });
+                info.Children.Add(new TextBlock { Text = shot.Reason, FontSize = 9.5, Foreground = shot.Passed ? GetBrush("StatusSuccessBrush") : GetBrush("StatusErrorBrush") });
                 dock.Children.Add(info);
 
                 thumbCard.Child = dock;

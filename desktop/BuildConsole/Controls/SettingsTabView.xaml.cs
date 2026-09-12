@@ -306,31 +306,31 @@ namespace BuildConsole.Controls
             if (needsReview > 0)
             {
                 TestEnvHealthText.Text = $"{configured}/{totalVars} Configured ({needsReview} Needs Value)";
-                TestEnvHealthText.Foreground = (Brush)FindResource("PeachBrush");
+                TestEnvHealthText.Foreground = (Brush)FindResource("StatusWarningBrush");
                 TestEnvAlertPill.Visibility = Visibility.Visible;
                 TestEnvAlertCount.Text = $"{needsReview} Review";
             }
             else
             {
                 TestEnvHealthText.Text = $"{totalVars} Ready";
-                TestEnvHealthText.Foreground = (Brush)FindResource("GreenBrush");
+                TestEnvHealthText.Foreground = (Brush)FindResource("StatusSuccessBrush");
                 TestEnvAlertPill.Visibility = Visibility.Collapsed;
             }
 
             // GitHub PAT Health
             bool hasPat = settings.HasGitHubPat;
             GitHubPatHealthText.Text = hasPat ? "Configured" : "Missing Token";
-            GitHubPatHealthText.Foreground = (Brush)FindResource(hasPat ? "GreenBrush" : "PeachBrush");
+            GitHubPatHealthText.Foreground = (Brush)FindResource(hasPat ? "StatusSuccessBrush" : "StatusWarningBrush");
 
             // Zoho Health
             bool hasZoho = !string.IsNullOrWhiteSpace(settings.ZohoApiToken);
             ZohoTokenHealthText.Text = hasZoho ? "Configured" : "Not Set";
-            ZohoTokenHealthText.Foreground = (Brush)FindResource(hasZoho ? "GreenBrush" : "Subtext0Brush");
+            ZohoTokenHealthText.Foreground = (Brush)FindResource(hasZoho ? "StatusSuccessBrush" : "Subtext0Brush");
 
             // Replit Watcher Health
             bool replitActive = settings.ReplitWatcherEnabled;
             ReplitWatcherHealthText.Text = replitActive ? "Active" : "Disabled";
-            ReplitWatcherHealthText.Foreground = (Brush)FindResource(replitActive ? "GreenBrush" : "Subtext0Brush");
+            ReplitWatcherHealthText.Foreground = (Brush)FindResource(replitActive ? "StatusSuccessBrush" : "Subtext0Brush");
         }
 
         private void TestEnvHealthBadge_Click(object sender, MouseButtonEventArgs e) => ScrollToSection("TestEnvironment");
@@ -515,7 +515,7 @@ namespace BuildConsole.Controls
             var chip = new Border
             {
                 Background = isSelected
-                    ? (Brush)FindResource(isAlert ? "PeachBrush" : "BlueBrush")
+                    ? (Brush)FindResource(isAlert ? "StatusWarningBrush" : "BlueBrush")
                     : (Brush)FindResource("Surface0Brush"),
                 CornerRadius = new CornerRadius(12),
                 Padding = new Thickness(10, 4, 10, 4),
@@ -531,7 +531,7 @@ namespace BuildConsole.Controls
                 FontWeight = isSelected ? FontWeights.Bold : FontWeights.SemiBold,
                 Foreground = isSelected
                     ? (Brush)FindResource("CrustBrush")
-                    : (Brush)FindResource(isAlert ? "PeachBrush" : "TextBrush")
+                    : (Brush)FindResource(isAlert ? "StatusWarningBrush" : "TextBrush")
             };
             chip.Child = text;
 
@@ -623,7 +623,7 @@ namespace BuildConsole.Controls
             var card = new Border
             {
                 Background = (Brush)FindResource("Surface0Brush"),
-                BorderBrush = (Brush)FindResource(isUnset ? "PeachBrush" : "Surface1Brush"),
+                BorderBrush = (Brush)FindResource(isUnset ? "StatusWarningBrush" : "Surface1Brush"),
                 BorderThickness = new Thickness(isUnset ? 1.5 : 1),
                 CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(14, 12, 14, 12),
@@ -642,7 +642,7 @@ namespace BuildConsole.Controls
                 FontFamily = new FontFamily("Consolas, Courier New, Segoe UI"),
                 FontSize = 13,
                 FontWeight = FontWeights.Bold,
-                Foreground = (Brush)FindResource(isUnset ? "PeachBrush" : "TextBrush"),
+                Foreground = (Brush)FindResource(isUnset ? "StatusWarningBrush" : "TextBrush"),
                 VerticalAlignment = VerticalAlignment.Center
             });
 
@@ -667,7 +667,7 @@ namespace BuildConsole.Controls
             // Status Pill (Right side)
             var statusPill = new Border
             {
-                Background = (Brush)FindResource(isUnset ? "PeachBrush" : "GreenBrush"),
+                Background = (Brush)FindResource(isUnset ? "StatusWarningBrush" : "StatusSuccessBrush"),
                 CornerRadius = new CornerRadius(10),
                 Padding = new Thickness(8, 2, 8, 2),
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -947,7 +947,7 @@ namespace BuildConsole.Controls
 
             if (string.IsNullOrEmpty(token))
             {
-                GitHubPatSavedText.Foreground = (Brush)FindResource("PeachBrush");
+                GitHubPatSavedText.Foreground = (Brush)FindResource("StatusWarningBrush");
                 GitHubPatSavedText.Text = "No GitHub PAT configured to copy.";
                 return;
             }
@@ -955,12 +955,12 @@ namespace BuildConsole.Controls
             try
             {
                 Clipboard.SetText(token);
-                GitHubPatSavedText.Foreground = (Brush)FindResource("GreenBrush");
+                GitHubPatSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
                 GitHubPatSavedText.Text = "✓ GitHub PAT copied to clipboard!";
             }
             catch (Exception ex)
             {
-                GitHubPatSavedText.Foreground = (Brush)FindResource("RedBrush");
+                GitHubPatSavedText.Foreground = (Brush)FindResource("StatusErrorBrush");
                 GitHubPatSavedText.Text = $"Failed to copy: {ex.Message}";
             }
         }
@@ -970,7 +970,7 @@ namespace BuildConsole.Controls
             var settings = BuildConsoleSettings.Load();
             settings.GitHubPat = GitHubPatBox.Password.Trim();
             settings.Save();
-            GitHubPatSavedText.Foreground = (Brush)FindResource("GreenBrush");
+            GitHubPatSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
             GitHubPatSavedText.Text = "GitHub PAT saved successfully.";
             UpdateHealthDashboard();
         }
@@ -1014,7 +1014,7 @@ namespace BuildConsole.Controls
 
             if (string.IsNullOrEmpty(token))
             {
-                ZohoApiTokenSavedText.Foreground = (Brush)FindResource("PeachBrush");
+                ZohoApiTokenSavedText.Foreground = (Brush)FindResource("StatusWarningBrush");
                 ZohoApiTokenSavedText.Text = "No Zoho API token configured to copy.";
                 return;
             }
@@ -1022,12 +1022,12 @@ namespace BuildConsole.Controls
             try
             {
                 Clipboard.SetText(token);
-                ZohoApiTokenSavedText.Foreground = (Brush)FindResource("GreenBrush");
+                ZohoApiTokenSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
                 ZohoApiTokenSavedText.Text = "✓ Zoho API token copied to clipboard!";
             }
             catch (Exception ex)
             {
-                ZohoApiTokenSavedText.Foreground = (Brush)FindResource("RedBrush");
+                ZohoApiTokenSavedText.Foreground = (Brush)FindResource("StatusErrorBrush");
                 ZohoApiTokenSavedText.Text = $"Failed to copy: {ex.Message}";
             }
         }
@@ -1037,7 +1037,7 @@ namespace BuildConsole.Controls
             var settings = BuildConsoleSettings.Load();
             settings.ZohoApiToken = ZohoApiTokenBox.Password.Trim();
             settings.Save();
-            ZohoApiTokenSavedText.Foreground = (Brush)FindResource("GreenBrush");
+            ZohoApiTokenSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
             ZohoApiTokenSavedText.Text = "Zoho API token saved successfully.";
             UpdateHealthDashboard();
         }
@@ -1052,7 +1052,7 @@ namespace BuildConsole.Controls
         {
             if (!int.TryParse(MaxConcurrentBox.Text.Trim(), out var value) || value < 1)
             {
-                MaxConcurrentSavedText.Foreground = (Brush)FindResource("RedBrush");
+                MaxConcurrentSavedText.Foreground = (Brush)FindResource("StatusErrorBrush");
                 MaxConcurrentSavedText.Text = "Enter a whole number of at least 1.";
                 return;
             }
@@ -1073,7 +1073,7 @@ namespace BuildConsole.Controls
             }
             catch { /* best-effort live-apply; the file write above already succeeded */ }
 
-            MaxConcurrentSavedText.Foreground = (Brush)FindResource("GreenBrush");
+            MaxConcurrentSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
             MaxConcurrentSavedText.Text = liveApplied
                 ? $"✓ Saved and applied live — {value} max concurrent (takes effect on the watcher's next ~30s poll, no restart needed)."
                 : $"✓ Saved — {value} max concurrent. No queue watcher is running yet in this session; it will read this on next launch.";
@@ -1210,7 +1210,7 @@ namespace BuildConsole.Controls
             settings.UseSshForSql = UseSshForSqlCheck.IsChecked == true;
             settings.Save();
 
-            SshSettingsSavedText.Foreground = (Brush)FindResource("GreenBrush");
+            SshSettingsSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
             SshSettingsSavedText.Text = $"✓ SSH settings saved ({DateTime.Now:HH:mm:ss})";
             ToastEngine.Success("SSH Settings Saved", "Remote Replit SSH configuration has been persisted.");
         }
@@ -1219,7 +1219,7 @@ namespace BuildConsole.Controls
         {
             BtnTestSshConnection.IsEnabled = false;
             SshSettingsSavedText.Text = "⏳ Testing SSH connection…";
-            SshSettingsSavedText.Foreground = (Brush)FindResource("PeachBrush");
+            SshSettingsSavedText.Foreground = (Brush)FindResource("StatusRunningBrush");
 
             try
             {
@@ -1230,20 +1230,20 @@ namespace BuildConsole.Controls
                 if (ok)
                 {
                     SshSettingsSavedText.Text = $"✓ Connected in {latency}ms ({DateTime.Now:HH:mm:ss})";
-                    SshSettingsSavedText.Foreground = (Brush)FindResource("GreenBrush");
+                    SshSettingsSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
                     ToastEngine.Success("SSH Connected", $"Successfully connected to Replit in {latency}ms.");
                 }
                 else
                 {
                     SshSettingsSavedText.Text = $"✕ Connection failed: {msg}";
-                    SshSettingsSavedText.Foreground = (Brush)FindResource("RedBrush");
+                    SshSettingsSavedText.Foreground = (Brush)FindResource("StatusErrorBrush");
                     ToastEngine.Warning("SSH Failed", msg);
                 }
             }
             catch (Exception ex)
             {
                 SshSettingsSavedText.Text = $"✕ Error: {ex.Message}";
-                SshSettingsSavedText.Foreground = (Brush)FindResource("RedBrush");
+                SshSettingsSavedText.Foreground = (Brush)FindResource("StatusErrorBrush");
                 ToastEngine.Warning("SSH Error", ex.Message);
             }
             finally
@@ -1517,7 +1517,7 @@ namespace BuildConsole.Controls
             if (string.IsNullOrWhiteSpace(ownerRepo) || !ownerRepo.Contains('/'))
             {
                 RepoAddStatusText.Text = "✕ Enter a repo as \"owner/repo\".";
-                RepoAddStatusText.Foreground = (Brush)FindResource("RedBrush");
+                RepoAddStatusText.Foreground = (Brush)FindResource("StatusErrorBrush");
                 return;
             }
 
@@ -1525,13 +1525,13 @@ namespace BuildConsole.Controls
             if (settings.ConfiguredRepos.Any(r => string.Equals(r.OwnerRepo, ownerRepo, StringComparison.OrdinalIgnoreCase)))
             {
                 RepoAddStatusText.Text = $"✕ \"{ownerRepo}\" is already in the registry.";
-                RepoAddStatusText.Foreground = (Brush)FindResource("RedBrush");
+                RepoAddStatusText.Foreground = (Brush)FindResource("StatusErrorBrush");
                 return;
             }
 
             BtnAddRepo.IsEnabled = false;
             RepoAddStatusText.Text = $"⏳ Validating \"{ownerRepo}\" against the configured PAT…";
-            RepoAddStatusText.Foreground = (Brush)FindResource("PeachBrush");
+            RepoAddStatusText.Foreground = (Brush)FindResource("StatusRunningBrush");
 
             try
             {
@@ -1539,7 +1539,7 @@ namespace BuildConsole.Controls
                 if (!ok)
                 {
                     RepoAddStatusText.Text = $"✕ {message}";
-                    RepoAddStatusText.Foreground = (Brush)FindResource("RedBrush");
+                    RepoAddStatusText.Foreground = (Brush)FindResource("StatusErrorBrush");
                     return;
                 }
 
@@ -1552,7 +1552,7 @@ namespace BuildConsole.Controls
                 settings.Save();
 
                 RepoAddStatusText.Text = $"✓ Added \"{ownerRepo}\" ({tier}).";
-                RepoAddStatusText.Foreground = (Brush)FindResource("GreenBrush");
+                RepoAddStatusText.Foreground = (Brush)FindResource("StatusSuccessBrush");
                 RepoOwnerRepoBox.Text = "";
                 RepoDisplayNameBox.Text = "";
                 RepoTierCombo.SelectedIndex = 0;
@@ -1561,7 +1561,7 @@ namespace BuildConsole.Controls
             catch (Exception ex)
             {
                 RepoAddStatusText.Text = $"✕ Failed to validate/add repo: {ex.Message}";
-                RepoAddStatusText.Foreground = (Brush)FindResource("RedBrush");
+                RepoAddStatusText.Foreground = (Brush)FindResource("StatusErrorBrush");
             }
             finally
             {

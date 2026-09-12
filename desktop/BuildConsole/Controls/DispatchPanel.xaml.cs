@@ -170,7 +170,7 @@ namespace BuildConsole.Controls
                 
                 string countdownStr = $"{(int)timeToRestart.TotalMinutes}:{timeToRestart.Seconds:D2}";
                 TxtCountdown.Text = $"T-{countdownStr}";
-                TxtCountdown.Foreground = (Brush)Application.Current.FindResource("RedBrush");
+                TxtCountdown.Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush");
             }
         }
 
@@ -202,7 +202,7 @@ namespace BuildConsole.Controls
             var raw = TxtIssueNumber.Text?.Trim().TrimStart('#') ?? "";
             if (!int.TryParse(raw, out var issueNumber) || issueNumber <= 0)
             {
-                ShowStatus("Enter a valid issue number.", (Brush)Application.Current.FindResource("RedBrush"));
+                ShowStatus("Enter a valid issue number.", (Brush)Application.Current.FindResource("StatusErrorBrush"));
                 return;
             }
 
@@ -269,7 +269,7 @@ namespace BuildConsole.Controls
                             : "no-active-chat";
 
                         var (message, isError) = Services.ActiveChatBuildRequestHelper.DescribeStatus(askStatus, issueNumber);
-                        ShowStatus(message, (Brush)Application.Current.FindResource(isError ? "RedBrush" : "BlueBrush"));
+                        ShowStatus(message, (Brush)Application.Current.FindResource(isError ? "StatusErrorBrush" : "BlueBrush"));
                         Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — ask-active-chat status: {askStatus}");
 
                         // Git #2716 — don't just dead-end here: remember this issue so the next
@@ -298,12 +298,12 @@ namespace BuildConsole.Controls
                         return;
 
                     case Services.DispatchOutcome.Queued:
-                        ShowStatus(result.Message, (Brush)Application.Current.FindResource("GreenBrush"));
+                        ShowStatus(result.Message, (Brush)Application.Current.FindResource("StatusSuccessBrush"));
                         break;
 
                     default:
                         // NoPat / GitHubUnreachable / IssueNotFound / NoDb / QueuedButBlocked / Failed
-                        ShowStatus(result.Message, (Brush)Application.Current.FindResource("RedBrush"));
+                        ShowStatus(result.Message, (Brush)Application.Current.FindResource("StatusErrorBrush"));
                         if (result.Outcome != Services.DispatchOutcome.QueuedButBlocked) return;
                         break;
                 }
@@ -314,7 +314,7 @@ namespace BuildConsole.Controls
             }
             catch (Exception ex)
             {
-                ShowStatus($"Dispatch failed: {ex.Message}", (Brush)Application.Current.FindResource("RedBrush"));
+                ShowStatus($"Dispatch failed: {ex.Message}", (Brush)Application.Current.FindResource("StatusErrorBrush"));
                 Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — FAILED: {ex.Message}");
             }
             finally
@@ -373,7 +373,7 @@ namespace BuildConsole.Controls
                 }
             }
 
-            ShowStatus(string.Join("\n", lines), (Brush)Application.Current.FindResource(anyError ? "RedBrush" : "GreenBrush"));
+            ShowStatus(string.Join("\n", lines), (Brush)Application.Current.FindResource(anyError ? "StatusErrorBrush" : "StatusSuccessBrush"));
             if (anyQueued) TxtIssueNumber.Text = "";
         }
 
@@ -477,7 +477,7 @@ namespace BuildConsole.Controls
             var settings = Services.BuildConsoleSettings.Load();
             if (!settings.HasGitHubPat)
             {
-                ShowStatus("No GitHub PAT configured — set one in Settings.", (Brush)Application.Current.FindResource("RedBrush"));
+                ShowStatus("No GitHub PAT configured — set one in Settings.", (Brush)Application.Current.FindResource("StatusErrorBrush"));
                 return;
             }
 
@@ -499,20 +499,20 @@ namespace BuildConsole.Controls
                 }
                 catch (Exception ex)
                 {
-                    ShowStatus($"Couldn't reach GitHub: {ex.Message}", (Brush)Application.Current.FindResource("RedBrush"));
+                    ShowStatus($"Couldn't reach GitHub: {ex.Message}", (Brush)Application.Current.FindResource("StatusErrorBrush"));
                     return;
                 }
 
                 if (issue == null)
                 {
-                    ShowStatus($"#{issueNumber} not found.", (Brush)Application.Current.FindResource("RedBrush"));
+                    ShowStatus($"#{issueNumber} not found.", (Brush)Application.Current.FindResource("StatusErrorBrush"));
                     return;
                 }
 
                 var (rawComment, parsed) = await Services.BatterUpQueueService.FindBuildCommentAsync(gh, issueNumber);
                 if (rawComment == null || parsed == null)
                 {
-                    ShowStatus($"No build prompt found on #{issueNumber} anymore.", (Brush)Application.Current.FindResource("RedBrush"));
+                    ShowStatus($"No build prompt found on #{issueNumber} anymore.", (Brush)Application.Current.FindResource("StatusErrorBrush"));
                     return;
                 }
 
@@ -596,11 +596,11 @@ namespace BuildConsole.Controls
                 if (openBlockedByNumbers.Count > 0)
                 {
                     ShowStatus($"#{issueNumber} force re-dispatched, but held — blocked by #{string.Join(", #", openBlockedByNumbers)}.",
-                        (Brush)Application.Current.FindResource("RedBrush"));
+                        (Brush)Application.Current.FindResource("StatusWarningBrush"));
                 }
                 else
                 {
-                    ShowStatus($"#{issueNumber} \"{issue.Title}\" force re-dispatched.", (Brush)Application.Current.FindResource("GreenBrush"));
+                    ShowStatus($"#{issueNumber} \"{issue.Title}\" force re-dispatched.", (Brush)Application.Current.FindResource("StatusSuccessBrush"));
                 }
 
                 TxtIssueNumber.Text = "";
@@ -609,7 +609,7 @@ namespace BuildConsole.Controls
             }
             catch (Exception ex)
             {
-                ShowStatus($"Force re-dispatch failed: {ex.Message}", (Brush)Application.Current.FindResource("RedBrush"));
+                ShowStatus($"Force re-dispatch failed: {ex.Message}", (Brush)Application.Current.FindResource("StatusErrorBrush"));
                 Services.ActivityLog.Log("dispatch", $"Force re-dispatch #{issueNumber} — FAILED: {ex.Message}");
             }
             finally

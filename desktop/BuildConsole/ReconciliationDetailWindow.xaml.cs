@@ -99,10 +99,10 @@ namespace BuildConsole
             string key = kind switch
             {
                 // A revert means the work genuinely landed — it just wasn't closed. Least alarming (green).
-                ReconciliationActionKind.FalseDoneReverted => "GreenBrush",
+                ReconciliationActionKind.FalseDoneReverted => "StatusSuccessBrush",
                 // Both resets mean real, dispatched work was cancelled back to re-dispatchable — the
                 // trust-sensitive case the issue is about. Peach (warning).
-                _ => "PeachBrush",
+                _ => "StatusWarningBrush",
             };
             try { return (Brush)Application.Current.FindResource(key); }
             catch { return Brushes.SteelBlue; }
