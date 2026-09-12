@@ -154,13 +154,8 @@ namespace BuildConsole.Controls
             StaleNoticeText.Visibility = Visibility.Visible;
         }
 
-        /// <summary>One step row: ✔ for completed step, ⏳ for current active step.
-        /// Git #3713 — promoted to internal static (Application.Current.FindResource instead
-        /// of the instance FindResource) so the Build Queue icon rail's hover popout can reuse
-        /// this exact phase-list row rendering rather than duplicating it, per the issue's own
-        /// explicit "reuse ChatSessionPane.RefreshProgress's real phase-list rendering style"
-        /// ask — the same cross-panel reuse precedent BuildStatusPill already established.</summary>
-        internal static UIElement BuildProgressStepRow(ProgressStepEntry entry, bool isLatest)
+        /// <summary>One step row: ✔ for completed step, ⏳ for current active step.</summary>
+        private UIElement BuildProgressStepRow(ProgressStepEntry entry, bool isLatest)
         {
             var grid = new Grid { Margin = new Thickness(0, 3, 0, 3) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -173,7 +168,7 @@ namespace BuildConsole.Controls
                 FontSize = 11,
                 Margin = new Thickness(0, 0, 6, 0),
                 VerticalAlignment = VerticalAlignment.Top,
-                Foreground = isLatest ? (Brush)Application.Current.FindResource("YellowBrush") : (Brush)Application.Current.FindResource("GreenBrush"),
+                Foreground = isLatest ? (Brush)FindResource("YellowBrush") : (Brush)FindResource("GreenBrush"),
             };
             Grid.SetColumn(glyph, 0);
             grid.Children.Add(glyph);
@@ -184,7 +179,7 @@ namespace BuildConsole.Controls
                 Text = entry.Label,
                 FontSize = 10.5,
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = isLatest ? (Brush)Application.Current.FindResource("TextBrush") : (Brush)Application.Current.FindResource("Subtext1Brush"),
+                Foreground = isLatest ? (Brush)FindResource("TextBrush") : (Brush)FindResource("Subtext1Brush"),
                 FontWeight = isLatest ? FontWeights.SemiBold : FontWeights.Normal
             };
             sp.Children.Add(text);
@@ -195,7 +190,7 @@ namespace BuildConsole.Controls
                 {
                     Text = $"+{(int)entry.ElapsedSinceStart.TotalMinutes}m {entry.ElapsedSinceStart.Seconds}s",
                     FontSize = 9.5,
-                    Foreground = (Brush)Application.Current.FindResource("Subtext0Brush")
+                    Foreground = (Brush)FindResource("Subtext0Brush")
                 };
                 sp.Children.Add(timeText);
             }

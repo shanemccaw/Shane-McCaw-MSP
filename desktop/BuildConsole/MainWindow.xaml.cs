@@ -1306,14 +1306,9 @@ namespace BuildConsole
                 ColSidebar.Width = isPinned ? new GridLength(260) : new GridLength(0);
             };
 
-            // Git #3713 — collapsed no longer means width 0 (this panel disappearing entirely):
-            // it now settles at BuildQueuePanel.CollapsedRailWidth, a real narrow icon-rail the
-            // panel itself renders (IconRailDock) instead of the old empty sliver.
             BuildQueuePanel.PinToggled += (s, isPinned) =>
             {
-                ColQueue.Width = isPinned
-                    ? new GridLength(300)
-                    : new GridLength(Controls.BuildQueuePanel.CollapsedRailWidth);
+                ColQueue.Width = isPinned ? new GridLength(300) : new GridLength(0);
             };
 
             if (EditorTabs.Items.Count > 0 && EditorTabs.Items[0] is TabItem claudeTab)
