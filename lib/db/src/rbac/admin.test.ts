@@ -24,6 +24,8 @@ import {
   removeUserRole,
   renameRole,
   resolveUserOrgId,
+  roleGrantFloor,
+  getUserLadderIdentity,
   upsertMapping,
 } from "./admin.ts";
 import type { RbacDb } from "./load.ts";
@@ -210,6 +212,42 @@ describe("RBAC admin CRUD (#2461)", () => {
     await withSavepoint(async (t) => {
       const orgId = await resolveUserOrgId(t, "customer", CUSTOMER_USER);
       expect(orgId).toBe(TENANT);
+    });
+  });
+
+  // #3637 — the grant-floor helpers the AdminV2 route reads to close the
+  // below-MSPOperator cap.purchases.approve gap on the second writer of the row.
+  describe("#3637 — capability-role grant floor", () => {
+    it("roleGrantFloor returns MSPOperator for the seeded platform cap.purchases.approve role, and null for a floorless role", async () => {
+      await withSavepoint(async (t) => {
+        const capRole = (
+          (await t.execute(sql`SELECT id FROM msp_roles WHERE key = 'cap.purchases.approve' AND msp_id IS NULL LIMIT 1`)).rows as Array<{ id: string }>
+        )[0];
+        expect(capRole, "the #2457 seed must have run against this database").toBeTruthy();
+        expect(await roleGrantFloor(t, "msp", capRole.id)).toBe("MSPOperator");
+
+        // An org's own custom role carries no floor — grantable at any rung.
+        const created = await createRole(t, "msp", { orgId: MSP, key: "zz-3637-nofloor", name: "No Floor" });
+        expect(created.ok).toBe(true);
+        if (!created.ok) return;
+        expect(await roleGrantFloor(t, "msp", created.role.id)).toBeNull();
+      });
+    });
+
+    it("roleGrantFloor returns null for a roleId that names no role in the system", async () => {
+      await withSavepoint(async (t) => {
+        expect(await roleGrantFloor(t, "msp", "00000000-0000-0000-0000-000000000000")).toBeNull();
+      });
+    });
+
+    it("getUserLadderIdentity returns the target's role/msp_role, and null for a missing user", async () => {
+      await withSavepoint(async (t) => {
+        const identity = await getUserLadderIdentity(t, MSP_USER);
+        expect(identity).not.toBeNull();
+        expect(identity).toHaveProperty("role");
+        expect(identity).toHaveProperty("mspRole");
+        expect(await getUserLadderIdentity(t, 0)).toBeNull();
+      });
     });
   });
 });

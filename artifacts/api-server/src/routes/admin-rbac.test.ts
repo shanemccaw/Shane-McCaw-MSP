@@ -24,13 +24,21 @@ const rbac = vi.hoisted(() => ({
   assignUserRole: vi.fn(),
   removeUserRole: vi.fn(),
   resolveUserOrgId: vi.fn(),
+  roleGrantFloor: vi.fn(),
+  getUserLadderIdentity: vi.fn(),
   getMapping: vi.fn(),
   upsertMapping: vi.fn(),
   listMappings: vi.fn(),
 }));
 
+const ladder = vi.hoisted(() => ({
+  invalidateLadderSnapshot: vi.fn(),
+  userClearsLadderCapability: vi.fn(),
+}));
+
 vi.mock("@workspace/db", () => ({ db: {} }));
 vi.mock("@workspace/db/rbac", () => rbac);
+vi.mock("../middlewares/rbac-ladder.ts", () => ladder);
 
 const auditLogSpy = vi.fn();
 vi.mock("../lib/audit.ts", () => ({
@@ -185,6 +193,69 @@ describe("POST /admin/rbac/user/:userId/roles (grant)", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ roles: [{ id: "r1", name: "Engineer" }] });
     expect(auditLogSpy).toHaveBeenCalledWith(expect.objectContaining({ actionType: "rbac.user_role.grant", entityId: 100 }));
+  });
+
+  // #3637 — the rung-floor guard on the SECOND writer of the membership row that #3570
+  // guarded on the msp-settings toggle. A role with no floor (roleGrantFloor → null,
+  // the default in the tests above) skips the guard entirely; a floored role is checked
+  // against the target's effective rung through the same evaluator #3570 uses.
+  describe("capability-role grant floor (#3637)", () => {
+    it("400s granting a floored role (cap.purchases.approve) to a below-floor target, without writing or auditing", async () => {
+      rbac.roleGrantFloor.mockResolvedValue(LEGACY_ROLE.mspOperator);
+      rbac.getUserLadderIdentity.mockResolvedValue({ role: "client", mspRole: LEGACY_ROLE.customer });
+      ladder.userClearsLadderCapability.mockResolvedValue({ kind: "deny", decision: {} });
+      const res = await request(app)
+        .post("/api/admin/rbac/user/100/roles")
+        .set("Authorization", `Bearer ${adminToken()}`)
+        .send({ system: "msp", roleId: "cap-purchases-approve-id" });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain(LEGACY_ROLE.mspOperator);
+      expect(rbac.assignUserRole).not.toHaveBeenCalled();
+      expect(auditLogSpy).not.toHaveBeenCalled();
+      // The evaluator was asked with the TARGET as principal, against the floor's ladder key.
+      expect(ladder.userClearsLadderCapability).toHaveBeenCalledWith(
+        { role: "client", mspRole: LEGACY_ROLE.customer },
+        "ladder.msp-operator",
+      );
+    });
+
+    it("503s when the ladder model is unavailable rather than allowing the grant", async () => {
+      rbac.roleGrantFloor.mockResolvedValue(LEGACY_ROLE.mspOperator);
+      rbac.getUserLadderIdentity.mockResolvedValue({ role: "client", mspRole: LEGACY_ROLE.customer });
+      ladder.userClearsLadderCapability.mockResolvedValue({ kind: "unavailable", reason: "rbac_model_unreadable" });
+      const res = await request(app)
+        .post("/api/admin/rbac/user/100/roles")
+        .set("Authorization", `Bearer ${adminToken()}`)
+        .send({ system: "msp", roleId: "cap-purchases-approve-id" });
+      expect(res.status).toBe(503);
+      expect(rbac.assignUserRole).not.toHaveBeenCalled();
+    });
+
+    it("404s a floored grant to a user that does not exist", async () => {
+      rbac.roleGrantFloor.mockResolvedValue(LEGACY_ROLE.mspOperator);
+      rbac.getUserLadderIdentity.mockResolvedValue(null);
+      const res = await request(app)
+        .post("/api/admin/rbac/user/999/roles")
+        .set("Authorization", `Bearer ${adminToken()}`)
+        .send({ system: "msp", roleId: "cap-purchases-approve-id" });
+      expect(res.status).toBe(404);
+      expect(rbac.assignUserRole).not.toHaveBeenCalled();
+    });
+
+    it("200s a floored grant to a target that clears the floor", async () => {
+      rbac.roleGrantFloor.mockResolvedValue(LEGACY_ROLE.mspOperator);
+      rbac.getUserLadderIdentity.mockResolvedValue({ role: "client", mspRole: LEGACY_ROLE.mspOperator });
+      ladder.userClearsLadderCapability.mockResolvedValue({ kind: "allow", decision: {} });
+      rbac.assignUserRole.mockResolvedValue({ ok: true });
+      rbac.listUserRoles.mockResolvedValue([{ id: "cap-purchases-approve-id", name: "Approve Purchases" }]);
+      const res = await request(app)
+        .post("/api/admin/rbac/user/100/roles")
+        .set("Authorization", `Bearer ${adminToken()}`)
+        .send({ system: "msp", roleId: "cap-purchases-approve-id" });
+      expect(res.status).toBe(200);
+      expect(rbac.assignUserRole).toHaveBeenCalled();
+      expect(auditLogSpy).toHaveBeenCalledWith(expect.objectContaining({ actionType: "rbac.user_role.grant" }));
+    });
   });
 });
 

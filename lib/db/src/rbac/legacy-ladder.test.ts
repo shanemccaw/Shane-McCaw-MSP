@@ -15,6 +15,8 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import {
   CAPABILITY_COLUMN_ROLE_KEYS,
+  CAPABILITY_ROLE_GRANT_FLOORS,
+  capabilityRoleGrantFloor,
   CUSTOMER_PLATFORM_ROLE_KEYS,
   LADDER,
   LADDER_CAPABILITY_KEYS,
@@ -319,6 +321,36 @@ describe("the capability-column role keys", () => {
       expect(key.startsWith("cap.")).toBe(true);
       expect(isLegacyRole(key)).toBe(false);
     }
+  });
+});
+
+describe("#3637 — capability-role grant floors", () => {
+  it("floors cap.purchases.approve (msp) at MSPOperator and nothing else", () => {
+    // Exactly the one rung-gated capability role. The other two capability-column
+    // roles deliberately carry NO floor — #3408 does not rung-gate them.
+    expect(CAPABILITY_ROLE_GRANT_FLOORS.msp).toEqual({
+      [CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases]: LEGACY_ROLE.mspOperator,
+    });
+    expect(CAPABILITY_ROLE_GRANT_FLOORS.customer).toEqual({});
+    expect(capabilityRoleGrantFloor("msp", CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases)).toBe(LEGACY_ROLE.mspOperator);
+    expect(capabilityRoleGrantFloor("msp", CAPABILITY_COLUMN_ROLE_KEYS.manageTeam)).toBeUndefined();
+    expect(capabilityRoleGrantFloor("msp", CAPABILITY_COLUMN_ROLE_KEYS.approveChanges)).toBeUndefined();
+  });
+
+  it("agrees with parity-check's PURCHASE_APPROVER_RUNGS: the floor is the lowest rung that legitimately holds the role", () => {
+    // MSPOperator, MSPAdmin, PlatformAdmin all clear the floor; the tiers below do not.
+    const floor = capabilityRoleGrantFloor("msp", CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases)!;
+    for (const rung of [LEGACY_ROLE.mspOperator, LEGACY_ROLE.mspAdmin, LEGACY_ROLE.platformAdmin]) {
+      expect(legacyRoleIndex(rung)).toBeGreaterThanOrEqual(legacyRoleIndex(floor));
+    }
+    for (const rung of [LEGACY_ROLE.free, LEGACY_ROLE.customer, LEGACY_ROLE.serviceAccount]) {
+      expect(legacyRoleIndex(rung)).toBeLessThan(legacyRoleIndex(floor));
+    }
+  });
+
+  it("returns undefined for an unknown/ordinary role key in either system", () => {
+    expect(capabilityRoleGrantFloor("msp", "engineer")).toBeUndefined();
+    expect(capabilityRoleGrantFloor("customer", CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases)).toBeUndefined();
   });
 });
 

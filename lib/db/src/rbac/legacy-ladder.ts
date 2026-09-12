@@ -566,6 +566,58 @@ export const CAPABILITY_COLUMN_ROLE_KEYS = Object.freeze({
 });
 
 /**
+ * #3637 — the minimum ladder rung a user must already clear before a capability role
+ * may LEGITIMATELY be GRANTED to them, per system. The rung floor for a grant, not the
+ * enforcement of the capability itself (the evaluator still owns that).
+ *
+ * ── Why this exists ──────────────────────────────────────────────────────────
+ * A `cap.*` role's membership row is written by two places: `setGrantRole`
+ * (rbac-capability.ts, reached by msp-settings.ts's toggle) and `assignUserRole`
+ * (admin.ts, reached by AdminV2's `POST /admin/rbac/user/:userId/roles`). #3570 added a
+ * rung check to the FIRST — the toggle refuses to grant `cap.purchases.approve` to a
+ * target below MSPOperator — but the SECOND had none, so a PlatformAdmin could still
+ * hand the same role to a Customer/Free user through AdminV2, and that user then comes
+ * back from `usersHoldingCapability`/`purchaseApproverUserIds` as a real approval
+ * recipient (#3637). This registry is the single, generic statement of that floor so
+ * the AdminV2 grant path can consult it for EVERY capability role that carries one,
+ * not just `cap.purchases.approve` by name.
+ *
+ * ── Why only cap.purchases.approve is here ────────────────────────────────────
+ * It is the one capability-column role whose legitimacy is rung-gated. The #3408
+ * `users` sync trigger (`purchase_rungs`) revokes it the moment a rung falls below
+ * MSPOperator, and parity-check.ts's `PURCHASE_APPROVER_RUNGS` names the same three
+ * rungs — MSPOperator, MSPAdmin, PlatformAdmin — so a grant below MSPOperator is a row
+ * the two other writers of the same table would immediately disagree with. The other
+ * two capability roles are deliberately absent because #3408 does not rung-gate them:
+ * `cap.changes.approve` follows `users.can_approve_changes` on every rung, and
+ * `cap.team.manage` was honoured for every rung by the old flag — neither has a floor.
+ *
+ * The floor is a rung; the AdminV2 guard maps it to `ladderCapabilityKey(floor)` and
+ * asks the same evaluator #3570's route guard uses, so the grant ceiling and the
+ * decide gate answer through the one editable `ladder.*` mapping row rather than a
+ * hardcoded rung comparison drifting apart from it.
+ */
+// `RbacSystem` lives in ./capabilities.ts, which imports THIS module — so this pure,
+// dependency-free file states the union inline rather than importing it back and
+// creating a cycle. It is identical to `RbacSystem` and any `RbacSystem` value is
+// assignable to it.
+export const CAPABILITY_ROLE_GRANT_FLOORS: Readonly<Record<"msp" | "customer", Readonly<Record<string, LegacyRole>>>> = Object.freeze({
+  msp: Object.freeze({
+    [CAPABILITY_COLUMN_ROLE_KEYS.approvePurchases]: LEGACY_ROLE.mspOperator,
+  }),
+  customer: Object.freeze({}),
+});
+
+/**
+ * The minimum ladder rung a user must clear to be granted the `<system>` role whose
+ * key is `roleKey`, or `undefined` if that role carries no rung floor (an ordinary
+ * role grantable at any rung). See `CAPABILITY_ROLE_GRANT_FLOORS`.
+ */
+export function capabilityRoleGrantFloor(system: "msp" | "customer", roleKey: string): LegacyRole | undefined {
+  return CAPABILITY_ROLE_GRANT_FLOORS[system][roleKey];
+}
+
+/**
  * #3629 — the `customer_roles.key` of the two platform-default customer roles that
  * are a product decision rather than a transcription (Shane, 2026-09-11, resolving
  * #3587). Seeded by `2026-09-11-rbac-customer-admin-billing-roles-3629.sql`.

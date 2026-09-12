@@ -76,6 +76,8 @@ export {
   assignUserRole,
   removeUserRole,
   resolveUserOrgId,
+  roleGrantFloor,
+  getUserLadderIdentity,
   getMapping,
   upsertMapping,
   listMappings,

@@ -35,6 +35,7 @@ import {
   type RbacRoleMappingPayload,
 } from "../schema/index.ts";
 import { isKnownCapability, type RbacSystem } from "./capabilities.ts";
+import { capabilityRoleGrantFloor, type LegacyRole } from "./legacy-ladder.ts";
 import type { RbacDb } from "./load.ts";
 
 export interface RbacRoleSummary {
@@ -275,6 +276,41 @@ export async function resolveUserOrgId(db: RbacDb, system: RbacSystem, userId: n
     .limit(1);
   if (!row) return null;
   return system === "msp" ? row.mspId : row.tenantId;
+}
+
+/**
+ * The ladder-rung floor a GRANT of `roleId` requires, or null if the role carries
+ * none — an ordinary role grantable at any rung. Resolves the role's key within
+ * `system` and looks it up in `CAPABILITY_ROLE_GRANT_FLOORS` (legacy-ladder.ts).
+ *
+ * #3637 — the AdminV2 grant route (admin-rbac.ts) reads this to refuse handing a
+ * rung-gated capability role (today: `cap.purchases.approve`, floor MSPOperator) to a
+ * below-floor user through the SECOND writer of the membership row that #3570 left
+ * unguarded. A roleId that names no role in `system` returns null: the INSERT that
+ * follows fails its own FK/scope trigger, which is the right surface for that error.
+ */
+export async function roleGrantFloor(db: RbacDb, system: RbacSystem, roleId: string): Promise<LegacyRole | null> {
+  const roles = rolesTable(system) as typeof mspRolesTable;
+  const [row] = await db.select({ key: roles.key }).from(roles).where(eq(roles.id, roleId)).limit(1);
+  if (!row) return null;
+  return capabilityRoleGrantFloor(system, row.key) ?? null;
+}
+
+/**
+ * The subset of a target user's `users` row a grant's rung check reads — their legacy
+ * `role` and `msp_role`, from which `effectiveLegacyRole` recovers the rung. Null when
+ * no such user exists.
+ */
+export async function getUserLadderIdentity(
+  db: RbacDb,
+  userId: number,
+): Promise<{ role: string; mspRole: string | null } | null> {
+  const [row] = await db
+    .select({ role: usersTable.role, mspRole: usersTable.mspRole })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  return row ?? null;
 }
 
 // ── Feature → role mapping ─────────────────────────────────────────────────

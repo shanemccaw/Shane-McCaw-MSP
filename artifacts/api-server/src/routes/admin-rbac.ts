@@ -20,6 +20,7 @@ import {
   createRole,
   deleteRole,
   getMapping,
+  getUserLadderIdentity,
   listCapabilities,
   listMappings,
   listRoles,
@@ -27,11 +28,13 @@ import {
   removeUserRole,
   renameRole,
   resolveUserOrgId,
+  roleGrantFloor,
   upsertMapping,
   type RbacSystem,
 } from "@workspace/db/rbac";
+import { ladderCapabilityKey } from "@workspace/db/rbac/legacy-ladder";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
-import { invalidateLadderSnapshot } from "../middlewares/rbac-ladder.ts";
+import { invalidateLadderSnapshot, userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
 import { logger } from "../lib/logger.ts";
 import { createAuditLog } from "../lib/audit.ts";
 
@@ -240,6 +243,35 @@ router.post("/admin/rbac/user/:userId/roles", requireAdmin, async (req: Request,
   }
 
   try {
+    // #3637 — `assignUserRole` is a bare INSERT with no rung check, and it is the
+    // OTHER writer of the `*_user_roles` row that #3570 guarded on the msp-settings
+    // toggle route. Without this, a PlatformAdmin could grant a rung-gated capability
+    // role (today `cap.purchases.approve`, floor MSPOperator) to a below-floor
+    // Customer/Free user here, who would then come back from `usersHoldingCapability`/
+    // `purchaseApproverUserIds` with real MSP purchase-approval authority. Mirror #3570
+    // GENERICALLY: any role carrying a `CAPABILITY_ROLE_GRANT_FLOORS` floor is refused
+    // for a target that does not clear it, asked of the same evaluator #3570 uses so the
+    // grant ceiling and the decide gate answer through one editable `ladder.*` row. A
+    // revoke (DELETE below) is never gated — a stale grant must always be removable.
+    const floor = await roleGrantFloor(db, system, roleId);
+    if (floor) {
+      const target = await getUserLadderIdentity(db, userId);
+      if (!target) {
+        res.status(404).json({ error: "User not found." });
+        return;
+      }
+      const outcome = await userClearsLadderCapability(target, ladderCapabilityKey(floor));
+      if (outcome.kind === "unavailable") {
+        res.status(503).json({ error: "Role data is temporarily unavailable" });
+        return;
+      }
+      if (outcome.kind !== "allow") {
+        log.warn({ system, userId, roleId, floor }, "Refused an AdminV2 capability-role grant to a below-floor user");
+        res.status(400).json({ error: `This role can only be granted to users at or above ${floor}.` });
+        return;
+      }
+    }
+
     const result = await assignUserRole(db, system, userId, roleId, req.user!.id);
     if (!result.ok) {
       res.status(400).json({ error: result.error });
