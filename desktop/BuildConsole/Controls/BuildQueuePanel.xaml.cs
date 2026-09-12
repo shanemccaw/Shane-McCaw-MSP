@@ -4228,8 +4228,27 @@ namespace BuildConsole.Controls
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+            // Git #3813 — the buildSet name used to render in the full-saturation accent
+            // color directly, which on a selected row sits on a low-opacity tint of that same
+            // accent (same-hue-on-background, the exact pattern #3776 fixed for the Chats
+            // panel's epic badges). Keep the name neutral and carry the accent identity in a
+            // small dot instead, matching the established Chats-panel dot pattern.
+            var summaryRow = new Grid();
+            summaryRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            summaryRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var accentDot = new Ellipse
+            {
+                Width = 7,
+                Height = 7,
+                Fill = accentBrush,
+                Margin = new Thickness(0, 0, 5, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(accentDot, 0);
+            summaryRow.Children.Add(accentDot);
+
             var summaryText = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
-            summaryText.Inlines.Add(new System.Windows.Documents.Run($"{buildSetKey} — ") { FontWeight = FontWeights.SemiBold, Foreground = accentBrush });
+            summaryText.Inlines.Add(new System.Windows.Documents.Run($"{buildSetKey} — ") { FontWeight = FontWeights.SemiBold, Foreground = (Brush)Application.Current.FindResource("TextBrush") });
             summaryText.Inlines.Add(new System.Windows.Documents.Run($"{upNext.Count} up next, {running.Count} running, {verifying.Count} verifying")
             {
                 Foreground = (Brush)Application.Current.FindResource("Subtext1Brush")
@@ -4242,8 +4261,10 @@ namespace BuildConsole.Controls
                     FontSize = 10.5
                 });
             }
-            Grid.SetColumn(summaryText, 0);
-            headerGrid.Children.Add(summaryText);
+            Grid.SetColumn(summaryText, 1);
+            summaryRow.Children.Add(summaryText);
+            Grid.SetColumn(summaryRow, 0);
+            headerGrid.Children.Add(summaryRow);
 
             // Git #1932 — only the Verifying items this build set hasn't already sent count
             // toward whether the send button shows/what it sends. GetUnsentVerifying never
