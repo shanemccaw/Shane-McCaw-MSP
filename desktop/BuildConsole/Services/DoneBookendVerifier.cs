@@ -60,10 +60,22 @@ namespace BuildConsole.Services
         private static readonly object _fetchLock = new();
         private static readonly TimeSpan FetchCooldown = TimeSpan.FromSeconds(45);
 
+        // Git #3516 — the README template is bold `**Status:**`/`**Commit(s):**`, but real
+        // sessions routinely write a plain, non-bold `Status:` line, or a singular `Commit:`
+        // instead of `Commit(s):` (confirmed live on origin/main: build-journal/3457.md,
+        // 3470.md, 3475.md all use plain `Status:`/`Commit:`). Both regexes now accept the
+        // bold and plain forms. Anchored to the start of a line (ignoring leading whitespace
+        // and an optional `- `/`* ` list marker) via RegexOptions.Multiline so a plain-text
+        // field label is still distinguished from the same word appearing mid-sentence in
+        // prose elsewhere in the bookend — the field-label position at line start is what
+        // makes the plain form safe to match. Do NOT loosen the ancestor-commit verification
+        // below; only these two field-detection regexes are widened.
         private static readonly Regex StatusFieldRx =
-            new(@"\*\*Status:\*\*\s*(.+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            new(@"^\s*(?:[-*]\s+)?\*{0,2}Status:\*{0,2}\s*(.+)",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
         private static readonly Regex CommitFieldRx =
-            new(@"\*\*Commit\(s\):\*\*\s*(.+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            new(@"^\s*(?:[-*]\s+)?\*{0,2}Commit(?:s|\(s\))?:\*{0,2}\s*(.+)",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
         // A git object name: 7–40 lowercase hex chars, on a word boundary. git resolves an
         // abbreviated name; a non-existent one is simply rejected by cat-file (fail closed).
         private static readonly Regex HashRx =
