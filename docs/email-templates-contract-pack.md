@@ -227,14 +227,14 @@ standalone — embedded into other client-facing templates via `{{tenantHealthBl
   (`seed-email-templates.ts:193-198`).
 - **Real current bodyHtml:** `seed-email-templates.ts:199-206` — blockquote of the
   client's reply, `View in admin panel →` button.
-- **Real trigger:** none. The hardcoded builder `clientThreadReplyEmail()`
-  (`mailer.ts:651-670`) exists but is **never called** anywhere in
-  `artifacts/api-server/src` (confirmed by grep — the only two references to the
-  slug in the whole codebase are its own seed definition and the `SAMPLE_VARS` entry
-  used solely by the Admin Panel's "send test email" preview,
-  `admin-email-templates.ts:63-68`). Only `admin-thread-reply` (the client-facing
-  counterpart, §5 above) actually fires on status-report threads. Same conclusion as
-  #976's `⚠️ No real trigger path found` bucket, still true against current `HEAD`.
+- **Real trigger:** none. The hardcoded builder `clientThreadReplyEmail()` was
+  confirmed dead (never called anywhere in `artifacts/api-server/src` — the only
+  two references to the slug in the whole codebase were its own seed definition
+  and the `SAMPLE_VARS` entry used solely by the Admin Panel's "send test email"
+  preview, `admin-email-templates.ts:63-68`) and was deleted from `mailer.ts`
+  (#3550). Only `admin-thread-reply` (the client-facing counterpart, §5 above)
+  actually fires on status-report threads. Same conclusion as #976's `⚠️ No real
+  trigger path found` bucket, still true against current `HEAD`.
 - **Send volume:** 0 — cannot fire.
 
 ### `admin-thread-reply`

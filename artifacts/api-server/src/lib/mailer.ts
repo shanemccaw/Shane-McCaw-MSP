@@ -628,26 +628,6 @@ export function closureRequestEmail(opts: {
   `;
 }
 
-export function clientThreadReplyEmail(opts: {
-  clientName: string;
-  reportTitle: string;
-  replyContent: string;
-  projectId?: number | null;
-}): string {
-  const adminUrl = opts.projectId
-    ? `https://shanemccaw.com/admin-panel/crm/projects/${opts.projectId}`
-    : `https://shanemccaw.com/admin-panel/crm/status-reports`;
-  const safeContent = escapeHtml(opts.replyContent).replace(/\n/g, "<br/>");
-  return `
-    <p>Hi Shane,</p>
-    <p><strong>${escapeHtml(opts.clientName) || "A client"}</strong> has sent a follow-up message on the status report: <strong>${escapeHtml(opts.reportTitle)}</strong>.</p>
-    <blockquote style="margin:16px 0;padding:12px 16px;background:#f8fafc;border-left:4px solid #0078D4;border-radius:0 6px 6px 0;color:#1e293b;font-size:15px;line-height:1.6;">${safeContent}</blockquote>
-    <p>You can view the full conversation and reply in the admin panel.</p>
-    ${emailButton("View in admin panel", adminUrl)}
-    <p style="margin-top:24px;">— Shane McCaw Consulting (automated notification)</p>
-  `;
-}
-
 export function retainerResumedEmail(opts: {
   clientName: string;
   serviceName: string;

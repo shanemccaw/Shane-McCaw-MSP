@@ -67,7 +67,7 @@
       "expect": { "status": 200, "jsonPath": "$.slug", "exists": true }
     },
     {
-      "name": "client-thread-reply — orphan-row existence check. DB row + hardcoded clientThreadReplyEmail() both exist, but the function is never called and no send path references this slug (only admin-thread-reply fires on status-report threads).",
+      "name": "client-thread-reply — orphan-row existence check. DB row exists; the hardcoded clientThreadReplyEmail() builder was deleted as dead code (#3550) and no send path references this slug (only admin-thread-reply fires on status-report threads).",
       "method": "GET",
       "path": "/api/admin/email-templates/client-thread-reply",
       "headers": { "Authorization": "Bearer {{adminToken}}" },
@@ -112,7 +112,7 @@
     { "name": "client-message-notification — DB-USED + WRAPPED (sendEmailFromTemplate, portal-messages.ts:88)", "action": "click", "selector": "[data-testid='email-tpl-item-client-message-notification']" },
     { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
 
-    { "name": "client-thread-reply — NO-TRIGGER-PATH: DB row + clientThreadReplyEmail() exist but nothing sends this slug (only admin-thread-reply fires). Screenshot proves row content, not a live send.", "action": "click", "selector": "[data-testid='email-tpl-item-client-thread-reply']" },
+    { "name": "client-thread-reply — NO-TRIGGER-PATH: DB row exists; clientThreadReplyEmail() was deleted as dead code (#3550) and nothing sends this slug (only admin-thread-reply fires). Screenshot proves row content, not a live send.", "action": "click", "selector": "[data-testid='email-tpl-item-client-thread-reply']" },
     { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
 
     { "name": "closure-request — DB-USED + WRAPPED (sendEmailFromTemplate, admin-projects.ts:1014)", "action": "click", "selector": "[data-testid='email-tpl-item-closure-request']" },
