@@ -40,6 +40,16 @@ namespace BuildConsole
             /// <summary>Label on the right pane's primary button (and the tile).</summary>
             public string ActionLabel { get; init; } = string.Empty;
             public Action? Run { get; init; }
+
+            /// <summary>
+            /// Git #3826 — an alternative to <see cref="Run"/> for a command whose real
+            /// result text (e.g. `git pull`'s Stdout/Stderr) should show inline in the
+            /// palette's own right pane instead of the palette just closing and the result
+            /// landing only in a toast or another panel. When set, this takes precedence
+            /// over <see cref="Run"/>: the palette stays open, shows "Running…", awaits the
+            /// real result, and displays it in place of <see cref="DetailBody"/>.
+            /// </summary>
+            public Func<System.Threading.Tasks.Task<string>>? RunWithResult { get; init; }
         }
 
         // The real category set from the issue/screenshot (Smart All + nine).
@@ -63,6 +73,13 @@ namespace BuildConsole
         private List<PaletteCommand> _filtered = new();
         private int _selectedIndex = -1;
         private bool _closing;
+
+        /// <summary>Git #3826 — real live result text (e.g. actual `git pull` Stdout/Stderr)
+        /// for the currently-selected <see cref="PaletteCommand.RunWithResult"/> command,
+        /// shown in place of its <see cref="PaletteCommand.DetailBody"/> once run. Reset
+        /// whenever the selection/category/search changes so a stale result never lingers
+        /// on a different command.</summary>
+        private string? _liveResultText;
 
         public CommandPaletteWindow(IEnumerable<PaletteCommand> commands)
         {
@@ -146,6 +163,7 @@ namespace BuildConsole
         {
             PalettePlaceholder.Visibility =
                 PaletteInput.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            _liveResultText = null;
             RenderTabs();
             RenderResults();
         }
@@ -154,6 +172,7 @@ namespace BuildConsole
         {
             if (_filtered.Count == 0) return;
             _selectedIndex = Math.Clamp(_selectedIndex + delta, 0, _filtered.Count - 1);
+            _liveResultText = null;
             RenderResults(preserveSelection: true);
         }
 
@@ -161,8 +180,43 @@ namespace BuildConsole
         {
             if (_selectedIndex < 0 || _selectedIndex >= _filtered.Count) return;
             var cmd = _filtered[_selectedIndex];
+
+            if (cmd.RunWithResult != null)
+            {
+                _ = RunSelectedWithResultAsync(cmd);
+                return;
+            }
+
             CloseOnce();
             cmd.Run?.Invoke();
+        }
+
+        /// <summary>Git #3826 — runs a <see cref="PaletteCommand.RunWithResult"/> command
+        /// without closing the palette: shows "Running…" in the right pane, awaits the real
+        /// result, then shows it in place of the command's static <see cref="PaletteCommand.DetailBody"/>
+        /// — the actual real output, same as the Git panel's own status readout gets.</summary>
+        private async System.Threading.Tasks.Task RunSelectedWithResultAsync(PaletteCommand cmd)
+        {
+            _liveResultText = "Running…";
+            RenderDetail();
+
+            string result;
+            try
+            {
+                result = await cmd.RunWithResult!();
+            }
+            catch (Exception ex)
+            {
+                result = $"✗ {ex.Message}";
+            }
+
+            // Only show the result if the same command is still selected — the user may have
+            // moved on to a different row while this was running.
+            if (_selectedIndex >= 0 && _selectedIndex < _filtered.Count && _filtered[_selectedIndex] == cmd)
+            {
+                _liveResultText = result;
+                RenderDetail();
+            }
         }
 
         private void DetailAction_Click(object sender, MouseButtonEventArgs e) => RunSelected();
@@ -173,6 +227,7 @@ namespace BuildConsole
         {
             _categoryKey = key;
             _selectedIndex = -1;
+            _liveResultText = null;
             RenderTabs();
             RenderResults();
         }
@@ -270,6 +325,22 @@ namespace BuildConsole
                 tile.MouseLeftButtonDown += (_, e) =>
                 {
                     e.Handled = true;
+
+                    // Git #3826 — a RunWithResult tile stays open and shows its real result
+                    // inline in the right pane, same as running it via the results list/Enter.
+                    if (local.RunWithResult != null)
+                    {
+                        int idx = _filtered.IndexOf(local);
+                        if (idx >= 0)
+                        {
+                            _selectedIndex = idx;
+                            _liveResultText = null;
+                            RenderResults(preserveSelection: true);
+                        }
+                        _ = RunSelectedWithResultAsync(local);
+                        return;
+                    }
+
                     CloseOnce();
                     local.Run?.Invoke();
                 };
@@ -401,6 +472,7 @@ namespace BuildConsole
                     else
                     {
                         _selectedIndex = localIndex;
+                        _liveResultText = null;
                         RenderResults(preserveSelection: true);
                     }
                 };
@@ -486,16 +558,21 @@ namespace BuildConsole
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = (Brush)FindResource("TextPrimaryBrush"),
             });
+            // Git #3826 — a real, awaited RunWithResult result (or "Running…") wins over the
+            // command's static DetailBody, so the actual outcome shows inline here instead of
+            // the palette only ever pointing elsewhere (a toast, the Git panel).
+            string bodyText = _liveResultText
+                ?? (string.IsNullOrEmpty(cmd.DetailBody) ? cmd.Subtitle : cmd.DetailBody);
             PaletteDetail.Children.Add(new TextBlock
             {
-                Text = string.IsNullOrEmpty(cmd.DetailBody) ? cmd.Subtitle : cmd.DetailBody,
+                Text = bodyText,
                 FontSize = 11.5,
                 LineHeight = 17,
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = (Brush)FindResource("TextSecondaryBrush"),
             });
 
-            if (cmd.Run != null && !string.IsNullOrEmpty(cmd.ActionLabel))
+            if ((cmd.Run != null || cmd.RunWithResult != null) && !string.IsNullOrEmpty(cmd.ActionLabel))
             {
                 PaletteDetailActionLabel.Text = $"{cmd.ActionLabel}  ↵";
                 PaletteDetailActionHost.Visibility = Visibility.Visible;

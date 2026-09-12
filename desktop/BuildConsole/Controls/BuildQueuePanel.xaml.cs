@@ -1434,30 +1434,38 @@ namespace BuildConsole.Controls
         private async void BtnRecoverOrphans_Click(object sender, RoutedEventArgs e)
             => await RecoverOrphanedBuildsAsync();
 
+        // Git #3575 — BtnBoardReconcile_Click (and StaleStateReconcileWindow) removed.
+        // Git #3573 — BtnRecoverSessionLimit_Click removed: SessionLimitAutoRestartService
+        // now runs the exact same ManualRecoverFromLogsAsync sweep automatically on a
+        // periodic timer (see its StartPeriodicSweep), so the manual "Recover
+        // Session-Limit Builds" button is redundant.
+
         /// <summary>
-        /// Re-queues every crashed/orphaned build (failed rows carrying the orphan
-        /// sweep's -2 sentinel). Public because the Ctrl+K command palette's
-        /// "Recover Builds" quick action (Git #3622) runs this same real recovery;
-        /// unlike the banner button (only visible when orphans exist), the palette
-        /// path can be invoked with nothing to recover, so that case reports
-        /// honestly instead of silently no-oping.
+        /// <summary>
+        /// Git #3826 — same real recovery as <see cref="RecoverOrphanedBuildsAsync"/>, but
+        /// returns the real, honest outcome text instead of only toasting it, so the command
+        /// palette's own right pane can show the actual result (Git #3826) rather than the
+        /// toast being the only place it ever appears.
         /// </summary>
-        public async System.Threading.Tasks.Task RecoverOrphanedBuildsAsync()
+        public async System.Threading.Tasks.Task<string> RecoverOrphanedBuildsWithResultAsync()
         {
             if (_db == null)
             {
-                ToastEngine.Warning("Recover Builds", "The build-queue database isn't connected, so nothing can be recovered.");
-                return;
+                const string msg = "The build-queue database isn't connected, so nothing can be recovered.";
+                ToastEngine.Warning("Recover Builds", msg);
+                return msg;
             }
             var orphaned = _lastItems.Where(IsCrashed).ToList();
             if (orphaned.Count == 0)
             {
-                ToastEngine.Info("Recover Builds", "No crashed/orphaned builds to recover.");
-                return;
+                const string msg = "No crashed/orphaned builds to recover.";
+                ToastEngine.Info("Recover Builds", msg);
+                return msg;
             }
 
             BtnRecoverOrphans.IsEnabled = false;
             int resumed = 0, retried = 0, failed = 0;
+            var failures = new List<string>();
             try
             {
                 foreach (var item in orphaned)
@@ -1467,17 +1475,15 @@ namespace BuildConsole.Controls
                         var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
                         string? resumeSessionId = string.IsNullOrEmpty(item.SessionId) ? null : item.SessionId;
                         var recovered = await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, resumeSessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
-                        // Git #2120 — resolve the orphaned ORIGINAL the same as the per-item "▶ Resume
-                        // Session (crash recovery)" action does, whether this one was resumed or
-                        // restarted from scratch. Without this, every recovered original stayed at
-                        // failed/exit_code -2 and kept re-appearing in the orphan banner/Crashed filter.
                         await _db.MarkOrphanSupersededByResumeAsync(item.Id, recovered.Id);
                         if (resumeSessionId != null) resumed++; else retried++;
                     }
                     catch (Exception ex)
                     {
                         failed++;
-                        ActivityLog.Log("build-queue", $"Recover All: couldn't re-queue orphaned item #{item.Id} ({item.Title}): {ex.Message}");
+                        string line = $"couldn't re-queue orphaned item #{item.Id} ({item.Title}): {ex.Message}";
+                        failures.Add(line);
+                        ActivityLog.Log("build-queue", $"Recover All: {line}");
                     }
                 }
             }
@@ -1491,7 +1497,20 @@ namespace BuildConsole.Controls
             else ToastEngine.Success("Recovered Builds", summary);
             ActivityLog.Log("build-queue", $"Recover All: {summary} (of {orphaned.Count} orphaned).");
             await RefreshAsync();
+
+            return failures.Count == 0 ? summary : summary + "\n" + string.Join("\n", failures);
         }
+
+        /// <summary>
+        /// Re-queues every crashed/orphaned build (failed rows carrying the orphan
+        /// sweep's -2 sentinel). Public because the Ctrl+K command palette's
+        /// "Recover Builds" quick action (Git #3622) runs this same real recovery;
+        /// unlike the banner button (only visible when orphans exist), the palette
+        /// path can be invoked with nothing to recover, so that case reports
+        /// honestly instead of silently no-oping.
+        /// </summary>
+        public async System.Threading.Tasks.Task RecoverOrphanedBuildsAsync()
+            => await RecoverOrphanedBuildsWithResultAsync();
 
         // Git #3575 — BtnBoardReconcile_Click (and StaleStateReconcileWindow) removed.
         // Git #3573 — BtnRecoverSessionLimit_Click removed: SessionLimitAutoRestartService

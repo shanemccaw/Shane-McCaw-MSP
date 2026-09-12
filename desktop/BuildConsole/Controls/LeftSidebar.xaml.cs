@@ -8906,7 +8906,11 @@ namespace BuildConsole.Controls
         /// *why* it failed (e.g. a push rejection) can inspect the real stdout/stderr
         /// instead of just the bool RunGitCommand returns.
         /// </summary>
-        private readonly struct GitCommandResult
+        /// <summary>Git #3826 — internal, not private: the command palette's "Git Pull"
+        /// quick action needs the real <c>Stdout</c>/<c>Stderr</c> to show inline in its
+        /// own right pane, not just the boolean <see cref="RunGitCommand"/> already
+        /// returned.</summary>
+        internal readonly struct GitCommandResult
         {
             public bool Success { get; init; }
             public int ExitCode { get; init; }
@@ -9137,6 +9141,12 @@ namespace BuildConsole.Controls
         /// <summary>Git #3622 — the command palette's "Git Pull" quick action runs the
         /// exact same real pull as the Git panel's own button.</summary>
         public System.Threading.Tasks.Task<bool> RunGitPullAsync() => RunGitCommand("pull");
+
+        /// <summary>Git #3826 — same real pull as <see cref="RunGitPullAsync"/>, but
+        /// returns the full <see cref="GitCommandResult"/> (Stdout/Stderr/ExitCode) instead
+        /// of just the bool, so the command palette can show the real result text inline in
+        /// its own right pane instead of only a toast pointing at the Git panel.</summary>
+        internal System.Threading.Tasks.Task<GitCommandResult> RunGitPullWithResultAsync() => RunGitCommandCore("pull");
 
         /// <summary>
         /// Git #2535 (real commit body) / Git #2575 (extracted so BtnGitCommitAndPush_Click

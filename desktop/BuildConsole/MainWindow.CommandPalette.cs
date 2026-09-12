@@ -75,11 +75,11 @@ namespace BuildConsole
                 Title = "Git Pull",
                 Subtitle = "Run git pull in the dev-server checkout",
                 DetailBody = "Runs a real `git pull` against the main dev-server checkout — the same "
-                           + "action as the Git panel's own Pull button. The result (the pulled commit "
-                           + "line, or the real error) lands in the Git panel's status readout, plus a "
-                           + "toast here with the outcome.",
+                           + "action as the Git panel's own Pull button. The real result shows right "
+                           + "here once it finishes, plus a quick toast and the Git panel's own status "
+                           + "readout (same real text, same real source).",
                 ActionLabel = "Run Git Pull",
-                Run = () => _ = RunPaletteGitPullAsync(),
+                RunWithResult = RunPaletteGitPullWithResultAsync,
             },
             new CommandPaletteWindow.PaletteCommand
             {
@@ -104,17 +104,27 @@ namespace BuildConsole
                            + "\"Recover All\" banner runs. If there is nothing to recover, it says so "
                            + "honestly.",
                 ActionLabel = "Recover Builds",
-                Run = () => _ = BuildQueuePanel.RecoverOrphanedBuildsAsync(),
+                RunWithResult = () => BuildQueuePanel.RecoverOrphanedBuildsWithResultAsync(),
             },
         };
 
-        /// <summary>Runs the sidebar's real git pull and reports the honest outcome as
-        /// a toast (the detailed output stays in the Git panel's own status readout).</summary>
-        private async System.Threading.Tasks.Task RunPaletteGitPullAsync()
+        /// <summary>Git #3826 — runs the sidebar's real git pull and returns its real,
+        /// actual output (Stdout/Stderr combined — same real text the Git panel's own
+        /// <c>GitStatusSummaryText.ToolTip</c> gets) for the palette's right pane to show
+        /// inline, plus the existing quick toast (kept, not replaced).</summary>
+        private async System.Threading.Tasks.Task<string> RunPaletteGitPullWithResultAsync()
         {
-            bool ok = await LeftSidebar.RunGitPullAsync();
-            if (ok) ToastEngine.Success("Git Pull", "git pull finished — details in the Git panel.");
-            else ToastEngine.Warning("Git Pull", "git pull failed — see the Git panel's status line for the real error.");
+            var result = await LeftSidebar.RunGitPullWithResultAsync();
+
+            if (result.Success)
+                ToastEngine.Success("Git Pull", "git pull finished — details in the Git panel.");
+            else
+                ToastEngine.Warning("Git Pull", "git pull failed — see the Git panel's status line for the real error.");
+
+            string full = $"{result.Stdout}\n{result.Stderr}".Trim();
+            if (string.IsNullOrWhiteSpace(full))
+                full = result.Success ? "git pull succeeded (no output)." : $"git pull failed (exit {result.ExitCode}), no output.";
+            return full;
         }
     }
 }
