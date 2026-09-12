@@ -85,6 +85,7 @@
     "portal/notification-preferences.json",
     "portal/webhooks.json",
     "portal/billing.json",
+    "portal/team-role-assignment.json",
     "portal/sops-runbooks.json",
     "portal/microsoft-changes.json",
     "portal/config-state.json",

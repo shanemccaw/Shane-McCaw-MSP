@@ -1,0 +1,49 @@
+{
+  "issue": 3647,
+  "feature": "Portal team roster - Billing/Customer Admin role assignment. New PATCH /api/portal/team/:userId/role (artifacts/api-server/src/routes/portal-team.ts) lets a caller holding customer:team.manage (Customer Admin holds it) grant/revoke the two #3629 platform-default customer roles - customer-admin and billing - on a teammate. This is #3629's follow-up: until now the only grant path was AdminV2 RBAC (/admin/rbac/*, PlatformAdmin-only, #2461); nobody inside a customer org could grant either role. Backend-only this pass: no .dc.html design export exists yet for a team roster page in Design/portal/, so there is no portal UI surface to wire (CLAUDE.md's design-source rule - a page has no design until its .dc.html exists). GET /api/portal/team was also extended to report each member's isCustomerAdmin/hasBillingRole flags off the same grant rows, for whichever future UI wires this data.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "WHAT THIS COVERS: the route's real auth-gate (401 unauthenticated) and input-validation gates (400 on an unrecognised role key, 400 on a non-boolean granted) against the live running api-server, proving the route is genuinely wired and reachable - not just unit-tested in isolation.",
+    "WHAT THIS DELIBERATELY DOES NOT COVER, AND WHY: the grant/revoke business logic itself (tenant isolation, the customer:team.manage capability gate, the self-demotion guard preventing a caller from removing their own Customer Admin role, and the actual customer_user_roles write) is exhaustively covered by artifacts/api-server/src/routes/portal-team.test.ts's own vitest suite (14 tests, added this same build) - that suite can grant a real cap.team.manage role to a synthetic caller id via setGrantRole() directly against the mocked db, which this manifest's designated testbed account cannot be assumed to hold. Asserting a successful 200 grant here would require a testbed account already known to hold customer:team.manage, which is not established for any test-manifests/portal/*.json account today.",
+    "NO uiSteps: there is no team roster page in artifacts/portal yet (no Team/Roster .dc.html under Design/portal/), so there is nothing to visit or assert against in the DOM for this build. GET /api/portal/team's new isCustomerAdmin/hasBillingRole fields are real, wired data with no consuming UI yet - the same 'backend built ahead of the design' shape test-manifests/portal/billing.json documents for GET /portal/billing/subscriptions.",
+    "ENV VARS required: DEPLOY_URL only (no login needed - every assertion below is on the auth/validation gate, which fires before any body/role logic runs)."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE - PATCH /api/portal/team/:userId/role with no Authorization header returns 401 (requireAuth)",
+      "method": "PATCH",
+      "path": "/api/portal/team/1/role",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "role": "billing", "granted": true },
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP - log in as the designated testbed portal account to obtain a real client bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "VALIDATION-1 - an authenticated PATCH with an unrecognised role key answers 400 before any privilege check runs against the target",
+      "method": "PATCH",
+      "path": "/api/portal/team/1/role",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "role": "platform-admin", "granted": true },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "VALIDATION-2 - an authenticated PATCH with a non-boolean granted answers 400",
+      "method": "PATCH",
+      "path": "/api/portal/team/1/role",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "role": "billing", "granted": "yes" },
+      "expect": { "status": 400 }
+    }
+  ]
+}

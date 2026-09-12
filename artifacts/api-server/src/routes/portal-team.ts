@@ -3,14 +3,21 @@ import bcrypt from "bcryptjs";
 import { db, usersTable, mfaEnrollmentsTable, webauthnCredentialsTable, userSessionsTable, passwordResetTokensTable, mfaChallengesTable, webauthnChallengesTable, mfaBypassCodesTable } from "@workspace/db";
 import { eq, and, inArray, gte, isNull, sql, count } from "drizzle-orm";
 import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth.ts";
-import { userHasCapability } from "../middlewares/rbac-capability.ts";
+import { userHasCapability, setGrantRole, usersHoldingGrantRole } from "../middlewares/rbac-capability.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { ensureClientSetupToken } from "../lib/client-setup-token";
 import { logger } from "../lib/logger.ts";
-import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { LEGACY_ROLE, CUSTOMER_PLATFORM_ROLE_KEYS } from "@workspace/db/rbac/legacy-ladder";
+
+/**
+ * The two `customer_roles.key` values a Customer Admin may actually assign
+ * (#3629's platform-default roles) — never an org's own custom role, and
+ * never any other string a caller might guess. See #3647.
+ */
+const ASSIGNABLE_CUSTOMER_ROLE_KEYS: ReadonlySet<string> = new Set(Object.values(CUSTOMER_PLATFORM_ROLE_KEYS));
 const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
@@ -220,7 +227,7 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
 
   const userIds = members.map((m) => m.userId);
 
-  const [mfaRows, passkeyRows, activeSessionRows, lastLoginRows] = await Promise.all([
+  const [mfaRows, passkeyRows, activeSessionRows, lastLoginRows, customerAdminIds, billingRoleIds] = await Promise.all([
     db.select({ userId: mfaEnrollmentsTable.userId, method: mfaEnrollmentsTable.method })
       .from(mfaEnrollmentsTable)
       .where(and(inArray(mfaEnrollmentsTable.userId, userIds), eq(mfaEnrollmentsTable.enabled, true))),
@@ -240,6 +247,12 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
       .from(userSessionsTable)
       .where(and(inArray(userSessionsTable.userId, userIds), eq(userSessionsTable.sessionType, "standard")))
       .groupBy(userSessionsTable.userId),
+    // #3647 — who on this roster holds the two #3629 platform roles, so a
+    // Customer Admin sees current grants rather than guessing before toggling
+    // them via PATCH /portal/team/:userId/role. `null` (unseeded model) reads
+    // as "nobody", never as a 500 on an otherwise-working roster read.
+    usersHoldingGrantRole("customer", CUSTOMER_PLATFORM_ROLE_KEYS.customerAdmin, userIds),
+    usersHoldingGrantRole("customer", CUSTOMER_PLATFORM_ROLE_KEYS.billing, userIds),
   ]);
 
   const methodsByUser = new Map<number, string[]>();
@@ -271,6 +284,8 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
     lastLoginAt: lastLoginByUser.get(m.userId) ?? null,
     createdAt: m.createdAt,
     activeSessionsCount: activeCountByUser.get(m.userId) ?? 0,
+    isCustomerAdmin: customerAdminIds?.has(m.userId) ?? false,
+    hasBillingRole: billingRoleIds?.has(m.userId) ?? false,
   }));
 
   res.json(result);
@@ -327,6 +342,77 @@ router.patch("/portal/team/:userId/status", requireAuth, async (req: Request, re
   }
 
   res.json({ ok: true, isActive });
+});
+
+// ─── CLIENT: Team member platform role assignment (Billing / Customer Admin) ─
+//
+// #3629 seeded two platform-default customer roles (`customer-admin`, `billing`)
+// but the only grant path was AdminV2 RBAC (`/admin/rbac/*`, PlatformAdmin-only,
+// #2461) — nobody inside a customer org could grant either. This is the portal-
+// side grant surface a Customer Admin actually reaches: gated identically to
+// every other mutating team route (tenant isolation + `customer:team.manage`),
+// and restricted to the two platform-scoped keys #3629 seeded — never an org's
+// own custom role, and never any other role name a caller might guess. Reuses
+// the exact grant/revoke primitive #2460 built for `cap.team.manage` etc.
+// (`setGrantRole`/`usersHoldingGrantRole` in rbac-capability.ts) — a
+// `customer_roles` membership row is a membership row regardless of which key
+// it names.
+router.patch("/portal/team/:userId/role", requireAuth, async (req: Request, res: Response) => {
+  const targetUserId = parseInt(req.params.userId as string, 10);
+  if (isNaN(targetUserId)) {
+    res.status(400).json({ error: "Invalid userId" });
+    return;
+  }
+
+  const { role, granted } = req.body as { role?: string; granted?: boolean };
+  if (typeof role !== "string" || !ASSIGNABLE_CUSTOMER_ROLE_KEYS.has(role)) {
+    res.status(400).json({ error: `role must be one of: ${[...ASSIGNABLE_CUSTOMER_ROLE_KEYS].join(", ")}` });
+    return;
+  }
+  if (typeof granted !== "boolean") {
+    res.status(400).json({ error: "granted must be a boolean" });
+    return;
+  }
+
+  const [target] = await db
+    .select({ customerId: usersTable.tenantId, email: usersTable.email, name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.id, targetUserId))
+    .limit(1);
+  if (!target?.customerId) {
+    res.status(404).json({ error: "Team member not found" });
+    return;
+  }
+
+  const denyStatus = await denyIfCannotManageTeam(req.user!, target.customerId);
+  if (denyStatus) {
+    res.status(denyStatus).json({ error: "Access to this team member is not permitted" });
+    return;
+  }
+
+  if (targetUserId === req.user!.id && role === CUSTOMER_PLATFORM_ROLE_KEYS.customerAdmin && !granted) {
+    res.status(400).json({ error: "You cannot remove your own Customer Admin role" });
+    return;
+  }
+
+  const result = await setGrantRole("customer", targetUserId, role, granted, req.user!.id);
+  if (!result.ok) {
+    res.status(503).json({ error: "Role assignment is temporarily unavailable" });
+    return;
+  }
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: granted ? "team_member_role_granted" : "team_member_role_revoked",
+    entityType: "user",
+    entityId: targetUserId,
+    entityLabel: target.name ?? target.email,
+    metadata: { role },
+  });
+
+  res.json({ ok: true, userId: targetUserId, role, granted });
 });
 
 // ─── CLIENT: Team member reports-to (manager) assignment (#2527) ────────────

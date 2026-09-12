@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AlertCircle } from "lucide-react";
 import { useBillingLive } from "@/components/billingLive";
+import { useAuth } from "@/lib/auth-context";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -17,6 +18,15 @@ const RED = "#f87171";
  * Wired this pass, per `docs/portal/billing-contract-pack.md`: Receipts
  * (`GET /api/portal/invoices`, Git #1237) and "Manage payment in Stripe"
  * (`POST /api/portal/billing/customer-portal`) via `billingLive.ts`.
+ *
+ * "Manage payment in Stripe" is gated client-side on `can("customer",
+ * "billing.manage")` (#3647, recorded in #3587's body) — a presentation hint
+ * only, same discipline as UserMenu's `showBilling`. The real gate is server-
+ * side (`POST /portal/billing/customer-portal` asks the identical
+ * `customer:billing.manage`, #3465); every holder of `billing.view` also
+ * holds `billing.manage` today, so this hides nothing yet. It becomes real
+ * the moment a customer role is granted view without manage — the Billing
+ * role #3629 seeds is exactly that split.
  *
  * Deliberately NOT wired — matching the landed design's own "what this page
  * deliberately does not do" copy, not an oversight:
@@ -35,6 +45,8 @@ const RED = "#f87171";
  */
 export default function BillingPage() {
   const live = useBillingLive();
+  const { can } = useAuth();
+  const canManageBilling = can("customer", "billing.manage");
   const [ledgerOpen, setLedgerOpen] = useState(true);
   const [askOpen, setAskOpen] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
@@ -94,16 +106,18 @@ export default function BillingPage() {
           <span className="size-[6px] rounded-full" style={{ background: stateDot }} />
           {stateLine}
         </span>
-        <button
-          type="button"
-          onClick={handleOpenStripe}
-          disabled={live.openingPortal}
-          className="ml-auto whitespace-nowrap rounded-md px-[14px] py-[8px] text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ background: "#0078D4" }}
-          data-testid="billing-manage-payment"
-        >
-          {live.openingPortal ? "Opening…" : "Manage payment in Stripe"}
-        </button>
+        {canManageBilling ? (
+          <button
+            type="button"
+            onClick={handleOpenStripe}
+            disabled={live.openingPortal}
+            className="ml-auto whitespace-nowrap rounded-md px-[14px] py-[8px] text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ background: "#0078D4" }}
+            data-testid="billing-manage-payment"
+          >
+            {live.openingPortal ? "Opening…" : "Manage payment in Stripe"}
+          </button>
+        ) : null}
       </div>
 
       {portalError ? (

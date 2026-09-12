@@ -127,7 +127,7 @@ vi.mock("../middlewares/requireAuth.ts", async (importOriginal) => {
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { db } from "@workspace/db";
-import { CAPABILITY_COLUMN_ROLE_KEYS } from "@workspace/db/rbac/legacy-ladder";
+import { CAPABILITY_COLUMN_ROLE_KEYS, CUSTOMER_PLATFORM_ROLE_KEYS } from "@workspace/db/rbac/legacy-ladder";
 import router from "./portal-team.ts";
 import { sendEmailFromTemplate } from "../lib/mailer.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
@@ -198,6 +198,7 @@ describe("#3360 — denyIfCannotManageTeam denies an unrecognised role even with
     { method: "delete", path: "/api/portal/team/55/sessions" },
     { method: "post", path: "/api/portal/team/invite", body: { email: "new-teammate@example.com" } },
     { method: "patch", path: "/api/portal/team/55/status", body: { isActive: false } },
+    { method: "patch", path: "/api/portal/team/55/role", body: { role: "billing", granted: true } },
     { method: "patch", path: "/api/portal/team/55/manager", body: { managerUserId: null } },
     { method: "patch", path: "/api/portal/team/55/mfa-enforcement", body: { enforced: false } },
     { method: "post", path: "/api/portal/team/55/unlock" },
@@ -272,5 +273,84 @@ describe("#3360 — denyIfCannotManageTeam denies an unrecognised role even with
     const res = await send(unlock, clientToken(id, "NotARole"));
     expect(res.status).toBe(403);
     expect(vi.mocked(db.update)).not.toHaveBeenCalled();
+  });
+});
+
+// #3647 — the portal-side grant surface for #3629's two platform-default
+// customer roles (`customer-admin`, `billing`). Gated identically to every
+// other mutating team route; these tests cover the extra input validation
+// and the self-demotion guard that route adds on top of that shared gate.
+describe("PATCH /api/portal/team/:userId/role (#3647)", () => {
+  function clientToken(id: number): string {
+    return jwt.sign({ id, email: `caller${id}@example.com`, role: "client", mspId: 1, customerId: 1 }, JWT_SECRET, { expiresIn: "1h" });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGate1.forceAllow = true;
+    mockSelectResultsQueue = [];
+    mockDefaultSelectResult = [{ customerId: 1, email: "teammate@example.com", name: "Teammate" }];
+  });
+
+  afterEach(() => {
+    mockGate1.forceAllow = false;
+  });
+
+  it("rejects a role that is not one of the two platform-default keys", async () => {
+    const res = await request(app)
+      .patch("/api/portal/team/55/role")
+      .set("Authorization", `Bearer ${clientToken(1)}`)
+      .send({ role: "platform-admin", granted: true });
+    expect(res.status).toBe(400);
+    expect(vi.mocked(db.insert)).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-boolean granted", async () => {
+    const res = await request(app)
+      .patch("/api/portal/team/55/role")
+      .set("Authorization", `Bearer ${clientToken(1)}`)
+      .send({ role: CUSTOMER_PLATFORM_ROLE_KEYS.billing, granted: "yes" });
+    expect(res.status).toBe(400);
+  });
+
+  it("grants the Billing role to a teammate in the caller's own tenant", async () => {
+    const callerId = 601;
+    expect(await setGrantRole("customer", callerId, CAPABILITY_COLUMN_ROLE_KEYS.manageTeam, true, null)).toEqual({ ok: true });
+    const res = await request(app)
+      .patch("/api/portal/team/55/role")
+      .set("Authorization", `Bearer ${clientToken(callerId)}`)
+      .send({ role: CUSTOMER_PLATFORM_ROLE_KEYS.billing, granted: true });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, userId: 55, role: CUSTOMER_PLATFORM_ROLE_KEYS.billing, granted: true });
+  });
+
+  it("revokes the Billing role from a teammate", async () => {
+    const callerId = 602;
+    expect(await setGrantRole("customer", callerId, CAPABILITY_COLUMN_ROLE_KEYS.manageTeam, true, null)).toEqual({ ok: true });
+    const res = await request(app)
+      .patch("/api/portal/team/55/role")
+      .set("Authorization", `Bearer ${clientToken(callerId)}`)
+      .send({ role: CUSTOMER_PLATFORM_ROLE_KEYS.billing, granted: false });
+    expect(res.status).toBe(200);
+    expect(res.body.granted).toBe(false);
+  });
+
+  it("refuses to let a caller remove their own Customer Admin role", async () => {
+    const callerId = 603;
+    expect(await setGrantRole("customer", callerId, CAPABILITY_COLUMN_ROLE_KEYS.manageTeam, true, null)).toEqual({ ok: true });
+    const res = await request(app)
+      .patch(`/api/portal/team/${callerId}/role`)
+      .set("Authorization", `Bearer ${clientToken(callerId)}`)
+      .send({ role: CUSTOMER_PLATFORM_ROLE_KEYS.customerAdmin, granted: false });
+    expect(res.status).toBe(400);
+  });
+
+  it("404s when the target user does not exist", async () => {
+    mockDefaultSelectResult = [];
+    const res = await request(app)
+      .patch("/api/portal/team/999/role")
+      .set("Authorization", `Bearer ${clientToken(1)}`)
+      .send({ role: CUSTOMER_PLATFORM_ROLE_KEYS.billing, granted: true });
+    expect(res.status).toBe(404);
   });
 });
