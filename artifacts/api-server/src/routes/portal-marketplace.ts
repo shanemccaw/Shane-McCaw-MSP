@@ -37,12 +37,12 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, servicesTable } from "@workspace/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { effectiveMspRole, requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { resolveCatalogScope } from "../lib/marketplace-catalog-scope";
+import { effectiveMspRole, requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { resolveCatalogScope } from "../lib/marketplace-catalog-scope.ts";
 
 // Re-exported: msp-marketplace-purchase.ts and its tests read the full set from here.
-export { CUSTOMER_SERVICE_TYPES } from "../lib/marketplace-catalog-scope";
+export { CUSTOMER_SERVICE_TYPES } from "../lib/marketplace-catalog-scope.ts";
 
 const log = logger.child({ channel: "growth.marketplace" });
 

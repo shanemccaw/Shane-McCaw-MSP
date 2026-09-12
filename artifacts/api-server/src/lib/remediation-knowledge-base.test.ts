@@ -43,11 +43,11 @@ vi.mock("drizzle-orm", () => ({
 }));
 
 const generateRemediationDetail = vi.fn();
-vi.mock("./remediation-detail-generator", () => ({
+vi.mock("./remediation-detail-generator.ts", () => ({
   generateRemediationDetail: (...args: unknown[]) => generateRemediationDetail(...args),
 }));
 
-vi.mock("./logger", () => ({
+vi.mock("./logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 

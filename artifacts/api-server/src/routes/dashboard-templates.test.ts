@@ -46,7 +46,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-import router from "./dashboard-templates";
+import router from "./dashboard-templates.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();

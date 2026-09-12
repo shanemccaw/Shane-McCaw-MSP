@@ -53,9 +53,9 @@ import {
   type M365ResolutionStatus,
 } from "@workspace/db";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { executeMonitorCheck } from "./monitor-executor";
-import { resolveSubscribedSkuCatalog, type SubscribedSkuCatalogEntry } from "./license-waste-source";
-import { logger } from "./logger";
+import { executeMonitorCheck } from "./monitor-executor.ts";
+import { resolveSubscribedSkuCatalog, type SubscribedSkuCatalogEntry } from "./license-waste-source.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

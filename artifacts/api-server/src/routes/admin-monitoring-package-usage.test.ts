@@ -68,14 +68,14 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.headers["authorization"] === `Bearer ${ADMIN_PASS}`) return next();
     res.status(401).json({ error: "Unauthorized" });
   },
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: {
     child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
     info: vi.fn(),
@@ -85,13 +85,13 @@ vi.mock("../lib/logger", () => ({
   },
 }));
 
-vi.mock("../lib/monitor-executor", () => ({
+vi.mock("../lib/monitor-executor.ts", () => ({
   applyMapping: vi.fn(() => ({})),
   classifySeverity: vi.fn(() => null),
   validateOutputShape: vi.fn(() => ({ valid: true, errors: [] })),
 }));
 
-import router from "./admin-monitor-checks";
+import router from "./admin-monitor-checks.ts";
 
 function makeApp(): Express {
   const app = express();

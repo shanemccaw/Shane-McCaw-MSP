@@ -19,9 +19,9 @@ import {
   isCsvReportResponse,
   appendQueryParams,
   sharePointPrefixFromDomain,
-} from "../monitor-executor";
-import type { SeverityRule, MappingRule } from "../monitor-executor";
-import { logger } from "../logger";
+} from "../monitor-executor.ts";
+import type { SeverityRule, MappingRule } from "../monitor-executor.ts";
+import { logger } from "../logger.ts";
 
 // ── Mock external dependencies ─────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ vi.mock("@workspace/db", () => ({
   TENANT_SERVICE_EVIDENCE_BASIS: ["wire-signature", "service-plan", "combined"],
 }));
 
-vi.mock("../graph", () => ({
+vi.mock("../graph.ts", () => ({
   graphFetchForTenant: vi.fn(),
   ConsentRevokedError: class ConsentRevokedError extends Error {
     tenantId: string;
@@ -104,7 +104,7 @@ vi.mock("../graph", () => ({
 // only its shape matters here. SharingCapability is re-declared with the real
 // enum's values (0..3, per Microsoft's SharingCapability enum) because
 // monitor-executor derives externalSharing/anonymousSharing booleans from it.
-vi.mock("../sharepoint-admin", () => ({
+vi.mock("../sharepoint-admin.ts", () => ({
   getTenantSharingCapability: vi.fn(),
   sharePointAdminCredentialsPresent: vi.fn().mockReturnValue(true),
   SharingCapability: {
@@ -118,7 +118,7 @@ vi.mock("../sharepoint-admin", () => ({
 // Power Platform admin (#1869) — mocked at the module boundary exactly like
 // sharepoint-admin above, so these tests exercise monitor-executor's dispatch,
 // registry and mapping contract without making a real BAP call.
-vi.mock("../power-platform-admin", () => ({
+vi.mock("../power-platform-admin.ts", () => ({
   listDlpPolicies: vi.fn(),
   listEnvironments: vi.fn(),
   getTenantSettings: vi.fn(),
@@ -142,8 +142,8 @@ vi.mock("../power-platform-admin", () => ({
 // registry, its per-scope outcome recording and resolveAzureRmOperation stay
 // REAL, because they are the parts under test here; mocking them would leave the
 // dispatch assertions testing the mock.
-vi.mock("../azure-rm", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../azure-rm")>();
+vi.mock("../azure-rm.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../azure-rm.ts")>();
   return {
     ...actual,
     probeAzureRmReach: vi.fn(),
@@ -152,7 +152,7 @@ vi.mock("../azure-rm", async (importOriginal) => {
   };
 });
 
-vi.mock("../ps-execution-client", () => ({
+vi.mock("../ps-execution-client.ts", () => ({
   callPsExecution: vi.fn(),
   PsExecutionError: class PsExecutionError extends Error {
     kind: "unreachable" | "auth_failed" | "script_error";
@@ -175,23 +175,23 @@ vi.mock("node:dns", () => ({
   },
 }));
 
-vi.mock("../logger", () => {
+vi.mock("../logger.ts", () => {
   const child = vi.fn();
   const base = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child };
   child.mockReturnValue(base);
   return { logger: base };
 });
 
-import { graphFetchForTenant, getInitialDomainForTenant } from "../graph";
-import { ConsentRevokedError, LicenseGapError } from "../graph";
-import { callPsExecution, PsExecutionError } from "../ps-execution-client";
-import { getTenantSharingCapability, sharePointAdminCredentialsPresent } from "../sharepoint-admin";
+import { graphFetchForTenant, getInitialDomainForTenant } from "../graph.ts";
+import { ConsentRevokedError, LicenseGapError } from "../graph.ts";
+import { callPsExecution, PsExecutionError } from "../ps-execution-client.ts";
+import { getTenantSharingCapability, sharePointAdminCredentialsPresent } from "../sharepoint-admin.ts";
 import {
   listDlpPolicies,
   listEnvironments,
   getTenantSettings,
   powerPlatformCredentialsPresent,
-} from "../power-platform-admin";
+} from "../power-platform-admin.ts";
 import { promises as dnsPromises } from "node:dns";
 
 // ── evalConditionGrammar ──────────────────────────────────────────────────────
@@ -1740,7 +1740,7 @@ describe("executeMonitorCheck", () => {
     const err = new LicenseGapError("tenant1", "Microsoft Entra ID Premium (P1/P2)", "Authentication_RequestFromNonPremiumTenantOrB2CTenant", "{...}");
     mockFetch.mockRejectedValue(err);
 
-    const { markTenantConsentRevoked } = await import("../graph");
+    const { markTenantConsentRevoked } = await import("../graph.ts");
     (markTenantConsentRevoked as Mock).mockClear?.();
 
     const result = await executeMonitorCheck({ check: baseCheck, tenantId: "tenant1", triggerId: "run1", skipIdempotency: true });
@@ -1987,7 +1987,7 @@ describe("executeMonitorCheck — cached result label recovery", () => {
   it("persists the matched label onto the profile row on a fresh (uncached) run", async () => {
     // The whole point of #549: without this write, read time has nothing to say.
     const { db } = await import("@workspace/db");
-    const { graphFetchForTenant } = await import("../graph");
+    const { graphFetchForTenant } = await import("../graph.ts");
     // No users registered for MFA — the exact state labelledCheck's one rule fires on.
     const body = { value: [] as unknown[] };
     (graphFetchForTenant as unknown as Mock).mockResolvedValue({
@@ -2349,7 +2349,7 @@ describe("executeMonitorCheck — fan-out (group-scoped)", () => {
   });
 
   it("propagates a per-item consent revocation as a tenant-wide consent_revoked", async () => {
-    const { markTenantConsentRevoked } = await import("../graph");
+    const { markTenantConsentRevoked } = await import("../graph.ts");
     (markTenantConsentRevoked as Mock).mockClear?.();
     mockFetch.mockImplementation(async (_tenantId: string, path: string) => {
       if (path.includes("/groups")) return jsonRes([{ id: "g1" }, { id: "g2" }]);
@@ -2526,7 +2526,7 @@ describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')"
   });
 
   it("a PsExecutionError falls through to the generic error path — never markTenantConsentRevoked", async () => {
-    const { markTenantConsentRevoked } = await import("../graph");
+    const { markTenantConsentRevoked } = await import("../graph.ts");
     mockCallPsExecution.mockRejectedValueOnce(
       new PsExecutionError("auth_failed", "get-connection-info", "Could not establish a Security & Compliance session for the target tenant."),
     );
@@ -2544,7 +2544,7 @@ describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')"
   });
 
   it("#250: a PsExecutionError with kind 'cmdlet_unavailable' persists as license_gap (DLP) — not a generic error", async () => {
-    const { markTenantConsentRevoked } = await import("../graph");
+    const { markTenantConsentRevoked } = await import("../graph.ts");
     mockCallPsExecution.mockRejectedValueOnce(
       new PsExecutionError(
         "cmdlet_unavailable",
@@ -2750,7 +2750,7 @@ describe("executeMonitorCheck — SharePoint-admin-backed (executorType='sharepo
   });
 
   it("a SharePoint auth failure never flips the tenant's Graph consent state", async () => {
-    const { markTenantConsentRevoked } = await import("../graph");
+    const { markTenantConsentRevoked } = await import("../graph.ts");
     mockSharingCapability.mockRejectedValueOnce(
       new Error("SharePoint app-only auth failed for tenant tenant-guid-sp (status 401): unsupported app only token"),
     );
@@ -3663,7 +3663,7 @@ describe("executeMonitorCheck — azure-rm transport (#1871)", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    const azureRm = await import("../azure-rm");
+    const azureRm = await import("../azure-rm.ts");
     mockProbe = azureRm.probeAzureRmReach as unknown as Mock;
   });
 

@@ -193,7 +193,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.headers["authorization"] === `Bearer ${ADMIN_PASS}`) return next();
     res.status(401).json({ error: "Unauthorized" });
@@ -210,7 +210,7 @@ vi.mock("../middlewares/requireAuth", () => ({
     },
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 
@@ -219,15 +219,15 @@ vi.mock("../lib/logger", () => ({
 // execution; stubbing them is what lets these tests assert the route CALLS them.
 const resolveBaselineTemplateRequest = vi.fn();
 const runBaselineTemplateAgainstTenant = vi.fn();
-vi.mock("../lib/workflow-executor", () => ({
+vi.mock("../lib/workflow-executor.ts", () => ({
   resolveBaselineTemplateRequest: (...a: unknown[]) => resolveBaselineTemplateRequest(...a),
   runBaselineTemplateAgainstTenant: (...a: unknown[]) => runBaselineTemplateAgainstTenant(...a),
 }));
 
 // Graph error classes kept REAL so describeWriteGateError's instanceof checks work.
-import { WriteConsentRequiredError } from "../lib/graph";
+import { WriteConsentRequiredError } from "../lib/graph.ts";
 
-import router from "./admin-write-actions";
+import router from "./admin-write-actions.ts";
 
 function makeApp(): Express {
   const app = express();

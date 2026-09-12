@@ -26,17 +26,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: () => (_req: any, _res: any, next: () => void) => next(),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
 
 let mockScope: any = null;
-vi.mock("../lib/portal-customer-scope", () => ({
+vi.mock("../lib/portal-customer-scope.ts", () => ({
   resolveCustomerId: (req: any) => req.user?.customerId ?? null,
   resolveTenantScope: async () => mockScope,
 }));
@@ -52,7 +52,7 @@ vi.mock("../lib/security-plan-versioning.ts", () => versioning);
 const drift = vi.hoisted(() => ({ getSecurityPlanDrift: vi.fn() }));
 vi.mock("../lib/security-plan-drift.ts", () => drift);
 
-import router from "./portal-security-plan-document";
+import router from "./portal-security-plan-document.ts";
 
 function makeApp(user: Record<string, unknown> | null) {
   const app = express();

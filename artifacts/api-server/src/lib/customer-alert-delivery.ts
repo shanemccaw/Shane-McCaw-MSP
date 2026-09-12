@@ -25,10 +25,10 @@
  */
 
 import { pool } from "@workspace/db";
-import { logger } from "./logger";
-import { sendMailViaGraph, graphCredentialsPresent } from "./graph";
-import { enqueueCustomerAlertDigest } from "./customer-alert-digest";
-import { resolvePortalDeepLink } from "./portal-deep-links";
+import { logger } from "./logger.ts";
+import { sendMailViaGraph, graphCredentialsPresent } from "./graph.ts";
+import { enqueueCustomerAlertDigest } from "./customer-alert-digest.ts";
+import { resolvePortalDeepLink } from "./portal-deep-links.ts";
 
 const log = logger.child({ channel: "notification" });
 

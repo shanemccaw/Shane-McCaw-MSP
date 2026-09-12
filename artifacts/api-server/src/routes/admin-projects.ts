@@ -26,7 +26,7 @@ import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { createNotification } from "../lib/notification-center.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { createProjectFolder } from "../lib/graph.ts";
-import { resolveTemplateTaskMetadata } from "../lib/template-task-metadata";
+import { resolveTemplateTaskMetadata } from "../lib/template-task-metadata.ts";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib, seedKanbanCardsForPhase } from "../lib/kanban-phase-advance.ts";
 import { broadcastKanbanChange, registerSSEClient } from "../lib/sse-channels.ts";

@@ -75,11 +75,11 @@ process.env.JWT_SECRET = "test-secret";
  * that charging it to the first test's default 5s timeout made that test go red
  * whenever the suite got marginally busier.
  */
-let ensureLeadForEmail: typeof import("./lead-intent").ensureLeadForEmail;
-let findLeadByEmail: typeof import("./lead-intent").findLeadByEmail;
+let ensureLeadForEmail: typeof import("./lead-intent.ts").ensureLeadForEmail;
+let findLeadByEmail: typeof import("./lead-intent.ts").findLeadByEmail;
 
 beforeAll(async () => {
-  ({ ensureLeadForEmail, findLeadByEmail } = await import("./lead-intent"));
+  ({ ensureLeadForEmail, findLeadByEmail } = await import("./lead-intent.ts"));
 }, 60_000);
 
 beforeEach(() => {

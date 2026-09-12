@@ -10,8 +10,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockGraphFetchForTenant = vi.fn();
 
-vi.mock("./graph", async () => {
-  const actual = await vi.importActual<typeof import("./graph")>("./graph");
+vi.mock("./graph.ts", async () => {
+  const actual = await vi.importActual<typeof import("./graph")>("./graph.ts");
   return {
     ...actual,
     graphFetchForTenant: (...args: unknown[]) => mockGraphFetchForTenant(...args),
@@ -32,14 +32,14 @@ vi.mock("@workspace/db", () => ({
   usersTable: { id: "id", failedLoginAttempts: "failed_login_attempts", lastFailedLoginAt: "last_failed_login_at", lockedUntil: "locked_until" },
 }));
 
-import { ConsentRevokedError, LicenseGapError } from "./graph";
+import { ConsentRevokedError, LicenseGapError } from "./graph.ts";
 import {
   getPasswordAgeSignal,
   getFailedSignInsSignal,
   getDeviceComplianceSignal,
   getLocalFailedLoginSignal,
   PASSWORD_STALE_THRESHOLD_DAYS,
-} from "./account-security-graph";
+} from "./account-security-graph.ts";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status });

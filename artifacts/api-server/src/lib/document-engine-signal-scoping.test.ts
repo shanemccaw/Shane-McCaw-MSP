@@ -46,13 +46,13 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
   withAiUsageCapture: vi.fn(),
   totalCapturedCostCents: vi.fn(),
 }));
-vi.mock("./logger", () => ({
+vi.mock("./logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 // Git #493's appendix module, which document-engine.ts now imports. Stubbed at
 // the boundary (rather than pulled in for real) because it reaches the AI
 // generator and two more tables, none of which this pure-helper test exercises.
-vi.mock("./remediation-knowledge-base", () => ({
+vi.mock("./remediation-knowledge-base.ts", () => ({
   buildRemediationAppendix: vi.fn(),
   REMEDIATION_APPENDIX_MAX_FINDINGS: 15,
   REMEDIATION_APPENDIX_PROMPT_SUFFIX: "",

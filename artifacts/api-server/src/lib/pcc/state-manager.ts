@@ -1,4 +1,4 @@
-import { PccTest } from './taxonomy-catalog.js';
+import type { PccTest } from './taxonomy-catalog.ts';
 
 export interface PccRunResult {
   runId: string;

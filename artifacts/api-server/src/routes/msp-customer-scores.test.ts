@@ -62,7 +62,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
@@ -72,7 +72,7 @@ vi.mock("../lib/logger", () => {
 // /api/msp/customers/:customerId/* test in this repo does (assertCustomerAccess
 // has its own DB-backed coverage elsewhere).
 const mockAssertCustomerAccess = vi.fn();
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: () => (req: any, _res: any, next: () => void) => {
     req.user = req.user ?? { id: 1, email: "staff@test.com", role: "client", mspRole: "MSPOperator", mspId: 9 };
     next();
@@ -80,7 +80,7 @@ vi.mock("../middlewares/requireAuth", () => ({
   assertCustomerAccess: (...args: unknown[]) => mockAssertCustomerAccess(...args),
 }));
 
-import router from "./msp-customer-scores";
+import router from "./msp-customer-scores.ts";
 
 function buildApp() {
   const app = express();

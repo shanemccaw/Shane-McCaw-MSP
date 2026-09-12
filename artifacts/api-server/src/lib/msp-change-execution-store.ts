@@ -32,9 +32,9 @@ import {
   formatChangeRequestCode,
   planStepsFromDryRun,
   type PlanDiff,
-} from "./msp-change-execution";
-import { loadApprovalPolicy, materializeApprovalsForChange } from "./portal-change-approvals-store";
-import { logger } from "./logger";
+} from "./msp-change-execution.ts";
+import { loadApprovalPolicy, materializeApprovalsForChange } from "./portal-change-approvals-store.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

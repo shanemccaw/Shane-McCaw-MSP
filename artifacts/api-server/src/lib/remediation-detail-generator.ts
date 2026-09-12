@@ -45,9 +45,9 @@
 
 import { z } from "zod";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { withAiDevResponseCache } from "./ai-dev-response-cache";
-import { getPrompt } from "./prompt-loader";
-import { logger } from "./logger";
+import { withAiDevResponseCache } from "./ai-dev-response-cache.ts";
+import { getPrompt } from "./prompt-loader.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

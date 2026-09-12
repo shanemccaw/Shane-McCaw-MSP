@@ -38,17 +38,17 @@ import {
   baselineActionTemplatesTable,
 } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { getGrantedWriteAppPermissionsForTenant } from "../lib/graph";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { getGrantedWriteAppPermissionsForTenant } from "../lib/graph.ts";
 import {
   requiredPermissionsForWrite,
   isNonGraphEndpoint,
   DERIVED_WRITE_APP_PERMISSIONS,
   DOCUMENTED_BUT_NOT_REQUESTED,
   APP_ONLY_UNSUPPORTED_OPERATIONS,
-} from "../lib/graph-write-permissions";
-import { resolveServiceExecutable } from "../lib/remediation-catalog";
+} from "../lib/graph-write-permissions.ts";
+import { resolveServiceExecutable } from "../lib/remediation-catalog.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

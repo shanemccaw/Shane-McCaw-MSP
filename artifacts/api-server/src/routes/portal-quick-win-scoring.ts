@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import { db, clientM365ProfilesTable, projectsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAuth } from "../middlewares/requireAuth";
-import { computeM365Scores } from "../lib/m365-scores";
+import { requireAuth } from "../middlewares/requireAuth.ts";
+import { computeM365Scores } from "../lib/m365-scores.ts";
 
 // ── Quick Win catalog definition ──────────────────────────────────────────────
 // The canonical list of Quick Win diagnostics served to clients.

@@ -81,7 +81,7 @@ function makeLoggerMock(): { info: ReturnType<typeof vi.fn>; warn: ReturnType<ty
   };
 }
 
-vi.mock("./logger", () => ({
+vi.mock("./logger.ts", () => ({
   logger: makeLoggerMock(),
 }));
 
@@ -129,7 +129,7 @@ describe("requireCapability()", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("allows PlatformAdmin where MSPAdmin is required", async () => {
-    const { requireCapability } = await import("../middlewares/requireAuth");
+    const { requireCapability } = await import("../middlewares/requireAuth.ts");
     const user = { id: 1, email: "pa@x.com", role: "admin", mspRole: LEGACY_ROLE.platformAdmin };
     const req = mockReq(user);
     const res = mockRes();
@@ -142,7 +142,7 @@ describe("requireCapability()", () => {
   });
 
   it("allows MSPAdmin where MSPOperator is required", async () => {
-    const { requireCapability } = await import("../middlewares/requireAuth");
+    const { requireCapability } = await import("../middlewares/requireAuth.ts");
     const user = { id: 2, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin };
     const req = mockReq(user);
     const res = mockRes();
@@ -154,7 +154,7 @@ describe("requireCapability()", () => {
   });
 
   it("blocks Free user from MSPOperator-required route", async () => {
-    const { requireCapability } = await import("../middlewares/requireAuth");
+    const { requireCapability } = await import("../middlewares/requireAuth.ts");
     const user = { id: 3, email: "free@x.com", role: "client", mspRole: "Free" };
     const req = mockReq(user);
     const res = mockRes();
@@ -167,7 +167,7 @@ describe("requireCapability()", () => {
   });
 
   it("blocks Customer from MSPAdmin-required route", async () => {
-    const { requireCapability } = await import("../middlewares/requireAuth");
+    const { requireCapability } = await import("../middlewares/requireAuth.ts");
     const user = { id: 4, email: "cu@x.com", role: "client", mspRole: LEGACY_ROLE.customer };
     const req = mockReq(user);
     const res = mockRes();
@@ -180,7 +180,7 @@ describe("requireCapability()", () => {
   });
 
   it("allows legacy role=admin as PlatformAdmin", async () => {
-    const { requireCapability } = await import("../middlewares/requireAuth");
+    const { requireCapability } = await import("../middlewares/requireAuth.ts");
     const user = { id: 5, email: "oldadmin@x.com", role: "admin" };
     const req = mockReq(user);
     const res = mockRes();
@@ -198,7 +198,7 @@ describe("requireMspScope()", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("PlatformAdmin bypasses mspId scope check", async () => {
-    const { requireMspScope } = await import("../middlewares/requireAuth");
+    const { requireMspScope } = await import("../middlewares/requireAuth.ts");
     const req = mockReq(
       { id: 1, email: "pa@x.com", role: "admin", mspRole: LEGACY_ROLE.platformAdmin },
       { mspId: "99" }
@@ -212,7 +212,7 @@ describe("requireMspScope()", () => {
   });
 
   it("MSPAdmin with wrong mspId gets 403", async () => {
-    const { requireMspScope } = await import("../middlewares/requireAuth");
+    const { requireMspScope } = await import("../middlewares/requireAuth.ts");
     const req = mockReq(
       { id: 5, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 },
       { mspId: "2" }
@@ -226,7 +226,7 @@ describe("requireMspScope()", () => {
   });
 
   it("MSPAdmin with matching mspId is allowed", async () => {
-    const { requireMspScope } = await import("../middlewares/requireAuth");
+    const { requireMspScope } = await import("../middlewares/requireAuth.ts");
     const req = mockReq(
       { id: 5, email: "msp@x.com", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId: 1 },
       { mspId: "1" }
@@ -239,7 +239,7 @@ describe("requireMspScope()", () => {
   });
 
   it("returns 401 when req.user is absent", async () => {
-    const { requireMspScope } = await import("../middlewares/requireAuth");
+    const { requireMspScope } = await import("../middlewares/requireAuth.ts");
     const req = { headers: {}, method: "GET", params: { mspId: "1" } } as unknown as Request;
     const res = mockRes();
     const next = vi.fn();
@@ -258,7 +258,7 @@ describe("dispatchUnsafe()", () => {
     const valuesMock = vi.fn().mockResolvedValue({});
     (db.insert as ReturnType<typeof vi.fn>).mockReturnValue({ values: valuesMock });
 
-    const { dispatchUnsafe, systemActor } = await import("./event-bus");
+    const { dispatchUnsafe, systemActor } = await import("./event-bus.ts");
 
     const result = await dispatchUnsafe({
       eventType: "test.event",
@@ -294,7 +294,7 @@ describe("dispatchUnsafe()", () => {
     const corrId = "11111111-1111-4111-8111-111111111111";
     const causId = "22222222-2222-4222-8222-222222222222";
 
-    const { dispatchUnsafe, systemActor } = await import("./event-bus");
+    const { dispatchUnsafe, systemActor } = await import("./event-bus.ts");
     await dispatchUnsafe({
       eventType: "test.correlated",
       actor: systemActor(),
@@ -313,7 +313,7 @@ describe("dispatchUnsafe()", () => {
     const valuesMock = vi.fn().mockResolvedValue({});
     (db.insert as ReturnType<typeof vi.fn>).mockReturnValue({ values: valuesMock });
 
-    const { dispatchUnsafe, systemActor } = await import("./event-bus");
+    const { dispatchUnsafe, systemActor } = await import("./event-bus.ts");
     await dispatchUnsafe({ eventType: "test.auto-corr", actor: systemActor(), source: "test" });
 
     const inserted = valuesMock.mock.calls[0][0] as Record<string, unknown>;
@@ -327,7 +327,7 @@ describe("dispatchUnsafe()", () => {
     const valuesMock = vi.fn().mockResolvedValue({});
     (db.insert as ReturnType<typeof vi.fn>).mockReturnValue({ values: valuesMock });
 
-    const { dispatchUnsafe, systemActor } = await import("./event-bus");
+    const { dispatchUnsafe, systemActor } = await import("./event-bus.ts");
 
     await dispatchUnsafe({ eventType: "a", actor: systemActor(), source: "t", mspId: 5 });
     expect((valuesMock.mock.calls[0][0] as Record<string, unknown>).ownerType).toBe("msp");
@@ -348,7 +348,7 @@ describe("checkIdempotency()", () => {
       limit: vi.fn().mockResolvedValue([]),
     });
 
-    const { checkIdempotency } = await import("./idempotency");
+    const { checkIdempotency } = await import("./idempotency.ts");
     const result = await checkIdempotency("key-1", 1, "hash-abc");
     expect(result).toBeNull();
   });
@@ -368,7 +368,7 @@ describe("checkIdempotency()", () => {
       }]),
     });
 
-    const { checkIdempotency } = await import("./idempotency");
+    const { checkIdempotency } = await import("./idempotency.ts");
     const result = await checkIdempotency("key-2", 1, "hash-xyz");
     expect(result).toEqual({ statusCode: 201, responseBody: { id: 99 } });
   });
@@ -388,13 +388,13 @@ describe("checkIdempotency()", () => {
       }]),
     });
 
-    const { checkIdempotency } = await import("./idempotency");
+    const { checkIdempotency } = await import("./idempotency.ts");
     const result = await checkIdempotency("key-3", 1, "hash-different");
     expect(result).toBeNull();
   });
 
   it("hashBody is deterministic", async () => {
-    const { hashBody } = await import("./idempotency");
+    const { hashBody } = await import("./idempotency.ts");
     const body = { amount: 100, currency: "usd" };
     expect(hashBody(body)).toBe(hashBody(body));
     expect(hashBody(body)).not.toBe(hashBody({ ...body, amount: 101 }));
@@ -412,7 +412,7 @@ describe("DLQ", () => {
       }),
     });
 
-    const { enqueueDlq } = await import("./dlq");
+    const { enqueueDlq } = await import("./dlq.ts");
     const id = await enqueueDlq({
       eventType: "payment.failed",
       payload: { orderId: 42 },
@@ -431,7 +431,7 @@ describe("DLQ", () => {
       }),
     });
 
-    const { resolveDlqItem } = await import("./dlq");
+    const { resolveDlqItem } = await import("./dlq.ts");
     const ok = await resolveDlqItem("dlq-to-resolve", { resolution: "replayed" });
     expect(ok).toBe(true);
   });
@@ -445,7 +445,7 @@ describe("DLQ", () => {
       }),
     });
 
-    const { resolveDlqItem } = await import("./dlq");
+    const { resolveDlqItem } = await import("./dlq.ts");
     const ok = await resolveDlqItem("nonexistent", { resolution: "discarded" });
     expect(ok).toBe(false);
   });

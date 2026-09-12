@@ -24,8 +24,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantsTable, tenantMonitorProfilesTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

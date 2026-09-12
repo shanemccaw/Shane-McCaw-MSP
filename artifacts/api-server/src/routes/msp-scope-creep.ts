@@ -10,11 +10,11 @@
  * Contrast with /api/admin/scope-creep/* which requires PlatformAdmin.
  */
 
-import { Router, Request, Response } from "express";
+import { Router, type Request, type Response } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { requireCapability, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireCapability, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.scope-creep" });
 import {
   runScopeCreepEngineForTenant,
@@ -23,7 +23,7 @@ import {
   resolveScopeCreepViolation,
   evaluatePolicyEscalations,
   type ScopeCreepPolicy,
-} from "../lib/scope-creep-engine";
+} from "../lib/scope-creep-engine.ts";
 
 const router = Router();
 

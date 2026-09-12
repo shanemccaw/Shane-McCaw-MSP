@@ -17,9 +17,9 @@
  */
 
 import { createHash } from "crypto";
-import { registerNodeHandler } from "./portal-workflow-engine";
-import type { NodeExecutionContext } from "./portal-workflow-engine";
-import { dispatchEvent, systemActor } from "./event-bus";
+import { registerNodeHandler } from "./portal-workflow-engine.ts";
+import type { NodeExecutionContext } from "./portal-workflow-engine.ts";
+import { dispatchEvent, systemActor } from "./event-bus.ts";
 import {
   db,
   mspDocumentsTable,
@@ -27,9 +27,9 @@ import {
   mspSharepointConnectorsTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.doc-pipeline" });
-import { uploadToSharePoint, ensureSharePointFolder, computeChecksum } from "./sharepoint-connector";
+import { uploadToSharePoint, ensureSharePointFolder, computeChecksum } from "./sharepoint-connector.ts";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { randomUUID } from "crypto";
 

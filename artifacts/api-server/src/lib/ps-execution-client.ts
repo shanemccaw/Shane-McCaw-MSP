@@ -28,9 +28,9 @@
  *     "non-collection response = one item" rule graphFetchPaginated uses.
  */
 
-import { getSecretValue } from "./azure-keyvault";
-import { isProductionEnvironment } from "./env";
-import { logger } from "./logger";
+import { getSecretValue } from "./azure-keyvault.ts";
+import { isProductionEnvironment } from "./env.ts";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "integration.ps-execution" });
 
 const BEARER_TOKEN_SECRET_NAME = process.env.PS_EXECUTION_BEARER_TOKEN_SECRET_NAME ?? "ps-execution-bearer-token";

@@ -11,7 +11,7 @@
 import { SecretClient } from "@azure/keyvault-secrets";
 import { CertificateClient } from "@azure/keyvault-certificates";
 import { ClientSecretCredential } from "@azure/identity";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "integration.azure" });
 
 function getCredentialClient() {

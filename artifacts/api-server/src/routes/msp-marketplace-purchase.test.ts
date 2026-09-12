@@ -90,24 +90,24 @@ vi.mock("drizzle-orm", () => ({
 // billing-state module is exercised by its own suite. The two subscription-class
 // assertions below check that this was called with the right customer/MSP/Stripe ids.
 const mockRecordTenantSubscription = vi.fn(async () => ({ id: 1 }));
-vi.mock("../lib/tenant-billing-state", () => ({
+vi.mock("../lib/tenant-billing-state.ts", () => ({
   recordTenantSubscription: (...args: unknown[]) => mockRecordTenantSubscription(...(args as [])),
 }));
 
 vi.mock("../lib/request-context.ts", () => ({ enrichRequestContext: vi.fn() }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: mockLogInfo, error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
-vi.mock("../lib/resolve-fulfillment", () => ({ resolveFulfillment: mockResolveFulfillment }));
-vi.mock("../lib/audit", () => ({ createAuditLog: mockCreateAuditLog }));
-vi.mock("../lib/sse-channels", () => ({
+vi.mock("../lib/resolve-fulfillment.ts", () => ({ resolveFulfillment: mockResolveFulfillment }));
+vi.mock("../lib/audit.ts", () => ({ createAuditLog: mockCreateAuditLog }));
+vi.mock("../lib/sse-channels.ts", () => ({
   broadcastCustomerOfferChange: vi.fn(),
   broadcastMspOfferChange: vi.fn(),
 }));
-vi.mock("../lib/stripe", () => ({
+vi.mock("../lib/stripe.ts", () => ({
   getStripeKey: vi.fn().mockReturnValue("sk_test_xxx"),
   getMspDefaultPaymentMethod: vi.fn().mockResolvedValue("pm_test"),
 }));
@@ -144,7 +144,7 @@ function insertChain(rows: unknown[] = []) {
 }
 
 async function makeApp() {
-  const { default: router } = await import("./msp-marketplace-purchase");
+  const { default: router } = await import("./msp-marketplace-purchase.ts");
   const app = express();
   app.use(express.json());
   app.use("/api", router);

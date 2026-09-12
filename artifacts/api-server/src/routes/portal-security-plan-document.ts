@@ -65,10 +65,10 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { resolveCustomerId, resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope";
-import { apiError, ApiErrorCode } from "../lib/api-helpers";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveCustomerId, resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { logger } from "../lib/logger.ts";
 import {
   getCurrentSecurityPlanVersion,
   getSecurityPlanVersionByUid,

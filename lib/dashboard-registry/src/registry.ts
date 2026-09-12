@@ -1,6 +1,6 @@
-import type { MetricDef, RendererDef } from "./types";
-import { DASHBOARD_METRICS } from "./metrics";
-import { DASHBOARD_RENDERERS } from "./renderers";
+import type { MetricDef, RendererDef } from "./types.ts";
+import { DASHBOARD_METRICS } from "./metrics.ts";
+import { DASHBOARD_RENDERERS } from "./renderers.ts";
 
 /** Index of metrics by key for O(1) lookup. */
 const METRICS_BY_KEY = new Map<string, MetricDef>(

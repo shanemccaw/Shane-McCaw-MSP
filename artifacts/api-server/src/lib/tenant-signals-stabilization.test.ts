@@ -34,12 +34,12 @@ vi.mock("drizzle-orm", () => {
   };
 });
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
-vi.mock("./sla-engine", () => ({ startSlaTimer: vi.fn() }));
+vi.mock("./sla-engine.ts", () => ({ startSlaTimer: vi.fn() }));
 
 // Chainable + thenable stub — .from/.innerJoin/.where/.orderBy/.limit all
 // return the same thenable object; awaiting it at any link resolves to the

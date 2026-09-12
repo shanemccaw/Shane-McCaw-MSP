@@ -23,9 +23,9 @@
 import { db } from "@workspace/db";
 import { fulfillmentTypesTable, fulfillmentIdempotencyTable, clientServicesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { emitWorkflowEvent } from "./workflow-executor";
-import { resolveCustomerPortalUserId } from "./tenant-signals";
-import { logger } from "./logger";
+import { emitWorkflowEvent } from "./workflow-executor.ts";
+import { resolveCustomerPortalUserId } from "./tenant-signals.ts";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "billing" });
 
 export interface ResolveFulfillmentInput {

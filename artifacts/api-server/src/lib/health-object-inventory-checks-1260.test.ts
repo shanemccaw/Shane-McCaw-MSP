@@ -26,8 +26,8 @@ vi.mock("@workspace/db", () => ({
   tenantsTable: {},
 }));
 
-import { applyMapping, classifySeverity } from "./monitor-executor";
-import type { MappingRule, SeverityRule } from "./monitor-executor";
+import { applyMapping, classifySeverity } from "./monitor-executor.ts";
+import type { MappingRule, SeverityRule } from "./monitor-executor.ts";
 
 function daysAgoIso(days: number): string {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();

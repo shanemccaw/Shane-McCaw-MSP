@@ -39,7 +39,7 @@
  */
 
 import { pool } from "@workspace/db";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "admin.runHistory" });
 

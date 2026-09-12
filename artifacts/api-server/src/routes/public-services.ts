@@ -10,14 +10,14 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, inArray, gte } from "drizzle-orm";
 import { z } from "zod";
-import { resolveCatalogPricing, isServiceFree } from "../lib/catalog-pricing";
+import { resolveCatalogPricing, isServiceFree } from "../lib/catalog-pricing.ts";
 import { buildSessionReadConsentUrl } from "../lib/read-consent-flow.ts";
-import { ensureAssessmentFunnelLead } from "../lib/crm-pipeline";
-import { ensureLeadForEmail } from "../lib/lead-intent";
-import { pushMarketingLeadToEngageBay } from "../lib/engagebay-marketing-lead";
+import { ensureAssessmentFunnelLead } from "../lib/crm-pipeline.ts";
+import { ensureLeadForEmail } from "../lib/lead-intent.ts";
+import { pushMarketingLeadToEngageBay } from "../lib/engagebay-marketing-lead.ts";
 import { getMspPortalLandingUrl } from "../lib/portal-url.ts";
-import { REQUIRED_MT_SCOPES } from "../lib/graph";
-import { logger } from "../lib/logger";
+import { REQUIRED_MT_SCOPES } from "../lib/graph.ts";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 

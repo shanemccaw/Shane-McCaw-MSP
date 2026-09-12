@@ -20,8 +20,8 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { logger } from "../lib/logger";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { logger } from "../lib/logger.ts";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "notification" });
@@ -268,8 +268,8 @@ router.post("/admin/customer-alert-rules/:id/test", requireAdmin, async (req: Re
     const eventId = evtRes.rows[0]?.id;
     if (!eventId) { res.status(500).json({ error: "Failed to create test event" }); return; }
 
-    const { sendMailViaGraph, graphCredentialsPresent } = await import("../lib/graph");
-    const { sendWebPushToAdmins } = await import("../lib/web-push");
+    const { sendMailViaGraph, graphCredentialsPresent } = await import("../lib/graph.ts");
+    const { sendWebPushToAdmins } = await import("../lib/web-push.ts");
     let emailOk = false;
     let pushOk = false;
 
@@ -308,7 +308,7 @@ router.post("/admin/customer-alert-rules/:id/test", requireAdmin, async (req: Re
 
 router.post("/admin/customer-alert-rules/evaluate", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const { evaluateCustomerTenantRules } = await import("../lib/customer-tenant-alert-engine");
+    const { evaluateCustomerTenantRules } = await import("../lib/customer-tenant-alert-engine.ts");
     await evaluateCustomerTenantRules();
     res.json({ ok: true });
   } catch (err) {

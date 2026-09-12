@@ -12,8 +12,8 @@ import { Router, type Request, type Response } from "express";
 import { db, contentPostsTable } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { eq, desc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "admin.content-studio" });
 

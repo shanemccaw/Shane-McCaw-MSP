@@ -7,6 +7,10 @@
     "rootDir": "src",
     "types": ["node"],
     "allowImportingTsExtensions": true,
+    // #3574 — the package's `test` script runs 21 files on
+    // `node --experimental-strip-types`, which cannot run enums, parameter
+    // properties or value namespaces. Reject them here instead of at runtime.
+    "erasableSyntaxOnly": true,
     "resolveJsonModule": true
   },
   // Git #3522 — deliberately NO "references" to lib/*. A project reference makes a

@@ -1,11 +1,11 @@
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.monitor" });
 import { db, tenantsTable, tenantMonitorProfilesTable, tenantEngineOverridesTable, usersTable, mspsTable, type TenantConsentMap } from "@workspace/db";
 import { eq, ne, and, or, gt, isNull, sql } from "drizzle-orm";
-import { simulatorStorage } from "./simulator-events";
-import { createAuditLog } from "./audit";
-import { annotateCapturedResponse, recordOutgoingGraphRequest } from "./graph-request-capture";
-import { DERIVED_WRITE_APP_PERMISSIONS } from "./graph-write-permissions";
+import { simulatorStorage } from "./simulator-events.ts";
+import { createAuditLog } from "./audit.ts";
+import { annotateCapturedResponse, recordOutgoingGraphRequest } from "./graph-request-capture.ts";
+import { DERIVED_WRITE_APP_PERMISSIONS } from "./graph-write-permissions.ts";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 /**

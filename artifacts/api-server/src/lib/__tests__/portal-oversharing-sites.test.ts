@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { buildOversharingSites, siteContextLine, type OversharedSiteGrantRow } from "../portal-oversharing-sites";
+import { buildOversharingSites, siteContextLine, type OversharedSiteGrantRow } from "../portal-oversharing-sites.ts";
 
 function row(overrides: Partial<OversharedSiteGrantRow>): OversharedSiteGrantRow {
   return {

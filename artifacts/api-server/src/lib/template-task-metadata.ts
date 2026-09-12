@@ -8,7 +8,7 @@ import {
   powershellScriptsTable,
 } from "@workspace/db";
 import { inArray } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.templates" });
 

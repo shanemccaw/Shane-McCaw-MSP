@@ -12,9 +12,9 @@
  * ("unspecified"), not a guessed number.
  */
 
-import type { RemediationChecklistItem } from "./remediation-checklist";
-import { workloadForCheckKey, type ChangeClass } from "./portal-change-control";
-import type { RaiseChangeRequestInput } from "./portal-change-control-raise";
+import type { RemediationChecklistItem } from "./remediation-checklist.ts";
+import { workloadForCheckKey, type ChangeClass } from "./portal-change-control.ts";
+import type { RaiseChangeRequestInput } from "./portal-change-control-raise.ts";
 
 /**
  * `critical` findings raise a `Normal` change (needs real review before

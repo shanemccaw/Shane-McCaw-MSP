@@ -101,7 +101,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.headers["authorization"] !== `Bearer ${ADMIN_PASS}`) {
       res.status(401).json({ error: "Unauthorized" });
@@ -118,12 +118,12 @@ vi.mock("../middlewares/requireAuth", () => ({
   },
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 
-vi.mock("../lib/session-tracking", () => ({ revokeAllOtherSessions: mockRevokeAllOtherSessions }));
-vi.mock("../lib/audit", () => ({ createAuditLog: mockCreateAuditLog }));
+vi.mock("../lib/session-tracking.ts", () => ({ revokeAllOtherSessions: mockRevokeAllOtherSessions }));
+vi.mock("../lib/audit.ts", () => ({ createAuditLog: mockCreateAuditLog }));
 vi.mock("../lib/mailer.ts", () => ({
   sendEmailFromTemplate: mockSendEmailFromTemplate,
   passwordResetEmail: ({ resetUrl }: { resetUrl: string }) => `<a href="${resetUrl}">reset</a>`,
@@ -133,12 +133,12 @@ vi.mock("../lib/portal-url.ts", () => ({
   buildAccountSetupUrl: (token: string) => `https://example.test/portal/account-setup?setup_token=${token}`,
 }));
 vi.mock("../lib/request-context.ts", () => ({ getRequestContext: () => ({ traceId: "trace-1" }) }));
-vi.mock("../lib/tenant-signals", () => ({ resolveCustomerUserIds: vi.fn().mockResolvedValue([]) }));
+vi.mock("../lib/tenant-signals.ts", () => ({ resolveCustomerUserIds: vi.fn().mockResolvedValue([]) }));
 
 // The mfa-reset route MUST go through mfa.ts rather than owning a second
 // un-enrollment implementation, so the module is mocked and the delegation is
 // asserted directly.
-vi.mock("./mfa", () => ({
+vi.mock("./mfa.ts", () => ({
   adminResetMfa: mockAdminResetMfa,
   isMfaMethod: (v: unknown) => typeof v === "string" && ["totp", "sms", "passkey"].includes(v),
   MFA_METHODS: ["totp", "sms", "passkey"] as const,
@@ -146,7 +146,7 @@ vi.mock("./mfa", () => ({
 
 // active-directory.ts is pure helper code — pass it through untouched so this
 // suite does not have to track which helpers each phase adds to it.
-vi.mock("../lib/active-directory", async (importOriginal) => ({
+vi.mock("../lib/active-directory.ts", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
 }));
 
@@ -170,7 +170,7 @@ beforeEach(async () => {
 
   app = express();
   app.use(express.json());
-  const { default: router } = await import("./admin-active-directory");
+  const { default: router } = await import("./admin-active-directory.ts");
   app.use(router);
 });
 

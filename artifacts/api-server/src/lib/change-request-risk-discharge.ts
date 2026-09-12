@@ -42,7 +42,7 @@
 import { db, mspRiskDecisionsTable } from "@workspace/db";
 import { and, eq, isNull } from "drizzle-orm";
 
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

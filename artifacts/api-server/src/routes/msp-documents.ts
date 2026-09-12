@@ -26,14 +26,14 @@ import {
   mspSharepointConnectorsTable,
 } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.portal" });
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
-import { createRun, executeRun } from "../lib/portal-workflow-engine";
-import { resolveBillingMspId } from "../lib/ai-billing";
-import { DEFAULT_DOC_PIPELINE_GRAPH } from "../lib/doc-pipeline-nodes";
-import { resolveConnectorSiteId } from "../lib/sharepoint-connector";
+import { createRun, executeRun } from "../lib/portal-workflow-engine.ts";
+import { resolveBillingMspId } from "../lib/ai-billing.ts";
+import { DEFAULT_DOC_PIPELINE_GRAPH } from "../lib/doc-pipeline-nodes.ts";
+import { resolveConnectorSiteId } from "../lib/sharepoint-connector.ts";
 
 const router: IRouter = Router();
 

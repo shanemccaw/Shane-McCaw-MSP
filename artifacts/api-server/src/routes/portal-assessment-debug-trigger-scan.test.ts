@@ -23,7 +23,7 @@ process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY = "test-anthropic-key";
 
 // #2865 — ./portal-assessment pulls in a heavy transitive import graph (the
 // whole copilot-readiness-narrative-generator chain) via the dynamic
-// `await import("./portal-assessment")` below. It can't be hoisted to a
+// `await import("./portal-assessment.ts")` below. It can't be hoisted to a
 // static top-level import — that would run before the env vars above are
 // set and reintroduce the module-load throw the comment above exists to
 // avoid — so under the full-suite parallel run its transform can lose the
@@ -93,18 +93,18 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../lib/diagnostics-runner", () => ({
+vi.mock("../lib/diagnostics-runner.ts", () => ({
   runDiagnostics: vi.fn().mockImplementation(({ packageKey }: { packageKey: string }) => {
     runDiagnosticsPackageKey = packageKey;
     return Promise.resolve({ runId: "test-run", status: "completed", checksTotal: 7, checksOk: 7, checksError: 0, requiresScript: 0, findingsCount: 0 });
   }),
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }));
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: () => (req: express.Request, res: express.Response, next: express.NextFunction) => {
     (req as unknown as Record<string, unknown>).user = { id: 99, customerId: 10 };
     next();
@@ -112,21 +112,21 @@ vi.mock("../middlewares/requireAuth", () => ({
 }));
 
 // Everything else portal-assessment.ts imports but this route doesn't exercise.
-vi.mock("../lib/sse-channels", () => ({ registerWorkflowRunSSEClient: vi.fn() }));
+vi.mock("../lib/sse-channels.ts", () => ({ registerWorkflowRunSSEClient: vi.fn() }));
 vi.mock("../lib/document-engine-sow.ts", () => ({ generateSowDocument: vi.fn() }));
-vi.mock("../lib/stripe", () => ({ getStripeKey: vi.fn() }));
-vi.mock("../lib/captcha", () => ({ verifyCaptchaToken: vi.fn() }));
-vi.mock("../lib/portal-url", () => ({ getMspPortalBaseUrl: vi.fn() }));
-vi.mock("../lib/pillar-coverage", () => ({ getPillarCoverage: vi.fn() }));
-vi.mock("../lib/license-waste-source", () => ({ resolveLicenseWasteCounts: vi.fn() }));
-vi.mock("../lib/cost-engine", () => ({ computeSkuCostBreakdown: vi.fn() }));
-vi.mock("../lib/doc-gate-coverage", () => ({ evaluateDocGateCoverage: vi.fn(), DOC_GATE_MIN_COVERAGE_PCT: 50 }));
-vi.mock("../lib/copilot-readiness", () => ({ computeCopilotReadiness: vi.fn() }));
-vi.mock("../lib/sales-offer-engine", () => ({ runSalesOfferEngineForTenant: vi.fn() }));
-vi.mock("../lib/priority-engine", () => ({ fetchSignalRulesAndGroups: vi.fn() }));
-vi.mock("../lib/tenant-signals", () => ({ resolveCustomerIdForPortalUser: vi.fn(), resolveSiblingUserIds: vi.fn() }));
-vi.mock("../lib/graph", () => ({ REQUIRED_MT_SCOPES: [] }));
-vi.mock("../lib/sharepoint-admin", () => ({
+vi.mock("../lib/stripe.ts", () => ({ getStripeKey: vi.fn() }));
+vi.mock("../lib/captcha.ts", () => ({ verifyCaptchaToken: vi.fn() }));
+vi.mock("../lib/portal-url.ts", () => ({ getMspPortalBaseUrl: vi.fn() }));
+vi.mock("../lib/pillar-coverage.ts", () => ({ getPillarCoverage: vi.fn() }));
+vi.mock("../lib/license-waste-source.ts", () => ({ resolveLicenseWasteCounts: vi.fn() }));
+vi.mock("../lib/cost-engine.ts", () => ({ computeSkuCostBreakdown: vi.fn() }));
+vi.mock("../lib/doc-gate-coverage.ts", () => ({ evaluateDocGateCoverage: vi.fn(), DOC_GATE_MIN_COVERAGE_PCT: 50 }));
+vi.mock("../lib/copilot-readiness.ts", () => ({ computeCopilotReadiness: vi.fn() }));
+vi.mock("../lib/sales-offer-engine.ts", () => ({ runSalesOfferEngineForTenant: vi.fn() }));
+vi.mock("../lib/priority-engine.ts", () => ({ fetchSignalRulesAndGroups: vi.fn() }));
+vi.mock("../lib/tenant-signals.ts", () => ({ resolveCustomerIdForPortalUser: vi.fn(), resolveSiblingUserIds: vi.fn() }));
+vi.mock("../lib/graph.ts", () => ({ REQUIRED_MT_SCOPES: [] }));
+vi.mock("../lib/sharepoint-admin.ts", () => ({
   REQUIRED_SHAREPOINT_APP_PERMISSIONS: [],
   // monitor-executor.ts (pulled in transitively via portal-assessment.ts)
   // indexes SHARING_CAPABILITY_NAMES by this enum's members at module load
@@ -147,7 +147,7 @@ describe("POST /portal/diagnostics/debug-trigger-scan — packageKey resolution 
   });
 
   it("resolves packageKey from the customer's active Copilot entitlement, not the monitoring_subscription join", async () => {
-    const { default: portalAssessmentRouter } = await import("./portal-assessment");
+    const { default: portalAssessmentRouter } = await import("./portal-assessment.ts");
     const app = express();
     app.use(express.json());
     app.use("/api", portalAssessmentRouter);

@@ -60,8 +60,8 @@
 
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { logger } from "./logger";
-import { graphFetchForTenant, ConsentRevokedError, LicenseGapError } from "./graph";
+import { logger } from "./logger.ts";
+import { graphFetchForTenant, ConsentRevokedError, LicenseGapError } from "./graph.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

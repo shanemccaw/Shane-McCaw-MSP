@@ -49,9 +49,9 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, kanbanBucketsTable, kanbanCardsTable } from "@workspace/db";
 import { eq, asc, and, sql } from "drizzle-orm";
 import { z } from "zod";
-import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

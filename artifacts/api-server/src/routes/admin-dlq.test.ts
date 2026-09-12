@@ -46,17 +46,17 @@ vi.mock("@workspace/db", () => ({
   tenantsTable: { id: "id", customerName: "customer_name" },
 }));
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
 }));
 
 const replayDlqItem = vi.hoisted(() => vi.fn());
-vi.mock("../lib/portal-workflow-engine", () => ({ replayDlqItem }));
+vi.mock("../lib/portal-workflow-engine.ts", () => ({ replayDlqItem }));
 
 const resolveDlqItem = vi.hoisted(() => vi.fn());
-vi.mock("../lib/dlq", () => ({ resolveDlqItem }));
+vi.mock("../lib/dlq.ts", () => ({ resolveDlqItem }));
 
-import adminDlqRouter from "./admin-dlq";
+import adminDlqRouter from "./admin-dlq.ts";
 
 function buildApp() {
   const app = express();

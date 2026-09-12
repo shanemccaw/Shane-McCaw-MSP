@@ -16,10 +16,10 @@
  */
 
 import { pool } from "@workspace/db";
-import { logger } from "./logger";
-import { sendMailViaGraph, graphCredentialsPresent } from "./graph";
+import { logger } from "./logger.ts";
+import { sendMailViaGraph, graphCredentialsPresent } from "./graph.ts";
 import { randomUUID } from "crypto";
-import { resolvePortalDeepLink } from "./portal-deep-links";
+import { resolvePortalDeepLink } from "./portal-deep-links.ts";
 
 const log = logger.child({ channel: "notification" });
 
@@ -109,7 +109,7 @@ export async function drainCustomerAlertDigests(): Promise<void> {
   if (dueRes.rows.length === 0) return;
 
   // Lazy import avoids a module-load-order cycle with customer-alert-delivery.ts.
-  const { resolveCustomerAlertPreferences } = await import("./customer-alert-delivery");
+  const { resolveCustomerAlertPreferences } = await import("./customer-alert-delivery.ts");
 
   let drained = 0;
   for (const { customer_id: customerId } of dueRes.rows) {

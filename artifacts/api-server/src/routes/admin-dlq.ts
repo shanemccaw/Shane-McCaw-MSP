@@ -27,10 +27,10 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspDlqStoreTable, tenantsTable } from "@workspace/db";
 import { and, count, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { logger } from "../lib/logger";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { resolveDlqItem } from "../lib/dlq";
-import { replayDlqItem } from "../lib/portal-workflow-engine";
+import { logger } from "../lib/logger.ts";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { resolveDlqItem } from "../lib/dlq.ts";
+import { replayDlqItem } from "../lib/portal-workflow-engine.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "admin.dlq" });

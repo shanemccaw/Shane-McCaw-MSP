@@ -37,19 +37,19 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { baselineActionTemplatesTable, servicesTable, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { resolveServiceExecutable } from "../lib/remediation-catalog";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { resolveServiceExecutable } from "../lib/remediation-catalog.ts";
 import {
   resolveBaselineTemplateRequest,
   runBaselineTemplateAgainstTenant,
-} from "../lib/workflow-executor";
-import { evaluateSuccessCriteria } from "../lib/write-action-safety";
+} from "../lib/workflow-executor.ts";
+import { evaluateSuccessCriteria } from "../lib/write-action-safety.ts";
 import {
   WriteBackCustomerNotFoundError,
   WriteBackNotEnabledError,
   WriteConsentRequiredError,
-} from "../lib/graph";
+} from "../lib/graph.ts";
 
 // Same channel as the config-pack orchestrator — this is the remediation
 // engine's single-action surface, not an admin CRUD screen.

@@ -18,20 +18,20 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireAuth } from "../middlewares/requireAuth";
-import { apiError, ApiErrorCode } from "../lib/api-helpers";
+import { requireAuth } from "../middlewares/requireAuth.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import {
   SUBSCRIPTION_GATE_ALLOWED_PREFIXES,
   subscriptionGateBody,
-} from "../lib/retention/subscription-gate";
-import { readTenantSubscriptionState } from "../lib/retention/subscription-state";
+} from "../lib/retention/subscription-gate.ts";
+import { readTenantSubscriptionState } from "../lib/retention/subscription-state.ts";
 import {
   REINSTATEMENT_NOTE_MAX,
   listReinstatementRequests,
   readOpenReinstatementRequest,
   submitReinstatementRequest,
   withdrawReinstatementRequest,
-} from "../lib/retention/reinstatement";
+} from "../lib/retention/reinstatement.ts";
 import type { RetentionReinstatementRequest } from "@workspace/db";
 
 const router: IRouter = Router();

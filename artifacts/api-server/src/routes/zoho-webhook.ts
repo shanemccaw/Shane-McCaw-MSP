@@ -14,9 +14,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, wfTriggersTable, wfTriggerEventsTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
-import { fireWorkflowForDefinition } from "../lib/workflow-executor";
+import { fireWorkflowForDefinition } from "../lib/workflow-executor.ts";
 import { verifyZohoWebhookToken, resolveZohoEventType } from "../lib/zoho-webhook.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "integration.zoho" });
 

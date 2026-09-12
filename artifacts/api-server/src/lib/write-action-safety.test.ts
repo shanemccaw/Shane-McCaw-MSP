@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { evaluateSuccessCriteria, resolveDependsOnState } from "./write-action-safety";
+import { evaluateSuccessCriteria, resolveDependsOnState } from "./write-action-safety.ts";
 
 describe("evaluateSuccessCriteria", () => {
   it("marks met when the returned status equals the declared statusCode", () => {

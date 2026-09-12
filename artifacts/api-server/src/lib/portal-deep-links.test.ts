@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PORTAL_DEEP_LINK_DESTINATIONS, resolvePortalDeepLink } from "./portal-deep-links";
+import { PORTAL_DEEP_LINK_DESTINATIONS, resolvePortalDeepLink } from "./portal-deep-links.ts";
 
 describe("resolvePortalDeepLink", () => {
   it("resolves every seeded /portal-v2/* destination to the honest coming-soon page while livePath is null", () => {

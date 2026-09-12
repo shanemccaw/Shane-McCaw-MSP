@@ -12,11 +12,11 @@
 import { Router, type Request, type Response } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.sla" });
-import { runSlaEngineForMsp, resolveSlaTimer } from "../lib/sla-engine";
-import { registerMspEngineEventClient } from "../lib/sse-channels";
+import { runSlaEngineForMsp, resolveSlaTimer } from "../lib/sla-engine.ts";
+import { registerMspEngineEventClient } from "../lib/sse-channels.ts";
 
 const router = Router();
 

@@ -62,7 +62,7 @@
  * discipline, opposite direction — so it lives beside the enumeration loop, not apart
  * from it. `DELETABLE_AUTH_METHOD_COLLECTIONS` is likewise shared by both callers.
  */
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.run" });
 

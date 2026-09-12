@@ -76,11 +76,11 @@ import {
 } from "@workspace/db";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
-import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
-import { formatChangeRequestCode } from "../lib/portal-change-control";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
+import { formatChangeRequestCode } from "../lib/portal-change-control.ts";
+import { logger } from "../lib/logger.ts";
 import {
   buildBuckets,
   buildDensity,
@@ -104,7 +104,7 @@ import {
   WORKLOAD_NAMES,
   type Bucket,
   type MessageCenterRow,
-} from "../lib/portal-message-center";
+} from "../lib/portal-message-center.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

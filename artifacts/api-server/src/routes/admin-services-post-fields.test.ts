@@ -43,7 +43,7 @@ vi.mock("@workspace/db", () => ({
   contractTemplatesTable: {},
 }));
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const auth = req.headers["authorization"] ?? "";
     if (auth === `Bearer ${ADMIN_PASS}`) return next();
@@ -51,7 +51,7 @@ vi.mock("../middlewares/requireAuth", () => ({
   },
 }));
 
-vi.mock("../lib/service-overview-pdf", () => ({
+vi.mock("../lib/service-overview-pdf.ts", () => ({
   generateServiceOverviewPdf: vi.fn().mockResolvedValue(null),
 }));
 
@@ -67,7 +67,7 @@ beforeEach(async () => {
   app = express();
   app.use(express.json());
 
-  const { default: adminServicesRouter } = await import("./admin-services");
+  const { default: adminServicesRouter } = await import("./admin-services.ts");
   app.use("/api", adminServicesRouter);
 });
 

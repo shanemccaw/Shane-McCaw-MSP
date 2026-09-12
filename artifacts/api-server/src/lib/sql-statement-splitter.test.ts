@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitSqlStatements } from "./sql-statement-splitter";
+import { splitSqlStatements } from "./sql-statement-splitter.ts";
 
 describe("splitSqlStatements", () => {
   it("splits simple statements on top-level semicolons", () => {

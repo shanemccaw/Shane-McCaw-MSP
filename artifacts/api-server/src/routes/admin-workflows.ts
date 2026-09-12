@@ -49,13 +49,13 @@ import {
   scriptPackagesTable,
   type WfGraph,
 } from "@workspace/db";
-import { STATIC_NODE_SAMPLES, DYNAMIC_SHAPE_NODE_TYPES } from "../lib/workflow-node-default-samples";
+import { STATIC_NODE_SAMPLES, DYNAMIC_SHAPE_NODE_TYPES } from "../lib/workflow-node-default-samples.ts";
 import { eq, and, desc, asc, count, sql, gte, lte, inArray } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "workflow.run" });
-import { fireWorkflowForDefinition, fireWorkflowFanOut, isFanOutConfigured, computeNextCronRun, executeWorkflowRun, resumeWorkflowRun } from "../lib/workflow-executor";
-import { registerAdminWorkflowEventClient } from "../lib/sse-channels";
+import { fireWorkflowForDefinition, fireWorkflowFanOut, isFanOutConfigured, computeNextCronRun, executeWorkflowRun, resumeWorkflowRun } from "../lib/workflow-executor.ts";
+import { registerAdminWorkflowEventClient } from "../lib/sse-channels.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import crypto from "crypto";
 

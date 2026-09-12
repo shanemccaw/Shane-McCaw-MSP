@@ -28,15 +28,15 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("./tenant-signals", () => ({
+vi.mock("./tenant-signals.ts", () => ({
   resolveCustomerUserIds: (_customerId: number) => Promise.resolve(mockUserIds),
 }));
 
-vi.mock("./portal-customer-scope", () => ({
+vi.mock("./portal-customer-scope.ts", () => ({
   resolveCustomerId: (req: any) => req.user?.customerId ?? null,
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const noop = { error: () => {}, warn: () => {}, info: () => {}, debug: () => {} };
   return { logger: { ...noop, child: () => noop } };
 });
@@ -46,7 +46,7 @@ import {
   hasTierFeature,
   requireTierFeature,
   PORTAL_TIER_MODULE_KEYS,
-} from "./portal-tier-features";
+} from "./portal-tier-features.ts";
 
 beforeEach(() => {
   mockUserIds = [1];

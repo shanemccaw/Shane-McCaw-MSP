@@ -55,15 +55,15 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, changeCatalogItemsTable, configPacksTable, mspChangeRequestsTable, portalChangeControlPolicyTable, type InsertMspChangeRequest } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
-import { requireAddOnEntitlement } from "../lib/portal-addon-entitlements";
-import { materializeApprovalsForChange } from "../lib/portal-change-approvals-store";
-import { formatChangeRequestCode, workloadForCategory } from "../lib/portal-change-control";
-import { activeFreezeForSubmit } from "../lib/portal-change-freeze-store";
-import { maintenanceCoverageForBookedSpan } from "../lib/portal-change-maintenance-store";
-import { CHANGE_CONTROL_FEATURE_KEY } from "./portal-change-control";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { requireAddOnEntitlement } from "../lib/portal-addon-entitlements.ts";
+import { materializeApprovalsForChange } from "../lib/portal-change-approvals-store.ts";
+import { formatChangeRequestCode, workloadForCategory } from "../lib/portal-change-control.ts";
+import { activeFreezeForSubmit } from "../lib/portal-change-freeze-store.ts";
+import { maintenanceCoverageForBookedSpan } from "../lib/portal-change-maintenance-store.ts";
+import { CHANGE_CONTROL_FEATURE_KEY } from "./portal-change-control.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

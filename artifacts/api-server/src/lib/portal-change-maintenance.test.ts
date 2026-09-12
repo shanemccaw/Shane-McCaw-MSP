@@ -14,7 +14,7 @@ import {
   spanWithinMaintenanceWindow,
   windowOverlapsRange,
   type MaintenanceWindowCandidate,
-} from "./portal-change-maintenance";
+} from "./portal-change-maintenance.ts";
 
 function windowFixture(overrides: Partial<MaintenanceWindowCandidate> = {}): MaintenanceWindowCandidate {
   return {

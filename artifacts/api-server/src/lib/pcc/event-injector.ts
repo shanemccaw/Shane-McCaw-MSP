@@ -1,4 +1,4 @@
-import { PccStreamingServer } from './streaming-server.js';
+import { PccStreamingServer } from './streaming-server.ts';
 
 export interface PccInjectionResult {
   injectionId: string;

@@ -7,7 +7,7 @@ import {
   workflowTemplateStepTasksTable,
 } from "@workspace/db";
 import { eq, asc, ilike, or } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 
 const navy  = rgb(0.039, 0.145, 0.251);

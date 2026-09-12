@@ -13,7 +13,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, engagebayConnectionTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { setSecretValue } from "../lib/azure-keyvault.ts";
 import {
   ENGAGEBAY_DEFAULT_MSP_ID,
@@ -22,7 +22,7 @@ import {
   engagebayApiKeySecretName,
   listTags,
 } from "../lib/engagebay-client.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "integration.engagebay" });
 

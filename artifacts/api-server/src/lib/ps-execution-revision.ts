@@ -23,8 +23,8 @@
  * the production container, and an unset dev URL throws rather than falling back.
  */
 
-import { getPsExecutionContainerUrl } from "./ps-execution-client";
-import { logger } from "./logger";
+import { getPsExecutionContainerUrl } from "./ps-execution-client.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

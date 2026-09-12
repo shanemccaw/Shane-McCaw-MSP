@@ -38,8 +38,8 @@ import {
   mspDiagnosticFindingsTable,
 } from "@workspace/db";
 import { eq, desc, and, inArray } from "drizzle-orm";
-import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

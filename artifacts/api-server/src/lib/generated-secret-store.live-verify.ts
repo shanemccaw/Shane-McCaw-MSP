@@ -35,10 +35,10 @@ import {
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 
-import { persistGeneratedSecretsForRun } from "./config-pack-orchestrator";
-import { fireWorkflowForDefinition } from "./workflow-executor";
-import { generateStrongPassword, resolvePendingSecretPlaintext } from "../routes/break-glass-verification";
-import { purgeGeneratedSecret, readGeneratedSecret, type GeneratedSecretRef } from "./generated-secret-store";
+import { persistGeneratedSecretsForRun } from "./config-pack-orchestrator.ts";
+import { fireWorkflowForDefinition } from "./workflow-executor.ts";
+import { generateStrongPassword, resolvePendingSecretPlaintext } from "../routes/break-glass-verification.ts";
+import { purgeGeneratedSecret, readGeneratedSecret, type GeneratedSecretRef } from "./generated-secret-store.ts";
 
 const CUSTOMER_ID = 1; // the testbed tenant — read-only here, nothing is written to it
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeDailyHistory, type IncidentWindow } from "./public-status";
+import { computeDailyHistory, type IncidentWindow } from "./public-status.ts";
 
 // Fixed reference "now" (mid-day UTC) so the 90 UTC-day buckets are deterministic.
 const NOW = new Date("2026-08-26T13:37:00Z");

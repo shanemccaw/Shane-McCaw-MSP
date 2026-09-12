@@ -24,9 +24,9 @@
  */
 import { db, mspSowsTable, mspSowEventsTable, tenantsTable } from "@workspace/db";
 import { and, eq, inArray, isNotNull, lt } from "drizzle-orm";
-import { logger } from "./logger";
-import { runDiagnostics } from "./diagnostics-runner";
-import { runItemDetailCollection } from "./item-detail-collector";
+import { logger } from "./logger.ts";
+import { runDiagnostics } from "./diagnostics-runner.ts";
+import { runItemDetailCollection } from "./item-detail-collector.ts";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 

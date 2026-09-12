@@ -33,14 +33,14 @@ import {
   mspReportSchedulesTable,
 } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.portal" });
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { createRun, executeRun, upsertWorkflow } from "../lib/portal-workflow-engine";
-import { REPORT_GENERATION_WORKFLOW_KEY, REPORT_GENERATION_GRAPH } from "../lib/report-nodes";
-import { compileReportToHtml } from "../lib/compileReportToHtml";
+import { createRun, executeRun, upsertWorkflow } from "../lib/portal-workflow-engine.ts";
+import { REPORT_GENERATION_WORKFLOW_KEY, REPORT_GENERATION_GRAPH } from "../lib/report-nodes.ts";
+import { compileReportToHtml } from "../lib/compileReportToHtml.ts";
 
 const router: IRouter = Router();
 
@@ -857,7 +857,7 @@ router.post(
         return;
       }
 
-      const { sendMailViaGraph } = await import("../lib/graph");
+      const { sendMailViaGraph } = await import("../lib/graph.ts");
       await sendMailViaGraph({
         fromUserId,
         to: recipientEmail,

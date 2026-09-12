@@ -8,10 +8,10 @@ import {
 } from "@workspace/db";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { anthropic, withAiUsageCapture, totalCapturedCostCents } from "@workspace/integrations-anthropic-ai";
-import { getDocumentStylePrefix, getPrompt, getSowPricingFormulaBlock } from "./prompt-loader";
-import { extractAiHtml, firstTextBlock } from "./sow-pricing";
+import { getDocumentStylePrefix, getPrompt, getSowPricingFormulaBlock } from "./prompt-loader.ts";
+import { extractAiHtml, firstTextBlock } from "./sow-pricing.ts";
 // Git #556 — same guard as the standalone engine. See ai-output-ceiling.ts.
-import { assertOutputNotTruncated } from "./ai-output-ceiling";
+import { assertOutputNotTruncated } from "./ai-output-ceiling.ts";
 // Git #567 — same guard as the standalone engine, from the same shared
 // derivation. See SOW_NARRATIVE_DEADLINE_MS below for why this engine's call
 // shape needs two layers where the streaming one can only have the outer.
@@ -19,7 +19,7 @@ import {
   deriveGenerationDeadlineMs,
   deriveGenerationTimeoutMs,
   runGenerationWithDeadline,
-} from "./ai-generation-deadline";
+} from "./ai-generation-deadline.ts";
 // Git #560 — the SOW half of #559. A separate module from
 // `document-claim-binding.ts` because a SOW's claims are PRICING LINES against
 // a structured engine-authoritative table, not prose against `{{profileSample}}`;
@@ -29,7 +29,7 @@ import {
 import {
   assertSowClaimBindingsConsistent,
   type SowPricedLine,
-} from "./sow-claim-binding";
+} from "./sow-claim-binding.ts";
 // The audit call's model, ceiling and temperature are #559's constants rather
 // than new ones: both gates run the same second look on the same model for the
 // same reason, and duplicating the model string across two files is how they
@@ -39,13 +39,13 @@ import {
   CLAIM_BINDING_AUDIT_MODEL,
   CLAIM_BINDING_AUDIT_TEMPERATURE,
   CLAIM_BINDING_AUDIT_TIMEOUT_MS,
-} from "./document-claim-binding";
-import { logger } from "./logger";
-import { runSalesOfferEngineForTenant } from "./sales-offer-engine";
-import { findReusableDocument, resolveCustomerUserIds, resolveDocumentOwnerUserId } from "./tenant-signals";
-import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
-import type { DocumentCost } from "./document-engine";
-import { broadcastPresentationScopeChange, broadcastPresentationDocsChange } from "./sse-channels";
+} from "./document-claim-binding.ts";
+import { logger } from "./logger.ts";
+import { runSalesOfferEngineForTenant } from "./sales-offer-engine.ts";
+import { findReusableDocument, resolveCustomerUserIds, resolveDocumentOwnerUserId } from "./tenant-signals.ts";
+import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2.ts";
+import type { DocumentCost } from "./document-engine.ts";
+import { broadcastPresentationScopeChange, broadcastPresentationDocsChange } from "./sse-channels.ts";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 const costLog = logger.child({ channel: "engine.ai-cost-governance" });

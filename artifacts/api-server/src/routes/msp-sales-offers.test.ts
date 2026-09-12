@@ -54,7 +54,7 @@ vi.mock("drizzle-orm", () => ({
   inArray: (_c: unknown, _v: unknown) => ({ inArray: [_c, _v] }),
 }));
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: (_capability: string) => (req: Request, _res: Response, next: NextFunction) => {
     req.user = { id: 7, email: "operator@test.com", role: "client", mspRole: "MSPOperator", mspId: MSP_ID } as never;
     next();
@@ -67,24 +67,24 @@ vi.mock("../middlewares/rbac-ladder.ts", () => ({
   userClearsLadderCapability: vi.fn(),
 }));
 
-vi.mock("../lib/msp-entitlement", () => ({
+vi.mock("../lib/msp-entitlement.ts", () => ({
   requirePlanFeature: (_feature: string) => (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 
-vi.mock("../lib/sales-offer-engine", () => ({
+vi.mock("../lib/sales-offer-engine.ts", () => ({
   runSalesOfferEngineForTenant: vi.fn(),
   persistSalesOfferCandidates: vi.fn(),
   transitionOfferState: vi.fn(),
   expireStaleSalesOffers: vi.fn(),
 }));
 
-vi.mock("../lib/sse-channels", () => ({
+vi.mock("../lib/sse-channels.ts", () => ({
   registerMspOfferSSEClient: vi.fn(),
   broadcastMspOfferChange: vi.fn(),
   broadcastCustomerOfferChange: vi.fn(),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
@@ -110,8 +110,8 @@ function buildChain(rows: unknown[]) {
 }
 
 import { db } from "@workspace/db";
-import { transitionOfferState } from "../lib/sales-offer-engine";
-import { registerMspOfferSSEClient } from "../lib/sse-channels";
+import { transitionOfferState } from "../lib/sales-offer-engine.ts";
+import { registerMspOfferSSEClient } from "../lib/sse-channels.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
 import jwt from "jsonwebtoken";
@@ -127,7 +127,7 @@ beforeEach(() => {
 // ── App factory ───────────────────────────────────────────────────────────────
 
 async function makeApp() {
-  const { default: mspSalesOffersRouter } = await import("./msp-sales-offers");
+  const { default: mspSalesOffersRouter } = await import("./msp-sales-offers.ts");
   const app = express();
   app.use(express.json());
   app.use("/api", mspSalesOffersRouter);
@@ -253,7 +253,7 @@ describe("GET /api/msp/sales-offers/sse", () => {
   it("#3545 — a PlatformAdmin's ?mspId= is ignored; mspId is resolved strictly from the session", async () => {
     vi.useFakeTimers();
     try {
-      const { default: mspSalesOffersRouter } = await import("./msp-sales-offers");
+      const { default: mspSalesOffersRouter } = await import("./msp-sales-offers.ts");
       const handler = getSseHandler(mspSalesOffersRouter);
 
       const token = jwt.sign(

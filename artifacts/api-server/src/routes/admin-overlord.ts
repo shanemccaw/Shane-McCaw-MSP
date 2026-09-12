@@ -1,9 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspsTable, mspSubscriptionsTable, servicesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { aggregatePlatformMonitoringMrr, calculateColonyCompositeScore } from "../lib/msp-financial-aggregator.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "billing" });
 

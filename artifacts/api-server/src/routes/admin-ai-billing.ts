@@ -48,8 +48,8 @@ import {
   sum,
   type SQL,
 } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 import {
   parseBoundedInt,
   parseDateParam,

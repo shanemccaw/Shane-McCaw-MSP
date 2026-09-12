@@ -31,8 +31,8 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 import { db, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and, inArray, or } from "drizzle-orm";
 import { purchaseApproverUserIds } from "../middlewares/rbac-capability.ts";

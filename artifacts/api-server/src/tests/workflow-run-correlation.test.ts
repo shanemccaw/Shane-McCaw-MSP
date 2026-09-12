@@ -94,10 +94,10 @@ vi.mock("@workspace/db", async (importOriginal) => {
 });
 
 vi.mock("../lib/webhook-delivery.ts", () => ({ fanOutWebhooks: vi.fn(async () => {}) }));
-vi.mock("../lib/webhook-delivery", () => ({ fanOutWebhooks: vi.fn(async () => {}) }));
+vi.mock("../lib/webhook-delivery.ts", () => ({ fanOutWebhooks: vi.fn(async () => {}) }));
 
-import { executeRun, registerNodeHandler } from "../lib/portal-workflow-engine";
-import { dispatchEvent, systemActor } from "../lib/event-bus";
+import { executeRun, registerNodeHandler } from "../lib/portal-workflow-engine.ts";
+import { dispatchEvent, systemActor } from "../lib/event-bus.ts";
 
 // A custom node that emits one extra canonical event mid-run.
 registerNodeHandler("test_emit", async () => {

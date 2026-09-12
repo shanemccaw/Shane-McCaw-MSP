@@ -21,10 +21,10 @@
 import { db } from "@workspace/db";
 import { baselineActionTemplatesTable } from "@workspace/db";
 import { inArray } from "drizzle-orm";
-import { graphFetchForTenant } from "./graph";
-import { resolveBaselineTemplateRequest } from "./workflow-executor";
-import { prepareConfigPackRun } from "./config-pack-orchestrator";
-import { logger } from "./logger";
+import { graphFetchForTenant } from "./graph.ts";
+import { resolveBaselineTemplateRequest } from "./workflow-executor.ts";
+import { prepareConfigPackRun } from "./config-pack-orchestrator.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.config-pack" });
 

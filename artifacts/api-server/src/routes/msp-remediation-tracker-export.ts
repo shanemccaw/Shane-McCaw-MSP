@@ -22,14 +22,14 @@ import {
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 
-import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { buildHtmlDoc, htmlToPdf } from "../lib/html-pdf";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { buildHtmlDoc, htmlToPdf } from "../lib/html-pdf.ts";
 import {
   REMEDIATION_TRACKER_CATALOGUE,
   REMEDIATION_TRACKER_STATUS_LABELS,
-} from "../lib/remediation-tracker-catalogue";
-import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "../lib/remediation-tracker-verification";
+} from "../lib/remediation-tracker-catalogue.ts";
+import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "../lib/remediation-tracker-verification.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 /** MSP-side roles (`users.mspRole`) — see `LEGACY_ROLE_ORDER` in @workspace/db/rbac. */

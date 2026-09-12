@@ -94,17 +94,17 @@ vi.mock("drizzle-orm", () => ({
   inArray: (_c: unknown, _v: unknown) => ({ inArray: [_c, _v] }),
 }));
 
-vi.mock("../lib/sales-offer-engine", () => ({
+vi.mock("../lib/sales-offer-engine.ts", () => ({
   transitionOfferState: vi.fn(),
 }));
 
-vi.mock("../lib/sse-channels", () => ({
+vi.mock("../lib/sse-channels.ts", () => ({
   registerCustomerOfferSSEClient: vi.fn(),
   broadcastMspOfferChange: vi.fn(),
   broadcastCustomerOfferChange: vi.fn(),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
@@ -124,7 +124,7 @@ function buildChain(rows: unknown[]) {
 }
 
 import { db } from "@workspace/db";
-import { transitionOfferState } from "../lib/sales-offer-engine";
+import { transitionOfferState } from "../lib/sales-offer-engine.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const mockDb = db as unknown as MockDb;
@@ -136,7 +136,7 @@ beforeEach(() => {
 // ── App factory ───────────────────────────────────────────────────────────────
 
 async function makeApp() {
-  const { default: portalOffersRouter } = await import("./portal-offers");
+  const { default: portalOffersRouter } = await import("./portal-offers.ts");
   const app = express();
   app.use(express.json());
   app.use("/api", portalOffersRouter);

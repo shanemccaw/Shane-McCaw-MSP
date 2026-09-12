@@ -22,15 +22,15 @@
 import { describe, it, expect } from "vitest";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { ALL_TENANT_DATA_PURGER_DECLARATIONS } from "./modules";
+import { ALL_TENANT_DATA_PURGER_DECLARATIONS } from "./modules.ts";
 import {
   TENANT_SCOPE_PURGE_EXEMPTIONS,
   TENANT_SCOPE_UNCLAIMED,
   declaredTenantScopeKeys,
   findUnaccountedTenantScopedColumns,
   readTenantScopedColumns,
-} from "./coverage";
-import { declareTenantDataPurger } from "./declare";
+} from "./coverage.ts";
+import { declareTenantDataPurger } from "./declare.ts";
 
 describe.skipIf(!process.env.DATABASE_URL)("#2859 — every tenant-scoped table is accounted for", () => {
   it("leaves no live tenant-scoped column undeclared and unexempted", async () => {

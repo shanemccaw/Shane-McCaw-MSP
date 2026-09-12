@@ -23,7 +23,7 @@
 import { randomUUID } from "crypto";
 import { db, mspJobQueueTable, mspDlqStoreTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.run" });
 import { runWithRequestContext } from "./request-context.ts";
 import { captureDlqFailure } from "./dlq.ts";

@@ -68,13 +68,13 @@ import {
   mspSopsTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
-import { resolveTenantScope } from "../lib/portal-customer-scope";
+import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
 import { randomBytes } from "crypto";
-import { requireAdminOrIngestToken, requireCapability } from "../middlewares/requireAuth";
-import { isReplitDevEnvironment, getStripeKey } from "../lib/stripe";
-import { dispatchMspStripeEvent } from "./msp-billing-webhook";
-import { handleMspDunningAdvance } from "../lib/msp-billing-nodes";
-import { logger } from "../lib/logger";
+import { requireAdminOrIngestToken, requireCapability } from "../middlewares/requireAuth.ts";
+import { isReplitDevEnvironment, getStripeKey } from "../lib/stripe.ts";
+import { dispatchMspStripeEvent } from "./msp-billing-webhook.ts";
+import { handleMspDunningAdvance } from "../lib/msp-billing-nodes.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "admin.testbed" });
 
@@ -368,7 +368,7 @@ router.post(
 
     try {
       // The one production undo path — Launch Control's reverse-template rollback.
-      const { rollbackExecution } = await import("../lib/workflow-executor");
+      const { rollbackExecution } = await import("../lib/workflow-executor.ts");
 
       const results: Array<{
         auditLogId: number;

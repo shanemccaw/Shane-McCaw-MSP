@@ -21,9 +21,9 @@ import {
 } from "@workspace/db";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
-import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { resolveFixRoute, resolveTenantWriteCeiling, FIX_ROUTE_AFFORDANCE } from "../lib/remediation-fix-route";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { resolveFixRoute, resolveTenantWriteCeiling, FIX_ROUTE_AFFORDANCE } from "../lib/remediation-fix-route.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

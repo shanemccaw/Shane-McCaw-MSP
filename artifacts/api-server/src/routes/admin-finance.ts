@@ -4,7 +4,7 @@ import {
   db, invoicesTable, usersTable, projectsTable, contractsTable,
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 
 const router = Router();
 

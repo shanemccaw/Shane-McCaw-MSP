@@ -93,7 +93,7 @@ vi.mock("drizzle-orm", () => ({
 // the route's own 500 handler fired, the real cause was invisible even under
 // `vitest --disable-console-intercept`. Forward it to stderr so the next
 // regression in this handler names itself instead of only showing 500 != 200.
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = {
     info: vi.fn(),
     error: vi.fn((obj: any, msg?: any) => {
@@ -106,10 +106,10 @@ vi.mock("../lib/logger", () => {
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
-vi.mock("../lib/audit", () => ({ createAuditLog: vi.fn() }));
-vi.mock("../lib/stripe", () => ({ getStripeKey: vi.fn(() => "sk_test") }));
-vi.mock("../lib/sla-engine", () => ({ runSlaEngineForTenant: vi.fn() }));
-vi.mock("../lib/scope-creep-engine", () => ({ runScopeCreepEngineForTenant: vi.fn() }));
+vi.mock("../lib/audit.ts", () => ({ createAuditLog: vi.fn() }));
+vi.mock("../lib/stripe.ts", () => ({ getStripeKey: vi.fn(() => "sk_test") }));
+vi.mock("../lib/sla-engine.ts", () => ({ runSlaEngineForTenant: vi.fn() }));
+vi.mock("../lib/scope-creep-engine.ts", () => ({ runScopeCreepEngineForTenant: vi.fn() }));
 vi.mock("../lib/request-context.ts", () => ({
   getRequestContext: vi.fn(() => ({})),
   enrichRequestContext: vi.fn(),
@@ -118,11 +118,11 @@ vi.mock("../lib/request-context.ts", () => ({
 // #1397: portal-customer-engines.ts now customer-scopes reads via this bridge.
 // Stub to the single-login set so no extra DB select is issued and this file's
 // mock queue expectations stay valid.
-vi.mock("../lib/tenant-signals", () => ({
+vi.mock("../lib/tenant-signals.ts", () => ({
   resolveCustomerUserIds: async (id: number) => [id],
 }));
 
-import router from "./portal-customer-engines";
+import router from "./portal-customer-engines.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 function makeApp() {

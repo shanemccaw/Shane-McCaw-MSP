@@ -23,7 +23,7 @@
  */
 
 import type { CrApproval, CrApproverRole } from "@workspace/db";
-import type { StoredChangeClass, StoredRiskLevel } from "./portal-change-control";
+import type { StoredChangeClass, StoredRiskLevel } from "./portal-change-control.ts";
 
 /** The stored `cr_approvals.decision` vocabulary. */
 export const CR_APPROVAL_DECISIONS = ["pending", "approved", "rejected", "superseded"] as const;

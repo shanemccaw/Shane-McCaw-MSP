@@ -7,7 +7,7 @@
 
 import { db, mspDlqStoreTable } from "@workspace/db";
 import { eq, isNull, desc, and, sql } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 import { captureException } from "./exception-tracker.ts";
 const log = logger.child({ channel: "system.dlq" });
 

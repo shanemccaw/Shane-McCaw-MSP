@@ -45,8 +45,8 @@ import { sql } from "drizzle-orm";
 import { db, mspMessageCenterItemsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-import { htmlToText } from "./portal-message-center";
-import { logger } from "./logger";
+import { htmlToText } from "./portal-message-center.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

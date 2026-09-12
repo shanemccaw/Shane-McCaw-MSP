@@ -27,9 +27,9 @@ import {
   projectsTable,
 } from "@workspace/db";
 import { eq, asc, and, count, inArray, sql } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.kanban" });
-import { broadcastKanbanChange } from "./sse-channels";
+import { broadcastKanbanChange } from "./sse-channels.ts";
 
 type SpawnedTask = typeof kanbanTasksTable.$inferSelect;
 

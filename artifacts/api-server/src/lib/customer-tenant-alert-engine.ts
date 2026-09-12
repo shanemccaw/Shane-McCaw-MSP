@@ -34,15 +34,15 @@
  */
 
 import { pool } from "@workspace/db";
-import { logger } from "./logger";
-import { sendWebPushToAdmins } from "./web-push";
-import { sendMailViaGraph, graphCredentialsPresent } from "./graph";
+import { logger } from "./logger.ts";
+import { sendWebPushToAdmins } from "./web-push.ts";
+import { sendMailViaGraph, graphCredentialsPresent } from "./graph.ts";
 import {
   deliverCustomerTenantAlertToCustomer,
   type CustomerDeliveryStatus,
-} from "./customer-alert-delivery";
-import { notifyDriftAccountableOwners } from "./notification-center";
-import { checkKeyForDriftDomain } from "./drift-check-specs";
+} from "./customer-alert-delivery.ts";
+import { notifyDriftAccountableOwners } from "./notification-center.ts";
+import { checkKeyForDriftDomain } from "./drift-check-specs.ts";
 import { resolveWorkloadForCheckKey } from "./tenant-workloads.ts";
 
 const log = logger.child({ channel: "engine.alert" });

@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import type { Response } from 'express';
 
 export class PccStreamingServer {
   private static instance: PccStreamingServer | null = null;

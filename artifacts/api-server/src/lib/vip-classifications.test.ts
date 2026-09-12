@@ -6,7 +6,7 @@ import {
   VIP_CLASSIFICATION_SOURCE_LABELS,
   VIP_DISCOVERY_SOURCES,
   type WireVipClassification,
-} from "./vip-classifications";
+} from "./vip-classifications.ts";
 import { VIP_CLASSIFICATION_SOURCES, type VipClassification } from "@workspace/db";
 
 // A real-shaped row, the way `vip_classifications` returns it from Drizzle

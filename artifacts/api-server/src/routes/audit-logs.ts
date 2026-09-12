@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, auditLogsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, count, gte, lte, type SQL } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
+import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
 
 const router: IRouter = Router();
 

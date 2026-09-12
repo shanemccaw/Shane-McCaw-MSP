@@ -20,8 +20,8 @@ import {
   type PsScriptPermissions,
 } from "@workspace/db";
 import { eq, asc, inArray } from "drizzle-orm";
-import { getPrompt } from "./prompt-loader.js";
-import { logger } from "./logger.js";
+import { getPrompt } from "./prompt-loader.ts";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.script" });
 
 // ─── Prompt: generate from service ──────────────────────────────────────────

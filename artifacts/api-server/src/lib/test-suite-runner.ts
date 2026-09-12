@@ -6,9 +6,9 @@ import {
   testSuiteRunsTable,
 } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
-import { logger } from "./logger";
-import { SIMULATOR_MANIFEST, simulatorStorage } from "./simulator-events";
-import { runEngineManifestForTenant } from "./engine-registry";
+import { logger } from "./logger.ts";
+import { SIMULATOR_MANIFEST, simulatorStorage } from "./simulator-events.ts";
+import { runEngineManifestForTenant } from "./engine-registry.ts";
 
 const log = logger.child({ channel: "test-suite" });
 // Exception-trigger steps log through the same channel as the existing
@@ -37,11 +37,11 @@ export interface TestSuiteStepResult {
 const DESTRUCTIVE_KEYWORDS = /\b(drop|truncate|alter|rename)\b/i;
 
 export class TestSuiteRunError extends Error {
-  constructor(
-    public code: "suite_not_found" | "no_steps",
-    message: string,
-  ) {
+  code: "suite_not_found" | "no_steps";
+
+  constructor(code: "suite_not_found" | "no_steps", message: string) {
     super(message);
+    this.code = code;
     this.name = "TestSuiteRunError";
   }
 }

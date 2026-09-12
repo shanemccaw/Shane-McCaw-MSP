@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { DASHBOARD_METRICS } from "./metrics";
-import { DASHBOARD_RENDERERS } from "./renderers";
-import { getValidRenderersForMetric } from "./registry";
-import { classifySourceKey, sourceKeyIsCatalogClaim, NOT_COLLECTED_PREFIX } from "./sourceKeyContract";
+import { DASHBOARD_METRICS } from "./metrics.ts";
+import { DASHBOARD_RENDERERS } from "./renderers.ts";
+import { getValidRenderersForMetric } from "./registry.ts";
+import { classifySourceKey, sourceKeyIsCatalogClaim, NOT_COLLECTED_PREFIX } from "./sourceKeyContract.ts";
 
 test("no monitor_profile metric names a sourceKey a live audit has ruled out", () => {
   // #441. A phantom sourceKey is invisible at runtime — it resolves exactly like

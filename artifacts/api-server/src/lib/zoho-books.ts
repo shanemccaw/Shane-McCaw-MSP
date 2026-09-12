@@ -25,7 +25,7 @@ import { eq, and, isNull, gte, lt } from "drizzle-orm";
 import { zohoGet, zohoFetch, ZohoApiError, ZOHO_DEFAULT_MSP_ID, getZohoConnection } from "./zoho-client.ts";
 import { registerZohoJobHandler } from "./zoho-batch-drain.ts";
 import { enqueueJob } from "./msp-jobs.ts";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 import { bucketStartMs, nextBucketStartMs, bucketKeyOf, bucketTimeSeries } from "./ai-billing-analytics.ts";
 import {
   ZOHO_BOOKS_NODE_TYPES,

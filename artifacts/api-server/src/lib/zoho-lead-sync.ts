@@ -12,7 +12,7 @@
 import { db, leadStagingTable, type LeadStaging } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { enqueueZohoWrite } from "./zoho-crm.ts";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.zoho" });
 

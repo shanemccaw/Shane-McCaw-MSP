@@ -72,11 +72,11 @@ import {
   displayChangeClass,
   formatChangeRequestCode,
   type ChangeClass,
-} from "./portal-change-control";
-import { materializeApprovalsForChange } from "./portal-change-approvals-store";
-import { assignRegisterRef } from "./risk-register-ref";
-import { recordCrEvent } from "./portal-change-timeline-store";
-import { logger } from "./logger";
+} from "./portal-change-control.ts";
+import { materializeApprovalsForChange } from "./portal-change-approvals-store.ts";
+import { assignRegisterRef } from "./risk-register-ref.ts";
+import { recordCrEvent } from "./portal-change-timeline-store.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

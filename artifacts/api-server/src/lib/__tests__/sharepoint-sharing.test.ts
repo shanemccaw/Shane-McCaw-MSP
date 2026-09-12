@@ -44,7 +44,7 @@ vi.mock("@workspace/db", () => ({
   tenantsTable: {},
 }));
 
-vi.mock("../graph", () => ({
+vi.mock("../graph.ts", () => ({
   graphFetchForTenant: vi.fn(),
   ConsentRevokedError: class ConsentRevokedError extends Error {
     tenantId: string;
@@ -71,7 +71,7 @@ vi.mock("../graph", () => ({
   markTenantConsentRevoked: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../ps-execution-client", () => ({
+vi.mock("../ps-execution-client.ts", () => ({
   callPsExecution: vi.fn(),
   PsExecutionError: class PsExecutionError extends Error {
     kind: "unreachable" | "auth_failed" | "script_error";
@@ -85,7 +85,7 @@ vi.mock("../ps-execution-client", () => ({
   },
 }));
 
-vi.mock("../logger", () => {
+vi.mock("../logger.ts", () => {
   const child = vi.fn();
   const base = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child };
   child.mockReturnValue(base);
@@ -102,9 +102,9 @@ import {
   EEEU_LOGIN_NAME_PREFIX,
   EVERYONE_LOGIN_NAME_PREFIX,
   SHAREPOINT_SITE_SHARING_NORMALIZER,
-} from "../sharepoint-sharing";
-import { executeMonitorCheck, FAN_OUT_ITEM_NORMALIZERS } from "../monitor-executor";
-import { graphFetchForTenant } from "../graph";
+} from "../sharepoint-sharing.ts";
+import { executeMonitorCheck, FAN_OUT_ITEM_NORMALIZERS } from "../monitor-executor.ts";
+import { graphFetchForTenant } from "../graph.ts";
 
 // ── Real Graph payload fixtures ───────────────────────────────────────────────
 

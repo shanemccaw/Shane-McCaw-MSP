@@ -13,8 +13,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 import {
   computeScopeCreepEngine,
   runScopeCreepEngineForMsp,
@@ -28,7 +28,7 @@ import {
   computeScopeCreepCompliance,
   type ScopeCreepPolicy,
   type ScopeCreepFulfillmentType,
-} from "../lib/scope-creep-engine";
+} from "../lib/scope-creep-engine.ts";
 
 const log = logger.child({ channel: "engine.scope-creep" });
 

@@ -34,7 +34,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { eq, and, or, notInArray } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 import { ensureLeadStagingForEmail } from "./lead-intent.ts";
 import { queueLeadStagingPush } from "./zoho-lead-sync.ts";
 import { ZOHO_DEFAULT_MSP_ID } from "./zoho-client.ts";

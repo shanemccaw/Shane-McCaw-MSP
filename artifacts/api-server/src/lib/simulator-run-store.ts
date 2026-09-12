@@ -37,9 +37,9 @@
 
 import { db, simulatorCheckRunsTable, type SimulatorCheckRunStatus } from "@workspace/db";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
-import { logger } from "./logger";
-import type { CheckResult, MappingRule } from "./monitor-executor";
-import type { CapturedGraphRequest, GraphRequestCapture } from "./graph-request-capture";
+import { logger } from "./logger.ts";
+import type { CheckResult, MappingRule } from "./monitor-executor.ts";
+import type { CapturedGraphRequest, GraphRequestCapture } from "./graph-request-capture.ts";
 
 const log = logger.child({ channel: "engine.monitor" });
 

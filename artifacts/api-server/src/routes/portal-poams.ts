@@ -53,13 +53,13 @@ import { db, mspPoamsTable, mspPoamMilestonesTable, type ClientApprover } from "
 import { and, eq, desc, asc, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { resolveCustomerId, resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope";
-import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
-import { apiError, ApiErrorCode } from "../lib/api-helpers";
-import { logger } from "../lib/logger";
-import { personIdForUser } from "../lib/portal-ownership";
-import { randomPlaceholder, assignPoamId } from "../lib/poam-ref";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveCustomerId, resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope.ts";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { logger } from "../lib/logger.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
+import { randomPlaceholder, assignPoamId } from "../lib/poam-ref.ts";
 import {
   currentAHolderPersonIds,
   namesForPersonIds,
@@ -67,9 +67,9 @@ import {
   resolveRiskWorkload,
   type RiskAuthority,
   type RiskAuthorizedBy,
-} from "../lib/risk-authority";
-import { softDelete, requestAcceleration, findOpenDeletion, RetentionError } from "../lib/retention/lifecycle";
-import { registerPoamRetention } from "../lib/retention/wiring/msp-poams";
+} from "../lib/risk-authority.ts";
+import { softDelete, requestAcceleration, findOpenDeletion, RetentionError } from "../lib/retention/lifecycle.ts";
+import { registerPoamRetention } from "../lib/retention/wiring/msp-poams.ts";
 
 // Git #3451 — registers `msp_poams` with the platform retention lifecycle. See that
 // file's own header for why this is a plain import-time side effect.

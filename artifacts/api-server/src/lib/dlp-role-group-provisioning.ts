@@ -94,11 +94,11 @@ import {
   WriteBackNotEnabledError,
   WriteBackCustomerNotFoundError,
   WriteConsentRequiredError,
-} from "./graph";
-import { runBaselineTemplateAgainstTenant } from "./workflow-executor";
-import { callPsExecution, PsExecutionError } from "./ps-execution-client";
-import { createAuditLog } from "./audit";
-import { logger } from "./logger";
+} from "./graph.ts";
+import { runBaselineTemplateAgainstTenant } from "./workflow-executor.ts";
+import { callPsExecution, PsExecutionError } from "./ps-execution-client.ts";
+import { createAuditLog } from "./audit.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "tenant.provisioning" });
 

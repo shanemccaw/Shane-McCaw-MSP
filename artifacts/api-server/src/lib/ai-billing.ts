@@ -37,7 +37,7 @@ import {
 } from "@workspace/db";
 import { eq, and, sum, desc, gte, sql, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 import { broadcastToHubWithReplay } from "./sse-hub.ts";
 const log = logger.child({ channel: "billing" });
 

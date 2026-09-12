@@ -28,9 +28,9 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireCapability } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 import { ZohoNotConnectedError, ZohoApiError } from "../lib/zoho-client.ts";
 import {
   listDeskTicketsForOrg,

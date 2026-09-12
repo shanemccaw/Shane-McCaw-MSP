@@ -59,7 +59,7 @@
  */
 
 import type { WfEdge, WfGraph, WfNode } from "@workspace/db";
-import type { StoredSopStep } from "./portal-sops";
+import type { StoredSopStep } from "./portal-sops.ts";
 
 /** Graph verbs `graph_write_operation` can actually execute — see the header. */
 const WRITE_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);

@@ -1,5 +1,5 @@
-export { anthropic } from "./client";
-export { batchProcess, batchProcessWithSSE, isRateLimitError, type BatchOptions } from "./batch";
+export { anthropic } from "./client.ts";
+export { batchProcess, batchProcessWithSSE, isRateLimitError, type BatchOptions } from "./batch/index.ts";
 export {
   withAiAttribution,
   withAiUsageCapture,
@@ -18,4 +18,4 @@ export {
   type AiCallCost,
   type AiCallCostStatus,
   type AiCostOwner,
-} from "./metering";
+} from "./metering.ts";

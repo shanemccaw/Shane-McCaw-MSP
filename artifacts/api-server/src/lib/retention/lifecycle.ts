@@ -42,9 +42,9 @@ import {
   type RetentionDeleteSide,
   type RetentionStage,
 } from "@workspace/db";
-import { logger } from "../logger";
-import { createAuditLog } from "../audit";
-import { notifyRetentionRestore } from "../notification-center";
+import { logger } from "../logger.ts";
+import { createAuditLog } from "../audit.ts";
+import { notifyRetentionRestore } from "../notification-center.ts";
 import {
   advanceStageClock,
   freezeClock,
@@ -57,16 +57,16 @@ import {
   stageDurations,
   stageSeconds,
   type RetentionClockState,
-} from "./clock";
-import { isManualOrigin } from "./origin-registry";
+} from "./clock.ts";
+import { isManualOrigin } from "./origin-registry.ts";
 import {
   DeleteRefusedError,
   checkDeleteAllowed,
   type DeleteGuardTarget,
   type ReferenceEdge,
-} from "./reference-guard";
-import { isRetentionClockRunning, resolveRetentionPolicy } from "./policy";
-import { requireRetainedRecordType, type RetentionTx } from "./registry";
+} from "./reference-guard.ts";
+import { isRetentionClockRunning, resolveRetentionPolicy } from "./policy.ts";
+import { requireRetainedRecordType, type RetentionTx } from "./registry.ts";
 
 const log = logger.child({ channel: "system.core" });
 

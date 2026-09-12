@@ -115,34 +115,34 @@ import { db, changeFreezeWindowsTable, changeMaintenanceWindowsTable, crApproval
 import { and, asc, desc, eq, or } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { userHasCapability, type CapabilityOutcome } from "../middlewares/rbac-capability";
-import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
-import { requireAddOnEntitlement } from "../lib/portal-addon-entitlements";
-import { declineRoutedChangeToRisk } from "../lib/m365-change-router";
-import { personIdForUser } from "../lib/portal-ownership";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { userHasCapability, type CapabilityOutcome } from "../middlewares/rbac-capability.ts";
+import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { requireAddOnEntitlement } from "../lib/portal-addon-entitlements.ts";
+import { declineRoutedChangeToRisk } from "../lib/m365-change-router.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
 import {
   requiredStages,
   summarizeApprovals,
   toWireApproval,
   type ApprovalState,
   type WireApprovalRecord,
-} from "../lib/portal-change-approvals";
-import { loadApprovalPolicy, recordApproval } from "../lib/portal-change-approvals-store";
-import { recordRejection } from "../lib/portal-change-rejection";
-import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise";
-import { dependencyEdgesForMany, type DependencyEdges } from "../lib/portal-change-dependencies-store";
-import { isWindowActiveAt } from "../lib/portal-change-freeze";
-import { spanWithinMaintenanceWindow } from "../lib/portal-change-maintenance";
+} from "../lib/portal-change-approvals.ts";
+import { loadApprovalPolicy, recordApproval } from "../lib/portal-change-approvals-store.ts";
+import { recordRejection } from "../lib/portal-change-rejection.ts";
+import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise.ts";
+import { dependencyEdgesForMany, type DependencyEdges } from "../lib/portal-change-dependencies-store.ts";
+import { isWindowActiveAt } from "../lib/portal-change-freeze.ts";
+import { spanWithinMaintenanceWindow } from "../lib/portal-change-maintenance.ts";
 import {
   addAttachment,
   addComment,
   listAttachmentsForChangeIds,
   listCommentsForChangeIds,
   listEventsForChangeIds,
-} from "../lib/portal-change-timeline-store";
-import { computeChangeMetrics } from "../lib/portal-change-metrics";
-import { logger } from "../lib/logger";
+} from "../lib/portal-change-timeline-store.ts";
+import { computeChangeMetrics } from "../lib/portal-change-metrics.ts";
+import { logger } from "../lib/logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import {
   CHANGE_CLASSES,
@@ -162,7 +162,7 @@ import {
   workloadForCategory,
   type ChangeClass,
   type ChangeRequestDisplayStatus,
-} from "../lib/portal-change-control";
+} from "../lib/portal-change-control.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

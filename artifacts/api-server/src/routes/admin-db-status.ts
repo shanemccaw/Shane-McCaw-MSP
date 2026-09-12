@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import fs from "fs";

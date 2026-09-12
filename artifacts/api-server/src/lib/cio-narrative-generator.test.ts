@@ -79,25 +79,25 @@ vi.mock("@workspace/integrations-anthropic-ai", async () => {
   };
 });
 
-vi.mock("./health-engine", () => ({
+vi.mock("./health-engine.ts", () => ({
   calculateArchitectureHealthScore: async () => {
     throw new Error("no health data in this test");
   },
 }));
-vi.mock("./health-display", () => ({ computeDisplayHealth: () => [] }));
-vi.mock("./pillar-coverage", () => ({ fetchEvaluableSignalKeys: async () => new Set() }));
-vi.mock("./priority-engine", () => ({
+vi.mock("./health-display.ts", () => ({ computeDisplayHealth: () => [] }));
+vi.mock("./pillar-coverage.ts", () => ({ fetchEvaluableSignalKeys: async () => new Set() }));
+vi.mock("./priority-engine.ts", () => ({
   fetchSignalRulesAndGroups: async () => ({ rules: [], groups: [] }),
 }));
-vi.mock("./license-waste-source", () => ({ resolveLicenseWasteCounts: async () => null }));
-vi.mock("./cost-engine", () => ({
+vi.mock("./license-waste-source.ts", () => ({ resolveLicenseWasteCounts: async () => null }));
+vi.mock("./cost-engine.ts", () => ({
   computeSkuCostBreakdown: async () => ({ totalMonthlyCents: 0, totalAnnualCents: 0 }),
   centsToDollars: (cents: number) => cents / 100,
 }));
-vi.mock("./prompt-loader", () => ({
+vi.mock("./prompt-loader.ts", () => ({
   getPrompt: async (_key: string, fallback: string) => fallback,
 }));
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });

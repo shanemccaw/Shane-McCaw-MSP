@@ -10,11 +10,11 @@ import {
   opportunityTasksTable,
   usersTable,
 } from "@workspace/db";
-import { generateWorkflowTasks, daysFromNow } from "../lib/workflow-tasks";
+import { generateWorkflowTasks, daysFromNow } from "../lib/workflow-tasks.ts";
 import { eq, desc, and, or, isNotNull } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { getPrompt } from "../lib/prompt-loader.ts";
-import { graphCredentialsPresent } from "../lib/graph";
+import { graphCredentialsPresent } from "../lib/graph.ts";
 import {
   listMessages,
   getMessage,
@@ -30,9 +30,9 @@ import {
   searchMessages,
   listMailFolders,
   getConversationMessages,
-} from "../lib/graphEmail";
+} from "../lib/graphEmail.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "growth.booking" });
 
 const router: IRouter = Router();

@@ -19,7 +19,7 @@
 
 import { randomUUID } from "crypto";
 import type { Request, Response, NextFunction } from "express";
-import type { AuthUser } from "./requireAuth";
+import type { AuthUser } from "./requireAuth.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 
 export interface MspRequestContext {

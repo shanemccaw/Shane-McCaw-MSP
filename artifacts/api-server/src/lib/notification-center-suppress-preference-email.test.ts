@@ -55,7 +55,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("./sse-channels", () => ({
+vi.mock("./sse-channels.ts", () => ({
   broadcastNotification: vi.fn(),
   broadcastUnreadCount: vi.fn(),
 }));
@@ -70,16 +70,16 @@ vi.mock("./event-bus.ts", () => ({
   dispatchEvent: (...args: unknown[]) => mockDispatchEvent(...args),
 }));
 
-vi.mock("./portal-deep-links", () => ({
+vi.mock("./portal-deep-links.ts", () => ({
   resolvePortalDeepLink: vi.fn().mockReturnValue(null),
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
 
-import { createNotification } from "./notification-center";
+import { createNotification } from "./notification-center.ts";
 
 const CUSTOMER_USER_ID = 42;
 

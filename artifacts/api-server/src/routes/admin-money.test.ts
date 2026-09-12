@@ -111,7 +111,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.headers["x-test-admin"] !== "1") {
       res.status(403).json({ error: "not admin" });
@@ -122,7 +122,7 @@ vi.mock("../middlewares/requireAuth", () => ({
   },
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: {
     child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
     info: vi.fn(),
@@ -132,7 +132,7 @@ vi.mock("../lib/logger", () => ({
   },
 }));
 
-import router, { __resetMoneyCacheForTests } from "./admin-money";
+import router, { __resetMoneyCacheForTests } from "./admin-money.ts";
 
 function buildApp(): Express {
   const app = express();

@@ -44,28 +44,28 @@ vi.mock("drizzle-orm", () => ({
   asc: (c: unknown) => ({ asc: c }),
 }));
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: () => (_req: any, _res: any, next: () => void) => next(),
   requireAuth: (_req: any, _res: any, next: () => void) => next(),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
 let mockMspId: number | null = 1;
-vi.mock("../lib/resolve-msp-id", () => ({
+vi.mock("../lib/resolve-msp-id.ts", () => ({
   resolveMspIdStrict: (_req: any) => mockMspId,
 }));
 
 let mockScope: any = null;
-vi.mock("../lib/portal-customer-scope", () => ({
+vi.mock("../lib/portal-customer-scope.ts", () => ({
   resolveTenantScope: async (_customerId: number) => mockScope,
 }));
 
 import { db } from "@workspace/db";
-import router from "./msp-compliance-frameworks";
+import router from "./msp-compliance-frameworks.ts";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;
 const mockInsert = (db as unknown as { insert: ReturnType<typeof vi.fn> }).insert;

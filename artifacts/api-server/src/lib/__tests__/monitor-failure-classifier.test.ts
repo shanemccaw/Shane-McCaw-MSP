@@ -26,7 +26,7 @@ import {
   classifyRunFailure,
   extractPermissionNames,
   type ClassifiedFailure,
-} from "../monitor-failure-classifier";
+} from "../monitor-failure-classifier.ts";
 
 // ── Real error fixtures ───────────────────────────────────────────────────────
 // Wrapped the way monitor-executor.graphFetchPaginated really wraps them.

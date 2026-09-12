@@ -69,12 +69,12 @@ import {
   type ActiveDirectoryOuAssignmentRequest,
 } from "@workspace/db";
 import { eq, asc, desc, inArray, and } from "drizzle-orm";
-import { requireAuth, requireCapability, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
-import { resolveMspIdStrict } from "../lib/resolve-msp-id";
-import { apiError, ApiErrorCode } from "../lib/api-helpers";
-import { logger } from "../lib/logger";
-import { createAuditLog } from "../lib/audit";
-import { resolveAssignmentCustomer, resolveGraphUserByUpn } from "./admin-active-directory";
+import { requireAuth, requireCapability, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
+import { resolveAssignmentCustomer, resolveGraphUserByUpn } from "./admin-active-directory.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "tenant.active-directory" });

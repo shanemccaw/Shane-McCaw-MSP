@@ -32,8 +32,8 @@
  */
 
 import { sql } from "drizzle-orm";
-import { hardDeleteUserWithinTx } from "../../user-hard-delete";
-import type { TenantDataPurgerDeclaration } from "./declare";
+import { hardDeleteUserWithinTx } from "../../user-hard-delete.ts";
+import type { TenantDataPurgerDeclaration } from "./declare.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Change control — change requests and everything hanging off one, the CAB, and the

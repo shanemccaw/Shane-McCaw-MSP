@@ -67,22 +67,22 @@ vi.mock("drizzle-orm", () => ({
   and: vi.fn((...args: unknown[]) => ({ op: "and", args })),
 }));
 
-vi.mock("../logger", () => {
+vi.mock("../logger.ts", () => {
   const child = vi.fn();
   const base = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child };
   child.mockReturnValue(base);
   return { logger: base };
 });
 
-vi.mock("../audit", () => ({
+vi.mock("../audit.ts", () => ({
   createAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ── Import under test (after mocks) ───────────────────────────────────────────
 
-import { graphFetchForTenant, markTenantConsentRevoked, ConsentRevokedError, LicenseGapError, classifyGraphError } from "../graph";
+import { graphFetchForTenant, markTenantConsentRevoked, ConsentRevokedError, LicenseGapError, classifyGraphError } from "../graph.ts";
 import { db } from "@workspace/db";
-import { createAuditLog } from "../audit";
+import { createAuditLog } from "../audit.ts";
 
 // ── Typed mock accessors ──────────────────────────────────────────────────────
 

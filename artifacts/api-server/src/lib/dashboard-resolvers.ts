@@ -99,7 +99,7 @@ import { runScopeCreepEngineForTenant } from "./scope-creep-engine.ts";
 import { logger } from "./logger.ts";
 import { computeSkuCostBreakdown, centsToDollars, lookupSkuMonthlyPriceCents, type SkuPriceMap } from "./cost-engine.ts";
 import { resolveLicenseWasteCounts, paidSeatFiguresFromLines } from "./license-waste-source.ts";
-import { evaluateDocGateCoverage } from "./doc-gate-coverage";
+import { evaluateDocGateCoverage } from "./doc-gate-coverage.ts";
 import { getTenantServiceState, serviceDisplayName } from "./service-availability.ts";
 import { driftDisplayNamesFromBaselineConfig, driftSpecForDomain, resolveDriftEventLabel } from "./drift-check-specs.ts";
 import { TENANT_SERVICE_KEYS, type TenantServiceKey } from "@workspace/db";

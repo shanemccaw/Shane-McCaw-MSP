@@ -3,11 +3,11 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import { randomUUID } from "crypto";
-import router from "./routes";
-import { subscriptionGate } from "./middlewares/subscriptionGate";
-import { logger } from "./lib/logger";
-import { ConsentRevokedError } from "./lib/graph";
-import { apiError, ApiErrorCode } from "./lib/api-helpers";
+import router from "./routes/index.ts";
+import { subscriptionGate } from "./middlewares/subscriptionGate.ts";
+import { logger } from "./lib/logger.ts";
+import { ConsentRevokedError } from "./lib/graph.ts";
+import { apiError, ApiErrorCode } from "./lib/api-helpers.ts";
 import { runWithRequestContext, getRequestContext } from "./lib/request-context.ts";
 import { captureException } from "./lib/exception-tracker.ts";
 

@@ -46,8 +46,8 @@ vi.mock("@workspace/db", () => ({
   tenantsTable: {},
 }));
 
-import { applyMapping, EVIDENCE_PROPERTY_KEY } from "./monitor-executor";
-import type { MappingRule, EvidenceRecord } from "./monitor-executor";
+import { applyMapping, EVIDENCE_PROPERTY_KEY } from "./monitor-executor.ts";
+import type { MappingRule, EvidenceRecord } from "./monitor-executor.ts";
 
 /** The evidence record for one targetField, or undefined when none was written. */
 function evidenceFor(result: Record<string, unknown>, targetField: string): EvidenceRecord | undefined {

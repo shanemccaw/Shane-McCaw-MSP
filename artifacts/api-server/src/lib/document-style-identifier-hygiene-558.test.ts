@@ -217,7 +217,7 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
   totalCapturedCostCents: vi.fn(),
 }));
 
-vi.mock("./tenant-signals", () => ({
+vi.mock("./tenant-signals.ts", () => ({
   buildTenantProfile: async () => ({
     mergedProfile: { ownerlessGroupCount: 26 },
     mergedProfileByCheck: { "governance:ownerless-groups": { ownerlessGroupCount: 26 } },
@@ -233,9 +233,9 @@ vi.mock("./tenant-signals", () => ({
   NON_CHECK_PROFILE_NAMESPACE: "_profile",
 }));
 
-vi.mock("./finding-point-impact", () => ({ computeFindingPointImpacts: async () => null }));
+vi.mock("./finding-point-impact.ts", () => ({ computeFindingPointImpacts: async () => null }));
 
-vi.mock("./copilot-gate", () => ({
+vi.mock("./copilot-gate.ts", () => ({
   computeCopilotGate: async () => ({
     score: 74,
     threshold: 82,
@@ -250,15 +250,15 @@ vi.mock("./copilot-gate", () => ({
   }),
 }));
 
-vi.mock("./sow-pricing", () => ({ extractAiHtml: () => "<html>generated</html>" }));
-vi.mock("./omg-card-generator-v2", () => ({ generateOmgCardsFromTelemetry: async () => undefined }));
-vi.mock("./remediation-knowledge-base", () => ({
+vi.mock("./sow-pricing.ts", () => ({ extractAiHtml: () => "<html>generated</html>" }));
+vi.mock("./omg-card-generator-v2.ts", () => ({ generateOmgCardsFromTelemetry: async () => undefined }));
+vi.mock("./remediation-knowledge-base.ts", () => ({
   buildRemediationAppendix: vi.fn(),
   REMEDIATION_APPENDIX_MAX_FINDINGS: 15,
   REMEDIATION_APPENDIX_PROMPT_SUFFIX: "",
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });

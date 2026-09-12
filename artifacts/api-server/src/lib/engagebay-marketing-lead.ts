@@ -1,5 +1,5 @@
 import { getEngageBayConnection, createContact, ENGAGEBAY_DEFAULT_MSP_ID } from "./engagebay-client.ts";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "crm" });
 

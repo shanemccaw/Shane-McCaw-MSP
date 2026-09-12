@@ -27,9 +27,9 @@ import { db, dashboardExecutiveSummariesTable, dashboardTemplatesTable } from "@
 import { getMetric } from "@workspace/dashboard-registry";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { resolveMetric, type ResolveContext, type MetricResultOk } from "./dashboard-resolvers.ts";
-import { logger } from "./logger";
-import { getPrompt } from "./prompt-loader";
-import { recordAiUsage } from "./ai-billing";
+import { logger } from "./logger.ts";
+import { getPrompt } from "./prompt-loader.ts";
+import { recordAiUsage } from "./ai-billing.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

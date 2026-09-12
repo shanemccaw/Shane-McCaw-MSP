@@ -13,17 +13,17 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 
-import { fetchPublishedKnowledgeBaseRows } from "../lib/remediation-knowledge-base";
+import { fetchPublishedKnowledgeBaseRows } from "../lib/remediation-knowledge-base.ts";
 import {
   evaluateRevealAuthorization,
   findRevealCandidates,
   recordScriptReveal,
-} from "../lib/remediation-reveal-gate";
-import { formatChangeRequestCode } from "../lib/portal-change-control";
-import { personIdForUser } from "../lib/portal-ownership";
-import { resolveTenantScope } from "../lib/portal-customer-scope";
-import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+} from "../lib/remediation-reveal-gate.ts";
+import { formatChangeRequestCode } from "../lib/portal-change-control.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
+import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

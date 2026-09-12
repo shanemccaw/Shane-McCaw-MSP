@@ -47,8 +47,8 @@ import {
   type IssueCategory,
   type IssueSeverity,
   type RemediationStep,
-} from "./remediation-detail-generator";
-import { logger } from "./logger";
+} from "./remediation-detail-generator.ts";
+import { logger } from "./logger.ts";
 
 // Its own leaf channel, not `engine.document-generator`: the question this
 // subsystem exists to make answerable — "was the remediation content in the

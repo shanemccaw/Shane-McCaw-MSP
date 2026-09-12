@@ -6,7 +6,7 @@
  * at quiz submission time, on background recalculation, and in the API.
  *
  * Usage:
- *   import { deriveSignalsFromQuiz, loadQuizPainConfig } from "./derive-quiz-signals";
+ *   import { deriveSignalsFromQuiz, loadQuizPainConfig } from "./derive-quiz-signals.ts";
  *   const config = await loadQuizPainConfig();
  *   const signals = deriveSignalsFromQuiz(quiz, leadSource, config);
  */

@@ -13,7 +13,7 @@
 import { db, engagebayConnectionTable, type EngageBayConnection } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getSecretValue } from "./azure-keyvault.ts";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.engagebay" });
 

@@ -22,16 +22,16 @@ import {
   type SalesOfferState,
 } from "@workspace/db";
 import { eq, desc, and, asc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { requirePlanFeature } from "../lib/msp-entitlement";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { requirePlanFeature } from "../lib/msp-entitlement.ts";
 import {
   runSalesOfferEngineForTenant,
   persistSalesOfferCandidates,
   transitionOfferState,
   expireStaleSalesOffers,
   loadSalesOfferConfig,
-} from "../lib/sales-offer-engine";
-import { logger } from "../lib/logger";
+} from "../lib/sales-offer-engine.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.offer" });
 
 const router = Router();

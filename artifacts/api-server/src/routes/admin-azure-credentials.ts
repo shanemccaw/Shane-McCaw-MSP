@@ -9,8 +9,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, azureTenantCredentialsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 
 const EXPIRY_WARN_DAYS = 60;
 

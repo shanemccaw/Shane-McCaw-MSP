@@ -31,7 +31,7 @@
  * fired here. This module owns the automated provisioning half.
  */
 
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "tenant.provisioning" });
 
@@ -63,7 +63,7 @@ export async function runFirstLoginProvisioning(opts: FirstLoginProvisioningOpts
   try {
     // Dynamic import mirrors the payment-path call site (portal.ts) and avoids a
     // static route→lib→route cycle at module load.
-    const { provisionClientSite } = await import("../routes/admin-sharepoint.js");
+    const { provisionClientSite } = await import("../routes/admin-sharepoint.ts");
     await provisionClientSite(userId, displayName, log);
     log.info({ userId }, "first-login provisioning completed");
   } catch (err) {

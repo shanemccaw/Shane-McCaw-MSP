@@ -1,5 +1,5 @@
-import { logger } from "./logger";
-import { AZURE_BUILT_IN_ROLE_IDS, AZURE_RM_LEAST_PRIVILEGE_ROLE } from "./azure-rm";
+import { logger } from "./logger.ts";
+import { AZURE_BUILT_IN_ROLE_IDS, AZURE_RM_LEAST_PRIVILEGE_ROLE } from "./azure-rm.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

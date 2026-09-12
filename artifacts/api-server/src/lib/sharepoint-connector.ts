@@ -22,8 +22,8 @@
 import { createHash } from "crypto";
 import { db, mspSharepointConnectorsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { logger } from "./logger";
-import { getAccessToken } from "./graph";
+import { logger } from "./logger.ts";
+import { getAccessToken } from "./graph.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

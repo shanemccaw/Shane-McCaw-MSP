@@ -30,10 +30,10 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 
-import { requireAuth, requireCapability } from "../middlewares/requireAuth";
-import { resolveMspIdStrict } from "../lib/resolve-msp-id";
-import { personIdForUser } from "../lib/portal-ownership";
-import { logger } from "../lib/logger";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
+import { logger } from "../lib/logger.ts";
 import {
   addOrUpdateMember,
   addAgendaItem,
@@ -51,8 +51,8 @@ import {
   startMeeting,
   updateAgendaItemNotes,
   type ApproverIdentity,
-} from "../lib/portal-cab-store";
-import { CAB_MEETING_TYPES, CAB_MEMBER_ROLES, CAB_MEMBER_SIDES, summarizeAgenda, toWireCabAgendaItem, toWireCabMeeting, toWireCabMember } from "../lib/portal-cab";
+} from "../lib/portal-cab-store.ts";
+import { CAB_MEETING_TYPES, CAB_MEMBER_ROLES, CAB_MEMBER_SIDES, summarizeAgenda, toWireCabAgendaItem, toWireCabMeeting, toWireCabMember } from "../lib/portal-cab.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

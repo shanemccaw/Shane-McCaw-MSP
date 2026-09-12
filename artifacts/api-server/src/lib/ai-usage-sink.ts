@@ -24,9 +24,9 @@
 
 import type { AiUsagePersistResult, AiUsageRecord } from "@workspace/integrations-anthropic-ai";
 import { registerAiUsageSink } from "@workspace/integrations-anthropic-ai";
-import { recordAiUsage } from "./ai-billing";
-import { logger } from "./logger";
-import { getRequestContext } from "./request-context";
+import { recordAiUsage } from "./ai-billing.ts";
+import { logger } from "./logger.ts";
+import { getRequestContext } from "./request-context.ts";
 
 const log = logger.child({ channel: "engine.ai-cost-governance" });
 

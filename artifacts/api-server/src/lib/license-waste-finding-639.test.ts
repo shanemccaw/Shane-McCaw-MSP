@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import type { SeatFigures } from "./pillar-summary-stats";
+import type { SeatFigures } from "./pillar-summary-stats.ts";
 
 vi.mock("@workspace/db", () => ({
   db: {},
@@ -28,25 +28,25 @@ vi.mock("@workspace/db", () => ({
   portalWfOperatorTasksTable: {},
 }));
 
-vi.mock("./monitor-executor", () => ({ executeMonitoringPackage: vi.fn() }));
-vi.mock("./workflow-executor", () => ({ emitWorkflowEvent: vi.fn() }));
-vi.mock("./cio-narrative-generator", () => ({ generateCioNarrative: vi.fn() }));
-vi.mock("./doc-gate-coverage", () => ({ evaluateDocGateCoverage: vi.fn() }));
-vi.mock("./pillar-summary-stats", () => ({ resolveSeatFigures: vi.fn() }));
-vi.mock("./license-waste-source", () => ({ DEFAULT_LICENSE_WASTE_CHECK_KEY: "cost:license-waste-estimate" }));
-vi.mock("./sse-channels", () => ({
+vi.mock("./monitor-executor.ts", () => ({ executeMonitoringPackage: vi.fn() }));
+vi.mock("./workflow-executor.ts", () => ({ emitWorkflowEvent: vi.fn() }));
+vi.mock("./cio-narrative-generator.ts", () => ({ generateCioNarrative: vi.fn() }));
+vi.mock("./doc-gate-coverage.ts", () => ({ evaluateDocGateCoverage: vi.fn() }));
+vi.mock("./pillar-summary-stats.ts", () => ({ resolveSeatFigures: vi.fn() }));
+vi.mock("./license-waste-source.ts", () => ({ DEFAULT_LICENSE_WASTE_CHECK_KEY: "cost:license-waste-estimate" }));
+vi.mock("./sse-channels.ts", () => ({
   broadcastDiagnosticsRunProgress: vi.fn(),
   broadcastDiagnosticsRunComplete: vi.fn(),
   broadcastDiagnosticsRunError: vi.fn(),
   clearDiagnosticsRunSSEState: vi.fn(),
 }));
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const log: Record<string, unknown> = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   log["child"] = () => log;
   return { logger: log };
 });
 
-import { classifyLicenseWasteSeverity, buildLicenseWasteFinding } from "./diagnostics-runner";
+import { classifyLicenseWasteSeverity, buildLicenseWasteFinding } from "./diagnostics-runner.ts";
 
 function seats(over: Partial<SeatFigures>): SeatFigures {
   return {

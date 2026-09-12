@@ -40,14 +40,14 @@ import { db, remediationTrackerStepsTable, REMEDIATION_TRACKER_STEP_STATUS } fro
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { resolveRemediationChecklist, resolveRemediationChecklistItem, isKnownCheckKey } from "../lib/remediation-checklist";
-import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger";
-import { buildRaiseChangeRequestInputForChecklistItem } from "../lib/remediation-raise-change";
-import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise";
-import { resolveTenantScope } from "../lib/portal-customer-scope";
-import { declineRemediationChecklistItemToRisk } from "../lib/remediation-tracker-risk-decline";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { resolveRemediationChecklist, resolveRemediationChecklistItem, isKnownCheckKey } from "../lib/remediation-checklist.ts";
+import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger.ts";
+import { buildRaiseChangeRequestInputForChecklistItem } from "../lib/remediation-raise-change.ts";
+import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise.ts";
+import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { declineRemediationChecklistItemToRisk } from "../lib/remediation-tracker-risk-decline.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

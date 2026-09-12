@@ -54,9 +54,9 @@ import { z } from "zod";
 import { db, servicesTable } from "@workspace/db";
 import { dashboardTemplatesTable, DASHBOARD_TEMPLATE_TYPES } from "@workspace/db";
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { requireCapability } from "../middlewares/requireAuth";
-import { detectProductType } from "../lib/productTypeConfig";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { detectProductType } from "../lib/productTypeConfig.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

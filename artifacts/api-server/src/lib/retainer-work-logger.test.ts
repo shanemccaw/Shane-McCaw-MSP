@@ -6,11 +6,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockResolveRetainerAnchorDay = vi.fn(async () => 1);
-vi.mock("./retainer-period-anchor", () => ({
+vi.mock("./retainer-period-anchor.ts", () => ({
   resolveRetainerAnchorDay: (...args: unknown[]) => (mockResolveRetainerAnchorDay as (...a: unknown[]) => unknown)(...args),
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });

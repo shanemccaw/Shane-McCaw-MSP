@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { NODE_TYPE_REGISTRY } from "../node-type-registry";
+import { NODE_TYPE_REGISTRY } from "../node-type-registry.ts";
 
 describe("node-type-registry completeness", () => {
   it("every entry has isAIDependent as a strict boolean (not undefined)", () => {

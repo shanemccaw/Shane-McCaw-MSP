@@ -43,14 +43,14 @@ const h = vi.hoisted(() => {
 
 const auditLogSpy = vi.fn();
 
-vi.mock("../lib/audit", () => ({
+vi.mock("../lib/audit.ts", () => ({
   createAuditLog: (...args: unknown[]) => {
     auditLogSpy(...args);
     return Promise.resolve();
   },
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   function channelLogger(channel: string): Record<string, unknown> {
     return {
       info: (payload: Record<string, unknown>, msg: string) => {
@@ -208,7 +208,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-import router from "./admin-active-directory";
+import router from "./admin-active-directory.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();

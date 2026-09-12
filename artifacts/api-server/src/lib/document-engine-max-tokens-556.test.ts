@@ -153,7 +153,7 @@ vi.mock("@workspace/integrations-anthropic-ai", async () => {
   };
 });
 
-vi.mock("./tenant-signals", () => ({
+vi.mock("./tenant-signals.ts", () => ({
   buildTenantProfile: async () => ({
     mergedProfile: { mfaEnabled: true },
     mergedProfileByCheck: { "identity:mfa-state": { mfaEnabled: true } },
@@ -168,24 +168,24 @@ vi.mock("./tenant-signals", () => ({
 
 // #555's resolver reaches the scoring engine and the DB client; this suite is
 // about the output ceiling, not about point values.
-vi.mock("./finding-point-impact", () => ({
+vi.mock("./finding-point-impact.ts", () => ({
   computeFindingPointImpacts: async () => null,
 }));
 
-vi.mock("./prompt-loader", () => ({
+vi.mock("./prompt-loader.ts", () => ({
   getPrompt: async () => "Write {{sections}} using {{profileSample}} and {{findings}}",
   getDocumentStylePrefix: async () => "<style></style>",
 }));
 
-vi.mock("./omg-card-generator-v2", () => ({
+vi.mock("./omg-card-generator-v2.ts", () => ({
   generateOmgCardsFromTelemetry: async () => undefined,
 }));
 
-vi.mock("./copilot-gate", () => ({
+vi.mock("./copilot-gate.ts", () => ({
   computeCopilotGate: vi.fn(),
 }));
 
-vi.mock("./remediation-knowledge-base", () => ({
+vi.mock("./remediation-knowledge-base.ts", () => ({
   buildRemediationAppendix: async () => {
     appendixCalls += 1;
     return {
@@ -198,7 +198,7 @@ vi.mock("./remediation-knowledge-base", () => ({
   REMEDIATION_APPENDIX_PROMPT_SUFFIX: "",
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });

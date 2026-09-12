@@ -35,7 +35,7 @@ import {
   holdTMinus,
   runbookStatusFromHold,
   type HoldWindowInput,
-} from "./portal-hold-windows";
+} from "./portal-hold-windows.ts";
 
 /** The prototype's frozen clock (proto 7008). */
 const NOW = new Date("2026-08-18T09:00:00Z");

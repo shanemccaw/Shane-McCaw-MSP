@@ -8,9 +8,9 @@ const { fireWorkflowForDefinition } = vi.hoisted(() => ({
       Promise.resolve<number | null>(501),
   ),
 }));
-vi.mock("./workflow-executor", () => ({ fireWorkflowForDefinition }));
+vi.mock("./workflow-executor.ts", () => ({ fireWorkflowForDefinition }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const noop = () => {};
   const child = { info: noop, warn: noop, error: noop, debug: noop };
   return { logger: { child: () => child, ...child } };
@@ -56,7 +56,7 @@ vi.mock("@workspace/db", () => ({
   wfDefinitionsTable: { id: "d.id", name: "d.name" },
 }));
 
-import { dispatchPendingEngagementFollowups } from "./engagement-followup-dispatcher";
+import { dispatchPendingEngagementFollowups } from "./engagement-followup-dispatcher.ts";
 
 beforeEach(() => {
   selectQueue = [];

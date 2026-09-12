@@ -41,11 +41,11 @@ import {
   mspAlertEventsTable,
 } from "@workspace/db";
 import { eq, and, isNull, desc, sql, gt } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.alert" });
-import { sendWebPushToAdmins } from "./web-push";
-import { sendMailViaGraph, graphCredentialsPresent } from "./graph";
-import { SUBSCRIBED_SKU_CHECK_KEYS } from "./service-availability";
+import { sendWebPushToAdmins } from "./web-push.ts";
+import { sendMailViaGraph, graphCredentialsPresent } from "./graph.ts";
+import { SUBSCRIBED_SKU_CHECK_KEYS } from "./service-availability.ts";
 
 // ── Admin Panel base URL for deep-links ──────────────────────────────────────
 

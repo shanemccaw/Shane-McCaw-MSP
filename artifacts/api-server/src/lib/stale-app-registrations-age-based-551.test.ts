@@ -35,8 +35,8 @@ vi.mock("@workspace/db", () => ({
   tenantsTable: {},
 }));
 
-import { applyMapping, classifySeverity } from "./monitor-executor";
-import type { MappingRule, SeverityRule } from "./monitor-executor";
+import { applyMapping, classifySeverity } from "./monitor-executor.ts";
+import type { MappingRule, SeverityRule } from "./monitor-executor.ts";
 
 // ── The real config, mirroring the migration's UPDATE ─────────────────────────
 

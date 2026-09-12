@@ -29,11 +29,11 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantsTable, tenantEngineSnapshotsTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
-import { requireCapability, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
-import { resolveMspIdStrict } from "../lib/resolve-msp-id";
-import { getEngineDef } from "../lib/engine-registry";
-import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history";
-import { logger } from "../lib/logger";
+import { requireCapability, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { getEngineDef } from "../lib/engine-registry.ts";
+import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.signals" });
 

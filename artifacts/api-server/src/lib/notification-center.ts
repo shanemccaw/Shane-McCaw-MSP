@@ -8,11 +8,11 @@
 
 import { db, notificationsTable, usersTable, customerNotificationPreferencesTable, mspStaffNotificationPreferencesTable, portalOwnershipAssignmentsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
-import { broadcastNotification, broadcastUnreadCount } from "./sse-channels";
-import { logger } from "./logger";
+import { broadcastNotification, broadcastUnreadCount } from "./sse-channels.ts";
+import { logger } from "./logger.ts";
 import { sendMessage } from "./graphEmail.ts";
 import { dispatchEvent } from "./event-bus.ts";
-import { resolvePortalDeepLink } from "./portal-deep-links";
+import { resolvePortalDeepLink } from "./portal-deep-links.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "notification" });
 

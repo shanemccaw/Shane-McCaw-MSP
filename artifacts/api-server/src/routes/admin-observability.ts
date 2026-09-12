@@ -16,8 +16,8 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { logger } from "../lib/logger";
-import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
+import { logger } from "../lib/logger.ts";
+import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "notification" });
@@ -550,8 +550,8 @@ router.post("/admin/observability/alert-rules/:id/test", requireAdmin, async (re
     const eventId = evtRes.rows[0]?.id;
     if (!eventId) { res.status(500).json({ error: "Failed to create test event" }); return; }
 
-    const { sendMailViaGraph, graphCredentialsPresent } = await import("../lib/graph");
-    const { sendWebPushToAdmins } = await import("../lib/web-push");
+    const { sendMailViaGraph, graphCredentialsPresent } = await import("../lib/graph.ts");
+    const { sendWebPushToAdmins } = await import("../lib/web-push.ts");
 
     let emailOk = false;
     let pushOk = false;
@@ -790,7 +790,7 @@ function startInternalHeartbeat() {
 
         const mailUserId = process.env.GRAPH_MAIL_USER_ID;
         if (mailUserId && cooldownElapsed) {
-          const { sendMailViaGraph, graphCredentialsPresent } = await import("../lib/graph");
+          const { sendMailViaGraph, graphCredentialsPresent } = await import("../lib/graph.ts");
           if (graphCredentialsPresent()) {
             lastHeartbeatAlertEmailAt = now;
             await sendMailViaGraph({

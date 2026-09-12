@@ -4,8 +4,8 @@ import {
   db, clientHealthHistoryTable, usersTable, clientM365ProfilesTable,
 } from "@workspace/db";
 import { eq, and, gte, desc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { computeM365Scores } from "../lib/m365-scores";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { computeM365Scores } from "../lib/m365-scores.ts";
 
 const router = Router();
 

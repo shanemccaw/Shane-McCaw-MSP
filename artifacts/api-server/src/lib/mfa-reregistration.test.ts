@@ -14,7 +14,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
@@ -31,7 +31,7 @@ import {
   type MfaReregistrationVerificationPolicy,
   type AuthMethodResolutionPolicy,
   type AuthMethodResolutionDeps,
-} from "./mfa-reregistration";
+} from "./mfa-reregistration.ts";
 
 const PASSWORD: AuthenticationMethodRef = {
   id: "28c10230-6103-485e-b985-444c60001490",

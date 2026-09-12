@@ -14,9 +14,9 @@
 import { db, workflowTemplateStepsTable, workflowTemplatesTable, workflowTemplateStepTasksTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "growth.quiz" });
-import { getPrompt } from "./prompt-loader";
+import { getPrompt } from "./prompt-loader.ts";
 
 const VALID_TYPES = [
   "discovery",

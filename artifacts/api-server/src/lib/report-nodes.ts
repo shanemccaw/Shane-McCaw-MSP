@@ -34,8 +34,8 @@
  *     route the run to the DLQ and create an operator task.
  */
 
-import { registerNodeHandler } from "./portal-workflow-engine";
-import type { NodeExecutionContext } from "./portal-workflow-engine";
+import { registerNodeHandler } from "./portal-workflow-engine.ts";
+import type { NodeExecutionContext } from "./portal-workflow-engine.ts";
 import {
   db,
   mspReportDefinitionsTable,
@@ -44,11 +44,11 @@ import {
   mspsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { sendMailViaGraph } from "./graph";
+import { sendMailViaGraph } from "./graph.ts";
 
 // ── PDF helper (text-based, same approach as doc-pipeline-nodes.ts) ───────────
 

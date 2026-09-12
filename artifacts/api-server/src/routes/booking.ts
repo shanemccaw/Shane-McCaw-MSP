@@ -1,10 +1,10 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "growth.booking" });
-import { graphCredentialsPresent, getCalendarView, createCalendarEvent } from "../lib/graph";
-import { sendEmailFromTemplate } from "../lib/mailer";
+import { graphCredentialsPresent, getCalendarView, createCalendarEvent } from "../lib/graph.ts";
+import { sendEmailFromTemplate } from "../lib/mailer.ts";
 
 const router: IRouter = Router();
 

@@ -27,10 +27,10 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
-import { requireCapability } from "../middlewares/requireAuth";
-import { ConfigPackError, loadConfigPack, runConfigPackForCustomer } from "../lib/config-pack-orchestrator";
-import { buildConfigPackGraph, operatorRequiredVariables } from "../lib/config-pack-graph";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { ConfigPackError, loadConfigPack, runConfigPackForCustomer } from "../lib/config-pack-orchestrator.ts";
+import { buildConfigPackGraph, operatorRequiredVariables } from "../lib/config-pack-graph.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.config-pack" });
 
 const router: IRouter = Router();

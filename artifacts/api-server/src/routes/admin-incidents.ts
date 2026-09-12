@@ -13,8 +13,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, platformIncidentsTable } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { logger } from "../lib/logger";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { logger } from "../lib/logger.ts";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "system.core" });

@@ -16,14 +16,14 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantAzureLighthouseOffersTable, tenantAzureReachTable, tenantsTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import {
   buildLighthouseArmTemplate,
   buildLighthouseDeepLink,
   resolveArmScopePath,
   type LighthouseScopeType,
-} from "../lib/azure-lighthouse-onboarding";
-import { logger } from "../lib/logger";
+} from "../lib/azure-lighthouse-onboarding.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

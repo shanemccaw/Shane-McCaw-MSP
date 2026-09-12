@@ -15,10 +15,10 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { db, mspAuditLogsTable } from "@workspace/db";
-import { requireAuth } from "../middlewares/requireAuth";
-import { mspMutatingRateLimit } from "../middlewares/mspRateLimit";
-import { getRequestContext } from "../lib/request-context";
-import { logger } from "../lib/logger";
+import { requireAuth } from "../middlewares/requireAuth.ts";
+import { mspMutatingRateLimit } from "../middlewares/mspRateLimit.ts";
+import { getRequestContext } from "../lib/request-context.ts";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "client.frontend" });

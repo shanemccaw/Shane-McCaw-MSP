@@ -21,12 +21,12 @@
  * skipped, and only a genuinely conflicting key still throws.
  */
 
-import { declareTenantDataPurger } from "./declare";
-import { ALL_TENANT_DATA_PURGER_DECLARATIONS } from "./modules";
-import { listTenantDataPurgers, registerTenantDataPurger } from "../registry";
+import { declareTenantDataPurger } from "./declare.ts";
+import { ALL_TENANT_DATA_PURGER_DECLARATIONS } from "./modules.ts";
+import { listTenantDataPurgers, registerTenantDataPurger } from "../registry.ts";
 
-export * from "./declare";
-export * from "./modules";
+export * from "./declare.ts";
+export * from "./modules.ts";
 
 /**
  * Register every module's declared whole-tenant purge.

@@ -1,4 +1,4 @@
-import type { RadarPillar } from "./pillar-coverage";
+import type { RadarPillar } from "./pillar-coverage.ts";
 
 /**
  * Single source of truth for category -> pillar assignment on new
@@ -86,23 +86,27 @@ const OUT_OF_SCOPE_CATEGORY_DOMAINS = new Set([
 
 export class DeliberatelyUnmappedCategoryDomainError extends Error {
   readonly code = "CATEGORY_DOMAIN_DELIBERATELY_UNMAPPED";
-  constructor(readonly domain: string) {
+  readonly domain: string;
+  constructor(domain: string) {
     super(
       `Category domain "${domain}" has no pillar mapping by deliberate product decision (Git #469) — ` +
         `this is a known, intentional gap, not a bug. Do not guess a pillar for it.`,
     );
+    this.domain = domain;
     this.name = "DeliberatelyUnmappedCategoryDomainError";
   }
 }
 
 export class UnmappedCategoryDomainError extends Error {
   readonly code = "CATEGORY_DOMAIN_UNMAPPED";
-  constructor(readonly domain: string) {
+  readonly domain: string;
+  constructor(domain: string) {
     super(
       `Category domain "${domain}" has no pillar mapping. Add it to GOVERNED_CATEGORY_DOMAIN_TO_PILLAR in ` +
         `category-pillar-mapping.ts (if it belongs to a health/radar pillar) or to OUT_OF_SCOPE_CATEGORY_DOMAINS ` +
         `(if it belongs to another engine's own taxonomy) — it will not silently default to "governance".`,
     );
+    this.domain = domain;
     this.name = "UnmappedCategoryDomainError";
   }
 }

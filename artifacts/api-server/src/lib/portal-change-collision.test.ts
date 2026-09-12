@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { findCollidingChangeRequest, spansCollide, type ChangeRequestCollisionCandidate } from "./portal-change-collision";
+import { findCollidingChangeRequest, spansCollide, type ChangeRequestCollisionCandidate } from "./portal-change-collision.ts";
 
 describe("spansCollide", () => {
   it("two overlapping real spans collide", () => {

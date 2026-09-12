@@ -17,9 +17,9 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { resolveBypassResolutionsForCustomer } from "../lib/remediation-bypass-resolutions";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { resolveBypassResolutionsForCustomer } from "../lib/remediation-bypass-resolutions.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

@@ -17,7 +17,7 @@ import { db, baselineActionTemplatesTable, tenantsTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 
 const mockGraphFetchForTenant = vi.fn();
-vi.mock("./graph", async (importOriginal) => ({
+vi.mock("./graph.ts", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   graphFetchForTenant: (...args: unknown[]) => mockGraphFetchForTenant(...args),
 }));

@@ -42,14 +42,14 @@ import {
   servicesTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { requireCapability } from "../middlewares/requireAuth";
-import { runEngineManifestForTenant } from "../lib/engine-registry";
-import { ConfigPackError, runConfigPackForCustomer } from "../lib/config-pack-orchestrator";
-import { resolvePackKeyForService } from "../lib/remediation-catalog";
-import { createAuditLog } from "../lib/audit";
-import { logger } from "../lib/logger";
-import { CUSTOMER_SAFE_ENGINES } from "../lib/customer-safe-engines";
-import { buildLicenseGapPurchase, recommendationForCheckKey } from "../lib/license-gap-purchase-links";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { runEngineManifestForTenant } from "../lib/engine-registry.ts";
+import { ConfigPackError, runConfigPackForCustomer } from "../lib/config-pack-orchestrator.ts";
+import { resolvePackKeyForService } from "../lib/remediation-catalog.ts";
+import { createAuditLog } from "../lib/audit.ts";
+import { logger } from "../lib/logger.ts";
+import { CUSTOMER_SAFE_ENGINES } from "../lib/customer-safe-engines.ts";
+import { buildLicenseGapPurchase, recommendationForCheckKey } from "../lib/license-gap-purchase-links.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

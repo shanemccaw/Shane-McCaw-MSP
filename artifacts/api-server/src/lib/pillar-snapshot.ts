@@ -27,8 +27,8 @@
 import { db } from "@workspace/db";
 import { tenantPillarSnapshotsTable, tenantsTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
-import { getPillarCoverage } from "./pillar-coverage";
-import { logger } from "./logger";
+import { getPillarCoverage } from "./pillar-coverage.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.health" });
 

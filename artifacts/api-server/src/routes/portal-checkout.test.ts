@@ -27,7 +27,7 @@ import request from "supertest";
 import jwt from "jsonwebtoken";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
-// #2876 — the one `await import("./portal-checkout")` this file needs is paid
+// #2876 — the one `await import("./portal-checkout.ts")` this file needs is paid
 // for exactly once, in the beforeAll below, NOT inside a test body. When it sat
 // inside makeApp() (called per test) the route module's cold Vite transform was
 // billed against the first test's 5000ms budget; on a loaded machine that
@@ -147,29 +147,29 @@ vi.mock("drizzle-orm", () => ({
   gte: vi.fn((_col: unknown, _val: unknown) => ({ gte: [_col, _val] })),
 }));
 
-vi.mock("../lib/resolve-fulfillment", () => ({
+vi.mock("../lib/resolve-fulfillment.ts", () => ({
   resolveFulfillment: mockResolveFulfillment,
 }));
 
-vi.mock("../lib/tenant-billing-state", () => ({
+vi.mock("../lib/tenant-billing-state.ts", () => ({
   recordTenantSubscription: (...args: unknown[]) => mockRecordTenantSubscription(...(args as [])),
 }));
 
-vi.mock("../lib/sales-offer-engine", () => ({
+vi.mock("../lib/sales-offer-engine.ts", () => ({
   transitionOfferState: vi.fn(),
 }));
 
-vi.mock("../lib/sse-channels", () => ({
+vi.mock("../lib/sse-channels.ts", () => ({
   broadcastCustomerOfferChange: vi.fn(),
   broadcastMspOfferChange: vi.fn(),
   registerCustomerOfferSSEClient: vi.fn(),
 }));
 
-vi.mock("../lib/workflow-executor", () => ({
+vi.mock("../lib/workflow-executor.ts", () => ({
   emitWorkflowEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
@@ -181,7 +181,7 @@ vi.mock("../lib/logger", () => {
 // this call, so leaving it unmocked makes the whole file depend on an env var
 // being absent and on Cloudflare being reachable. Mocked to the same
 // bypassed-success shape the real function returns when the key is missing.
-vi.mock("../lib/captcha", () => ({
+vi.mock("../lib/captcha.ts", () => ({
   verifyCaptchaToken: vi.fn().mockResolvedValue({ success: true, bypassed: true }),
 }));
 
@@ -196,12 +196,12 @@ vi.mock("../lib/captcha", () => ({
 // webhook's direct-marketing branch), so the module is stubbed out.
 // DIRECT_MARKETING_CHECKOUT_KIND mirrors the real literal at
 // portal-checkout-direct.ts:69.
-vi.mock("./portal-checkout-direct", () => ({
+vi.mock("./portal-checkout-direct.ts", () => ({
   DIRECT_MARKETING_CHECKOUT_KIND: "direct_marketing",
   provisionDirectMarketingPurchase: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../lib/stripe", () => ({
+vi.mock("../lib/stripe.ts", () => ({
   getStripeKey: vi.fn().mockReturnValue("sk_test_xxx"),
   getMspDefaultPaymentMethod: vi.fn().mockResolvedValue("pm_test"),
 }));
@@ -320,7 +320,7 @@ function updateChain() {
 let checkoutRouter: IRouter;
 
 beforeAll(async () => {
-  ({ default: checkoutRouter } = await import("./portal-checkout"));
+  ({ default: checkoutRouter } = await import("./portal-checkout.ts"));
 });
 
 function makeApp() {

@@ -14,8 +14,8 @@
  * org can narrow it for its own roles like any other customer capability.
  */
 
-import { userHasCapability } from "../middlewares/rbac-capability";
-import type { AuthUser } from "../middlewares/requireAuth";
+import { userHasCapability } from "../middlewares/rbac-capability.ts";
+import type { AuthUser } from "../middlewares/requireAuth.ts";
 
 /** The customer-system capability that unlocks the full catalog. */
 export const FULL_CATALOG_CAPABILITY = "marketplace.browse-full";

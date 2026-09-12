@@ -1,20 +1,20 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, contractTemplatesTable, projectsTable, workflowStepsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, kanbanTasksTable, clientAppRegistrationsTable, type ServiceAssociatedDocument } from "@workspace/db";
 import { eq, and, inArray, sql, asc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
-import { generateServiceOverviewPdf } from "../lib/service-overview-pdf";
-import { resolveCatalogPricing } from "../lib/catalog-pricing";
-import { detectProductType, PRODUCT_TYPE_IMPORT_FIELDS, PRODUCT_TYPE_EXPORT_FIELDS, PRODUCT_TYPE_TEMPLATES, PRODUCT_TYPE_DEFAULT_FULFILLMENT_KEYS, type ProductTypeKey } from "../lib/productTypeConfig";
+import { generateServiceOverviewPdf } from "../lib/service-overview-pdf.ts";
+import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
+import { detectProductType, PRODUCT_TYPE_IMPORT_FIELDS, PRODUCT_TYPE_EXPORT_FIELDS, PRODUCT_TYPE_TEMPLATES, PRODUCT_TYPE_DEFAULT_FULFILLMENT_KEYS, type ProductTypeKey } from "../lib/productTypeConfig.ts";
 import { logger } from "../lib/logger.ts";
-import { getSecretValue } from "../lib/azure-keyvault";
-import { probeGraphPermissions } from "../lib/probe-graph-permissions";
-import { createAuditLog } from "../lib/audit";
-import { resolveTemplateTaskMetadata } from "../lib/template-task-metadata";
-import { getDefaultSteps, seedDefaultWorkflowSteps } from "../lib/default-workflow-steps";
-import { createNotification } from "../lib/notification-center";
+import { getSecretValue } from "../lib/azure-keyvault.ts";
+import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
+import { createAuditLog } from "../lib/audit.ts";
+import { resolveTemplateTaskMetadata } from "../lib/template-task-metadata.ts";
+import { getDefaultSteps, seedDefaultWorkflowSteps } from "../lib/default-workflow-steps.ts";
+import { createNotification } from "../lib/notification-center.ts";
 
 const log = logger.child({ channel: "admin.content" });
 

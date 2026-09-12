@@ -5,7 +5,7 @@ import {
   evaluatePolicyEnactmentGate,
   STANDING_POLICY_TARGET_KIND_LABELS,
   type WireStandingPolicy,
-} from "./standing-policies";
+} from "./standing-policies.ts";
 import { STANDING_POLICY_TARGET_KIND, type StandingPolicy } from "@workspace/db";
 
 // A real-shaped row, the way `standing_policies` returns it from Drizzle

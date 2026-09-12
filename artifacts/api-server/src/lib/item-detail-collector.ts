@@ -54,10 +54,10 @@
 
 import { randomUUID } from "crypto";
 import { db, tenantCheckItemDetailsTable, oversharedItemsTable, licenseAssignmentSnapshotsTable } from "@workspace/db";
-import { executeMonitorCheck, loadOrderedPackageChecks, type CheckResult } from "./monitor-executor";
-import { OVERSHARED_ITEM_CHECK_KEYS, buildOversharedItemRows } from "./overshared-items";
-import { LICENSE_ASSIGNMENT_CHECK_KEY, buildLicenseAssignmentSnapshotRows } from "./license-assignment-snapshots";
-import { logger } from "./logger";
+import { executeMonitorCheck, loadOrderedPackageChecks, type CheckResult } from "./monitor-executor.ts";
+import { OVERSHARED_ITEM_CHECK_KEYS, buildOversharedItemRows } from "./overshared-items.ts";
+import { LICENSE_ASSIGNMENT_CHECK_KEY, buildLicenseAssignmentSnapshotRows } from "./license-assignment-snapshots.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.monitor" });
 

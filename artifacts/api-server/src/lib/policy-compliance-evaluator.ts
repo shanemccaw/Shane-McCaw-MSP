@@ -36,9 +36,9 @@ import {
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
 } from "@workspace/db";
-import { evaluateMailboxAttributeCompliance, evaluateGroupMembershipCompliance, isEvaluableTargetKind, isGroupMembershipTargetState } from "./policy-compliance";
-import { observeOuMailboxSizes, observeOuGroupMemberships } from "./policy-compliance-graph";
-import { logger } from "./logger";
+import { evaluateMailboxAttributeCompliance, evaluateGroupMembershipCompliance, isEvaluableTargetKind, isGroupMembershipTargetState } from "./policy-compliance.ts";
+import { observeOuMailboxSizes, observeOuGroupMemberships } from "./policy-compliance-graph.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

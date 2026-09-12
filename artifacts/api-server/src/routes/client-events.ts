@@ -12,10 +12,10 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
-import { requireAuth } from "../middlewares/requireAuth";
-import { mspMutatingRateLimit } from "../middlewares/mspRateLimit";
-import { captureException } from "../lib/exception-tracker";
-import { logger } from "../lib/logger";
+import { requireAuth } from "../middlewares/requireAuth.ts";
+import { mspMutatingRateLimit } from "../middlewares/mspRateLimit.ts";
+import { captureException } from "../lib/exception-tracker.ts";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "client.frontend" });

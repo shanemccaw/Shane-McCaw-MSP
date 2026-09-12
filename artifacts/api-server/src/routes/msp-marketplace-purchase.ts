@@ -48,15 +48,15 @@ import {
   mspSubscriptionsTable,
 } from "@workspace/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
-import { getStripeKey, getMspDefaultPaymentMethod } from "../lib/stripe";
-import { resolveFulfillment } from "../lib/resolve-fulfillment";
-import { resolveCatalogPricing } from "../lib/catalog-pricing";
-import { recordTenantSubscription } from "../lib/tenant-billing-state";
-import { createAuditLog } from "../lib/audit";
-import { broadcastCustomerOfferChange, broadcastMspOfferChange } from "../lib/sse-channels";
-import { logger } from "../lib/logger";
-import { CUSTOMER_SERVICE_TYPES, toMarketplaceService, type MarketplaceService } from "./portal-marketplace";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { getStripeKey, getMspDefaultPaymentMethod } from "../lib/stripe.ts";
+import { resolveFulfillment } from "../lib/resolve-fulfillment.ts";
+import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
+import { recordTenantSubscription } from "../lib/tenant-billing-state.ts";
+import { createAuditLog } from "../lib/audit.ts";
+import { broadcastCustomerOfferChange, broadcastMspOfferChange } from "../lib/sse-channels.ts";
+import { logger } from "../lib/logger.ts";
+import { CUSTOMER_SERVICE_TYPES, toMarketplaceService, type MarketplaceService } from "./portal-marketplace.ts";
 
 const log = logger.child({ channel: "billing" });
 

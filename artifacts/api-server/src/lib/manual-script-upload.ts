@@ -14,11 +14,11 @@ import {
   clientM365ProfilesTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.script" });
-import { runAiAnalyzer } from "./ai-analyzer";
-import { parseM365ScriptOutput, normaliseProfileUpdates } from "./parse-m365-script-output";
-import { completeManualScriptKanbanCard } from "./manual-script-kanban";
+import { runAiAnalyzer } from "./ai-analyzer.ts";
+import { parseM365ScriptOutput, normaliseProfileUpdates } from "./parse-m365-script-output.ts";
+import { completeManualScriptKanbanCard } from "./manual-script-kanban.ts";
 
 function clampScore(current: number, delta: number): number {
   return Math.max(0, Math.min(100, current + delta));
@@ -118,11 +118,11 @@ export interface UploadResult {
 }
 
 export class UploadError extends Error {
-  constructor(
-    message: string,
-    public readonly statusCode: 400 | 404 | 409,
-  ) {
+  readonly statusCode: 400 | 404 | 409;
+
+  constructor(message: string, statusCode: 400 | 404 | 409) {
     super(message);
+    this.statusCode = statusCode;
     this.name = "UploadError";
   }
 }

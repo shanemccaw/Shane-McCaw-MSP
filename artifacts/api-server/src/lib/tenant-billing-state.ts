@@ -111,7 +111,7 @@ import {
   isRunningTenantStatus,
   type MspSubscriptionFacts,
   type TenantBillingSource,
-} from "./tenant-billing-rules";
+} from "./tenant-billing-rules.ts";
 
 // The pure rule lives in `tenant-billing-rules.ts` (no database import, so it is
 // testable exhaustively). Re-exported here so callers have one place to import from.

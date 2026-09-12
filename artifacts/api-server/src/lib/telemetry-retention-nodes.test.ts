@@ -30,7 +30,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const noop = () => {};
   const noopLogger = { info: noop, warn: noop, error: noop, debug: noop, fatal: noop, trace: noop, child: () => noopLogger };
   return { logger: noopLogger };

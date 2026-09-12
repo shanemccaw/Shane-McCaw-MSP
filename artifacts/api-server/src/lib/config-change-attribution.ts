@@ -71,9 +71,9 @@ import {
   type ConfigChangeVerdict,
 } from "@workspace/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { logger } from "./logger";
-import { normalizePropertyPath } from "./config-snapshot-differ";
-import { formatChangeRequestCode, type ChangeRequestStoredStatus } from "./portal-change-control";
+import { logger } from "./logger.ts";
+import { normalizePropertyPath } from "./config-snapshot-differ.ts";
+import { formatChangeRequestCode, type ChangeRequestStoredStatus } from "./portal-change-control.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

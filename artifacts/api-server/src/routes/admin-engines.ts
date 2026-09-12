@@ -4,27 +4,27 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { db, pool, usersTable, engagementProjectsTable, tenantsTable, mspsTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, salesOfferRuleGroupsTable, tenantEngineSnapshotsTable, impersonationTokensTable, signalDerivationRulesTable, signalRuleGroupsTable, policyRulesTable, policyRuleFiringsTable, psCapabilitySurveyRunsTable, psCapabilitySurveyResultsTable, type PS_CAPABILITY_SURVEY_SESSION_TYPES, type PS_CAPABILITY_SURVEY_STATUSES } from "@workspace/db";
-import { splitSqlStatements } from "../lib/sql-statement-splitter";
-import { recordFailedSqlRun, recordSqlRun } from "../lib/run-history";
-import { createNotification } from "../lib/notification-center";
+import { splitSqlStatements } from "../lib/sql-statement-splitter.ts";
+import { recordFailedSqlRun, recordSqlRun } from "../lib/run-history.ts";
+import { createNotification } from "../lib/notification-center.ts";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
-import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
-import { executeMonitorCheck } from "../lib/monitor-executor";
-import { callPsExecution, PsExecutionError } from "../lib/ps-execution-client";
-import { logger } from "../lib/logger";
+import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth.ts";
+import { executeMonitorCheck } from "../lib/monitor-executor.ts";
+import { callPsExecution, PsExecutionError } from "../lib/ps-execution-client.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.signals" });
 const policyLog = logger.child({ channel: "engine.policy" });
 const systemLog = logger.child({ channel: "system.core" });
 const psLog = logger.child({ channel: "integration.ps-execution" });
-import { SIMULATOR_MANIFEST, simulatorStorage } from "../lib/simulator-events";
+import { SIMULATOR_MANIFEST, simulatorStorage } from "../lib/simulator-events.ts";
 import {
   ENGINE_DEFS,
   getEngineDef,
   buildEngineTestInputForTenant,
   runEngineManifestForTenant,
-} from "../lib/engine-registry";
-import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history";
-import { PLAN_FEATURE_DEFS } from "../lib/msp-entitlement";
+} from "../lib/engine-registry.ts";
+import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history.ts";
+import { PLAN_FEATURE_DEFS } from "../lib/msp-entitlement.ts";
 import {
   computeTenantSignals,
   evaluateRule,
@@ -33,10 +33,10 @@ import {
   resolveCustomerPortalUserId,
   type SignalDerivationRule,
   type SignalRuleGroup,
-} from "../lib/tenant-signals";
-import { getAllRules, getAllGroups, parseIntelligenceFields, saveSnapshot } from "./admin-signal-rules";
-import { pushEngineTestLog, listEngineTestLogs } from "../lib/engine-test-log-buffer";
-import { calculatePlatformPortfolioRisk, calculateMspPortfolioRisk } from "../lib/msp-engine";
+} from "../lib/tenant-signals.ts";
+import { getAllRules, getAllGroups, parseIntelligenceFields, saveSnapshot } from "./admin-signal-rules.ts";
+import { pushEngineTestLog, listEngineTestLogs } from "../lib/engine-test-log-buffer.ts";
+import { calculatePlatformPortfolioRisk, calculateMspPortfolioRisk } from "../lib/msp-engine.ts";
 
 const router: IRouter = Router();
 

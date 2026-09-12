@@ -58,13 +58,13 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../lib/event-bus", () => ({
+vi.mock("../lib/event-bus.ts", () => ({
   dispatchEvent: vi.fn(() => Promise.resolve({ eventId: "evt-123" })),
   systemActor: vi.fn(() => ({ id: "system", role: "system", type: "system" })),
   addEventListener: vi.fn(),
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -74,14 +74,14 @@ vi.mock("../lib/logger", () => ({
   },
 }));
 
-vi.mock("../lib/graph", () => ({
+vi.mock("../lib/graph.ts", () => ({
   getAccessToken: vi.fn(() => Promise.resolve("platform-token-abc")),
   graphCredentialsPresent: vi.fn(() => true),
 }));
 
 // ── Helpers shared by tests ────────────────────────────────────────────────────
 
-import { computeChecksum } from "../lib/sharepoint-connector";
+import { computeChecksum } from "../lib/sharepoint-connector.ts";
 import { PDFDocument } from "pdf-lib";
 
 const SAMPLE_HTML = "<h1>Hello World</h1><p>This is a <strong>test</strong> document.</p>";
@@ -138,7 +138,7 @@ describe("PDF generation from HTML text", () => {
 
 describe("uploadToSharePoint deduplication", () => {
   it("returns existing fileId without making a network call when existingFileId is provided", async () => {
-    const { uploadToSharePoint } = await import("../lib/sharepoint-connector");
+    const { uploadToSharePoint } = await import("../lib/sharepoint-connector.ts");
 
     const buffer = Buffer.from("test-pdf-content");
     const result = await uploadToSharePoint({
@@ -163,7 +163,7 @@ describe("uploadToSharePoint deduplication", () => {
       new Response(JSON.stringify({ id: "new-file-id-xyz", webUrl: "https://contoso.sharepoint.com/new.pdf", size: 1234 }), { status: 200 }),
     );
 
-    const { uploadToSharePoint: upload } = await import("../lib/sharepoint-connector");
+    const { uploadToSharePoint: upload } = await import("../lib/sharepoint-connector.ts");
 
     const result = await upload({
       mode: "platform",
@@ -184,8 +184,8 @@ describe("uploadToSharePoint deduplication", () => {
 
 describe("getConnectorToken — platform mode", () => {
   it("delegates to getAccessToken for platform mode", async () => {
-    const { getConnectorToken } = await import("../lib/sharepoint-connector");
-    const { getAccessToken } = await import("../lib/graph");
+    const { getConnectorToken } = await import("../lib/sharepoint-connector.ts");
+    const { getAccessToken } = await import("../lib/graph.ts");
 
     vi.mocked(getAccessToken).mockResolvedValueOnce("plat-token-xyz");
     const token = await getConnectorToken({ mode: "platform" });
@@ -210,7 +210,7 @@ describe("getConnectorToken — msp_owned mode", () => {
     };
     vi.mocked(db.select).mockReturnValue(selectChain as unknown as ReturnType<typeof db.select>);
 
-    const { getConnectorToken } = await import("../lib/sharepoint-connector");
+    const { getConnectorToken } = await import("../lib/sharepoint-connector.ts");
 
     await expect(
       getConnectorToken({ mode: "msp_owned", connectorId: "nonexistent-id" }),
@@ -234,7 +234,7 @@ describe("getConnectorToken — msp_owned mode", () => {
     };
     vi.mocked(db.select).mockReturnValue(selectChain as unknown as ReturnType<typeof db.select>);
 
-    const { getConnectorToken } = await import("../lib/sharepoint-connector");
+    const { getConnectorToken } = await import("../lib/sharepoint-connector.ts");
 
     await expect(
       getConnectorToken({ mode: "msp_owned", connectorId: "conn-1" }),
@@ -263,7 +263,7 @@ describe("getConnectorToken — msp_owned mode", () => {
     );
 
     process.env.NODE_ENV = "development";
-    const { getConnectorToken } = await import("../lib/sharepoint-connector");
+    const { getConnectorToken } = await import("../lib/sharepoint-connector.ts");
     const token = await getConnectorToken({ mode: "msp_owned", connectorId: "conn-dev" });
 
     expect(token).toBe("msp-token-dev");
@@ -291,8 +291,8 @@ describe("doc_store_html idempotency", () => {
     };
     vi.mocked(db.select).mockReturnValueOnce(selectChain1 as unknown as ReturnType<typeof db.select>);
 
-    const { registerDocPipelineHandlers } = await import("../lib/doc-pipeline-nodes");
-    const { nodeHandlers } = await import("../lib/portal-workflow-engine").then(async (m) => {
+    const { registerDocPipelineHandlers } = await import("../lib/doc-pipeline-nodes.ts");
+    const { nodeHandlers } = await import("../lib/portal-workflow-engine.ts").then(async (m) => {
       return { nodeHandlers: (m as unknown as { nodeHandlers?: unknown }).nodeHandlers };
     }).catch(() => ({ nodeHandlers: null }));
 
@@ -375,13 +375,13 @@ describe("doc_publish idempotency", () => {
 
 describe("DEFAULT_DOC_PIPELINE_GRAPH", () => {
   it("has a start node", async () => {
-    const { DEFAULT_DOC_PIPELINE_GRAPH } = await import("../lib/doc-pipeline-nodes");
+    const { DEFAULT_DOC_PIPELINE_GRAPH } = await import("../lib/doc-pipeline-nodes.ts");
     const startNode = DEFAULT_DOC_PIPELINE_GRAPH.nodes.find((n) => n.type === "start");
     expect(startNode).toBeDefined();
   });
 
   it("contains all required pipeline node types", async () => {
-    const { DEFAULT_DOC_PIPELINE_GRAPH } = await import("../lib/doc-pipeline-nodes");
+    const { DEFAULT_DOC_PIPELINE_GRAPH } = await import("../lib/doc-pipeline-nodes.ts");
     const nodeTypes = DEFAULT_DOC_PIPELINE_GRAPH.nodes.map((n) => n.type);
     expect(nodeTypes).toContain("doc_store_html");
     expect(nodeTypes).toContain("doc_generate_pdf");
@@ -393,7 +393,7 @@ describe("DEFAULT_DOC_PIPELINE_GRAPH", () => {
   });
 
   it("has no cycles (topoSort completes)", async () => {
-    const { DEFAULT_DOC_PIPELINE_GRAPH } = await import("../lib/doc-pipeline-nodes");
+    const { DEFAULT_DOC_PIPELINE_GRAPH } = await import("../lib/doc-pipeline-nodes.ts");
     const graph = DEFAULT_DOC_PIPELINE_GRAPH;
 
     // Kahn's algorithm — same as portal-workflow-engine
@@ -422,7 +422,7 @@ describe("DEFAULT_DOC_PIPELINE_GRAPH", () => {
   });
 
   it("start node has no incoming edges", async () => {
-    const { DEFAULT_DOC_PIPELINE_GRAPH } = await import("../lib/doc-pipeline-nodes");
+    const { DEFAULT_DOC_PIPELINE_GRAPH } = await import("../lib/doc-pipeline-nodes.ts");
     const incomingToStart = DEFAULT_DOC_PIPELINE_GRAPH.edges.filter(
       (e) => e.to === "start",
     );
@@ -434,10 +434,10 @@ describe("DEFAULT_DOC_PIPELINE_GRAPH", () => {
 
 describe("Connector mode token resolution", () => {
   it("platform mode token starts with expected mock value", async () => {
-    const { getAccessToken } = await import("../lib/graph");
+    const { getAccessToken } = await import("../lib/graph.ts");
     vi.mocked(getAccessToken).mockResolvedValue("platform-bearer-token");
 
-    const { getConnectorToken } = await import("../lib/sharepoint-connector");
+    const { getConnectorToken } = await import("../lib/sharepoint-connector.ts");
     const token = await getConnectorToken({ mode: "platform" });
     expect(token).toBe("platform-bearer-token");
   });
@@ -451,7 +451,7 @@ describe("Connector mode token resolution", () => {
     };
     vi.mocked(db.select).mockReturnValueOnce(selectChain as unknown as ReturnType<typeof db.select>);
 
-    const { getConnectorToken } = await import("../lib/sharepoint-connector");
+    const { getConnectorToken } = await import("../lib/sharepoint-connector.ts");
     // Either "not found or inactive" (empty DB) or "no client secret" (mock chain leak)
     // Both are valid failure paths for a missing/unconfigured connector.
     await expect(

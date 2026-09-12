@@ -19,10 +19,10 @@ import {
   mspsTable,
 } from "@workspace/db";
 import { and, desc, eq, gte } from "drizzle-orm";
-import { graphFetchForTenant, ConsentRevokedError } from "../lib/graph";
-import { HEALTHY_STATUSES } from "../lib/m365-health-status";
-import { computeM365UptimeForTenant, SLA_TARGET_UPTIME_PERCENT } from "../lib/sla-uptime";
-import { logger } from "../lib/logger";
+import { graphFetchForTenant, ConsentRevokedError } from "../lib/graph.ts";
+import { HEALTHY_STATUSES } from "../lib/m365-health-status.ts";
+import { computeM365UptimeForTenant, SLA_TARGET_UPTIME_PERCENT } from "../lib/sla-uptime.ts";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "system.core" });

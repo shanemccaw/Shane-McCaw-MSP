@@ -22,8 +22,8 @@ vi.mock("@workspace/db", () => ({
   tenantsTable: {},
 }));
 
-import { applyMapping, classifySeverity } from "./monitor-executor";
-import type { MappingRule, SeverityRule } from "./monitor-executor";
+import { applyMapping, classifySeverity } from "./monitor-executor.ts";
+import type { MappingRule, SeverityRule } from "./monitor-executor.ts";
 
 // Mirrors the migration's UPDATE for appgov:unreviewed-consents.
 const UNREVIEWED_CONSENTS_MAPPING: MappingRule[] = [

@@ -25,7 +25,7 @@ vi.mock("@workspace/db", () => ({
   mspsTable: {},
 }));
 
-vi.mock("./graph", () => ({
+vi.mock("./graph.ts", () => ({
   graphCredentialsPresent: vi.fn(),
   sendMailViaGraph: vi.fn(),
   sendMailViaGraphForMsp: vi.fn(),
@@ -51,11 +51,11 @@ function makeLoggerMock(): { info: ReturnType<typeof vi.fn>; warn: ReturnType<ty
   };
 }
 
-vi.mock("./logger", () => ({
+vi.mock("./logger.ts", () => ({
   logger: makeLoggerMock(),
 }));
 
-vi.mock("./tenant-signals", () => ({
+vi.mock("./tenant-signals.ts", () => ({
   computeTenantHealthVars: vi.fn(),
 }));
 

@@ -24,7 +24,7 @@ process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY = "test-anthropic-key";
 
 // #2865 — ./portal-assessment pulls in a heavy transitive import graph (the
 // whole copilot-readiness-narrative-generator chain) via the dynamic
-// `await import("./portal-assessment")` used in every test below. It can't
+// `await import("./portal-assessment.ts")` used in every test below. It can't
 // be hoisted to a static top-level import — that would run before the env
 // vars above are set and reintroduce the module-load throw the comment above
 // exists to avoid — so under the full-suite parallel run its transform can
@@ -116,37 +116,37 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../lib/diagnostics-runner", () => ({ runDiagnostics: vi.fn() }));
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/diagnostics-runner.ts", () => ({ runDiagnostics: vi.fn() }));
+vi.mock("../lib/logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }));
 
 let mockUser: { id: number; customerId: number } = { id: 99, customerId: 10 };
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: () => (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     (req as unknown as Record<string, unknown>).user = mockUser;
     next();
   },
 }));
 
-vi.mock("../lib/sse-channels", () => ({ registerWorkflowRunSSEClient: vi.fn() }));
+vi.mock("../lib/sse-channels.ts", () => ({ registerWorkflowRunSSEClient: vi.fn() }));
 vi.mock("../lib/document-engine-sow.ts", () => ({ generateSowDocument: vi.fn() }));
-vi.mock("../lib/stripe", () => ({ getStripeKey: vi.fn() }));
-vi.mock("../lib/captcha", () => ({ verifyCaptchaToken: vi.fn() }));
-vi.mock("../lib/portal-url", () => ({ getMspPortalBaseUrl: vi.fn() }));
-vi.mock("../lib/pillar-coverage", () => ({ getPillarCoverage: vi.fn() }));
-vi.mock("../lib/license-waste-source", () => ({ resolveLicenseWasteCounts: vi.fn() }));
-vi.mock("../lib/cost-engine", () => ({ computeSkuCostBreakdown: vi.fn() }));
-vi.mock("../lib/doc-gate-coverage", () => ({ evaluateDocGateCoverage: vi.fn(), DOC_GATE_MIN_COVERAGE_PCT: 50 }));
-vi.mock("../lib/copilot-readiness", () => ({ computeCopilotReadiness: vi.fn() }));
-vi.mock("../lib/sales-offer-engine", () => ({ runSalesOfferEngineForTenant: vi.fn() }));
-vi.mock("../lib/priority-engine", () => ({ fetchSignalRulesAndGroups: vi.fn() }));
-vi.mock("../lib/tenant-signals", () => ({
+vi.mock("../lib/stripe.ts", () => ({ getStripeKey: vi.fn() }));
+vi.mock("../lib/captcha.ts", () => ({ verifyCaptchaToken: vi.fn() }));
+vi.mock("../lib/portal-url.ts", () => ({ getMspPortalBaseUrl: vi.fn() }));
+vi.mock("../lib/pillar-coverage.ts", () => ({ getPillarCoverage: vi.fn() }));
+vi.mock("../lib/license-waste-source.ts", () => ({ resolveLicenseWasteCounts: vi.fn() }));
+vi.mock("../lib/cost-engine.ts", () => ({ computeSkuCostBreakdown: vi.fn() }));
+vi.mock("../lib/doc-gate-coverage.ts", () => ({ evaluateDocGateCoverage: vi.fn(), DOC_GATE_MIN_COVERAGE_PCT: 50 }));
+vi.mock("../lib/copilot-readiness.ts", () => ({ computeCopilotReadiness: vi.fn() }));
+vi.mock("../lib/sales-offer-engine.ts", () => ({ runSalesOfferEngineForTenant: vi.fn() }));
+vi.mock("../lib/priority-engine.ts", () => ({ fetchSignalRulesAndGroups: vi.fn() }));
+vi.mock("../lib/tenant-signals.ts", () => ({
   resolveCustomerIdForPortalUser: vi.fn(),
   resolveSiblingUserIds: vi.fn().mockResolvedValue([99, 199]),
 }));
-vi.mock("../lib/graph", () => ({ REQUIRED_MT_SCOPES: [] }));
-vi.mock("../lib/sharepoint-admin", () => ({
+vi.mock("../lib/graph.ts", () => ({ REQUIRED_MT_SCOPES: [] }));
+vi.mock("../lib/sharepoint-admin.ts", () => ({
   REQUIRED_SHAREPOINT_APP_PERMISSIONS: [],
   // monitor-executor.ts (pulled in transitively via portal-assessment.ts)
   // indexes SHARING_CAPABILITY_NAMES by this enum's members at module load
@@ -173,7 +173,7 @@ describe("POST /portal/diagnostics/debug-reset-session (#284)", () => {
   });
 
   it("clears the quiz key, diagnostic runs, owned workflow runs, and documents for a testbed customer — never touches client_services", async () => {
-    const { default: portalAssessmentRouter } = await import("./portal-assessment");
+    const { default: portalAssessmentRouter } = await import("./portal-assessment.ts");
     const app = express();
     app.use(express.json());
     app.use("/api", portalAssessmentRouter);
@@ -201,7 +201,7 @@ describe("POST /portal/diagnostics/debug-reset-session (#284)", () => {
 
   it("skips the wf_runs delete entirely when the customer owns no doc-gen workflow run", async () => {
     state.wfRunsFound = [];
-    const { default: portalAssessmentRouter } = await import("./portal-assessment");
+    const { default: portalAssessmentRouter } = await import("./portal-assessment.ts");
     const app = express();
     app.use(express.json());
     app.use("/api", portalAssessmentRouter);
@@ -216,7 +216,7 @@ describe("POST /portal/diagnostics/debug-reset-session (#284)", () => {
 
   it("blocks a non-testbed account server-side with 403, even hitting the endpoint directly", async () => {
     state.testbedCustomerRow = { isTestbed: false, copilotAssessment: {} };
-    const { default: portalAssessmentRouter } = await import("./portal-assessment");
+    const { default: portalAssessmentRouter } = await import("./portal-assessment.ts");
     const app = express();
     app.use(express.json());
     app.use("/api", portalAssessmentRouter);
@@ -231,7 +231,7 @@ describe("POST /portal/diagnostics/debug-reset-session (#284)", () => {
 
   it("rejects a token with no customer identity", async () => {
     mockUser = { id: 99, customerId: undefined as unknown as number };
-    const { default: portalAssessmentRouter } = await import("./portal-assessment");
+    const { default: portalAssessmentRouter } = await import("./portal-assessment.ts");
     const app = express();
     app.use(express.json());
     app.use("/api", portalAssessmentRouter);

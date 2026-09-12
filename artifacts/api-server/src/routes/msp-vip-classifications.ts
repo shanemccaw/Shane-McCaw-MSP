@@ -34,12 +34,12 @@ import { db, vipClassificationsTable, tenantsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireAuth, requireCapability } from "../middlewares/requireAuth";
-import { resolveMspIdStrict } from "../lib/resolve-msp-id";
-import { personIdForUser } from "../lib/portal-ownership";
-import { apiError, ApiErrorCode } from "../lib/api-helpers";
-import { logger } from "../lib/logger";
-import { toWireVipClassification, VIP_DISCOVERY_SOURCES } from "../lib/vip-classifications";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { logger } from "../lib/logger.ts";
+import { toWireVipClassification, VIP_DISCOVERY_SOURCES } from "../lib/vip-classifications.ts";
 
 const log = logger.child({ channel: "tenant.lifecycle" });
 

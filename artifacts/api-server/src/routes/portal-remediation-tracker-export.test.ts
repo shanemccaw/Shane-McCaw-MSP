@@ -68,17 +68,17 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: () => (_req: any, _res: any, next: () => void) => next(),
   requireAuth: (_req: any, _res: any, next: () => void) => next(),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
 
-vi.mock("../lib/html-pdf", () => ({
+vi.mock("../lib/html-pdf.ts", () => ({
   buildHtmlDoc: (html: string) => `<html><body>${html}</body></html>`,
   htmlToPdf: vi.fn(async (html: string) => {
     htmlToPdfCalls.push(html);
@@ -86,7 +86,7 @@ vi.mock("../lib/html-pdf", () => ({
   }),
 }));
 
-import router from "./portal-remediation-tracker-export";
+import router from "./portal-remediation-tracker-export.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 function makeApp(user: Record<string, unknown> | null) {

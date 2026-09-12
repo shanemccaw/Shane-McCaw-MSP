@@ -2,9 +2,9 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, testSuitesTable, testSuiteRunsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { runTestSuite, TestSuiteRunError } from "../lib/test-suite-runner";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { runTestSuite, TestSuiteRunError } from "../lib/test-suite-runner.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "test-suite" });
 
 const router: IRouter = Router();

@@ -13,7 +13,7 @@ import {
   toMaintenanceCandidate,
   type MaintenanceMatchContext,
   type MaintenanceWindowCandidate,
-} from "./portal-change-maintenance";
+} from "./portal-change-maintenance.ts";
 
 /**
  * Every ACTIVE window that could possibly apply to this (mspId, tenantId,

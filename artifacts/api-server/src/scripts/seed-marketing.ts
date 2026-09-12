@@ -1,4 +1,4 @@
-import { seedMarketingServices } from "../lib/seed-portal";
+import { seedMarketingServices } from "../lib/seed-portal.ts";
 
 async function main() {
   console.log("[seed-marketing] Running marketing services seed...");

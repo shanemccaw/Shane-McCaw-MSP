@@ -91,7 +91,7 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
   totalCapturedCostCents: vi.fn(),
 }));
 
-vi.mock("./copilot-gate", () => ({
+vi.mock("./copilot-gate.ts", () => ({
   computeCopilotGate: async () => ({
     score: 74,
     threshold: 82,
@@ -101,7 +101,7 @@ vi.mock("./copilot-gate", () => ({
   }),
 }));
 
-vi.mock("./tenant-signals", () => ({
+vi.mock("./tenant-signals.ts", () => ({
   buildTenantProfile: async () => ({
     mergedProfile: {},
     mergedProfileByCheck: {},
@@ -119,28 +119,28 @@ vi.mock("./tenant-signals", () => ({
 // the DB client). Stubbed to null here, which is its own honest "no values
 // available" path: this suite's assertions predate #555 and must keep seeing the
 // findings block exactly as it was. Point values have their own two suites.
-vi.mock("./finding-point-impact", () => ({
+vi.mock("./finding-point-impact.ts", () => ({
   computeFindingPointImpacts: async () => null,
 }));
 
-vi.mock("./prompt-loader", () => ({
+vi.mock("./prompt-loader.ts", () => ({
   getPrompt: async () => "Write {{sections}} using {{profileSample}} and {{findings}}.",
   getDocumentStylePrefix: async () => "<style></style>",
 }));
 
-vi.mock("./sow-pricing", () => ({ extractAiHtml: () => "<html>generated</html>" }));
+vi.mock("./sow-pricing.ts", () => ({ extractAiHtml: () => "<html>generated</html>" }));
 
-vi.mock("./omg-card-generator-v2", () => ({
+vi.mock("./omg-card-generator-v2.ts", () => ({
   generateOmgCardsFromTelemetry: async () => undefined,
 }));
 
-vi.mock("./remediation-knowledge-base", () => ({
+vi.mock("./remediation-knowledge-base.ts", () => ({
   buildRemediationAppendix: vi.fn(),
   REMEDIATION_APPENDIX_MAX_FINDINGS: 15,
   REMEDIATION_APPENDIX_PROMPT_SUFFIX: "",
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });

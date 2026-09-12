@@ -12,11 +12,11 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireAuth } from "../middlewares/requireAuth";
-import { runFirstLoginProvisioning } from "../lib/first-login-provisioning";
-import { emitWorkflowEvent } from "../lib/workflow-executor";
-import { ensureLeadForEmail } from "../lib/lead-intent";
-import { logger } from "../lib/logger";
+import { requireAuth } from "../middlewares/requireAuth.ts";
+import { runFirstLoginProvisioning } from "../lib/first-login-provisioning.ts";
+import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
+import { ensureLeadForEmail } from "../lib/lead-intent.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.provisioning" });
 

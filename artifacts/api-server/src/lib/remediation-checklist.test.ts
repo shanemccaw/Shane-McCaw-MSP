@@ -76,14 +76,14 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const noop = () => {};
   const noopLogger: any = { info: noop, warn: noop, error: noop, debug: noop };
   noopLogger.child = () => noopLogger;
   return { logger: noopLogger };
 });
 
-import { resolveRemediationChecklist, isKnownCheckKey } from "./remediation-checklist";
+import { resolveRemediationChecklist, isKnownCheckKey } from "./remediation-checklist.ts";
 
 const CUSTOMER_ID = 42;
 const RUN_ID = "11111111-1111-1111-1111-111111111111";

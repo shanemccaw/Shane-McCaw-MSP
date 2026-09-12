@@ -29,11 +29,11 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, documentTypesTable, insightsGeneratedDocumentsTable, monitorChecksTable, tenantsTable, projectsTable, servicesTable, usersTable, aiUsageEventsTable, SIGNAL_CATEGORY_PREFIXES } from "@workspace/db";
 import { eq, desc, and, inArray, asc, sql } from "drizzle-orm";
 import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
-import { namespacedProfileKey, resolveCustomerUserIds, BRIDGED_KEY_PRODUCER_CHECK, NON_CHECK_PROFILE_NAMESPACE } from "../lib/tenant-signals";
-import { logger } from "../lib/logger";
+import { namespacedProfileKey, resolveCustomerUserIds, BRIDGED_KEY_PRODUCER_CHECK, NON_CHECK_PROFILE_NAMESPACE } from "../lib/tenant-signals.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 const scopingLog = logger.child({ channel: "engine.document-generator" });

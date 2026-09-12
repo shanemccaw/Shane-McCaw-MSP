@@ -28,18 +28,18 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { canonicalRoleValue } from "@workspace/db/rbac/legacy-ladder";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 import {
   evaluateSubscriptionGate,
   gatedTenantIdFor,
   subscriptionGateBody,
   type GatePrincipal,
-} from "../lib/retention/subscription-gate";
+} from "../lib/retention/subscription-gate.ts";
 import {
   invalidateSubscriptionGateCache,
   readTenantSubscriptionStateCached,
   syncTenantRetentionState,
-} from "../lib/retention/subscription-state";
+} from "../lib/retention/subscription-state.ts";
 
 const log = logger.child({ channel: "auth" });
 

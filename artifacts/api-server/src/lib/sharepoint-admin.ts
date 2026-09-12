@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import { randomUUID, createPrivateKey } from "node:crypto";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.sharepoint" });
 
@@ -289,14 +289,18 @@ async function spSiteManagerFetch(
   return res;
 }
 
-/** Numeric provisioning status returned by SPSiteManager. */
-export enum SiteStatus {
-  NotFound = 0,
-  Provisioning = 1,
-  Ready = 2,
-  Error = 3,
-  AlreadyExists = 4,
-}
+/**
+ * Numeric provisioning status returned by SPSiteManager. A const object, not a
+ * TS `enum`: Node's type-stripping loader cannot run enums (#3574).
+ */
+export const SiteStatus = {
+  NotFound: 0,
+  Provisioning: 1,
+  Ready: 2,
+  Error: 3,
+  AlreadyExists: 4,
+} as const;
+export type SiteStatus = (typeof SiteStatus)[keyof typeof SiteStatus];
 
 export interface CreateSiteCollectionInput {
   /** Display title of the new site. */
@@ -425,13 +429,14 @@ const CSOM_ENVELOPE_OPEN =
   '<Request xmlns="http://schemas.microsoft.com/sharepoint/clientquery/2009" ' +
   'SchemaVersion="15.0.0.0" LibraryVersion="16.0.0.0" ApplicationName="ShaneMcCawMSP">';
 
-/** SharePoint tenant/site external sharing capability (SharingCapability enum). */
-export enum SharingCapability {
-  Disabled = 0,
-  ExternalUserSharingOnly = 1,
-  ExternalUserAndGuestSharing = 2,
-  ExistingExternalUserSharingOnly = 3,
-}
+/** SharePoint tenant/site external sharing capability (Microsoft's SharingCapability enum). */
+export const SharingCapability = {
+  Disabled: 0,
+  ExternalUserSharingOnly: 1,
+  ExternalUserAndGuestSharing: 2,
+  ExistingExternalUserSharingOnly: 3,
+} as const;
+export type SharingCapability = (typeof SharingCapability)[keyof typeof SharingCapability];
 
 interface CsomResult {
   errorInfo: { ErrorMessage?: string; ErrorTypeName?: string } | null;

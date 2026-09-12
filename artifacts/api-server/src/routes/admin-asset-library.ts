@@ -2,8 +2,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 import { db, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, assetLibraryCategoriesTable } from "@workspace/db";
 import { eq, ilike, or, desc, asc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { createAuditLog } from "../lib/audit";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { createAuditLog } from "../lib/audit.ts";
 
 const router: IRouter = Router();
 

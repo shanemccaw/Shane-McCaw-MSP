@@ -1,11 +1,11 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, invoicesTable, usersTable } from "@workspace/db";
 import { eq, and, asc, desc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { createAuditLog } from "../lib/audit";
-import { createNotification } from "../lib/notification-center";
-import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
+import { createNotification } from "../lib/notification-center.ts";
+import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import multer from "multer";
 import path from "path";
 import fs from "fs";

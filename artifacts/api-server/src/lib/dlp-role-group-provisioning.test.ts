@@ -30,7 +30,7 @@ vi.mock("@workspace/db", () => ({
   auditLogsTable: { createdAt: "created_at", metadata: "metadata", entityType: "entity_type", entityId: "entity_id", actionType: "action_type" },
 }));
 
-vi.mock("./graph", () => {
+vi.mock("./graph.ts", () => {
   class WriteBackNotEnabledError extends Error {}
   class WriteBackCustomerNotFoundError extends Error {}
   class WriteConsentRequiredError extends Error {}
@@ -62,12 +62,12 @@ vi.mock("./graph", () => {
 });
 
 const mockRunBaselineTemplate = vi.fn();
-vi.mock("./workflow-executor", () => ({
+vi.mock("./workflow-executor.ts", () => ({
   runBaselineTemplateAgainstTenant: (...args: unknown[]) => mockRunBaselineTemplate(...args),
 }));
 
 const mockCallPsExecution = vi.fn(async (_cmdlet: string, _params: Record<string, unknown>) => ({ items: [{ status: "added" }] }));
-vi.mock("./ps-execution-client", () => {
+vi.mock("./ps-execution-client.ts", () => {
   class PsExecutionError extends Error {
     kind = "unknown";
   }
@@ -78,9 +78,9 @@ vi.mock("./ps-execution-client", () => {
 });
 
 const mockCreateAuditLog = vi.fn(async (_entry: { metadata: Record<string, unknown> }) => {});
-vi.mock("./audit", () => ({ createAuditLog: (entry: { metadata: Record<string, unknown> }) => mockCreateAuditLog(entry) }));
+vi.mock("./audit.ts", () => ({ createAuditLog: (entry: { metadata: Record<string, unknown> }) => mockCreateAuditLog(entry) }));
 
-vi.mock("./logger", () => ({
+vi.mock("./logger.ts", () => ({
   logger: { child: () => ({ info: () => {}, warn: () => {}, error: () => {} }) },
 }));
 

@@ -1,6 +1,6 @@
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "comms.email" });
-import { getAccessToken, graphCredentialsPresent, markTenantConsentRevoked } from "./graph";
+import { getAccessToken, graphCredentialsPresent, markTenantConsentRevoked } from "./graph.ts";
 
 export class GraphMailConfigError extends Error {
   constructor(message: string) {

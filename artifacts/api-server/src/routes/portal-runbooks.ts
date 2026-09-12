@@ -78,10 +78,10 @@ import {
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
-import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
 import {
   computeRiskLevel,
   deriveWorkload,
@@ -89,18 +89,18 @@ import {
   formatChangeRequestCode,
   storedChangeClass,
   storedRiskLevel,
-} from "../lib/portal-change-control";
-import { deriveHoldWindow } from "../lib/portal-hold-windows";
+} from "../lib/portal-change-control.ts";
+import { deriveHoldWindow } from "../lib/portal-hold-windows.ts";
 import {
   currentRunFor,
   loadRunbooksForCustomer,
   maybeAdvanceCycle,
   ownedHold,
   ownedRunbook,
-} from "../lib/portal-runbook-wire";
-import { personIdForUser } from "../lib/portal-ownership";
-import { recordCrEvent } from "../lib/portal-change-timeline-store";
-import { loadApprovalPolicy, materializeApprovalsForChange } from "../lib/portal-change-approvals-store";
+} from "../lib/portal-runbook-wire.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
+import { recordCrEvent } from "../lib/portal-change-timeline-store.ts";
+import { loadApprovalPolicy, materializeApprovalsForChange } from "../lib/portal-change-approvals-store.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

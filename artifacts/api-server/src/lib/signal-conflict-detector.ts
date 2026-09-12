@@ -1,4 +1,4 @@
-import type { SignalDerivationRule } from "./tenant-signals";
+import type { SignalDerivationRule } from "./tenant-signals.ts";
 
 export interface RuleConflict {
   ruleIds: number[];

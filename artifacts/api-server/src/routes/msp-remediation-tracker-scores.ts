@@ -21,17 +21,17 @@ import {
 } from "@workspace/db";
 import { and, asc, desc, eq } from "drizzle-orm";
 
-import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { computeCopilotGate, type CopilotGateResult } from "../lib/copilot-gate";
-import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "../lib/remediation-tracker-verification";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { computeCopilotGate, type CopilotGateResult } from "../lib/copilot-gate.ts";
+import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "../lib/remediation-tracker-verification.ts";
 import {
   reducePillarScores,
   buildTaskPoints,
   SEVERITY_WEIGHT,
   type PillarScore,
   type TaskPoint,
-} from "../lib/remediation-pillar-scores";
+} from "../lib/remediation-pillar-scores.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

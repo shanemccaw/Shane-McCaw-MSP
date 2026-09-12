@@ -35,7 +35,7 @@ vi.mock("@workspace/db", () => ({
   servicesTable: {},
 }));
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const auth = req.headers["authorization"] ?? "";
     if (auth === `Bearer ${ADMIN_PASS}`) return next();
@@ -43,7 +43,7 @@ vi.mock("../middlewares/requireAuth", () => ({
   },
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: { child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }));
 
@@ -76,7 +76,7 @@ beforeEach(async () => {
 
   app = express();
   app.use(express.json());
-  const { default: adminOverlordRouter } = await import("./admin-overlord");
+  const { default: adminOverlordRouter } = await import("./admin-overlord.ts");
   app.use(adminOverlordRouter);
 });
 

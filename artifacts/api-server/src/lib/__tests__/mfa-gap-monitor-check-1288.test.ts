@@ -9,8 +9,8 @@
  * monitor-executor.ts runs in production — not a reimplementation of it.
  */
 import { describe, it, expect } from "vitest";
-import { applyMapping, classifySeverity } from "../monitor-executor";
-import type { MappingRule, SeverityRule } from "../monitor-executor";
+import { applyMapping, classifySeverity } from "../monitor-executor.ts";
+import type { MappingRule, SeverityRule } from "../monitor-executor.ts";
 
 const MAPPING: MappingRule[] = [
   { sourceField: "value", targetField: "privilegedMfaGapCount", transform: "countWhere('{{isAdmin}} == true && {{isMfaRegistered}} == false')" },

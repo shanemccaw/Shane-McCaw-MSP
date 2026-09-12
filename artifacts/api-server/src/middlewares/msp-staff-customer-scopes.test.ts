@@ -41,7 +41,7 @@ import {
   resolveStaffScopedCustomerIds,
   isCustomerBlockedByStaffScope,
   type AuthUser,
-} from "./requireAuth";
+} from "./requireAuth.ts";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;
 

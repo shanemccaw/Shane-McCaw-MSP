@@ -40,7 +40,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireCapability } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import {
   db,
   mspDiagnosticFindingsTable,
@@ -49,8 +49,8 @@ import {
   servicesTable,
 } from "@workspace/db";
 import { and, eq, ilike, inArray, or, desc } from "drizzle-orm";
-import { logger } from "../lib/logger";
-import { PRE_PAYMENT_SERVICE_TYPES, resolveCatalogScope } from "../lib/marketplace-catalog-scope";
+import { logger } from "../lib/logger.ts";
+import { PRE_PAYMENT_SERVICE_TYPES, resolveCatalogScope } from "../lib/marketplace-catalog-scope.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

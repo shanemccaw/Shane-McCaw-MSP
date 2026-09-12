@@ -4,8 +4,8 @@ import {
   CUSTOMER_SERVICE_TYPES,
   PRE_PAYMENT_SERVICE_TYPES,
   resolveCatalogScope,
-} from "./marketplace-catalog-scope";
-import type { AuthUser } from "../middlewares/requireAuth";
+} from "./marketplace-catalog-scope.ts";
+import type { AuthUser } from "../middlewares/requireAuth.ts";
 
 /**
  * #3590 — the marketplace/search catalog scope comes from

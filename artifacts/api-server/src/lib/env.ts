@@ -1,4 +1,4 @@
-import { isReplitDevEnvironment } from "./stripe";
+import { isReplitDevEnvironment } from "./stripe.ts";
 
 /**
  * Real production-vs-dev detection, shared by any subsystem that must behave

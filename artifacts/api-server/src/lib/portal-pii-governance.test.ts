@@ -12,7 +12,7 @@ import {
   severityFromBand,
   PII_GOVERNANCE_CHECKS,
   type PiiCheckRow,
-} from "./portal-pii-governance";
+} from "./portal-pii-governance.ts";
 
 const AT = new Date("2026-08-19T08:04:00.000Z");
 const EARLIER = new Date("2026-08-18T01:00:00.000Z");

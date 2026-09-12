@@ -54,11 +54,11 @@
 
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
-import { logger } from "../logger";
+import { logger } from "../logger.ts";
 import {
   invalidateSubscriptionGateCache,
   syncTenantRetentionState,
-} from "./subscription-state";
+} from "./subscription-state.ts";
 
 const log = logger.child({ channel: "billing" });
 const auditLog = logger.child({ channel: "audit" });

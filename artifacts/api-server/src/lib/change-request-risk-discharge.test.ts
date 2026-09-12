@@ -44,14 +44,14 @@ vi.mock("drizzle-orm", () => ({
   isNull: (col: any) => ({ isNull: col }),
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const noop = () => {};
   const noopLogger: any = { info: noop, warn: noop, error: noop, debug: noop };
   noopLogger.child = () => noopLogger;
   return { logger: noopLogger };
 });
 
-import { dischargeRisksForNewChangeRequest } from "./change-request-risk-discharge";
+import { dischargeRisksForNewChangeRequest } from "./change-request-risk-discharge.ts";
 
 beforeEach(() => {
   mockUpdateReturning = [];

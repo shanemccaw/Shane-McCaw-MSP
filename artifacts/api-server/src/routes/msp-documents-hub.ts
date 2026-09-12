@@ -42,12 +42,12 @@ import {
   quickWinResultSharesTable,
 } from "@workspace/db";
 import { eq, and, inArray, gte, lte, desc } from "drizzle-orm";
-import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { buildHtmlDoc, htmlToPdf } from "../lib/html-pdf.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

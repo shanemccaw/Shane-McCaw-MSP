@@ -1,10 +1,10 @@
 import { db, emailTemplatesTable, emailEventsTable, clientHealthHistoryTable, mspMailboxConnectorsTable, mspsTable, usersTable, failedNotificationsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "comms.email" });
-import { graphCredentialsPresent, sendMailViaGraph, sendMailViaGraphForMsp, mtAppCredentialsPresent, ConsentRevokedError } from "./graph";
-import { computeTenantHealthVars } from "./tenant-signals";
-import { getMspPortalBaseUrl } from "./portal-url";
+import { graphCredentialsPresent, sendMailViaGraph, sendMailViaGraphForMsp, mtAppCredentialsPresent, ConsentRevokedError } from "./graph.ts";
+import { computeTenantHealthVars } from "./tenant-signals.ts";
+import { getMspPortalBaseUrl } from "./portal-url.ts";
 
 // ─── Credential check (logged at startup / first call) ────────────────────────
 // IMPLEMENTATION REPORT: GRAPH_MAIL_USER_ID and Mail.Send status.

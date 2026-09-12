@@ -35,9 +35,9 @@
 
 import { db, standingPoliciesTable, activeDirectoryOusTable, tenantsTable, policyEvaluationRunsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { logger } from "./logger";
-import { decideEvaluationGate } from "./policy-engine-evaluator";
-import { evaluateStandingPolicyForCustomer } from "./policy-compliance-evaluator";
+import { logger } from "./logger.ts";
+import { decideEvaluationGate } from "./policy-engine-evaluator.ts";
+import { evaluateStandingPolicyForCustomer } from "./policy-compliance-evaluator.ts";
 
 const log = logger.child({ channel: "engine.policy" });
 

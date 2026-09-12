@@ -22,7 +22,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspJobQueueTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import {
   listAllContacts,
   searchContacts,
@@ -35,7 +35,7 @@ import {
   type EngageBayContactListResult,
 } from "../lib/engagebay-client.ts";
 import { enqueueEngageBayWrite } from "../lib/engagebay-nodes-exec.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "integration.engagebay" });
 

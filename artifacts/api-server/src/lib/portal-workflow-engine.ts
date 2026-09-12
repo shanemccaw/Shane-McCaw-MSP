@@ -38,13 +38,13 @@ import {
 } from "@workspace/db";
 import type { PortalWfRun } from "@workspace/db";
 import { eq, and, inArray, sql as drizzleSql } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.run" });
-import { addEventListener, dispatchEvent, systemActor } from "./event-bus";
+import { addEventListener, dispatchEvent, systemActor } from "./event-bus.ts";
 import { runWithRequestContext } from "./request-context.ts";
-import type { DispatchedEvent } from "./event-bus";
-import { isAIDependent, getAiCostOwner } from "./node-type-registry.js";
-import { checkAiAdmission, recordAiUsage } from "./ai-billing.js";
+import type { DispatchedEvent } from "./event-bus.ts";
+import { isAIDependent, getAiCostOwner } from "./node-type-registry.ts";
+import { checkAiAdmission, recordAiUsage } from "./ai-billing.ts";
 import { captureDlqFailure } from "./dlq.ts";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -884,7 +884,7 @@ export async function initPortalWorkflowEngine(): Promise<void> {
   engineInitialized = true;
 
   // Register built-in node handlers (imported lazily to avoid circular deps)
-  const { registerBuiltinHandlers } = await import("./portal-workflow-nodes");
+  const { registerBuiltinHandlers } = await import("./portal-workflow-nodes.ts");
   registerBuiltinHandlers();
 
   // Load start mappings

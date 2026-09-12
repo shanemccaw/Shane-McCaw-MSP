@@ -32,13 +32,13 @@ function makeLoggerMock(): { info: ReturnType<typeof vi.fn>; warn: ReturnType<ty
   };
 }
 
-vi.mock("./logger", () => ({
+vi.mock("./logger.ts", () => ({
   logger: makeLoggerMock(),
 }));
 
 const sendMailViaGraph = vi.fn().mockResolvedValue(undefined);
 
-vi.mock("./graph", () => ({
+vi.mock("./graph.ts", () => ({
   graphCredentialsPresent: vi.fn(() => true),
   sendMailViaGraph: (...args: unknown[]) => sendMailViaGraph(...args),
   sendMailViaGraphForMsp: vi.fn(),
@@ -46,11 +46,11 @@ vi.mock("./graph", () => ({
   ConsentRevokedError: class ConsentRevokedError extends Error {},
 }));
 
-vi.mock("./tenant-signals", () => ({
+vi.mock("./tenant-signals.ts", () => ({
   computeTenantHealthVars: vi.fn(),
 }));
 
-vi.mock("./portal-url", () => ({
+vi.mock("./portal-url.ts", () => ({
   getMspPortalBaseUrl: vi.fn(() => "https://portal.example.com"),
 }));
 

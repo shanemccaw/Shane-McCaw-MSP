@@ -14,7 +14,7 @@ import {
   reducePillarScores,
   buildTaskPoints,
   SEVERITY_WEIGHT,
-} from "../lib/remediation-pillar-scores";
+} from "../lib/remediation-pillar-scores.ts";
 
 const at = (isoStr: string) => new Date(isoStr);
 

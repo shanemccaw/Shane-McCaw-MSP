@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const { runDiagnostics } = vi.hoisted(() => ({
   runDiagnostics: vi.fn((_opts: { customerId?: number; tenantId?: string }) => Promise.resolve({})),
 }));
-vi.mock("./diagnostics-runner", () => ({ runDiagnostics }));
+vi.mock("./diagnostics-runner.ts", () => ({ runDiagnostics }));
 
 // runItemDetailCollection (#339, Git #1037) — the parallel full-item detail
 // pass the sweep now fires alongside each rescan.
@@ -14,7 +14,7 @@ const { runItemDetailCollection } = vi.hoisted(() => ({
   runItemDetailCollection: vi.fn((_opts: { tenantId?: string; customerId?: number | null; scopeToPackageKey?: string }) =>
     Promise.resolve({ runId: "detail-run", status: "completed", itemsPersisted: 0 })),
 }));
-vi.mock("./item-detail-collector", () => ({ runItemDetailCollection }));
+vi.mock("./item-detail-collector.ts", () => ({ runItemDetailCollection }));
 
 // Controllable DB state, reset per test.
 let selectResult: Array<{ sowId: string; customerId: number | null }> = [];
@@ -61,13 +61,13 @@ vi.mock("drizzle-orm", () => ({
   lt: () => ({ type: "lt" }),
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const noop = () => {};
   const child = { info: noop, warn: noop, error: noop, debug: noop };
   return { logger: { child: () => child, ...child } };
 });
 
-import { sweepExpiredSows } from "./sow-expiry-sweep";
+import { sweepExpiredSows } from "./sow-expiry-sweep.ts";
 
 beforeEach(() => {
   selectResult = [];

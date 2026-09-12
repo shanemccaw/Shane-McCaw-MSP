@@ -85,13 +85,13 @@ import { db, mspRiskDecisionsTable, complianceObligationsTable, complianceFramew
 import { and, eq, desc, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
-import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
-import { apiError, ApiErrorCode } from "../lib/api-helpers";
-import { formatChangeRequestCode } from "../lib/portal-change-control";
-import { logger } from "../lib/logger";
-import { personIdForUser } from "../lib/portal-ownership";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { formatChangeRequestCode } from "../lib/portal-change-control.ts";
+import { logger } from "../lib/logger.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
 import {
   currentAHolderPersonIds,
   namesForPersonIds,
@@ -100,7 +100,7 @@ import {
   type RiskAuthority,
   type RiskAuthorityHolder,
   type RiskAuthorizedBy,
-} from "../lib/risk-authority";
+} from "../lib/risk-authority.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

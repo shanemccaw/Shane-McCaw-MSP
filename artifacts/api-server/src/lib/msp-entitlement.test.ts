@@ -39,7 +39,7 @@ vi.mock("./logger.ts", () => {
   return { logger: { ...noop, child: () => noop } };
 });
 
-import { compareTierRank, TIER_RANK, loadTier, tierAllowsFeature } from "./msp-entitlement";
+import { compareTierRank, TIER_RANK, loadTier, tierAllowsFeature } from "./msp-entitlement.ts";
 import { db } from "@workspace/db";
 
 type MockDb = { select: ReturnType<typeof vi.fn> };

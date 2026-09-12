@@ -148,7 +148,7 @@ export async function ensureMonitoringScanKickoff(
   const triggerScan =
     deps.triggerScan ??
     (async (opts: OnboardingScanTriggerOpts) => {
-      const { runDiagnostics } = await import("./diagnostics-runner.js");
+      const { runDiagnostics } = await import("./diagnostics-runner.ts");
       return runDiagnostics(opts);
     });
 

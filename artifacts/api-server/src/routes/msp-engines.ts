@@ -17,9 +17,9 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { ENGINE_DEFS } from "../lib/engine-registry";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { ENGINE_DEFS } from "../lib/engine-registry.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

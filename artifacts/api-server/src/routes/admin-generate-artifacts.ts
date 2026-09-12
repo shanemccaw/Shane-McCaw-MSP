@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { db, projectsTable, kanbanTasksTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
-import { uploadFileToSharePoint, graphCredentialsPresent, ensureSharePointFolderAtRoot } from "../lib/graph";
-import { logger } from "../lib/logger";
+import { uploadFileToSharePoint, graphCredentialsPresent, ensureSharePointFolderAtRoot } from "../lib/graph.ts";
+import { logger } from "../lib/logger.ts";
 import { getPrompt } from "../lib/prompt-loader.ts";
 
 const log = logger.child({ channel: "admin.content" });

@@ -57,7 +57,7 @@ vi.mock("@workspace/db", () => ({
 // This whole file is gated by `requireAdminOrIngestToken()` (Git #702), which
 // RETURNS a middleware — the mock mirrors that shape. (`requireAdmin` is kept
 // too, harmlessly, since the real module exports both.)
-vi.mock("../middlewares/requireAuth", () => {
+vi.mock("../middlewares/requireAuth.ts", () => {
   const gate = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (!(req.headers["x-test-admin"] === "1")) {
       res.status(403).json({ error: "not admin" });
@@ -75,7 +75,7 @@ vi.mock("../middlewares/requireAuth", () => {
 // `logger.ts` transitively pulls in `lib/db`, which throws at import time
 // without a real DATABASE_URL — mock it directly rather than relying on
 // process.env timing (same pattern as admin-ai-billing.test.ts).
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: {
     child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
     info: vi.fn(),
@@ -85,7 +85,7 @@ vi.mock("../lib/logger", () => ({
   },
 }));
 
-import adminDeployConsoleRouter from "./admin-deploy-console";
+import adminDeployConsoleRouter from "./admin-deploy-console.ts";
 
 function buildApp(): Express {
   const app = express();

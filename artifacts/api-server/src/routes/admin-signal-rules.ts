@@ -1,8 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, scriptRunResultsTable, engagementProjectsTable, usersTable, monitorChecksTable } from "@workspace/db";
 import { eq, desc, asc, isNull, sql } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.signals" });
 import {
   getAllSignalDefinitions,
@@ -18,24 +18,24 @@ import {
   buildTenantProfile,
   type SignalDerivationRule,
   type SignalRuleGroup,
-} from "../lib/tenant-signals";
-import { detectRuleConflicts } from "../lib/signal-conflict-detector";
-import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
-import { PILLAR_FIELD, getSignalHealthImpacts, calculateArchitectureHealthScore, type HealthPillar } from "../lib/health-engine";
-import { computePillarDisplayScore } from "../lib/health-display";
+} from "../lib/tenant-signals.ts";
+import { detectRuleConflicts } from "../lib/signal-conflict-detector.ts";
+import { fetchSignalRulesAndGroups } from "../lib/priority-engine.ts";
+import { PILLAR_FIELD, getSignalHealthImpacts, calculateArchitectureHealthScore, type HealthPillar } from "../lib/health-engine.ts";
+import { computePillarDisplayScore } from "../lib/health-display.ts";
 import {
   computeRuleFedStatus,
   fetchTenantEvaluableSignalKeys,
   PILLAR_LABELS,
   RADAR_PILLARS,
   type RadarPillar,
-} from "../lib/pillar-coverage";
-import { buildPillarMatrix } from "../lib/pillar-matrix";
+} from "../lib/pillar-coverage.ts";
+import { buildPillarMatrix } from "../lib/pillar-matrix.ts";
 import {
   resolveCategoryPillar,
   DeliberatelyUnmappedCategoryDomainError,
   UnmappedCategoryDomainError,
-} from "../lib/category-pillar-mapping";
+} from "../lib/category-pillar-mapping.ts";
 
 const router: IRouter = Router();
 

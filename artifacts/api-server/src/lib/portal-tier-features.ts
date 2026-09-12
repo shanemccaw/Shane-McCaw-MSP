@@ -64,9 +64,9 @@ import type { Request, Response, NextFunction } from "express";
 import { db, clientServicesTable, servicesTable } from "@workspace/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
-import { resolveCustomerId } from "./portal-customer-scope";
-import { resolveCustomerUserIds } from "./tenant-signals";
-import { logger } from "./logger";
+import { resolveCustomerId } from "./portal-customer-scope.ts";
+import { resolveCustomerUserIds } from "./tenant-signals.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

@@ -32,10 +32,10 @@ import {
   usersTable,
 } from "@workspace/db";
 import { eq, and, inArray, or, ilike, desc } from "drizzle-orm";
-import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
-import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
-import { logger } from "../lib/logger";
+import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

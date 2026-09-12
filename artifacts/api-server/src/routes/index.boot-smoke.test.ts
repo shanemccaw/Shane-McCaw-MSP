@@ -40,7 +40,7 @@ describe("routes/index boot smoke", () => {
     );
     vi.stubEnv("AI_INTEGRATIONS_OPENAI_API_KEY", "test-openai-key");
 
-    const mod = await import("./index");
+    const mod = await import("./index.ts");
     const router = mod.default;
 
     expect(router).toBeTruthy();

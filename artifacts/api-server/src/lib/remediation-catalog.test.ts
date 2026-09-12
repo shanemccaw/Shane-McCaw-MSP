@@ -4,7 +4,7 @@ import {
   resolvePackKeyForService,
   MICROREM_TEMPLATE_BY_SLUG,
   PACK_KEY_BY_SERVICE_SLUG,
-} from "./remediation-catalog";
+} from "./remediation-catalog.ts";
 
 describe("remediation-catalog wiring (Git #1172)", () => {
   it("resolves the five Quick-Start Write Packs from type_attributes.packKey (data-first)", () => {

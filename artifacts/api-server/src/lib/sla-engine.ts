@@ -16,7 +16,7 @@
 import { db } from "@workspace/db";
 import { sql, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.sla" });
 
 // ── Types ─────────────────────────────────────────────────────────────────────

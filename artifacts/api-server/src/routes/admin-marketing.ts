@@ -8,14 +8,14 @@ import {
   clientServicesTable, heroHeadlinesTable,
 } from "@workspace/db";
 import { eq, desc, count, and, gte, lte, sql, inArray, lt, isNull, or, ne } from "drizzle-orm";
-import { ingestIntentEvent, recomputeAndPersistHotScore } from "../lib/lead-intent";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { ingestIntentEvent, recomputeAndPersistHotScore } from "../lib/lead-intent.ts";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { queueLeadStagingPush } from "../lib/zoho-lead-sync.ts";
 import { ZOHO_DEFAULT_MSP_ID } from "../lib/zoho-client.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { sendMessage, GraphMailConfigError } from "../lib/graphEmail";
-import { fetchTopQueries } from "../lib/search-console";
-import { logger } from "../lib/logger";
+import { sendMessage, GraphMailConfigError } from "../lib/graphEmail.ts";
+import { fetchTopQueries } from "../lib/search-console.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "admin.content" });
 import { getPrompt } from "../lib/prompt-loader.ts";
 import { z } from "zod";

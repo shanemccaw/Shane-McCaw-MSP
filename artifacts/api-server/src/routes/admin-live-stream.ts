@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
 import { registerHubClient, registerFirehoseClient, registerChannelFirehoseClient } from "../lib/sse-hub.ts";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 
 const router = Router();
 

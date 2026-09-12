@@ -6,7 +6,7 @@ import {
   kanbanTasksTable, invoicesTable, workflowStepsTable,
 } from "@workspace/db";
 import { eq, isNull, desc, and, gte, inArray } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { getPrompt } from "../lib/prompt-loader.ts";
 
 const router = Router();

@@ -34,7 +34,7 @@ import {
   tenantEngineSnapshotsTable,
 } from "@workspace/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

@@ -25,7 +25,7 @@ import {
   type MonitoringPackage,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
-import { graphFetchForTenant, ConsentRevokedError, LicenseGapError, markTenantConsentRevoked, getInitialDomainForTenant } from "./graph";
+import { graphFetchForTenant, ConsentRevokedError, LicenseGapError, markTenantConsentRevoked, getInitialDomainForTenant } from "./graph.ts";
 import {
   ServiceNotConfiguredError,
   matchIntuneWireSignature,
@@ -33,17 +33,17 @@ import {
   resolveIntuneServiceState,
   recordTenantServiceState,
   serviceDisplayName,
-} from "./service-availability";
+} from "./service-availability.ts";
 import { maybeCollectDriftForCheck, type DriftAttributionFactory } from "./drift-collector.ts";
 import { buildDriftScopeAttribution } from "./drift-change-attribution.ts";
 import { driftSpecForCheck } from "./drift-check-specs.ts";
-import { callPsExecution, PsExecutionError } from "./ps-execution-client";
+import { callPsExecution, PsExecutionError } from "./ps-execution-client.ts";
 import {
   getTenantSharingCapability,
   sharePointAdminCredentialsPresent,
   SharingCapability,
   type SharePointTenantRef,
-} from "./sharepoint-admin";
+} from "./sharepoint-admin.ts";
 import {
   listDlpPolicies,
   listEnvironments,
@@ -51,7 +51,7 @@ import {
   powerPlatformCredentialsPresent,
   PowerPlatformNotRegisteredError,
   type PowerPlatformDlpPolicy,
-} from "./power-platform-admin";
+} from "./power-platform-admin.ts";
 import {
   probeAzureRmReach,
   resolveAzureRmOperation,
@@ -60,11 +60,11 @@ import {
   AZURE_RM_LEAST_PRIVILEGE_ROLE,
   type AzureRmContext,
   type AzureRmReach,
-} from "./azure-rm";
-import { normalizeSiteSharing, SHAREPOINT_SITE_SHARING_NORMALIZER } from "./sharepoint-sharing";
-import { normalizeDriveSharing, ONEDRIVE_DRIVE_SHARING_NORMALIZER } from "./onedrive-sharing";
+} from "./azure-rm.ts";
+import { normalizeSiteSharing, SHAREPOINT_SITE_SHARING_NORMALIZER } from "./sharepoint-sharing.ts";
+import { normalizeDriveSharing, ONEDRIVE_DRIVE_SHARING_NORMALIZER } from "./onedrive-sharing.ts";
 import { syncTenantServicePlans } from "./tenant-workloads.ts";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.monitor" });
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1302,8 +1302,13 @@ function buildEvidenceItem(
 class EvidenceCollector {
   private matchedCount = 0;
   private readonly items: EvidenceItem[] = [];
+  private readonly transform: string;
+  private readonly sourceField: string;
 
-  constructor(private readonly transform: string, private readonly sourceField: string) {}
+  constructor(transform: string, sourceField: string) {
+    this.transform = transform;
+    this.sourceField = sourceField;
+  }
 
   /** Record one real match. Returns nothing — `count` is the authority. */
   add(subject: unknown, matchedField: string, matchedValue: unknown, owner?: unknown): void {

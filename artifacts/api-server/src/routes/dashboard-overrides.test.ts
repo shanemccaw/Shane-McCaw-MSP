@@ -49,7 +49,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-import router from "./dashboard-overrides";
+import router from "./dashboard-overrides.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();

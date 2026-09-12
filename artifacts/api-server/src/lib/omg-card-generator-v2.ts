@@ -19,7 +19,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, insightsGeneratedDocumentsTable } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 

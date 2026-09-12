@@ -63,31 +63,31 @@ vi.mock("drizzle-orm", async (importOriginal) => {
   };
 });
 
-vi.mock("./m365-change-router", () => ({
+vi.mock("./m365-change-router.ts", () => ({
   declineRoutedChangeToRisk: vi.fn(),
 }));
 
-vi.mock("./portal-change-approvals", () => ({
+vi.mock("./portal-change-approvals.ts", () => ({
   violatesSeparationOfDuties: () => false,
 }));
 
-vi.mock("./portal-change-approvals-store", () => ({
+vi.mock("./portal-change-approvals-store.ts", () => ({
   NO_POLICY: { requiredSignatures: null, requireSeparateApprover: true },
   resolveDelegatedAuthority: vi.fn(async () => null),
 }));
 
-vi.mock("./portal-change-timeline-store", () => ({
+vi.mock("./portal-change-timeline-store.ts", () => ({
   recordCrEvent: vi.fn(async () => null),
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const noop = () => {};
   const noopLogger: any = { info: noop, warn: noop, error: noop, debug: noop };
   noopLogger.child = () => noopLogger;
   return { logger: noopLogger };
 });
 
-import { recordRejection } from "./portal-change-rejection";
+import { recordRejection } from "./portal-change-rejection.ts";
 
 const cr = {
   id: 55,

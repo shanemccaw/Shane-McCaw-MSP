@@ -18,8 +18,8 @@ import {
   clientHealthHistoryTable,
 } from "@workspace/db";
 import { eq, and, desc, count, inArray, sql, isNotNull, isNull, asc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "admin.clients" });

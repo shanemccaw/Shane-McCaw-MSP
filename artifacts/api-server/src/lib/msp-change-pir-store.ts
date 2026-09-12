@@ -21,12 +21,12 @@ import {
 import { and, desc, eq, or } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
-import { categoryHasDriftRescanPath, PIR_DRIFT_RESCAN_CA_DOMAIN_KEY } from "./msp-change-pir";
-import { checkKeyForDriftDomain } from "./drift-check-specs";
-import { executeMonitorCheck } from "./monitor-executor";
-import { recordCrEvent } from "./portal-change-timeline-store";
-import { formatChangeRequestCode } from "./portal-change-control";
-import { logger } from "./logger";
+import { categoryHasDriftRescanPath, PIR_DRIFT_RESCAN_CA_DOMAIN_KEY } from "./msp-change-pir.ts";
+import { checkKeyForDriftDomain } from "./drift-check-specs.ts";
+import { executeMonitorCheck } from "./monitor-executor.ts";
+import { recordCrEvent } from "./portal-change-timeline-store.ts";
+import { formatChangeRequestCode } from "./portal-change-control.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

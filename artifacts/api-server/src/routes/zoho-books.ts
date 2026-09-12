@@ -15,10 +15,10 @@
 // asks. Read-only: no write, no queue, no side effects.
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { lookupBooksInvoiceByReference, enqueueZohoBooksInvoiceSync } from "../lib/zoho-books.ts";
 import { ZohoNotConnectedError, ZohoApiError } from "../lib/zoho-client.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "integration.zoho" });
 

@@ -19,7 +19,7 @@ import {
   slaDaysFor,
   summarizeApprovals,
   violatesSeparationOfDuties,
-} from "./portal-change-approvals";
+} from "./portal-change-approvals.ts";
 
 describe("requiredStages", () => {
   it("a standard change needs zero human stages — it is pre-approved", () => {

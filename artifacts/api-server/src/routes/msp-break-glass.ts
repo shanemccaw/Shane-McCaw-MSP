@@ -57,19 +57,19 @@ import {
   usersTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
-import { requireCapability, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { z } from "zod";
 import {
   resolvePendingContext,
   performBreakGlassAdminOverride,
-} from "./break-glass-verification";
+} from "./break-glass-verification.ts";
 import {
   WriteBackCustomerNotFoundError,
   WriteBackNotEnabledError,
   WriteConsentRequiredError,
-} from "../lib/graph";
-import { logger } from "../lib/logger";
+} from "../lib/graph.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "auth" });
 

@@ -52,9 +52,9 @@ import {
   remediationTrackerStepsTable,
   type DriftEventVerdict,
 } from "@workspace/db";
-import { driftSpecForCheck } from "./drift-check-specs";
-import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "./remediation-tracker-verification";
-import { logger } from "./logger";
+import { driftSpecForCheck } from "./drift-check-specs.ts";
+import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "./remediation-tracker-verification.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

@@ -6,7 +6,7 @@ import {
   resolveEffectiveChargeCents,
   seatBandViolationMessage,
   isServiceFree,
-} from "../catalog-pricing";
+} from "../catalog-pricing.ts";
 
 describe("resolveCatalogPricing", () => {
   it("computes wholesaleCostCents using default 70% retail price if internalCostCents is null or undefined", () => {

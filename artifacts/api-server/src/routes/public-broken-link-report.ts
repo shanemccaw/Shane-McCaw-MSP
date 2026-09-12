@@ -11,8 +11,8 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
-import { mspMutatingRateLimit } from "../middlewares/mspRateLimit";
-import { logger } from "../lib/logger";
+import { mspMutatingRateLimit } from "../middlewares/mspRateLimit.ts";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "system.core" });

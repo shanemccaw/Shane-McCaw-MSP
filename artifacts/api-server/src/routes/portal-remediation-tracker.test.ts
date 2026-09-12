@@ -98,21 +98,21 @@ vi.mock("@workspace/db", () => {
 // calling any tracker-writing logic itself; that write path is
 // remediation-tracker-verification.test.ts's job. Here it is just a spy.
 const mockEmitWorkflowEvent = vi.fn().mockResolvedValue(undefined);
-vi.mock("../lib/workflow-executor", () => ({
+vi.mock("../lib/workflow-executor.ts", () => ({
   emitWorkflowEvent: (...args: unknown[]) => mockEmitWorkflowEvent(...args),
 }));
 
 // #1540 — the verification-guide route reads published KB rows only; this test
 // file drives what "published" resolves to per test rather than hitting a DB.
 let mockKbRows = new Map<string, { validationStep: string | null; validationCommand: string | null; expectedOutcome: string | null }>();
-vi.mock("../lib/remediation-knowledge-base", () => ({
+vi.mock("../lib/remediation-knowledge-base.ts", () => ({
   fetchPublishedKnowledgeBaseRows: (keys: string[]) =>
     Promise.resolve(new Map([...mockKbRows.entries()].filter(([k]) => keys.includes(k)))),
 }));
 
 // requireRole is exercised elsewhere; here it is stubbed so the tests can drive
 // the handler's own customerId resolution directly.
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: () => (_req: any, _res: any, next: () => void) => next(),
   requireAuth: (_req: any, _res: any, next: () => void) => next(),
 }));
@@ -122,7 +122,7 @@ vi.mock("../middlewares/requireAuth", () => ({
 // mirror the real PORTAL_TIER_MODULE_KEYS string literals in
 // lib/portal-tier-features.ts (kept as literals, not importOriginal, so this
 // mock never has to resolve that module's own real @workspace/db imports).
-vi.mock("../lib/portal-tier-features", () => ({
+vi.mock("../lib/portal-tier-features.ts", () => ({
   requireTierFeature: () => (_req: any, _res: any, next: () => void) => next(),
   PORTAL_TIER_MODULE_KEYS: {
     policyDecisions: "policy_decisions",
@@ -138,7 +138,7 @@ vi.mock("../lib/portal-tier-features", () => ({
   },
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
@@ -149,14 +149,14 @@ vi.mock("../lib/logger", () => {
 // (remediation-tracker-risk-decline.test.ts).
 let mockTenantScope: unknown = { customerId: 42, mspId: 9, tenantId: "contoso.onmicrosoft.com", tenantName: "Contoso", primaryDomain: "contoso.com" };
 const mockDeclineRemediationStepToRisk = vi.fn();
-vi.mock("../lib/portal-customer-scope", () => ({
+vi.mock("../lib/portal-customer-scope.ts", () => ({
   resolveTenantScope: vi.fn(() => Promise.resolve(mockTenantScope)),
 }));
-vi.mock("../lib/remediation-tracker-risk-decline", () => ({
+vi.mock("../lib/remediation-tracker-risk-decline.ts", () => ({
   declineRemediationStepToRisk: (...args: unknown[]) => mockDeclineRemediationStepToRisk(...args),
 }));
 
-import router, { REMEDIATION_TRACKER_STEP_IDS } from "./portal-remediation-tracker";
+import router, { REMEDIATION_TRACKER_STEP_IDS } from "./portal-remediation-tracker.ts";
 import { REMEDIATION_TRACKER_STEP_STATUS } from "@workspace/db";
 
 function makeApp(user: Record<string, unknown> | null) {

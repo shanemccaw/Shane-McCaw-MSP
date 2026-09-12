@@ -13,7 +13,7 @@ import {
   STATIC_NODE_SAMPLES,
   FIXED_SHAPE_NODE_TYPES,
   DYNAMIC_SHAPE_NODE_TYPES,
-} from "./workflow-node-default-samples";
+} from "./workflow-node-default-samples.ts";
 
 // ── Static default samples ─────────────────────────────────────────────────────
 

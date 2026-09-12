@@ -37,15 +37,15 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, portalOwnershipPolicyTable } from "@workspace/db";
 
-import { requireCapability, type AuthUser } from "../middlewares/requireAuth";
-import { resolveCustomerId } from "../lib/portal-customer-scope";
-import { logger } from "../lib/logger";
+import { requireCapability, type AuthUser } from "../middlewares/requireAuth.ts";
+import { resolveCustomerId } from "../lib/portal-customer-scope.ts";
+import { logger } from "../lib/logger.ts";
 import {
   DEFAULT_OWNERSHIP_GATE_MODE,
   isOwnershipGateMode,
   resolveGateMode,
-} from "../lib/portal-ownership-policy";
-import { listWorkloadMembership, setWorkloadTracked } from "../lib/ownership-workload-membership";
+} from "../lib/portal-ownership-policy.ts";
+import { listWorkloadMembership, setWorkloadTracked } from "../lib/ownership-workload-membership.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

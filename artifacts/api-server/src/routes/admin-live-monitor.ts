@@ -14,8 +14,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, pool } from "@workspace/db";
 import { activitySubscriptionsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.alert" });
 

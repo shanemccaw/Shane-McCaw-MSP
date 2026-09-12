@@ -92,13 +92,13 @@ vi.mock("@workspace/db", () => {
   return { db, pool: { query: async () => ({ rows: [], rowCount: 0 }) }, ...stub, eq: () => {}, and: () => {}, or: () => {}, count: () => {} };
 });
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const n = () => {};
   const log = { info: n, warn: n, error: n, debug: n, fatal: n, trace: n, child: () => log };
   return { logger: log };
 });
 
-vi.mock("./azure-automation", () => ({
+vi.mock("./azure-automation.ts", () => ({
   createRunbookJob:  async () => "fake-job-id",
   isAzureConfigured: () => false,
   getJobStatus:      async () => "Completed",
@@ -106,13 +106,13 @@ vi.mock("./azure-automation", () => ({
   isTerminalStatus:  () => true,
 }));
 
-vi.mock("./web-push", () => ({
+vi.mock("./web-push.ts", () => ({
   sendWebPushToAdmins: async (...args: unknown[]) => {
     state.webPushCalls.push(args[0]);
   },
 }));
 
-vi.mock("./sse-channels", () => ({
+vi.mock("./sse-channels.ts", () => ({
   broadcastAdminWorkflowEvent: () => {},
   broadcastAdminEvent:         () => {},
   broadcastWorkflowRunError:   () => {},
@@ -149,26 +149,26 @@ vi.mock("@workspace/integrations-openai-ai-server/image", () => ({
   }),
 }));
 
-vi.mock("./mailer", () => ({
+vi.mock("./mailer.ts", () => ({
   sendEmail:    async () => {},
   brandedEmail: (html: string) => `<html>${html}</html>`,
 }));
 
-vi.mock("./push", () => ({
+vi.mock("./push.ts", () => ({
   sendPushNotifications: async () => {},
 }));
 
-vi.mock("./ps-script-gen", () => ({
+vi.mock("./ps-script-gen.ts", () => ({
   generatePsScript:     async () => ({ scriptContent: "Write-Host 'hello'" }),
   generateScriptBundle: async () => ({ bundleId: "bundle-1" }),
 }));
 
-vi.mock("./news-fetcher", () => ({
+vi.mock("./news-fetcher.ts", () => ({
   fetchNewsHeadlines: async () => [],
 }));
 
 // ── Stripe mock ───────────────────────────────────────────────────────────────
-vi.mock("./stripe", () => ({
+vi.mock("./stripe.ts", () => ({
   getStripeKey: () => {
     if (state.stripeKeyThrows) throw new Error("STRIPE_SECRET_KEY is not set");
     return "sk_test_fake";
@@ -176,7 +176,7 @@ vi.mock("./stripe", () => ({
 }));
 
 // ── graph mock (Exchange / SharePoint) ───────────────────────────────────────
-vi.mock("./graph", () => ({
+vi.mock("./graph.ts", () => ({
   getAccessToken: async () => "fake-graph-token",
   graphCredentialsPresent: () => !state.graphCredentialsMissing,
 }));
@@ -192,7 +192,7 @@ vi.mock("fs/promises", () => {
 });
 
 // ── Import after all mocks ────────────────────────────────────────────────────
-import { executeWorkflowRun } from "./workflow-executor";
+import { executeWorkflowRun } from "./workflow-executor.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

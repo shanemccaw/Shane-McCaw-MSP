@@ -10,7 +10,7 @@ vi.mock("@workspace/db", () => ({
 }));
 
 // ── auth mock ────────────────────────────────────────────────────────────────
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
     next(),
   requireCapability: () => (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
@@ -22,12 +22,12 @@ vi.mock("../middlewares/requireAuth", () => ({
 }));
 
 // ── alert-engine mock ────────────────────────────────────────────────────────
-vi.mock("../lib/alert-engine", () => ({
+vi.mock("../lib/alert-engine.ts", () => ({
   evaluateAllRules: vi.fn().mockResolvedValue(undefined),
   ensureAlertEngineReady: vi.fn(),
 }));
 
-import adminObservabilityRouter from "./admin-observability";
+import adminObservabilityRouter from "./admin-observability.ts";
 
 function buildApp() {
   const app = express();

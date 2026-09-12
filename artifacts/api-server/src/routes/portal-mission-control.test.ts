@@ -54,11 +54,11 @@ vi.mock("drizzle-orm", () => ({
   inArray: (_c: unknown, _v: unknown) => ({ inArray: [_c, _v] }),
 }));
 
-vi.mock("../lib/engine-registry", () => ({
+vi.mock("../lib/engine-registry.ts", () => ({
   runEngineManifestForTenant: vi.fn(),
 }));
 
-vi.mock("../lib/config-pack-orchestrator", () => {
+vi.mock("../lib/config-pack-orchestrator.ts", () => {
   class ConfigPackError extends Error {
     code: string;
     details?: Record<string, unknown>;
@@ -71,11 +71,11 @@ vi.mock("../lib/config-pack-orchestrator", () => {
   return { ConfigPackError, runConfigPackForCustomer: vi.fn() };
 });
 
-vi.mock("../lib/audit", () => ({
+vi.mock("../lib/audit.ts", () => ({
   createAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
@@ -83,9 +83,9 @@ vi.mock("../lib/logger", () => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 import { db } from "@workspace/db";
-import { runEngineManifestForTenant } from "../lib/engine-registry";
-import { runConfigPackForCustomer } from "../lib/config-pack-orchestrator";
-import router from "./portal-mission-control";
+import { runEngineManifestForTenant } from "../lib/engine-registry.ts";
+import { runConfigPackForCustomer } from "../lib/config-pack-orchestrator.ts";
+import router from "./portal-mission-control.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;
@@ -379,7 +379,7 @@ describe("POST /portal/mission-control/remediate", () => {
       .mockReturnValueOnce(buildChain([{ ...sentOffer, customerId: CUSTOMER_ID }])) // offer
       .mockReturnValueOnce(buildChain([{ isTestbed: true }])) // customer (stale flag scenario)
       .mockReturnValueOnce(buildChain([quickstartService])); // service
-    const { ConfigPackError } = await import("../lib/config-pack-orchestrator");
+    const { ConfigPackError } = await import("../lib/config-pack-orchestrator.ts");
     mockRunPack.mockRejectedValue(new ConfigPackError("customer_not_testbed", "not a testbed customer"));
 
     const res = await post({ offerId: 7 });

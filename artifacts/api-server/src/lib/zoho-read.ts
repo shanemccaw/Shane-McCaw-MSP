@@ -7,7 +7,7 @@
 // Zoho GET is fine, only writes get deferred to the 5-minute drain.
 
 import { zohoGet } from "./zoho-client.ts";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.zoho" });
 

@@ -38,8 +38,8 @@ import {
   monitorChecksTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray, count } from "drizzle-orm";
-import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "admin.clients" });
 
@@ -365,7 +365,7 @@ router.post("/admin/baseline-templates/:templateId/test", requireBaselineTestAcc
       .limit(1);
     if (!template) return void res.status(404).json({ error: "Baseline template not found" });
 
-    const { runBaselineTemplateAgainstTenant } = await import("../lib/workflow-executor");
+    const { runBaselineTemplateAgainstTenant } = await import("../lib/workflow-executor.ts");
     const payload: Record<string, unknown> = { ...(body.variables ?? {}), customerId: body.customerId };
     const result = await runBaselineTemplateAgainstTenant(templateId, customer.tenantId, body.customerId, payload);
 

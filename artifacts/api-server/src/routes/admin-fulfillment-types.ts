@@ -17,9 +17,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, fulfillmentTypesTable, auditLogsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { resolveFulfillment } from "../lib/resolve-fulfillment";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { resolveFulfillment } from "../lib/resolve-fulfillment.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "billing" });
 import { z } from "zod";
 import { randomUUID } from "crypto";

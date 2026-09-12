@@ -52,8 +52,8 @@ import {
   tenantServicePlansTable,
 } from "@workspace/db";
 import { groupEnabledServicePlansByWorkload } from "./tenant-workloads.ts";
-import { resolveTenantScope, type TenantScope } from "./portal-customer-scope";
-import { logger } from "./logger";
+import { resolveTenantScope, type TenantScope } from "./portal-customer-scope.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "tenant.workload" });
 

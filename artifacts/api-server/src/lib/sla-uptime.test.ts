@@ -11,7 +11,7 @@ vi.mock("drizzle-orm", () => ({
   and: () => ({}), asc: () => ({}), desc: () => ({}), eq: () => ({}), gt: () => ({}), lte: () => ({}),
 }));
 
-import { computeWeightedUptime, isUpStatus, SLA_TARGET_UPTIME_PERCENT } from "./sla-uptime";
+import { computeWeightedUptime, isUpStatus, SLA_TARGET_UPTIME_PERCENT } from "./sla-uptime.ts";
 
 describe("sla-uptime: isUpStatus mapping", () => {
   it("treats the baseline healthy statuses as up", () => {

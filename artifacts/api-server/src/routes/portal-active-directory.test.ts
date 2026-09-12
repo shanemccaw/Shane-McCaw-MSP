@@ -58,29 +58,29 @@ vi.mock("drizzle-orm", () => ({
   desc: (c: unknown) => ({ desc: c }),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
 const mockCreateAuditLog = vi.fn().mockResolvedValue(undefined);
-vi.mock("../lib/audit", () => ({
+vi.mock("../lib/audit.ts", () => ({
   createAuditLog: (...args: unknown[]) => mockCreateAuditLog(...args),
 }));
 
 const mockResolveGraphUserByUpn = vi.fn();
-vi.mock("./admin-active-directory", () => ({
+vi.mock("./admin-active-directory.ts", () => ({
   resolveGraphUserByUpn: (...args: unknown[]) => mockResolveGraphUserByUpn(...args),
 }));
 
 let mockScope: unknown = null;
-vi.mock("../lib/portal-customer-scope", () => ({
+vi.mock("../lib/portal-customer-scope.ts", () => ({
   resolveCustomerId: (req: { user?: { customerId?: number } }) => req.user?.customerId ?? null,
   resolveTenantScope: async () => mockScope,
 }));
 
 import { db } from "@workspace/db";
-import router from "./portal-active-directory";
+import router from "./portal-active-directory.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;

@@ -27,18 +27,18 @@ import {
   projectsTable,
 } from "@workspace/db";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.monitor" });
-import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase-advance";
-import { broadcastKanbanChange } from "../lib/sse-channels";
-import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
-import { runAiAnalyzer } from "../lib/ai-analyzer";
-import { parseM365ScriptOutput } from "../lib/parse-m365-script-output";
-import { getSecretValue } from "../lib/azure-keyvault";
-import { createAuditLog } from "../lib/audit";
-import { applyProfileUpdates as applyProfileUpdatesShared, snapshotHealthFromProfile as snapshotHealthFromProfileShared } from "../lib/m365-profile-update";
-import { resolveBillingMspId } from "../lib/ai-billing";
+import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase-advance.ts";
+import { broadcastKanbanChange } from "../lib/sse-channels.ts";
+import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation.ts";
+import { runAiAnalyzer } from "../lib/ai-analyzer.ts";
+import { parseM365ScriptOutput } from "../lib/parse-m365-script-output.ts";
+import { getSecretValue } from "../lib/azure-keyvault.ts";
+import { createAuditLog } from "../lib/audit.ts";
+import { applyProfileUpdates as applyProfileUpdatesShared, snapshotHealthFromProfile as snapshotHealthFromProfileShared } from "../lib/m365-profile-update.ts";
+import { resolveBillingMspId } from "../lib/ai-billing.ts";
 
 const router: IRouter = Router();
 

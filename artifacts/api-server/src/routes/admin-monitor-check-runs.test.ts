@@ -219,7 +219,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.headers["authorization"] === `Bearer ${ADMIN_PASS}`) return next();
     res.status(401).json({ error: "Unauthorized" });
@@ -236,7 +236,7 @@ vi.mock("../middlewares/requireAuth", () => ({
     },
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: {
     child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
     info: vi.fn(),
@@ -255,8 +255,8 @@ vi.mock("../lib/logger", () => ({
 // with a stub would let a mapping regression pass unnoticed, which is the exact
 // failure mode these phases are meant to prevent.
 const executeMonitorCheck = vi.fn();
-vi.mock("../lib/monitor-executor", async () => {
-  const actual = await vi.importActual<typeof import("../lib/monitor-executor")>("../lib/monitor-executor");
+vi.mock("../lib/monitor-executor.ts", async () => {
+  const actual = await vi.importActual<typeof import("../lib/monitor-executor")>("../lib/monitor-executor.ts");
   return {
     ...actual,
     executeMonitorCheck: (...args: unknown[]) => executeMonitorCheck(...args),
@@ -266,11 +266,11 @@ vi.mock("../lib/monitor-executor", async () => {
 // The rule fetch the trace/diff routes use. Mocked because it is a DB read (an
 // INPUT to the trace), not part of the trace's logic — `evaluateRule` stays real.
 const getAllRules = vi.fn(() => Promise.resolve([] as unknown[]));
-vi.mock("./admin-signal-rules", () => ({
+vi.mock("./admin-signal-rules.ts", () => ({
   getAllRules: () => getAllRules(),
 }));
 
-import router from "./admin-monitor-check-runs";
+import router from "./admin-monitor-check-runs.ts";
 
 function makeApp(): Express {
   const app = express();

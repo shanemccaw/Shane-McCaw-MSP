@@ -65,8 +65,8 @@ import {
   type RemediationTrackerStepStatus,
   type RemediationTrackerVerificationState,
 } from "@workspace/db";
-import { resolveFixRoute, resolveTenantWriteCeiling, FIX_ROUTE_AFFORDANCE } from "./remediation-fix-route";
-import { logger } from "./logger";
+import { resolveFixRoute, resolveTenantWriteCeiling, FIX_ROUTE_AFFORDANCE } from "./remediation-fix-route.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

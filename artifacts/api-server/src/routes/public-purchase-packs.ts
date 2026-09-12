@@ -57,12 +57,12 @@ import {
   wfVersionsTable,
   type WfGraph,
 } from "@workspace/db";
-import { resolveFlowSession, resolveConsentedTenant, type FlowSession } from "./consent";
-import { resolveServiceExecutable } from "../lib/remediation-catalog";
-import { buildConfigPackDryRun, type ConfigPackDryRun } from "../lib/config-pack-dry-run";
-import { ConfigPackError, runConfigPackForCustomer } from "../lib/config-pack-orchestrator";
+import { resolveFlowSession, resolveConsentedTenant, type FlowSession } from "./consent.ts";
+import { resolveServiceExecutable } from "../lib/remediation-catalog.ts";
+import { buildConfigPackDryRun, type ConfigPackDryRun } from "../lib/config-pack-dry-run.ts";
+import { ConfigPackError, runConfigPackForCustomer } from "../lib/config-pack-orchestrator.ts";
 import { createAuditLog } from "../lib/audit.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.config-pack" });
 

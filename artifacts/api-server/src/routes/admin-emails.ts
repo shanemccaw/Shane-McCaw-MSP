@@ -1,9 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, emailsTable, emailDomainRulesTable, usersTable, kanbanTasksTable, projectsTable, leadStagingTable } from "@workspace/db";
 import { eq, and, isNull, isNotNull, desc, count, gte } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { graphCredentialsPresent, getMailMessageBody } from "../lib/graph";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { graphCredentialsPresent, getMailMessageBody } from "../lib/graph.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "comms.email" });
 
 const router: IRouter = Router();
@@ -343,7 +343,7 @@ router.post("/admin/emails/:id/rematch", requireAdmin, async (req: Request, res:
 
   if (!email) { res.status(404).json({ error: "Email not found" }); return; }
 
-  const { matchSenderToUser } = await import("../lib/email-domain-match");
+  const { matchSenderToUser } = await import("../lib/email-domain-match.ts");
   const linkedUserId = await matchSenderToUser(email.senderAddress);
 
   const [updated] = await db

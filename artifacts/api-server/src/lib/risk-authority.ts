@@ -25,9 +25,9 @@
 import { and, asc, eq, lte } from "drizzle-orm";
 import { db, portalOwnershipAssignmentsTable, portalOwnershipEventsTable, usersTable } from "@workspace/db";
 
-import { resolveWorkloadForCheckKey } from "./tenant-workloads";
-import { resolveCustomerMspId } from "./portal-customer-scope";
-import { personIdForUser } from "./portal-ownership";
+import { resolveWorkloadForCheckKey } from "./tenant-workloads.ts";
+import { resolveCustomerMspId } from "./portal-customer-scope.ts";
+import { personIdForUser } from "./portal-ownership.ts";
 
 export interface RiskAuthorityWorkload {
   /** The matrix object id, e.g. "wl-icam" — same id space

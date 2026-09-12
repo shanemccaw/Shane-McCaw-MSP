@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { compileReportToHtml } from "./compileReportToHtml";
+import { compileReportToHtml } from "./compileReportToHtml.ts";
 
 vi.mock("@workspace/db", () => {
   return {

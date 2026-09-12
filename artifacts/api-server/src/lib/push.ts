@@ -1,4 +1,4 @@
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "comms.sms-push" });
 
 interface ExpoPushMessage {

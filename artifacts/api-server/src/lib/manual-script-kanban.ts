@@ -8,7 +8,7 @@
 import { db, kanbanTasksTable, projectsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.script" });
 
 export interface ManualScriptKanbanInput {

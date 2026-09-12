@@ -38,11 +38,11 @@ import {
   tenantsTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.monitor" });
-import { applyMapping, classifySeverity, validateOutputShape } from "../lib/monitor-executor";
-import type { SeverityRule, MappingRule } from "../lib/monitor-executor";
+import { applyMapping, classifySeverity, validateOutputShape } from "../lib/monitor-executor.ts";
+import type { SeverityRule, MappingRule } from "../lib/monitor-executor.ts";
 
 const router: IRouter = Router();
 

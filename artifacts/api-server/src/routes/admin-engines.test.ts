@@ -53,7 +53,7 @@ vi.mock("@workspace/db", () => ({
 // several routes here (e.g. /simulator/sql/execute, /simulator/ps-execution/cmdlet)
 // gate with requireAdminOrIngestToken() — a factory returning the middleware — so the
 // mock must expose it too, or importing the router throws at route-registration time.
-vi.mock("../middlewares/requireAuth", () => {
+vi.mock("../middlewares/requireAuth.ts", () => {
   const gate = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const auth = req.headers["authorization"] ?? "";
     if (auth === `Bearer ${ADMIN_PASS}`) return next();
@@ -69,7 +69,7 @@ vi.mock("../middlewares/requireAuth", () => {
 // (#1404) never makes a real network call. A real PsExecutionError class is exported
 // so the route's `err instanceof PsExecutionError` branch is exercised for real.
 const mockCallPsExecution = vi.hoisted(() => vi.fn());
-vi.mock("../lib/ps-execution-client", () => {
+vi.mock("../lib/ps-execution-client.ts", () => {
   class PsExecutionError extends Error {
     kind: string;
     cmdletKey: string;
@@ -87,7 +87,7 @@ vi.mock("../lib/ps-execution-client", () => {
   return { callPsExecution: mockCallPsExecution, PsExecutionError };
 });
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   // `child` included because lib/run-history.ts — which the SQL and migration
   // executors record every run through — binds its own channel at module load.
   logger: {
@@ -104,12 +104,12 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return { ...original, default: { ...original, readdir: mockReaddir, readFile: mockReadFile } };
 });
 
-vi.mock("../lib/engine-test-log-buffer", () => ({
+vi.mock("../lib/engine-test-log-buffer.ts", () => ({
   pushEngineTestLog: vi.fn(),
   listEngineTestLogs: vi.fn().mockReturnValue([]),
 }));
 
-vi.mock("./admin-signal-rules", () => ({
+vi.mock("./admin-signal-rules.ts", () => ({
   getAllRules: vi.fn().mockResolvedValue([]),
   getAllGroups: vi.fn().mockResolvedValue([]),
   parseIntelligenceFields: vi.fn().mockReturnValue({}),
@@ -126,8 +126,8 @@ const { mockRunForTenant, mockReaddir, mockReadFile } = vi.hoisted(() => ({
   mockReadFile: vi.fn(),
 }));
 
-vi.mock("../lib/engine-registry", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../lib/engine-registry")>();
+vi.mock("../lib/engine-registry.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../lib/engine-registry.ts")>();
   return {
     ...original,
     getEngineDef: vi.fn().mockReturnValue({
@@ -142,7 +142,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   app = express();
   app.use(express.json());
-  const { default: adminEnginesRouter } = await import("./admin-engines");
+  const { default: adminEnginesRouter } = await import("./admin-engines.ts");
   app.use(adminEnginesRouter);
 });
 
@@ -254,7 +254,7 @@ describe("POST /api/admin/simulator/run", () => {
 
   it("runs time compression simulation loop and returns traces", async () => {
     const { db } = await import("@workspace/db");
-    const { getEngineDef } = await import("../lib/engine-registry");
+    const { getEngineDef } = await import("../lib/engine-registry.ts");
 
     // Mock DB select to return testbed customer
     vi.spyOn(db, "select").mockReturnValue({
@@ -558,7 +558,7 @@ describe("POST /simulator/ps-execution/cmdlet (#1404)", () => {
 
   it("502 maps a PsExecutionError auth_failed to an upstream failure with its kind", async () => {
     await stubTenant(TESTBED);
-    const { PsExecutionError } = await import("../lib/ps-execution-client");
+    const { PsExecutionError } = await import("../lib/ps-execution-client.ts");
     mockCallPsExecution.mockRejectedValue(
       new PsExecutionError("auth_failed", "get-connection-info", "Could not establish a session", { containerErrorKind: "auth_failed" }),
     );
@@ -571,7 +571,7 @@ describe("POST /simulator/ps-execution/cmdlet (#1404)", () => {
 
   it("400 maps a PsExecutionError script_error to a caller error", async () => {
     await stubTenant(TESTBED);
-    const { PsExecutionError } = await import("../lib/ps-execution-client");
+    const { PsExecutionError } = await import("../lib/ps-execution-client.ts");
     mockCallPsExecution.mockRejectedValue(new PsExecutionError("script_error", "get-connection-info", "bad_request"));
     const res = await request(app).post("/simulator/ps-execution/cmdlet").set(authHeader).send({ cmdletKey: "get-connection-info", tenantId: "1" });
     expect(res.status).toBe(400);

@@ -13,7 +13,7 @@
 
 import { db, resultsTemplatesTable, type ResultsTemplate, type ResultsTemplateFamily } from "@workspace/db";
 import { asc, eq } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.assessment-results" });
 
 /** In-process cache — results templates change rarely and are read on every results-page load. */

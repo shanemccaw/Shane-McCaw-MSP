@@ -10,7 +10,7 @@ import {
   cloneStepsForNextCycle,
   wholeDaysSince,
   cycleProgress,
-} from "./portal-runbook-cycles";
+} from "./portal-runbook-cycles.ts";
 
 describe("isCycleComplete", () => {
   it("is false for an empty step list — nothing to have finished", () => {

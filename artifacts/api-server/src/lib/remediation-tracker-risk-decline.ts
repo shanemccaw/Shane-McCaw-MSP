@@ -76,12 +76,12 @@ import {
   type ClientApprover,
 } from "@workspace/db";
 
-import { riskScoreForLevel } from "./m365-change-router";
-import { assignRegisterRef } from "./risk-register-ref";
-import { REMEDIATION_TRACKER_CATALOGUE, type RemediationTrackerCatalogueStep } from "./remediation-tracker-catalogue";
-import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "./remediation-tracker-verification";
-import type { TenantScope } from "./portal-customer-scope";
-import { logger } from "./logger";
+import { riskScoreForLevel } from "./m365-change-router.ts";
+import { assignRegisterRef } from "./risk-register-ref.ts";
+import { REMEDIATION_TRACKER_CATALOGUE, type RemediationTrackerCatalogueStep } from "./remediation-tracker-catalogue.ts";
+import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "./remediation-tracker-verification.ts";
+import type { TenantScope } from "./portal-customer-scope.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

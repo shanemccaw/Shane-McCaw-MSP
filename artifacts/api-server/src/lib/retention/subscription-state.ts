@@ -75,12 +75,12 @@ import {
   resolveTenantBillingState,
   tenantBillingActiveCondition,
   type TenantBillingSource,
-} from "../tenant-billing-state";
-import { logger } from "../logger";
-import { postTerminationDueAt } from "./clock";
-import { freezeTenantClocks, resumeTenantClocks } from "./lifecycle";
-import { resolveRetentionPolicy } from "./policy";
-import { resolveOpenReinstatementRequests } from "./reinstatement";
+} from "../tenant-billing-state.ts";
+import { logger } from "../logger.ts";
+import { postTerminationDueAt } from "./clock.ts";
+import { freezeTenantClocks, resumeTenantClocks } from "./lifecycle.ts";
+import { resolveRetentionPolicy } from "./policy.ts";
+import { resolveOpenReinstatementRequests } from "./reinstatement.ts";
 
 const log = logger.child({ channel: "system.core" });
 const auditLog = logger.child({ channel: "audit" });

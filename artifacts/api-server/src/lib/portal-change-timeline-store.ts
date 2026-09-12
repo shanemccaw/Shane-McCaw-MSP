@@ -33,7 +33,7 @@ import {
   type CrTimelineAuthorRole,
 } from "@workspace/db";
 import { asc } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

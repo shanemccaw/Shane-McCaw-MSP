@@ -7,12 +7,12 @@
  */
 
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "admin.content" });
-import { getPrompt } from "./prompt-loader";
+import { getPrompt } from "./prompt-loader.ts";
 import { db, usersTable, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { recordAiUsage, computeTokenCostCents } from "./ai-billing";
+import { recordAiUsage, computeTokenCostCents } from "./ai-billing.ts";
 
 export interface AiAnalyzerInput {
   scriptOutput: string;

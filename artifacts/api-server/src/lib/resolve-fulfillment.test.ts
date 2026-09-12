@@ -51,7 +51,7 @@ vi.mock("@workspace/db", () => {
 
 // ── tenant-signals mock (client_services.clientUserId resolution) ─────────────
 const resolveCustomerPortalUserIdMock = vi.fn();
-vi.mock("./tenant-signals", () => ({
+vi.mock("./tenant-signals.ts", () => ({
   resolveCustomerPortalUserId: resolveCustomerPortalUserIdMock,
 }));
 
@@ -61,12 +61,12 @@ vi.mock("drizzle-orm", () => ({
 
 // ── Workflow executor mock ────────────────────────────────────────────────────
 const emitWorkflowEventMock = vi.fn().mockResolvedValue(undefined);
-vi.mock("./workflow-executor", () => ({
+vi.mock("./workflow-executor.ts", () => ({
   emitWorkflowEvent: emitWorkflowEventMock,
 }));
 
 // ── Logger mock ───────────────────────────────────────────────────────────────
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
@@ -108,7 +108,7 @@ describe("resolveFulfillment", () => {
     // Insert succeeds → returns a row (idempotency slot claimed)
     mockInsert.mockReturnValue(makeInsertChain([{ key: "idem-1" }]));
 
-    const { resolveFulfillment } = await import("./resolve-fulfillment");
+    const { resolveFulfillment } = await import("./resolve-fulfillment.ts");
 
     const result = await resolveFulfillment({
       fulfillmentTypeKey: "assessment",
@@ -139,7 +139,7 @@ describe("resolveFulfillment", () => {
       .mockReturnValueOnce(makeSelectChain([]));
     mockInsert.mockReturnValue(makeInsertChain([{ key: "idem-2" }]));
 
-    const { resolveFulfillment } = await import("./resolve-fulfillment");
+    const { resolveFulfillment } = await import("./resolve-fulfillment.ts");
 
     const result = await resolveFulfillment({
       fulfillmentTypeKey: "retainer",
@@ -161,7 +161,7 @@ describe("resolveFulfillment", () => {
       .mockReturnValueOnce(makeSelectChain([{ key: "assessment", isActive: true, recurring: false }]))
       .mockReturnValueOnce(makeSelectChain([{ idempotencyKey: "stripe-cs-test-001" }])); // already seen
 
-    const { resolveFulfillment } = await import("./resolve-fulfillment");
+    const { resolveFulfillment } = await import("./resolve-fulfillment.ts");
 
     const result = await resolveFulfillment({
       fulfillmentTypeKey: "assessment",
@@ -178,7 +178,7 @@ describe("resolveFulfillment", () => {
   it("4. returns 'unknown_type' for an unregistered key", async () => {
     mockSelect.mockReturnValueOnce(makeSelectChain([])); // type lookup misses
 
-    const { resolveFulfillment } = await import("./resolve-fulfillment");
+    const { resolveFulfillment } = await import("./resolve-fulfillment.ts");
 
     const result = await resolveFulfillment({
       fulfillmentTypeKey: "nonexistent_type",
@@ -196,7 +196,7 @@ describe("resolveFulfillment", () => {
       makeSelectChain([{ key: "assessment", isActive: false, recurring: false }]),
     );
 
-    const { resolveFulfillment } = await import("./resolve-fulfillment");
+    const { resolveFulfillment } = await import("./resolve-fulfillment.ts");
 
     const result = await resolveFulfillment({
       fulfillmentTypeKey: "assessment",
@@ -215,7 +215,7 @@ describe("resolveFulfillment", () => {
       .mockReturnValueOnce(makeSelectChain([])); // idempotency check clean
     mockInsert.mockReturnValue(makeInsertChain([])); // insert returns nothing → lost race
 
-    const { resolveFulfillment } = await import("./resolve-fulfillment");
+    const { resolveFulfillment } = await import("./resolve-fulfillment.ts");
 
     const result = await resolveFulfillment({
       fulfillmentTypeKey: "assessment",
@@ -237,7 +237,7 @@ describe("resolveFulfillment", () => {
       .mockReturnValueOnce(makeInsertChain([{ id: 501 }])); // client_services insert
     resolveCustomerPortalUserIdMock.mockResolvedValueOnce(42);
 
-    const { resolveFulfillment } = await import("./resolve-fulfillment");
+    const { resolveFulfillment } = await import("./resolve-fulfillment.ts");
 
     const result = await resolveFulfillment({
       fulfillmentTypeKey: "monitoring_subscription",
@@ -272,7 +272,7 @@ describe("resolveFulfillment", () => {
     mockInsert.mockReturnValueOnce(makeInsertChain([{ key: "idem-monitoring-2" }]));
     resolveCustomerPortalUserIdMock.mockResolvedValueOnce(null);
 
-    const { resolveFulfillment } = await import("./resolve-fulfillment");
+    const { resolveFulfillment } = await import("./resolve-fulfillment.ts");
 
     const result = await resolveFulfillment({
       fulfillmentTypeKey: "monitoring_subscription",
@@ -291,7 +291,7 @@ describe("resolveFulfillment", () => {
       .mockReturnValueOnce(makeSelectChain([]));
     mockInsert.mockReturnValueOnce(makeInsertChain([{ key: "idem-monitoring-3" }]));
 
-    const { resolveFulfillment } = await import("./resolve-fulfillment");
+    const { resolveFulfillment } = await import("./resolve-fulfillment.ts");
 
     const result = await resolveFulfillment({
       fulfillmentTypeKey: "monitoring_subscription",
@@ -313,7 +313,7 @@ describe("resolveFulfillment", () => {
       .mockReturnValueOnce(makeInsertChain([{ key: "idem-monitoring-4" }])) // idempotency row
       .mockReturnValueOnce(makeInsertChain([{ id: 777 }])); // client_services row
 
-    const { resolveFulfillment } = await import("./resolve-fulfillment");
+    const { resolveFulfillment } = await import("./resolve-fulfillment.ts");
 
     const result = await resolveFulfillment({
       fulfillmentTypeKey: "monitoring_subscription",
@@ -350,7 +350,7 @@ describe("resolveFulfillmentForSignal", () => {
       .mockReturnValueOnce(makeSelectChain([]));
     mockInsert.mockReturnValue(makeInsertChain([{ key: "auto-key" }]));
 
-    const { resolveFulfillmentForSignal } = await import("./resolve-fulfillment");
+    const { resolveFulfillmentForSignal } = await import("./resolve-fulfillment.ts");
 
     const result = await resolveFulfillmentForSignal({
       fulfillmentTypeKey: "assessment",
@@ -377,7 +377,7 @@ describe("resolveFulfillmentForSignal", () => {
       .mockReturnValueOnce(makeSelectChain([]));
     mockInsert.mockReturnValue(makeInsertChain([{ key: "custom-key" }]));
 
-    const { resolveFulfillmentForSignal } = await import("./resolve-fulfillment");
+    const { resolveFulfillmentForSignal } = await import("./resolve-fulfillment.ts");
 
     const result = await resolveFulfillmentForSignal({
       fulfillmentTypeKey: "retainer",

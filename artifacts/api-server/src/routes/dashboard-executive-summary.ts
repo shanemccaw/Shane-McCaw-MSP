@@ -14,9 +14,9 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { getOrGenerateExecutiveSummary } from "../lib/dashboard-executive-summary.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 

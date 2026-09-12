@@ -12,8 +12,8 @@
 import { db, changeRequestDependenciesTable, mspChangeRequestsTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 
-import { formatChangeRequestCode } from "./portal-change-control";
-import { logger } from "./logger";
+import { formatChangeRequestCode } from "./portal-change-control.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

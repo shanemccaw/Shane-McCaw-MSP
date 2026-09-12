@@ -71,11 +71,11 @@ vi.mock("stripe", () => {
 // #1397: portal-customer-engines.ts now customer-scopes reads/offboard via this
 // bridge. Stub to the single-login set so no extra DB select is issued and this
 // file's mock queue expectations stay valid.
-vi.mock("../lib/tenant-signals", () => ({
+vi.mock("../lib/tenant-signals.ts", () => ({
   resolveCustomerUserIds: async (id: number) => [id],
 }));
 
-import router from "./portal-customer-engines";
+import router from "./portal-customer-engines.ts";
 import { db } from "@workspace/db";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 

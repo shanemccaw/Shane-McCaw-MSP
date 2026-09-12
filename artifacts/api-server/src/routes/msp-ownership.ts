@@ -38,10 +38,10 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 
-import { requireCustomerScope, requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCustomerScope, requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
-import { resolveTenantScope } from "../lib/portal-customer-scope";
-import { assembleOwnershipPayload, fetchOwnershipEvents, gatherOwnershipObjects } from "./portal-ownership";
+import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { assembleOwnershipPayload, fetchOwnershipEvents, gatherOwnershipObjects } from "./portal-ownership.ts";
 import {
   actorMayRespond,
   assignEventType,
@@ -59,7 +59,7 @@ import {
   type WireMspOwnHolding,
   type WireMspOwnershipBook,
 } from "../lib/msp-ownership-book.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "tenant.portal" });

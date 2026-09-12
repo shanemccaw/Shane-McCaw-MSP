@@ -38,15 +38,15 @@ import { db, remediationTrackerStepsTable, REMEDIATION_TRACKER_STEP_STATUS } fro
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
-import { logger } from "../lib/logger";
-import { resolveRemediationChecklist, resolveRemediationChecklistItem, isKnownCheckKey } from "../lib/remediation-checklist";
-import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger";
-import { buildRaiseChangeRequestInputForChecklistItem } from "../lib/remediation-raise-change";
-import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise";
-import { resolveTenantScope } from "../lib/portal-customer-scope";
-import { declineRemediationChecklistItemToRisk } from "../lib/remediation-tracker-risk-decline";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
+import { logger } from "../lib/logger.ts";
+import { resolveRemediationChecklist, resolveRemediationChecklistItem, isKnownCheckKey } from "../lib/remediation-checklist.ts";
+import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger.ts";
+import { buildRaiseChangeRequestInputForChecklistItem } from "../lib/remediation-raise-change.ts";
+import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise.ts";
+import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { declineRemediationChecklistItemToRisk } from "../lib/remediation-tracker-risk-decline.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 /** Roles that represent SHANE / the MSP acting — see portal-remediation-tracker.ts's own note on why the retainer hook is scoped to these only. */

@@ -31,10 +31,10 @@ import {
   slaDaysFor,
   summarizeApprovals,
   violatesSeparationOfDuties,
-} from "./portal-change-approvals";
-import { recordCrEvent } from "./portal-change-timeline-store";
-import type { StoredChangeClass, StoredRiskLevel } from "./portal-change-control";
-import { logger } from "./logger";
+} from "./portal-change-approvals.ts";
+import { recordCrEvent } from "./portal-change-timeline-store.ts";
+import type { StoredChangeClass, StoredRiskLevel } from "./portal-change-control.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

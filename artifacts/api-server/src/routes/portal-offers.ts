@@ -23,17 +23,17 @@ import jwt from "jsonwebtoken";
 import { db } from "@workspace/db";
 import { salesOffersTable } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
-import { requireCapability } from "../middlewares/requireAuth";
-import { transitionOfferState } from "../lib/sales-offer-engine";
-import { fulfillAcceptedProjectOffer } from "../lib/project-sow-fulfillment";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { transitionOfferState } from "../lib/sales-offer-engine.ts";
+import { fulfillAcceptedProjectOffer } from "../lib/project-sow-fulfillment.ts";
 import {
   registerCustomerOfferSSEClient,
   broadcastMspOfferChange,
   broadcastCustomerOfferChange,
-} from "../lib/sse-channels";
-import { logger } from "../lib/logger";
+} from "../lib/sse-channels.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.offer" });
-import type { AuthUser } from "../middlewares/requireAuth";
+import type { AuthUser } from "../middlewares/requireAuth.ts";
 
 const router: IRouter = Router();
 

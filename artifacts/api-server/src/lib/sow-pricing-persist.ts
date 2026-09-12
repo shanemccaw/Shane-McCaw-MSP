@@ -22,8 +22,8 @@ import {
   SowPricingLineSchema,
   assignDeliveryDates,
   nextBusinessMonday,
-} from "./sow-pricing.js";
-import { logger } from "./logger.js";
+} from "./sow-pricing.ts";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 
 /**

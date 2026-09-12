@@ -32,8 +32,8 @@ import {
   settingsTable,
 } from "@workspace/db";
 import { and, eq, gte, sql, desc, count } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "billing" });
 const router = Router();

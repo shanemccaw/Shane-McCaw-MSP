@@ -45,14 +45,14 @@ vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => ({ and: args }),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
 const KNOWN_ENGINE_KEYS = ["health", "security", "drift", "monitoring", "sla", "scope_creep", "pricing", "crm", "priority"];
 
-vi.mock("../lib/engine-registry", () => ({
+vi.mock("../lib/engine-registry.ts", () => ({
   getEngineDef: vi.fn((key: string) => (KNOWN_ENGINE_KEYS.includes(key) ? { key, label: key } : undefined)),
 }));
 
@@ -64,13 +64,13 @@ const mockGetEngineHistoryMerged = vi.fn().mockResolvedValue(seriesFixture);
 const mockGetBaselineEvents = vi.fn().mockResolvedValue(baselineFixture);
 const mockGetSignalDeltasForRange = vi.fn().mockResolvedValue(deltasFixture);
 
-vi.mock("../lib/engine-history", () => ({
+vi.mock("../lib/engine-history.ts", () => ({
   getEngineHistoryMerged: (...args: unknown[]) => mockGetEngineHistoryMerged(...args),
   getBaselineEvents: (...args: unknown[]) => mockGetBaselineEvents(...args),
   getSignalDeltasForRange: (...args: unknown[]) => mockGetSignalDeltasForRange(...args),
 }));
 
-import router from "./portal-engine-history";
+import router from "./portal-engine-history.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 function makeApp() {

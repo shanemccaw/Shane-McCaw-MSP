@@ -38,9 +38,9 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { db, mspsTable, tenantsTable, usersTable } from "@workspace/db";
-import { __resetTenantDataPurgersForTest, orderedTenantDataPurgers } from "../registry";
-import { purgeTerminatedTenant } from "../post-termination";
-import { registerAllTenantDataPurgers } from "./index";
+import { __resetTenantDataPurgersForTest, orderedTenantDataPurgers } from "../registry.ts";
+import { purgeTerminatedTenant } from "../post-termination.ts";
+import { registerAllTenantDataPurgers } from "./index.ts";
 
 const SUFFIX = `vitest-2984-${Math.floor(Math.random() * 1e9)}`;
 const YEAR_MS = 365 * 24 * 60 * 60 * 1000;

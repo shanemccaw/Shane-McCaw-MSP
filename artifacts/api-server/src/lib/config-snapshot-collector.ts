@@ -92,16 +92,16 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
-import { logger } from "./logger";
-import { ConsentRevokedError, LicenseGapError } from "./graph";
-import { PsExecutionError, callPsExecution } from "./ps-execution-client";
+import { logger } from "./logger.ts";
+import { ConsentRevokedError, LicenseGapError } from "./graph.ts";
+import { PsExecutionError, callPsExecution } from "./ps-execution-client.ts";
 import {
   getTenantProperties,
   adminHostRestGet,
   sharePointAdminCredentialsPresent,
   SharePointAuthError,
   type SharePointTenantRef,
-} from "./sharepoint-admin";
+} from "./sharepoint-admin.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 
@@ -732,7 +732,7 @@ async function collectGraphResource(
   rt: ConfigSnapshotResourceType,
   maxPages: number,
 ): Promise<RawCollection> {
-  const { graphFetchPaginated } = await import("./monitor-executor");
+  const { graphFetchPaginated } = await import("./monitor-executor.ts");
   const path = rt.graphPath ?? "";
   const version = rt.graphVersion ?? "v1.0";
   const suffix = path.startsWith("/") ? path : `/${path}`;
@@ -1051,7 +1051,7 @@ export async function collectSharePointAdminResource(
     };
   }
 
-  const { resolveSharePointTenantRef } = await import("./monitor-executor");
+  const { resolveSharePointTenantRef } = await import("./monitor-executor.ts");
   const ref = await resolveSharePointTenantRef(entraTenantId);
   const objects = await reader(ref);
   return {
@@ -1104,7 +1104,7 @@ async function collectPowerShellResource(
  * verified domain diffs independently in #1797.
  */
 async function collectDnsResource(entraTenantId: string): Promise<RawCollection> {
-  const { graphFetchPaginated, queryTxtRecords, DKIM_DEFAULT_SELECTORS } = await import("./monitor-executor");
+  const { graphFetchPaginated, queryTxtRecords, DKIM_DEFAULT_SELECTORS } = await import("./monitor-executor.ts");
 
   const { items: domainItems } = await graphFetchPaginated(entraTenantId, "/domains", "GET");
   const domains = domainItems
@@ -1475,7 +1475,7 @@ export async function collectTenantConfigSnapshot(
       // answer at all. `service_not_configured` is a different customer
       // conversation from `permission_denied`, so it is resolved rather than
       // lumped in.
-      const { ServiceNotConfiguredError } = await import("./service-availability");
+      const { ServiceNotConfiguredError } = await import("./service-availability.ts");
       if (err instanceof ServiceNotConfiguredError) {
         record({
           ...base,
@@ -1491,7 +1491,7 @@ export async function collectTenantConfigSnapshot(
         return;
       }
 
-      const { GraphPaginatedError } = await import("./monitor-executor");
+      const { GraphPaginatedError } = await import("./monitor-executor.ts");
       // Git #2115: LicenseGapError carries real wire evidence (the res.status it
       // was thrown from, and its raw Graph body) but was never read here — every
       // LicenseGapError catch recorded NO http_status/error_code at all (31 of the

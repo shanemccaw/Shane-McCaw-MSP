@@ -6,8 +6,8 @@ import {
   parseLooseObjectBody,
   sopStepNodeId,
   toInterpTemplate,
-} from "./sop-workflow-graph";
-import type { StoredSopStep } from "./portal-sops";
+} from "./sop-workflow-graph.ts";
+import type { StoredSopStep } from "./portal-sops.ts";
 
 describe("parseGraphEndpointShape", () => {
   it("parses a bare write endpoint with no body", () => {

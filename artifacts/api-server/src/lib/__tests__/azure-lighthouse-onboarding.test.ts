@@ -4,8 +4,8 @@ import {
   buildLighthouseDeepLink,
   lighthouseManagingTenantConfig,
   resolveArmScopePath,
-} from "../azure-lighthouse-onboarding";
-import { AZURE_BUILT_IN_ROLE_IDS, AZURE_RM_LEAST_PRIVILEGE_ROLE } from "../azure-rm";
+} from "../azure-lighthouse-onboarding.ts";
+import { AZURE_BUILT_IN_ROLE_IDS, AZURE_RM_LEAST_PRIVILEGE_ROLE } from "../azure-rm.ts";
 
 /**
  * #1915 — the promise/record layer's TEMPLATE GENERATION half.

@@ -82,11 +82,11 @@ import {
 import type { PgTable } from "drizzle-orm/pg-core";
 import { eq, asc, and, inArray, count, desc, or, isNotNull, sql, type SQL } from "drizzle-orm";
 import { randomBytes, randomUUID } from "crypto";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { revokeAllOtherSessions } from "../lib/session-tracking";
-import { createAuditLog } from "../lib/audit";
-import { adminResetMfa, isMfaMethod, MFA_METHODS } from "./mfa";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
+import { createAuditLog } from "../lib/audit.ts";
+import { adminResetMfa, isMfaMethod, MFA_METHODS } from "./mfa.ts";
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { getRequestContext } from "../lib/request-context.ts";
@@ -112,8 +112,8 @@ import {
   buildUserEntitlementsView,
   roleLinkageRequirement,
   type MspOverrideRow,
-} from "../lib/active-directory";
-import { resolveCustomerUserIds } from "../lib/tenant-signals";
+} from "../lib/active-directory.ts";
+import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
 import { userEntitlementOverridesTable } from "@workspace/db";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 

@@ -31,14 +31,14 @@
 import { db, mspDiagnosticRunsTable, tenantsTable, industryBenchmarkReferenceTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
-import { logger } from "./logger";
-import { getPrompt } from "./prompt-loader";
-import { calculateArchitectureHealthScore } from "./health-engine";
-import { computeDisplayHealth } from "./health-display";
-import { fetchTenantEvaluableSignalKeys } from "./pillar-coverage";
-import { fetchSignalRulesAndGroups } from "./priority-engine";
-import { resolveLicenseWasteCounts } from "./license-waste-source";
-import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine";
+import { logger } from "./logger.ts";
+import { getPrompt } from "./prompt-loader.ts";
+import { calculateArchitectureHealthScore } from "./health-engine.ts";
+import { computeDisplayHealth } from "./health-display.ts";
+import { fetchTenantEvaluableSignalKeys } from "./pillar-coverage.ts";
+import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
+import { resolveLicenseWasteCounts } from "./license-waste-source.ts";
+import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine.ts";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 

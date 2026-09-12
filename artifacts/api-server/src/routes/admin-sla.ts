@@ -12,8 +12,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.sla" });
 import {
   computeSlaEngine,
@@ -26,7 +26,7 @@ import {
   resolveSlaTimer,
   computeComplianceSnapshot,
   type SlaPolicy,
-} from "../lib/sla-engine";
+} from "../lib/sla-engine.ts";
 
 const router: IRouter = Router();
 

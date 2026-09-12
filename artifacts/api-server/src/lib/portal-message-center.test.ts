@@ -35,7 +35,7 @@ import {
   workloadFound,
   WORKLOAD_ORDER,
   type MessageCenterRow,
-} from "./portal-message-center";
+} from "./portal-message-center.ts";
 
 /** 20 August 2026 — the date the design's own fixture is written against. */
 const NOW = new Date("2026-08-20T09:00:00.000Z");

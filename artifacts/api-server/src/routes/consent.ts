@@ -997,7 +997,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // a unique triggerId, so it only dedupes retries of the SAME run).
   void (async () => {
     try {
-      const { runDiagnostics } = await import("../lib/diagnostics-runner.js");
+      const { runDiagnostics } = await import("../lib/diagnostics-runner.ts");
       await runDiagnostics({
         tenantId: tenant,
         // Pass the tenants.id so the run is associated with the customer
@@ -1049,7 +1049,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // of the scoring package, on every scan.
   void (async () => {
     try {
-      const { runItemDetailCollection } = await import("../lib/item-detail-collector.js");
+      const { runItemDetailCollection } = await import("../lib/item-detail-collector.ts");
       const detail = await runItemDetailCollection({
         tenantId: tenant,
         customerId: inviteRecord?.customerId ?? prospectCustomerId ?? consentTenant.id,

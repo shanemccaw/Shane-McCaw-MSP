@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { db, quizPainSignalConfigTable, leadStagingTable } from "@workspace/db";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import { sql, eq, isNotNull, desc } from "drizzle-orm";
-import { loadQuizPainConfig, deriveSignalsFromQuiz } from "../lib/derive-quiz-signals";
+import { loadQuizPainConfig, deriveSignalsFromQuiz } from "../lib/derive-quiz-signals.ts";
 
 const router = Router();
 

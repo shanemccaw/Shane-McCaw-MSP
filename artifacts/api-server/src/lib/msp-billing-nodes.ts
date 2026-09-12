@@ -9,8 +9,8 @@
 import { db } from "@workspace/db";
 import { mspSubscriptionsTable, mspsTable, mspEventStoreTable, tenantsTable, servicesTable } from "@workspace/db";
 import { eq, and, isNotNull, sql, count } from "drizzle-orm";
-import { logger } from "./logger";
-import { cascadeMspSubscriptionToCustomers } from "./retention/msp-cascade";
+import { logger } from "./logger.ts";
+import { cascadeMspSubscriptionToCustomers } from "./retention/msp-cascade.ts";
 const log = logger.child({ channel: "billing" });
 
 // ── MSP Dunning State Machine ─────────────────────────────────────────────────

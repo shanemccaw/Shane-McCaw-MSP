@@ -67,7 +67,7 @@
 import {
   REMEDIATION_TRACKER_CATALOGUE,
   type RemediationTrackerCatalogueStep,
-} from "./remediation-tracker-catalogue";
+} from "./remediation-tracker-catalogue.ts";
 
 export type RemediationTrackerPillar =
   | "governance"

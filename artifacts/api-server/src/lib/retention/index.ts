@@ -9,25 +9,25 @@
  * `DELETE FROM` across the platform.
  */
 
-export * from "./clock";
-export * from "./policy";
-export * from "./origin-registry";
-export * from "./reference-guard";
-export * from "./registry";
-export * from "./lifecycle";
+export * from "./clock.ts";
+export * from "./policy.ts";
+export * from "./origin-registry.ts";
+export * from "./reference-guard.ts";
+export * from "./registry.ts";
+export * from "./lifecycle.ts";
 // #2765 — the subscription gate, the freeze/resume trigger, and the 7-year
 // post-termination purge scheduler. The foundation above built the clock; these three
 // are what start, stop and finally run it.
-export * from "./subscription-state";
-export * from "./subscription-gate";
-export * from "./post-termination";
+export * from "./subscription-state.ts";
+export * from "./subscription-gate.ts";
+export * from "./post-termination.ts";
 // #2859 — the real per-module tenant-data purgers the post-termination purge drives, and
 // `registerAllTenantDataPurgers()`, the single point that arms them. Exporting the
 // declarations does NOT register them: arming is an explicit call, made once at startup,
 // so importing this barrel anywhere cannot arm an irreversible destructive path as a side
 // effect. Until that call the registry is empty and `purgeTerminatedTenant()` refuses.
-export * from "./purgers";
+export * from "./purgers/index.ts";
 // #2936 — Shane's decision that an MSP's own lapse cascades to its customers, and the
 // limited-access half of that decision: a gated customer can still request reinstatement.
-export * from "./msp-cascade";
-export * from "./reinstatement";
+export * from "./msp-cascade.ts";
+export * from "./reinstatement.ts";

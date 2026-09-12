@@ -1,9 +1,9 @@
-import { DEFAULT_TESTS, PccTest } from './taxonomy-catalog.js';
-import { PccStateManager, PccRunResult } from './state-manager.js';
-import { PccStreamingServer } from './streaming-server.js';
-import { PccGraphValidator } from './graph-validator.js';
-import { PccUiValidator } from './ui-validator.js';
-import { PccEventInjector } from './event-injector.js';
+import { DEFAULT_TESTS, type PccTest } from './taxonomy-catalog.ts';
+import { PccStateManager, type PccRunResult } from './state-manager.ts';
+import { PccStreamingServer } from './streaming-server.ts';
+import { PccGraphValidator } from './graph-validator.ts';
+import { PccUiValidator } from './ui-validator.ts';
+import { PccEventInjector } from './event-injector.ts';
 
 export class PccTestRunner {
   private stateManager = PccStateManager.getInstance();

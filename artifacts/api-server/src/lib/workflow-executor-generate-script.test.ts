@@ -147,30 +147,30 @@ vi.mock("@workspace/db", () => {
 
 // ── Mock: all other workflow-executor.ts dependencies ─────────────────────────
 
-vi.mock("./azure-automation", () => ({
+vi.mock("./azure-automation.ts", () => ({
   createRunbookJob: async () => {},
   isAzureConfigured: () => false,
 }));
 
-vi.mock("./news-fetcher.js", () => ({
+vi.mock("./news-fetcher.ts", () => ({
   fetchNewsHeadlines: async () => [],
   DEFAULT_NEWS_PROMPT: "",
   CAMPAIGN_BRIEF_PROMPT: "",
 }));
 
-vi.mock("./web-push", () => ({ sendWebPushToAdmins: async () => {} }));
-vi.mock("./push", () => ({ sendPushNotifications: async () => {} }));
+vi.mock("./web-push.ts", () => ({ sendWebPushToAdmins: async () => {} }));
+vi.mock("./push.ts", () => ({ sendPushNotifications: async () => {} }));
 
 // generate_script's pause path notifies admins via notification-center, not a
 // direct DB/SSE call — stub the leaf module rather than its (unmocked) own
 // transitive imports (graphEmail, event-bus, sse-channels), same reasoning as
 // ./web-push and ./push above.
-vi.mock("./notification-center", () => ({
+vi.mock("./notification-center.ts", () => ({
   createNotification: async () => {},
   createNotificationForAllAdmins: async () => {},
 }));
 
-vi.mock("./sse-channels", () => ({
+vi.mock("./sse-channels.ts", () => ({
   broadcastAdminWorkflowEvent: () => {},
   broadcastPresentationPhaseGenProgress: () => {},
   broadcastPresentationPhaseGenComplete: () => {},
@@ -181,7 +181,7 @@ vi.mock("./sse-channels", () => ({
   broadcastWorkflowRunError: () => {},
 }));
 
-vi.mock("./document-engine-sow", () => ({
+vi.mock("./document-engine-sow.ts", () => ({
   broadcastSowChangeForProject: async () => {},
   broadcastDocsChangeForProject: async () => {},
 }));
@@ -203,18 +203,18 @@ vi.mock("@workspace/integrations-openai-ai-server/image", () => ({
   openai: { images: { generate: async () => {} } },
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const n = () => {};
   const l = { info: n, warn: n, error: n, debug: n, fatal: n, trace: n, child: () => l };
   return { logger: l };
 });
 
-vi.mock("./prompt-loader", () => ({
+vi.mock("./prompt-loader.ts", () => ({
   getPrompt: async (_key: string, fallback: string) => fallback,
   getDocumentStylePrefix: async () => "",
 }));
 
-vi.mock("./sow-pricing-persist.js", () => ({ persistSowPricing: async () => {} }));
+vi.mock("./sow-pricing-persist.ts", () => ({ persistSowPricing: async () => {} }));
 
 vi.mock("ajv", () => {
   const MockAjv = function () {
@@ -225,7 +225,7 @@ vi.mock("ajv", () => {
 });
 
 // ── Import executeWorkflowRun AFTER all mocks are registered ──────────────────
-import { executeWorkflowRun } from "./workflow-executor";
+import { executeWorkflowRun } from "./workflow-executor.ts";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

@@ -23,7 +23,7 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { ALL_TENANT_DATA_PURGER_DECLARATIONS } from "./modules";
+import { ALL_TENANT_DATA_PURGER_DECLARATIONS } from "./modules.ts";
 
 /** One `table.column` the live database says keys a tenant. */
 export interface TenantScopedColumn {

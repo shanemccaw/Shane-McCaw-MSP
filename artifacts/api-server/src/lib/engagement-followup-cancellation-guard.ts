@@ -41,7 +41,7 @@ import {
   wfRunsTable,
 } from "@workspace/db";
 import { eq, and, isNotNull, desc } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.engagement-offer" });
 
 export interface CancelConflictingFollowupInput {

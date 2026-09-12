@@ -29,15 +29,15 @@ import {
 import { eq, inArray } from "drizzle-orm";
 
 const mockCreateAuditLog = vi.fn().mockResolvedValue(undefined);
-vi.mock("../lib/audit", () => ({ createAuditLog: (...args: unknown[]) => mockCreateAuditLog(...args) }));
+vi.mock("../lib/audit.ts", () => ({ createAuditLog: (...args: unknown[]) => mockCreateAuditLog(...args) }));
 
 const mockBuildDryRun = vi.fn();
-vi.mock("../lib/config-pack-dry-run", () => ({
+vi.mock("../lib/config-pack-dry-run.ts", () => ({
   buildConfigPackDryRun: (...args: unknown[]) => mockBuildDryRun(...args),
 }));
 
 const mockRunPack = vi.fn();
-vi.mock("../lib/config-pack-orchestrator", async (importOriginal) => ({
+vi.mock("../lib/config-pack-orchestrator.ts", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   runConfigPackForCustomer: (...args: unknown[]) => mockRunPack(...args),
 }));

@@ -26,11 +26,11 @@ import {
 import { eq, and, isNull, or, desc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { createHash } from "crypto";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.offer" });
-import { fetchSignalRulesAndGroups } from "./priority-engine";
-import { buildTenantProfile, computeTenantSignals, getDisabledSignalKeys, resolveCustomerPortalUserId } from "./tenant-signals";
-import { createNotification } from "./notification-center";
+import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
+import { buildTenantProfile, computeTenantSignals, getDisabledSignalKeys, resolveCustomerPortalUserId } from "./tenant-signals.ts";
+import { createNotification } from "./notification-center.ts";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 

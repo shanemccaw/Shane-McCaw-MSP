@@ -10,7 +10,7 @@
 
 import { db, platformLogStreamTable } from "@workspace/db";
 import { lt } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "system.core" });
 
 export async function handlePlatformLogStreamPrune(

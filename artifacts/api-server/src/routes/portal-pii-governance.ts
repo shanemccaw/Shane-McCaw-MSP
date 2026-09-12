@@ -47,13 +47,13 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
-import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
-import { PII_GOVERNANCE_CHECKS } from "../lib/portal-pii-governance";
-import { computePiiGovernance } from "../lib/portal-pii-governance-query";
-import { apiError, ApiErrorCode } from "../lib/api-helpers";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
+import { PII_GOVERNANCE_CHECKS } from "../lib/portal-pii-governance.ts";
+import { computePiiGovernance } from "../lib/portal-pii-governance-query.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

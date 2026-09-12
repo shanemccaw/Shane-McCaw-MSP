@@ -55,7 +55,7 @@ import {
   tenantsTable,
   type RetentionReinstatementRequest,
 } from "@workspace/db";
-import { logger } from "../logger";
+import { logger } from "../logger.ts";
 
 const log = logger.child({ channel: "system.core" });
 const auditLog = logger.child({ channel: "audit" });

@@ -133,7 +133,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../graph", () => ({
+vi.mock("../graph.ts", () => ({
   graphFetchForTenant: vi.fn(),
   ConsentRevokedError: class ConsentRevokedError extends Error {
     tenantId: string;
@@ -160,7 +160,7 @@ vi.mock("../graph", () => ({
   markTenantConsentRevoked: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../ps-execution-client", () => ({
+vi.mock("../ps-execution-client.ts", () => ({
   callPsExecution: vi.fn(),
   PsExecutionError: class PsExecutionError extends Error {
     kind: string;
@@ -174,16 +174,16 @@ vi.mock("../ps-execution-client", () => ({
   },
 }));
 
-vi.mock("../logger", () => {
+vi.mock("../logger.ts", () => {
   const child = vi.fn();
   const base = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child };
   child.mockReturnValue(base);
   return { logger: base };
 });
 
-import { graphFetchForTenant } from "../graph";
-import { runItemDetailCollection, ITEM_DETAIL_PACKAGE_KEY, MAX_PERSISTED_ITEM_BYTES } from "../item-detail-collector";
-import { executeMonitoringPackage } from "../monitor-executor";
+import { graphFetchForTenant } from "../graph.ts";
+import { runItemDetailCollection, ITEM_DETAIL_PACKAGE_KEY, MAX_PERSISTED_ITEM_BYTES } from "../item-detail-collector.ts";
+import { executeMonitoringPackage } from "../monitor-executor.ts";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import * as dbModule from "@workspace/db";
 
@@ -479,7 +479,7 @@ describe("runItemDetailCollection — parallel with the scoring scan", () => {
     linkChecks([baseCheck.key, second.key], [baseCheck.key, second.key]);
     state.checks = [baseCheck, second];
 
-    const { ConsentRevokedError } = await import("../graph");
+    const { ConsentRevokedError } = await import("../graph.ts");
     mockFetch.mockRejectedValue(new ConsentRevokedError("tenant-guid"));
 
     const result = await runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY });
@@ -621,7 +621,7 @@ describe("executeMonitoringPackage — #543 resolved-check-list logging", () => 
 
     // The line that makes "did this run execute check X?" answerable from the
     // logs alone, rather than inferred from rows several paths can write.
-    const { logger } = await import("../logger");
+    const { logger } = await import("../logger.ts");
     const resolved = (logger.info as unknown as Mock).mock.calls.find(
       (call: unknown[]) => typeof call[1] === "string" && call[1].includes("resolved package check list"),
     );

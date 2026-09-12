@@ -8,7 +8,7 @@ import {
   EVALUABLE_TARGET_KINDS,
   type MailboxComplianceObservation,
   type GroupMembershipComplianceObservation,
-} from "./policy-compliance";
+} from "./policy-compliance.ts";
 
 function observation(overrides: Partial<MailboxComplianceObservation> = {}): MailboxComplianceObservation {
   return {

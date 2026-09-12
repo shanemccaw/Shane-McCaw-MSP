@@ -47,10 +47,10 @@
 
 import { eq, and } from "drizzle-orm";
 import { db, activeDirectoryOuAssignmentsTable } from "@workspace/db";
-import { graphFetchForTenant } from "./graph";
-import { isCsvReportResponse, parseCsvReport } from "./monitor-executor";
-import { logger } from "./logger";
-import type { MailboxComplianceObservation, GroupMembershipComplianceObservation } from "./policy-compliance";
+import { graphFetchForTenant } from "./graph.ts";
+import { isCsvReportResponse, parseCsvReport } from "./monitor-executor.ts";
+import { logger } from "./logger.ts";
+import type { MailboxComplianceObservation, GroupMembershipComplianceObservation } from "./policy-compliance.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

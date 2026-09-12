@@ -49,7 +49,7 @@
 import { and, eq } from "drizzle-orm";
 import { db, mspChangeRequestsTable } from "@workspace/db";
 
-import { recordCrEvent } from "./portal-change-timeline-store";
+import { recordCrEvent } from "./portal-change-timeline-store.ts";
 
 /** The columns the pure verdict needs from every CR raised for a given (tenant, checkKey). */
 export interface RemediationRevealCandidate {

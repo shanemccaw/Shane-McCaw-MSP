@@ -13,7 +13,7 @@
 
 import { db, userSessionsTable, mspRefreshTokensTable, type UserSession } from "@workspace/db";
 import { and, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "auth" });
 
 export type SessionType = "standard" | "impersonation";

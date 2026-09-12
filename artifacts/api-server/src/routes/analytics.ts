@@ -21,7 +21,7 @@
 // breakdown, not a per-lead view.
 
 import { Router, type Response } from "express";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import {
   ga4CredentialsPresent,
   resolveGa4DateRange,
@@ -30,7 +30,7 @@ import {
   runRealtimeReport,
   type Ga4Row,
 } from "../lib/ga4-client.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const router = Router();
 const log = logger.child({ channel: "growth.website-analytics" });

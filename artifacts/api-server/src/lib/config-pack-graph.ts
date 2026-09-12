@@ -69,32 +69,35 @@ export interface PackTemplateResolved {
   requiredVariables: string[];
 }
 
+export type ConfigPackErrorCode =
+  | "pack_not_found"
+  | "pack_not_active"
+  | "pack_empty"
+  | "dependency_not_in_pack"
+  | "dependency_cycle"
+  | "customer_not_found"
+  | "customer_not_connected"
+  | "customer_not_testbed"
+  | "customer_write_consent_missing"
+  | "tenant_domain_unresolved"
+  | "missing_variables"
+  | "concurrency_limit"
+  // #1497 — Change Control gate: the write path was reached without an
+  // approved, unconsumed CR that authorizes writing to the target tenant.
+  | "change_request_not_authorized"
+  // #1911 — this pack mints a credential and the Key Vault store that must
+  // hold it is not configured. Fail closed: refusing the run is correct,
+  // writing the credential into the database instead is the bug #1900 filed.
+  | "generated_secret_store_unavailable";
+
 export class ConfigPackError extends Error {
-  constructor(
-    public readonly code:
-      | "pack_not_found"
-      | "pack_not_active"
-      | "pack_empty"
-      | "dependency_not_in_pack"
-      | "dependency_cycle"
-      | "customer_not_found"
-      | "customer_not_connected"
-      | "customer_not_testbed"
-      | "customer_write_consent_missing"
-      | "tenant_domain_unresolved"
-      | "missing_variables"
-      | "concurrency_limit"
-      // #1497 — Change Control gate: the write path was reached without an
-      // approved, unconsumed CR that authorizes writing to the target tenant.
-      | "change_request_not_authorized"
-      // #1911 — this pack mints a credential and the Key Vault store that must
-      // hold it is not configured. Fail closed: refusing the run is correct,
-      // writing the credential into the database instead is the bug #1900 filed.
-      | "generated_secret_store_unavailable",
-    message: string,
-    public readonly details?: Record<string, unknown>,
-  ) {
+  readonly code: ConfigPackErrorCode;
+  readonly details?: Record<string, unknown>;
+
+  constructor(code: ConfigPackErrorCode, message: string, details?: Record<string, unknown>) {
     super(message);
+    this.code = code;
+    this.details = details;
     this.name = "ConfigPackError";
   }
 }

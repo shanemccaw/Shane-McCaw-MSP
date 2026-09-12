@@ -12,14 +12,14 @@
 // without a confirmed path first.
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import {
   listTags,
   asRecordArray,
   EngageBayNotConnectedError,
   EngageBayApiError,
 } from "../lib/engagebay-client.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "integration.engagebay" });
 

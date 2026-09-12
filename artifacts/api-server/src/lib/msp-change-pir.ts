@@ -15,7 +15,7 @@
 
 import type { CrPir, CrPirCloseCode, CrPirDriftRescanStatus } from "@workspace/db";
 import { CR_PIR_CLOSE_CODES, CR_PIR_DRIFT_RESCAN_STATUSES } from "@workspace/db";
-import { formatChangeRequestCode } from "./portal-change-control";
+import { formatChangeRequestCode } from "./portal-change-control.ts";
 
 export { CR_PIR_CLOSE_CODES, CR_PIR_DRIFT_RESCAN_STATUSES, formatChangeRequestCode };
 export type { CrPirCloseCode, CrPirDriftRescanStatus };

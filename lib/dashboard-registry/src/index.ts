@@ -1,11 +1,11 @@
-export * from "./types";
-export { DASHBOARD_METRICS } from "./metrics";
-export { DASHBOARD_RENDERERS } from "./renderers";
+export * from "./types.ts";
+export { DASHBOARD_METRICS } from "./metrics.ts";
+export { DASHBOARD_RENDERERS } from "./renderers.ts";
 export {
   getMetric,
   canRendererRenderMetric,
   getValidRenderersForMetric,
-} from "./registry";
+} from "./registry.ts";
 export {
   AUDIT_CONFIRMED_ABSENT_SOURCE_KEYS,
   METRICS_WHOSE_SOURCE_KEY_IS_NOT_A_LOOKUP,
@@ -14,4 +14,4 @@ export {
   classifySourceKey,
   sourceKeyIsCatalogClaim,
   type SourceKeyVerdict,
-} from "./sourceKeyContract";
+} from "./sourceKeyContract.ts";

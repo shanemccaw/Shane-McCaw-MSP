@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db, revenueForecastsTable, invoicesTable, clientServicesTable, servicesTable, opportunitiesTable } from "@workspace/db";
 import { eq, desc, and, gte } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 
 const router = Router();
 

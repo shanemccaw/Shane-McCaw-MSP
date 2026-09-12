@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const noop = () => {};
   const child = { info: noop, warn: noop, error: noop, debug: noop };
   return { logger: { child: () => child, ...child } };
@@ -43,7 +43,7 @@ vi.mock("@workspace/db", () => ({
   wfRunsTable: { id: "wr.id", status: "wr.status" },
 }));
 
-import { cancelConflictingEngagementFollowup } from "./engagement-followup-cancellation-guard";
+import { cancelConflictingEngagementFollowup } from "./engagement-followup-cancellation-guard.ts";
 
 beforeEach(() => {
   selectQueue = [];

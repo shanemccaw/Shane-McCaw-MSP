@@ -44,7 +44,7 @@ vi.mock("@workspace/db", () => ({
 // Rejects by default so requireAdminOrDeployToken's fall-through path is
 // actually exercised, not masked by an always-allow stub. A request can opt
 // into "authenticated admin session" with a test-only header.
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.header("x-test-admin-session") === "yes") {
       next();
@@ -82,7 +82,7 @@ describe("GET /version — Git #666 deployed_version_stamp fallback", () => {
   it("serves the real deployed stamp once the async DB lookup resolves", async () => {
     stub([{ id: 3, commitHash: "abc1234", commitMessage: "Real deploy commit", deployedAt: new Date() }]);
 
-    const { default: versionRouter } = await import("./version");
+    const { default: versionRouter } = await import("./version.ts");
     await flushMicrotasks();
 
     const app = buildApp(versionRouter);
@@ -96,7 +96,7 @@ describe("GET /version — Git #666 deployed_version_stamp fallback", () => {
   it("falls back to the generic placeholder when deployed_version_stamp is empty", async () => {
     stub([]);
 
-    const { default: versionRouter } = await import("./version");
+    const { default: versionRouter } = await import("./version.ts");
     await flushMicrotasks();
 
     const app = buildApp(versionRouter);
@@ -117,7 +117,7 @@ describe("GET /internal/deploy-status — Git #805 BuildConsole poll target", ()
   it("serves { commitHash, timestamp } from the same versionInfo /version uses, unauthenticated", async () => {
     stub([{ id: 3, commitHash: "abc1234", commitMessage: "Real deploy commit", deployedAt: new Date() }]);
 
-    const { default: versionRouter } = await import("./version");
+    const { default: versionRouter } = await import("./version.ts");
     await flushMicrotasks();
 
     const app = buildApp(versionRouter);
@@ -145,7 +145,7 @@ describe("POST /admin/version-stamp", () => {
 
   it("writes a row and returns it for a real admin session", async () => {
     stub([]); // startup fallback lookup (empty)
-    const { default: versionRouter } = await import("./version");
+    const { default: versionRouter } = await import("./version.ts");
     await flushMicrotasks();
 
     stub([{ id: 5, commitHash: "def5678", commitMessage: "Deploy commit", deployedAt: new Date() }]);
@@ -163,7 +163,7 @@ describe("POST /admin/version-stamp", () => {
 
   it("400s when commitHash/commitMessage are missing", async () => {
     stub([]);
-    const { default: versionRouter } = await import("./version");
+    const { default: versionRouter } = await import("./version.ts");
     await flushMicrotasks();
 
     const app = buildApp(versionRouter);
@@ -177,7 +177,7 @@ describe("POST /admin/version-stamp", () => {
 
   it("401s with no admin session and no deploy token configured", async () => {
     stub([]);
-    const { default: versionRouter } = await import("./version");
+    const { default: versionRouter } = await import("./version.ts");
     await flushMicrotasks();
 
     const app = buildApp(versionRouter);
@@ -191,7 +191,7 @@ describe("POST /admin/version-stamp", () => {
   it("accepts a correct X-Deploy-Token even with no admin session — the postBuild path", async () => {
     process.env.DEPLOY_STAMP_TOKEN = "real-deploy-secret";
     stub([]);
-    const { default: versionRouter } = await import("./version");
+    const { default: versionRouter } = await import("./version.ts");
     await flushMicrotasks();
 
     stub([{ id: 6, commitHash: "aaa1111", commitMessage: "postBuild deploy", deployedAt: new Date() }]);
@@ -209,7 +209,7 @@ describe("POST /admin/version-stamp", () => {
   it("rejects an incorrect X-Deploy-Token and does not fall back to admin session", async () => {
     process.env.DEPLOY_STAMP_TOKEN = "real-deploy-secret";
     stub([]);
-    const { default: versionRouter } = await import("./version");
+    const { default: versionRouter } = await import("./version.ts");
     await flushMicrotasks();
 
     const app = buildApp(versionRouter);

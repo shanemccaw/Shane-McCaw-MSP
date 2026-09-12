@@ -37,7 +37,7 @@ import type {
   CabMemberSide,
 } from "@workspace/db";
 import { CAB_AGENDA_RECOMMENDATIONS, CAB_MEETING_STATUSES, CAB_MEETING_TYPES, CAB_MEMBER_ROLES, CAB_MEMBER_SIDES } from "@workspace/db";
-import type { StoredChangeClass } from "./portal-change-control";
+import type { StoredChangeClass } from "./portal-change-control.ts";
 
 export { CAB_AGENDA_RECOMMENDATIONS, CAB_MEETING_STATUSES, CAB_MEETING_TYPES, CAB_MEMBER_ROLES, CAB_MEMBER_SIDES };
 export type { CabAgendaRecommendation, CabMeetingStatus, CabMeetingType, CabMemberRole, CabMemberSide };

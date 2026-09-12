@@ -19,7 +19,7 @@ import type {
   CanonicalEventMeta,
   MspRole,
 } from "@workspace/db";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "system.core" });
 import { fanOutWebhooks } from "./webhook-delivery.ts";
 import { getRequestContext } from "./request-context.ts";

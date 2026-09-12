@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { buildOversharedItemRows, buildOversharedItemNaturalKey } from "../overshared-items";
-import type { SiteSharingSummary } from "../sharepoint-sharing";
+import { buildOversharedItemRows, buildOversharedItemNaturalKey } from "../overshared-items.ts";
+import type { SiteSharingSummary } from "../sharepoint-sharing.ts";
 
 const BASE_PARAMS = {
   runId: "11111111-1111-1111-1111-111111111111",

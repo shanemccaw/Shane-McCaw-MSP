@@ -56,12 +56,12 @@ vi.mock("drizzle-orm", () => ({
   eq: (c: unknown, v: unknown) => ({ eq: [c, v] }),
 }));
 
-vi.mock("./sow-pricing", () => ({ extractAiHtml }));
-vi.mock("./prompt-loader", () => ({ getPrompt }));
-vi.mock("./ai-billing", () => ({ recordAiUsage }));
+vi.mock("./sow-pricing.ts", () => ({ extractAiHtml }));
+vi.mock("./prompt-loader.ts", () => ({ getPrompt }));
+vi.mock("./ai-billing.ts", () => ({ recordAiUsage }));
 vi.mock("./msp-executive-data.ts", () => ({ gatherExecutiveBook }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });

@@ -15,16 +15,16 @@
  *   condition   — evaluate a JS-safe condition expression; throws (fails node) when false.
  */
 
-import { registerNodeHandler } from "./portal-workflow-engine";
-import type { NodeExecutionContext } from "./portal-workflow-engine";
-import { dispatchEvent, systemActor } from "./event-bus";
+import { registerNodeHandler } from "./portal-workflow-engine.ts";
+import type { NodeExecutionContext } from "./portal-workflow-engine.ts";
+import { dispatchEvent, systemActor } from "./event-bus.ts";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.run" });
-import { registerDocPipelineHandlers } from "./doc-pipeline-nodes";
-import { registerReportNodes } from "./report-nodes";
+import { registerDocPipelineHandlers } from "./doc-pipeline-nodes.ts";
+import { registerReportNodes } from "./report-nodes.ts";
 
 // ── Template interpolation ────────────────────────────────────────────────────
 // Resolves {{key}} and {{steps.nodeId.field}} tokens from the execution input.

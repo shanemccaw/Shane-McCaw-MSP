@@ -37,25 +37,25 @@ import {
   type SalesOfferState,
 } from "@workspace/db";
 import { eq, and, desc, asc, inArray } from "drizzle-orm";
-import { requireCapability, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth";
+import { requireCapability, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
 import { LADDER } from "@workspace/db/rbac/legacy-ladder";
-import { requirePlanFeature } from "../lib/msp-entitlement";
+import { requirePlanFeature } from "../lib/msp-entitlement.ts";
 import {
   runSalesOfferEngineForTenant,
   persistSalesOfferCandidates,
   transitionOfferState,
   expireStaleSalesOffers,
-} from "../lib/sales-offer-engine";
+} from "../lib/sales-offer-engine.ts";
 import {
   registerMspOfferSSEClient,
   broadcastMspOfferChange,
   broadcastCustomerOfferChange,
-} from "../lib/sse-channels";
-import { logger } from "../lib/logger";
+} from "../lib/sse-channels.ts";
+import { logger } from "../lib/logger.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
-import type { AuthUser } from "../middlewares/requireAuth";
+import type { AuthUser } from "../middlewares/requireAuth.ts";
 
 const log = logger.child({ channel: "engine.offer" });
 

@@ -56,7 +56,7 @@ vi.mock("drizzle-orm", () => ({
   inArray: (c: unknown, v: unknown) => ({ inArray: [c, v] }),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
@@ -80,7 +80,7 @@ const h = vi.hoisted(() => {
 });
 const FakeRetentionError = h.FakeRetentionError;
 
-vi.mock("../lib/retention", () => ({
+vi.mock("../lib/retention/index.ts", () => ({
   listAccelerationQueue: h.listAccelerationQueue,
   decideAcceleration: h.decideAcceleration,
   restore: h.restore,
@@ -89,7 +89,7 @@ vi.mock("../lib/retention", () => ({
 }));
 
 import { db } from "@workspace/db";
-import router from "./msp-retention-queue";
+import router from "./msp-retention-queue.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;

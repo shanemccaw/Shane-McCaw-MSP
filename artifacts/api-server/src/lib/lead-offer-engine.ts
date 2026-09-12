@@ -22,7 +22,7 @@ import { db, leadOfferInferenceRulesTable, leadOfferPricingConfigTable, type Lea
 import { eq, and, isNull, or, sql } from "drizzle-orm";
 import { createHash } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.offer" });
 
 // ── Types ───────────────────────────────────────────────────────────────────

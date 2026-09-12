@@ -11,8 +11,8 @@ import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import {
   findCollidingChangeRequest,
   type ChangeRequestCollisionCandidate,
-} from "./portal-change-collision";
-import { formatChangeRequestCode } from "./portal-change-control";
+} from "./portal-change-collision.ts";
+import { formatChangeRequestCode } from "./portal-change-control.ts";
 
 /** Statuses a CR can still collide through — a completed/rejected/rolled-back
  *  change no longer occupies its booked window. */

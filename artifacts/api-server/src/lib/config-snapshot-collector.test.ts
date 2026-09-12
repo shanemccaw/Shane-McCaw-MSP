@@ -14,8 +14,8 @@ import {
   classifySnapshotFailure,
   psCatalogKeyForCmdlet,
   selectReadCmdlet,
-} from "./config-snapshot-collector";
-import { LicenseGapError } from "./graph";
+} from "./config-snapshot-collector.ts";
+import { LicenseGapError } from "./graph.ts";
 
 describe("classifySnapshotFailure — #2115 real-literal branches", () => {
   it("classifies 'not supported for AAD accounts' as not_applicable_to_account_type (#1962 cause 1)", () => {

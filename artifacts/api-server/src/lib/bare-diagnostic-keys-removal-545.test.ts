@@ -43,11 +43,11 @@ vi.mock("@workspace/db", () => ({
   monitorChecksTable: { key: "key", mapping: "mapping", properties: "properties", status: "status" },
 }));
 
-vi.mock("./logger", () => ({
+vi.mock("./logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 
-vi.mock("./sla-engine", () => ({
+vi.mock("./sla-engine.ts", () => ({
   startSlaTimer: vi.fn(() => Promise.resolve({ timerId: 1, alreadyExisted: false })),
 }));
 

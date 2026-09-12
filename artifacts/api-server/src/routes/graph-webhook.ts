@@ -1,10 +1,10 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, emailsTable, deviceTokensTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { getMailMessage } from "../lib/graph";
-import { matchSenderToUser, extractDomain } from "../lib/email-domain-match";
-import { logger } from "../lib/logger";
-import { sendPushNotifications } from "../lib/push";
+import { getMailMessage } from "../lib/graph.ts";
+import { matchSenderToUser, extractDomain } from "../lib/email-domain-match.ts";
+import { logger } from "../lib/logger.ts";
+import { sendPushNotifications } from "../lib/push.ts";
 
 const log = logger.child({ channel: "comms.webhook" });
 

@@ -22,7 +22,7 @@ import {
   RETENTION_DEFAULT_SEMI_HARD_DELETE_DAYS,
   RETENTION_DEFAULT_SOFT_DELETE_DAYS,
 } from "@workspace/db";
-import { logger } from "../logger";
+import { logger } from "../logger.ts";
 
 const log = logger.child({ channel: "system.core" });
 

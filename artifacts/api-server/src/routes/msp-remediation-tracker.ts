@@ -50,15 +50,15 @@ import { db, remediationTrackerStepsTable, tenantsTable, REMEDIATION_TRACKER_STE
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { computeRemediationTrackerPricing } from "../lib/remediation-tracker-pricing";
-import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger";
-import { stepCheckKeysFor } from "../lib/remediation-tracker-verification";
-import { emitWorkflowEvent } from "../lib/workflow-executor";
-import { fetchPublishedKnowledgeBaseRows } from "../lib/remediation-knowledge-base";
-import { REMEDIATION_TRACKER_STEP_IDS } from "./portal-remediation-tracker";
-import { REMEDIATION_TRACKER_CATALOGUE, REMEDIATION_TRACKER_STATUS_LABELS } from "../lib/remediation-tracker-catalogue";
+import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { computeRemediationTrackerPricing } from "../lib/remediation-tracker-pricing.ts";
+import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger.ts";
+import { stepCheckKeysFor } from "../lib/remediation-tracker-verification.ts";
+import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
+import { fetchPublishedKnowledgeBaseRows } from "../lib/remediation-knowledge-base.ts";
+import { REMEDIATION_TRACKER_STEP_IDS } from "./portal-remediation-tracker.ts";
+import { REMEDIATION_TRACKER_CATALOGUE, REMEDIATION_TRACKER_STATUS_LABELS } from "../lib/remediation-tracker-catalogue.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

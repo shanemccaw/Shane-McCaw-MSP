@@ -2,7 +2,7 @@
  * MSP Entitlement — platform tier capability gating.
  *
  * Usage:
- *   import { requirePlanFeature, checkTenantAllowance } from "../lib/msp-entitlement";
+ *   import { requirePlanFeature, checkTenantAllowance } from "../lib/msp-entitlement.ts";
  *
  *   router.post("/customers", requireAuth, requirePlanFeature("advanced_signals"), handler);
  *   await checkTenantAllowance(mspId); // throws OverageError if at hard cap
@@ -17,22 +17,27 @@ import { applyMspOverride, type MspEntitlements } from "./active-directory.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
 
 export class UpgradeRequiredError extends Error {
-  constructor(
-    public readonly feature: string,
-    public readonly currentTier: string,
-  ) {
+  readonly feature: string;
+  readonly currentTier: string;
+
+  constructor(feature: string, currentTier: string) {
     super(`Feature "${feature}" is not available on the "${currentTier}" tier`);
+    this.feature = feature;
+    this.currentTier = currentTier;
     this.name = "UpgradeRequiredError";
   }
 }
 
 export class OverageError extends Error {
-  constructor(
-    public readonly mspId: number,
-    public readonly current: number,
-    public readonly allowance: number,
-  ) {
+  readonly mspId: number;
+  readonly current: number;
+  readonly allowance: number;
+
+  constructor(mspId: number, current: number, allowance: number) {
     super(`Tenant count (${current}) has reached hard cap for this tier (allowance: ${allowance})`);
+    this.mspId = mspId;
+    this.current = current;
+    this.allowance = allowance;
     this.name = "OverageError";
   }
 }

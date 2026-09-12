@@ -14,7 +14,7 @@
 
 import { db, documentTypesTable, type DocumentType } from "@workspace/db";
 import { asc } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "system.core" });
 
 /** In-process cache — document types change rarely and are read on every document generation. */

@@ -1,11 +1,11 @@
-import { Router, Request, Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { PccStateManager } from '../lib/pcc/state-manager.js';
-import { PccStreamingServer } from '../lib/pcc/streaming-server.js';
-import { PccTestRunner } from '../lib/pcc/test-runner.js';
-import { PccEventInjector } from '../lib/pcc/event-injector.js';
-import { DEFAULT_TESTS } from '../lib/pcc/taxonomy-catalog.js';
-import { requireAdmin } from '../middlewares/requireAuth.js';
+import { PccStateManager } from '../lib/pcc/state-manager.ts';
+import { PccStreamingServer } from '../lib/pcc/streaming-server.ts';
+import { PccTestRunner } from '../lib/pcc/test-runner.ts';
+import { PccEventInjector } from '../lib/pcc/event-injector.ts';
+import { DEFAULT_TESTS } from '../lib/pcc/taxonomy-catalog.ts';
+import { requireAdmin } from '../middlewares/requireAuth.ts';
 
 const router = Router();
 const stateManager = PccStateManager.getInstance();

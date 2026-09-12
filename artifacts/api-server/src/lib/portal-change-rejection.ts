@@ -27,12 +27,12 @@ import {
 import { asc, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 
-import { declineRoutedChangeToRisk } from "./m365-change-router";
-import { violatesSeparationOfDuties } from "./portal-change-approvals";
-import { resolveDelegatedAuthority, NO_POLICY, type ApprovalPolicyConfig, type ApproverIdentity, type CrEssentials } from "./portal-change-approvals-store";
-import { recordCrEvent } from "./portal-change-timeline-store";
-import { assignRegisterRef } from "./risk-register-ref";
-import { logger } from "./logger";
+import { declineRoutedChangeToRisk } from "./m365-change-router.ts";
+import { violatesSeparationOfDuties } from "./portal-change-approvals.ts";
+import { resolveDelegatedAuthority, NO_POLICY, type ApprovalPolicyConfig, type ApproverIdentity, type CrEssentials } from "./portal-change-approvals-store.ts";
+import { recordCrEvent } from "./portal-change-timeline-store.ts";
+import { assignRegisterRef } from "./risk-register-ref.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

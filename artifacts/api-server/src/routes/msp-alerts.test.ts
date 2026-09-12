@@ -65,16 +65,16 @@ vi.mock("drizzle-orm", () => ({
   inArray: (c: unknown, v: unknown) => ({ inArray: [c, v] }),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
 const mockCreateAuditLog = vi.fn();
-vi.mock("../lib/audit", () => ({ createAuditLog: (...args: unknown[]) => mockCreateAuditLog(...args) }));
+vi.mock("../lib/audit.ts", () => ({ createAuditLog: (...args: unknown[]) => mockCreateAuditLog(...args) }));
 
 import { db } from "@workspace/db";
-import router from "./msp-alerts";
+import router from "./msp-alerts.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;

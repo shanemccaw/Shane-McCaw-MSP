@@ -16,7 +16,7 @@ import {
   isWindowActiveAt,
   matchesFreezeScope,
   type FreezeWindowCandidate,
-} from "./portal-change-freeze";
+} from "./portal-change-freeze.ts";
 
 function windowFixture(overrides: Partial<FreezeWindowCandidate> = {}): FreezeWindowCandidate {
   return {

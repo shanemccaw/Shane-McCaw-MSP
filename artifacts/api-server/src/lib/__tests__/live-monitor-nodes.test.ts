@@ -68,8 +68,8 @@ const mockEnsureActivityApiSubscription = vi.fn();
 const mockListActivityContent = vi.fn();
 const mockFetchActivityBlob   = vi.fn();
 
-vi.mock("../graph", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../graph")>();
+vi.mock("../graph.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../graph.ts")>();
   return {
     ...actual,
     ensureActivityApiSubscription: mockEnsureActivityApiSubscription,
@@ -313,7 +313,7 @@ describe("getActivityApiToken", () => {
   it("returns null when MT_APP credentials are missing", async () => {
     const orig = process.env.MT_APP_CLIENT_ID;
     delete process.env.MT_APP_CLIENT_ID;
-    const { getActivityApiToken } = await import("../graph");
+    const { getActivityApiToken } = await import("../graph.ts");
     const token = await getActivityApiToken("tenant-abc");
     expect(token).toBeNull();
     if (orig !== undefined) process.env.MT_APP_CLIENT_ID = orig;

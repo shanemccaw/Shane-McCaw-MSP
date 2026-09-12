@@ -45,22 +45,22 @@ import {
   tenantsTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 import {
   resolveBaselineTemplateRequest,
   runBaselineTemplateAgainstTenant,
-} from "../lib/workflow-executor";
+} from "../lib/workflow-executor.ts";
 import {
   evaluateSuccessCriteria,
   resolveDependsOnState,
   type DependsOnState,
-} from "../lib/write-action-safety";
+} from "../lib/write-action-safety.ts";
 import {
   WriteBackCustomerNotFoundError,
   WriteBackNotEnabledError,
   WriteConsentRequiredError,
-} from "../lib/graph";
+} from "../lib/graph.ts";
 
 const log = logger.child({ channel: "admin.clients" });
 

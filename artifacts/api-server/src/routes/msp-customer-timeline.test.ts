@@ -72,13 +72,13 @@ vi.mock("drizzle-orm", () => ({
   }),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
 import { db } from "@workspace/db";
-import router from "./msp-customer-timeline";
+import router from "./msp-customer-timeline.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;

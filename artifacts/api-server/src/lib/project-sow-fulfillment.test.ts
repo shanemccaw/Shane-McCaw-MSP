@@ -44,16 +44,16 @@ vi.mock("drizzle-orm", () => ({
 }));
 
 // ── The proven SOW engine — mocked; we assert HOW it is called, not run it ─────
-vi.mock("./document-engine-sow", () => ({
+vi.mock("./document-engine-sow.ts", () => ({
   generateSowDocument: generateSowDocumentMock,
 }));
 
 // ── Customer -> portal-user resolver ──────────────────────────────────────────
-vi.mock("./tenant-signals", () => ({
+vi.mock("./tenant-signals.ts", () => ({
   resolveCustomerPortalUserId: resolveCustomerPortalUserIdMock,
 }));
 
-vi.mock("./logger", () => ({
+vi.mock("./logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 
@@ -72,7 +72,7 @@ function insertChain(rows: unknown[]) {
   };
 }
 
-import { fulfillAcceptedProjectOffer } from "./project-sow-fulfillment";
+import { fulfillAcceptedProjectOffer } from "./project-sow-fulfillment.ts";
 
 const PROJECT_OFFER = { id: 7, serviceId: 34, customerId: 1, title: "BCDR Implementation — recommended for your environment" };
 const PROJECT_SERVICE = { name: "BCDR Implementation", description: "Business continuity project.", serviceClass: "project" };

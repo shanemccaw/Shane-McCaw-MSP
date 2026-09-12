@@ -15,8 +15,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, exceptionGroupsTable, exceptionOccurrencesTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
-import { logger } from "../lib/logger";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { logger } from "../lib/logger.ts";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "admin.exceptions" });

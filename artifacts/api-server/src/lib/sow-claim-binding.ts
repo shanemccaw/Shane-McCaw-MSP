@@ -94,7 +94,7 @@ import {
   ClaimBindingAuditTimeoutError,
   CLAIM_BINDING_AUDIT_MAX_DOCUMENT_CHARS,
   CLAIM_BINDING_TRUNCATION_MARKER,
-} from "./document-claim-binding";
+} from "./document-claim-binding.ts";
 
 /**
  * One workstream as the Sales Offer Engine priced it — the authoritative pair.

@@ -50,7 +50,7 @@ vi.mock("drizzle-orm", () => ({
   inArray: (c: unknown, v: unknown) => ({ inArray: [c, v] }),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
@@ -67,7 +67,7 @@ vi.mock("../lib/partner-qbr-generator.ts", () => ({
   currentQuarterKey: () => "2026-Q3",
 }));
 
-import router from "./msp-executive";
+import router from "./msp-executive.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 function makeApp() {

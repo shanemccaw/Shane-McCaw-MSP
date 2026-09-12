@@ -29,9 +29,9 @@ import {
   baselineActionTemplatesTable,
 } from "@workspace/db";
 import { inArray, sql } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { resolveServiceExecutable } from "../lib/remediation-catalog";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { resolveServiceExecutable } from "../lib/remediation-catalog.ts";
 
 const log = logger.child({ channel: "admin.clients" });
 

@@ -26,8 +26,8 @@ import {
   wfDefinitionsTable,
 } from "@workspace/db";
 import { eq, and, isNull, gte, inArray, sql } from "drizzle-orm";
-import { fireWorkflowForDefinition } from "./workflow-executor";
-import { logger } from "./logger";
+import { fireWorkflowForDefinition } from "./workflow-executor.ts";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.engagement-offer" });
 
 export const DELAYED_FOLLOWUP_WORKFLOW_NAME = "__system__: Engagement Offer Delayed Follow-Up";

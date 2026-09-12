@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, quizPainSignalConfigTable as quizPainMappingsTable } from "@workspace/db";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 

@@ -33,10 +33,10 @@
 import { db, standingPoliciesTable, changeCatalogItemsTable, tenantsTable, mspChangeRequestsTable, type InsertMspChangeRequest } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 
-import { materializeApprovalsForChange } from "./portal-change-approvals-store";
-import { formatChangeRequestCode } from "./portal-change-control";
-import { evaluatePolicyEnactmentGate } from "./standing-policies";
-import { logger } from "./logger";
+import { materializeApprovalsForChange } from "./portal-change-approvals-store.ts";
+import { formatChangeRequestCode } from "./portal-change-control.ts";
+import { evaluatePolicyEnactmentGate } from "./standing-policies.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

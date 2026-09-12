@@ -30,11 +30,11 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: () => (_req: any, _res: any, next: () => void) => next(),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
@@ -43,14 +43,14 @@ const mockGetPasswordAgeSignal = vi.fn();
 const mockGetFailedSignInsSignal = vi.fn();
 const mockGetDeviceComplianceSignal = vi.fn();
 const mockGetLocalFailedLoginSignal = vi.fn();
-vi.mock("../lib/account-security-graph", () => ({
+vi.mock("../lib/account-security-graph.ts", () => ({
   getPasswordAgeSignal: (tenantId: string) => mockGetPasswordAgeSignal(tenantId),
   getFailedSignInsSignal: (tenantId: string) => mockGetFailedSignInsSignal(tenantId),
   getDeviceComplianceSignal: (tenantId: string) => mockGetDeviceComplianceSignal(tenantId),
   getLocalFailedLoginSignal: (userId: number) => mockGetLocalFailedLoginSignal(userId),
 }));
 
-import router from "./portal-account-security-graph";
+import router from "./portal-account-security-graph.ts";
 
 function makeApp(user: Record<string, unknown> | null) {
   const app = express();

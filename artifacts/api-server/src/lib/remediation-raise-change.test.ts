@@ -8,8 +8,8 @@
 
 import { describe, it, expect } from "vitest";
 
-import { buildRaiseChangeRequestInputForChecklistItem } from "./remediation-raise-change";
-import type { RemediationChecklistItem } from "./remediation-checklist";
+import { buildRaiseChangeRequestInputForChecklistItem } from "./remediation-raise-change.ts";
+import type { RemediationChecklistItem } from "./remediation-checklist.ts";
 
 function makeItem(overrides: Partial<RemediationChecklistItem> = {}): RemediationChecklistItem {
   return {

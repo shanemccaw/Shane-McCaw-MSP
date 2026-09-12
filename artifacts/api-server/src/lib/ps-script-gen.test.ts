@@ -75,19 +75,19 @@ vi.mock("@workspace/db", () => {
 
 // ── prompt-loader mock ─────────────────────────────────────────────────────────
 // Returns the fallback system prompt so no DB call is required.
-vi.mock("./prompt-loader.js", () => ({
+vi.mock("./prompt-loader.ts", () => ({
   getPrompt: vi.fn(async (_key: string, fallback: string) => fallback),
 }));
 
 // ── logger mock ────────────────────────────────────────────────────────────────
-vi.mock("./logger.js", () => {
+vi.mock("./logger.ts", () => {
   const n = () => {};
   const l = { info: n, warn: n, error: n, debug: n, fatal: n, trace: n, child: () => l };
   return { logger: l };
 });
 
 // ── Import module under test AFTER all mocks are registered ──────────────────
-import { generateScriptFromService } from "./ps-script-gen";
+import { generateScriptFromService } from "./ps-script-gen.ts";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

@@ -66,11 +66,11 @@ import { db, policyDecisionsTable, complianceObligationsTable, complianceFramewo
 import { and, eq, desc, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireAuth, requireCapability } from "../middlewares/requireAuth";
-import { resolveMspIdStrict } from "../lib/resolve-msp-id";
-import { resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope";
-import { apiError, ApiErrorCode } from "../lib/api-helpers";
-import { logger } from "../lib/logger";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

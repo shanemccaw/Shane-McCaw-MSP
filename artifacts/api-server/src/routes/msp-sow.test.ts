@@ -108,7 +108,7 @@ vi.mock("drizzle-orm", () => ({
 
 // The private sign route (unlike the public share-token one) fires a real
 // "sow.signed" workflow event after signing. Left unmocked, `msp-sow.ts`'s
-// `await import("../lib/workflow-executor")` pulls in the REAL module, which
+// `await import("../lib/workflow-executor.ts")` pulls in the REAL module, which
 // transitively imports lib/ps-script-gen.ts -> lib/integrations-anthropic-ai,
 // and that throws at import time when AI_INTEGRATIONS_ANTHROPIC_BASE_URL
 // isn't set — turning a non-fatal, fire-and-forget event emission into a
@@ -116,7 +116,7 @@ vi.mock("drizzle-orm", () => ({
 // (admin-write-actions, consent, msp-remediation-tracker, portal-checkout,
 // portal-delivery-kanban, portal-remediation-tracker) mocks this module for
 // exactly this reason; this file was just missing it.
-vi.mock("../lib/workflow-executor", () => ({
+vi.mock("../lib/workflow-executor.ts", () => ({
   emitWorkflowEvent: vi.fn().mockResolvedValue(undefined),
 }));
 

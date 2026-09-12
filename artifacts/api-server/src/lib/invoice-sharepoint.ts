@@ -1,9 +1,9 @@
 import { db, invoicesTable, usersTable, projectsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "integration.azure" });
-import { graphCredentialsPresent, createSiteFolder, uploadFileToSharePoint } from "./graph";
-import { generateInvoicePdf } from "./invoice-pdf";
+import { graphCredentialsPresent, createSiteFolder, uploadFileToSharePoint } from "./graph.ts";
+import { generateInvoicePdf } from "./invoice-pdf.ts";
 
 const SITE_POLL_ATTEMPTS = 20;
 const SITE_POLL_INTERVAL_MS = 6_000;

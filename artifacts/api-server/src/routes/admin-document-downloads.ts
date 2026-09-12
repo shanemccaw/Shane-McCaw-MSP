@@ -31,9 +31,9 @@ import {
   usersTable,
   projectsTable,
 } from "@workspace/db";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { stripStagedForReviewBanner } from "../lib/sow-pricing";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
 import {
   PDFDocument,
   StandardFonts,

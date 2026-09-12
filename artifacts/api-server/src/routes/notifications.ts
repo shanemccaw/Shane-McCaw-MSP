@@ -1,11 +1,11 @@
 import { Router, type Request, type Response } from "express";
 import { db, notificationsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, lt, sql } from "drizzle-orm";
-import { requireAdmin, requireAuth } from "../middlewares/requireAuth";
+import { requireAdmin, requireAuth } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
-import { registerNotificationSSEClient } from "../lib/sse-channels";
-import { logger } from "../lib/logger";
-import { resolvePortalDeepLink } from "../lib/portal-deep-links";
+import { registerNotificationSSEClient } from "../lib/sse-channels.ts";
+import { logger } from "../lib/logger.ts";
+import { resolvePortalDeepLink } from "../lib/portal-deep-links.ts";
 
 const router = Router();
 

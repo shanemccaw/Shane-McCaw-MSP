@@ -25,7 +25,7 @@
 import { zohoGet, ZOHO_DEFAULT_MSP_ID, getZohoConnection } from "./zoho-client.ts";
 import { db, zohoConnectionTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.zoho" });
 

@@ -36,7 +36,7 @@ import {
   CR_EXECUTOR_KINDS,
   CR_ROLLBACK_OUTCOMES,
 } from "@workspace/db";
-import { formatChangeRequestCode } from "./portal-change-control";
+import { formatChangeRequestCode } from "./portal-change-control.ts";
 
 export {
   CR_EXECUTION_OUTCOMES,

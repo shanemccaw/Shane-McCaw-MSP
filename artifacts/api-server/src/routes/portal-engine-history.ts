@@ -20,11 +20,11 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireCapability } from "../middlewares/requireAuth";
-import { getEngineDef } from "../lib/engine-registry";
-import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history";
-import { logger } from "../lib/logger";
-import { CUSTOMER_SAFE_ENGINE_KEYS } from "../lib/customer-safe-engines";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { getEngineDef } from "../lib/engine-registry.ts";
+import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history.ts";
+import { logger } from "../lib/logger.ts";
+import { CUSTOMER_SAFE_ENGINE_KEYS } from "../lib/customer-safe-engines.ts";
 
 const log = logger.child({ channel: "engine.signals" });
 

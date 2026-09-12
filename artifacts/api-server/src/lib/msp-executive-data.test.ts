@@ -42,7 +42,7 @@ vi.mock("drizzle-orm", () => ({
   isNotNull: (c: unknown) => ({ isNotNull: c }),
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });

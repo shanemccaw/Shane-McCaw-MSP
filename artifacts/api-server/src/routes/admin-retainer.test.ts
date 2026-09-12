@@ -63,7 +63,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAuth: (_req: any, _res: any, next: () => void) => next(),
   requireAdmin: (_req: any, _res: any, next: () => void) => next(),
 }));
@@ -73,18 +73,18 @@ const mockResolveTenantScope = vi.fn(async (customerId: number) => ({
   tenantId: customerId,
   tenantName: "Acme Co",
 }));
-vi.mock("../lib/portal-customer-scope", () => ({
+vi.mock("../lib/portal-customer-scope.ts", () => ({
   resolveTenantScope: (customerId: number) => mockResolveTenantScope(customerId),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
 
 const mockResolveRetainerAnchorDay = vi.fn(async () => 14);
 const mockAnchorDayFromRows = vi.fn(() => 14);
-vi.mock("../lib/retainer-period-anchor", () => ({
+vi.mock("../lib/retainer-period-anchor.ts", () => ({
   resolveRetainerAnchorDay: (...args: unknown[]) => (mockResolveRetainerAnchorDay as (...a: unknown[]) => unknown)(...args),
   anchorDayFromRows: (...args: unknown[]) => (mockAnchorDayFromRows as (...a: unknown[]) => unknown)(...args),
 }));
@@ -95,7 +95,7 @@ vi.mock("drizzle-orm", () => ({
   desc: (c: unknown) => ({ desc: c }),
 }));
 
-import router from "./admin-retainer";
+import router from "./admin-retainer.ts";
 
 function makeApp() {
   const app = express();

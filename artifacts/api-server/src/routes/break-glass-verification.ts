@@ -35,13 +35,13 @@ import {
   wfRunsTable,
 } from "@workspace/db";
 import { and, eq, ne, gte, desc } from "drizzle-orm";
-import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "auth" });
-import { decryptSecret, encryptSecret } from "../lib/secret-crypto";
+import { decryptSecret, encryptSecret } from "../lib/secret-crypto.ts";
 // Type-only — the store is imported dynamically so the Azure SDK is not pulled
 // into this route's static module graph (#1911).
-import type { GeneratedSecretRef } from "../lib/generated-secret-store";
+import type { GeneratedSecretRef } from "../lib/generated-secret-store.ts";
 import {
   graphWriteForTenant,
   sendMailViaGraph,
@@ -49,8 +49,8 @@ import {
   WriteBackCustomerNotFoundError,
   WriteBackNotEnabledError,
   WriteConsentRequiredError,
-} from "../lib/graph";
-import { sendEmailForMspOrThrow } from "../lib/mailer";
+} from "../lib/graph.ts";
+import { sendEmailForMspOrThrow } from "../lib/mailer.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const router = Router();
@@ -310,7 +310,7 @@ export async function resolvePendingSecretPlaintext(
   secret: { id: number; encryptedValue: string; secretRef: unknown },
 ): Promise<string | null> {
   if (secret.secretRef != null) {
-    const { readGeneratedSecret } = await import("../lib/generated-secret-store");
+    const { readGeneratedSecret } = await import("../lib/generated-secret-store.ts");
     const fromVault = await readGeneratedSecret(secret.secretRef as GeneratedSecretRef);
     if (fromVault != null) return fromVault;
     log.warn({ pendingSecretId: secret.id }, "break-glass: Key Vault reference did not resolve — falling back to the gate's encrypted copy");
@@ -335,7 +335,7 @@ async function purgePendingSecretFromVault(
 ): Promise<void> {
   if (secret.secretRef == null) return;
   try {
-    const { purgeGeneratedSecret } = await import("../lib/generated-secret-store");
+    const { purgeGeneratedSecret } = await import("../lib/generated-secret-store.ts");
     await purgeGeneratedSecret(secret.secretRef as GeneratedSecretRef, `${reason} (pending secret ${secret.id})`);
   } catch (err) {
     log.warn({ err, pendingSecretId: secret.id }, "break-glass: vault purge failed (non-fatal — the orphan sweep is the backstop)");
@@ -751,7 +751,7 @@ router.post("/public/break-glass/:pendingSecretId/acknowledge", publicLimiter, a
       setImmediate(() => {
         void (async () => {
           try {
-            const { resumeWorkflowRun } = await import("../lib/workflow-executor");
+            const { resumeWorkflowRun } = await import("../lib/workflow-executor.ts");
             await resumeWorkflowRun(secret.runId, gateNodeId, resumePayload, "Break-glass credential delivered and acknowledged");
           } catch (err) {
             log.warn({ err, runId: secret.runId }, "break-glass: resume failed (non-fatal)");
@@ -847,7 +847,7 @@ export async function performBreakGlassAdminOverride(
   // cannot leave a secret in the vault for a password the tenant never got.
   // Fail-closed: if the store cannot take it, the override is refused rather
   // than falling back to holding the credential only in the database.
-  const { generatedSecretStoreConfigured, storeGeneratedSecret } = await import("../lib/generated-secret-store");
+  const { generatedSecretStoreConfigured, storeGeneratedSecret } = await import("../lib/generated-secret-store.ts");
   let newSecretRef: GeneratedSecretRef | null = null;
   if (generatedSecretStoreConfigured()) {
     newSecretRef = await storeGeneratedSecret({

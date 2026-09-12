@@ -25,19 +25,19 @@ import {
   type WfGraph,
 } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
-import { generateStrongPassword } from "../routes/break-glass-verification";
-import { fireWorkflowForDefinition, GENERATED_SECRET_REFS_FIELD } from "./workflow-executor";
+import { generateStrongPassword } from "../routes/break-glass-verification.ts";
+import { fireWorkflowForDefinition, GENERATED_SECRET_REFS_FIELD } from "./workflow-executor.ts";
 // Type-only — the store is imported dynamically so the Azure SDK is loaded only
 // on a run that actually mints a credential (#1911).
-import type { GeneratedSecretRef } from "./generated-secret-store";
-import { graphFetchForTenant } from "./graph";
+import type { GeneratedSecretRef } from "./generated-secret-store.ts";
+import { graphFetchForTenant } from "./graph.ts";
 import {
   bindChangeRequestToRun,
   claimChangeRequestForWrite,
   releaseChangeRequestClaim,
-} from "./change-control-write-gate";
-import { recordExecution } from "./msp-change-execution-store";
-import { logger } from "./logger";
+} from "./change-control-write-gate.ts";
+import { recordExecution } from "./msp-change-execution-store.ts";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.config-pack" });
 import {
   buildConfigPackGraph,
@@ -49,9 +49,9 @@ import {
   getStepId,
   packProvidedVariables,
   type PackTemplateResolved,
-} from "./config-pack-graph";
+} from "./config-pack-graph.ts";
 
-export { ConfigPackError, type PackTemplateResolved } from "./config-pack-graph";
+export { ConfigPackError, type PackTemplateResolved } from "./config-pack-graph.ts";
 
 // ── Generated credentials on the write path (#1911) ──────────────────────────
 // Every payload field this orchestrator MINTS a credential into. A field listed
@@ -565,7 +565,7 @@ export async function runConfigPackForCustomer(opts: {
     // what lets the orphan sweep correlate a vault secret with the run that owns
     // it. Non-fatal; the sweep falls back to the age/expiry rule without it.
     if (storedSecrets.length > 0) {
-      const { bindGeneratedSecretToRun } = await import("./generated-secret-store");
+      const { bindGeneratedSecretToRun } = await import("./generated-secret-store.ts");
       await Promise.all(storedSecrets.map(([, ref]) => bindGeneratedSecretToRun(ref, runId)));
     }
 
@@ -644,7 +644,7 @@ export async function runConfigPackForCustomer(opts: {
     // purge covers a run that started and then failed, and the orphan-sweep node
     // is the backstop for both.
     if (storedSecrets.length > 0) {
-      const { purgeGeneratedSecret } = await import("./generated-secret-store");
+      const { purgeGeneratedSecret } = await import("./generated-secret-store.ts");
       for (const [field, ref] of storedSecrets) {
         await purgeGeneratedSecret(ref, `config pack run never started (customer ${customerId}, field ${field})`);
       }
@@ -676,7 +676,7 @@ export async function persistGeneratedSecretsForRun(
   );
   if (generatedFields.length === 0) return { ...payload };
 
-  const { generatedSecretStoreConfigured, storeGeneratedSecret } = await import("./generated-secret-store");
+  const { generatedSecretStoreConfigured, storeGeneratedSecret } = await import("./generated-secret-store.ts");
   if (!generatedSecretStoreConfigured()) {
     throw new ConfigPackError(
       "generated_secret_store_unavailable",

@@ -40,10 +40,10 @@ import {
 } from "@workspace/db";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
-import { requiredStages, summarizeApprovals } from "./portal-change-approvals";
-import { formatChangeRequestCode, type StoredChangeClass, type StoredRiskLevel } from "./portal-change-control";
-import { unresolvedBlockersFor } from "./portal-change-dependencies-store";
-import { logger } from "./logger";
+import { requiredStages, summarizeApprovals } from "./portal-change-approvals.ts";
+import { formatChangeRequestCode, type StoredChangeClass, type StoredRiskLevel } from "./portal-change-control.ts";
+import { unresolvedBlockersFor } from "./portal-change-dependencies-store.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

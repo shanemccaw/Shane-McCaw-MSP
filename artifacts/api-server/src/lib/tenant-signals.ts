@@ -11,13 +11,13 @@ import {
   type MonitorCheckFrequency,
 } from "@workspace/db";
 import { sql, eq, and, asc, desc, inArray } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.signals" });
 // Document reuse / drift decisions get the Document Generator's own channel —
 // "why did (or didn't) this document regenerate?" must be answerable without
 // reading the whole signal-engine log stream.
 const docGenLog = logger.child({ channel: "engine.document-generator" });
-import { startSlaTimer } from "./sla-engine";
+import { startSlaTimer } from "./sla-engine.ts";
 
 /**
  * Flat fallback stabilization window — used for legacy signals that predate

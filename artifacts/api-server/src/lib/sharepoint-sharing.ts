@@ -93,7 +93,7 @@
  * unrecognised shape returns null rather than a guessed string.
  */
 
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.monitor" });
 

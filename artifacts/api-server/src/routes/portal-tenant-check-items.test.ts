@@ -73,11 +73,11 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: () => (_req: any, _res: any, next: () => void) => next(),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
@@ -85,11 +85,11 @@ vi.mock("../lib/logger", () => {
 // Never let a missing/unresolvable `tenants.domain` fall through to a real
 // Graph call in these unit tests — mocked per-test via `mockGetInitialDomain`.
 const mockGetInitialDomain = vi.fn(async (_tenantId: string) => null as string | null);
-vi.mock("../lib/graph", () => ({
+vi.mock("../lib/graph.ts", () => ({
   getInitialDomainForTenant: (tenantId: string) => mockGetInitialDomain(tenantId),
 }));
 
-import router from "./portal-tenant-check-items";
+import router from "./portal-tenant-check-items.ts";
 
 function makeApp(user: Record<string, unknown> | null) {
   const app = express();

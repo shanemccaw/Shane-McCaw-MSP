@@ -42,7 +42,7 @@ const {
   runTitle,
   sqlEffect,
   truncateOutput,
-} = await import("./run-history");
+} = await import("./run-history.ts");
 
 /** The column list of the INSERT, in order — see `insertRun`. */
 const COLS = [

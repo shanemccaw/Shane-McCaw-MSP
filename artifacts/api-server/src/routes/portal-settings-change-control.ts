@@ -67,17 +67,17 @@ import {
 } from "@workspace/db";
 import { and, asc, eq } from "drizzle-orm";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { resolveCustomerId } from "../lib/portal-customer-scope";
-import { logger } from "../lib/logger";
-import { personIdForUser, toWirePerson, sidesFor, type UserRow } from "../lib/portal-ownership";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveCustomerId } from "../lib/portal-customer-scope.ts";
+import { logger } from "../lib/logger.ts";
+import { personIdForUser, toWirePerson, sidesFor, type UserRow } from "../lib/portal-ownership.ts";
 import {
   DEFAULT_CC_POLICY,
   DEFAULT_CC_NOTIFICATIONS,
   defaultNotifFor,
   isCcNotifEventKey,
   normalizeGated,
-} from "../lib/portal-settings-change-control";
+} from "../lib/portal-settings-change-control.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

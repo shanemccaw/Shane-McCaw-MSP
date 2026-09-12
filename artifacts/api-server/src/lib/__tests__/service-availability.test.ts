@@ -33,7 +33,7 @@ import {
   matchIntuneWireSignature,
   resolveIntuneServiceState,
   type IntuneEntitlement,
-} from "../service-availability";
+} from "../service-availability.ts";
 
 // The real bodies from the issue's recorded live evidence, truncated to the parts
 // the signatures actually key off.

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { runAiAnalyzer, trackAiUsage } from "./ai-analyzer";
+import { runAiAnalyzer, trackAiUsage } from "./ai-analyzer.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { recordAiUsage } from "./ai-billing";
+import { recordAiUsage } from "./ai-billing.ts";
 
 vi.mock("@workspace/integrations-anthropic-ai", () => {
   return {
@@ -13,7 +13,7 @@ vi.mock("@workspace/integrations-anthropic-ai", () => {
   };
 });
 
-vi.mock("./ai-billing", () => {
+vi.mock("./ai-billing.ts", () => {
   return {
     recordAiUsage: vi.fn(() => Promise.resolve()),
     computeTokenCostCents: vi.fn(() => 5),
@@ -43,7 +43,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("./prompt-loader", () => {
+vi.mock("./prompt-loader.ts", () => {
   return {
     getPrompt: vi.fn(() => Promise.resolve("mock prompt template with scriptOutput: {{scriptOutput}}")),
   };

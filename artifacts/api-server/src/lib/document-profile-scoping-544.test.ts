@@ -39,17 +39,17 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
   withAiUsageCapture: vi.fn(),
   totalCapturedCostCents: vi.fn(),
 }));
-vi.mock("./logger", () => ({
+vi.mock("./logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
-vi.mock("./remediation-knowledge-base", () => ({
+vi.mock("./remediation-knowledge-base.ts", () => ({
   buildRemediationAppendix: vi.fn(),
   REMEDIATION_APPENDIX_MAX_FINDINGS: 15,
   REMEDIATION_APPENDIX_PROMPT_SUFFIX: "",
 }));
 // tenant-signals (imported for real, since the helpers under test are its
 // namespacing contract) pulls sla-engine in transitively.
-vi.mock("./sla-engine", () => ({
+vi.mock("./sla-engine.ts", () => ({
   startSlaTimer: vi.fn(() => Promise.resolve({ timerId: 1, alreadyExisted: false })),
 }));
 

@@ -8,7 +8,7 @@ import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
-import { ensureClientSetupToken } from "../lib/client-setup-token";
+import { ensureClientSetupToken } from "../lib/client-setup-token.ts";
 import { logger } from "../lib/logger.ts";
 import { LEGACY_ROLE, CUSTOMER_PLATFORM_ROLE_KEYS } from "@workspace/db/rbac/legacy-ladder";
 

@@ -95,7 +95,7 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
 }));
 
 const computeCopilotGateMock = vi.fn();
-vi.mock("./copilot-gate", () => ({
+vi.mock("./copilot-gate.ts", () => ({
   computeCopilotGate: (...args: unknown[]) => computeCopilotGateMock(...args),
   COPILOT_GATE_THRESHOLD: 82,
 }));
@@ -105,11 +105,11 @@ vi.mock("./copilot-gate", () => ({
 // computation is stubbed — the prompt wording comes from the real, engine-free
 // `finding-point-impact-format.ts`, so every string asserted below is the exact
 // string the model is handed rather than a restatement of it.
-vi.mock("./finding-point-impact", () => ({
+vi.mock("./finding-point-impact.ts", () => ({
   computeFindingPointImpacts: async () => pointImpactResult,
 }));
 
-vi.mock("./tenant-signals", () => ({
+vi.mock("./tenant-signals.ts", () => ({
   buildTenantProfile: async () => ({
     mergedProfile: {},
     mergedProfileByCheck: {},
@@ -122,24 +122,24 @@ vi.mock("./tenant-signals", () => ({
   NON_CHECK_PROFILE_NAMESPACE: "_profile",
 }));
 
-vi.mock("./prompt-loader", () => ({
+vi.mock("./prompt-loader.ts", () => ({
   getPrompt: async () => "Write {{sections}} using {{profileSample}} and {{findings}}.",
   getDocumentStylePrefix: async () => "<style></style>",
 }));
 
-vi.mock("./sow-pricing", () => ({ extractAiHtml: () => "<html>generated</html>" }));
+vi.mock("./sow-pricing.ts", () => ({ extractAiHtml: () => "<html>generated</html>" }));
 
-vi.mock("./omg-card-generator-v2", () => ({
+vi.mock("./omg-card-generator-v2.ts", () => ({
   generateOmgCardsFromTelemetry: async () => undefined,
 }));
 
-vi.mock("./remediation-knowledge-base", () => ({
+vi.mock("./remediation-knowledge-base.ts", () => ({
   buildRemediationAppendix: vi.fn(),
   REMEDIATION_APPENDIX_MAX_FINDINGS: 15,
   REMEDIATION_APPENDIX_PROMPT_SUFFIX: "",
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });

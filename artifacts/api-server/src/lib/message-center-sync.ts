@@ -22,12 +22,12 @@ import {
   mspMessageCenterItemsTable,
 } from "@workspace/db";
 import { eq, and, or } from "drizzle-orm";
-import { graphFetchPaginated } from "./monitor-executor";
-import { ConsentRevokedError, markTenantConsentRevoked } from "./graph";
-import { createNotification } from "./notification-center";
-import { extractRoadmapFeatureIds, hasRoadmapFeatureIdsColumn } from "./m365-roadmap-mc-link";
-import { extractAdvisoryDateText, hasAdvisoryDateTextColumn } from "./m365-message-center-date-quality";
-import { logger } from "./logger";
+import { graphFetchPaginated } from "./monitor-executor.ts";
+import { ConsentRevokedError, markTenantConsentRevoked } from "./graph.ts";
+import { createNotification } from "./notification-center.ts";
+import { extractRoadmapFeatureIds, hasRoadmapFeatureIdsColumn } from "./m365-roadmap-mc-link.ts";
+import { extractAdvisoryDateText, hasAdvisoryDateTextColumn } from "./m365-message-center-date-quality.ts";
+import { logger } from "./logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "integration.azure" });

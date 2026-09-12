@@ -36,7 +36,7 @@
 import { db } from "@workspace/db";
 import { m365RoadmapItemsTable, mspMessageCenterItemsTable } from "@workspace/db";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

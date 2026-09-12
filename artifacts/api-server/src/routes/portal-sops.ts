@@ -78,10 +78,10 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, sql } from "drizzle-orm";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
-import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
 import {
   auditResult,
   automatedStepCount,
@@ -107,7 +107,7 @@ import {
   stepText,
   whoRunsIt,
   type WireSopSource,
-} from "../lib/portal-sops";
+} from "../lib/portal-sops.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

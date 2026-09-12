@@ -32,7 +32,7 @@ import {
   ALERT_THRESHOLDS,
   resolveBillingMspId,
   type AiBalanceSummary,
-} from "./ai-billing.js";
+} from "./ai-billing.ts";
 
 // ── Test: computeTokenCostCents ────────────────────────────────────────────────
 

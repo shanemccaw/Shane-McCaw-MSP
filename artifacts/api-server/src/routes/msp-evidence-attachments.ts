@@ -34,17 +34,17 @@ import multer from "multer";
 import { db, remediationTrackerStepsTable, tenantsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 
-import { requireAuth, requireCapability, assertCustomerAccess } from "../middlewares/requireAuth";
-import { resolveMspIdStrict } from "../lib/resolve-msp-id";
-import { personIdForUser } from "../lib/portal-ownership";
-import { logger } from "../lib/logger";
-import { getExecution } from "../lib/msp-change-execution-store";
+import { requireAuth, requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
+import { logger } from "../lib/logger.ts";
+import { getExecution } from "../lib/msp-change-execution-store.ts";
 import {
   recordEvidenceAttachment,
   listEvidenceAttachments,
   getEvidenceAttachment,
   toWireEvidenceAttachment,
-} from "../lib/evidence-attachments-store";
+} from "../lib/evidence-attachments-store.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

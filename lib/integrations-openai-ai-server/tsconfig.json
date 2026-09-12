@@ -3,6 +3,10 @@
   "compilerOptions": {
     "composite": true,
     "declarationMap": true,
+    // #3574 — relative imports carry an explicit `.ts` extension so this package
+    // loads under Node's own ESM loader (api-server's node-runner tests), not
+    // only under a bundler. Same as lib/db (#2458, #3409).
+    "allowImportingTsExtensions": true,
     "emitDeclarationOnly": true,
     "outDir": "dist",
     "rootDir": "src",

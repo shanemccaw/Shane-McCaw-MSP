@@ -66,22 +66,22 @@ import {
 const ASSESSMENT_DOC_WORKFLOW_NAME =
   "__system__: Assessment Document Generation — Service-Mapped, Sequenced SOW";
 import { eq, and, desc, asc, gte, inArray, sql } from "drizzle-orm";
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { runDiagnostics } from "../lib/diagnostics-runner";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { runDiagnostics } from "../lib/diagnostics-runner.ts";
 import { isProductionEnvironment } from "../lib/env.ts";
 import { randomUUID } from "crypto";
-import { getPillarCoverage, PILLAR_LABELS, RADAR_PILLARS, type RadarPillar } from "../lib/pillar-coverage";
+import { getPillarCoverage, PILLAR_LABELS, RADAR_PILLARS, type RadarPillar } from "../lib/pillar-coverage.ts";
 // The executor's OWN package→ordered-checks resolver, reused verbatim so the
 // scan plan below can never disagree with what the run actually executes (#340).
-import { loadOrderedPackageChecks } from "../lib/monitor-executor";
-import { buildTelemetryComparison } from "../lib/telemetry-comparison";
-import { buildPillarSummary } from "../lib/pillar-summary-stats";
-import { resolveLicenseWasteCounts } from "../lib/license-waste-source";
-import { computeSkuCostBreakdown, type SkuCostBreakdown } from "../lib/cost-engine";
-import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-gate-coverage";
-import { computeCopilotReadiness, type CopilotReadinessResult } from "../lib/copilot-readiness";
-import { computeCopilotGate, copilotGateNotEvaluated, type CopilotGateResult } from "../lib/copilot-gate";
+import { loadOrderedPackageChecks } from "../lib/monitor-executor.ts";
+import { buildTelemetryComparison } from "../lib/telemetry-comparison.ts";
+import { buildPillarSummary } from "../lib/pillar-summary-stats.ts";
+import { resolveLicenseWasteCounts } from "../lib/license-waste-source.ts";
+import { computeSkuCostBreakdown, type SkuCostBreakdown } from "../lib/cost-engine.ts";
+import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-gate-coverage.ts";
+import { computeCopilotReadiness, type CopilotReadinessResult } from "../lib/copilot-readiness.ts";
+import { computeCopilotGate, copilotGateNotEvaluated, type CopilotGateResult } from "../lib/copilot-gate.ts";
 import { generateCopilotReadinessNarrative } from "../lib/copilot-readiness-narrative-generator.ts";
 import { generateSecurityPostureNarrative } from "../lib/security-posture-narrative-generator.ts";
 // #292 — the four pillar reports' prose sections. Each is the same shape as the
@@ -92,11 +92,11 @@ import { generateLicensingAlignmentNarrative } from "../lib/licensing-alignment-
 import { generateOperationalHealthNarrative } from "../lib/operational-health-narrative-generator.ts";
 import { generateAdoptionNarrative } from "../lib/adoption-narrative-generator.ts";
 import type { PillarReportAttribution, PillarReportNarrativeResult } from "../lib/pillar-report-narrative.ts";
-import { resolveMspId } from "../lib/resolve-msp-id";
-import { resolveBillingMspId } from "../lib/ai-billing";
-import { resolveSiblingUserIds } from "../lib/tenant-signals";
-import { REQUIRED_MT_SCOPES } from "../lib/graph";
-import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin";
+import { resolveMspId } from "../lib/resolve-msp-id.ts";
+import { resolveBillingMspId } from "../lib/ai-billing.ts";
+import { resolveSiblingUserIds } from "../lib/tenant-signals.ts";
+import { REQUIRED_MT_SCOPES } from "../lib/graph.ts";
+import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 // Payment / checkout for the Assessment SOW belongs on the billing channel per the

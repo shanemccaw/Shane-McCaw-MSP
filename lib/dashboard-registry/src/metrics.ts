@@ -1,4 +1,4 @@
-import type { MetricDef, SmartBands } from "./types";
+import type { MetricDef, SmartBands } from "./types.ts";
 
 /**
  * Metric registry — one entry per real data source in the platform, sourced

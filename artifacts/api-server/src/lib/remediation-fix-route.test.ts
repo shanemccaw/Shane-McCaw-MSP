@@ -18,7 +18,7 @@ import {
   resolveFixRoute,
   FIX_ROUTE_AFFORDANCE,
   FIX_ROUTES,
-} from "./remediation-fix-route";
+} from "./remediation-fix-route.ts";
 
 const granted: TenantConsentMap = { writeBack: { status: "granted" } };
 const declined: TenantConsentMap = { writeBack: { status: "declined" } };

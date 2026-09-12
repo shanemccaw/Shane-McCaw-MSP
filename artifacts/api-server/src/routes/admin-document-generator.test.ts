@@ -51,7 +51,7 @@ vi.mock("@workspace/db", () => ({
   monitorChecksTable: { key: "key", mapping: "mapping", properties: "properties", status: "status" },
 }));
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.headers["authorization"] === `Bearer ${ADMIN_PASS}`) return next();
     res.status(401).json({ error: "Unauthorized" });
@@ -66,7 +66,7 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
   withAiAttribution: (_ctx: unknown, fn: () => unknown) => fn(),
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: {
     child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
     info: vi.fn(),
@@ -84,7 +84,7 @@ beforeEach(async () => {
 
   app = express();
   app.use(express.json());
-  const { default: router } = await import("./admin-document-generator");
+  const { default: router } = await import("./admin-document-generator.ts");
   app.use("/api", router);
 });
 
@@ -163,7 +163,7 @@ describe("fetchProfileKeyGroups (Git #544)", () => {
 
   const groups = async () => {
     selectResult = CHECKS;
-    const { fetchProfileKeyGroups } = await import("./admin-document-generator");
+    const { fetchProfileKeyGroups } = await import("./admin-document-generator.ts");
     return fetchProfileKeyGroups();
   };
 
@@ -212,7 +212,7 @@ describe("fetchProfileKeyGroups (Git #544)", () => {
     expect(withProducer?.keys).not.toContain("_profile.securityScore");
 
     selectResult = CHECKS.filter((c) => c.key !== "identity:ca-policy-count");
-    const { fetchProfileKeyGroups } = await import("./admin-document-generator");
+    const { fetchProfileKeyGroups } = await import("./admin-document-generator.ts");
     expect((await fetchProfileKeyGroups()).some((g) => g.domain === "_profile")).toBe(false);
   });
 });

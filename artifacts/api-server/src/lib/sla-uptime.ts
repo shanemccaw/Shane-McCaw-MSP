@@ -34,7 +34,7 @@
 
 import { db, m365ServiceHealthSamplesTable } from "@workspace/db";
 import { and, asc, desc, eq, gt, lte } from "drizzle-orm";
-import { isHealthyServiceStatus } from "./m365-health-status";
+import { isHealthyServiceStatus } from "./m365-health-status.ts";
 
 export const SLA_TARGET_UPTIME_PERCENT = 99.9;
 

@@ -69,7 +69,7 @@ function makeRes(): Response {
 
 // ── Import the module under test after mocks are set ─────────────────────────
 
-import { requireAuth } from "./requireAuth";
+import { requireAuth } from "./requireAuth.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

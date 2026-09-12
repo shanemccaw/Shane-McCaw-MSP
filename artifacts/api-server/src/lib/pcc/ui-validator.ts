@@ -1,4 +1,4 @@
-import { detectDrift, PccDiff } from './drift-detector.js';
+import { detectDrift, type PccDiff } from './drift-detector.ts';
 
 export interface UiSurfaceRegistryEntry {
   surfaceId: string;

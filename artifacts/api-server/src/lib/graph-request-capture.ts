@@ -52,7 +52,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import diagnosticsChannel from "node:diagnostics_channel";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.monitor" });
 

@@ -173,7 +173,7 @@ vi.mock("@workspace/integrations-anthropic-ai", async () => {
   };
 });
 
-vi.mock("./tenant-signals", () => ({
+vi.mock("./tenant-signals.ts", () => ({
   buildTenantProfile: async () => ({
     mergedProfile: { mfaEnabled: true },
     mergedProfileByCheck: { "identity:mfa-state": { mfaEnabled: true } },
@@ -191,18 +191,18 @@ vi.mock("./tenant-signals", () => ({
 // the DB client). Stubbed to null here, which is its own honest "no values
 // available" path: this suite's assertions predate #555 and must keep seeing the
 // findings block exactly as it was. Point values have their own two suites.
-vi.mock("./finding-point-impact", () => ({
+vi.mock("./finding-point-impact.ts", () => ({
   computeFindingPointImpacts: async () => null,
 }));
 
-vi.mock("./prompt-loader", () => ({
+vi.mock("./prompt-loader.ts", () => ({
   getPrompt: async () => "Write {{sections}} using {{profileSample}} and {{findings}}",
   getDocumentStylePrefix: async () => "<style></style>",
 }));
 
 // NOT mocked: ./sow-pricing. `extractAiHtml` is the content path under test.
 
-vi.mock("./omg-card-generator-v2", () => ({
+vi.mock("./omg-card-generator-v2.ts", () => ({
   generateOmgCardsFromTelemetry: async () => undefined,
 }));
 
@@ -211,17 +211,17 @@ vi.mock("./omg-card-generator-v2", () => ({
 // pulls the whole health-engine → priority-engine chain in at module load,
 // which this file (a transport test) has no business loading. The gate's own
 // wiring is asserted in `document-engine-copilot-gate.test.ts`.
-vi.mock("./copilot-gate", () => ({
+vi.mock("./copilot-gate.ts", () => ({
   computeCopilotGate: vi.fn(),
 }));
 
-vi.mock("./remediation-knowledge-base", () => ({
+vi.mock("./remediation-knowledge-base.ts", () => ({
   buildRemediationAppendix: vi.fn(),
   REMEDIATION_APPENDIX_MAX_FINDINGS: 15,
   REMEDIATION_APPENDIX_PROMPT_SUFFIX: "",
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });

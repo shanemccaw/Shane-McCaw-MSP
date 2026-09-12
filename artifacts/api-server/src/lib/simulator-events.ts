@@ -1,7 +1,7 @@
 import { db, mspsTable, tenantSignalHistoryTable, tenantEngineOverridesTable, monitorChecksTable, tenantsTable, projectsTable, usersTable, kanbanTasksTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { executeMonitorCheck } from "./monitor-executor";
+import { executeMonitorCheck } from "./monitor-executor.ts";
 import { simulatorStorage, type SimulatorContext } from "./simulator-storage.ts";
 
 export { simulatorStorage, type SimulatorContext };

@@ -30,10 +30,10 @@ import {
   upsertMapping,
   type RbacSystem,
 } from "@workspace/db/rbac";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { invalidateLadderSnapshot } from "../middlewares/rbac-ladder.ts";
-import { logger } from "../lib/logger";
-import { createAuditLog } from "../lib/audit";
+import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "admin.active-directory" });

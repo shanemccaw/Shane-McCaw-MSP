@@ -14,7 +14,7 @@ import {
 } from "@workspace/db";
 import { eq, and, gte, isNull, inArray, count } from "drizzle-orm";
 import { resolveCatalogPricing } from "./catalog-pricing.ts";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "billing" });
 

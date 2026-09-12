@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import pccRouter from './pcc.js';
-import { PccStateManager } from '../lib/pcc/state-manager.js';
-import { PccStreamingServer } from '../lib/pcc/streaming-server.js';
-import { PccGraphValidator } from '../lib/pcc/graph-validator.js';
-import { PccUiValidator } from '../lib/pcc/ui-validator.js';
+import pccRouter from './pcc.ts';
+import { PccStateManager } from '../lib/pcc/state-manager.ts';
+import { PccStreamingServer } from '../lib/pcc/streaming-server.ts';
+import { PccGraphValidator } from '../lib/pcc/graph-validator.ts';
+import { PccUiValidator } from '../lib/pcc/ui-validator.ts';
 
 // requireAuth.ts (imported transitively via requireAdmin) imports @workspace/db
 // at module scope, which throws on import unless DATABASE_URL is set. This

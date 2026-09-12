@@ -74,7 +74,7 @@ import {
   usersTable,
   type RetentionReinstatementRequest,
 } from "@workspace/db";
-import { logger } from "../logger";
+import { logger } from "../logger.ts";
 import { ZOHO_DEFAULT_MSP_ID } from "../zoho-client.ts";
 import { enqueueEscalationTicket } from "../zoho-desk.ts";
 

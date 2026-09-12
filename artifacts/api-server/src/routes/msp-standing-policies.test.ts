@@ -38,7 +38,7 @@ vi.mock("@workspace/db", () => ({
 }));
 
 vi.mock("../lib/workflow-executor.ts", () => ({ fireWorkflowsForEvent: vi.fn().mockResolvedValue(undefined) }));
-vi.mock("../lib/policy-compliance-evaluator", () => ({ evaluateStandingPolicyForCustomer: vi.fn() }));
+vi.mock("../lib/policy-compliance-evaluator.ts", () => ({ evaluateStandingPolicyForCustomer: vi.fn() }));
 
 vi.mock("drizzle-orm", async (importOriginal) => {
   const actual = await importOriginal<typeof import("drizzle-orm")>();
@@ -50,13 +50,13 @@ vi.mock("drizzle-orm", async (importOriginal) => {
   };
 });
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
 import { db } from "@workspace/db";
-import router from "./msp-standing-policies";
+import router from "./msp-standing-policies.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;

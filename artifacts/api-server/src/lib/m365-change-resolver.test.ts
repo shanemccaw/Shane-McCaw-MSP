@@ -32,14 +32,14 @@ vi.mock("drizzle-orm", () => ({
   inArray: vi.fn(),
   sql: Object.assign(vi.fn(), { raw: vi.fn() }),
 }));
-vi.mock("./monitor-executor", () => ({ executeMonitorCheck: vi.fn() }));
-vi.mock("./license-waste-source", () => ({ resolveSubscribedSkuCatalog: vi.fn() }));
-vi.mock("./logger", () => ({
+vi.mock("./monitor-executor.ts", () => ({ executeMonitorCheck: vi.fn() }));
+vi.mock("./license-waste-source.ts", () => ({ resolveSubscribedSkuCatalog: vi.fn() }));
+vi.mock("./logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }));
 
-import { matchSkusToCatalog, normalizeSkuName } from "./m365-change-resolver";
-import type { SubscribedSkuCatalogEntry } from "./license-waste-source";
+import { matchSkusToCatalog, normalizeSkuName } from "./m365-change-resolver.ts";
+import type { SubscribedSkuCatalogEntry } from "./license-waste-source.ts";
 
 const CATALOG: SubscribedSkuCatalogEntry[] = [
   { skuId: "53818b1b-4a27-454b-8896-0dba576410e6", skuPartNumber: "PROJECTONLINE_PLAN_1", consumedUnits: 14 },

@@ -24,14 +24,14 @@ import {
 } from "@workspace/db";
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 
-import { nextPendingStage } from "./portal-change-approvals";
-import { recordApproval, type ApproverIdentity, type CrEssentials } from "./portal-change-approvals-store";
-import { recordRejection } from "./portal-change-rejection";
+import { nextPendingStage } from "./portal-change-approvals.ts";
+import { recordApproval, type ApproverIdentity, type CrEssentials } from "./portal-change-approvals-store.ts";
+import { recordRejection } from "./portal-change-rejection.ts";
 
 export type { ApproverIdentity };
-import { formatChangeRequestCode } from "./portal-change-control";
-import { buildMinutes, isMeetingOpen, isRetroactiveForMeetingType, meetingTypeForChangeClass, type MinutesAgendaLine } from "./portal-cab";
-import { logger } from "./logger";
+import { formatChangeRequestCode } from "./portal-change-control.ts";
+import { buildMinutes, isMeetingOpen, isRetroactiveForMeetingType, meetingTypeForChangeClass, type MinutesAgendaLine } from "./portal-cab.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

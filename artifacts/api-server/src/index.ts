@@ -1,30 +1,30 @@
-import app from "./app";
-import { logger } from "./lib/logger";
-import { ensureAlertEngineReady } from "./lib/alert-engine";
-import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/stripe";
-import { initGraphSubscription } from "./lib/graph-subscription";
-import { graphCredentialsPresent } from "./lib/graph";
-import { seedArticles } from "./lib/seed-articles";
-import { seedEmailTemplates } from "./lib/seed-email-templates";
-import { seedSlaRunbooks } from "./lib/seed-sla-runbooks";
-import { seedScopeCreepRunbooks } from "./lib/seed-scope-creep-runbooks";
-import { seedMspPlatformAdmin } from "./lib/seed-msp-platform-admin";
-import { ensureScopeCreepTables } from "./lib/scope-creep-engine";
-import { validateEngineManifest } from "./lib/engine-registry";
+import app from "./app.ts";
+import { logger } from "./lib/logger.ts";
+import { ensureAlertEngineReady } from "./lib/alert-engine.ts";
+import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/stripe.ts";
+import { initGraphSubscription } from "./lib/graph-subscription.ts";
+import { graphCredentialsPresent } from "./lib/graph.ts";
+import { seedArticles } from "./lib/seed-articles.ts";
+import { seedEmailTemplates } from "./lib/seed-email-templates.ts";
+import { seedSlaRunbooks } from "./lib/seed-sla-runbooks.ts";
+import { seedScopeCreepRunbooks } from "./lib/seed-scope-creep-runbooks.ts";
+import { seedMspPlatformAdmin } from "./lib/seed-msp-platform-admin.ts";
+import { ensureScopeCreepTables } from "./lib/scope-creep-engine.ts";
+import { validateEngineManifest } from "./lib/engine-registry.ts";
 import { pool } from "@workspace/db";
-import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts, reconcileDuplicatePublishedVersions } from "./lib/workflow-executor";
-import { seedSystemWorkflows } from "./lib/seed-system-workflows";
-import { initPortalWorkflowEngine } from "./lib/portal-workflow-engine";
-import { registerReportNodes } from "./lib/report-nodes";
-import { startJobWorker } from "./lib/msp-jobs";
+import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts, reconcileDuplicatePublishedVersions } from "./lib/workflow-executor.ts";
+import { seedSystemWorkflows } from "./lib/seed-system-workflows.ts";
+import { initPortalWorkflowEngine } from "./lib/portal-workflow-engine.ts";
+import { registerReportNodes } from "./lib/report-nodes.ts";
+import { startJobWorker } from "./lib/msp-jobs.ts";
 // Side-effect import: registers the canonical event bus → SSE hub bridge
 // listener at boot so hub subscribers receive events dispatched thereafter.
 import "./lib/sse-hub-event-bridge.ts";
 import { db } from "@workspace/db";
 import { insightsGeneratedDocumentsTable, wfRunsTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
-import { failOrphanedTestSuiteRuns } from "./lib/test-suite-runner";
-import { installAiUsageSink } from "./lib/ai-usage-sink";
+import { failOrphanedTestSuiteRuns } from "./lib/test-suite-runner.ts";
+import { installAiUsageSink } from "./lib/ai-usage-sink.ts";
 import { primeLadderSnapshot } from "./middlewares/rbac-ladder.ts";
 
 // Install the AI usage sink before anything else can reach the model. The
@@ -240,9 +240,9 @@ app.listen(port, (err) => {
   // and releases a CR whose run failed so it can authorize a retry. Idempotent
   // and non-fatal; nothing to do when no CR is mid-flight.
   Promise.all([
-    import("./lib/change-control-write-gate"),
-    import("./lib/msp-change-execution-store"),
-    import("./lib/portal-change-approvals-store"),
+    import("./lib/change-control-write-gate.ts"),
+    import("./lib/msp-change-execution-store.ts"),
+    import("./lib/portal-change-approvals-store.ts"),
   ]).then(([{ settleAuthorizedChangeRequests }, { settleChangeExecutions }, { escalateBreachedApprovals }]) => {
     setInterval(() => {
       settleAuthorizedChangeRequests().catch((err: unknown) => {
@@ -270,7 +270,7 @@ app.listen(port, (err) => {
   // to match its real Workflow Engine run — currentStepIndex/passedStepsCount
   // from wf_run_node_outputs, status from wf_runs.status. Idempotent and
   // non-fatal; nothing to do when no SOP run is mid-flight.
-  import("./lib/sop-execution").then(({ settleSopRuns }) => {
+  import("./lib/sop-execution.ts").then(({ settleSopRuns }) => {
     setInterval(() => {
       settleSopRuns().catch((err: unknown) => {
         logger.warn({ err }, "sop-execution: run reconciliation failed (non-fatal)");
@@ -283,7 +283,7 @@ app.listen(port, (err) => {
   // ── Notification Center: daily retention prune ─────────────────────────────
   // Removes personal notifications older than 30 days.
   // all_activity rows are retained indefinitely.
-  import("./lib/notification-center").then(({ pruneOldPersonalNotifications }) => {
+  import("./lib/notification-center.ts").then(({ pruneOldPersonalNotifications }) => {
     // Run once shortly after startup, then every 24 hours.
     setTimeout(() => {
       pruneOldPersonalNotifications().catch((err: unknown) => {
@@ -304,7 +304,7 @@ app.listen(port, (err) => {
   // and fires a fresh diagnostics rescan for each affected customer. A 30-day
   // clock does not need sub-day granularity, so this follows the notification
   // prune cadence: once shortly after startup, then every 24 hours.
-  import("./lib/sow-expiry-sweep").then(({ sweepExpiredSows }) => {
+  import("./lib/sow-expiry-sweep.ts").then(({ sweepExpiredSows }) => {
     setTimeout(() => {
       sweepExpiredSows().catch((err: unknown) => {
         logger.warn({ err }, "sow-expiry-sweep: initial sweep failed (non-fatal)");
@@ -324,7 +324,7 @@ app.listen(port, (err) => {
   // items, and notifies each tenant's MSP admins about genuinely-new posts.
   // Same "once shortly after startup, then every 24 hours" cadence as the
   // other daily jobs above.
-  import("./lib/message-center-sync").then(({ syncMessageCenterForAllTenants }) => {
+  import("./lib/message-center-sync.ts").then(({ syncMessageCenterForAllTenants }) => {
     setTimeout(() => {
       syncMessageCenterForAllTenants().catch((err: unknown) => {
         logger.warn({ err }, "message-center-sync: initial sync failed (non-fatal)");
@@ -344,7 +344,7 @@ app.listen(port, (err) => {
   // STORED probe data (tenant_monitor_profiles / license_assignment_snapshots)
   // — never live probes; the admin's explicit "resolve now" is the live path.
   // Runs after the message-center sync's slot so the day's posts land first.
-  import("./lib/m365-change-resolver").then(({ runM365ResolutionSweep }) => {
+  import("./lib/m365-change-resolver.ts").then(({ runM365ResolutionSweep }) => {
     setTimeout(() => {
       runM365ResolutionSweep().catch((err: unknown) => {
         logger.warn({ err }, "m365-resolution-sweep: initial sweep failed (non-fatal)");
@@ -363,7 +363,7 @@ app.listen(port, (err) => {
   // Removes dead (revoked/expired) user_sessions rows older than 90 days.
   // Active sessions are never touched regardless of age. Same cadence as the
   // notification-center prune: once shortly after startup, then every 24 hours.
-  import("./lib/session-tracking").then(({ pruneOldSessions }) => {
+  import("./lib/session-tracking.ts").then(({ pruneOldSessions }) => {
     setTimeout(() => {
       pruneOldSessions().catch((err: unknown) => {
         logger.warn({ err }, "session-tracking: initial prune failed (non-fatal)");
@@ -407,7 +407,7 @@ app.listen(port, (err) => {
   // about precision — it is that a 24-hour interval in a process that restarts often can
   // go a long time without ever firing, and the two sweeps here are the ones whose
   // never-firing is invisible until a record outlives its window.
-  import("./lib/retention").then(
+  import("./lib/retention/index.ts").then(
     ({
       runRetentionSubscriptionSync,
       advanceDueDeletions,

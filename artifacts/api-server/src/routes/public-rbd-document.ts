@@ -23,8 +23,8 @@ import { createHash } from "node:crypto";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 
-import { apiError, ApiErrorCode } from "../lib/api-helpers";
-import { logger } from "../lib/logger";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { logger } from "../lib/logger.ts";
 import { getRbdVersionByShareToken, signRbdVersion } from "../lib/rbd-versioning.ts";
 import { getPersistedRbdVersionDocument } from "../lib/rbd-document-render.ts";
 import type { ClientApprover } from "@workspace/db";

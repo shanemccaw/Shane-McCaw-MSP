@@ -81,13 +81,13 @@ const PAYG_SUBSCRIPTION = {
   state: "Enabled",
 };
 
-let azureRm: typeof import("../azure-rm");
+let azureRm: typeof import("../azure-rm.ts");
 
 beforeEach(async () => {
   vi.resetModules();
   process.env.AZURE_RM_CLIENT_ID = "arm-client-id";
   process.env.AZURE_RM_CLIENT_SECRET = "arm-client-secret";
-  azureRm = await import("../azure-rm");
+  azureRm = await import("../azure-rm.ts");
   azureRm.__clearArmTokenCache();
 });
 

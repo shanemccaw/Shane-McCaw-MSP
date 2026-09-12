@@ -47,13 +47,13 @@ vi.mock("@workspace/db", () => ({
   monitorChecksTable: { __table: "monitor_checks", key: "key", frequency: "frequency" },
 }));
 
-vi.mock("./logger", () => ({
+vi.mock("./logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 
 // sla-engine is imported transitively by tenant-signals; stub it so the module
 // graph loads without pulling real DB/SLA machinery into these unit tests.
-vi.mock("./sla-engine", () => ({
+vi.mock("./sla-engine.ts", () => ({
   startSlaTimer: vi.fn(() => Promise.resolve({ timerId: 1, alreadyExisted: false })),
 }));
 

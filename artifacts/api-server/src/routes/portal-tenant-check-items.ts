@@ -37,10 +37,10 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantsTable, tenantCheckItemDetailsTable } from "@workspace/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { sharePointPrefixFromDomain } from "../lib/monitor-executor";
-import { getInitialDomainForTenant } from "../lib/graph";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { sharePointPrefixFromDomain } from "../lib/monitor-executor.ts";
+import { getInitialDomainForTenant } from "../lib/graph.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

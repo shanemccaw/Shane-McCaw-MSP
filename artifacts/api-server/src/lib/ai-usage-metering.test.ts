@@ -46,7 +46,7 @@ import {
   getAiCostOwner,
   resolveNodeTypeMeta,
   resolveEffectiveNodeType,
-} from "./node-type-registry";
+} from "./node-type-registry.ts";
 
 import {
   meterAnthropicClient,
@@ -60,7 +60,7 @@ import {
   // AI_INTEGRATIONS_ANTHROPIC_* are unset.
 } from "@workspace/integrations-anthropic-ai/metering";
 
-import { resolveBillingMspId } from "./ai-billing.js";
+import { resolveBillingMspId } from "./ai-billing.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../../..");

@@ -60,21 +60,21 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("./m365-change-router", () => ({
+vi.mock("./m365-change-router.ts", () => ({
   // The real 4-line switch, kept identical here so a test asserting a score
   // doesn't silently diverge from what the real function returns.
   riskScoreForLevel: (level: string) => ({ critical: 100, high: 75, medium: 50 }[level] ?? 25),
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const noop = () => {};
   const noopLogger: any = { info: noop, warn: noop, error: noop, debug: noop };
   noopLogger.child = () => noopLogger;
   return { logger: noopLogger };
 });
 
-import { declineRemediationStepToRisk, declineRemediationChecklistItemToRisk } from "./remediation-tracker-risk-decline";
-import type { TenantScope } from "./portal-customer-scope";
+import { declineRemediationStepToRisk, declineRemediationChecklistItemToRisk } from "./remediation-tracker-risk-decline.ts";
+import type { TenantScope } from "./portal-customer-scope.ts";
 
 const scope: TenantScope = { customerId: 42, mspId: 9, tenantId: "contoso.onmicrosoft.com", tenantName: "Contoso", primaryDomain: "contoso.com", businessUnit: null };
 

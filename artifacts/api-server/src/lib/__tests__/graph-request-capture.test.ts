@@ -9,9 +9,9 @@
 
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { createServer, type Server } from "node:http";
-import { AddressInfo } from "node:net";
+import type { AddressInfo } from "node:net";
 
-vi.mock("../logger", () => {
+vi.mock("../logger.ts", () => {
   const stub = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() };
   return { logger: { ...stub, child: () => ({ ...stub, child: () => stub }) } };
 });
@@ -21,7 +21,7 @@ import {
   createGraphRequestCapture,
   isCapturingGraphRequests,
   recordOutgoingGraphRequest,
-} from "../graph-request-capture";
+} from "../graph-request-capture.ts";
 
 let server: Server;
 let base: string;

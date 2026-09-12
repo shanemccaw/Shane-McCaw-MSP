@@ -33,7 +33,7 @@ vi.mock("drizzle-orm", () => ({
   and: vi.fn(),
   eq: vi.fn(),
 }));
-vi.mock("./logger", () => ({
+vi.mock("./logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }));
 
@@ -44,7 +44,7 @@ import {
   deriveIntake,
   riskScoreForLevel,
   targetResourceForInterpretation,
-} from "./m365-change-router";
+} from "./m365-change-router.ts";
 
 describe("deriveIntake — the #1534 intake axis", () => {
   it("a control existing is always the approval case, regardless of who acts", () => {

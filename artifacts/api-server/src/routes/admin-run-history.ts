@@ -38,9 +38,9 @@
 
 import { Router, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { isMissingTableError, RUN_HISTORY_MIGRATION, RUN_HISTORY_TABLE } from "../lib/run-history";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { isMissingTableError, RUN_HISTORY_MIGRATION, RUN_HISTORY_TABLE } from "../lib/run-history.ts";
 
 const log = logger.child({ channel: "admin.runHistory" });
 

@@ -31,7 +31,7 @@
 import { zohoGet, zohoPost, zohoPut, ZohoApiError } from "./zoho-client.ts";
 import { registerZohoJobHandler } from "./zoho-batch-drain.ts";
 import { enqueueJob } from "./msp-jobs.ts";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.zoho" });
 

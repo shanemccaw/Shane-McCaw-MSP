@@ -69,7 +69,7 @@ vi.mock("./sse-hub.ts", () => ({
 }));
 
 const logWarn = vi.fn();
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: (...a: unknown[]) => logWarn(...a) };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });

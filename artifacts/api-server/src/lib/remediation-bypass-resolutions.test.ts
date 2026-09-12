@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { domainsForStep, correlateStepBypasses, type BypassCandidateEvent, type RunWindow, type VerifiedTrackerStep } from "./remediation-bypass-resolutions";
+import { domainsForStep, correlateStepBypasses, type BypassCandidateEvent, type RunWindow, type VerifiedTrackerStep } from "./remediation-bypass-resolutions.ts";
 
 describe("domainsForStep", () => {
   it("resolves the drift domain for a step whose mapped check is drift-tracked", () => {

@@ -1,9 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, reportsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { createNotification } from "../lib/notification-center";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { createNotification } from "../lib/notification-center.ts";
+import { logger } from "../lib/logger.ts";
 import multer from "multer";
 import path from "path";
 import fs from "fs";

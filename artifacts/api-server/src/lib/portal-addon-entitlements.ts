@@ -21,8 +21,8 @@ import type { Request, Response, NextFunction } from "express";
 import { db, tenantAddOnEntitlementsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 
-import { resolveCustomerId } from "./portal-customer-scope";
-import { logger } from "./logger";
+import { resolveCustomerId } from "./portal-customer-scope.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

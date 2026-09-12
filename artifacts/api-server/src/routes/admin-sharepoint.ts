@@ -1,8 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, usersTable, settingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 import {
   graphCredentialsPresent,
   createM365Group,
@@ -12,7 +12,7 @@ import {
   createSiteFolder,
   listDriveItems,
   getSiteByUrl,
-} from "../lib/graph";
+} from "../lib/graph.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

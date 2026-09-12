@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
-import { requireAdminOrIngestToken } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { sendWebPushToAdmins } from "../lib/web-push";
+import { requireAdminOrIngestToken } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { sendWebPushToAdmins } from "../lib/web-push.ts";
 
 // Git #898 (sub-issue of Epic #803) — "trigger-over-HTTP" for the UI test
 // harness. Shane's ask: "the agent calls something to execute its UI test

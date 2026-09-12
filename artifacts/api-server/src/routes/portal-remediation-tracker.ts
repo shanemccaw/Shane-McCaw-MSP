@@ -65,22 +65,22 @@ import { db, remediationTrackerStepsTable, tenantsTable, REMEDIATION_TRACKER_STE
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
-import { logger } from "../lib/logger";
-import { computeRemediationTrackerPricing } from "../lib/remediation-tracker-pricing";
-import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger";
-import { stepCheckKeysFor } from "../lib/remediation-tracker-verification";
-import { emitWorkflowEvent } from "../lib/workflow-executor";
-import { fetchPublishedKnowledgeBaseRows } from "../lib/remediation-knowledge-base";
-import { resolveTenantScope } from "../lib/portal-customer-scope";
-import { declineRemediationStepToRisk } from "../lib/remediation-tracker-risk-decline";
-import { apiError, ApiErrorCode } from "../lib/api-helpers";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
+import { logger } from "../lib/logger.ts";
+import { computeRemediationTrackerPricing } from "../lib/remediation-tracker-pricing.ts";
+import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger.ts";
+import { stepCheckKeysFor } from "../lib/remediation-tracker-verification.ts";
+import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
+import { fetchPublishedKnowledgeBaseRows } from "../lib/remediation-knowledge-base.ts";
+import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { declineRemediationStepToRisk } from "../lib/remediation-tracker-risk-decline.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import {
   remediationTerminalState,
   type RemediationTerminalState,
-} from "../lib/remediation-tracker-terminal-state";
+} from "../lib/remediation-tracker-terminal-state.ts";
 
 /**
  * Roles that represent SHANE / the MSP acting, as opposed to the customer

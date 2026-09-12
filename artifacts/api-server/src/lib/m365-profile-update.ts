@@ -12,10 +12,10 @@ import {
   clientHealthHistoryTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.monitor" });
-import { normaliseProfileUpdates } from "./parse-m365-script-output";
-import { computeM365Scores, type M365ScoreCategory } from "./m365-scores";
+import { normaliseProfileUpdates } from "./parse-m365-script-output.ts";
+import { computeM365Scores, type M365ScoreCategory } from "./m365-scores.ts";
 
 /**
  * Merge profileUpdates into client_m365_profiles.

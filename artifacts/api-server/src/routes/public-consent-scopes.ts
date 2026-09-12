@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { logger } from "../lib/logger";
-import { REQUIRED_MT_SCOPES } from "../lib/graph";
+import { logger } from "../lib/logger.ts";
+import { REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 
 const log = logger.child({ channel: "auth" });
 

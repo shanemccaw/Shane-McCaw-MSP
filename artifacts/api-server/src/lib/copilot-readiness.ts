@@ -54,8 +54,8 @@
  */
 
 import { getMetric } from "@workspace/dashboard-registry";
-import { latestCheckProps } from "./dashboard-resolvers";
-import { logger } from "./logger";
+import { latestCheckProps } from "./dashboard-resolvers.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

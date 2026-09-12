@@ -63,8 +63,8 @@
  */
 
 import { sql, type SQL } from "drizzle-orm";
-import { logger } from "../../logger";
-import type { RetentionTx, TenantDataPurger } from "../registry";
+import { logger } from "../../logger.ts";
+import type { RetentionTx, TenantDataPurger } from "../registry.ts";
 
 const auditLog = logger.child({ channel: "audit" });
 

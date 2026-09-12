@@ -25,11 +25,11 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, documentTypesTable, aiPromptsTable, auditLogsTable } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { invalidateDocumentTypeCache } from "../lib/document-types";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { invalidateDocumentTypeCache } from "../lib/document-types.ts";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "system.core" });
 import { z } from "zod";
 

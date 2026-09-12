@@ -15,8 +15,8 @@
 
 import { db, engagementOfferRulesTable, engagementOfferFiringsTable, leadIntentEventsTable } from "@workspace/db";
 import { eq, and, gte, isNull, sql } from "drizzle-orm";
-import { emitWorkflowEvent } from "./workflow-executor";
-import { logger } from "./logger";
+import { emitWorkflowEvent } from "./workflow-executor.ts";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.offer" });
 
 const ENGAGEMENT_INTENT_POINTS: Record<string, number> = {

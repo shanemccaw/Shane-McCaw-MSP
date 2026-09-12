@@ -30,21 +30,21 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { executeMonitoringPackage, type CheckResult } from "./monitor-executor";
-import { emitWorkflowEvent } from "./workflow-executor";
-import { capturePillarDisplaySnapshots } from "./pillar-snapshot";
-import { generateCioNarrative } from "./cio-narrative-generator";
-import { evaluateDocGateCoverage } from "./doc-gate-coverage";
-import { resolveSeatFigures, type SeatFigures } from "./pillar-summary-stats";
-import { DEFAULT_LICENSE_WASTE_CHECK_KEY } from "./license-waste-source";
-import { reverifyRemediationTrackerSteps } from "./remediation-tracker-verification";
+import { executeMonitoringPackage, type CheckResult } from "./monitor-executor.ts";
+import { emitWorkflowEvent } from "./workflow-executor.ts";
+import { capturePillarDisplaySnapshots } from "./pillar-snapshot.ts";
+import { generateCioNarrative } from "./cio-narrative-generator.ts";
+import { evaluateDocGateCoverage } from "./doc-gate-coverage.ts";
+import { resolveSeatFigures, type SeatFigures } from "./pillar-summary-stats.ts";
+import { DEFAULT_LICENSE_WASTE_CHECK_KEY } from "./license-waste-source.ts";
+import { reverifyRemediationTrackerSteps } from "./remediation-tracker-verification.ts";
 import {
   broadcastDiagnosticsRunProgress,
   broadcastDiagnosticsRunComplete,
   broadcastDiagnosticsRunError,
   clearDiagnosticsRunSSEState,
-} from "./sse-channels";
-import { logger } from "./logger";
+} from "./sse-channels.ts";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "tenant.portal" });
 
 // ── Finding severity classification ──────────────────────────────────────────
@@ -986,8 +986,8 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
         // Kick off Document Pipeline (fire-and-forget — errors are non-fatal)
         void (async () => {
           try {
-            const { createRun, executeRun } = await import("./portal-workflow-engine");
-            const { DEFAULT_DOC_PIPELINE_GRAPH } = await import("./doc-pipeline-nodes");
+            const { createRun, executeRun } = await import("./portal-workflow-engine.ts");
+            const { DEFAULT_DOC_PIPELINE_GRAPH } = await import("./doc-pipeline-nodes.ts");
             const { portalWfWorkflowsTable } = await import("@workspace/db");
             const { eq: eqFn } = await import("drizzle-orm");
 

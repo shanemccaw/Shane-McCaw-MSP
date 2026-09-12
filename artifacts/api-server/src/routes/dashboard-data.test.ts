@@ -85,7 +85,7 @@ vi.mock("../lib/scope-creep-engine.ts", () => ({
   runScopeCreepEngineForTenant: vi.fn(async () => ({ engine: "scope_creep", score: { compositeScore: 20, driftScore: 0, expansionScore: 0, timelineSlipScore: 0, openDetections: 0, openViolations: 0, compliancePct: 100 }, breakdown: [], policies: [], rawSignals: [], timestamp: "" })),
 }));
 
-import router from "./dashboard-data";
+import router from "./dashboard-data.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();

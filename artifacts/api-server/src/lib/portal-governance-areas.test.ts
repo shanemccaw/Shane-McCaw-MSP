@@ -19,7 +19,7 @@ import {
   deriveGovAreaStatus,
   buildGovArea,
   type GovProfileRow,
-} from "./portal-governance-areas";
+} from "./portal-governance-areas.ts";
 
 describe("GOV_AREA_CHECK_DEFS", () => {
   it("maps exactly the thirteen confirmed-real cards to their real check keys and fields", () => {

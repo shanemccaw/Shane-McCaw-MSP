@@ -29,8 +29,10 @@ import { resolveMetric, type MetricResult, type ResolveContext } from "./dashboa
 import { resolveCallerScope, findDefaultTemplate, resolveTemplate } from "../routes/dashboard-overrides.ts";
 
 export class DashboardSnapshotError extends Error {
-  constructor(message: string, public status: number) {
+  status: number;
+  constructor(message: string, status: number) {
     super(message);
+    this.status = status;
   }
 }
 

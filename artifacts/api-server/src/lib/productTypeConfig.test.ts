@@ -17,7 +17,7 @@ import {
   PRODUCT_TYPE_EXPORT_FIELDS,
   PRODUCT_TYPE_TEMPLATES,
   type ProductTypeKey,
-} from "./productTypeConfig";
+} from "./productTypeConfig.ts";
 
 const ALL_TYPES: ProductTypeKey[] = [
   "credit_pack",

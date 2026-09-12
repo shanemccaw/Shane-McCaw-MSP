@@ -40,12 +40,12 @@ vi.mock("drizzle-orm", () => {
   };
 });
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
-vi.mock("./sla-engine", () => ({ startSlaTimer: vi.fn() }));
+vi.mock("./sla-engine.ts", () => ({ startSlaTimer: vi.fn() }));
 
 // Chainable + thenable stub — mirrors drizzle's builder being awaitable at any
 // link in the chain. Same harness tenant-signals-stabilization.test.ts uses.

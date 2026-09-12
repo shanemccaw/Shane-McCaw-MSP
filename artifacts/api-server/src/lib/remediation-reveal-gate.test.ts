@@ -21,7 +21,7 @@ import {
   findRevealCandidates,
   recordScriptReveal,
   type RemediationRevealCandidate,
-} from "./remediation-reveal-gate";
+} from "./remediation-reveal-gate.ts";
 
 describe("isChangeRequestApprovedForReveal", () => {
   it("false for a rejected CR even if approvedBy is somehow set", () => {

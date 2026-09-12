@@ -55,12 +55,12 @@ import {
   policyRulesTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc, isNull } from "drizzle-orm";
-import { requireCapability, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
-import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
-import { apiError, ApiErrorCode } from "../lib/api-helpers";
-import { createAuditLog } from "../lib/audit";
-import { logger } from "../lib/logger";
+import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { createAuditLog } from "../lib/audit.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

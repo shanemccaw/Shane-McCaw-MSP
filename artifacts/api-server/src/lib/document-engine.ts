@@ -8,38 +8,38 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { anthropic, withAiUsageCapture, totalCapturedCostCents } from "@workspace/integrations-anthropic-ai";
-import { buildTenantProfile, findReusableDocument, namespacedProfileKey, resolveDocumentOwnerUserId, type CategorizedFinding, type MergedProfileByCheck } from "./tenant-signals";
-import { EVIDENCE_PROPERTY_KEY as MONITOR_EVIDENCE_PROPERTY_KEY } from "./monitor-executor";
-import { getDocumentStylePrefix, getPrompt } from "./prompt-loader";
-import { extractAiHtml, firstTextBlock } from "./sow-pricing";
+import { buildTenantProfile, findReusableDocument, namespacedProfileKey, resolveDocumentOwnerUserId, type CategorizedFinding, type MergedProfileByCheck } from "./tenant-signals.ts";
+import { EVIDENCE_PROPERTY_KEY as MONITOR_EVIDENCE_PROPERTY_KEY } from "./monitor-executor.ts";
+import { getDocumentStylePrefix, getPrompt } from "./prompt-loader.ts";
+import { extractAiHtml, firstTextBlock } from "./sow-pricing.ts";
 // Git #547 — the real go-live score. `copilot-gate.ts` is the single definition
 // of the score, the 82 threshold and the go/no-go verdict; this engine reads it,
 // it does not re-derive any part of it.
-import { computeCopilotGate, type CopilotGateResult } from "./copilot-gate";
+import { computeCopilotGate, type CopilotGateResult } from "./copilot-gate.ts";
 // Git #555 — the real per-finding point value. Same rule as the gate above: this
 // engine READS the number, it does not derive any part of it. See
 // finding-point-impact.ts for why the raw `signal_derivation_rules` impact column
 // is NOT the point value and what normalization makes it one.
-import { computeFindingPointImpacts } from "./finding-point-impact";
+import { computeFindingPointImpacts } from "./finding-point-impact.ts";
 // Rendering comes from the engine-free sibling on purpose: `buildFindingsBlock`
 // below is pure and must stay testable without standing up the scoring graph.
 import {
   buildFindingPointImpactPreamble,
   formatFindingPointImpactLine,
   type FindingPointImpactResult,
-} from "./finding-point-impact-format";
-import type { PillarEvaluation } from "./health-display";
+} from "./finding-point-impact-format.ts";
+import type { PillarEvaluation } from "./health-display.ts";
 // Git #556 — the one definition of "the model ran out of room". Pure and
 // engine-free; see that file's header for why a truncated document is failed
 // rather than continued.
-import { assertOutputNotTruncated } from "./ai-output-ceiling";
+import { assertOutputNotTruncated } from "./ai-output-ceiling.ts";
 // Git #567 — the one definition of "the model call never came back". Same
 // shape and same reason as the guard above; see that file's header for the
 // SDK reading that shows a streaming call is bounded only up to first byte.
 import {
   deriveGenerationDeadlineMs,
   runGenerationWithDeadline,
-} from "./ai-generation-deadline";
+} from "./ai-generation-deadline.ts";
 // Git #559 — the one definition of "this document contradicts the data it
 // cites". Same shape and same reason as the guard above: pure, engine-free, and
 // SDK-free, so the reject/allow decision is assertable against the real
@@ -50,14 +50,14 @@ import {
   CLAIM_BINDING_AUDIT_MODEL,
   CLAIM_BINDING_AUDIT_TEMPERATURE,
   CLAIM_BINDING_AUDIT_TIMEOUT_MS,
-} from "./document-claim-binding";
-import { logger } from "./logger";
-import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
+} from "./document-claim-binding.ts";
+import { logger } from "./logger.ts";
+import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2.ts";
 import {
   buildRemediationAppendix,
   REMEDIATION_APPENDIX_MAX_FINDINGS,
   REMEDIATION_APPENDIX_PROMPT_SUFFIX,
-} from "./remediation-knowledge-base";
+} from "./remediation-knowledge-base.ts";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 // Document Generator scoping decisions (which of the tenant's real findings a

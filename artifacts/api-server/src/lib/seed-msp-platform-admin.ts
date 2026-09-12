@@ -1,6 +1,6 @@
 import { db, mspsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "admin.insights" });
 

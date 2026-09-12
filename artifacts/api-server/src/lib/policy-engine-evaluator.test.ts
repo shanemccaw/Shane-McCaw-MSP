@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decideEvaluationGate } from "./policy-engine-evaluator";
+import { decideEvaluationGate } from "./policy-engine-evaluator.ts";
 
 describe("decideEvaluationGate", () => {
   it("returns not_evaluable when the policy's OU has no tenant attached", () => {

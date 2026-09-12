@@ -3,8 +3,8 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { eq, sql, count } from "drizzle-orm";
 import { db, quizAnalyticsEventsTable } from "@workspace/db";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "growth.quiz" });
 
 const router = Router();

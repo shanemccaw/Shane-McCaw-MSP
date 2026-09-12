@@ -27,8 +27,8 @@ import {
   m365ServiceHealthSamplesTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
-import { graphFetchForTenant, ConsentRevokedError, markTenantConsentRevoked } from "./graph";
-import { logger } from "./logger";
+import { graphFetchForTenant, ConsentRevokedError, markTenantConsentRevoked } from "./graph.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

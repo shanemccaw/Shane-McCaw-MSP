@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateChangeRequestAuthorization } from "./change-control-write-gate";
+import { evaluateChangeRequestAuthorization } from "./change-control-write-gate.ts";
 
 /**
  * The pure authorization rule decides what may be written to a live tenant, so it

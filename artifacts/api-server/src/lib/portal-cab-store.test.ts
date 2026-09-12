@@ -15,7 +15,7 @@ import { describe, it, expect, afterAll } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 
 import { db, mspChangeRequestsTable, cabAgendaItemsTable, cabMembersTable, cabMeetingsTable, crApprovalsTable } from "@workspace/db";
-import { materializeApprovalsForChange } from "./portal-change-approvals-store";
+import { materializeApprovalsForChange } from "./portal-change-approvals-store.ts";
 import {
   addAgendaItem,
   addOrUpdateMember,
@@ -26,7 +26,7 @@ import {
   scheduleMeeting,
   startMeeting,
   type ApproverIdentity,
-} from "./portal-cab-store";
+} from "./portal-cab-store.ts";
 
 const MSP_ID = 1;
 const VERIFY_TAG = `verify-1501-${Date.now()}`;

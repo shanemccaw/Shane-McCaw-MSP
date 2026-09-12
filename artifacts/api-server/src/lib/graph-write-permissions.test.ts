@@ -17,7 +17,7 @@ import {
   DOCUMENTED_BUT_NOT_REQUESTED,
   APP_ONLY_UNSUPPORTED_OPERATIONS,
   GRAPH_WRITE_PERMISSION_RULES,
-} from "./graph-write-permissions";
+} from "./graph-write-permissions.ts";
 
 describe("normaliseEndpoint", () => {
   it("collapses {{placeholders}} to a single-segment wildcard", () => {

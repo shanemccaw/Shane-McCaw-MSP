@@ -4,18 +4,18 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db, quizLeadsTable, quizAnalyticsEventsTable, servicesTable, leadOfferRuleGroupsTable } from "@workspace/db";
-import { sendWebPushToAdmins } from "../lib/web-push";
-import { createNotificationForAllAdmins } from "../lib/notification-center";
+import { sendWebPushToAdmins } from "../lib/web-push.ts";
+import { createNotificationForAllAdmins } from "../lib/notification-center.ts";
 import { and, asc, eq } from "drizzle-orm";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "growth.quiz" });
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { inferSignalsFromQuizScores, computeLeadOfferEngine } from "../lib/lead-offer-engine.ts";
 import { ensureLeadForEmail } from "../lib/lead-intent.ts";
 import { pushMarketingLeadToEngageBay } from "../lib/engagebay-marketing-lead.ts";
-import { generateQuizPdf } from "../lib/quiz-pdf";
+import { generateQuizPdf } from "../lib/quiz-pdf.ts";
 import { generateCopilotChecklistPdf } from "../lib/copilot-checklist-pdf.ts";
-import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, brandedEmail, quizLeadNotificationEmail, homeQuizLeadNotificationEmail } from "../lib/mailer";
+import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, brandedEmail, quizLeadNotificationEmail, homeQuizLeadNotificationEmail } from "../lib/mailer.ts";
 
 const RESEND_TOKEN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 

@@ -22,9 +22,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, resultsTemplatesTable, auditLogsTable, RESULTS_TEMPLATE_FAMILIES } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { invalidateResultsTemplateCache } from "../lib/results-templates";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { invalidateResultsTemplateCache } from "../lib/results-templates.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.assessment-results" });
 import { z } from "zod";
 

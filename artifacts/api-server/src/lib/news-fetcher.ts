@@ -6,7 +6,7 @@
  * Fallback: Microsoft public RSS feeds parsed from XML — no auth required.
  */
 
-import { logger } from "./logger.js";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "admin.content" });
 
 export interface NewsItem {

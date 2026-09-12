@@ -13,16 +13,16 @@
  */
 
 import { pool } from "@workspace/db";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.run" });
-import { computeNextCronRun } from "./workflow-executor";
+import { computeNextCronRun } from "./workflow-executor.ts";
 import {
   WEEKLY_RETARGETING_RESCAN_NAME,
   WEEKLY_RETARGETING_RESCAN_QUERY,
   WEEKLY_ASSESSMENT_RESCAN_NAME,
   WEEKLY_ASSESSMENT_RESCAN_QUERY,
   LEGACY_WEEKLY_RESCAN_QUERIES,
-} from "./weekly-rescan-populations";
+} from "./weekly-rescan-populations.ts";
 
 interface SystemWorkflowSeed {
   name: string;

@@ -42,7 +42,7 @@ vi.mock("@workspace/db", () => ({
   tenantsTable: {},
 }));
 
-vi.mock("../graph", () => ({
+vi.mock("../graph.ts", () => ({
   graphFetchForTenant: vi.fn(),
   ConsentRevokedError: class ConsentRevokedError extends Error {
     tenantId: string;
@@ -69,7 +69,7 @@ vi.mock("../graph", () => ({
   markTenantConsentRevoked: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../ps-execution-client", () => ({
+vi.mock("../ps-execution-client.ts", () => ({
   callPsExecution: vi.fn(),
   PsExecutionError: class PsExecutionError extends Error {
     kind: "unreachable" | "auth_failed" | "script_error";
@@ -83,17 +83,17 @@ vi.mock("../ps-execution-client", () => ({
   },
 }));
 
-vi.mock("../logger", () => {
+vi.mock("../logger.ts", () => {
   const child = vi.fn();
   const base = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child };
   child.mockReturnValue(base);
   return { logger: base };
 });
 
-import { normalizeDriveSharing, ONEDRIVE_DRIVE_SHARING_NORMALIZER } from "../onedrive-sharing";
-import { EEEU_LOGIN_NAME_PREFIX } from "../sharepoint-sharing";
-import { executeMonitorCheck, FAN_OUT_ITEM_NORMALIZERS } from "../monitor-executor";
-import { graphFetchForTenant } from "../graph";
+import { normalizeDriveSharing, ONEDRIVE_DRIVE_SHARING_NORMALIZER } from "../onedrive-sharing.ts";
+import { EEEU_LOGIN_NAME_PREFIX } from "../sharepoint-sharing.ts";
+import { executeMonitorCheck, FAN_OUT_ITEM_NORMALIZERS } from "../monitor-executor.ts";
+import { graphFetchForTenant } from "../graph.ts";
 
 const TENANT_GUID = "3d2e5f60-1c0a-4a55-9c1e-2b8f7a6d4e11";
 const EEEU_CLAIM = `${EEEU_LOGIN_NAME_PREFIX}/${TENANT_GUID}`;

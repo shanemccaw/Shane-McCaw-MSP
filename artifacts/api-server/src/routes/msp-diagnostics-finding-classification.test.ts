@@ -51,7 +51,7 @@ vi.mock("@workspace/db", () => ({
   scriptModulesTable: {},
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const log: Record<string, unknown> = {
     info: vi.fn(),
     warn: vi.fn(),
@@ -66,8 +66,8 @@ import {
   classifyDiagnosticFindings,
   isClassifiableFinding,
   rawGraphErrorOf,
-} from "./msp-diagnostics";
-import { REQUIRED_MT_SCOPES } from "../lib/graph";
+} from "./msp-diagnostics.ts";
+import { REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 
 // Real observed shapes, matching the classifier's own fixtures.
 const PIM_CULTURE_ERROR =

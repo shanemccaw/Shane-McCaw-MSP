@@ -10,7 +10,7 @@ import {
   runbookJobHistoryTable,
 } from "@workspace/db";
 import { eq, desc, count, isNull, isNotNull, and, gte, sql } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router = Router();

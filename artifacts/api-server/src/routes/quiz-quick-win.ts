@@ -3,8 +3,8 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { db, quickWinQuizResultsTable, servicesTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
-import { ensureLeadStagingForEmail } from "../lib/lead-intent";
-import { logger } from "../lib/logger";
+import { ensureLeadStagingForEmail } from "../lib/lead-intent.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "growth.quiz" });
 
 const router = Router();

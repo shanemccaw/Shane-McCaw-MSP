@@ -30,15 +30,15 @@ import {
   isGateAllowedPath,
   subscriptionGateBody,
   type GatePrincipal,
-} from "./subscription-gate";
-import { postTerminationDueAt } from "./clock";
-import type { TenantSubscriptionState } from "./subscription-state";
+} from "./subscription-gate.ts";
+import { postTerminationDueAt } from "./clock.ts";
+import type { TenantSubscriptionState } from "./subscription-state.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import {
   __resetTenantDataPurgersForTest,
   listTenantDataPurgers,
   registerTenantDataPurger,
-} from "./registry";
+} from "./registry.ts";
 
 // ── Fixtures are STATE OBJECTS, not data ─────────────────────────────────────
 // These construct the argument to a pure function so its behaviour can be asserted.

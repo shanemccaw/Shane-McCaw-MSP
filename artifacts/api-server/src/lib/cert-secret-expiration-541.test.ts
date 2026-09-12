@@ -24,8 +24,8 @@ vi.mock("@workspace/db", () => ({
   tenantsTable: {},
 }));
 
-import { applyMapping, classifySeverity } from "./monitor-executor";
-import type { MappingRule, SeverityRule } from "./monitor-executor";
+import { applyMapping, classifySeverity } from "./monitor-executor.ts";
+import type { MappingRule, SeverityRule } from "./monitor-executor.ts";
 
 // Mirrors the migration's UPDATE for appgov:cert-secret-expiration.
 const CERT_SECRET_EXPIRATION_MAPPING: MappingRule[] = [

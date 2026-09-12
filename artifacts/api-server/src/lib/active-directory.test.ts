@@ -42,7 +42,7 @@ import {
   applyMspOverride,
   isOverrideActive,
   type MspOverrideRow,
-} from "./active-directory";
+} from "./active-directory.ts";
 
 const MSPS: MspRow[] = [
   { id: 1, name: "Acme Consulting", slug: "acme-consulting", domain: "acme.com", status: "active" },

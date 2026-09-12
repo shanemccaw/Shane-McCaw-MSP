@@ -39,14 +39,14 @@ import {
   getJobOutput,
   isTerminalStatus,
   isAzureConfigured,
-} from "./azure-automation";
-import { getSecretValue } from "./azure-keyvault";
-import { sendEmail, sendEmailFromTemplate } from "./mailer";
-import { logger } from "./logger";
+} from "./azure-automation.ts";
+import { getSecretValue } from "./azure-keyvault.ts";
+import { sendEmail, sendEmailFromTemplate } from "./mailer.ts";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.script" });
-import { broadcastKanbanChange } from "./sse-channels";
+import { broadcastKanbanChange } from "./sse-channels.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { createAuditLog } from "./audit";
+import { createAuditLog } from "./audit.ts";
 
 const POLL_INTERVAL_MS = 5_000;
 const JOB_TIMEOUT_MS = 10 * 60 * 1000;

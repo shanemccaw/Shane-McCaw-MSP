@@ -50,7 +50,7 @@ import { db, usersTable } from "@workspace/db";
 import { loadRbacEvaluator, type RbacSystem } from "@workspace/db/rbac";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { identityPresentation } from "../lib/identity-presentation.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "auth" });

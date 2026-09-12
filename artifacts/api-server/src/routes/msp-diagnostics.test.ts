@@ -152,7 +152,7 @@ vi.mock("@workspace/db", () => {
 
 // ── diagnostics-runner mock ───────────────────────────────────────────────────
 
-vi.mock("../lib/diagnostics-runner", () => ({
+vi.mock("../lib/diagnostics-runner.ts", () => ({
   runDiagnostics: vi.fn().mockResolvedValue({
     runId: "aaaaaaaa-0000-0000-0000-000000000001",
     status: "completed",
@@ -164,7 +164,7 @@ vi.mock("../lib/diagnostics-runner", () => ({
   }),
 }));
 
-vi.mock("../lib/sse-channels", () => ({
+vi.mock("../lib/sse-channels.ts", () => ({
   registerDiagnosticsRunSSEClient: vi.fn(),
 }));
 
@@ -179,7 +179,7 @@ function makeLoggerMock(): { info: ReturnType<typeof vi.fn>; warn: ReturnType<ty
   };
 }
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: makeLoggerMock(),
 }));
 
@@ -193,7 +193,7 @@ vi.mock("jsonwebtoken", () => ({
 
 // ── requireAuth / requireRole mocks ───────────────────────────────────────────
 
-vi.mock("../middlewares/requireAuth", () => {
+vi.mock("../middlewares/requireAuth.ts", () => {
   const makeMiddleware = (role?: string) => (req: express.Request, res: express.Response, next: express.NextFunction) => {
     (req as unknown as Record<string, unknown>).user = {
       id: 42,
@@ -233,7 +233,7 @@ describe("msp-diagnostics routes", () => {
     vi.clearAllMocks();
     app = express();
     app.use(express.json());
-    const { default: router } = await import("./msp-diagnostics");
+    const { default: router } = await import("./msp-diagnostics.ts");
     app.use(router);
   });
 

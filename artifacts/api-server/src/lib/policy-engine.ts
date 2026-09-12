@@ -14,9 +14,9 @@
 
 import { db, policyRulesTable, policyRuleFiringsTable, policyRuleIncidentsTable, tenantEngineSnapshotsTable, tenantsTable } from "@workspace/db";
 import { sql, eq, and, or, isNull, desc } from "drizzle-orm";
-import { getStabilizedSignals } from "./tenant-signals";
-import { emitWorkflowEvent } from "./workflow-executor";
-import { logger } from "./logger";
+import { getStabilizedSignals } from "./tenant-signals.ts";
+import { emitWorkflowEvent } from "./workflow-executor.ts";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.policy" });
 
 function computeRuleCategory(rule: { conditionType: string; signalKeyPrefix: string | null; engineKey: string | null }): string {

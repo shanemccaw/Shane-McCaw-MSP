@@ -32,11 +32,11 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 
 import { db, mspChangeRequestsTable, CHANGE_REQUEST_IMPLEMENTERS, CR_ROLLBACK_OUTCOMES } from "@workspace/db";
-import { requireAuth, requireCapability } from "../middlewares/requireAuth";
-import { resolveMspIdStrict } from "../lib/resolve-msp-id";
-import { personIdForUser } from "../lib/portal-ownership";
-import { logger } from "../lib/logger";
-import { formatChangeRequestCode, toWireCrExecution } from "../lib/msp-change-execution";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
+import { logger } from "../lib/logger.ts";
+import { formatChangeRequestCode, toWireCrExecution } from "../lib/msp-change-execution.ts";
 import {
   attestHumanAction,
   getExecution,
@@ -47,7 +47,7 @@ import {
   recordExecution,
   verifyRollback,
   type ExecutionActor,
-} from "../lib/msp-change-execution-store";
+} from "../lib/msp-change-execution-store.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

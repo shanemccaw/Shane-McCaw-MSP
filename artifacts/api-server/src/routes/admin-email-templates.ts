@@ -1,9 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, emailTemplatesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { sendEmailOrThrow, brandedEmail } from "../lib/mailer";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { sendEmailOrThrow, brandedEmail } from "../lib/mailer.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "comms.email" });
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 

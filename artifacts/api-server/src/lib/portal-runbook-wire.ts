@@ -42,9 +42,9 @@ import {
   holdScanTone,
   holdTMinus,
   runbookStatusFromHold,
-} from "./portal-hold-windows";
-import { cloneStepsForNextCycle, cycleProgress, isCycleComplete } from "./portal-runbook-cycles";
-import { logger } from "./logger";
+} from "./portal-hold-windows.ts";
+import { cloneStepsForNextCycle, cycleProgress, isCycleComplete } from "./portal-runbook-cycles.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

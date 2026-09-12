@@ -23,11 +23,11 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { gatherExecutiveBook } from "../lib/msp-executive-data.ts";
 import { getCurrentPartnerQbr, getOrGeneratePartnerQbr, currentQuarterKey } from "../lib/partner-qbr-generator.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

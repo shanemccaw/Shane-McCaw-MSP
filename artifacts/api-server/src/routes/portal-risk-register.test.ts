@@ -114,7 +114,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: () => (_req: any, _res: any, next: () => void) => next(),
   requireAuth: (_req: any, _res: any, next: () => void) => next(),
 }));
@@ -124,7 +124,7 @@ vi.mock("../middlewares/requireAuth", () => ({
 // mirror the real PORTAL_TIER_MODULE_KEYS string literals in
 // lib/portal-tier-features.ts (kept as literals, not importOriginal, so this
 // mock never has to resolve that module's own real @workspace/db imports).
-vi.mock("../lib/portal-tier-features", () => ({
+vi.mock("../lib/portal-tier-features.ts", () => ({
   requireTierFeature: () => (_req: any, _res: any, next: () => void) => next(),
   PORTAL_TIER_MODULE_KEYS: {
     policyDecisions: "policy_decisions",
@@ -140,13 +140,13 @@ vi.mock("../lib/portal-tier-features", () => ({
   },
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
 
 let mockScope: any = null;
-vi.mock("../lib/portal-customer-scope", () => ({
+vi.mock("../lib/portal-customer-scope.ts", () => ({
   resolveCustomerId: (req: any) => req.user?.customerId ?? null,
   resolveTenantScope: async () => mockScope,
 }));
@@ -163,7 +163,7 @@ vi.mock("drizzle-orm", () => ({
   lte: (l: unknown, r: unknown) => ({ lte: [l, r] }),
 }));
 
-import router from "./portal-risk-register";
+import router from "./portal-risk-register.ts";
 
 function makeApp(user: Record<string, unknown> | null) {
   const app = express();

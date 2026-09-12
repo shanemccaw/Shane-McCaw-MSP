@@ -1,13 +1,13 @@
 import { db, graphSubscriptionsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.monitor" });
 import {
   graphCredentialsPresent,
   createSubscription,
   renewSubscription,
   listSubscriptions,
-} from "./graph";
+} from "./graph.ts";
 
 const RENEWAL_LEAD_MS = 30 * 60 * 1000;
 const RETRY_DELAY_MS = 5 * 60 * 1000;

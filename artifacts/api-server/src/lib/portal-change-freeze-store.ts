@@ -13,8 +13,8 @@ import {
   toFreezeCandidate,
   type FreezeMatchContext,
   type FreezeWindowCandidate,
-} from "./portal-change-freeze";
-import { logger } from "./logger";
+} from "./portal-change-freeze.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

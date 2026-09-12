@@ -20,8 +20,8 @@
 
 import { and, eq } from "drizzle-orm";
 import { db, mspPoamsTable, tenantsTable } from "@workspace/db";
-import { getRetainedRecordType, registerRetainedRecordType, type RetentionTx } from "../registry";
-import { getOriginResolver, registerOriginResolver } from "../origin-registry";
+import { getRetainedRecordType, registerRetainedRecordType, type RetentionTx } from "../registry.ts";
+import { getOriginResolver, registerOriginResolver } from "../origin-registry.ts";
 
 const RECORD_TYPE = "msp_poams";
 

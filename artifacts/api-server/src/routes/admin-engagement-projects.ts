@@ -1,8 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, engagementProjectsTable } from "@workspace/db";
 import { eq, asc, sql } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { getProjectSignalDefinitions } from "../lib/tenant-signals";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { getProjectSignalDefinitions } from "../lib/tenant-signals.ts";
 
 const router: IRouter = Router();
 

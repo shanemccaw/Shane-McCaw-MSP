@@ -1,6 +1,6 @@
 import { db, tenantEngineSnapshotsTable, engineBaselineHistoryTable, engineScoreSignalDeltasTable, engineScoreDailyRollupTable } from "@workspace/db";
 import { and, eq, gte, lte, desc, asc, inArray, lt } from "drizzle-orm";
-import { fetchSignalRulesAndGroups } from "./priority-engine";
+import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 
 // ── Function 1 ──────────────────────────────────────────────────────────────
 export async function getEngineHistoryMerged(

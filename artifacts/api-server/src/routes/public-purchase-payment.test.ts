@@ -41,21 +41,21 @@ vi.mock("stripe", () => ({
   }),
 }));
 
-vi.mock("../lib/stripe", () => ({
+vi.mock("../lib/stripe.ts", () => ({
   getStripeKey: vi.fn().mockReturnValue("sk_test_xxx"),
   getStripePublishableKey: vi.fn().mockReturnValue("pk_test_xxx"),
 }));
 
 const mockCreateAuditLog = vi.fn().mockResolvedValue(undefined);
-vi.mock("../lib/audit", () => ({ createAuditLog: (...args: unknown[]) => mockCreateAuditLog(...args) }));
+vi.mock("../lib/audit.ts", () => ({ createAuditLog: (...args: unknown[]) => mockCreateAuditLog(...args) }));
 
 const mockSendEmail = vi.fn().mockResolvedValue(undefined);
-vi.mock("../lib/mailer", () => ({
+vi.mock("../lib/mailer.ts", () => ({
   sendEmail: (...args: unknown[]) => mockSendEmail(...args),
   purchaseConfirmationEmail: vi.fn().mockReturnValue("<html></html>"),
 }));
 
-vi.mock("../lib/crm-pipeline", () => ({ markAssessmentLeadPurchased: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("../lib/crm-pipeline.ts", () => ({ markAssessmentLeadPurchased: vi.fn().mockResolvedValue(undefined) }));
 
 // ── Real catalog anchors (queried live in the suite itself) ───────────────────
 

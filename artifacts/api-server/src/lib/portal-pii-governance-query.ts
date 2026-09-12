@@ -10,13 +10,13 @@
 import { db, tenantMonitorProfilesTable } from "@workspace/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 import {
   buildPiiGovernance,
   PII_GOVERNANCE_CHECKS,
   type PiiCheckRow,
   type PiiGovernancePayload,
-} from "./portal-pii-governance";
+} from "./portal-pii-governance.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

@@ -18,7 +18,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspJobQueueTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { listLeads, listDeals, listContacts, listAccounts, type ZohoListResult } from "../lib/zoho-read.ts";
 import {
   enqueueZohoWrite,
@@ -29,7 +29,7 @@ import {
   type ZohoCrmModule,
 } from "../lib/zoho-crm.ts";
 import { ZohoNotConnectedError, ZohoApiError, ZOHO_DEFAULT_MSP_ID } from "../lib/zoho-client.ts";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "integration.zoho" });
 

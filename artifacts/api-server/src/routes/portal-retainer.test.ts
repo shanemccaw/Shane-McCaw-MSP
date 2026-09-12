@@ -63,17 +63,17 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAuth: (_req: any, _res: any, next: () => void) => next(),
   requireAdmin: (_req: any, _res: any, next: () => void) => next(),
 }));
 
-vi.mock("../lib/portal-customer-scope", () => ({
+vi.mock("../lib/portal-customer-scope.ts", () => ({
   resolveCustomerId: (req: any) => req.user?.customerId ?? null,
 }));
 
 const mockResolveCustomerUserIds = vi.fn(async (customerId: number) => [customerId]);
-vi.mock("../lib/tenant-signals", () => ({
+vi.mock("../lib/tenant-signals.ts", () => ({
   resolveCustomerUserIds: (customerId: number) => mockResolveCustomerUserIds(customerId),
 }));
 
@@ -83,11 +83,11 @@ vi.mock("../lib/tenant-signals", () => ({
 // pins it to anchor day 1 (the plain calendar-month shape) so the existing
 // "August 2026" fixtures below stay meaningful without re-deriving them.
 const mockResolveRetainerAnchorDay = vi.fn(async () => 1);
-vi.mock("../lib/retainer-period-anchor", () => ({
+vi.mock("../lib/retainer-period-anchor.ts", () => ({
   resolveRetainerAnchorDay: (...args: unknown[]) => (mockResolveRetainerAnchorDay as (...a: unknown[]) => unknown)(...args),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
@@ -100,7 +100,7 @@ vi.mock("drizzle-orm", () => ({
   desc: (c: unknown) => ({ desc: c }),
 }));
 
-import router from "./portal-retainer";
+import router from "./portal-retainer.ts";
 
 function makeApp(user: Record<string, unknown> | null) {
   const app = express();

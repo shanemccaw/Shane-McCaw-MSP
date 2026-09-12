@@ -19,7 +19,7 @@
 
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import type { Request, Response } from "express";
-import type { AuthUser } from "./requireAuth";
+import type { AuthUser } from "./requireAuth.ts";
 
 const windowMs = parseInt(process.env["MSP_RATE_LIMIT_WINDOW_MS"] ?? "60000", 10);
 const maxRequests = parseInt(process.env["MSP_RATE_LIMIT_MAX"] ?? "300", 10);

@@ -32,9 +32,9 @@ import { db, mspsTable, tenantsTable, usersTable } from "@workspace/db";
 import {
   __resetTenantDataPurgersForTest,
   listTenantDataPurgers,
-} from "../registry";
-import { purgeTerminatedTenant, findTenantsDueForPostTerminationPurge } from "../post-termination";
-import { registerAllTenantDataPurgers } from "./index";
+} from "../registry.ts";
+import { purgeTerminatedTenant, findTenantsDueForPostTerminationPurge } from "../post-termination.ts";
+import { registerAllTenantDataPurgers } from "./index.ts";
 
 const SUFFIX = `vitest-2859-${Math.floor(Math.random() * 1e9)}`;
 const YEAR_MS = 365 * 24 * 60 * 60 * 1000;

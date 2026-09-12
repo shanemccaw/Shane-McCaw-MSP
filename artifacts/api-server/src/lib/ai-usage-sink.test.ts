@@ -13,22 +13,22 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
   registerAiUsageSink: vi.fn(),
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
 const recordAiUsage = vi.fn(async (..._args: unknown[]) => {});
-vi.mock("./ai-billing", () => ({
+vi.mock("./ai-billing.ts", () => ({
   recordAiUsage: (...args: unknown[]) => recordAiUsage(...args),
 }));
 
 const getRequestContext = vi.fn<() => { traceId: string } | undefined>(() => undefined);
-vi.mock("./request-context", () => ({
+vi.mock("./request-context.ts", () => ({
   getRequestContext: () => getRequestContext(),
 }));
 
-import { handleAiUsageRecord } from "./ai-usage-sink";
+import { handleAiUsageRecord } from "./ai-usage-sink.ts";
 
 function baseRecord(overrides: Partial<AiUsageRecord> = {}): AiUsageRecord {
   return {

@@ -41,7 +41,7 @@ vi.mock("@workspace/db", () => {
 process.env.JWT_SECRET = "test-secret";
 
 async function buildApp() {
-  const { default: router } = await import("./portal-customer-search");
+  const { default: router } = await import("./portal-customer-search.ts");
   const app = express();
   app.use(express.json());
   app.use("/api", router);

@@ -11,9 +11,9 @@ import {
   engagementOfferRulesTable,
   servicesTable,
 } from "@workspace/db";
-import { logger } from "../lib/logger";
-import { makeResendToken } from "./quiz";
-import { findLeadByEmail } from "../lib/lead-intent";
+import { logger } from "../lib/logger.ts";
+import { makeResendToken } from "./quiz.ts";
+import { findLeadByEmail } from "../lib/lead-intent.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "growth.website-analytics" });

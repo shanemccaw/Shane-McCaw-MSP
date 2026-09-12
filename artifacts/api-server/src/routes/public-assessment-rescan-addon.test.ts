@@ -69,21 +69,21 @@ vi.mock("drizzle-orm", () => ({
   gte: vi.fn((c: unknown, v: unknown) => ({ gte: [c, v] })),
 }));
 
-vi.mock("../lib/stripe", () => ({
+vi.mock("../lib/stripe.ts", () => ({
   getStripeKey: vi.fn().mockReturnValue("sk_test_xxx"),
   getStripePublishableKey: vi.fn().mockReturnValue("pk_test_xxx"),
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 
-vi.mock("../lib/audit", () => ({ createAuditLog: vi.fn().mockResolvedValue(undefined) }));
-vi.mock("../lib/mailer", () => ({
+vi.mock("../lib/audit.ts", () => ({ createAuditLog: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("../lib/mailer.ts", () => ({
   sendEmail: vi.fn().mockResolvedValue(undefined),
   purchaseConfirmationEmail: vi.fn().mockReturnValue("<html></html>"),
 }));
-vi.mock("../lib/crm-pipeline", () => ({ markAssessmentLeadPurchased: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("../lib/crm-pipeline.ts", () => ({ markAssessmentLeadPurchased: vi.fn().mockResolvedValue(undefined) }));
 
 const mockCustomersCreate = vi.fn();
 const mockPaymentIntentsCreate = vi.fn();

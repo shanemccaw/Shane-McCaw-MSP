@@ -86,20 +86,20 @@ vi.mock("@workspace/db", () => {
 });
 
 const mockEmitWorkflowEvent = vi.fn().mockResolvedValue(undefined);
-vi.mock("../lib/workflow-executor", () => ({
+vi.mock("../lib/workflow-executor.ts", () => ({
   emitWorkflowEvent: (...args: unknown[]) => mockEmitWorkflowEvent(...args),
 }));
 
-vi.mock("../lib/remediation-knowledge-base", () => ({
+vi.mock("../lib/remediation-knowledge-base.ts", () => ({
   fetchPublishedKnowledgeBaseRows: () => Promise.resolve(new Map()),
 }));
 
 const mockLogRetainerWorkFromTracker = vi.fn().mockResolvedValue(true);
-vi.mock("../lib/retainer-work-logger", () => ({
+vi.mock("../lib/retainer-work-logger.ts", () => ({
   logRetainerWorkFromTracker: (...args: unknown[]) => mockLogRetainerWorkFromTracker(...args),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
@@ -109,7 +109,7 @@ vi.mock("../lib/logger", () => {
 // this the same way, so it is mocked at its own boundary — assertCustomerAccess
 // itself (and its DB-backed ownership rule) has its own coverage elsewhere.
 const mockAssertCustomerAccess = vi.fn();
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: () => (req: any, _res: any, next: () => void) => {
     req.user = req.user ?? { id: 1, email: "staff@test.com", role: "client", mspRole: `MSPOperator`, mspId: 9 };
     next();
@@ -117,7 +117,7 @@ vi.mock("../middlewares/requireAuth", () => ({
   assertCustomerAccess: (...args: unknown[]) => mockAssertCustomerAccess(...args),
 }));
 
-import router from "./msp-remediation-tracker";
+import router from "./msp-remediation-tracker.ts";
 
 function buildApp() {
   const app = express();

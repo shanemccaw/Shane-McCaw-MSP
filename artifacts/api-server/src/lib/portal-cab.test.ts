@@ -15,7 +15,7 @@ import {
   isRetroactiveForMeetingType,
   meetingTypeForChangeClass,
   summarizeAgenda,
-} from "./portal-cab";
+} from "./portal-cab.ts";
 
 describe("meetingTypeForChangeClass", () => {
   it("routes an emergency change to the ECAB", () => {

@@ -22,7 +22,7 @@ let anthropicCalls: unknown[] = [];
 let nextResponseText = "";
 let nextStopReason: string | undefined;
 
-vi.mock("./ai-dev-response-cache", () => ({
+vi.mock("./ai-dev-response-cache.ts", () => ({
   withAiDevResponseCache: async (
     request: { feature: string; requestContext: unknown },
     attribution: Record<string, unknown>,
@@ -48,11 +48,11 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
   },
 }));
 
-vi.mock("./prompt-loader", () => ({
+vi.mock("./prompt-loader.ts", () => ({
   getPrompt: async (_key: string, fallback: string) => fallback,
 }));
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });

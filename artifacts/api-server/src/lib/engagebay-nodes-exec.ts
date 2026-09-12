@@ -32,7 +32,7 @@ import {
 } from "./engagebay-client.ts";
 import { registerEngageBayJobHandler } from "./engagebay-batch-drain.ts";
 import { enqueueJob } from "./msp-jobs.ts";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 import {
   ENGAGEBAY_NODES,

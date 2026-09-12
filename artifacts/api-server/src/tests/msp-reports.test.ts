@@ -54,13 +54,13 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../lib/event-bus", () => ({
+vi.mock("../lib/event-bus.ts", () => ({
   dispatchEvent: vi.fn(() => Promise.resolve({ eventId: "evt-test" })),
   systemActor: vi.fn(() => ({ id: "system", role: "system", type: "system" })),
   addEventListener: vi.fn(),
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -70,13 +70,13 @@ vi.mock("../lib/logger", () => ({
   },
 }));
 
-vi.mock("../lib/graph", () => ({
+vi.mock("../lib/graph.ts", () => ({
   sendMailViaGraph: vi.fn(() => Promise.resolve()),
   getAccessToken: vi.fn(() => Promise.resolve("test-token")),
   graphCredentialsPresent: vi.fn(() => false),
 }));
 
-vi.mock("../lib/compileReportToHtml", () => ({
+vi.mock("../lib/compileReportToHtml.ts", () => ({
   compileReportToHtml: vi.fn(() => Promise.resolve("<html>Test Compiled HTML</html>")),
 }));
 
@@ -88,12 +88,12 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({
   },
 }));
 
-vi.mock("../lib/ai-billing", () => ({
+vi.mock("../lib/ai-billing.ts", () => ({
   checkAiAdmission: vi.fn(() => Promise.resolve({ admitted: true, balanceCents: 100_000 })),
   recordAiUsage: vi.fn(() => Promise.resolve()),
 }));
 
-vi.mock("../lib/node-type-registry", () => ({
+vi.mock("../lib/node-type-registry.ts", () => ({
   isAIDependent: vi.fn(() => false),
   getAiCostOwner: vi.fn(() => "msp"),
 }));
@@ -179,7 +179,7 @@ describe("handleGenerateReport — success path", () => {
       usage: { input_tokens: 100, output_tokens: 200 },
     } as never);
 
-    const { handleGenerateReport } = await import("../lib/report-nodes");
+    const { handleGenerateReport } = await import("../lib/report-nodes.ts");
 
     const ctx = {
       runId: MOCK_WF_RUN_ID,
@@ -228,7 +228,7 @@ describe("handleGenerateReport — success path", () => {
       usage: { input_tokens: 50, output_tokens: 100 },
     } as never);
 
-    const { handleGenerateReport } = await import("../lib/report-nodes");
+    const { handleGenerateReport } = await import("../lib/report-nodes.ts");
 
     const ctx = {
       runId: MOCK_WF_RUN_ID,
@@ -276,7 +276,7 @@ describe("handleGenerateReport — failure path", () => {
       new Error("Anthropic API error: invalid_request_error"),
     );
 
-    const { handleGenerateReport } = await import("../lib/report-nodes");
+    const { handleGenerateReport } = await import("../lib/report-nodes.ts");
 
     const ctx = {
       runId: MOCK_WF_RUN_ID,
@@ -313,7 +313,7 @@ describe("handleGenerateReport — failure path", () => {
       }),
     } as unknown as ReturnType<typeof db.update>);
 
-    const { handleGenerateReport } = await import("../lib/report-nodes");
+    const { handleGenerateReport } = await import("../lib/report-nodes.ts");
 
     const ctx = {
       runId: MOCK_WF_RUN_ID,
@@ -335,7 +335,7 @@ describe("handleGenerateReport — failure path", () => {
   });
 
   it("throws 'definitionId is required' when input has no definitionId", async () => {
-    const { handleGenerateReport } = await import("../lib/report-nodes");
+    const { handleGenerateReport } = await import("../lib/report-nodes.ts");
 
     const ctx = {
       runId: MOCK_WF_RUN_ID,
@@ -364,8 +364,8 @@ describe("executeRun failure path — DLQ + operator task writes", () => {
 
   it("engine inserts an operator task when a generate_report node exhausts retries", async () => {
     const { db } = await import("@workspace/db");
-    const { registerNodeHandler, executeRun } = await import("../lib/portal-workflow-engine");
-    const { REPORT_GENERATION_WORKFLOW_KEY, REPORT_GENERATION_GRAPH } = await import("../lib/report-nodes");
+    const { registerNodeHandler, executeRun } = await import("../lib/portal-workflow-engine.ts");
+    const { REPORT_GENERATION_WORKFLOW_KEY, REPORT_GENERATION_GRAPH } = await import("../lib/report-nodes.ts");
 
     const WF_RUN_ID = "wf-run-failure-001";
 
@@ -434,8 +434,8 @@ describe("executeRun failure path — DLQ + operator task writes", () => {
 
   it("engine inserts a DLQ entry when a generate_report node exhausts retries", async () => {
     const { db } = await import("@workspace/db");
-    const { registerNodeHandler, executeRun } = await import("../lib/portal-workflow-engine");
-    const { REPORT_GENERATION_WORKFLOW_KEY, REPORT_GENERATION_GRAPH } = await import("../lib/report-nodes");
+    const { registerNodeHandler, executeRun } = await import("../lib/portal-workflow-engine.ts");
+    const { REPORT_GENERATION_WORKFLOW_KEY, REPORT_GENERATION_GRAPH } = await import("../lib/report-nodes.ts");
 
     const WF_RUN_ID = "wf-run-failure-002";
 
@@ -508,7 +508,7 @@ describe("executeRun failure path — DLQ + operator task writes", () => {
 
 // ── REPORT_GENERATION_GRAPH invariants ────────────────────────────────────────
 
-import { REPORT_GENERATION_GRAPH, REPORT_GENERATION_WORKFLOW_KEY } from "../lib/report-nodes";
+import { REPORT_GENERATION_GRAPH, REPORT_GENERATION_WORKFLOW_KEY } from "../lib/report-nodes.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 describe("REPORT_GENERATION_GRAPH", () => {
@@ -596,7 +596,7 @@ describe("POST /api/msp/reports/canvases/:id/send-test", () => {
 
   const getApp = async () => {
     const express = require("express");
-    const mspReportsRouter = (await import("../routes/msp-reports")).default;
+    const mspReportsRouter = (await import("../routes/msp-reports.ts")).default;
     const a = express();
     a.use(express.json());
     a.use("/api", mspReportsRouter);
@@ -605,8 +605,8 @@ describe("POST /api/msp/reports/canvases/:id/send-test", () => {
 
   it("sends test email successfully when authorized and parameters are correct", async () => {
     const { db } = await import("@workspace/db");
-    const { sendMailViaGraph } = await import("../lib/graph");
-    const { compileReportToHtml } = await import("../lib/compileReportToHtml");
+    const { sendMailViaGraph } = await import("../lib/graph.ts");
+    const { compileReportToHtml } = await import("../lib/compileReportToHtml.ts");
 
     const mockCanvas = {
       id: "canvas-uuid-001",

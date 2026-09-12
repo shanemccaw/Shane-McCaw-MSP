@@ -703,7 +703,7 @@ router.post(
     // env vars aren't provisioned (e.g. the Anthropic AI integration), and a signed
     // SOW must not 500 just because charge-approval automation can't be wired up.
     try {
-      const { emitWorkflowEvent } = await import("../lib/workflow-executor");
+      const { emitWorkflowEvent } = await import("../lib/workflow-executor.ts");
       void emitWorkflowEvent("sow.signed", {
         sowId, mspId: sow.mspId, amountCents: sow.amountCents, actorUserId: user.id,
       }).catch((err) => {

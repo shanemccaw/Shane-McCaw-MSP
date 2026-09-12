@@ -1,8 +1,8 @@
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "comms.sms-push" });
 import { db, mspsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { simulatorStorage } from "./simulator-events";
+import { simulatorStorage } from "./simulator-events.ts";
 
 async function isDesignatedAdminPhone(phone: string): Promise<boolean> {
   const normalizedPhone = phone.trim();

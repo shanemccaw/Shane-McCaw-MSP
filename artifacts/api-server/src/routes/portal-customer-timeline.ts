@@ -32,7 +32,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireCapability } from "../middlewares/requireAuth";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import {
   db,
   mspDiagnosticRunsTable,
@@ -42,10 +42,10 @@ import {
   salesOffersTable,
 } from "@workspace/db";
 import { eq, and, desc, lt, inArray } from "drizzle-orm";
-import { ENGINE_DEFS } from "../lib/engine-registry";
-import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
-import { resolveCustomerUserIds } from "../lib/tenant-signals";
-import { logger } from "../lib/logger";
+import { ENGINE_DEFS } from "../lib/engine-registry.ts";
+import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage.ts";
+import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();

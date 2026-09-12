@@ -19,8 +19,8 @@
  * here) and the one-line "no id" diagnostic, on its own logging binding.
  */
 
-import { logger } from "./logger";
-import { summarizeSiteSharing } from "./sharepoint-sharing";
+import { logger } from "./logger.ts";
+import { summarizeSiteSharing } from "./sharepoint-sharing.ts";
 
 const log = logger.child({ channel: "engine.monitor" });
 

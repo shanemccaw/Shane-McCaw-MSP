@@ -41,7 +41,7 @@ import { createHash } from "node:crypto";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { aiDevResponseCacheTable, db } from "@workspace/db";
 import { withAiAttribution, type AiCallAttribution } from "@workspace/integrations-anthropic-ai";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.ai-cost-governance" });
 

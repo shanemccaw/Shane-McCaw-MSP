@@ -23,7 +23,7 @@ import { describe, it, expect, afterAll } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 
 import { db, crExecutionsTable, crEventsTable, crPirsTable, mspChangeRequestsTable, tenantsTable } from "@workspace/db";
-import { getPirForExecution, listPirsForChange, recordPir } from "./msp-change-pir-store";
+import { getPirForExecution, listPirsForChange, recordPir } from "./msp-change-pir-store.ts";
 
 const MSP_ID = 1;
 const VERIFY_TAG = `verify-1502-${Date.now()}`;

@@ -1,4 +1,4 @@
-import type { RendererDef } from "./types";
+import type { RendererDef } from "./types.ts";
 
 /**
  * Renderer registry — one entry per chart/display type the dashboard system

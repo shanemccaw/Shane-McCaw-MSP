@@ -23,16 +23,16 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-import type { AuthUser } from "../middlewares/requireAuth";
-import { resolveTenantScope } from "./portal-customer-scope";
-import { personIdForUser } from "./portal-ownership";
-import { dischargeRisksForNewChangeRequest } from "./change-request-risk-discharge";
-import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "./portal-change-freeze-store";
-import { maintenanceCoverageForBookedSpan } from "./portal-change-maintenance-store";
-import { collidingChangeRequestForSubmit } from "./portal-change-collision-store";
-import { loadApprovalPolicy, materializeApprovalsForChange } from "./portal-change-approvals-store";
-import { recordCrEvent } from "./portal-change-timeline-store";
-import { logger } from "./logger";
+import type { AuthUser } from "../middlewares/requireAuth.ts";
+import { resolveTenantScope } from "./portal-customer-scope.ts";
+import { personIdForUser } from "./portal-ownership.ts";
+import { dischargeRisksForNewChangeRequest } from "./change-request-risk-discharge.ts";
+import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "./portal-change-freeze-store.ts";
+import { maintenanceCoverageForBookedSpan } from "./portal-change-maintenance-store.ts";
+import { collidingChangeRequestForSubmit } from "./portal-change-collision-store.ts";
+import { loadApprovalPolicy, materializeApprovalsForChange } from "./portal-change-approvals-store.ts";
+import { recordCrEvent } from "./portal-change-timeline-store.ts";
+import { logger } from "./logger.ts";
 import {
   categoryForWorkload,
   computeRiskLevel,
@@ -43,9 +43,9 @@ import {
   type ChangeClass,
   type ChangeRequestWorkload,
   type RiskLevel,
-} from "./portal-change-control";
+} from "./portal-change-control.ts";
 
-export type { ChangeRequestWorkload } from "./portal-change-control";
+export type { ChangeRequestWorkload } from "./portal-change-control.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -92,12 +92,13 @@ export interface RaiseChangeRequestResult {
  * want the HTTP shape can read `.status` and `.message` directly.
  */
 export class RaiseChangeRequestError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-    readonly body: Record<string, unknown> = {},
-  ) {
+  readonly status: number;
+  readonly body: Record<string, unknown>;
+
+  constructor(status: number, message: string, body: Record<string, unknown> = {}) {
     super(message);
+    this.status = status;
+    this.body = body;
     this.name = "RaiseChangeRequestError";
   }
 }

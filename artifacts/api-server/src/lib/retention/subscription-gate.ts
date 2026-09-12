@@ -45,8 +45,8 @@
  */
 
 import type { MspRole } from "@workspace/db";
-import type { TenantBillingSource } from "../tenant-billing-rules";
-import type { TenantSubscriptionState } from "./subscription-state";
+import type { TenantBillingSource } from "../tenant-billing-rules.ts";
+import type { TenantSubscriptionState } from "./subscription-state.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 /** The machine-readable code the gated response carries. The portal shell keys on it. */

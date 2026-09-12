@@ -17,7 +17,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import crypto from "crypto";
 import { db, zohoConnectionTable } from "@workspace/db";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { setSecretValue } from "../lib/azure-keyvault.ts";
 import {
   ZOHO_ACCOUNTS_BASE,
@@ -27,7 +27,7 @@ import {
   zohoRefreshTokenSecretName,
 } from "../lib/zoho-client.ts";
 import { eq } from "drizzle-orm";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "integration.zoho" });
 

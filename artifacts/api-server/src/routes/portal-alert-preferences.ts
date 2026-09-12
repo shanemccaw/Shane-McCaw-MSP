@@ -19,8 +19,8 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 import {
   db,
   customerAlertPreferencesTable,
@@ -35,7 +35,7 @@ import {
   type CustomerAlertPreset,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { CUSTOMER_ALERT_BALANCED_DEFAULTS } from "../lib/customer-alert-delivery";
+import { CUSTOMER_ALERT_BALANCED_DEFAULTS } from "../lib/customer-alert-delivery.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "notification" });

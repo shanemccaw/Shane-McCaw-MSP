@@ -43,10 +43,10 @@ import {
   type WriteActionCatalog,
 } from "@workspace/db";
 import { eq, and, asc, inArray } from "drizzle-orm";
-import { requireCapability, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth";
-import { loadTier, tierAllowsFeature } from "../lib/msp-entitlement";
-import { resolveCustomerUserIds } from "../lib/tenant-signals";
-import { logger } from "../lib/logger";
+import { requireCapability, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { loadTier, tierAllowsFeature } from "../lib/msp-entitlement.ts";
+import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
+import { logger } from "../lib/logger.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 
 const log = logger.child({ channel: "engine.launch-control" });
@@ -276,7 +276,7 @@ router.post(
         return;
       }
 
-      const { runBaselineTemplateAgainstTenant } = await import("../lib/workflow-executor");
+      const { runBaselineTemplateAgainstTenant } = await import("../lib/workflow-executor.ts");
       const payload: Record<string, unknown> = { ...(body.variables ?? {}), customerId };
       const result = await runBaselineTemplateAgainstTenant(
         templateId,
@@ -336,7 +336,7 @@ router.post(
         return;
       }
 
-      const { rollbackExecution } = await import("../lib/workflow-executor");
+      const { rollbackExecution } = await import("../lib/workflow-executor.ts");
       const result = await rollbackExecution(auditLogId);
 
       log.info(

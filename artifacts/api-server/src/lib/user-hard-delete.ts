@@ -198,7 +198,7 @@ import {
 } from "@workspace/db";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { eq, or, inArray, count, type SQL } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const auditLog = logger.child({ channel: "audit" });
 

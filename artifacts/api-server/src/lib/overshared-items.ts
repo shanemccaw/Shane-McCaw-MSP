@@ -22,7 +22,7 @@
  */
 
 import type { InsertOversharedItem, OversharedItemGrantKind, OversharedItemSeverity } from "@workspace/db";
-import type { SiteSharingSummary } from "./sharepoint-sharing";
+import type { SiteSharingSummary } from "./sharepoint-sharing.ts";
 
 /** The two check keys `sharepoint-sharing.ts` normalizers can produce. */
 export const OVERSHARED_ITEM_CHECK_KEYS = ["compliance:eeeu-site-sharing", "onedrive:overshared-files"] as const;

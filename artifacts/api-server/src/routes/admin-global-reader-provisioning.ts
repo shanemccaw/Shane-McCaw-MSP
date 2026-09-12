@@ -11,7 +11,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { getGlobalReaderProvisioningState, provisionGlobalReaderForTenant } from "../lib/global-reader-role-provisioning.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.provisioning" });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "./doc-gate-coverage";
+import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "./doc-gate-coverage.ts";
 
 describe("evaluateDocGateCoverage — graded document-generation gate", () => {
   it("threshold is the single documented knob", () => {

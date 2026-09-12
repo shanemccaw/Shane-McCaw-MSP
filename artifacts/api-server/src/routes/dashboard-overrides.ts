@@ -59,8 +59,8 @@ import {
 } from "@workspace/db";
 import { getValidRenderersForMetric } from "@workspace/dashboard-registry";
 import { and, eq, inArray } from "drizzle-orm";
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "engine.dashboard" });

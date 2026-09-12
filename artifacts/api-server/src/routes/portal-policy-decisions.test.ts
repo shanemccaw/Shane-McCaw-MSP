@@ -95,18 +95,18 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireCapability: () => (_req: any, _res: any, next: () => void) => next(),
   requireAuth: (_req: any, _res: any, next: () => void) => next(),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child }));
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
 
 let mockScope: any = null;
-vi.mock("../lib/portal-customer-scope", () => ({
+vi.mock("../lib/portal-customer-scope.ts", () => ({
   resolveCustomerId: (req: any) => req.user?.customerId ?? null,
   resolveTenantScope: async () => mockScope,
 }));
@@ -123,7 +123,7 @@ vi.mock("drizzle-orm", () => ({
   or: (...a: unknown[]) => ({ or: a }),
 }));
 
-import router from "./portal-policy-decisions";
+import router from "./portal-policy-decisions.ts";
 
 function makeApp(user: Record<string, unknown> | null) {
   const app = express();

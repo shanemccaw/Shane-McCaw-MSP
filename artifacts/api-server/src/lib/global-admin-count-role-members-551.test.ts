@@ -47,8 +47,8 @@ import {
   classifySeverity,
   resolveEndpointPlaceholders,
   appendQueryParams,
-} from "./monitor-executor";
-import type { MappingRule, SeverityRule } from "./monitor-executor";
+} from "./monitor-executor.ts";
+import type { MappingRule, SeverityRule } from "./monitor-executor.ts";
 
 // ── The real config, mirroring the migration's UPDATE ─────────────────────────
 

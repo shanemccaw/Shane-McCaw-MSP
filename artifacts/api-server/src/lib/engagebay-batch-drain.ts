@@ -15,7 +15,7 @@
 
 import { db, mspJobQueueTable, mspDlqStoreTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 import { captureDlqFailure } from "./dlq.ts";
 import { captureException } from "./exception-tracker.ts";
 

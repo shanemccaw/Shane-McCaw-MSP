@@ -39,12 +39,12 @@ vi.mock("drizzle-orm", () => {
   };
 });
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
-vi.mock("./sla-engine", () => ({ startSlaTimer: vi.fn() }));
+vi.mock("./sla-engine.ts", () => ({ startSlaTimer: vi.fn() }));
 
 /** Every `where(...)` clause the harness saw, so a test can assert on the real
  *  query shape (e.g. which statuses count as reusable) instead of trusting it. */

@@ -39,11 +39,11 @@
 import { db, mspPartnerQbrsTable, mspsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { extractAiHtml } from "./sow-pricing";
-import { getPrompt } from "./prompt-loader";
-import { recordAiUsage } from "./ai-billing";
+import { extractAiHtml } from "./sow-pricing.ts";
+import { getPrompt } from "./prompt-loader.ts";
+import { recordAiUsage } from "./ai-billing.ts";
 import { gatherExecutiveBook, type ExecutiveBook } from "./msp-executive-data.ts";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 

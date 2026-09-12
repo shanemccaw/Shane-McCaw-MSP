@@ -16,7 +16,7 @@ import {
   POLICY_ENACTMENT_ROUTE_LABELS,
   POLICY_ENACTMENT_AFFORDANCE,
   resolvePolicyEnactmentRoute,
-} from "./policy-enactment-route";
+} from "./policy-enactment-route.ts";
 
 const granted: TenantConsentMap = { writeBack: { status: "granted" } };
 const declined: TenantConsentMap = { writeBack: { status: "declined" } };

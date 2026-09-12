@@ -84,7 +84,7 @@ vi.mock("drizzle-orm", () => ({
   isNull: (a: unknown) => ({ op: "isNull", a }),
 }));
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAuth: (req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
   requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.headers["authorization"] !== `Bearer ${ADMIN_PASS}`) {
@@ -96,17 +96,17 @@ vi.mock("../middlewares/requireAuth", () => ({
   },
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
-vi.mock("../lib/audit", () => ({ createAuditLog: mockCreateAuditLog }));
+vi.mock("../lib/audit.ts", () => ({ createAuditLog: mockCreateAuditLog }));
 vi.mock("../lib/mailer.ts", () => ({
   sendEmailFromTemplate: mockSendEmailFromTemplate,
 }));
 vi.mock("../lib/portal-url.ts", () => ({
   getMspPortalBaseUrl: () => "https://example.test/portal",
 }));
-vi.mock("../lib/session-tracking", () => ({ createSession: vi.fn() }));
+vi.mock("../lib/session-tracking.ts", () => ({ createSession: vi.fn() }));
 
 /** Which methods `listEnrolledMfaMethods` should report, per call. */
 function seedEnrollments(methods: string[], passkeyCredentials = 0) {
@@ -122,7 +122,7 @@ function deleteFor(tableName: string) {
   return deletes.find((d) => d.table === tableName);
 }
 
-let mfa: typeof import("./mfa");
+let mfa: typeof import("./mfa.ts");
 let app: Express;
 
 beforeEach(async () => {
@@ -132,7 +132,7 @@ beforeEach(async () => {
   mockCreateAuditLog.mockResolvedValue(undefined);
   mockSendEmailFromTemplate.mockResolvedValue(undefined);
 
-  mfa = await import("./mfa");
+  mfa = await import("./mfa.ts");
   app = express();
   app.use(express.json());
   app.use(mfa.default);

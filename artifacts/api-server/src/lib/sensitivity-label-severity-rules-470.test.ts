@@ -20,8 +20,8 @@ vi.mock("@workspace/db", () => ({
   tenantsTable: {},
 }));
 
-import { classifySeverity } from "./monitor-executor";
-import type { SeverityRule } from "./monitor-executor";
+import { classifySeverity } from "./monitor-executor.ts";
+import type { SeverityRule } from "./monitor-executor.ts";
 
 // Mirrors the migration's UPDATE for copilot:sensitivity-labels-exist.
 const SENSITIVITY_LABELS_EXIST_RULES: SeverityRule[] = [

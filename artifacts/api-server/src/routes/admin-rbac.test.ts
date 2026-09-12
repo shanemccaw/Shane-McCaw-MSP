@@ -33,14 +33,14 @@ vi.mock("@workspace/db", () => ({ db: {} }));
 vi.mock("@workspace/db/rbac", () => rbac);
 
 const auditLogSpy = vi.fn();
-vi.mock("../lib/audit", () => ({
+vi.mock("../lib/audit.ts", () => ({
   createAuditLog: (...args: unknown[]) => {
     auditLogSpy(...args);
     return Promise.resolve();
   },
 }));
 
-import router from "./admin-rbac";
+import router from "./admin-rbac.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();

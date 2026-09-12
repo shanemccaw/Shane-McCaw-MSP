@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { db, pushSubscriptionsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 
 const router = Router();
 

@@ -14,7 +14,7 @@
 import crypto from "crypto";
 import { db, mspIdempotencyStoreTable } from "@workspace/db";
 import { and, eq, gt, isNull } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "system.core" });
 
 const DEFAULT_TTL_SECONDS = 24 * 60 * 60; // 24 hours

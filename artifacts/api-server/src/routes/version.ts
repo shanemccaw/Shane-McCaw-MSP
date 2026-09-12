@@ -5,8 +5,8 @@ import path from "node:path";
 import { z } from "zod";
 import { db, deployedVersionStampTable } from "@workspace/db";
 import { desc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "admin.deploy" });
 

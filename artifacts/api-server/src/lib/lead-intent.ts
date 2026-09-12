@@ -9,7 +9,7 @@ import {
   type LeadStaging,
 } from "@workspace/db";
 import { eq, and, gte, isNull, isNotNull } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 import { queueLeadStagingPush } from "./zoho-lead-sync.ts";
 import { ZOHO_DEFAULT_MSP_ID } from "./zoho-client.ts";
 

@@ -1,6 +1,6 @@
 import { db, articlesTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "admin.content" });
 
 const SEED_ARTICLES = [

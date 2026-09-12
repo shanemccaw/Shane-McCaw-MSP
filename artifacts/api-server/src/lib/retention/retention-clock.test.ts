@@ -30,7 +30,7 @@ import {
   stageDurations,
   stageSeconds,
   startClock,
-} from "./clock";
+} from "./clock.ts";
 import {
   __resetReferenceEdgesForTest,
   blockerStillBlocks,
@@ -39,13 +39,13 @@ import {
   listReferenceEdges,
   registerReferenceEdge,
   type DeleteBlocker,
-} from "./reference-guard";
+} from "./reference-guard.ts";
 import {
   __resetOriginResolversForTest,
   isHardDeleteBypassEligible,
   isManualOrigin,
   registerOriginResolver,
-} from "./origin-registry";
+} from "./origin-registry.ts";
 
 const T0 = new Date("2026-01-01T00:00:00.000Z");
 const day = (n: number) => new Date(T0.getTime() + n * SECONDS_PER_DAY * 1000);

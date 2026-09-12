@@ -30,7 +30,7 @@ import {
   storedChangeClass,
   workloadForCheckKey,
   workloadForCategory,
-} from "./portal-change-control";
+} from "./portal-change-control.ts";
 
 describe("displayStatus", () => {
   it("is total over every stored status — no row can render a blank chip", () => {

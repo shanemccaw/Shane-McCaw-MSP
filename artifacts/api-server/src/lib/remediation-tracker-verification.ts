@@ -90,7 +90,7 @@ function mappedKeysFor(stepId: string): readonly string[] | undefined {
 
 import { and, eq, inArray } from "drizzle-orm";
 import { db, remediationTrackerStepsTable, type RemediationTrackerVerificationState } from "@workspace/db";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 

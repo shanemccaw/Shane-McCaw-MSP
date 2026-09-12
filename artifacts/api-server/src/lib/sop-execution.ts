@@ -71,18 +71,18 @@ import {
   type SopRunAutomatedStep,
 } from "@workspace/db";
 
-import { persistMaterializedWorkflow } from "./config-pack-orchestrator";
-import { fireWorkflowForDefinition } from "./workflow-executor";
+import { persistMaterializedWorkflow } from "./config-pack-orchestrator.ts";
+import { fireWorkflowForDefinition } from "./workflow-executor.ts";
 import {
   claimChangeRequestForWrite,
   bindChangeRequestToRun,
   releaseChangeRequestClaim,
-} from "./change-control-write-gate";
-import { formatChangeRequestCode } from "./portal-change-control";
-import { readSteps } from "./portal-sops";
-import { buildSopWorkflowGraph, sopDefinitionName } from "./sop-workflow-graph";
-import { raisePolicyEnactmentChangeRequest } from "./policy-enactment";
-import { logger } from "./logger";
+} from "./change-control-write-gate.ts";
+import { formatChangeRequestCode } from "./portal-change-control.ts";
+import { readSteps } from "./portal-sops.ts";
+import { buildSopWorkflowGraph, sopDefinitionName } from "./sop-workflow-graph.ts";
+import { raisePolicyEnactmentChangeRequest } from "./policy-enactment.ts";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.config-pack" });
 
@@ -108,12 +108,13 @@ export type SopExecutionErrorCode =
   | "standing_policy_requires_policy_origin";
 
 export class SopExecutionError extends Error {
-  constructor(
-    public readonly code: SopExecutionErrorCode,
-    message: string,
-    public readonly details?: Record<string, unknown>,
-  ) {
+  readonly code: SopExecutionErrorCode;
+  readonly details?: Record<string, unknown>;
+
+  constructor(code: SopExecutionErrorCode, message: string, details?: Record<string, unknown>) {
     super(message);
+    this.code = code;
+    this.details = details;
     this.name = "SopExecutionError";
   }
 }

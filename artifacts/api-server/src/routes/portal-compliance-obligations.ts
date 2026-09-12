@@ -67,10 +67,10 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, complianceFrameworksTable, complianceObligationsTable, tenantComplianceScopeTable, mspRiskDecisionsTable } from "@workspace/db";
 import { and, eq, asc, isNull, or } from "drizzle-orm";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
-import { apiError, ApiErrorCode } from "../lib/api-helpers";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

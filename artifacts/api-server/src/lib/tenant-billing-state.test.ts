@@ -21,7 +21,7 @@ import {
   isLapsedMspDunningState,
   isLapsedMspSubscriptionStatus,
   isRunningTenantStatus,
-} from "./tenant-billing-rules";
+} from "./tenant-billing-rules.ts";
 
 const RUNNING_TENANT_STATUSES = ["active", "onboarding"] as const;
 const STOPPED_TENANT_STATUSES = ["inactive", "archived"] as const;

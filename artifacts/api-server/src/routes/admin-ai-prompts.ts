@@ -1,12 +1,12 @@
 import { Router, type Request, type Response } from "express";
 import { db, aiPromptsTable, aiPromptVersionsTable, documentTypesTable } from "@workspace/db";
 import { eq, asc, desc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "admin.content" });
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
-import { resolveCustomerIdForPortalUser } from "../lib/tenant-signals";
+import { resolveCustomerIdForPortalUser } from "../lib/tenant-signals.ts";
 
 const router = Router();
 

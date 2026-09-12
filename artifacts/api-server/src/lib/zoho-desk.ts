@@ -27,7 +27,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { zohoGet, zohoFetch, ZohoApiError, ZOHO_DEFAULT_MSP_ID, getZohoConnection } from "./zoho-client.ts";
 import { registerZohoJobHandler } from "./zoho-batch-drain.ts";
 import { enqueueJob } from "./msp-jobs.ts";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 import {
   ZOHO_DESK_NODE_TYPES,
   isZohoDeskNodeType,

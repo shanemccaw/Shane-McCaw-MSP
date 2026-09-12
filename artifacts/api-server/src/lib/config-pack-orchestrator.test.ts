@@ -77,20 +77,20 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 
 // The step that would ACTUALLY run the pack against the tenant — spied so the
 // test can prove it is never reached for a non-testbed customer.
 const fireWorkflowForDefinition = vi.fn();
-vi.mock("./workflow-executor", () => ({
+vi.mock("./workflow-executor.ts", () => ({
   fireWorkflowForDefinition: (...a: unknown[]) => fireWorkflowForDefinition(...a),
 }));
-vi.mock("./graph", () => ({ graphFetchForTenant: vi.fn() }));
-vi.mock("../routes/break-glass-verification", () => ({ generateStrongPassword: () => "PW-generated" }));
+vi.mock("./graph.ts", () => ({ graphFetchForTenant: vi.fn() }));
+vi.mock("../routes/break-glass-verification.ts", () => ({ generateStrongPassword: () => "PW-generated" }));
 
-import { ConfigPackError, runConfigPackForCustomer } from "./config-pack-orchestrator";
+import { ConfigPackError, runConfigPackForCustomer } from "./config-pack-orchestrator.ts";
 
 const ACTIVE_PACK = { id: 1, packKey: "sample-pack", label: "Sample Pack", status: "active" };
 const ONE_STEP = {

@@ -23,7 +23,7 @@ import {
   PHASE_PILLARS,
   FULL_PROGRAMME_FEE,
   type RemediationTrackerStepState,
-} from "./remediation-tracker-pricing";
+} from "./remediation-tracker-pricing.ts";
 
 const GOVERNANCE_IDS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 const SECURITY_IDS = ["s7", "s8", "s9", "s10", "s11", "s12", "s13"];

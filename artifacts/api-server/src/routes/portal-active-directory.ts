@@ -65,11 +65,11 @@ import {
 import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
-import { resolveGraphUserByUpn } from "./admin-active-directory";
-import { createAuditLog } from "../lib/audit";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { resolveGraphUserByUpn } from "./admin-active-directory.ts";
+import { createAuditLog } from "../lib/audit.ts";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "tenant.active-directory" });

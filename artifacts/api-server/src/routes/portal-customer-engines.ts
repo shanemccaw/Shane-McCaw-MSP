@@ -27,27 +27,27 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireAuth, requireCapability } from "../middlewares/requireAuth";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { randomUUID } from "crypto";
 import { getRequestContext } from "../lib/request-context.ts";
-import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
-import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine";
-import { logger } from "../lib/logger";
+import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine.ts";
+import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.portal" });
 import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, usersTable, wfTriggersTable, wfDefinitionsTable, mspRiskDecisionsTable, policyDecisionsTable, mspMessageCenterItemsTable, changeMaintenanceWindowsTable, remediationTrackerStepsTable, portalOwnershipAssignmentsTable } from "@workspace/db";
 import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
-import { createAuditLog } from "../lib/audit";
-import { getStripeKey } from "../lib/stripe";
-import { resolveCustomerUserIds } from "../lib/tenant-signals";
-import { resolveTenantScope } from "../lib/portal-customer-scope";
-import { hasAddOnEntitlement } from "../lib/portal-addon-entitlements";
-import { CHANGE_CONTROL_FEATURE_KEY } from "./portal-change-control";
-import { toMaintenanceCandidate, windowOverlapsRange } from "../lib/portal-change-maintenance";
-import { effectiveDate } from "../lib/portal-message-center";
-import { remediationTerminalState } from "../lib/remediation-tracker-terminal-state";
-import { personIdForUser } from "../lib/portal-ownership";
+import { createAuditLog } from "../lib/audit.ts";
+import { getStripeKey } from "../lib/stripe.ts";
+import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
+import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { hasAddOnEntitlement } from "../lib/portal-addon-entitlements.ts";
+import { CHANGE_CONTROL_FEATURE_KEY } from "./portal-change-control.ts";
+import { toMaintenanceCandidate, windowOverlapsRange } from "../lib/portal-change-maintenance.ts";
+import { effectiveDate } from "../lib/portal-message-center.ts";
+import { remediationTerminalState } from "../lib/remediation-tracker-terminal-state.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
-import { WEEKLY_ASSESSMENT_RESCAN_NAME, WEEKLY_RETARGETING_RESCAN_NAME } from "../lib/weekly-rescan-populations";
+import { WEEKLY_ASSESSMENT_RESCAN_NAME, WEEKLY_RETARGETING_RESCAN_NAME } from "../lib/weekly-rescan-populations.ts";
 
 const router: IRouter = Router();
 

@@ -36,7 +36,7 @@ import {
   recordExecution,
   settleChangeExecutions,
   verifyRollback,
-} from "./msp-change-execution-store";
+} from "./msp-change-execution-store.ts";
 
 const MSP_ID = 1;
 const VERIFY_TAG = `verify-1499-${Date.now()}`;

@@ -63,7 +63,7 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-vi.mock("./logger", () => {
+vi.mock("./logger.ts", () => {
   const noop = () => {};
   const noopLogger: any = { info: noop, warn: noop, error: noop, debug: noop };
   noopLogger.child = () => noopLogger;
@@ -75,7 +75,7 @@ import {
   applyPointedVerification,
   stepCheckKeysFor,
   REMEDIATION_TRACKER_STEP_CHECK_KEYS,
-} from "./remediation-tracker-verification";
+} from "./remediation-tracker-verification.ts";
 
 const CUSTOMER_ID = 42;
 const RUN_ID = "11111111-1111-1111-1111-111111111111";

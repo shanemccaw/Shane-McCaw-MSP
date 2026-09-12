@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { meterAnthropicClient } from "./metering";
+import { meterAnthropicClient } from "./metering.ts";
 
 if (!process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL) {
   throw new Error(

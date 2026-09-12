@@ -23,8 +23,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
 import {
   getPasswordAgeSignal,
   getFailedSignInsSignal,
@@ -35,7 +35,7 @@ import {
   type DeviceComplianceSignal,
   type LocalFailedLoginSignal,
   type GraphSignalUnavailable,
-} from "../lib/account-security-graph";
+} from "../lib/account-security-graph.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

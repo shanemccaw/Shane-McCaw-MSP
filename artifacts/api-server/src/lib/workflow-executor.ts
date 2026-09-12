@@ -68,28 +68,28 @@ import {
   type WfRun,
 } from "@workspace/db";
 
-import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, resolveScriptById, findActiveJobForScript } from "./azure-automation";
-import { getSecretValue } from "./azure-keyvault";
-import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
-import { sendWebPushToAdmins } from "./web-push";
-import { createNotification, createNotificationForAllAdmins } from "./notification-center";
-import { sendPushNotifications } from "./push";
-import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, clearPresentationPhaseGenSSEState, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent, broadcastWorkflowRunProgress, broadcastWorkflowRunComplete, broadcastWorkflowRunError } from "./sse-channels";
-import { broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./document-engine-sow";
+import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, resolveScriptById, findActiveJobForScript } from "./azure-automation.ts";
+import { getSecretValue } from "./azure-keyvault.ts";
+import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.ts";
+import { sendWebPushToAdmins } from "./web-push.ts";
+import { createNotification, createNotificationForAllAdmins } from "./notification-center.ts";
+import { sendPushNotifications } from "./push.ts";
+import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, clearPresentationPhaseGenSSEState, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent, broadcastWorkflowRunProgress, broadcastWorkflowRunComplete, broadcastWorkflowRunError } from "./sse-channels.ts";
+import { broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./document-engine-sow.ts";
 import { generateDocument } from "./document-engine.ts";
 import { generateSowDocument } from "./document-engine-sow.ts";
-import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings, resolveCustomerPortalUserId, resolveCustomerUserIds, resolveCustomerIdForPortalUser, resolveSiblingUserIds, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals";
+import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings, resolveCustomerPortalUserId, resolveCustomerUserIds, resolveCustomerIdForPortalUser, resolveSiblingUserIds, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals.ts";
 import { getEngineDef } from "./engine-registry.ts";
-import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
+import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer.ts";
 import { anthropic, withAiAttribution, type AiCallAttribution } from "@workspace/integrations-anthropic-ai";
-import { resolveNodeTypeMeta, resolveEffectiveNodeType } from "./node-type-registry.js";
+import { resolveNodeTypeMeta, resolveEffectiveNodeType } from "./node-type-registry.ts";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count, desc, inArray, or, sql } from "drizzle-orm";
 import { purchaseApproverUserIds } from "../middlewares/rbac-capability.ts";
 import path from "path";
 import fs from "fs/promises";
 import { randomUUID } from "crypto";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "workflow.run" });
 import {
   DELETABLE_AUTH_METHOD_COLLECTIONS,
@@ -100,39 +100,39 @@ import {
   type MfaReregistrationVerificationPolicy,
   type AuthMethodResolutionPolicy,
   classifyRemoveAuthMethodDeleteResult,
-} from "./mfa-reregistration";
+} from "./mfa-reregistration.ts";
 import { runWithRequestContext } from "./request-context.ts";
-import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine";
-import { evaluateCustomerTenantRules } from "./customer-tenant-alert-engine";
-import { drainCustomerAlertDigests } from "./customer-alert-digest";
-import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
-import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-nodes";
-import { handleMspScoreSnapshot } from "./msp-engine.js";
-import { handleM365HealthSample } from "./m365-health-sample.js";
-import { handlePolicyEvaluateDue } from "./policy-engine-nodes.js";
-import { handleM365RoadmapSync } from "./m365-roadmap-sync.js";
-import { handleM365RouteChanges } from "./m365-change-router.js";
-import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes";
-import { handleConfigSnapshotPrune } from "./config-snapshot-retention-nodes";
-import { handleZohoBatchDrain } from "./zoho-batch-drain.js";
-import { executeZohoCrmNode } from "./zoho-crm.js";
-import { getZohoCrmNodeSpec } from "./zoho-crm-nodes.js";
-import { executeZohoProjectsNode } from "./zoho-projects.js";
-import { getZohoProjectsNodeSpec } from "./zoho-projects-nodes.js";
-import { executeZohoBooksNode, handleZohoBooksDailyAiRollup } from "./zoho-books.js";
-import { getZohoBooksNodeSpec } from "./zoho-books-nodes.js";
-import { executeZohoDeskNode } from "./zoho-desk.js";
-import { getZohoDeskNodeSpec } from "./zoho-desk-nodes.js";
-import { handleEngageBayBatchDrain } from "./engagebay-batch-drain.js";
-import { executeEngageBayNode } from "./engagebay-nodes-exec.js";
+import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine.ts";
+import { evaluateCustomerTenantRules } from "./customer-tenant-alert-engine.ts";
+import { drainCustomerAlertDigests } from "./customer-alert-digest.ts";
+import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples.ts";
+import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-nodes.ts";
+import { handleMspScoreSnapshot } from "./msp-engine.ts";
+import { handleM365HealthSample } from "./m365-health-sample.ts";
+import { handlePolicyEvaluateDue } from "./policy-engine-nodes.ts";
+import { handleM365RoadmapSync } from "./m365-roadmap-sync.ts";
+import { handleM365RouteChanges } from "./m365-change-router.ts";
+import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes.ts";
+import { handleConfigSnapshotPrune } from "./config-snapshot-retention-nodes.ts";
+import { handleZohoBatchDrain } from "./zoho-batch-drain.ts";
+import { executeZohoCrmNode } from "./zoho-crm.ts";
+import { getZohoCrmNodeSpec } from "./zoho-crm-nodes.ts";
+import { executeZohoProjectsNode } from "./zoho-projects.ts";
+import { getZohoProjectsNodeSpec } from "./zoho-projects-nodes.ts";
+import { executeZohoBooksNode, handleZohoBooksDailyAiRollup } from "./zoho-books.ts";
+import { getZohoBooksNodeSpec } from "./zoho-books-nodes.ts";
+import { executeZohoDeskNode } from "./zoho-desk.ts";
+import { getZohoDeskNodeSpec } from "./zoho-desk-nodes.ts";
+import { handleEngageBayBatchDrain } from "./engagebay-batch-drain.ts";
+import { executeEngageBayNode } from "./engagebay-nodes-exec.ts";
 import Ajv from "ajv";
-import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
-import { evaluateDocGateCoverage, type CoverageDecision } from "./doc-gate-coverage";
-import { persistSowPricing } from "./sow-pricing-persist.js";
-import { seedKanbanCardsForPhase } from "./kanban-phase-advance";
+import { getPrompt, getDocumentStylePrefix } from "./prompt-loader.ts";
+import { evaluateDocGateCoverage, type CoverageDecision } from "./doc-gate-coverage.ts";
+import { persistSowPricing } from "./sow-pricing-persist.ts";
+import { seedKanbanCardsForPhase } from "./kanban-phase-advance.ts";
 // Type-only: the store itself is imported dynamically so the Azure SDK stays out
 // of the executor's static module graph (#1911).
-import type { GeneratedSecretRef } from "./generated-secret-store";
+import type { GeneratedSecretRef } from "./generated-secret-store.ts";
 
 // ── Sensitive payload redaction for persisted run rows ───────────────────────
 // `wf_run_node_outputs` snapshots the run payload as `input` and the node's own
@@ -314,7 +314,7 @@ async function rehydrateGeneratedSecrets(payload: Record<string, unknown>, runId
   const refs = generatedSecretRefsOf(payload);
   if (refs.length === 0) return;
 
-  const { readGeneratedSecret } = await import("./generated-secret-store");
+  const { readGeneratedSecret } = await import("./generated-secret-store.ts");
   for (const [field, ref] of refs) {
     try {
       const value = await readGeneratedSecret(ref);
@@ -353,7 +353,7 @@ async function purgeGeneratedSecretsForTerminalRun(
   if (refs.length === 0) return;
 
   try {
-    const { purgeGeneratedSecret } = await import("./generated-secret-store");
+    const { purgeGeneratedSecret } = await import("./generated-secret-store.ts");
 
     const undelivered = await db
       .select({ id: breakGlassPendingSecretsTable.id })
@@ -806,7 +806,7 @@ async function runForceMfaReregistrationAgainstTenant(
   /** Set when success=false because the end state could not be corroborated. */
   unverifiedReason?: string;
 }> {
-  const { graphReadForTenantWithWriteToken, graphWriteForTenant } = await import("./graph");
+  const { graphReadForTenantWithWriteToken, graphWriteForTenant } = await import("./graph.ts");
   const listEndpoint = `/users/${userId}/authentication/methods`;
 
   const outcome = await runMfaReregistrationConvergence(
@@ -957,7 +957,7 @@ async function runRemoveAuthMethodAgainstTenant(
   alreadyAbsent?: boolean;
 }> {
   const { graphReadForTenantWithWriteToken, graphWriteForTenant, isGraphWriteTokenReadNotFound } =
-    await import("./graph");
+    await import("./graph.ts");
   const getEndpoint = `/users/${userId}/authentication/methods/${methodId}`;
 
   // #3075 — this read used to be a single un-retried call, so a 404 from an Entra replica
@@ -1189,7 +1189,7 @@ export async function runBaselineTemplateAgainstTenant(
   const method = resolved.method;
   const body = resolved.body;
 
-  const { graphWriteForTenant } = await import("./graph");
+  const { graphWriteForTenant } = await import("./graph.ts");
   const result = await graphWriteForTenant(tenantId, customerId, endpoint, method, body, [200, 201, 204]);
 
   let auditLogId: number | undefined;
@@ -3920,7 +3920,7 @@ async function executeNode(
             nodeError = true;
             output = { error: "send_email requires either templateSlug, or both subject and htmlBody" };
           } else {
-            const { sendEmailOrThrow, sendEmailForMspOrThrow, getEmailTemplateOrFallback } = await import("./mailer");
+            const { sendEmailOrThrow, sendEmailForMspOrThrow, getEmailTemplateOrFallback } = await import("./mailer.ts");
             const messageId = `wf-${runId}-${node.id}-${Date.now()}`;
             try {
               let finalSubject = seSubject ?? "";
@@ -3965,7 +3965,7 @@ async function executeNode(
             output = { error: "charge_msp_card requires sowId, mspId, and amountCents to resolve" };
           } else {
             try {
-              const { triggerMspCharge } = await import("../routes/msp-sow");
+              const { triggerMspCharge } = await import("../routes/msp-sow.ts");
               const result = await triggerMspCharge(
                 cmcSowId, cmcMspId, cmcAmountCents,
                 isNaN(cmcActorUserId) ? null : cmcActorUserId,
@@ -4011,7 +4011,7 @@ async function executeNode(
 
         // 1. Schema validation if outputSchema is present
         if (outputSchema) {
-          const { validateOutputShape } = await import("./monitor-executor");
+          const { validateOutputShape } = await import("./monitor-executor.ts");
           let parsed: unknown = rawOutput;
           try { parsed = JSON.parse(rawOutput); } catch { /* keep as string */ }
           const { valid, errors } = validateOutputShape(parsed, outputSchema);
@@ -4425,7 +4425,7 @@ async function executeNode(
         } else {
           const to = interp(node.data.notifyEmail as string | undefined, payload) ?? process.env.CRM_ADMIN_EMAIL;
           if (to) {
-            const { sendEmail } = await import("./mailer");
+            const { sendEmail } = await import("./mailer.ts");
             await sendEmail(
               to,
               `M365 Health Alert — significant changes detected${nmcClientIdRaw ? ` for client #${nmcClientIdRaw}` : ""}`,
@@ -5397,7 +5397,7 @@ async function executeNode(
 
         const renderedBody    = renderTemplate(bodyHtml, payload);
         const renderedSubject = renderTemplate(subject, payload);
-        const { sendEmail, brandedEmail } = await import("./mailer");
+        const { sendEmail, brandedEmail } = await import("./mailer.ts");
         const fullHtml = await brandedEmail(renderedBody);
         await sendEmail(recipient, renderedSubject, fullHtml, { skipWrapper: true });
         // Emit sourceRef plus backward-compat templateSlug for existing workflows
@@ -6670,7 +6670,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
             break;
           }
           case "stripe_invoice": {
-            const { getStripeKey: getFoStripeKey } = await import("./stripe");
+            const { getStripeKey: getFoStripeKey } = await import("./stripe.ts");
             let foStripeKey: string;
             try { foStripeKey = getFoStripeKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
             const { default: StripeFo } = await import("stripe");
@@ -6939,7 +6939,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
       // ── Edit Stripe Invoice ────────────────────────────────────────────────
       case "edit_stripe_invoice": {
-        const { getStripeKey: getEsiKey } = await import("./stripe");
+        const { getStripeKey: getEsiKey } = await import("./stripe.ts");
         let esiStripeKey: string;
         try { esiStripeKey = getEsiKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
         const { default: StripeEsi } = await import("stripe");
@@ -7983,7 +7983,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                   severity: "warning",
                   recipient: { type: "msp_user", mspUserId: a.userId, mspId: gateMspId },
                 })));
-                const { sendEmail } = await import("./mailer");
+                const { sendEmail } = await import("./mailer.ts");
                 for (const a of approvers) {
                   if (a.email) void sendEmail(a.email, notifTitle, `<p>${notifBody}</p><p>Log in to the MSP Portal to review.</p>`);
                 }
@@ -8092,7 +8092,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           break;
         }
 
-        const { encryptSecret } = await import("./secret-crypto");
+        const { encryptSecret } = await import("./secret-crypto.ts");
         const [pendingSecret] = await db.insert(breakGlassPendingSecretsTable).values({
           runId,
           customerId: gateCustomerId,
@@ -8177,7 +8177,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       //   node.data.unboundGraceMinutes — how old an unbound secret must be (60)
       case "purge_orphaned_generated_secrets": {
         const { generatedSecretStoreConfigured, findOrphanedGeneratedSecrets, purgeGeneratedSecretByName } =
-          await import("./generated-secret-store");
+          await import("./generated-secret-store.ts");
 
         if (!generatedSecretStoreConfigured()) {
           output = { skipped: true, reason: "generated-credential store is not configured" };
@@ -8237,7 +8237,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       // ── Exchange Calendar nodes ────────────────────────────────────────────
 
       case "check_exchange_calendar_availability": {
-        const { getAccessToken, graphCredentialsPresent } = await import("./graph");
+        const { getAccessToken, graphCredentialsPresent } = await import("./graph.ts");
         if (!graphCredentialsPresent()) {
           nodeError = true;
           output = { error: "check_exchange_calendar_availability: Graph credentials missing (GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID)" };
@@ -8299,7 +8299,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       }
 
       case "create_exchange_calendar_event": {
-        const { getAccessToken: getExchangeToken, graphCredentialsPresent: graphCreds2 } = await import("./graph");
+        const { getAccessToken: getExchangeToken, graphCredentialsPresent: graphCreds2 } = await import("./graph.ts");
         if (!graphCreds2()) {
           nodeError = true;
           output = { error: "create_exchange_calendar_event: Graph credentials missing (GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID)" };
@@ -8404,7 +8404,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       // ── SharePoint nodes ───────────────────────────────────────────────────
 
       case "save_to_sharepoint": {
-        const { getAccessToken: getSPToken, graphCredentialsPresent: spCreds } = await import("./graph");
+        const { getAccessToken: getSPToken, graphCredentialsPresent: spCreds } = await import("./graph.ts");
         if (!spCreds()) {
           nodeError = true;
           output = { error: "save_to_sharepoint: Graph credentials missing (GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID)" };
@@ -8460,7 +8460,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       }
 
       case "get_from_sharepoint": {
-        const { getAccessToken: getGSPToken, graphCredentialsPresent: gspCreds } = await import("./graph");
+        const { getAccessToken: getGSPToken, graphCredentialsPresent: gspCreds } = await import("./graph.ts");
         if (!gspCreds()) {
           nodeError = true;
           output = { error: "get_from_sharepoint: Graph credentials missing (GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID)" };
@@ -8517,7 +8517,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       // ── Stripe nodes ───────────────────────────────────────────────────────
 
       case "generate_invoice_stripe_payment": {
-        const { getStripeKey } = await import("./stripe");
+        const { getStripeKey } = await import("./stripe.ts");
         let stripeKey: string;
         try { stripeKey = getStripeKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
         const { default: Stripe } = await import("stripe");
@@ -8563,7 +8563,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       }
 
       case "generate_stripe_payment_link": {
-        const { getStripeKey: getPlKey } = await import("./stripe");
+        const { getStripeKey: getPlKey } = await import("./stripe.ts");
         let plStripeKey: string;
         try { plStripeKey = getPlKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
         const { default: StripePl } = await import("stripe");
@@ -8596,7 +8596,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       // succeeded, to generate the phases-2..N draft invoices. The Zoho
       // webhook auto-fire (#611, v1.2) is explicitly out of scope here.
       case "create_phased_invoices": {
-        const { getStripeKey: getCpiKey } = await import("./stripe");
+        const { getStripeKey: getCpiKey } = await import("./stripe.ts");
         let cpiStripeKey: string;
         try { cpiStripeKey = getCpiKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
         const { default: StripeCpi } = await import("stripe");
@@ -8816,7 +8816,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       // ── Generate a single phased invoice ───────────────────────────────────
 
       case "generate_phased_invoice": {
-        const { getStripeKey: getGpiKey } = await import("./stripe");
+        const { getStripeKey: getGpiKey } = await import("./stripe.ts");
         let gpiStripeKey: string;
         try { gpiStripeKey = getGpiKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
         const { default: StripeGpi } = await import("stripe");
@@ -8926,7 +8926,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       // ── Charge a draft Stripe invoice (phased auto-charge) ─────────────────
 
       case "charge_stripe_invoice": {
-        const { getStripeKey: getCsiKey } = await import("./stripe");
+        const { getStripeKey: getCsiKey } = await import("./stripe.ts");
         let csiStripeKey: string;
         try { csiStripeKey = getCsiKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
         const { default: StripeCsi } = await import("stripe");
@@ -9264,7 +9264,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           };
           break;
         }
-        const { executeMonitoringPackage } = await import("./monitor-executor");
+        const { executeMonitoringPackage } = await import("./monitor-executor.ts");
         const mepTriggerId =
           (node.data.triggerId as string | undefined
             ? interp(node.data.triggerId as string, payload)
@@ -9324,7 +9324,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         if (mepResult.runStatus !== "consent_revoked") {
           void (async () => {
             try {
-              const { runItemDetailCollection } = await import("./item-detail-collector");
+              const { runItemDetailCollection } = await import("./item-detail-collector.ts");
               const detail = await runItemDetailCollection({
                 tenantId: mepTenantId,
                 scopeToPackageKey: mepPackageKey,
@@ -9400,7 +9400,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         };
 
         const { collectTenantConfigSnapshot, SnapshotPreconditionError } =
-          await import("./config-snapshot-collector");
+          await import("./config-snapshot-collector.ts");
 
         try {
           const cscResult = await collectTenantConfigSnapshot({
@@ -9527,7 +9527,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         }
 
         const { diffSnapshots, SnapshotNotDiffableError } =
-          await import("./config-snapshot-differ");
+          await import("./config-snapshot-differ.ts");
 
         try {
           const csdResult = await diffSnapshots({
@@ -9607,7 +9607,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
         try {
           const { activitySubscriptionsTable: astT } = await import("@workspace/db");
-          const { ensureActivityApiSubscription } = await import("./graph");
+          const { ensureActivityApiSubscription } = await import("./graph.ts");
           const { eq: eqMse, and: andMse } = await import("drizzle-orm");
 
           const subInfo = await ensureActivityApiSubscription(mseTId, mseContentType);
@@ -9681,7 +9681,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
         try {
           const { activitySubscriptionsTable: astPT } = await import("@workspace/db");
-          const { listActivityContent, fetchActivityBlob } = await import("./graph");
+          const { listActivityContent, fetchActivityBlob } = await import("./graph.ts");
           const { eq: eqMpa, and: andMpa } = await import("drizzle-orm");
 
           // Resolve mapping and severity rules from node.data or assignment payload
@@ -9848,7 +9848,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         }
 
         try {
-          const { graphWriteForTenant } = await import("./graph");
+          const { graphWriteForTenant } = await import("./graph.ts");
           const gwoResult = await graphWriteForTenant(
             gwoCustomerRow.tenantId,
             gwoCustomerId,
@@ -9870,7 +9870,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           log.info({ runId, customerId: gwoCustomerId, tenantId: gwoCustomerRow.tenantId, method: gwoMethod, endpoint: gwoEndpointRaw, status: gwoResult.status, success: gwoResult.success }, "wf-executor: graph_write_operation completed");
         } catch (gwoErr) {
           nodeError = true;
-          const { WriteBackCustomerNotFoundError: GwoCustomerNotFound, WriteBackNotEnabledError: GwoNotEnabled, WriteConsentRequiredError: GwoWriteConsentRequired } = await import("./graph");
+          const { WriteBackCustomerNotFoundError: GwoCustomerNotFound, WriteBackNotEnabledError: GwoNotEnabled, WriteConsentRequiredError: GwoWriteConsentRequired } = await import("./graph.ts");
           // Write-back gate refusals (enforced inside graphWriteForTenant, the
           // single choke point) — surface WHICH gate blocked the write via a
           // stable `blockedBy` slug in the node output, and route through the
@@ -9929,7 +9929,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         }
 
         try {
-          const { graphFetchForTenant } = await import("./graph");
+          const { graphFetchForTenant } = await import("./graph.ts");
           const groRes = await graphFetchForTenant(groCustomerRow.tenantId, groEndpointRaw);
           const groText = await groRes.text();
           let groData: unknown = null;
@@ -9952,7 +9952,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           log.info({ runId, customerId: groCustomerId, tenantId: groCustomerRow.tenantId, endpoint: groEndpointRaw, status: groRes.status, success: groRes.ok }, "wf-executor: graph_read_operation completed");
         } catch (groErr) {
           nodeError = true;
-          const { ConsentRevokedError: GroConsentRevoked, LicenseGapError: GroLicenseGap } = await import("./graph");
+          const { ConsentRevokedError: GroConsentRevoked, LicenseGapError: GroLicenseGap } = await import("./graph.ts");
           if (groErr instanceof GroConsentRevoked) {
             switchChosenHandle = "unexpected";
             output = { success: false, blockedBy: "consent_revoked", error: groErr.message };
@@ -10000,7 +10000,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         }
 
         try {
-          const { executeMonitorCheck } = await import("./monitor-executor");
+          const { executeMonitorCheck } = await import("./monitor-executor.ts");
           const { monitorChecksTable } = await import("@workspace/db");
           
           const [checkRow] = await db.select().from(monitorChecksTable).where(eq(monitorChecksTable.key, emcCheckKey)).limit(1);
@@ -10064,9 +10064,9 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         }
 
         try {
-          const { stepCheckKeysFor, applyPointedVerification } = await import("./remediation-tracker-verification");
-          const { classifyCheckSeverity } = await import("./diagnostics-runner");
-          const { executeMonitorCheck } = await import("./monitor-executor");
+          const { stepCheckKeysFor, applyPointedVerification } = await import("./remediation-tracker-verification.ts");
+          const { classifyCheckSeverity } = await import("./diagnostics-runner.ts");
+          const { executeMonitorCheck } = await import("./monitor-executor.ts");
           const { monitorChecksTable } = await import("@workspace/db");
 
           const rpvMappedKeys = stepCheckKeysFor(rpvStepId);

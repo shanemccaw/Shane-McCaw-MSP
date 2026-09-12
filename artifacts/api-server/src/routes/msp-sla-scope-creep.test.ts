@@ -44,7 +44,7 @@ const mockRunScopeCreepEngineForTenant = vi.fn();
 const mockFireScopeCreepViolation = vi.fn();
 const mockEvaluatePolicyEscalations = vi.fn();
 
-vi.mock("../lib/scope-creep-engine", () => ({
+vi.mock("../lib/scope-creep-engine.ts", () => ({
   runScopeCreepEngineForTenant: mockRunScopeCreepEngineForTenant,
   fireScopeCreepViolation: mockFireScopeCreepViolation,
   evaluatePolicyEscalations: mockEvaluatePolicyEscalations,
@@ -62,12 +62,12 @@ vi.mock("../lib/logger.ts", () => ({
   },
 }));
 
-vi.mock("../lib/sla-engine", () => ({
+vi.mock("../lib/sla-engine.ts", () => ({
   runSlaEngineForMsp: vi.fn().mockResolvedValue({ timers: [], breaches: [], summary: {} }),
   resolveSlaTimer: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
-vi.mock("../lib/sse-channels", () => ({
+vi.mock("../lib/sse-channels.ts", () => ({
   registerMspEngineEventClient: vi.fn(),
   broadcastMspEngineEvent: vi.fn(),
   getMspEngineEventClientCount: vi.fn().mockReturnValue(0),

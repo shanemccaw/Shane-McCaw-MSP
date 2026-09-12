@@ -35,7 +35,7 @@ vi.mock("@workspace/db", () => ({
   usersTable: {},
 }));
 
-vi.mock("../middlewares/requireAuth", () => ({
+vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const auth = req.headers["authorization"] ?? "";
     if (auth === `Bearer ${ADMIN_PASS}`) return next();
@@ -43,11 +43,11 @@ vi.mock("../middlewares/requireAuth", () => ({
   },
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../lib/logger.ts", () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 
-vi.mock("../lib/tenant-signals", () => ({
+vi.mock("../lib/tenant-signals.ts", () => ({
   getAllSignalDefinitions: vi.fn().mockResolvedValue([]),
   getProjectSignalDefinitions: vi.fn().mockResolvedValue([]),
   getAdjustmentSignalDefinitions: vi.fn().mockResolvedValue([]),
@@ -60,7 +60,7 @@ vi.mock("../lib/tenant-signals", () => ({
   coerceDecayRate: (rows: unknown[]) => rows,
 }));
 
-vi.mock("../lib/signal-conflict-detector", () => ({
+vi.mock("../lib/signal-conflict-detector.ts", () => ({
   detectRuleConflicts: vi.fn().mockReturnValue([]),
 }));
 
@@ -90,7 +90,7 @@ beforeEach(async () => {
 
   app = express();
   app.use(express.json());
-  const { default: adminSignalRulesRouter } = await import("./admin-signal-rules");
+  const { default: adminSignalRulesRouter } = await import("./admin-signal-rules.ts");
   app.use(adminSignalRulesRouter);
 });
 

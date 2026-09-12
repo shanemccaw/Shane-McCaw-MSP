@@ -1,5 +1,5 @@
 import { db, auditLogsTable } from "@workspace/db";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 const log = logger.child({ channel: "audit" });
 
 export interface AuditEvent {

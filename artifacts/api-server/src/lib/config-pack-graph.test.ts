@@ -9,7 +9,7 @@ import {
   templateNodeId,
   topologicalOrder,
   type PackTemplateResolved,
-} from "./config-pack-graph";
+} from "./config-pack-graph.ts";
 
 const t = (
   templateId: string,

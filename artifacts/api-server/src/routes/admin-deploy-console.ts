@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
-import { requireAdminOrIngestToken } from "../middlewares/requireAuth";
+import { requireAdminOrIngestToken } from "../middlewares/requireAuth.ts";
 import { pool } from "@workspace/db";
-import { splitSqlStatements } from "../lib/sql-statement-splitter";
+import { splitSqlStatements } from "../lib/sql-statement-splitter.ts";
 
 // Git #702 — Shane's Build Tracker browser extension floats a Deploy Console
 // over claude.ai, reusing this exact route (not a new backend) with the same
@@ -12,8 +12,8 @@ const requireDeployAccess = requireAdminOrIngestToken();
 import { exec, execSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import { logger } from "../lib/logger";
-import { recordDeployRun } from "../lib/run-history";
+import { logger } from "../lib/logger.ts";
+import { recordDeployRun } from "../lib/run-history.ts";
 
 const log = logger.child({ channel: "admin.deploy" });
 

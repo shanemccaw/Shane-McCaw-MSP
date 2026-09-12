@@ -125,20 +125,20 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 
-import { requireCapability, type AuthUser } from "../middlewares/requireAuth";
-import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features";
+import { requireCapability, type AuthUser } from "../middlewares/requireAuth.ts";
+import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
 import {
   resolveCustomerId,
   resolveCustomerMspId,
   resolveTenantScope,
   type TenantScope,
-} from "../lib/portal-customer-scope";
-import { logger } from "../lib/logger";
-import { resolveGateMode } from "../lib/portal-ownership-policy";
-import { notifyOwnershipPending, notifyOwnershipDeclined } from "../lib/notification-center";
-import { displayStatus, formatChangeRequestCode } from "../lib/portal-change-control";
+} from "../lib/portal-customer-scope.ts";
+import { logger } from "../lib/logger.ts";
+import { resolveGateMode } from "../lib/portal-ownership-policy.ts";
+import { notifyOwnershipPending, notifyOwnershipDeclined } from "../lib/notification-center.ts";
+import { displayStatus, formatChangeRequestCode } from "../lib/portal-change-control.ts";
 import { groupEnabledServicePlansByWorkload } from "../lib/tenant-workloads.ts";
-import { resolveUntrackedWorkloadKeys } from "../lib/ownership-workload-membership";
+import { resolveUntrackedWorkloadKeys } from "../lib/ownership-workload-membership.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import {
   actorMayRespond,
@@ -168,7 +168,7 @@ import {
   type WireOwnershipOverlay,
   type WireOwnPerson,
   type WireOwnSource,
-} from "../lib/portal-ownership";
+} from "../lib/portal-ownership.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

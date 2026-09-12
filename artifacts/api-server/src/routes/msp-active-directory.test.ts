@@ -81,25 +81,25 @@ vi.mock("drizzle-orm", () => ({
   inArray: (c: unknown, v: unknown) => ({ inArray: [c, v] }),
 }));
 
-vi.mock("../lib/logger", () => {
+vi.mock("../lib/logger.ts", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
   return { logger: { ...stub, child: vi.fn(() => stub) } };
 });
 
 const mockCreateAuditLog = vi.fn().mockResolvedValue(undefined);
-vi.mock("../lib/audit", () => ({
+vi.mock("../lib/audit.ts", () => ({
   createAuditLog: (...args: unknown[]) => mockCreateAuditLog(...args),
 }));
 
 const mockResolveAssignmentCustomer = vi.fn();
 const mockResolveGraphUserByUpn = vi.fn();
-vi.mock("./admin-active-directory", () => ({
+vi.mock("./admin-active-directory.ts", () => ({
   resolveAssignmentCustomer: (...args: unknown[]) => mockResolveAssignmentCustomer(...args),
   resolveGraphUserByUpn: (...args: unknown[]) => mockResolveGraphUserByUpn(...args),
 }));
 
 import { db } from "@workspace/db";
-import router from "./msp-active-directory";
+import router from "./msp-active-directory.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const mockSelect = (db as unknown as { select: ReturnType<typeof vi.fn> }).select;

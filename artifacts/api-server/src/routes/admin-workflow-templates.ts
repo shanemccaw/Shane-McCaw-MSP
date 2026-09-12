@@ -16,11 +16,11 @@ import {
   powershellScriptsTable,
 } from "@workspace/db";
 import { eq, asc, inArray, desc, and, sql } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { classifyAndUpdateTask, classifyTaskForScriptGeneration } from "../lib/classify-task-type";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { classifyAndUpdateTask, classifyTaskForScriptGeneration } from "../lib/classify-task-type.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { logger } from "../lib/logger";
-import { getPrompt } from "../lib/prompt-loader";
+import { logger } from "../lib/logger.ts";
+import { getPrompt } from "../lib/prompt-loader.ts";
 
 const log = logger.child({ channel: "workflow.run" });
 

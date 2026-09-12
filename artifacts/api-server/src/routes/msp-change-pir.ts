@@ -29,12 +29,12 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 
 import { db, mspChangeRequestsTable, CR_PIR_CLOSE_CODES } from "@workspace/db";
-import { requireAuth, requireCapability } from "../middlewares/requireAuth";
-import { resolveMspIdStrict } from "../lib/resolve-msp-id";
-import { personIdForUser } from "../lib/portal-ownership";
-import { logger } from "../lib/logger";
-import { toWireCrPir } from "../lib/msp-change-pir";
-import { getPirForExecution, listPirsForChange, listPirsForMsp, recordPir } from "../lib/msp-change-pir-store";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
+import { logger } from "../lib/logger.ts";
+import { toWireCrPir } from "../lib/msp-change-pir.ts";
+import { getPirForExecution, listPirsForChange, listPirsForMsp, recordPir } from "../lib/msp-change-pir-store.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 

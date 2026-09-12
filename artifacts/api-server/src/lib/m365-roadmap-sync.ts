@@ -40,7 +40,7 @@
 import { db } from "@workspace/db";
 import { m365RoadmapItemsTable, m365RoadmapSyncStateTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 

@@ -37,11 +37,11 @@
 
 import { and, eq, isNotNull, isNull, lte } from "drizzle-orm";
 import { db, tenantsTable, RETENTION_DEFAULT_POST_TERMINATION_YEARS } from "@workspace/db";
-import { logger } from "../logger";
-import { postTerminationDueAt } from "./clock";
-import { resolveRetentionPolicy } from "./policy";
-import { listTenantDataPurgers, orderedTenantDataPurgers } from "./registry";
-import { resolveTenantBillingState } from "../tenant-billing-state";
+import { logger } from "../logger.ts";
+import { postTerminationDueAt } from "./clock.ts";
+import { resolveRetentionPolicy } from "./policy.ts";
+import { listTenantDataPurgers, orderedTenantDataPurgers } from "./registry.ts";
+import { resolveTenantBillingState } from "../tenant-billing-state.ts";
 
 const log = logger.child({ channel: "system.core" });
 const auditLog = logger.child({ channel: "audit" });

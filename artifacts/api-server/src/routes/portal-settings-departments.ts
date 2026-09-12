@@ -29,10 +29,10 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, usersTable, portalDepartmentMappingsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 
-import { requireCapability } from "../middlewares/requireAuth";
-import { resolveCustomerId } from "../lib/portal-customer-scope";
-import { logger } from "../lib/logger";
-import { groupByDepartment, isPortalDepartmentSource, isPortalDepartmentUnmappedFallback } from "../lib/portal-settings-departments";
+import { requireCapability } from "../middlewares/requireAuth.ts";
+import { resolveCustomerId } from "../lib/portal-customer-scope.ts";
+import { logger } from "../lib/logger.ts";
+import { groupByDepartment, isPortalDepartmentSource, isPortalDepartmentUnmappedFallback } from "../lib/portal-settings-departments.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 

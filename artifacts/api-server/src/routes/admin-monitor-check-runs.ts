@@ -68,19 +68,19 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, monitorChecksTable, monitoringPackageChecksTable, tenantsTable, type MonitorCheck } from "@workspace/db";
 import { and, eq, inArray, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
-import { executeMonitorCheck, type MappingRule } from "../lib/monitor-executor";
-import { traceCheckResponse } from "../lib/monitor-check-trace";
-import { createGraphRequestCapture } from "../lib/graph-request-capture";
-import { diffCheckRuns, type DiffSide } from "../lib/simulator-run-diff";
-import { REQUIRED_MT_SCOPES } from "../lib/graph";
+import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth.ts";
+import { logger } from "../lib/logger.ts";
+import { executeMonitorCheck, type MappingRule } from "../lib/monitor-executor.ts";
+import { traceCheckResponse } from "../lib/monitor-check-trace.ts";
+import { createGraphRequestCapture } from "../lib/graph-request-capture.ts";
+import { diffCheckRuns, type DiffSide } from "../lib/simulator-run-diff.ts";
+import { REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 import {
   aggregateFailureClassifications,
   classifyRunFailure,
   type ClassifiedFailure,
   type FailureClassification,
-} from "../lib/monitor-failure-classifier";
+} from "../lib/monitor-failure-classifier.ts";
 import {
   completeRun,
   createRun,
@@ -91,14 +91,14 @@ import {
   saveTrace,
   summarizeBatch,
   type MonitorCheckRun,
-} from "../lib/simulator-run-store";
-import { getAllRules } from "./admin-signal-rules";
+} from "../lib/simulator-run-store.ts";
+import { getAllRules } from "./admin-signal-rules.ts";
 
 const log = logger.child({ channel: "engine.monitor" });
 
 const router: IRouter = Router();
 
-export type { MonitorCheckRun, MonitorCheckRunStatus } from "../lib/simulator-run-store";
+export type { MonitorCheckRun, MonitorCheckRunStatus } from "../lib/simulator-run-store.ts";
 
 /**
  * How many checks a bulk run executes at once. Bounded because a bulk run over
@@ -216,7 +216,7 @@ async function startCheckRun(opts: {
               .where(eq(monitoringPackageChecksTable.checkKey, check.key))
               .limit(1);
             if (!pkgLink) return;
-            const { runItemDetailCollection } = await import("../lib/item-detail-collector.js");
+            const { runItemDetailCollection } = await import("../lib/item-detail-collector.ts");
             const detail = await runItemDetailCollection({
               tenantId,
               customerId,
