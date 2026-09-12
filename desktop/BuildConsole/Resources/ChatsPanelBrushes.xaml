@@ -37,4 +37,20 @@
     <SolidColorBrush x:Key="ChatsPanel.AmberText" Color="#C9AB72"/>
     <SolidColorBrush x:Key="ChatsPanel.Red" Color="#C08A84"/>
 
+    <!--
+        Git #3789 — real 100%-complete "Rainbow" fill for the epic progress bar, genuinely
+        distinct from the plain ChatsPanel.Green used for the 66-99% tier. A real multi-hue
+        LinearGradientBrush, not a relabeled solid green. The label text at this tier uses
+        ChatsPanel.RainbowLabel (a single legible color) rather than this gradient.
+    -->
+    <LinearGradientBrush x:Key="ChatsPanel.Rainbow" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#E0736B" Offset="0.0"/>
+        <GradientStop Color="#E0A455" Offset="0.2"/>
+        <GradientStop Color="#D9C85B" Offset="0.4"/>
+        <GradientStop Color="#7FB08A" Offset="0.6"/>
+        <GradientStop Color="#6FA0C9" Offset="0.8"/>
+        <GradientStop Color="#9E7FC9" Offset="1.0"/>
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="ChatsPanel.RainbowLabel" Color="#E6EDF3"/>
+
 </ResourceDictionary>

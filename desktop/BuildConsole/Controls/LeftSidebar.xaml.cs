@@ -4072,9 +4072,14 @@ namespace BuildConsole.Controls
             if (total > 0)
             {
                 double frac = Math.Max(0.0, Math.Min(1.0, (double)done / total));
-                var barBrush = frac >= 1.0 ? GetBrush("ChatsPanel.Green")
-                    : frac >= 0.5 ? GetBrush("ChatsPanel.AmberFill")
-                    : accentBrush;
+                // Git #3789 — real 4-tier Red/Yellow/Green/Rainbow thresholds, replacing the old
+                // 2-breakpoint (50%/100%) logic where 50-99% was a single indistinguishable Amber
+                // fill and sub-50% fell back to the epic's own accent color instead of a real red.
+                var barBrush = frac >= 1.0 ? GetBrush("ChatsPanel.Rainbow")
+                    : frac >= 0.66 ? GetBrush("ChatsPanel.Green")
+                    : frac >= 0.33 ? GetBrush("ChatsPanel.AmberFill")
+                    : GetBrush("ChatsPanel.Red");
+                var labelBrush = frac >= 1.0 ? GetBrush("ChatsPanel.RainbowLabel") : barBrush;
                 var fillGrid = new Grid();
                 fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(frac, GridUnitType.Star) });
                 fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - frac, GridUnitType.Star) });
@@ -4084,7 +4089,7 @@ namespace BuildConsole.Controls
                 var track = new Border { Height = 3, CornerRadius = new CornerRadius(99), Background = GetBrush("ChatsPanel.TrackBg"), Child = fillGrid };
 
                 var progRow = new DockPanel { Margin = new Thickness(9, 0, 9, 8), ToolTip = "Closed issues out of all issues on this epic (real transitive leaf rollup)" };
-                var pctLabel = new TextBlock { Text = $"{Math.Round(frac * 100)}%", FontFamily = new FontFamily("Consolas"), FontSize = 8, FontWeight = FontWeights.ExtraBold, Foreground = barBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0, 0, 0) };
+                var pctLabel = new TextBlock { Text = $"{Math.Round(frac * 100)}%", FontFamily = new FontFamily("Consolas"), FontSize = 8, FontWeight = FontWeights.ExtraBold, Foreground = labelBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0, 0, 0) };
                 DockPanel.SetDock(pctLabel, Dock.Right);
                 progRow.Children.Add(pctLabel);
                 progRow.Children.Add(track);
