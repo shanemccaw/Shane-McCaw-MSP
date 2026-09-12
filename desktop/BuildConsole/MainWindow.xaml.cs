@@ -33,6 +33,22 @@ namespace BuildConsole
         private const double DefaultQueueWidth    = 300;
         private const double DefaultBottomHeight  = 240;
 
+        // Git #3805 — ColQueue is a real fixed-width outer column (not a free-floating window),
+        // so the Build Sets slide-out (Git #3785) has to grow THIS width, not just re-partition
+        // its own existing 300px internally. Mirrors _isPinned/PinToggled's own tracked-state
+        // idiom right below: BuildQueuePanel fires BuildSetsPanelToggled, we track the resulting
+        // open/closed state here and recompute ColQueue.Width from both flags together so neither
+        // toggle clobbers the other's contribution.
+        private bool _queuePinned = true;
+        private bool _queueBuildSetsOpen;
+
+        private double QueueOpenWidth => DefaultQueueWidth + (_queueBuildSetsOpen ? Controls.BuildQueuePanel.BuildSetsPanelWidth : 0);
+
+        private void UpdateColQueueWidth()
+        {
+            ColQueue.Width = _queuePinned ? new GridLength(QueueOpenWidth) : new GridLength(0);
+        }
+
         // ── Status dot brushes (frozen) ───────────────────────────────────────
         private static readonly SolidColorBrush DotReady   = Frozen(0xA6, 0xE3, 0xA1);
         private static readonly SolidColorBrush DotLoading = Frozen(0xFA, 0xB3, 0x87);
@@ -1336,8 +1352,23 @@ namespace BuildConsole
 
             BuildQueuePanel.PinToggled += (s, isPinned) =>
             {
-                ColQueue.Width = isPinned ? new GridLength(300) : new GridLength(0);
+                _queuePinned = isPinned;
+                UpdateColQueueWidth();
             };
+
+            // Git #3805 — real growth of the outer ColQueue column when Build Sets opens/closes,
+            // instead of #3785's internal-only re-partition of the existing 300px. Read the panel's
+            // current real state immediately (rather than relying solely on the event) because
+            // BuildQueuePanel restores BuildSetsPanelOpen from settings in its own constructor,
+            // which runs during InitializeComponent above — before this subscription exists to
+            // catch that first toggle.
+            BuildQueuePanel.BuildSetsPanelToggled += (s, isOpen) =>
+            {
+                _queueBuildSetsOpen = isOpen;
+                UpdateColQueueWidth();
+            };
+            _queueBuildSetsOpen = BuildQueuePanel.BuildSetsPanelOpen;
+            UpdateColQueueWidth();
 
             if (EditorTabs.Items.Count > 0 && EditorTabs.Items[0] is TabItem claudeTab)
             {
@@ -7222,9 +7253,12 @@ namespace BuildConsole
 
         private void ToggleQueuePanel_Click(object sender, RoutedEventArgs e)
         {
-            ColQueue.Width = ColQueue.Width.Value > 0
-                ? new GridLength(0)
-                : new GridLength(DefaultQueueWidth);
+            // Git #3805 — route through _queuePinned/UpdateColQueueWidth so reopening from this
+            // View-menu entry restores the Build-Sets-widened width too, instead of always
+            // collapsing back to the bare DefaultQueueWidth and re-squeezing the Queue's own
+            // content if Build Sets is still open.
+            _queuePinned = ColQueue.Width.Value <= 0;
+            UpdateColQueueWidth();
             BuildQueuePanel.Visibility = ColQueue.Width.Value > 0
                 ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -7295,7 +7329,11 @@ namespace BuildConsole
         private void ResetLayout_Click(object sender, RoutedEventArgs e)
         {
             ColSidebar.Width = new GridLength(DefaultSidebarWidth);
-            ColQueue.Width   = new GridLength(DefaultQueueWidth);
+            // Git #3805 — via UpdateColQueueWidth (not a hardcoded DefaultQueueWidth) so this
+            // doesn't re-squeeze the Queue's content back to the base 300px while Build Sets is
+            // still genuinely open.
+            _queuePinned = true;
+            UpdateColQueueWidth();
             SetBottomPanel(false);
 
             BuildQueuePanel.Visibility = Visibility.Visible;

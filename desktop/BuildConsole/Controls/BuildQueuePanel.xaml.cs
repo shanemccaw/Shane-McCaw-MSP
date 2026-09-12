@@ -79,6 +79,14 @@ namespace BuildConsole.Controls
     {
         public event EventHandler<TaskSelectedEventArgs>? TaskSelected;
         public event EventHandler<bool>? PinToggled;
+        /// <summary>Git #3805 — fires whenever the "Build Sets" slide-out is opened/closed, mirroring
+        /// PinToggled's own "child control affecting its own parent's outer layout" idiom immediately
+        /// above. This panel is docked inside MainWindow's ColQueue, a real fixed-width outer column
+        /// (unlike FloatingChatWindow's free-floating DockColumn, which #3785 originally mirrored) —
+        /// so re-partitioning BuildSetsColumn internally can only ever squeeze the Queue's own existing
+        /// 300px, never actually grow the panel. MainWindow subscribes to this and grows/shrinks
+        /// ColQueue.Width by <see cref="BuildSetsPanelWidth"/> in response.</summary>
+        public event EventHandler<bool>? BuildSetsPanelToggled;
         /// <summary>Git #815 — mirrors LeftSidebar's SyncError: null on a successful poll, a message on a failed one.</summary>
         public event EventHandler<string?>? SyncError;
         /// <summary>Git #1989 — fires on every RefreshAsync with the current count of rows at
@@ -170,7 +178,16 @@ namespace BuildConsole.Controls
         // instead of the right. Open/closed state is real, persisted app state
         // (BuildConsoleSettings.BuildSetsPanelOpen), not re-derived each launch.
         private bool _buildSetsPanelOpen;
-        private const double BuildSetsPanelWidth = 240;
+        /// <summary>Git #3805 — public so MainWindow can grow/shrink ColQueue.Width by exactly this
+        /// much when <see cref="BuildSetsPanelToggled"/> fires, instead of duplicating the magic
+        /// number.</summary>
+        public const double BuildSetsPanelWidth = 240;
+        /// <summary>Git #3805 — real current open/closed state, read once by MainWindow right after
+        /// subscribing to <see cref="BuildSetsPanelToggled"/> so a restart with the panel left open
+        /// (restored from BuildConsoleSettings in the constructor, before MainWindow's own
+        /// constructor body — and therefore its event subscription — has run) still widens ColQueue
+        /// immediately instead of starting narrow and popping wide on the first toggle.</summary>
+        public bool BuildSetsPanelOpen => _buildSetsPanelOpen;
 
         // Git #3701 — right-pointing while expanded (panel is on the right side of the
         // window, so collapsing it pushes it off to the right); left-pointing while
@@ -8392,6 +8409,10 @@ namespace BuildConsole.Controls
                 settings.Save();
             }
             catch { /* best-effort persistence — the toggle still works this session either way */ }
+
+            // Git #3805 — tell MainWindow to grow/shrink its own outer ColQueue column;
+            // this control has no reach into its own host's layout on its own.
+            BuildSetsPanelToggled?.Invoke(this, _buildSetsPanelOpen);
         }
 
         private void ApplyBuildSetsPanelState()
