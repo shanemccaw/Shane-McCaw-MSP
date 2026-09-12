@@ -25,6 +25,13 @@
  * flagged isTestbed — this is a real Graph write against a real tenant, and
  * the general live-tenant restriction is a separate, later task.
  *
+ * Change Control (Git #3541): execute raises a real, pre-approved `standard`
+ * `msp_change_requests` row BEFORE the Graph write fires (see
+ * `launch-control-change-request.ts`), and records the write as a
+ * `write_action` cr_execution immediately after — no separate Console
+ * attestation call, and no more `human-action` calls 404ing against a
+ * changeRequestId that was never created.
+ *
  * Routes:
  *   GET  /api/msp/:mspId/launch-control/actions?customerId=:customerId
  *   POST /api/msp/:mspId/launch-control/execute
@@ -48,6 +55,10 @@ import { loadTier, tierAllowsFeature } from "../lib/msp-entitlement.ts";
 import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
 import { logger } from "../lib/logger.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import {
+  raiseChangeRequestForLaunchControlExecution,
+  recordLaunchControlExecutionOutcome,
+} from "../lib/launch-control-change-request.ts";
 
 const log = logger.child({ channel: "engine.launch-control" });
 
@@ -246,6 +257,7 @@ router.post(
           tenantId: tenantsTable.tenantId,
           isTestbed: tenantsTable.isTestbed,
           name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
         })
         .from(tenantsTable)
         .where(and(eq(tenantsTable.id, customerId), eq(tenantsTable.mspId, mspId)))
@@ -276,8 +288,30 @@ router.post(
         return;
       }
 
-      const { runBaselineTemplateAgainstTenant } = await import("../lib/workflow-executor.ts");
+      // #3541 — Change Control as the AUTHORIZATION GATE (#1497's own principle)
+      // applies here too: raise the real, pre-approved CR BEFORE the Graph write
+      // fires, so there is always a real `msp_change_requests` row behind this
+      // execution rather than one assumed-but-never-created (the exact gap
+      // #3541 found — `human-action` 404ing with no CR to attest against).
       const payload: Record<string, unknown> = { ...(body.variables ?? {}), customerId };
+      const changeRequest = await raiseChangeRequestForLaunchControlExecution({
+        mspId,
+        tenantId: customer.tenantId,
+        tenantName: customer.name,
+        primaryDomain: customer.domain ?? "",
+        catalogRow: {
+          domain: catalogRow.domain,
+          actionName: catalogRow.actionName,
+          surface: catalogRow.surface,
+          safeOrGated: catalogRow.safeOrGated,
+        },
+        templateId,
+        proposedPayload: payload,
+        requestedBy: req.user?.email ?? "unknown@mspplatform.com",
+        reverseTemplateId: template.reversible ? template.reverseTemplateId : null,
+      });
+
+      const { runBaselineTemplateAgainstTenant } = await import("../lib/workflow-executor.ts");
       const result = await runBaselineTemplateAgainstTenant(
         templateId,
         customer.tenantId,
@@ -286,13 +320,29 @@ router.post(
         "launch_control",
       );
 
+      // #3541 — record the execution as a `write_action` (a code path — this
+      // very call — confirms it) and close the CR out immediately; see
+      // launch-control-change-request.ts's header for why this is NOT a
+      // `human_action` and needs no separate Console attestation call.
+      try {
+        await recordLaunchControlExecutionOutcome({
+          changeRequestId: changeRequest.id,
+          mspId,
+          tenantId: customer.tenantId,
+          success: result.success,
+        });
+      } catch (err) {
+        log.error({ err, mspId, changeRequestId: changeRequest.id }, "msp-launch-control: execution record failed (non-fatal)");
+      }
+
       log.info(
-        { mspId, templateId, customerId, tenantId: customer.tenantId, success: result.success, userId: req.user?.id },
+        { mspId, templateId, customerId, tenantId: customer.tenantId, success: result.success, userId: req.user?.id, changeRequestId: changeRequest.id },
         "msp-launch-control: execute completed",
       );
       res.json({
         result: { ...result, reversible: result.success && template.reversible },
         tenant: { customerId: customer.id, name: customer.name },
+        changeRequest: { id: changeRequest.id, code: changeRequest.code },
       });
     } catch (err) {
       log.error({ err, mspId, catalogActionId, customerId }, "POST /msp/:mspId/launch-control/execute failed");

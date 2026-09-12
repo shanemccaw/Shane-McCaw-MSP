@@ -143,6 +143,21 @@ public sealed class LaunchControlExecuteTenant
     public string? Name { get; set; }
 }
 
+/// <summary>The real, pre-approved standard Change Request (Git #3541) that
+/// msp-launch-control.ts now raises BEFORE the Graph write fires and closes to
+/// `completed` on success — the changeRequestId that never existed before
+/// #3541, filed exactly because there was nothing here for a `human-action`
+/// attestation call to reference.</summary>
+public sealed class LaunchControlChangeRequest
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    /// <summary>Human-readable "CR-2026-&lt;n&gt;" code (formatChangeRequestCode).</summary>
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = string.Empty;
+}
+
 /// <summary>The full response envelope from POST /api/msp/:mspId/launch-control/execute.</summary>
 public sealed class LaunchControlExecuteResponse
 {
@@ -151,4 +166,7 @@ public sealed class LaunchControlExecuteResponse
 
     [JsonPropertyName("tenant")]
     public LaunchControlExecuteTenant Tenant { get; set; } = new();
+
+    [JsonPropertyName("changeRequest")]
+    public LaunchControlChangeRequest ChangeRequest { get; set; } = new();
 }

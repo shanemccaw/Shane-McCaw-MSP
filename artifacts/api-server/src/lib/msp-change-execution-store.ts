@@ -55,19 +55,43 @@ export interface RecordExecutionInput {
   readonly attestedBy?: string | null;
   readonly attestedByPersonId?: string | null;
   readonly attestationNote?: string | null;
+  /**
+   * Git #3541 — the outcome of a `runbook_run` / `write_action` executor that
+   * completed SYNCHRONOUSLY at record time, with no `wf_run` behind it to await
+   * (e.g. M365 Launch Control's direct `runBaselineTemplateAgainstTenant` Graph
+   * write). Only honoured when `wfRunId` is omitted/null — a run-backed
+   * execution still starts `pending` and is written back exclusively by
+   * `settleChangeExecutions`, which joins on `wf_run_id` and would otherwise
+   * never see (and never settle) a row this field bypassed. Ignored for
+   * `human_action`, which has its own attestation-driven completion above.
+   */
+  readonly outcome?: "succeeded" | "failed";
 }
 
 /**
- * Record one execution of an authorized change. A `runbook_run` / `write_action`
- * starts `pending` — its crRef is written back only once its run completes
- * (`settleChangeExecutions`). A `human_action` supplied WITH an attestation is
- * confirmed at record time: the attestation is the completion, so its crRef is
- * written back immediately. A `human_action` with no attestation stays `pending`
- * until `attestHumanAction` is called.
+ * Record one execution of an authorized change.
+ *   - A `runbook_run` / `write_action` bound to a real `wf_run` starts `pending`
+ *     — its crRef is written back only once that run completes
+ *     (`settleChangeExecutions`).
+ *   - A `runbook_run` / `write_action` with NO `wf_run` (a synchronous write a
+ *     code path already confirmed, e.g. Launch Control) may instead supply
+ *     `outcome` directly — it is confirmed here, at record time, exactly like an
+ *     attested human action is.
+ *   - A `human_action` supplied WITH an attestation is confirmed at record time:
+ *     the attestation is the completion, so its crRef is written back
+ *     immediately. A `human_action` with no attestation stays `pending` until
+ *     `attestHumanAction` is called.
  */
 export async function recordExecution(input: RecordExecutionInput): Promise<CrExecution> {
   const now = new Date();
   const isAttestedHuman = input.executorKind === "human_action" && !!(input.attestedBy && input.attestedBy.trim());
+  const isImmediateOutcome = !isAttestedHuman && input.wfRunId == null && input.outcome !== undefined;
+  const confirmedNow = isAttestedHuman || isImmediateOutcome;
+  const resolvedOutcome = isAttestedHuman ? "succeeded" : isImmediateOutcome ? input.outcome! : "pending";
+  // A confirmed-but-failed synchronous execution completed (in the sense that
+  // nothing is left in flight) but must never cite the authorizing CR — same
+  // rule `settleChangeExecutions` already applies to a failed run.
+  const succeededNow = confirmedNow && resolvedOutcome === "succeeded";
 
   const [row] = await db
     .insert(crExecutionsTable)
@@ -80,16 +104,18 @@ export async function recordExecution(input: RecordExecutionInput): Promise<CrEx
       packKey: input.packKey ?? null,
       implementer: input.implementer ?? null,
       plannedPlan: input.plannedPlan ?? null,
-      outcome: isAttestedHuman ? "succeeded" : "pending",
+      outcome: resolvedOutcome,
       attestedBy: input.attestedBy ?? null,
       attestedByPersonId: input.attestedByPersonId ?? null,
       attestedAt: isAttestedHuman ? now : null,
       attestationNote: input.attestationNote ?? null,
-      // A confirmed human action completes the moment it is attested: write back
-      // the authorizing reference and stamp the execution time now.
-      crRef: isAttestedHuman ? formatChangeRequestCode(input.changeRequestId) : null,
-      writtenBackAt: isAttestedHuman ? now : null,
-      executedAt: isAttestedHuman ? now : null,
+      // A confirmed human action, or a synchronous write/runbook execution whose
+      // outcome the caller already knows, completes the moment it is recorded:
+      // write back the authorizing reference (on success only) and stamp the
+      // execution time now.
+      crRef: succeededNow ? formatChangeRequestCode(input.changeRequestId) : null,
+      writtenBackAt: succeededNow ? now : null,
+      executedAt: confirmedNow ? now : null,
     })
     .returning();
 

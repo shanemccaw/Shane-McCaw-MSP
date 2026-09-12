@@ -4426,6 +4426,13 @@ public partial class MainWindow : FluentWindow
             {
                 ConsolePanel.AppendExternal($"[Script Library] Audit log #{auditLogId}{(result.Reversible ? " (reversible)" : string.Empty)}");
             }
+            // #3541 — the real, pre-approved CR msp-launch-control.ts now raises for every
+            // execute call (there was none before #3541 — the exact gap that left "human-action"
+            // with no changeRequestId to attest against).
+            if (!string.IsNullOrEmpty(response.ChangeRequest?.Code))
+            {
+                ConsolePanel.AppendExternal($"[Script Library] {response.ChangeRequest!.Code}{(result.Success ? " — completed" : " — pending (execution failed)")}");
+            }
         }
         catch (LaunchControlActionsException ex)
         {
