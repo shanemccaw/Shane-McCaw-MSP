@@ -9640,3 +9640,50 @@ export type CommunicationsPush = typeof communicationsPushesTable.$inferSelect;
 export type InsertCommunicationsPush = typeof communicationsPushesTable.$inferInsert;
 export type CommunicationsPushCheckpoint = typeof communicationsPushCheckpointsTable.$inferSelect;
 export type InsertCommunicationsPushCheckpoint = typeof communicationsPushCheckpointsTable.$inferInsert;
+
+// ── Training Session Log — backend + data model (Git #3770, Feature roadmap
+// #3768) ─────────────────────────────────────────────────────────────────────
+/**
+ * Real scope per Shane (#3770): he delivers training to customers — Lunch &
+ * Learns, How-To sessions, Prompt-A-Thons, Ask Me Anythings — and wants each
+ * session tracked per customer. Backend/data-model only — no MSP Console UI
+ * screen yet (blocked on #3768's real nav placement), same phased pattern as
+ * `msp_status_reports` (#3762) and `kanban_buckets`/`kanban_cards` (#3773).
+ *
+ * customerId is tenants.id with no FK, matching the existing
+ * "successor id-space, no FK by design" convention already used by
+ * mspStatusReportsTable and kanbanBucketsTable above.
+ */
+export const TRAINING_SESSION_TYPES = [
+  "lunch_and_learn",
+  "how_to",
+  "prompt_a_thon",
+  "ask_me_anything",
+] as const;
+export type TrainingSessionType = (typeof TRAINING_SESSION_TYPES)[number];
+
+export const trainingSessionsTable = pgTable("training_sessions", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull(),
+  sessionType: text("session_type", { enum: TRAINING_SESSION_TYPES }).notNull(),
+  // When the session actually happened (or is scheduled for) — the real
+  // sortable/filterable instant, same discipline `asOfDate` uses on
+  // mspStatusReportsTable.
+  sessionDate: timestamp("session_date", { withTimezone: true }).notNull(),
+  topic: text("topic").notNull(),
+  notes: text("notes"),
+  // The operator who logged it — a real users.id, never a free-text name,
+  // matching mspStatusReportsTable.authoredByUserId.
+  loggedByUserId: integer("logged_by_user_id").notNull().references(() => usersTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("training_sessions_msp_id_idx").on(t.mspId),
+  index("training_sessions_customer_id_idx").on(t.customerId),
+  index("training_sessions_customer_date_idx").on(t.customerId, t.sessionDate),
+]);
+
+export const insertTrainingSessionSchema = createInsertSchema(trainingSessionsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type TrainingSession = typeof trainingSessionsTable.$inferSelect;
+export type InsertTrainingSession = typeof trainingSessionsTable.$inferInsert;
