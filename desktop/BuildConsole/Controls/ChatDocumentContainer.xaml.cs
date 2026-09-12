@@ -457,7 +457,7 @@ namespace BuildConsole.Controls
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = $"https://github.com/shanemccaw/Shane-McCaw-MSP/issues/{EpicNumber.Value}",
+                    FileName = GitHubIssuesService.IssueUrl(EpicNumber.Value),
                     UseShellExecute = true
                 });
             }

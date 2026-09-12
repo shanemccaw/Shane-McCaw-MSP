@@ -504,7 +504,7 @@ namespace BuildConsole.Services
             new WebToolEntry { Name = "LinkedIn", Url = "https://www.linkedin.com", Icon = "" },
             new WebToolEntry { Name = "Google Analytics", Url = "https://analytics.google.com", Icon = "" },
             new WebToolEntry { Name = "Microsoft Clarity", Url = "https://clarity.microsoft.com", Icon = "" },
-            new WebToolEntry { Name = "Git", Url = "https://github.com/shanemccaw/Shane-McCaw-MSP", Icon = "\uE71B" },
+            new WebToolEntry { Name = "Git", Url = $"https://github.com/{DefaultGitHubOwner}/{DefaultGitHubRepoName}", Icon = "\uE71B" },
         };
 
         // Git #953 (Epic #803) — Shane: "How do I set things like TEST_PORTAL_PASSWORD?"
@@ -825,11 +825,17 @@ namespace BuildConsole.Services
         // values, so an existing settings.json (no "gitHub*"/"batterUpProjectId" keys)
         // deserializes with these intact and every existing caller keeps working unchanged.
 
+        /// <summary>Default owner/repo — this repo's real identity. A field initializer earlier
+        /// in this class (e.g. the WebTools "Git" default entry) cannot reference the instance
+        /// properties below (CS0236), so it references these static consts instead.</summary>
+        private const string DefaultGitHubOwner = "shanemccaw";
+        private const string DefaultGitHubRepoName = "Shane-McCaw-MSP";
+
         /// <summary>GitHub repo owner/org (e.g. "shanemccaw"). Default is this repo's real owner.</summary>
-        public string GitHubOwner { get; set; } = "shanemccaw";
+        public string GitHubOwner { get; set; } = DefaultGitHubOwner;
 
         /// <summary>GitHub repo name (e.g. "Shane-McCaw-MSP"). Default is this repo's real name.</summary>
-        public string GitHubRepoName { get; set; } = "Shane-McCaw-MSP";
+        public string GitHubRepoName { get; set; } = DefaultGitHubRepoName;
 
         /// <summary>The real "owner/repo" string `gh` and GitHubIssuesService's REST/GraphQL calls take.</summary>
         public string GitHubOwnerRepo => $"{GitHubOwner}/{GitHubRepoName}";
@@ -989,12 +995,12 @@ namespace BuildConsole.Services
                 // it shows up without Shane needing to add it by hand.
                 if (settings.WebTools != null &&
                     settings.WebTools.Count > 0 &&
-                    !settings.WebTools.Any(t => string.Equals(t.Url, "https://github.com/shanemccaw/Shane-McCaw-MSP", StringComparison.OrdinalIgnoreCase)))
+                    !settings.WebTools.Any(t => string.Equals(t.Url, $"https://github.com/{settings.GitHubOwner}/{settings.GitHubRepoName}", StringComparison.OrdinalIgnoreCase)))
                 {
                     settings.WebTools.Add(new WebToolEntry
                     {
                         Name = "Git",
-                        Url = "https://github.com/shanemccaw/Shane-McCaw-MSP",
+                        Url = $"https://github.com/{settings.GitHubOwner}/{settings.GitHubRepoName}",
                         Icon = ""
                     });
                     settings.Save();
