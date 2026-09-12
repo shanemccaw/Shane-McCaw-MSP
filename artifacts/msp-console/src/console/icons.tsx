@@ -24,6 +24,8 @@ import {
   CircleDot, BellOff, Shield, FileCheck, FileX,
   // Webhooks (#2612)
   Radio, Power, PowerOff,
+  // Break Glass (#2630)
+  Hourglass, EyeOff, CircleAlert, Clock, RotateCcw,
   type LucideIcon,
 } from "lucide-react";
 
@@ -125,6 +127,12 @@ const REGISTRY: Record<string, LucideIcon> = {
   radio: Radio,
   power: Power,
   "power-off": PowerOff,
+  // Break Glass (#2630)
+  hourglass: Hourglass,
+  "eye-off": EyeOff,
+  "circle-alert": CircleAlert,
+  clock: Clock,
+  "rotate-ccw": RotateCcw,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

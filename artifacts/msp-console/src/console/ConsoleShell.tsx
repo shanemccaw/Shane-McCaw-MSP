@@ -12,9 +12,11 @@ import { CommandPalette } from "./CommandPalette";
 import { ScreenSlot } from "./ScreenSlot";
 import { Remediation } from "./modules/Remediation";
 import { Webhooks } from "./modules/Webhooks";
+import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
 import { SopsPage } from "@/pages/Sops";
 import { surface } from "./tokens";
 import { RunbooksPage } from "@/pages/runbooks/RunbooksPage";
+import { BreakGlassPage } from "@/pages/break-glass/BreakGlassPage";
 import {
   buildCommands, buildCrumbs, buildRailNodes, buildTreeNodes,
   contextPath, pageMeta, statusLeft, statusRight,
@@ -192,7 +194,7 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
         <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Breadcrumbs crumbs={crumbs} />
           <ScreenSlot meta={meta} wire={wire}>
-            {moduleFor(effectiveSel, customers)}
+            {moduleFor(effectiveSel, customers, navigate)}
           </ScreenSlot>
           <StatusBar left={left} right={right} />
         </main>
@@ -215,8 +217,15 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
  * (#3677); until a given module lands, `ScreenSlot` falls back to its own
  * designed placeholder — this function returning `undefined` for every
  * not-yet-built page is that fallback, not a stubbed empty state.
+ *
+ * `root` mounts the cross-tenant break-glass watchlist tile (README screen 1's
+ * lead panel, #2630) — the rest of screen 1 (advisory panel, data-rights feed,
+ * tenant table) is out of this function's scope until its own issue lands.
  */
-function moduleFor(sel: Selection, customers: DirectoryCustomer[]): React.ReactNode {
+function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (next: Selection) => void): React.ReactNode {
+  if (sel.kind === "root") {
+    return <BreakGlassWatchlist onOpenTenant={(customerId) => navigate({ kind: "page", tenant: customerId, page: "bg" })} />;
+  }
   if (sel.kind === "page" && sel.page === "run") {
     return <RunbooksPage customerId={sel.tenant} />;
   }
@@ -231,6 +240,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[]): React.ReactN
   }
   if (sel.kind === "page" && sel.page === "wh") {
     return <Webhooks customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "bg") {
+    return <BreakGlassPage customerId={sel.tenant} />;
   }
   if (sel.kind === "msp" && sel.page === "sops") {
     return <SopsPage />;
