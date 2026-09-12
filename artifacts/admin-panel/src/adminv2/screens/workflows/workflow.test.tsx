@@ -390,7 +390,10 @@ describe("runNow", () => {
 
     const [path, init] = fetchWithAuth.mock.calls[0]!;
     expect(path).toBe("/api/admin/workflows/definitions/1/run");
-    expect(JSON.parse(String((init as RequestInit).body))).toEqual({});
+    // runNow defaults to "test" mode but now sends it explicitly (the server
+    // route also accepts "live" for a real fan-out fire) rather than an empty
+    // body — see workflowStore.ts's runNow doc comment.
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ mode: "test" });
     expect(getSnapshot().message).toBe("Run started — #200.");
   });
 });

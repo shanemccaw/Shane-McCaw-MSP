@@ -131,7 +131,11 @@ describe("routing under the app base", () => {
   it("navigates to a route that wouter will re-prefix with the app base", () => {
     render(<Harness />);
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
-    fireEvent.click(screen.getByText("M365 Endpoints"));
+    // The route already auto-opened a "M365 Endpoints" doc tab (see the
+    // "documents and the contextual tab" describe block below), so the same
+    // label also appears in the doc strip — scope to the palette dialog.
+    const dialog = within(screen.getByRole("dialog", { name: "Command palette" }));
+    fireEvent.click(dialog.getByText("M365 Endpoints"));
     expect(window.location.pathname).toBe(`${ADMINV2_BASE}/endpoints`);
   });
 });
@@ -195,7 +199,14 @@ describe("shell chrome", () => {
 });
 
 describe("documents and the contextual tab", () => {
-  it("has no doc strip until something is opened", () => {
+  it("has no doc strip when landing on a route with no screen registered", () => {
+    // beforeEach routes to "/adminv2/endpoints", which ShellContext's
+    // route-derived effect auto-opens as a "screen:endpoints" doc (see the
+    // "falls back to the quick-nav Explorer..." test below) — so a doc strip
+    // showing that tab on mount is real, current behavior, not the case this
+    // test is for. Point at a route with no matching screen instead, which
+    // is the actual no-doc-open case.
+    window.history.pushState({}, "", ADMINV2_BASE);
     render(<Harness />);
     expect(screen.queryByRole("tablist", { name: "Open documents" })).toBeNull();
   });
@@ -247,8 +258,11 @@ describe("command palette", () => {
   it("lists the screen's destination and its contributed commands", () => {
     render(<Harness />);
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
-    expect(screen.getByText("M365 Endpoints")).toBeTruthy();
-    expect(screen.getByText("Run a scan")).toBeTruthy();
+    // The route already auto-opened an "M365 Endpoints" doc tab, so the same
+    // label renders twice (tab + palette row) — scope to the palette dialog.
+    const dialog = within(screen.getByRole("dialog", { name: "Command palette" }));
+    expect(dialog.getByText("M365 Endpoints")).toBeTruthy();
+    expect(dialog.getByText("Run a scan")).toBeTruthy();
   });
 
   it("renders a live number for an answer row under the ? prefix", () => {

@@ -1,13 +1,27 @@
 // @vitest-environment jsdom
 /**
- * The start page ("Where I left off") shown by `NoScreen` when nothing is
- * open. Two real, live sources feed it — `state.trail` and the palette's
- * own `action`-type commands — so this only needs to prove those two wire
- * through correctly; `Shell.test.tsx` already covers the rest of the shell
- * chrome (the real `CommandPalette` dialog included), so this renders
- * `NoScreen` bare rather than inside the full `<Shell>` — wrapping it would
- * also mount `DocTabStrip`, which renders the same doc label as a tab and
- * would make every "Recent" row assertion ambiguous.
+ * The start page ("ADHD Command Center" rollup) shown by `NoScreen` when
+ * nothing is open. Real, live source for the part this file actually covers:
+ * `state.trail` feeds the "Recent Work" column. `NoScreen` also renders a
+ * SQL-migrations rollup and Inbox/Marketing quick links sourced from
+ * `sqlStore`/`inboxStore`/`marketingStore` — those stores fetch from the real
+ * API on their own module-level init and are exercised by their own screens'
+ * test files, so this file doesn't re-mock them.
+ *
+ * `Shell.test.tsx` already covers the rest of the shell chrome (the real
+ * `CommandPalette` dialog included), so this renders `NoScreen` bare rather
+ * than inside the full `<Shell>` — wrapping it would also mount
+ * `DocTabStrip`, which renders the same doc label as a tab and would make
+ * every "Recent" row assertion ambiguous.
+ *
+ * NOTE: `NoScreen`'s own quick-nav "Search Everything" button and its
+ * arbitrary-registered-`action`-command quick starts were part of an earlier
+ * version of this component; that surface now lives in
+ * `StartSomethingExplorer` (the left-panel Explorer fallback, covered by
+ * Shell.test.tsx's "falls back to the quick-nav Explorer..." test) — global
+ * Ctrl K still opens the palette from anywhere, `NoScreen` included, via
+ * `ShellContext`'s own window-level keydown handler, which is what the tests
+ * below actually exercise.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -77,8 +91,8 @@ afterEach(cleanup);
 describe("NoScreen — the start page", () => {
   it("shows the heading and the empty-recent message with nothing open", () => {
     render(<Harness />);
-    expect(screen.getByText("Pick up where you left off")).toBeTruthy();
-    expect(screen.getByText("Nothing yet. Press Ctrl K and type what you want.")).toBeTruthy();
+    expect(screen.getByText("Pickup where you left off")).toBeTruthy();
+    expect(screen.getByText("Nothing yet. Press Ctrl K and type what you want to open.")).toBeTruthy();
   });
 
   it("lists a doc opened via openDoc as Recent, with its real peek label and kind", () => {
@@ -86,7 +100,8 @@ describe("NoScreen — the start page", () => {
     fireEvent.click(screen.getByText("open doc"));
 
     expect(screen.getByText("Endpoint ep-1")).toBeTruthy();
-    expect(screen.getByText("endpoint")).toBeTruthy();
+    // Kind renders alongside a "↗" affordance in the same row, e.g. "endpoint ↗".
+    expect(screen.getByText((_, el) => el?.textContent === "endpoint ↗")).toBeTruthy();
   });
 
   it("clicking a Recent row reopens it without duplicating the row", () => {
@@ -96,23 +111,19 @@ describe("NoScreen — the start page", () => {
     expect(screen.getAllByText("Endpoint ep-1")).toHaveLength(1);
   });
 
-  it("always offers Search everything, and it opens the palette", () => {
+  it("Ctrl K still opens the palette from the start page", () => {
     render(<Harness />);
     expect(screen.getByTestId("palette-open").textContent).toBe("false");
-    fireEvent.click(screen.getByText("Search everything"));
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(screen.getByTestId("palette-open").textContent).toBe("true");
   });
 
-  it("lists a screen's action command as a quick start and runs it on click", () => {
+  it("does not surface the command registry directly — action and destination commands are gone from here", () => {
     render(<Harness />);
-    fireEvent.click(screen.getByText("Run a scan"));
-    expect(runAction).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not list destination or answer commands as quick starts", () => {
-    render(<Harness />);
-    // The registered screen's own destination ("M365 Endpoints") is a
-    // `destination`-type command, not `action` — must not appear here.
+    // Both moved to StartSomethingExplorer (see file header); NoScreen itself
+    // only renders the Recent-work trail plus its own hardcoded rollup cards.
+    expect(screen.queryByText("Run a scan")).toBeNull();
     expect(screen.queryByText("M365 Endpoints")).toBeNull();
+    expect(runAction).not.toHaveBeenCalled();
   });
 });
