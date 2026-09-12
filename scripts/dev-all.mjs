@@ -43,6 +43,7 @@ function rotateFile(filePath, prevFilePath) {
 
 rotateFile(LOG_FILE, PREV_LOG_FILE);
 let logBytes = 0;
+const svcLogBytes = new Map();
 
 function writeLog(text, serviceName = null) {
   try {
@@ -54,7 +55,15 @@ function writeLog(text, serviceName = null) {
     }
     if (serviceName) {
       const svcLog = path.join(LOG_DIR, `${serviceName}.log`);
+      const svcPrevLog = path.join(LOG_DIR, `${serviceName}.prev.log`);
       appendFileSync(svcLog, text);
+      const bytes = (svcLogBytes.get(serviceName) || 0) + Buffer.byteLength(text);
+      if (bytes > MAX_LOG_BYTES) {
+        rotateFile(svcLog, svcPrevLog);
+        svcLogBytes.set(serviceName, 0);
+      } else {
+        svcLogBytes.set(serviceName, bytes);
+      }
     }
   } catch {
     /* logging must never crash the server launcher */
