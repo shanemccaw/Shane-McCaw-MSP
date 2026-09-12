@@ -135,6 +135,32 @@ async function main() {
   ok(defaultRef === "origin/trunk", `secondary repo's real default branch ("trunk") is detected, not assumed to be main (got ${defaultRef})`);
   ok(resolveDefaultBaseRef(mainRepo) === "origin/main", "main repo's real default branch (\"main\") is detected the same way");
 
+  // === Git #3006 — a genuinely NEW secondary repo's first-time clone is hard-blocked on
+  //     Shane's metered connection, the same way .pnpmfile.cjs blocks pnpm install ===
+  const meteredOwnerRepo = "shanemccaw/another-tinker-repo";
+  const meteredCloneDir = path.join(secondaryReposRoot, meteredOwnerRepo.replace("/", "__"));
+  process.env.BUILD_NETWORK = "metered";
+  let meteredThrew = false;
+  try {
+    resolveRepoCheckout(config, meteredOwnerRepo, { cloneUrl: secondaryOrigin });
+  } catch (e) {
+    meteredThrew = /BUILD_NETWORK=metered/.test(e.message);
+  }
+  ok(meteredThrew, "BUILD_NETWORK=metered refuses a first-time secondary-repo clone with a real BLOCKED error");
+  ok(!existsSync(meteredCloneDir), "the refused clone never touched disk (no partial clone directory)");
+
+  // === Reusing an ALREADY-cloned repo is unaffected by metered — that path is a small
+  //     incremental `fetch --prune`, not the unbounded first-time clone ===
+  let reuseThrew = false;
+  let r3;
+  try {
+    r3 = resolveRepoCheckout(config, secondaryOwnerRepo, { cloneUrl: secondaryOrigin });
+  } catch {
+    reuseThrew = true;
+  }
+  ok(!reuseThrew && r3.cloned === false, "reusing an already-cloned secondary repo is NOT blocked by BUILD_NETWORK=metered (incremental fetch only)");
+  delete process.env.BUILD_NETWORK;
+
   console.log("");
   if (failures) {
     console.error(`${failures} repo-clone self-test failure(s).`);

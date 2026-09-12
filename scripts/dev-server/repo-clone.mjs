@@ -25,6 +25,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { git } from "./git.mjs";
 import { isWindows } from "./config.mjs";
+import { refuseIfMetered } from "./network-gate.mjs";
 
 const OWNER_REPO_RE = /^[\w.-]+\/[\w.-]+$/;
 
@@ -113,6 +114,15 @@ export function resolveRepoCheckout(config, ownerRepo, opts = {}) {
       console.warn(`[repo-clone] fetch failed for existing clone of "${requested}" at ${cloneDir}: ${r.stderr || r.stdout}`);
     }
   } else {
+    // Git #3006 — this first-time clone IS a real, unbounded, metered-class download (unlike
+    // the reused-clone `fetch --prune` above, which is small/incremental) — hard-block it the
+    // same way `.pnpmfile.cjs` hard-blocks `pnpm install` when BUILD_NETWORK=metered. Shane's
+    // one-shot override (Location toggle in BuildConsole) is the only way past this; there is
+    // no flag a build session can set itself.
+    refuseIfMetered(
+      `git clone of a full secondary repo ("${requested}")`,
+      `Would clone to ${cloneDir} — this repo's own source once, for a repo Shane explicitly configured in Settings > Repos (#3581), but a real, unbounded download all the same.`
+    );
     // Real, one-time, reused-forever clone of this repo's actual GitHub remote.
     // Not a "pnpm install"-class metered download (Git #1987) — this is the
     // repo's own source once, for a repo Shane explicitly configured in

@@ -1,0 +1,41 @@
+<Project>
+
+  <!--
+    Git #3006 - extend the .pnpmfile.cjs metered-connection hard-block (Git #1986) to
+    "dotnet restore"/"build"/"publish" run directly against any desktop .csproj (BuildConsole,
+    MyArchitect, SuperShopper, WebTester) - a real NuGet-restore download vector #3001's audit
+    flagged as ADVISORY-ONLY: BUILD_NETWORK is injected into every launched build session's
+    environment, but nothing under desktop/ read it before this file.
+
+    This is deliberately independent of the BuildConsole version-update deploy path's own gate
+    (MainWindow.VersionUpdate.cs -> BuildConsoleSettings.CurrentNetworkIsMetered()): that check
+    reads the Location setting directly from the RUNNING BuildConsole.exe process, which never
+    has BUILD_NETWORK set on itself (only build sessions IT LAUNCHES get that env var) - so this
+    target never fires for the deploy script's own "dotnet build" call, only for a build session
+    invoking "dotnet" itself.
+
+    Placed in Directory.Build.targets (not .props): it must be imported AFTER the SDK's own
+    Sdk.targets so the real "Restore" target already exists to hook BeforeTargets onto. Applies
+    to every project under desktop/ via MSBuild's normal upward-directory-search convention -
+    no per-project change needed. Verified empirically (BuildConsole.csproj, .NET SDK 8.0.425):
+    a plain "dotnet restore BuildConsole.csproj" with BUILD_NETWORK=metered aborts with real exit
+    code 1 and a real "error : BLOCKED..." line before any package download; the identical
+    command with BUILD_NETWORK unset (or =unmetered) restores normally, exit 0.
+
+    HONEST LIMITS (same as .pnpmfile.cjs's own section, and scripts/dev-server/network-gate.mjs):
+    a "dotnet restore" flag that skips dependency evaluation, or an out-of-tree "msbuild"
+    invocation that never evaluates this file, or a shell that unsets BUILD_NETWORK before
+    invoking dotnet, are not caught here - no MSBuild hook is guaranteed to run for every
+    possible invocation, the same residual gap .pnpmfile.cjs already names for its own
+    equivalent bypass flag. This stops the reflexive/compliant
+    case, not a deliberately-evading one. There is no flag/property a build session can pass to
+    grant itself an exception; only Shane's Location toggle / one-shot override in BuildConsole
+    clears BUILD_NETWORK for a launched build.
+  -->
+  <Target Name="RefuseNuGetRestoreWhenMetered" BeforeTargets="Restore;CollectPackageReferences">
+    <Error
+      Condition=" '$(BUILD_NETWORK)' == 'metered' "
+      Text="BLOCKED: this is Shane's capped (metered) connection - BUILD_NETWORK=metered. Refusing: NuGet restore for $(MSBuildProjectName) ($(MSBuildProjectFullPath)). STOP and report this to Shane rather than retrying or working around it. Only Shane clears the metered gate, via the Location toggle / one-shot override in BuildConsole - there is no flag or env var a build session can set to override it (Git #1986 / #3006)." />
+  </Target>
+
+</Project>
