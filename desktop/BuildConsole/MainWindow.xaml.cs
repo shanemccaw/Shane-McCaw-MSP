@@ -4751,39 +4751,25 @@ namespace BuildConsole
         {
             if (_usageMeter == null) return;
             BtnUsageRefresh.IsEnabled = false;
-            BtnWeeklyUsageRefresh.IsEnabled = false;
-            BtnSecondaryWeeklyUsageRefresh.IsEnabled = false;
             try
             {
+                // Single manual refresh polls both accounts in the same cycle (see
+                // PollSecondaryAsync inside ClaudeUsageMeterService.TickAsync, Git #1437) —
+                // this one button keeps the session meter AND both weekly popup rows current.
                 await _usageMeter.ManualRefreshAsync();
             }
             finally
             {
                 BtnUsageRefresh.IsEnabled = true;
-                BtnWeeklyUsageRefresh.IsEnabled = true;
-                BtnSecondaryWeeklyUsageRefresh.IsEnabled = true;
             }
         }
 
-        /// <summary>Shared by both the Primary and Secondary weekly refresh icons — a single
-        /// ManualRefreshAsync polls both accounts in the same cycle (see PollSecondaryAsync inside
-        /// ClaudeUsageMeterService.TickAsync, Git #1437), so either button refreshes both meters.</summary>
-        private async void BtnWeeklyUsageRefresh_Click(object sender, RoutedEventArgs e)
+        /// <summary>Git #3795 — Current Session status bar click opens/closes the real usage
+        /// popup (Weekly · all models, both accounts). Popup itself is StaysOpen="False", so
+        /// click-away already closes it without any code here; this only handles the open.</summary>
+        private void UsageStatusText_Click(object sender, MouseButtonEventArgs e)
         {
-            if (_usageMeter == null) return;
-            BtnUsageRefresh.IsEnabled = false;
-            BtnWeeklyUsageRefresh.IsEnabled = false;
-            BtnSecondaryWeeklyUsageRefresh.IsEnabled = false;
-            try
-            {
-                await _usageMeter.ManualRefreshAsync();
-            }
-            finally
-            {
-                BtnUsageRefresh.IsEnabled = true;
-                BtnWeeklyUsageRefresh.IsEnabled = true;
-                BtnSecondaryWeeklyUsageRefresh.IsEnabled = true;
-            }
+            UsagePopup.IsOpen = !UsagePopup.IsOpen;
         }
 
         /// <summary>Renders the Claude usage meter's live state in the status bar (dot + text + tooltip). The service computes DisplayText/ToolTip fully, so this just paints them and maps the state to a dot colour. Runs on the UI thread; the service raises this from UI-thread timer continuations already, but guard anyway.</summary>
@@ -4807,9 +4793,19 @@ namespace BuildConsole
             UsageStatusText.Text = status.DisplayText;
             UsageStatusText.ToolTip = status.ToolTip;
 
-            WeeklyUsageDot.Fill = dotBrush;
-            WeeklyUsageStatusText.Text = status.WeeklyDisplayText;
-            WeeklyUsageStatusText.ToolTip = status.WeeklyToolTip;
+            // Git #3795 — the two Weekly segments that used to sit permanently in the status
+            // bar now live only in UsagePopup, opened by clicking Current Session. Every string
+            // painted here is the EXACT SAME DisplayText/ToolTip the status bar itself used to
+            // show — not reformatted — so the #2002 fixes (real primary account regardless of
+            // the title-bar toggle, unparseable reset renders as unknown rather than a guessed
+            // countdown) carry over unchanged.
+            PopupSessionDot.Fill = dotBrush;
+            PopupSessionText.Text = status.DisplayText;
+            PopupSessionText.ToolTip = status.ToolTip;
+
+            PopupWeeklyPrimaryDot.Fill = dotBrush;
+            PopupWeeklyPrimaryText.Text = status.WeeklyDisplayText;
+            PopupWeeklyPrimaryText.ToolTip = status.WeeklyToolTip;
 
             // Git #1437 — Secondary account's dot/text/tooltip are driven entirely by its own
             // independent SecondaryState/SecondaryWeeklyDisplayText/SecondaryWeeklyToolTip, never
@@ -4824,9 +4820,9 @@ namespace BuildConsole
                     BuildConsole.Services.ClaudeUsageMeterState.Error => DotError,
                     _ => (Brush)FindResource("Surface2Brush"), // Unavailable / not configured — muted
                 };
-            SecondaryWeeklyUsageDot.Fill = secondaryDotBrush;
-            SecondaryWeeklyUsageStatusText.Text = status.SecondaryWeeklyDisplayText;
-            SecondaryWeeklyUsageStatusText.ToolTip = status.SecondaryWeeklyToolTip;
+            PopupWeeklySecondaryDot.Fill = secondaryDotBrush;
+            PopupWeeklySecondaryText.Text = status.SecondaryWeeklyDisplayText;
+            PopupWeeklySecondaryText.ToolTip = status.SecondaryWeeklyToolTip;
 
             // Git #1989 — the Conservation Cap toggle's own adjacent usage readout: the
             // primary account's real weekly percent + reset countdown (the same numbers

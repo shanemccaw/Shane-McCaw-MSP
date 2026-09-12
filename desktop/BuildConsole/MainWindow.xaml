@@ -666,11 +666,7 @@
                                 <ColumnDefinition Width="*"/>     <!-- spring -->
                                 <ColumnDefinition Width="Auto"/>  <!-- deploy -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
-                                <ColumnDefinition Width="Auto"/>  <!-- Claude usage meter (Current Session) -->
-                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
-                                <ColumnDefinition Width="Auto"/>  <!-- Claude Weekly usage meter (All Models, Primary account) -->
-                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
-                                <ColumnDefinition Width="Auto"/>  <!-- Claude Weekly usage meter (Secondary account, Git #1437) -->
+                                <ColumnDefinition Width="Auto"/>  <!-- Claude usage meter (Current Session) — click opens the Weekly · all models popup, Git #3795 -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- Claude online status (status.anthropic.com) -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
@@ -724,13 +720,19 @@
                      "resets in Xd Xh Xm" countdown appended only at 85%+. Shows a muted
                      placeholder when the meter can't be read (not logged in / page
                      changed). Green=fresh read, orange=polling, grey=unavailable,
-                     red=error. Tooltip carries reset time + last-checked. -->
+                     red=error. Tooltip carries reset time + last-checked.
+                     Git #3795 — this is now the ONLY always-visible usage segment; the two
+                     permanent Weekly (Primary/Secondary) segments that used to sit beside it
+                     are gone. Clicking the text opens UsagePopup below, which shows Current
+                     session + Weekly · all models for both accounts. -->
                 <StatusBarItem Grid.Column="3">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="UsageDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
                                  Margin="0,0,6,0" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="UsageStatusText" Text="Claude: --" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="UsageStatusText" Text="Claude: --" VerticalAlignment="Center"
+                                   Cursor="Hand" MouseLeftButtonUp="UsageStatusText_Click"
+                                   ToolTip="Click for Weekly · all models (both accounts)"/>
                         <Button x:Name="BtnUsageRefresh"
                                 Style="{StaticResource IconButton}"
                                 ToolTip="Refresh Claude usage now"
@@ -738,47 +740,61 @@
                                 Margin="4,0,0,0"
                                 Content="↻"
                                 Click="BtnUsageRefresh_Click"/>
+
+                        <!-- Git #3795 — the popup that replaces the two permanent Weekly status-bar
+                             segments. Same real Popup idiom this window already uses for
+                             ShelfPopup/WebToolsPopup: StaysOpen="False" closes it on click-away with
+                             no code needed, AllowsTransparency + PopupAnimation match their look.
+                             Every row below is painted with the EXACT SAME DisplayText/ToolTip
+                             strings ClaudeUsageMeterService already produces for the status bar
+                             (UsageMeter_StatusChanged in MainWindow.xaml.cs) — not reformatted, so
+                             the #2002 fixes (real primary account regardless of toggle, no guessed
+                             reset countdown) carry over unchanged. -->
+                        <Popup x:Name="UsagePopup"
+                               PlacementTarget="{Binding ElementName=UsageStatusText}"
+                               Placement="Top"
+                               StaysOpen="False"
+                               AllowsTransparency="True"
+                               PopupAnimation="Fade">
+                            <Border Background="{StaticResource MantleBrush}"
+                                    BorderBrush="{StaticResource Surface0Brush}"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Padding="10,8"
+                                    MinWidth="260">
+                                <StackPanel>
+                                    <TextBlock Text="CLAUDE USAGE" FontSize="10" FontWeight="Bold"
+                                               Foreground="{StaticResource Subtext0Brush}"
+                                               Margin="2,0,2,6"/>
+
+                                    <StackPanel Orientation="Horizontal" Margin="2,0,2,4">
+                                        <Ellipse x:Name="PopupSessionDot" Width="8" Height="8"
+                                                 Fill="{StaticResource Surface2Brush}"
+                                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="PopupSessionText" Text="Claude: --" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="2,0,2,4">
+                                        <Ellipse x:Name="PopupWeeklyPrimaryDot" Width="8" Height="8"
+                                                 Fill="{StaticResource Surface2Brush}"
+                                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="PopupWeeklyPrimaryText" Text="Claude Weekly (Primary): --" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="2,0,2,0">
+                                        <Ellipse x:Name="PopupWeeklySecondaryDot" Width="8" Height="8"
+                                                 Fill="{StaticResource Surface2Brush}"
+                                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="PopupWeeklySecondaryText" Text="Claude Weekly (Secondary): --" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </Popup>
                     </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="4"/>
-                <!-- Claude Weekly usage meter (Primary account) -->
-                <StatusBarItem Grid.Column="5">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse x:Name="WeeklyUsageDot" Width="8" Height="8"
-                                 Fill="{StaticResource Surface2Brush}"
-                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="WeeklyUsageStatusText" Text="Claude Weekly (Primary): --" VerticalAlignment="Center"/>
-                        <Button x:Name="BtnWeeklyUsageRefresh"
-                                Style="{StaticResource IconButton}"
-                                ToolTip="Refresh Claude weekly usage now"
-                                Padding="4,0,0,0"
-                                Margin="4,0,0,0"
-                                Content="↻"
-                                Click="BtnWeeklyUsageRefresh_Click"/>
-                    </StackPanel>
-                </StatusBarItem>
-                <Separator Grid.Column="6"/>
-                <!-- Claude Weekly usage meter (Secondary account, Git #1437) — always visible alongside
-                     Primary, independent of the title-bar account toggle, so Shane can see both accounts'
-                     headroom at once and route accordingly. -->
-                <StatusBarItem Grid.Column="7">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse x:Name="SecondaryWeeklyUsageDot" Width="8" Height="8"
-                                 Fill="{StaticResource Surface2Brush}"
-                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="SecondaryWeeklyUsageStatusText" Text="Claude Weekly (Secondary): --" VerticalAlignment="Center"/>
-                        <Button x:Name="BtnSecondaryWeeklyUsageRefresh"
-                                Style="{StaticResource IconButton}"
-                                ToolTip="Refresh Claude weekly usage now (Secondary account)"
-                                Padding="4,0,0,0"
-                                Margin="4,0,0,0"
-                                Content="↻"
-                                Click="BtnWeeklyUsageRefresh_Click"/>
-                    </StackPanel>
-                </StatusBarItem>
-                <Separator Grid.Column="8"/>
                 <!-- Claude Service Health Status (source: status.anthropic.com) -->
-                <StatusBarItem Grid.Column="9">
+                <StatusBarItem Grid.Column="5">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="ClaudeOnlineDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
@@ -795,8 +811,8 @@
                                 Click="BtnClaudeOnlineRefresh_Click"/>
                     </StackPanel>
                 </StatusBarItem>
-                <Separator Grid.Column="10"/>
-                <StatusBarItem Grid.Column="11" Padding="6,0,10,0">
+                <Separator Grid.Column="6"/>
+                <StatusBarItem Grid.Column="7" Padding="6,0,10,0">
                     <TextBlock x:Name="ClockText" Text="00:00:00" VerticalAlignment="Center"/>
                 </StatusBarItem>
             </StatusBar>
