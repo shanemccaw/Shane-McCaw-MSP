@@ -93,11 +93,19 @@
                      between TxtCount and the Free-flow toggle, per the real audit. Both are
                      display-only over the already-fetched _allRows; neither refetches or
                      touches BatterUpQueueService. -->
+                <!-- Git #3496 — BtnRequeueTerminal: real, explicit opt-in bulk action ("Option A",
+                     Shane's decision 2026-09-10) alongside the Free-flow toggle. The everyday
+                     free-flow/gated auto-queue path (#1997's anti-loop guard) is completely
+                     unaffected by this button — it never sets allowRequeueTerminal itself; this
+                     is a separate, deliberate, one-time bulk fire that DOES. Visible only when
+                     _allRows currently holds at least one real terminal (failed/canceled) row
+                     (UpdateRequeueTerminalVisibility) — never a dead affordance with nothing to act on. -->
                 <Grid DockPanel.Dock="Top" Margin="10,8,10,4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
@@ -149,7 +157,21 @@
                                   ToolTip="Group rows: Ready to launch → Blocked → Failed/Canceled → No BUILD: comment yet."
                                   Click="BtnSortByState_Click"/>
 
-                    <ToggleButton x:Name="BtnFreeFlow" Grid.Column="4"
+                    <Button x:Name="BtnRequeueTerminal" Grid.Column="4"
+                            Margin="6,0,0,0" Padding="7,1,7,1"
+                            FontSize="10.5" FontWeight="SemiBold"
+                            VerticalAlignment="Center"
+                            Background="{StaticResource Surface0Brush}"
+                            BorderBrush="{DynamicResource PeachBrush}"
+                            Foreground="{DynamicResource PeachBrush}"
+                            BorderThickness="1"
+                            Cursor="Hand"
+                            Visibility="Collapsed"
+                            Content="↺ Requeue Terminal"
+                            ToolTip="Bulk-requeue every failed/canceled row currently shown (Git #3496, Option A) — a deliberate one-time action, does not change the everyday auto-queue guard."
+                            Click="BtnRequeueTerminal_Click"/>
+
+                    <ToggleButton x:Name="BtnFreeFlow" Grid.Column="5"
                                   Style="{StaticResource QuietTile}"
                                   Margin="6,0,0,0" Padding="7,1,7,1"
                                   FontSize="10.5" FontWeight="SemiBold"

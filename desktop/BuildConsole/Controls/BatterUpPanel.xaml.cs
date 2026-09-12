@@ -199,11 +199,112 @@ namespace BuildConsole.Controls
             await RefreshAsync();
         }
 
+        /// <summary>
+        /// Git #3496 — Option A (Shane's decision, 2026-09-10): a real, explicit "Requeue
+        /// Terminal" bulk opt-in action, kept deliberately separate from the everyday free-flow
+        /// auto-queue path so a bulk "clear out and rebuild everything" pass can actually finish
+        /// without loosening the #1997 anti-loop guard's default (a normal single failed build
+        /// still does NOT auto-requeue on its own — this button is the only thing that ever
+        /// passes allowRequeueTerminal: true from this panel besides an explicit per-row manual
+        /// Queue click on a reappeared row).
+        ///
+        /// Requeues every row CURRENTLY DISPLAYED in <see cref="_allRows"/> whose
+        /// <see cref="Services.BatterUpRow.TrackedTerminalStatus"/> is non-null (a dead
+        /// failed/canceled queue row) — never an already-queued/done row, since those never carry
+        /// a TrackedTerminalStatus in the first place (RefreshAsync only sets it for a genuinely
+        /// terminal, no-work-landed dedup row). Confirms with a real count + issue-number list
+        /// before firing (this can affect a dozen+ real builds), then reports the real outcome
+        /// (succeeded/failed counts + issue numbers) rather than a silent fire-and-forget.
+        /// </summary>
+        private async void BtnRequeueTerminal_Click(object sender, RoutedEventArgs e)
+        {
+            if (_db == null) return;
+
+            var terminalRows = _allRows.Where(r => r.TrackedTerminalStatus != null).ToList();
+            if (terminalRows.Count == 0) return; // button shouldn't be visible/clickable in this state anyway
+
+            string numbersList = string.Join(", ", terminalRows.Select(r => $"#{r.Number}"));
+            var confirm = MessageBox.Show(
+                $"Requeue {terminalRows.Count} terminal (failed/canceled) item(s)?\n\n{numbersList}\n\n" +
+                "Each will be re-queued through the same Queue path as a manual per-row click — " +
+                "this does not change the everyday auto-queue behavior.",
+                "Batter Up — Requeue Terminal",
+                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            BtnRequeueTerminal.IsEnabled = false;
+            var originalContent = BtnRequeueTerminal.Content;
+            BtnRequeueTerminal.Content = "Requeuing…";
+            Services.ActivityLog.Log("batter-up",
+                $"Requeue Terminal — bulk requeue requested for {terminalRows.Count} item(s): {numbersList}.");
+
+            var gh = Services.BuildConsoleSettings.Load() is { HasGitHubPat: true } ghSettings
+                ? Services.GitHubApiClient.ForManualAction(ghSettings.GitHubPat)
+                : null;
+
+            var succeeded = new List<int>();
+            var failed = new List<int>();
+            foreach (var row in terminalRows)
+            {
+                try
+                {
+                    bool queued = await Services.BatterUpQueueService.QueueRowAsync(
+                        _db, row, msg => Services.ActivityLog.Log("batter-up", msg),
+                        allowRequeueTerminal: true, gh: gh);
+                    if (queued) succeeded.Add(row.Number); else failed.Add(row.Number);
+                }
+                catch (Exception ex)
+                {
+                    Services.ActivityLog.Log("batter-up", $"Requeue Terminal — #{row.Number} FAILED: {ex.Message}");
+                    failed.Add(row.Number);
+                }
+            }
+
+            string resultSummary = $"Requeue Terminal — {succeeded.Count} of {terminalRows.Count} requeued" +
+                (succeeded.Count > 0 ? $" (#{string.Join(", #", succeeded)})" : "") +
+                (failed.Count > 0 ? $"; {failed.Count} did NOT requeue (#{string.Join(", #", failed)})" : "") + ".";
+            Services.ActivityLog.Log("batter-up", resultSummary);
+            MessageBox.Show(resultSummary, "Batter Up — Requeue Terminal", MessageBoxButton.OK,
+                failed.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+
+            if (succeeded.Count > 0)
+            {
+                try { RowsAutoQueued?.Invoke(this, EventArgs.Empty); }
+                catch { /* best-effort visual refresh of the sibling queue panel */ }
+            }
+
+            BtnRequeueTerminal.Content = originalContent;
+            await RefreshAsync();
+        }
+
         // Git #2555 — same "only show the filter box when there's something to filter" rule
         // AiBatterUpPanel's #1863 filter box uses: hidden on the no-PAT/error/zero-rows states.
         private void UpdateFilterBoxVisibility()
         {
             FilterBoxHost.Visibility = _allRows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Git #3496 — Option A (Shane's decision, 2026-09-10): a real, explicit "Requeue
+        /// Terminal" bulk opt-in action, alongside the existing Free-flow toggle. Visible/
+        /// enabled ONLY while at least one real terminal (failed/canceled — see
+        /// <see cref="Services.BatterUpRow.TrackedTerminalStatus"/>) row currently sits in the
+        /// panel's own displayed set — never a dead affordance when there's nothing to act on.
+        /// Called everywhere <see cref="_allRows"/> changes (every real RefreshAsync outcome).
+        /// </summary>
+        private void UpdateRequeueTerminalVisibility()
+        {
+            int terminalCount = _allRows.Count(r => r.TrackedTerminalStatus != null);
+            if (terminalCount > 0)
+            {
+                BtnRequeueTerminal.Visibility = Visibility.Visible;
+                BtnRequeueTerminal.IsEnabled = true;
+                BtnRequeueTerminal.Content = $"↺ Requeue {terminalCount} Terminal";
+            }
+            else
+            {
+                BtnRequeueTerminal.Visibility = Visibility.Collapsed;
+            }
         }
 
         // Git #2555 — display-only: narrows/reorders what RenderFilteredRows draws from the
@@ -444,6 +545,7 @@ namespace BuildConsole.Controls
                     RowsList.Children.Clear();
                     _allRows = new List<Services.BatterUpRow>();
                     UpdateFilterBoxVisibility();
+                    UpdateRequeueTerminalVisibility();
                     TxtEmpty.Text = "No GitHub PAT configured — set one in Settings.";
                     TxtEmpty.Visibility = Visibility.Visible;
                     SetCount(0);
@@ -515,6 +617,7 @@ namespace BuildConsole.Controls
                     RowsList.Children.Clear();
                     _allRows = new List<Services.BatterUpRow>();
                     UpdateFilterBoxVisibility();
+                    UpdateRequeueTerminalVisibility();
                     TxtEmpty.Text = circuitOpen
                         ? BuildCircuitOpenMessage()
                         : $"Couldn't read Batter Up: {ex.Message}";
@@ -528,6 +631,7 @@ namespace BuildConsole.Controls
                 // here, so TxtFilter/BtnSortByState apply on this first render too.
                 _allRows = rows;
                 UpdateFilterBoxVisibility();
+                UpdateRequeueTerminalVisibility();
                 RenderFilteredRows();
 
                 // Git #1816 — the "zero rows" empty state reads inline in the header's
