@@ -1100,6 +1100,56 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #3844 — real "no active build needs it" check for the non-always-on dev services
+        /// (Marketing/Admin/Portal/Website/MSP Console). This is BOTH the "immediate relief" check
+        /// (called once at watcher startup, and exposed as the "🧹 Stop Idle Services" menu action)
+        /// and the ongoing, event-driven enforcement (called from the reap loop the instant a build
+        /// finishes) — there is no separate polling timer for this; a completion is the one real
+        /// signal that a service's need may have just gone away.
+        ///
+        /// Preserves Git #3084's api-server always-on behavior completely untouched: api-server is
+        /// simply never a candidate here (see <see cref="DevServicesManager.AlwaysOnServiceName"/>),
+        /// so its own supervisor above is the only thing that ever starts/stops it.
+        ///
+        /// Best-effort and never throws into a caller; every real stop is logged on the
+        /// "dev-services" ActivityLog channel with the real reason, per the issue's own ask that
+        /// this never be a silent, unexplained shutdown.
+        /// </summary>
+        public async Task StopIdleDevServicesAsync(string reasonContext)
+        {
+            if (_db == null) return; // needs the direct-DB active-build view; no HTTP-fallback equivalent exists for this read.
+            try
+            {
+                var active = await _db.GetActiveBuildIdentitiesAsync();
+
+                string? ResolveWorkingDirectory(int id)
+                {
+                    lock (_gate) { return _running.TryGetValue(id, out var e) ? e.WorktreePath : null; }
+                }
+
+                var needed = DevServicesManager.ComputeNeededServices(active, ResolveWorkingDirectory);
+
+                foreach (var kvp in DevServicesManager.KnownServices)
+                {
+                    string name = kvp.Key;
+                    if (name == DevServicesManager.AlwaysOnServiceName) continue; // #3084 — never touched here.
+                    if (needed.Contains(name)) continue;
+
+                    var status = await DevServicesManager.GetServiceStatusAsync(name);
+                    if (!status.IsRunning) continue;
+
+                    ActivityLog.Log("dev-services",
+                        $"[idle-stop] '{name}' ({kvp.Value.Title}) has no active (queued/running/verifying) build associated with it — {reasonContext} — stopping to relieve memory pressure (Git #3844).");
+                    await DevServicesManager.StopServiceAsync(name);
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("dev-services", $"Idle dev-service stop check failed (non-fatal): {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Git #3113 — triggers the periodic GitHub-issue-mirror sync. This is the batched refresh that
         /// keeps <c>bt_issue_mirror</c> current so routine reads (issue-title warm-up, chat-dock
         /// enrichment, the background Verifying reconcile) serve from local Postgres and never fire a
@@ -1319,6 +1369,11 @@ namespace BuildConsole.Services
             // Git #2796 — real, ongoing repo housekeeping (merged agent/* branch prune, loose-object
             // gc, stray C:\wt\* dir reconcile); throttled to at most once per 6h internally.
             MaybeRunGitMaintenance();
+            // Git #3844 — "immediate relief" check: real, live memory pressure was reported from dev
+            // services (Marketing/"Website"/Admin-Panel) left running with zero active builds behind
+            // them. Fire-and-forget once at startup so a fresh BuildConsole launch relieves whatever
+            // was already idle before this fix landed, without blocking Start().
+            _ = StopIdleDevServicesAsync("startup idle-service check");
             _started = true;
             // Git #3824 — the periodic backstop. Start() runs on the UI thread (and resumes there
             // after the awaits above), so the DispatcherTimer's Tick lands on the UI thread too,
@@ -1909,6 +1964,13 @@ namespace BuildConsole.Services
                         {
                             ActivityLog.Log("watcher", $"A BuildFinished handler threw for queue item {id}: {ex.Message}");
                         }
+
+                        // Git #3844 — event-driven idle-stop enforcement: a build finishing is the
+                        // one real moment a dev service's need may have just gone away. Fire-and-
+                        // forget (StopIdleDevServicesAsync never throws) so it never delays the reap
+                        // loop; queue #{id} finishing is real evidence worth re-checking against
+                        // regardless of whether it exited 0 or failed.
+                        _ = StopIdleDevServicesAsync($"build #{id} ({entry.Title}) just finished");
                     }
 
                     // Git #3628 — self-block push/board fix. MarkCompleteAsync above has already

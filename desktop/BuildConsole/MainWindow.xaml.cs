@@ -6718,6 +6718,19 @@ namespace BuildConsole
             await ApiServerLogView.UpdateStatusAsync();
         }
 
+        /// <summary>Git #3844 — the "immediate relief" manual trigger: same real check the watcher
+        /// already runs itself on startup and on every build completion, just callable on demand.
+        /// Never touches the always-on api-server (#3084).</summary>
+        private async void MenuStopIdleServices_Click(object sender, RoutedEventArgs e)
+        {
+            if (_queueWatcher == null) return;
+            await _queueWatcher.StopIdleDevServicesAsync("manual 'Stop Idle Services' menu action");
+            await RefreshTopServicesStatusAsync();
+            await MarketingLogView.UpdateStatusAsync();
+            await PortalLogView.UpdateStatusAsync();
+            await AdminLogView.UpdateStatusAsync();
+        }
+
         private async void MenuRefreshServices_Click(object sender, RoutedEventArgs e)
         {
             await RefreshTopServicesStatusAsync();

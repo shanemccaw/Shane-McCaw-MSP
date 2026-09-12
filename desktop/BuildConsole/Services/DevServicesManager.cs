@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
@@ -322,6 +323,164 @@ namespace BuildConsole.Services
             }
             ActivityLog.Log(LogChannel, "[dev-all] All dev services stopped.");
             return true;
+        }
+
+        // ── Git #3844 — idle-service enforcement ────────────────────────────────
+
+        /// <summary>The one always-on service (Git #3084). Never a target of the idle-stop logic
+        /// below — that supervisor's whole job is keeping this one alive; this one's job is
+        /// stopping everything else once nothing genuinely needs it.</summary>
+        public const string AlwaysOnServiceName = "api-server";
+
+        /// <summary>Mirrors scripts/dev-server/service-targeting.mjs's SHARED_DIR_PREFIXES — code
+        /// every service compiles against, so a change here can't be cheaply attributed to one
+        /// artifact and conservatively counts as "every service still needs this build".</summary>
+        private static readonly string[] SharedDirPrefixes = { "lib/", "packages/" };
+
+        /// <summary>Mirrors service-targeting.mjs's SHARED_ROOT_FILES.</summary>
+        private static readonly HashSet<string> SharedRootFiles = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", "tsconfig.json", "tsconfig.base.json",
+        };
+
+        /// <summary>
+        /// Git #3844 — real evidence of which <see cref="KnownServices"/> a set of active
+        /// (queued/running/verifying) builds genuinely still need, so the idle-stop check never
+        /// stops a service work is actually depending on.
+        ///
+        /// For each active build:
+        ///   - a build targeting a genuinely different repo (RepoOwner/RepoName set and not this
+        ///     repo) needs none of the local KnownServices — there's nothing here for it to touch;
+        ///   - otherwise, a real `git diff` of its own worktree/cwd against origin/main (plus its
+        ///     own uncommitted changes) narrows it down to just the artifact(s) it actually
+        ///     touched, the same real-evidence approach scripts/dev-server/service-targeting.mjs
+        ///     already uses for the post-build selective-restart plan;
+        ///   - anything the diff can't resolve (no working directory yet — still queued and not
+        ///     provisioned — a shared-code change, or an unclassified path) conservatively counts
+        ///     as needing EVERY known service. An idle service left running a little longer than
+        ///     strictly necessary is a far smaller cost than stopping one a build still needs out
+        ///     from under it.
+        /// </summary>
+        public static HashSet<string> ComputeNeededServices(
+            IEnumerable<BuildQueuePostgresClient.ActiveBuildIdentity> activeBuilds,
+            Func<int, string?> resolveWorkingDirectory)
+        {
+            var needed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var allNames = KnownServices.Keys.ToList();
+
+            foreach (var build in activeBuilds)
+            {
+                bool targetsThisRepo =
+                    string.IsNullOrWhiteSpace(build.RepoOwner) || string.IsNullOrWhiteSpace(build.RepoName) ||
+                    (string.Equals(build.RepoOwner, RepoIdentity.DefaultOwner, StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(build.RepoName, RepoIdentity.DefaultName, StringComparison.OrdinalIgnoreCase));
+
+                if (!targetsThisRepo) continue; // a different repo's build touches none of our local services
+
+                string? dir = resolveWorkingDirectory(build.Id);
+                if (string.IsNullOrWhiteSpace(dir)) dir = build.Cwd;
+
+                var changedFiles = (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
+                    ? TryGetChangedFiles(dir!)
+                    : null;
+
+                if (changedFiles == null)
+                {
+                    // No working directory yet (still queued, not provisioned) or git couldn't
+                    // answer — can't tell which artifact this build needs, so hold every service.
+                    foreach (var n in allNames) needed.Add(n);
+                    continue;
+                }
+
+                bool anyClassified = changedFiles.Count == 0; // nothing changed yet is not "unclassified"
+                foreach (var raw in changedFiles)
+                {
+                    string norm = raw.Replace('\\', '/').Trim();
+                    if (norm.Length == 0) continue;
+
+                    bool matchedArtifact = false;
+                    foreach (var kvp in KnownServices)
+                    {
+                        if (norm.StartsWith(kvp.Value.RelPath + "/", StringComparison.OrdinalIgnoreCase))
+                        {
+                            needed.Add(kvp.Key);
+                            matchedArtifact = true;
+                        }
+                    }
+                    if (matchedArtifact) { anyClassified = true; continue; }
+
+                    bool isShared = SharedDirPrefixes.Any(p => norm.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+                        || (!norm.Contains('/') && SharedRootFiles.Contains(norm));
+                    if (isShared)
+                    {
+                        foreach (var n in allNames) needed.Add(n);
+                        anyClassified = true;
+                    }
+                }
+
+                if (!anyClassified)
+                {
+                    // Real files changed but none matched a known artifact or shared prefix — an
+                    // unclassified path. Conservative: hold everything rather than silently ignore it.
+                    foreach (var n in allNames) needed.Add(n);
+                }
+            }
+
+            return needed;
+        }
+
+        /// <summary>Real `git diff --name-only` of <paramref name="dir"/> against the point it
+        /// diverged from origin/main (three-dot, matching PostBuildDeployPipeline/
+        /// service-targeting.mjs's own convention), plus its own uncommitted working-tree changes
+        /// (a build genuinely in progress may not have committed yet). Null when git can't answer
+        /// at all (not a repo, no local origin/main, etc.) — the caller treats null as "unknown,
+        /// hold everything".</summary>
+        private static List<string>? TryGetChangedFiles(string dir)
+        {
+            string? committed = RunGit(dir, "diff --name-only origin/main...HEAD");
+            string? uncommitted = RunGit(dir, "status --porcelain");
+            if (committed == null && uncommitted == null) return null;
+
+            var files = new List<string>();
+            if (committed != null)
+                files.AddRange(committed.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+
+            if (uncommitted != null)
+            {
+                foreach (var line in uncommitted.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    // Porcelain lines are "XY path" (or "XY orig -> path" for a rename) — take the
+                    // real destination path.
+                    string trimmed = line.TrimEnd('\r');
+                    int arrow = trimmed.IndexOf("-> ", StringComparison.Ordinal);
+                    string path = arrow >= 0 ? trimmed[(arrow + 3)..] : (trimmed.Length > 3 ? trimmed[3..] : trimmed);
+                    files.Add(path.Trim());
+                }
+            }
+
+            return files.Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        private static string? RunGit(string dir, string args)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("git", args)
+                {
+                    WorkingDirectory = dir,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                using var p = Process.Start(psi);
+                if (p == null) return null;
+                string outp = p.StandardOutput.ReadToEnd();
+                p.StandardError.ReadToEnd();
+                if (!p.WaitForExit(5000)) { try { p.Kill(); } catch { } return null; }
+                return p.ExitCode == 0 ? outp : null;
+            }
+            catch { return null; }
         }
     }
 }

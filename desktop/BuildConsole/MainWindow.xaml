@@ -616,6 +616,8 @@
                                 <!-- All Services -->
                                 <MenuItem Header="▶ Start All Services" Click="MenuStartAllServices_Click"/>
                                 <MenuItem Header="⏹ Stop All Services" Click="MenuStopAllServices_Click"/>
+                                <MenuItem Header="🧹 Stop Idle Services" Click="MenuStopIdleServices_Click"
+                                          ToolTip="Git #3844 — stops any running dev service (Marketing/Admin/Portal/Website/MSP Console) that no active queued/running/verifying build genuinely needs right now. Never touches the always-on API Server (#3084)."/>
                                 <MenuItem Header="⟳ Refresh Services Status" Click="MenuRefreshServices_Click"/>
                             </MenuItem>
                         </Menu>

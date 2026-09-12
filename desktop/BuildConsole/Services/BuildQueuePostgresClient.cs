@@ -242,6 +242,51 @@ namespace BuildConsole.Services
             return items;
         }
 
+        /// <summary>Git #3844 — the minimal identity a build's row needs for the idle dev-service
+        /// stop check: which repo it targets and where its work actually lives, nothing else.</summary>
+        public class ActiveBuildIdentity
+        {
+            public int Id { get; set; }
+            public string? Cwd { get; set; }
+            public string? RepoOwner { get; set; }
+            public string? RepoName { get; set; }
+            public int? GithubNumber { get; set; }
+        }
+
+        /// <summary>
+        /// Git #3844 — lightweight fetch of just the currently-active (queued/running/verifying)
+        /// rows' repo/cwd identity, for <see cref="DevServicesManager.ComputeNeededServices"/>.
+        /// Deliberately narrow (5 columns, WHERE-filtered to active statuses only) rather than
+        /// reusing <see cref="GetQueueAsync"/>'s full-table fetch — see Git #3801's own finding
+        /// about the real cost of paying for the whole queue's JSON when only a handful of
+        /// columns on a handful of rows are actually needed.
+        /// </summary>
+        public async Task<List<ActiveBuildIdentity>> GetActiveBuildIdentitiesAsync()
+        {
+            const string sql = @"
+                SELECT id, cwd, repo_owner, repo_name, github_number
+                FROM bt_build_queue
+                WHERE status IN ('queued', 'running', @verifyingStatus)";
+
+            var items = new List<ActiveBuildIdentity>();
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("verifyingStatus", VerifyingStatus);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                items.Add(new ActiveBuildIdentity
+                {
+                    Id           = reader.GetInt32(0),
+                    Cwd          = reader.IsDBNull(1) ? null : reader.GetString(1),
+                    RepoOwner    = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    RepoName     = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    GithubNumber = reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                });
+            }
+            return items;
+        }
+
         /// <summary>
         /// Git #3801 — the cheap change probe <see cref="Controls.BuildQueuePanel"/>'s 5-second
         /// local poll runs BEFORE deciding whether to pay for <see cref="GetQueueAsync"/> at all.
