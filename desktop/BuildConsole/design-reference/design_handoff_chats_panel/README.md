@@ -36,17 +36,18 @@ Panel: `280px` wide, dark theme. `background:#161b22`, `1px solid #30363d` borde
 
 ### Epic card
 
-- **Header row**: 24×24 tile (`message-square` icon) tinted to the Epic's accent color · `#num` pill (mono 14px/800, tinted fill/border/text) ·
+- **Header row**: 24×24 tile (`message-square` icon) tinted to the Epic's accent color · `#num` pill (mono 14px/800, plain text in accent blue `#7ab8f5`, no fill) ·
   Epic name (10px/600, uppercase, tracking .05em, `#8b949e`) · subtitle below (8.5px mono, `#576069`, e.g. "4 chats · last Just now") · chevron-right at far right.
-- **Progress bar** (when present): thin 3px track (`#0d1117`), fill colored green ≥100%, amber ≥50%, else the Epic's accent; percentage label in mono 8px/800 to the right.
+  The Epic's accent hue lives only in the icon tile now — the `#num` pill text is a neutral accent blue, not the per-epic hue (see Accessibility note below).
+- **Progress bar** (when present): thin 3px track (`#0d1117`), fill colored green ≥100%, amber ≥50%, else the Epic's accent; percentage label sits **above** the bar, right-aligned, mono 11px/800, near-white `#e6edf3` (moved off the bar and enlarged for legibility).
 - **Expanded state**: a vertical rail line down the left, then one row per chat, plus a dashed "+ Continue in a new chat" button at the bottom (accent-tinted text and dashed border).
 
 ### Chat row
 
 `background:#0e1420`, rounded 8px, tinted border. Contents: small color dot · chat name — `[#num] EpicName`
 (11px/600, `#dbe1e6`, matching every chat filed under that epic) · right-aligned context usage — a label
-like "576k / 900k ctx" (mono 8px/800, green under 70%, amber 70–99%, red at 100%)
-above a 34×3px mini progress bar in the same color. Fully-used chats (100% context) render at reduced opacity.
+like "576k / 900k ctx" (mono **9.5px**/800, near-white `#e6edf3`, sized up and desaturated for legibility — no longer a low-contrast green/amber/red tint)
+above a 34×3px mini progress bar (which keeps the green/amber/red state coloring). Fully-used chats (100% context) render at reduced opacity.
 
 A sub-epic (e.g. "SUB-EPIC #1494 · MICROSOFT CHANGES") appears as a small uppercase mono divider label between
 chat rows when an Epic has one; its chats are indented slightly and follow the same row style.
@@ -59,8 +60,8 @@ app's current modal dialog for this flow.
 
 1. **Explainer row** — 9.5px `#8b949e` text: "Which feature is this chat about? The chat gets filed under it,
    so builds and issues from the conversation land in the right place." Bottom border `#1a1f27`.
-2. **Anchor rows** — one per epic/gate you can file the chat under: an accent-tinted `#num` pill (mono
-   11px/800, pill radius) followed by its `EPIC: <name>` or `GATE: <name>` label (10px/600, uppercase,
+2. **Anchor rows** — one per epic/gate you can file the chat under: a small 6px accent-colored dot (carries the per-epic hue) ·
+   `#num` in plain accent blue `#7ab8f5` text (mono 11px/800, no pill fill) · `EPIC: <name>` or `GATE: <name>` label (10px/600, uppercase,
    tracking .03em, `#8b949e`), same line. Each row bottom-bordered `#1a1f27`, hover fill `#161b22`.
 3. **"No feature yet — decide later"** — closing row, dashed empty dot, 11px/600 `#8b949e` text, no border.
 
@@ -84,10 +85,25 @@ Radii: 4–7px on pills and tiles, 7–9px on cards, 99px on pills/dots/bars.
 
 ## Screenshots (`screenshots/`)
 
-- `chats-panel-top.png` — default view: header, search field, New Chat button, Build Console epic expanded with its chats.
-- `chats-panel-subepic.png` — Portal epic expanded, showing a sub-epic divider and its nested chat.
-- `chats-panel-bottom.png` — collapsed epic cards (Portal, Application Core, Admin Panel, Portal Admin, Gate: v1.1 Release) scrolled to the end of the list.
-- `chats-panel-new-chat-dropdown.png` — the New Chat dropdown open, showing target epic, topic, model, context and launch controls.
+- `chats-panel-current.png` / `chats-panel-top.png` — default view: header, search field, New Chat dropdown open (target-epic anchor rows), Build Console epic expanded with its chats.
+- `chats-panel-collapsed.png` — scrolled down: the tail of the Build Console chat list plus the remaining epic cards collapsed (Portal, Application Core, Admin Panel, Portal Admin).
+
+## Accessibility fix (contrast pass)
+
+Every colored badge/pill previously set saturated-hue text on a darker tint of the *same* hue (e.g. tan-on-orange,
+teal-on-teal) — a same-luminance boundary that fails WCAG contrast and reads as blurred for users with astigmatism.
+Fixed by separating hue (identity) from luminance (legibility):
+
+- **Epic-number pill / anchor-row pill** (`#1202` etc.) — no longer a tinted fill. Plain text in a single neutral
+  accent blue `#7ab8f5` on the dark card background (contrast ≈ 8:1). The per-epic hue now lives only in the icon
+  tile (epic rows) and a small 6px dot (New Chat anchor rows) — never in text color.
+- **Context-gauge text** (`27k / 900k ctx`) — bumped from 8px to 9.5px, recolored from a low-contrast state tint to
+  near-white `#e6edf3`.
+- **Progress percentage label** (`83%`) — moved off the end of the bar to sit above it, enlarged to 11px, recolored
+  to near-white `#e6edf3`.
+
+All pairings were run through the WCAG relative-luminance contrast formula; each meets ≥4.5:1 (large text ≥3:1).
+The bars themselves keep their green/amber/red/per-epic state coloring — only text-on-color was touched.
 
 ## Assets
 
