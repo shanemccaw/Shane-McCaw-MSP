@@ -9524,3 +9524,51 @@ export const insertMspStatusReportSchema = createInsertSchema(mspStatusReportsTa
 export type MspStatusReport = typeof mspStatusReportsTable.$inferSelect;
 export type InsertMspStatusReport = typeof mspStatusReportsTable.$inferInsert;
 export type InsertPolicyDecision = typeof policyDecisionsTable.$inferInsert;
+
+// ── Simple Kanban — Phase 1 only (Git #3773, Feature roadmap #3768) ───────────
+/**
+ * Deliberately narrow per #3768's phased plan: plain buckets (columns) and
+ * plain cards (tasks) with no `type` field and no per-type shape — that's
+ * Phase 2's job. No connection to #3433 (Project Milestones), #3769
+ * (Communications), #3770 (Training) or #3771 (Automation Registry) yet;
+ * those stay independent standalone entities until Phase 2 wires them in as
+ * card types. Backend/data-model only — no MSP Console UI screen yet
+ * (blocked on #3768's real nav placement), same pattern as the other four.
+ *
+ * customerId is tenants.id with no FK, matching the existing
+ * "successor id-space, no FK by design" convention already used by
+ * breakGlassPendingSecretsTable and mspStatusReportsTable above.
+ */
+export const kanbanBucketsTable = pgTable("kanban_buckets", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull(),
+  name: text("name").notNull(),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("kanban_buckets_msp_id_idx").on(t.mspId),
+  index("kanban_buckets_customer_id_idx").on(t.customerId),
+]);
+
+export const kanbanCardsTable = pgTable("kanban_cards", {
+  id: serial("id").primaryKey(),
+  bucketId: integer("bucket_id").notNull().references(() => kanbanBucketsTable.id, { onDelete: "cascade" }),
+  // No `type` field by design — Phase 1 is plain title/description/position
+  // tasks only. See #3768's roadmap comment for Phase 2's per-type shape.
+  title: text("title").notNull(),
+  description: text("description"),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("kanban_cards_bucket_id_idx").on(t.bucketId),
+]);
+
+export const insertKanbanBucketSchema = createInsertSchema(kanbanBucketsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertKanbanCardSchema = createInsertSchema(kanbanCardsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type KanbanBucket = typeof kanbanBucketsTable.$inferSelect;
+export type InsertKanbanBucket = typeof kanbanBucketsTable.$inferInsert;
+export type KanbanCard = typeof kanbanCardsTable.$inferSelect;
+export type InsertKanbanCard = typeof kanbanCardsTable.$inferInsert;
