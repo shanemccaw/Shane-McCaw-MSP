@@ -717,17 +717,17 @@ namespace BuildConsole.Services
         /// when the mirror has no usable data yet (never synced) or errored — the same fail-to-live
         /// pattern every #3113 mirror read uses, so this can never be worse than the old behaviour.
         ///
-        /// Git #3582 (Feature #3578, Multi-Repo Support) — <see cref="GitHubIssueMirror"/> is itself
-        /// still scoped to only this instance's own primary/default repo (its periodic sync never
-        /// captures a second configured repo — a real, documented gap, see the follow-up finding filed
-        /// alongside this issue). So on a mirror HIT, every OTHER real repo in #3581's Settings
-        /// registry is merged in via a live project-board scan (now multi-repo-aware itself, see
-        /// <see cref="GitHubApiClient.GetBatterUpIssuesAsync"/>'s relaxed repo filter) — gated so this
-        /// costs ZERO extra GitHub calls until a second repo is actually configured. On a mirror MISS,
-        /// the live walk fallback already covers every configured repo in one pass, nothing more to do.
-        /// A secondary repo's scan failing (bad PAT scope, deleted, network) is caught and logged —
-        /// that repo's items simply don't appear this pass, the primary repo's mirror-backed list is
-        /// completely unaffected (Git #3582's "unreachable repo never crashes the merged view").
+        /// Git #3632 (Feature #3578, Multi-Repo Support) — <see cref="GitHubIssueMirror"/> is now
+        /// genuinely multi-repo: its full sync persists a real row for every OTHER configured repo's
+        /// board item too (see <see cref="GitHubIssueMirror.SyncAsync"/> step 4b), so this reads with
+        /// <c>allConfiguredRepos: true</c> and gets secondary-repo items straight from the mirror — no
+        /// per-refresh live board walk for them anymore. The live secondary-repo scan below is kept ONLY
+        /// as a narrow gap-filler for an item that closed the gap between "just moved to Batter Up on a
+        /// secondary repo" and the next full sync (up to <see cref="GitHubIssueMirror.FullSyncInterval"/>
+        /// stale) — and is de-duplicated against what the mirror already returned so a synced item is
+        /// never double-counted. A secondary repo's scan failing (bad PAT scope, deleted, network) is
+        /// caught and logged — that repo's items simply don't appear this pass, the mirror-backed list
+        /// (primary AND already-synced secondary rows) is completely unaffected.
         /// </summary>
         private static async Task<(List<BatterUpBoardIssue> Items, bool FromMirror, List<GitHubIssueMirror.MirrorIssue> MirrorRows)>
             GetBatterUpBoardItemsAsync(GitHubApiClient gh, Action<string> log)
@@ -737,16 +737,17 @@ namespace BuildConsole.Services
             var secondaryRepoCount = settings.GetAllConfiguredRepos()
                 .Count(r => !string.Equals(r.OwnerRepo, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase));
 
-            var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.BatterUpPromoteOptionId, "open");
+            var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.BatterUpPromoteOptionId, "open", allConfiguredRepos: true);
             if (mirror != null)
             {
-                log($"Batter Up board read from local mirror (Git #3134) — {mirror.Count} open item(s) from the primary repo, no live project-page walk.");
+                var mirrorSecondaryCount = mirror.Count(m => !string.Equals($"{m.RepoOwner}/{m.RepoName}", primaryOwnerRepo, StringComparison.OrdinalIgnoreCase));
+                log($"Batter Up board read from local mirror (Git #3134/#3632) — {mirror.Count} open item(s) ({mirrorSecondaryCount} from secondary repo(s)), no live project-page walk.");
                 // Git #3350 — carry the mirror rows themselves (labels + blocked_by_numbers) so the
                 // refresh can resolve blocked-by from the mirror instead of one live REST call per item.
                 var items = mirror.Select(m => new BatterUpBoardIssue
                 {
                     Number = m.Number, Title = m.Title, HtmlUrl = m.HtmlUrl,
-                    RepoOwner = settings.GitHubOwner, RepoName = settings.GitHubRepoName,
+                    RepoOwner = m.RepoOwner, RepoName = m.RepoName,
                 }).ToList();
 
                 if (secondaryRepoCount > 0)
@@ -754,15 +755,20 @@ namespace BuildConsole.Services
                     try
                     {
                         var liveAll = await gh.GetBatterUpIssuesAsync();
+                        // Git #3632 — only items the mirror hasn't already synced for that repo, so a
+                        // genuinely-mirrored secondary item is never duplicated in the merged list.
+                        var mirrored = new HashSet<(string OwnerRepo, int Number)>(
+                            items.Select(i => ($"{i.RepoOwner}/{i.RepoName}".ToLowerInvariant(), i.Number)));
                         var secondaryItems = liveAll
                             .Where(i => !string.Equals(i.OwnerRepo, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase))
+                            .Where(i => !mirrored.Contains(($"{i.OwnerRepo}".ToLowerInvariant(), i.Number)))
                             .ToList();
                         items.AddRange(secondaryItems);
-                        log($"Batter Up board — merged {secondaryItems.Count} open item(s) from {secondaryRepoCount} secondary configured repo(s) (Git #3582).");
+                        log($"Batter Up board — merged {secondaryItems.Count} additional open item(s) from {secondaryRepoCount} secondary configured repo(s) not yet in the mirror (Git #3632 gap-filler).");
                     }
                     catch (Exception ex)
                     {
-                        log($"Batter Up board — secondary-repo scan failed ({ex.Message}); secondary repo item(s) omitted this pass, primary repo board unaffected (Git #3582 unreachable-repo handling).");
+                        log($"Batter Up board — secondary-repo gap-filler scan failed ({ex.Message}); relying on the mirror's own (possibly slightly stale) secondary-repo rows this pass.");
                     }
                 }
                 return (items, true, mirror);
@@ -780,7 +786,7 @@ namespace BuildConsole.Services
         /// the mirror IS usable) catches up.
         /// </summary>
         public static async Task<int?> GetMirrorOnlyOpenCountAsync() =>
-            (await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.BatterUpPromoteOptionId, "open"))?.Count;
+            (await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.BatterUpPromoteOptionId, "open", allConfiguredRepos: true))?.Count;
 
         /// <summary>
         /// Git #2557 — sweeps every real CLOSED issue still sitting in "Batter Up" status to
@@ -803,12 +809,12 @@ namespace BuildConsole.Services
             List<(int Number, string Title)> stale;
             try
             {
-                var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.BatterUpPromoteOptionId, "closed");
+                var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.BatterUpPromoteOptionId, "closed", allConfiguredRepos: true);
                 if (mirror != null)
                 {
                     stale = mirror.Select(m => (m.Number, m.Title)).ToList();
                     if (stale.Count > 0)
-                        log($"Batter Up closed-sweep read from local mirror (Git #3134) — {stale.Count} closed item(s) still in Batter Up, no live (closed sweep) walk.");
+                        log($"Batter Up closed-sweep read from local mirror (Git #3134/#3632) — {stale.Count} closed item(s) still in Batter Up across every configured repo, no live (closed sweep) walk.");
                 }
                 else
                 {

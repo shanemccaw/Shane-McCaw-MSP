@@ -140,12 +140,14 @@ namespace BuildConsole.Services
         /// the node id at click-time. A click is a live write anyway, not part of the refresh this
         /// issue is keeping off GitHub.
         ///
-        /// Git #3582 (Feature #3578, Multi-Repo Support) — same primary-repo-mirror-plus-live-merge
-        /// shape as <see cref="BatterUpQueueService.GetBatterUpBoardItemsAsync"/>: the mirror is still
-        /// scoped to only this instance's own primary repo, so every OTHER configured repo is merged
-        /// in via a live scan on a mirror hit, gated to cost nothing until a second repo is configured.
-        /// A secondary-repo scan failure is caught/logged; the primary repo's mirror-backed list is
-        /// unaffected.
+        /// Git #3632 (Feature #3578, Multi-Repo Support) — <see cref="GitHubIssueMirror"/> is now
+        /// genuinely multi-repo: its full sync persists a real row for every OTHER configured repo's
+        /// board item too (see <see cref="GitHubIssueMirror.SyncAsync"/> step 4b), so this reads with
+        /// <c>allConfiguredRepos: true</c> and gets secondary-repo items straight from the mirror. The
+        /// live secondary-repo scan below is kept only as a narrow gap-filler for an item that moved on
+        /// a secondary repo since the last full sync, de-duplicated against what the mirror already
+        /// returned. A secondary-repo scan failure is caught/logged; the mirror-backed list (primary AND
+        /// already-synced secondary rows) is unaffected.
         /// </summary>
         private static async Task<List<AiBatterUpBoardIssue>> GetAiBatterUpBoardItemsAsync(GitHubApiClient gh)
         {
@@ -154,14 +156,15 @@ namespace BuildConsole.Services
             var secondaryRepoCount = settings.GetAllConfiguredRepos()
                 .Count(r => !string.Equals(r.OwnerRepo, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase));
 
-            var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.AiBatterUpOptionId, "open");
+            var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.AiBatterUpOptionId, "open", allConfiguredRepos: true);
             if (mirror != null)
             {
-                ActivityLog.Log("ai-batter-up", $"AI Batter Up board read from local mirror (Git #3134) — {mirror.Count} open item(s) from the primary repo, no live project-page walk.");
+                var mirrorSecondaryCount = mirror.Count(m => !string.Equals($"{m.RepoOwner}/{m.RepoName}", primaryOwnerRepo, StringComparison.OrdinalIgnoreCase));
+                ActivityLog.Log("ai-batter-up", $"AI Batter Up board read from local mirror (Git #3134/#3632) — {mirror.Count} open item(s) ({mirrorSecondaryCount} from secondary repo(s)), no live project-page walk.");
                 var items = mirror.Select(m => new AiBatterUpBoardIssue
                 {
                     Number = m.Number, Title = m.Title, HtmlUrl = m.HtmlUrl, ItemId = "",
-                    RepoOwner = settings.GitHubOwner, RepoName = settings.GitHubRepoName,
+                    RepoOwner = m.RepoOwner, RepoName = m.RepoName,
                 }).ToList();
 
                 if (secondaryRepoCount > 0)
@@ -169,15 +172,18 @@ namespace BuildConsole.Services
                     try
                     {
                         var liveAll = await gh.GetAiBatterUpIssuesAsync();
+                        var mirrored = new HashSet<(string OwnerRepo, int Number)>(
+                            items.Select(i => ($"{i.RepoOwner}/{i.RepoName}".ToLowerInvariant(), i.Number)));
                         var secondaryItems = liveAll
                             .Where(i => !string.Equals(i.OwnerRepo, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase))
+                            .Where(i => !mirrored.Contains(($"{i.OwnerRepo}".ToLowerInvariant(), i.Number)))
                             .ToList();
                         items.AddRange(secondaryItems);
-                        ActivityLog.Log("ai-batter-up", $"AI Batter Up board — merged {secondaryItems.Count} open item(s) from {secondaryRepoCount} secondary configured repo(s) (Git #3582).");
+                        ActivityLog.Log("ai-batter-up", $"AI Batter Up board — merged {secondaryItems.Count} additional open item(s) from {secondaryRepoCount} secondary configured repo(s) not yet in the mirror (Git #3632 gap-filler).");
                     }
                     catch (Exception ex)
                     {
-                        ActivityLog.Log("ai-batter-up", $"AI Batter Up board — secondary-repo scan failed ({ex.Message}); secondary repo item(s) omitted this pass, primary repo board unaffected (Git #3582 unreachable-repo handling).");
+                        ActivityLog.Log("ai-batter-up", $"AI Batter Up board — secondary-repo gap-filler scan failed ({ex.Message}); relying on the mirror's own (possibly slightly stale) secondary-repo rows this pass.");
                     }
                 }
                 return items;
@@ -194,7 +200,7 @@ namespace BuildConsole.Services
         /// the next visible-panel refresh (or the next sync once the mirror IS usable) catches up.
         /// </summary>
         public static async Task<int?> GetMirrorOnlyOpenCountAsync() =>
-            (await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.AiBatterUpOptionId, "open"))?.Count;
+            (await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.AiBatterUpOptionId, "open", allConfiguredRepos: true))?.Count;
 
         /// <summary>
         /// Git #2557 — sweeps every real CLOSED issue still sitting in "AI Batter Up" status to
@@ -214,12 +220,12 @@ namespace BuildConsole.Services
             List<(int Number, string Title)> stale;
             try
             {
-                var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.AiBatterUpOptionId, "closed");
+                var mirror = await GitHubIssueMirror.TryGetByBoardStatusAsync(GitHubApiClient.AiBatterUpOptionId, "closed", allConfiguredRepos: true);
                 if (mirror != null)
                 {
                     stale = mirror.Select(m => (m.Number, m.Title)).ToList();
                     if (stale.Count > 0)
-                        ActivityLog.Log("ai-batter-up", $"AI Batter Up closed-sweep read from local mirror (Git #3134) — {stale.Count} closed item(s) still in AI Batter Up, no live (closed sweep) walk.");
+                        ActivityLog.Log("ai-batter-up", $"AI Batter Up closed-sweep read from local mirror (Git #3134/#3632) — {stale.Count} closed item(s) still in AI Batter Up across every configured repo, no live (closed sweep) walk.");
                 }
                 else
                 {

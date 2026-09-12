@@ -242,6 +242,13 @@ namespace BuildConsole.Services
             /// null — never inferred. See <see cref="EpicResolver"/> for the real walk-to-top-Epic
             /// logic built on this field.</summary>
             public int? ParentNumber { get; init; }
+            /// <summary>Git #3632 — the row's real owning repo. Always populated (every row carries
+            /// one, defaulted to <see cref="RepoIdentity.DefaultOwner"/>/<see cref="RepoIdentity.DefaultName"/>
+            /// by the schema itself) — exposed here so a caller reading across
+            /// <see cref="TryGetByBoardStatusAsync"/>'s <c>allConfiguredRepos</c> mode can tell which
+            /// repo a given row actually belongs to instead of assuming the default.</summary>
+            public string RepoOwner { get; init; } = RepoIdentity.DefaultOwner;
+            public string RepoName { get; init; } = RepoIdentity.DefaultName;
 
             public bool IsOpen => string.Equals(State, "open", StringComparison.OrdinalIgnoreCase);
             public bool IsClosed => string.Equals(State, "closed", StringComparison.OrdinalIgnoreCase);
@@ -260,11 +267,14 @@ namespace BuildConsole.Services
             HtmlUrl = r.IsDBNull(8) ? "" : r.GetString(8),
             LastSyncedAt = r.IsDBNull(9) ? DateTime.MinValue : r.GetFieldValue<DateTime>(9),
             ParentNumber = r.IsDBNull(10) ? (int?)null : r.GetInt32(10),
+            RepoOwner = r.IsDBNull(11) ? RepoIdentity.DefaultOwner : r.GetString(11),
+            RepoName = r.IsDBNull(12) ? RepoIdentity.DefaultName : r.GetString(12),
         };
 
         private const string SelectColumns =
             "issue_number, title, state, board_status_option_id, board_status_name, " +
-            "labels, blocked_by_numbers, blocking_numbers, html_url, last_synced_at, parent_number";
+            "labels, blocked_by_numbers, blocking_numbers, html_url, last_synced_at, parent_number, " +
+            "repo_owner, repo_name";
 
         /// <summary>One issue's mirrored row, or null on a miss OR on any error (caller falls back to live).</summary>
         public static async Task<MirrorIssue?> TryGetAsync(int number)
@@ -417,7 +427,14 @@ namespace BuildConsole.Services
         /// mark-closed pass only flips <c>state</c>), so a just-closed Batter Up item is a real
         /// <c>state='closed' AND board_status_option_id=…</c> mirror row.
         /// </summary>
-        public static async Task<List<MirrorIssue>?> TryGetByBoardStatusAsync(string boardStatusOptionId, string? state = null)
+        /// <param name="allConfiguredRepos">Git #3632 — false (default, every pre-existing caller)
+        /// preserves the original behaviour exactly: bound to this instance's own default repo. True
+        /// (Batter Up / AI Batter Up's board reads and closed-sweep reads) drops the repo filter
+        /// entirely, so a row genuinely mirrored from a secondary configured repo (see
+        /// <see cref="SyncAsync"/>'s step 4b) comes back too — the whole point of this issue: a
+        /// secondary-repo Batter Up item stops costing a live board walk and closed-sweep starts
+        /// covering it.</param>
+        public static async Task<List<MirrorIssue>?> TryGetByBoardStatusAsync(string boardStatusOptionId, string? state = null, bool allConfiguredRepos = false)
         {
             if (string.IsNullOrWhiteSpace(boardStatusOptionId)) return null;
             try
@@ -429,14 +446,20 @@ namespace BuildConsole.Services
                 await using var conn = await TryOpenAsync();
                 if (conn == null) return null;
 
-                // Git #3579 — bt_issue_mirror is now repo-scoped; bound to this repo (defaulted).
-                string sql = $"SELECT {SelectColumns} FROM bt_issue_mirror WHERE repo_owner = @owner AND repo_name = @repo AND board_status_option_id = @opt";
+                // Git #3579/#3632 — bt_issue_mirror is repo-scoped; bound to this repo (defaulted)
+                // unless the caller explicitly wants every configured repo's rows.
+                string sql = allConfiguredRepos
+                    ? $"SELECT {SelectColumns} FROM bt_issue_mirror WHERE board_status_option_id = @opt"
+                    : $"SELECT {SelectColumns} FROM bt_issue_mirror WHERE repo_owner = @owner AND repo_name = @repo AND board_status_option_id = @opt";
                 if (!string.IsNullOrEmpty(state)) sql += " AND state = @state";
                 sql += " ORDER BY issue_number";
 
                 await using var cmd = new NpgsqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
-                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
+                if (!allConfiguredRepos)
+                {
+                    cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                    cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
+                }
                 cmd.Parameters.AddWithValue("@opt", boardStatusOptionId);
                 if (!string.IsNullOrEmpty(state)) cmd.Parameters.AddWithValue("@state", state);
 
@@ -447,7 +470,7 @@ namespace BuildConsole.Services
             }
             catch (Exception ex)
             {
-                ActivityLog.Log("issue-mirror", $"TryGetByBoardStatusAsync({boardStatusOptionId}, {state ?? "any"}) failed ({ex.Message}) — caller falls back to live.");
+                ActivityLog.Log("issue-mirror", $"TryGetByBoardStatusAsync({boardStatusOptionId}, {state ?? "any"}, allConfiguredRepos={allConfiguredRepos}) failed ({ex.Message}) — caller falls back to live.");
                 return null;
             }
         }
@@ -1183,18 +1206,33 @@ namespace BuildConsole.Services
             summary.OpenIssues = openIssues.Count;
 
             // 2. Board-status sweep (best-effort — preserved on failure).
+            // Git #3632 — GetAllIssueBoardStatusesAsync now walks ANY configured repo (Git #3582's
+            // relaxation), so the raw sweep result is split below into this repo's own items (used to
+            // enrich the openIssues upsert exactly as before) and every OTHER configured repo's items
+            // (persisted as their own genuine mirror rows further down — see step 4b).
             bool boardSweepOk = true;
-            Dictionary<int, GitHubApiClient.IssueBoardStatus> boardStatuses;
+            List<GitHubApiClient.IssueBoardStatus> allBoardStatuses;
             try
             {
-                boardStatuses = await gh.GetAllIssueBoardStatusesAsync();
+                allBoardStatuses = await gh.GetAllIssueBoardStatusesAsync();
             }
             catch (Exception ex)
             {
                 boardSweepOk = false;
-                boardStatuses = new();
+                allBoardStatuses = new();
                 ActivityLog.Log("issue-mirror", $"sync: board-status sweep failed ({ex.Message}) — preserving existing board statuses this pass.");
             }
+            var boardStatuses = allBoardStatuses
+                .Where(s => string.Equals(s.RepoOwner, RepoIdentity.DefaultOwner, StringComparison.OrdinalIgnoreCase)
+                         && string.Equals(s.RepoName, RepoIdentity.DefaultName, StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(s => s.Number);
+            // Git #3632 — every OTHER configured repo's board items, keyed by (owner, name) so a
+            // same-numbered issue in two different repos can never collide.
+            var secondaryBoardStatuses = allBoardStatuses
+                .Where(s => !string.Equals(s.RepoOwner, RepoIdentity.DefaultOwner, StringComparison.OrdinalIgnoreCase)
+                         || !string.Equals(s.RepoName, RepoIdentity.DefaultName, StringComparison.OrdinalIgnoreCase))
+                .Where(s => !string.IsNullOrEmpty(s.RepoOwner) && !string.IsNullOrEmpty(s.RepoName))
+                .ToList();
             summary.BoardStatuses = boardStatuses.Count;
 
             // Git #3358 — per-milestone real open/closed counts (the Git Board's milestone
@@ -1480,6 +1518,57 @@ namespace BuildConsole.Services
                         delCmd.Parameters.AddWithValue("@nums", NpgsqlDbType.Array | NpgsqlDbType.Integer, msNums);
                         await delCmd.ExecuteNonQueryAsync();
                     }
+                }
+
+                // 4b. Git #3632 — every OTHER configured repo's board items, as their own genuine
+                // mirror rows. Only when the board sweep actually succeeded (boardSweepOk) — a failed
+                // sweep means allBoardStatuses/secondaryBoardStatuses is empty, so this is a no-op, not
+                // a wipe. Real title/state/url straight off the same GraphQL sweep, not a placeholder;
+                // labels/blocked_by/blocking are left at the column defaults ({}) — this pass has no
+                // per-issue data for those on a secondary repo (that stays this issue's item 3, a real
+                // follow-up: a secondary repo's own incremental/blocked_by sync). This is what lets
+                // TryGetByBoardStatusAsync(allConfiguredRepos: true) and the closed-sweep genuinely see
+                // a secondary-repo Batter Up / AI Batter Up item instead of only ever costing a live walk.
+                if (boardSweepOk && secondaryBoardStatuses.Count > 0)
+                {
+                    await using (var secCmd = new NpgsqlCommand(@"
+                        INSERT INTO bt_issue_mirror
+                            (issue_number, title, state, board_status_option_id, board_status_name,
+                             html_url, last_synced_at, updated_at, repo_owner, repo_name)
+                        VALUES
+                            (@n, @title, @state, @boardOpt, @boardName, @url, NOW(), NOW(), @owner, @repo)
+                        ON CONFLICT (repo_owner, repo_name, issue_number) DO UPDATE SET
+                            title = EXCLUDED.title,
+                            state = EXCLUDED.state,
+                            board_status_option_id = EXCLUDED.board_status_option_id,
+                            board_status_name = EXCLUDED.board_status_name,
+                            html_url = EXCLUDED.html_url,
+                            last_synced_at = NOW(),
+                            updated_at = NOW()", conn, tx))
+                    {
+                        var sN = secCmd.Parameters.Add(new NpgsqlParameter("@n", NpgsqlDbType.Integer));
+                        var sTitle = secCmd.Parameters.Add(new NpgsqlParameter("@title", NpgsqlDbType.Text));
+                        var sState = secCmd.Parameters.Add(new NpgsqlParameter("@state", NpgsqlDbType.Text));
+                        var sBoardOpt = secCmd.Parameters.Add(new NpgsqlParameter("@boardOpt", NpgsqlDbType.Text));
+                        var sBoardName = secCmd.Parameters.Add(new NpgsqlParameter("@boardName", NpgsqlDbType.Text));
+                        var sUrl = secCmd.Parameters.Add(new NpgsqlParameter("@url", NpgsqlDbType.Text));
+                        var sOwner = secCmd.Parameters.Add(new NpgsqlParameter("@owner", NpgsqlDbType.Text));
+                        var sRepo = secCmd.Parameters.Add(new NpgsqlParameter("@repo", NpgsqlDbType.Text));
+                        foreach (var s in secondaryBoardStatuses)
+                        {
+                            sN.Value = s.Number;
+                            sTitle.Value = s.Title ?? "";
+                            sState.Value = string.Equals(s.State, "closed", StringComparison.OrdinalIgnoreCase) ? "closed" : "open";
+                            sBoardOpt.Value = (object?)s.OptionId ?? DBNull.Value;
+                            sBoardName.Value = (object?)s.StatusName ?? DBNull.Value;
+                            sUrl.Value = s.HtmlUrl ?? "";
+                            sOwner.Value = s.RepoOwner!;
+                            sRepo.Value = s.RepoName!;
+                            await secCmd.ExecuteNonQueryAsync();
+                        }
+                    }
+                    ActivityLog.Log("issue-mirror",
+                        $"sync: mirrored {secondaryBoardStatuses.Count} board item(s) from {secondaryBoardStatuses.Select(s => $"{s.RepoOwner}/{s.RepoName}").Distinct().Count()} secondary configured repo(s) (Git #3632).");
                 }
 
                 await tx.CommitAsync();

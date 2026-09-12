@@ -2251,6 +2251,20 @@ namespace BuildConsole.Services
             public string? OptionId { get; set; }
             /// <summary>The Status option's real display name (e.g. "Batter Up", "Backlog", "In Progress", "Done") straight off GraphQL's <c>fieldValueByName</c> — never derived from a label.</summary>
             public string? StatusName { get; set; }
+            /// <summary>Git #3632 — the real issue number this status belongs to, populated only by
+            /// the whole-board sweep (<see cref="GetAllIssueBoardStatusesAsync"/>), which walks every
+            /// item on the board rather than one issue at a time.</summary>
+            public int Number { get; set; }
+            public string? Title { get; set; }
+            /// <summary>"OPEN" | "CLOSED", straight off GraphQL — only populated by the whole-board sweep.</summary>
+            public string? State { get; set; }
+            public string? HtmlUrl { get; set; }
+            /// <summary>Git #3632 — the item's real owning repo (parsed off GraphQL's
+            /// <c>repository.nameWithOwner</c>), only populated by the whole-board sweep now that it
+            /// can match ANY configured repo (Git #3582's relaxation), not just this instance's own
+            /// default. Never inferred/defaulted — a caller that needs it MUST come from that sweep.</summary>
+            public string? RepoOwner { get; set; }
+            public string? RepoName { get; set; }
         }
 
         /// <summary>
@@ -2303,20 +2317,33 @@ namespace BuildConsole.Services
         /// <summary>
         /// Git #3113 — the batched, whole-board equivalent of <see cref="GetIssueBoardStatusAsync"/>:
         /// walks THIS project's items connection ONCE and returns every real Issue's current Status
-        /// option id + display name, keyed by issue number. This is the single batched read the local
-        /// issue mirror's periodic sync uses (see <see cref="Services.GitHubIssueMirror"/>) instead of
-        /// firing one per-issue <see cref="GetIssueBoardStatusAsync"/> GraphQL call for every number a
-        /// routine reader wants a board status for — the actual root of the recurring rate-limit cycle.
+        /// option id + display name. This is the single batched read the local issue mirror's periodic
+        /// sync uses (see <see cref="Services.GitHubIssueMirror"/>) instead of firing one per-issue
+        /// <see cref="GetIssueBoardStatusAsync"/> GraphQL call for every number a routine reader wants
+        /// a board status for — the actual root of the recurring rate-limit cycle.
         /// Same paginated, retry-backed FULL walk to the start of the connection as
         /// <see cref="ScanProjectItemsForStatusAsync"/> (board position carries no Status information,
         /// #1995 — no early-stop), but captures EVERY item's status rather than filtering to one option.
-        /// Only real Issues in this repo are included (Draft Issues / PRs / other-repo items skipped).
         /// Bounded by the same <see cref="MaxPages"/> runaway guard, which logs loudly rather than
         /// truncating silently if ever hit.
+        ///
+        /// Git #3632 — relaxed from "must be this instance's own hardcoded Owner/Repo" to "must be ONE
+        /// OF the real repos in #3581's Settings registry" (the same <see cref="IsConfiguredRepo"/>
+        /// relaxation #3582 applied to <see cref="ScanProjectItemsForStatusAsync"/>'s repo filter — a
+        /// Projects v2 board genuinely can, and once a second repo is configured DOES, hold issues from
+        /// more than one repository). Each returned <see cref="IssueBoardStatus"/> now also carries its
+        /// real <c>Number</c>/<c>Title</c>/<c>State</c>/<c>HtmlUrl</c>/<c>RepoOwner</c>/<c>RepoName</c>
+        /// (the query already fetches these fields for the repo-filter check; exposing them lets
+        /// <see cref="Services.GitHubIssueMirror.SyncAsync"/> write a genuine, non-primary-repo mirror
+        /// row for a secondary-repo item instead of dropping it). Returns a LIST rather than a
+        /// Dictionary keyed by issue number: two different configured repos can share the same issue
+        /// number, so a single global int-keyed map would silently let one repo's status clobber the
+        /// other's — the caller (today, only <see cref="Services.GitHubIssueMirror.SyncAsync"/>) keys
+        /// by (RepoOwner, RepoName, Number) itself.
         /// </summary>
-        public async Task<Dictionary<int, IssueBoardStatus>> GetAllIssueBoardStatusesAsync()
+        public async Task<List<IssueBoardStatus>> GetAllIssueBoardStatusesAsync()
         {
-            var result = new Dictionary<int, IssueBoardStatus>();
+            var result = new List<IssueBoardStatus>();
             string? before = null;
             int pagesWalked = 0;
 
@@ -2335,7 +2362,7 @@ namespace BuildConsole.Services
             ... on ProjectV2ItemFieldSingleSelectValue {{ optionId name }}
           }}
           content {{
-            ... on Issue {{ number repository {{ nameWithOwner }} }}
+            ... on Issue {{ number title state url repository {{ nameWithOwner }} }}
           }}
         }}
       }}
@@ -2351,16 +2378,22 @@ namespace BuildConsole.Services
                         var issue = n.Content;
                         // Same guards as ScanProjectItemsForStatusAsync: a Draft Issue / PR content
                         // matches no `... on Issue` fragment (Number defaults to 0); skip it and any
-                        // item that isn't a real Issue in THIS repo.
+                        // item whose repo isn't one of the real configured repos (Git #3632/#3582).
                         if (issue == null || issue.Number == 0) continue;
-                        if (!string.Equals(issue.Repository?.NameWithOwner, $"{Owner}/{Repo}", StringComparison.OrdinalIgnoreCase)) continue;
-                        // An issue has exactly one item on this project, so first write wins.
-                        result[issue.Number] = new IssueBoardStatus
+                        if (!IsConfiguredRepo(issue.Repository?.NameWithOwner)) continue;
+                        var (repoOwner, repoName) = SplitNameWithOwner(issue.Repository?.NameWithOwner);
+                        result.Add(new IssueBoardStatus
                         {
                             ItemId = n.Id ?? "",
                             OptionId = n.FieldValueByName?.OptionId,
                             StatusName = n.FieldValueByName?.Name,
-                        };
+                            Number = issue.Number,
+                            Title = issue.Title,
+                            State = issue.State,
+                            HtmlUrl = issue.Url,
+                            RepoOwner = repoOwner,
+                            RepoName = repoName,
+                        });
                     }
                 }
 
