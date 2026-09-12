@@ -257,9 +257,11 @@ namespace BuildConsole.Controls
         /// QueueItem.BuildSet.</summary>
         private string? _buildSetFilter;
         /// <summary>Git #1834 — which rollup rows are showing their expanded per-category
-        /// detail. RenderBuildSetRollup fully rebuilds BuildSetRollupList.Children every
-        /// call (same reason _knownQueueCardKeys exists for the card list), so this is what
-        /// survives across rebuilds instead of relying on the discarded UI elements.</summary>
+        /// detail. RenderBuildSetRollup now pools its rows via _rollupCards (Git #3834), so a
+        /// row whose RollupRowKey is unchanged keeps its own live detail panel across renders —
+        /// but this still has to be read from outside a rebuilt row too (a fresh row, and the
+        /// chevron click handler's own read at build time), so it stays the source of truth
+        /// rather than something inferred from whichever elements happen to still be live.</summary>
         private readonly HashSet<string> _expandedRollupSets = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>Git #2693 — "All"/"Running"/"Verifying" activity filter chips next to the
         /// BUILD SETS header. A SEPARATE concept from <see cref="_buildSetFilter"/> above (which
@@ -394,6 +396,12 @@ namespace BuildConsole.Controls
         // containers, the offline banner), pooled across renders by identity + everything it
         // displays. See the comment at RenderQueue's step 5.
         private readonly KeyedCardPool _queueCards = new();
+        // Git #3834 — same KeyedCardPool discipline as _queueCards above, applied to
+        // RenderBuildSetRollup's Epic-group headers and per-build-set rows: an Epic header or
+        // row whose real content is unchanged since the last render is kept (with its pending
+        // send-outcome DispatcherTimer, if any, intact) instead of being torn down and rebuilt
+        // from scratch on every queue-signature/bookend-satisfaction poll while the panel is open.
+        private readonly KeyedCardPool _rollupCards = new();
         private bool _hasRenderedQueueOnce = false;
         private int _currentMaxLanes = 1;
 
@@ -4042,9 +4050,13 @@ namespace BuildConsole.Controls
             return wrapper;
         }
 
-        /// <summary>Git #1834 — collapsible per-buildSet rollup summary. Rebuilds
-        /// BuildSetRollupList from scratch off the real, current <paramref name="items"/> every
-        /// call (cheap — a handful of build sets, not the whole DAG). Buckets are "up next"
+        /// <summary>Git #1834 — collapsible per-buildSet rollup summary. Re-buckets the real,
+        /// current <paramref name="items"/> every call (cheap — a handful of build sets, not the
+        /// whole DAG), then pools its Epic-group headers and rows via _rollupCards (Git #3834): a
+        /// build set whose real displayed content is unchanged from the last call keeps its
+        /// existing UI element (and any pending send-outcome DispatcherTimer on it) instead of
+        /// being torn down and rebuilt — measured at 83–803ms/call against a live 41-build-set
+        /// queue while the panel was open before this fix. Buckets are "up next"
         /// (queued + limit-paused), "running" (running only) and "verifying"
         /// (BuildQueuePostgresClient.VerifyingStatus) — a finer split than QueueFilterCombo's
         /// own Running/Queued (#1829 folds verifying into Running), because Shane's own example
@@ -4115,11 +4127,21 @@ namespace BuildConsole.Controls
                 .ThenBy(k => k, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            BuildSetRollupList.Children.Clear();
             BuildSetRollupSection.Visibility = anyActivityKeys.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
             BuildSetRollupClearText.Visibility = _buildSetFilter != null ? Visibility.Visible : Visibility.Collapsed;
             BuildSetRollupClearText.Text = _buildSetFilter != null ? $"Showing: {_buildSetFilter} ✕" : "";
             UpdateRollupActivityFilterChipsVisual();
+
+            // Git #3834 — one pass over _rollupCards per render: an Epic header or row whose
+            // RollupEpicHeaderKey/RollupRowKey below is unchanged from last render comes back as
+            // the same instance (BuildEpicGroupHeader/BuildRollupRow never re-runs for it, so its
+            // pending send-outcome DispatcherTimer and expand/collapse state stay exactly as they
+            // were); only a build set whose real displayed content changed gets rebuilt. Replaces
+            // the old BuildSetRollupList.Children.Clear() + full rebuild every call (Git #1206
+            // evidence: 83–803ms per call against a live 41-build-set queue while the panel is
+            // open).
+            _rollupCards.BeginPass();
+            var desired = new List<UIElement>();
 
             if (orderedKeys.Count == 0 && anyActivityKeys.Count > 0)
             {
@@ -4131,13 +4153,16 @@ namespace BuildConsole.Controls
                     "verifying" => "verifying",
                     _ => "matching",
                 };
-                BuildSetRollupList.Children.Add(new TextBlock
+                var emptyMessage = _rollupCards.Acquire("emptyFilterMessage", filterLabel, () => new TextBlock
                 {
-                    Text = $"No build sets currently {filterLabel}",
                     Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
                     FontStyle = FontStyles.Italic,
                     Margin = new Thickness(2, 4, 0, 4),
-                });
+                }, out _);
+                emptyMessage.Text = $"No build sets currently {filterLabel}";
+                desired.Add(emptyMessage);
+                KeyedCardPool.SyncChildren(BuildSetRollupList, desired);
+                _rollupCards.EndPass();
                 return;
             }
 
@@ -4170,16 +4195,68 @@ namespace BuildConsole.Controls
                     if (landed.Count > 0) unsentByBuildSet[key] = landed;
                     if (needsAttention.Count > 0) needsAttentionByBuildSet[key] = needsAttention;
                 }
-                BuildSetRollupList.Children.Add(BuildEpicGroupHeader(epicGroup.Key, unsentByBuildSet, needsAttentionByBuildSet));
+
+                var headerKey = new RollupEpicHeaderKey(epicGroup.Key, RollupSignature(unsentByBuildSet), RollupSignature(needsAttentionByBuildSet));
+                var header = _rollupCards.Acquire(("epicHeader", epicGroup.Key), headerKey,
+                    () => BuildEpicGroupHeader(epicGroup.Key, unsentByBuildSet, needsAttentionByBuildSet), out _);
+                desired.Add(header);
+
                 foreach (var key in epicGroup)
                 {
                     var counts = buckets[key];
-                    var row = BuildRollupRow(key, counts.upNext, counts.running, counts.verifying, counts.members);
-                    if (row is FrameworkElement fe) fe.Margin = new Thickness(fe.Margin.Left + 10, fe.Margin.Top, fe.Margin.Right, fe.Margin.Bottom);
-                    BuildSetRollupList.Children.Add(row);
+                    bool isSelected = string.Equals(_buildSetFilter, key, StringComparison.OrdinalIgnoreCase);
+                    bool isExpanded = _expandedRollupSets.Contains(key);
+                    // Git #3616/#1932 — landed/needsAttention were already computed above (same
+                    // GetUnsentVerifying + SplitByBookendVerification calls BuildRollupRow makes
+                    // internally for this exact key) into unsentByBuildSet/needsAttentionByBuildSet;
+                    // reuse them here so the pool key changes exactly when a send or a bookend
+                    // satisfaction flip would change this row's own send button/pill — otherwise a
+                    // successful send's deferred rebuild (below) would find an unchanged key and
+                    // leave the stale, already-sent button on screen.
+                    var rowKey = new RollupRowKey(
+                        string.Join(",", counts.upNext.OrderBy(n => n)),
+                        string.Join(",", counts.running.OrderBy(n => n)),
+                        string.Join(",", counts.verifying.OrderBy(n => n)),
+                        isSelected,
+                        isExpanded,
+                        string.Join(";", counts.members.OrderBy(m => m.Id).Select(m => $"{m.Id}|{m.OriginatingChatId}|{m.ChatUrl}")),
+                        unsentByBuildSet.TryGetValue(key, out var landedForKey) ? string.Join(",", landedForKey.OrderBy(n => n)) : "",
+                        needsAttentionByBuildSet.TryGetValue(key, out var needsAttentionForKey) ? string.Join(",", needsAttentionForKey.OrderBy(n => n)) : "");
+                    var row = _rollupCards.Acquire(("row", key), rowKey, () =>
+                    {
+                        var r = BuildRollupRow(key, counts.upNext, counts.running, counts.verifying, counts.members);
+                        if (r is FrameworkElement fe) fe.Margin = new Thickness(fe.Margin.Left + 10, fe.Margin.Top, fe.Margin.Right, fe.Margin.Bottom);
+                        return r;
+                    }, out _);
+                    desired.Add(row);
                 }
             }
+
+            KeyedCardPool.SyncChildren(BuildSetRollupList, desired);
+            _rollupCards.EndPass();
         }
+
+        /// <summary>Git #3834 — everything <see cref="BuildEpicGroupHeader"/> draws besides the
+        /// group key itself: the two send-eligibility buckets, order-independent-safe because
+        /// both are keyed dictionaries whose (buildSet, sorted-issue-list) pairs are joined in a
+        /// stable order below.</summary>
+        private sealed record RollupEpicHeaderKey(BuildSetEpicGroupKey Group, string UnsentSignature, string NeedsAttentionSignature);
+
+        /// <summary>Git #3834 — everything <see cref="BuildRollupRow"/> draws for one build set:
+        /// its three bucketed issue-number lists, the selected/expanded UI state
+        /// (<c>_buildSetFilter</c> / <c>_expandedRollupSets</c>) that changes the row's own
+        /// styling and detail visibility without any bucket changing, a real signature of the
+        /// current members (id + originating-chat identity) since <see cref="BuildRollupRowContextMenu"/>
+        /// reads those off the row's closure-captured <c>members</c> list, and the row's own
+        /// landed/needs-attention split (Git #3616/#1932) so a send or a bookend-satisfaction flip
+        /// — neither of which changes Verifying itself — still forces this row to rebuild.</summary>
+        private sealed record RollupRowKey(string UpNext, string Running, string Verifying, bool IsSelected, bool IsExpanded, string MembersSignature, string LandedSignature, string NeedsAttentionSignature);
+
+        /// <summary>Git #3834 — a stable, order-independent join of a buildSet→issue-numbers
+        /// dictionary, for use inside a pool key record above.</summary>
+        private static string RollupSignature(Dictionary<string, List<int>> byBuildSet) =>
+            string.Join(";", byBuildSet.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(kv => $"{kv.Key}:{string.Join(",", kv.Value.OrderBy(n => n))}"));
 
         /// <summary>Git #2693 — highlights whichever activity filter chip is currently selected,
         /// same accent-tinted-background/border convention as the selected-row highlight in
@@ -4370,9 +4447,10 @@ namespace BuildConsole.Controls
             wrapper.Children.Add(headerBorder);
 
             // Git #1893 — brief send-outcome status, same purpose as SqlDocumentView's ExecStatus
-            // strip (#940) but scoped to this one row (rows are rebuilt from scratch every
-            // RenderBuildSetRollup call, so there's no persistent named element to reuse). Hidden
-            // until a send is attempted, then auto-hides itself after a few seconds.
+            // strip (#940) but scoped to this one row (this whole element is only rebuilt when
+            // RollupRowKey changes — Git #3834 — so there's no separately-persistent named
+            // element to reuse; it lives and dies with the row itself). Hidden until a send is
+            // attempted, then auto-hides itself after a few seconds.
             var statusText = new TextBlock
             {
                 FontSize = 10,
@@ -4433,8 +4511,10 @@ namespace BuildConsole.Controls
                             ? (Brush)Application.Current.FindResource("RedBrush")
                             : (Brush)Application.Current.FindResource("GreenBrush");
                         statusText.Visibility = Visibility.Visible;
-                        // Rebuilding this row right now (RenderBuildSetRollup clears and recreates
-                        // every row) would destroy statusText before Shane ever sees the outcome
+                        // Rebuilding this row right now (RenderBuildSetRollup's own re-render,
+                        // which — now that "sent" is recorded — computes a different RollupRowKey
+                        // for this build set and so genuinely replaces the pooled element, Git
+                        // #3834) would destroy statusText before Shane ever sees the outcome
                         // message, since the button's own success/fail feedback is the point.
                         // Defer the rebuild — which is what actually makes the button disappear —
                         // to the same timer that hides the status text, so he sees "Sent" first.
