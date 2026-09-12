@@ -554,7 +554,7 @@ namespace BuildConsole.Controls
                     FontFamily = new FontFamily("Consolas"),
                     FontSize = 11,
                     FontWeight = FontWeights.ExtraBold,
-                    Foreground = new SolidColorBrush(accent)
+                    Foreground = GetBrush("TextBrush")
                 }
             };
             var labelBlock = new TextBlock
@@ -3974,7 +3974,7 @@ namespace BuildConsole.Controls
                         FontFamily = new FontFamily("Consolas"),
                         FontSize = 12,
                         FontWeight = FontWeights.ExtraBold,
-                        Foreground = Tint(accentColor, 0xd9),
+                        Foreground = GetBrush("TextBrush"),
                     },
                 });
             }
@@ -4043,7 +4043,7 @@ namespace BuildConsole.Controls
                         FontFamily = new FontFamily("Consolas"),
                         FontSize = 10.5,
                         FontWeight = FontWeights.SemiBold,
-                        Foreground = Tint(accentColor, 0xd9),
+                        Foreground = GetBrush("ChatsPanel.Text3"),
                     },
                 };
                 string designUrl = group.DesignUrl!;
@@ -4124,7 +4124,7 @@ namespace BuildConsole.Controls
                     FontFamily = new FontFamily("Consolas"),
                     FontSize = 8,
                     FontWeight = FontWeights.ExtraBold,
-                    Foreground = Tint(accentColor, 0xaa),
+                    Foreground = GetBrush("ChatsPanel.Text3"),
                     Margin = new Thickness(2, 4, 0, 0),
                 });
                 foreach (var chat in sub.Chats)
