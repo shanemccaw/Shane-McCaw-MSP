@@ -243,6 +243,70 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #3801 — the cheap change probe <see cref="Controls.BuildQueuePanel"/>'s 5-second
+        /// local poll runs BEFORE deciding whether to pay for <see cref="GetQueueAsync"/> at all.
+        ///
+        /// Real problem this exists for: that poll used to re-read every bt_build_queue row
+        /// unconditionally (2,281 rows / ~4.4 MB once serialized, including every row's full
+        /// <c>prompt</c>) and then <c>JsonSerializer.Serialize</c> the whole list ON THE UI THREAD
+        /// purely to build a change-detection string — roughly 8.8 MB of UTF-16 Large Object Heap
+        /// garbage every five seconds, forever, whether or not a single byte had actually changed.
+        ///
+        /// This returns one short stamp (~110 bytes) computed entirely server-side over the SAME
+        /// columns <see cref="GetQueueAsync"/> selects, plus the bt_chats / bt_chat_issues rows
+        /// that feed <see cref="PopulateAssociatedIssueNumbersAsync"/>'s AssociatedIssueNumbers.
+        /// An unchanged stamp means an unchanged queue, so the caller can skip the fetch, the
+        /// signature hash and the render entirely.
+        ///
+        /// <c>prompt</c> is the ONE selected column deliberately left out of the hash: it is the
+        /// big TOASTed one (2.9 MB across the table — detoasting and hashing it costs ~20 ms of
+        /// real server CPU per probe, versus ~14 ms for everything else combined), and it has
+        /// exactly one writer anywhere in this file — the upsert's
+        /// <c>SET title = @title, prompt = @prompt, ...</c> UPDATE — which sets
+        /// <c>updated_at = NOW()</c> in the same statement. <c>updated_at</c> IS hashed, so a real
+        /// prompt edit still moves the stamp.
+        ///
+        /// Never assume "nothing changed" from a failure: this throws on a real DB error, and the
+        /// caller falls through to the full unconditional refresh.
+        /// </summary>
+        public async Task<string?> GetQueueChangeStampAsync()
+        {
+            const string sql = @"
+                SELECT
+                  (SELECT count(*)::text || ':' || COALESCE(md5(string_agg(concat_ws(chr(1),
+                       id, COALESCE(title, chr(2)), COALESCE(model, chr(2)), COALESCE(effort, chr(2)),
+                       COALESCE(cwd, chr(2)), COALESCE(github_number::text, chr(2)),
+                       COALESCE(blocked_by_number::text, chr(2)), COALESCE(blocked_by_numbers::text, chr(2)),
+                       COALESCE(status, chr(2)), COALESCE(exit_code::text, chr(2)),
+                       COALESCE(session_id, chr(2)), COALESCE(resume_session_id, chr(2)),
+                       COALESCE(originating_chat_id, chr(2)), COALESCE(chat_url, chr(2)),
+                       COALESCE(updated_at::text, chr(2)), COALESCE(build_set, chr(2)),
+                       COALESCE(cli, chr(2)), COALESCE(account, chr(2)),
+                       COALESCE(build_pid::text, chr(2)), COALESCE(build_pid_started_at::text, chr(2)),
+                       COALESCE(superseded_by_id::text, chr(2)), COALESCE(repo_owner, chr(2)),
+                       COALESCE(repo_name, chr(2)), COALESCE(archived::text, chr(2)),
+                       COALESCE(archived_at::text, chr(2)), COALESCE(note, chr(2))),
+                     ',' ORDER BY created_at, id)), '')
+                   FROM bt_build_queue)
+                  || '~' ||
+                  (SELECT count(*)::text || ':' || COALESCE(md5(string_agg(
+                       c.conversation_id || '|' || COALESCE(i.github_number::text, '') || '|' || COALESCE(e.github_number::text, ''),
+                       ',' ORDER BY c.conversation_id)), '')
+                   FROM bt_chats c
+                   LEFT JOIN bt_issues i ON c.issue_id = i.id
+                   LEFT JOIN bt_epics e ON c.epic_id = e.id)
+                  || '~' ||
+                  (SELECT count(*)::text || ':' || COALESCE(md5(string_agg(
+                       chat_id::text || '|' || issue_number::text, ',' ORDER BY chat_id, issue_number)), '')
+                   FROM bt_chat_issues)";
+
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            var value = await cmd.ExecuteScalarAsync();
+            return value == null || value == DBNull.Value ? null : Convert.ToString(value);
+        }
+
+        /// <summary>
         /// Git #1600 — the reason a currently-queued item is being held, keyed by its
         /// queue row id. Recomputed on every <see cref="GetNextAsync"/> call (i.e. every
         /// watcher tick that has a free slot) so BuildQueuePanel can show a real,
@@ -3060,10 +3124,17 @@ namespace BuildConsole.Services
 
             if (dbIds.Count > 0)
             {
+                // Git #3801 — this ORDER BY is load-bearing, not cosmetic: without it Postgres may
+                // return these rows in a different order between two otherwise-identical reads,
+                // which reorders AssociatedIssueNumbers and so makes the Build Queue panel's render
+                // signature differ for unchanged data — a spurious full RenderQueue /
+                // RenderBuildSetRollup rebuild. Same reason GetQueueChangeStampAsync's own
+                // aggregates are all explicitly ordered.
                 const string sqlIssues = @"
                     SELECT chat_id, issue_number
                     FROM bt_chat_issues
-                    WHERE chat_id = ANY(@dbIds)";
+                    WHERE chat_id = ANY(@dbIds)
+                    ORDER BY chat_id, issue_number";
                 
                 await using (var cmdIssues = new NpgsqlCommand(sqlIssues, conn))
                 {

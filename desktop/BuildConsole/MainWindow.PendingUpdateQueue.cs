@@ -165,6 +165,31 @@ namespace BuildConsole
                 .Select(r => new PersistedQueueDisplayItem { Title = r.Title, GithubNumber = r.GithubNumber })
                 .ToList();
 
+        /// <summary>
+        /// Git #3801 — a cheap stamp of the spillover file's current state (existence + length +
+        /// last-write time), so BuildQueuePanel's 5-second local poll can tell whether the
+        /// "Queued for Restart" group could possibly have changed WITHOUT reading and
+        /// JSON-parsing the file on the UI thread on every single tick. Per #1934 the WRITE side
+        /// of this feature is retired, so in steady state the file does not exist and this is one
+        /// File.Exists returning "0".
+        ///
+        /// Same never-throw posture as <see cref="LoadPersistedQueueRequests"/>: an unreadable
+        /// file returns a constant instead of wedging the poll, which matches what the pre-#3801
+        /// JSON signature did when its own try/catch fell back to "".
+        /// </summary>
+        public static string GetPersistedQueueFileStamp()
+        {
+            try
+            {
+                var info = new FileInfo(PendingUpdateQueueFile);
+                return info.Exists ? $"{info.Length}:{info.LastWriteTimeUtc.Ticks}" : "0";
+            }
+            catch
+            {
+                return "?";
+            }
+        }
+
         private static List<PersistedQueueRequest> LoadPersistedQueueRequests()
         {
             try

@@ -125,12 +125,19 @@ namespace BuildConsole.Controls
         /// this to the shared SendTextToActiveClaudeChatAsync path (#937), same pattern as
         /// WireSqlRunnerSendToChat (#940).</summary>
         public event EventHandler<SendBuildSetVerifyingEventArgs>? SendBuildSetVerifyingRequested;
-        /// <summary>Git #2691 — fires at the end of every successful <see cref="RefreshAsync"/>
-        /// (Git #2900 — RefreshAsync no longer ticks on its own; this now fires only on a manual
-        /// refresh click or the one-time initial load, not a recurring timer). MainWindow/
-        /// FloatingChatWindow subscribe to re-push mention-span colors for every currently-tracked
-        /// #NNN so live queue-state changes (queued → running → verifying) recolor on-screen
-        /// mentions even with no chat text mutation to trigger the DOM-mutation scan.</summary>
+        /// <summary>Git #2691 — fires at the end of every successful <see cref="RefreshAsync"/>.
+        /// MainWindow/FloatingChatWindow subscribe to re-push mention-span colors for every
+        /// currently-tracked #NNN so live queue-state changes (queued → running → verifying)
+        /// recolor on-screen mentions even with no chat text mutation to trigger the DOM-mutation
+        /// scan.
+        ///
+        /// The parenthetical that used to sit here — "#2900 — RefreshAsync no longer ticks on its
+        /// own; this now fires only on a manual refresh click or the one-time initial load" — went
+        /// stale the moment #3074 brought back the 5-second local-only poll timer. It fires on
+        /// every one of those ticks too. Git #3801 — and it still does, including on a tick whose
+        /// cheap change probe found nothing changed and skipped the fetch/render: that early return
+        /// deliberately raises this event anyway, so this contract is exactly what it was before
+        /// the probe existed.</summary>
         public event EventHandler? QueueRefreshed;
 
         /// <summary>Git #3448, narrowed by #3767 — the real, honest Batter Up closed-sweep summary
@@ -953,6 +960,16 @@ namespace BuildConsole.Controls
         }
 
         private string? _lastQueueSignature;
+
+        /// <summary>Git #3801 — the cheap server-side change stamp
+        /// (<see cref="Services.BuildQueuePostgresClient.GetQueueChangeStampAsync"/>, combined with
+        /// the spillover file's own stamp) that was current the last time <see cref="RefreshAsync"/>
+        /// actually completed a full pass. An identical stamp on a later local poll tick means
+        /// nothing the panel renders from has changed, so that tick skips the whole expensive
+        /// middle. Null until the first full pass, and after any pass where the probe itself
+        /// failed — both of which correctly force the next tick to do the full work.</summary>
+        private string? _lastQueueChangeStamp;
+
         private string? _lastRestartGroupSignature;
         private bool _queueIsStale;
         private DateTime? _queueCachedAtUtc;
@@ -1053,9 +1070,161 @@ namespace BuildConsole.Controls
         /// post-action re-renders, etc.) is unchanged; only the #3074 local-only poll timer passes
         /// <c>false</c>.
         /// </summary>
+        /// <summary>
+        /// Git #3801 — the Build Queue panel's render gate: a stable fingerprint of everything the
+        /// panel draws the queue from. Replaces the old
+        /// <c>JsonSerializer.Serialize(_lastItems)</c> signature, which built a ~4.4 MB JSON string
+        /// (an ~8.8 MB UTF-16 allocation, straight onto the Large Object Heap) on the UI thread on
+        /// every single pass just to compare it with the previous one.
+        ///
+        /// Coverage is deliberately identical to what that JSON covered — every public
+        /// <see cref="QueueItem"/> field in a fixed order, plus the offline flag and the persisted
+        /// "Queued for Restart" items — so this is purely a cost change, not a behaviour change.
+        /// <c>OwnerRepo</c> is the one property not fed in explicitly: it is computed from
+        /// <c>RepoOwner</c>/<c>RepoName</c>, which are.
+        ///
+        /// Each field's characters go into the hash directly as their existing UTF-16 bytes (a span
+        /// over the live string, no copy), followed by a 0x01 terminator; a null field contributes a
+        /// single 0x00 instead, so null and "" stay distinguishable. Nothing larger than the hash
+        /// state is allocated at any point.
+        ///
+        /// Call this from a thread-pool thread, not the dispatcher. That is safe because
+        /// <see cref="_lastItems"/> is only ever REPLACED wholesale by <see cref="RefreshAsync"/> —
+        /// the list and its items are never mutated in place after
+        /// <c>GetQueueAsync</c> builds them — and the caller passes the exact list reference it
+        /// hashed rather than re-reading the field.
+        /// </summary>
+        private static string ComputeQueueSignature(
+            List<QueueItem> items,
+            bool queueIsStale,
+            List<MainWindow.PersistedQueueDisplayItem> persistedRestartItems)
+        {
+            using var hash = System.Security.Cryptography.IncrementalHash.CreateHash(
+                System.Security.Cryptography.HashAlgorithmName.SHA256);
+
+            var nullBytes = new byte[] { 0x00 };
+            var fieldBytes = new byte[] { 0x01 };
+
+            void Text(string? value)
+            {
+                if (value == null) { hash.AppendData(nullBytes); return; }
+                if (value.Length > 0)
+                    hash.AppendData(System.Runtime.InteropServices.MemoryMarshal.AsBytes(value.AsSpan()));
+                hash.AppendData(fieldBytes);
+            }
+            void Number(long? value) =>
+                Text(value?.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            void Flag(bool value) => Text(value ? "1" : "0");
+            void Moment(DateTimeOffset? value) => Number(value?.UtcTicks);
+            void Numbers(IReadOnlyList<int>? value)
+            {
+                if (value == null) { hash.AppendData(nullBytes); return; }
+                foreach (var n in value) Number(n);
+                hash.AppendData(fieldBytes);
+            }
+
+            Flag(queueIsStale);
+            Number(items.Count);
+            foreach (var item in items)
+            {
+                Number(item.Id);
+                Text(item.Title);
+                Text(item.Prompt);
+                Text(item.Model);
+                Text(item.Effort);
+                Text(item.Cwd);
+                Text(item.BuildSet);
+                Number(item.GithubNumber);
+                Number(item.BlockedByNumber);
+                Numbers(item.BlockedByNumbers);
+                Text(item.Status);
+                Number(item.ExitCode);
+                Text(item.SessionId);
+                Text(item.ResumeSessionId);
+                Text(item.ChatUrl);
+                Text(item.OriginatingChatId);
+                Moment(item.UpdatedAt);
+                Numbers(item.AssociatedIssueNumbers);
+                Text(item.Cli);
+                Text(item.Account);
+                Number(item.BuildPid);
+                Moment(item.BuildPidStartedAt);
+                Number(item.SupersededById);
+                Text(item.RepoOwner);
+                Text(item.RepoName);
+                Flag(item.Archived);
+                Moment(item.ArchivedAt);
+                Text(item.Note);
+            }
+
+            Number(persistedRestartItems.Count);
+            foreach (var restartItem in persistedRestartItems)
+            {
+                Text(restartItem.Title);
+                Number(restartItem.GithubNumber);
+            }
+
+            return Convert.ToHexString(hash.GetHashAndReset());
+        }
+
         public async System.Threading.Tasks.Task RefreshAsync(bool includeGitHubWork = true)
         {
             if (_api == null || !_api.IsConfigured) return;
+
+            // ── Git #3801 — cheap change probe, before anything expensive ─────────────────
+            // The #3074 local poll timer calls this method every 5 seconds, forever, and every
+            // line below used to run unconditionally: a full re-read of all ~2,281 bt_build_queue
+            // rows (~4.4 MB, every row's whole prompt included) followed by a
+            // JsonSerializer.Serialize of that entire list ON THE UI THREAD — roughly 8.8 MB of
+            // UTF-16 Large Object Heap garbage per tick — purely to compare one string against the
+            // previous one. Measured against the real local database (10 consecutive 5s samples
+            // taken while a build was running) the queue's own data is byte-identical between
+            // ticks, so that whole cost bought a string comparison that matched every single time.
+            //
+            // GetQueueChangeStampAsync answers the same question server-side and returns ~110
+            // bytes. An identical stamp means an unchanged queue, so this tick skips the fetch,
+            // the signature and both renders. It runs via Task.Run so the Npgsql continuations
+            // inside it land on the thread pool rather than on the dispatcher this timer ticks on.
+            //
+            // Deliberately computed on BOTH paths (poll and manual) but only ALLOWED TO SKIP on
+            // the poll path, and always taken BEFORE the fetch below: a stamp read after the fetch
+            // could describe data newer than what _lastItems actually holds, which would make the
+            // next tick skip over a real change. Taken before, the worst case is the opposite and
+            // harmless — one redundant full pass.
+            string? changeStamp = null;
+            if (_db != null)
+            {
+                try
+                {
+                    var dbStamp = await System.Threading.Tasks.Task.Run(() => _db.GetQueueChangeStampAsync());
+                    if (dbStamp != null) changeStamp = dbStamp + "~" + MainWindow.GetPersistedQueueFileStamp();
+                }
+                catch (Exception ex)
+                {
+                    // A failed probe is never read as "nothing changed" — fall through to the full
+                    // unconditional refresh below, exactly as this method behaved before #3801.
+                    changeStamp = null;
+                    ActivityLog.Log("build-queue-panel", $"queue change probe failed, falling back to full refresh: {ex.Message}");
+                }
+            }
+            if (!includeGitHubWork && changeStamp != null && _lastQueueSignature != null
+                && changeStamp == _lastQueueChangeStamp)
+            {
+                // Nothing the panel renders from moved. Everything skipped below would have
+                // recomputed identical results from an identical _lastItems. The cheap,
+                // purely-derived tail still runs so RefreshAsync's existing contract for
+                // subscribers (status counts, orphan banner, CappedCountChanged, SyncError,
+                // QueueRefreshed) is unchanged — only the expensive middle is gone.
+                UpdateQueueStatusCounts();
+                UpdateOrphanRecoveryBanner();
+                CappedCountChanged?.Invoke(this, _lastItems.Count(i => i.Status == Services.AccountCapPolicy.CappedStatus));
+                SyncError?.Invoke(this, _queueIsStale
+                    ? $"Build Queue: showing cached data from {_queueCachedAtUtc?.ToLocalTime():g} — dev server unreachable"
+                    : null);
+                QueueRefreshed?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
             int myGeneration = ++_refreshGeneration;
             try
             {
@@ -1064,7 +1233,13 @@ namespace BuildConsole.Controls
                 var previousItems = _lastItems;
                 if (_db != null)
                 {
-                    _lastItems = await _db.GetQueueAsync();
+                    // Git #3801 — Task.Run, not a bare await: started from a DispatcherTimer tick
+                    // there is a live SynchronizationContext, so every await inside GetQueueAsync
+                    // (one per Npgsql read-buffer refill across ~4.4 MB of rows, plus the two
+                    // AssociatedIssueNumbers queries) resumes on the UI thread. Launching it on
+                    // the thread pool leaves that context behind, so the fetch and the row mapping
+                    // happen off the dispatcher and only this await's own continuation returns to it.
+                    _lastItems = await System.Threading.Tasks.Task.Run(() => _db.GetQueueAsync());
                     _queueIsStale = false;
                     _queueCachedAtUtc = null;
                 }
@@ -1092,11 +1267,22 @@ namespace BuildConsole.Controls
                     _ = AutoRecheckOpenIssuesOnTransitionAsync(previousItems, _lastItems);
                 }
 
-                string restartSignature;
-                try { restartSignature = System.Text.Json.JsonSerializer.Serialize(MainWindow.GetPersistedQueueDisplayItems()); }
-                catch { restartSignature = ""; }
+                List<MainWindow.PersistedQueueDisplayItem> persistedRestartItems;
+                try { persistedRestartItems = MainWindow.GetPersistedQueueDisplayItems(); }
+                catch { persistedRestartItems = new(); }
 
-                var signature = _queueIsStale + "|" + System.Text.Json.JsonSerializer.Serialize(_lastItems) + "|" + restartSignature;
+                // Git #3801 — was:
+                //     _queueIsStale + "|" + JsonSerializer.Serialize(_lastItems) + "|" + <the same
+                //     for the persisted restart items>
+                // i.e. a ~4.4 MB JSON document built on the UI thread on every single pass purely
+                // to be compared with the previous one and thrown away. ComputeQueueSignature
+                // covers the exact same fields (see its own doc comment) but streams them into a
+                // SHA-256 instead of materializing a string, and runs on the thread pool.
+                var itemsForSignature = _lastItems;
+                bool staleForSignature = _queueIsStale;
+                var signature = await System.Threading.Tasks.Task.Run(
+                    () => ComputeQueueSignature(itemsForSignature, staleForSignature, persistedRestartItems));
+                if (myGeneration != _refreshGeneration) return;
                 if (signature != _lastQueueSignature)
                 {
                     _lastQueueSignature = signature;
@@ -1108,6 +1294,11 @@ namespace BuildConsole.Controls
                     // queue, not just whatever status the combo/DAG is currently showing).
                     RenderBuildSetRollup(_lastItems);
                 }
+                // Git #3801 — only now, with a full pass genuinely completed against the data this
+                // stamp describes, does it become the baseline the next poll tick may skip on. Null
+                // here (probe failed, or no local DB) correctly forces that next tick to do the
+                // full work rather than skip against a baseline that was never established.
+                _lastQueueChangeStamp = changeStamp;
                 UpdateQueueStatusCounts();
                 UpdateOrphanRecoveryBanner();
                 CappedCountChanged?.Invoke(this, _lastItems.Count(i => i.Status == Services.AccountCapPolicy.CappedStatus));
