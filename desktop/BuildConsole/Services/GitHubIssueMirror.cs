@@ -597,7 +597,9 @@ namespace BuildConsole.Services
                 await using var conn = await TryOpenAsync();
                 if (conn == null) return (null, false, "db unavailable");
                 await using var cmd = new NpgsqlCommand(
-                    "SELECT last_full_sync_at, last_sync_ok, last_sync_note FROM bt_issue_mirror_sync_state WHERE id = 1", conn);
+                    "SELECT last_full_sync_at, last_sync_ok, last_sync_note FROM bt_issue_mirror_sync_state WHERE repo_owner = @owner AND repo_name = @repo", conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 if (!await reader.ReadAsync()) return (null, false, "no sync-state row");
                 DateTime? at = reader.IsDBNull(0) ? null : reader.GetFieldValue<DateTime>(0);
@@ -622,7 +624,9 @@ namespace BuildConsole.Services
                 await using var conn = await TryOpenAsync();
                 if (conn == null) return (null, false, "db unavailable");
                 await using var cmd = new NpgsqlCommand(
-                    "SELECT last_incremental_sync_at, last_incremental_sync_ok, last_incremental_sync_note FROM bt_issue_mirror_sync_state WHERE id = 1", conn);
+                    "SELECT last_incremental_sync_at, last_incremental_sync_ok, last_incremental_sync_note FROM bt_issue_mirror_sync_state WHERE repo_owner = @owner AND repo_name = @repo", conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 if (!await reader.ReadAsync()) return (null, false, "no sync-state row");
                 DateTime? at = reader.IsDBNull(0) ? null : reader.GetFieldValue<DateTime>(0);
@@ -661,7 +665,9 @@ namespace BuildConsole.Services
                 await using var conn = await TryOpenAsync();
                 if (conn == null) return null;
                 await using var cmd = new NpgsqlCommand(
-                    "SELECT last_closed_backfill_at FROM bt_issue_mirror_sync_state WHERE id = 1", conn);
+                    "SELECT last_closed_backfill_at FROM bt_issue_mirror_sync_state WHERE repo_owner = @owner AND repo_name = @repo", conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 var val = await cmd.ExecuteScalarAsync();
                 return val is DateTime dt ? dt : (DateTime?)null;
             }
@@ -686,7 +692,9 @@ namespace BuildConsole.Services
                 await using var conn = await TryOpenAsync();
                 if (conn == null) return false;
                 await using var cmd = new NpgsqlCommand(
-                    "SELECT closed_backfill_complete FROM bt_issue_mirror_sync_state WHERE id = 1", conn);
+                    "SELECT closed_backfill_complete FROM bt_issue_mirror_sync_state WHERE repo_owner = @owner AND repo_name = @repo", conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 var val = await cmd.ExecuteScalarAsync();
                 return val is bool b && b;
             }
@@ -1901,7 +1909,9 @@ namespace BuildConsole.Services
                 await using var cmd = new NpgsqlCommand(@"
                     SELECT last_closed_backfill_at, closed_backfill_chunk_at, closed_backfill_cursor,
                            closed_backfill_complete, closed_backfill_pages, closed_backfill_rows
-                      FROM bt_issue_mirror_sync_state WHERE id = 1", conn);
+                      FROM bt_issue_mirror_sync_state WHERE repo_owner = @owner AND repo_name = @repo", conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 await using var r = await cmd.ExecuteReaderAsync();
                 if (!await r.ReadAsync()) return new ClosedBackfillState();
                 return new ClosedBackfillState
@@ -1938,7 +1948,9 @@ namespace BuildConsole.Services
                            closed_backfill_pages      = 0,
                            closed_backfill_rows       = 0,
                            closed_backfill_note       = 'walk started'
-                     WHERE id = 1", conn);
+                     WHERE repo_owner = @owner AND repo_name = @repo", conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 await cmd.ExecuteNonQueryAsync();
             }
             catch (Exception ex)
@@ -1963,11 +1975,13 @@ namespace BuildConsole.Services
                            closed_backfill_rows     = @rows,
                            closed_backfill_chunk_at = NOW(),
                            closed_backfill_note     = @note
-                     WHERE id = 1", conn);
+                     WHERE repo_owner = @owner AND repo_name = @repo", conn);
                 cmd.Parameters.AddWithValue("@cursor", (object?)cursor ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@pages", pages);
                 cmd.Parameters.AddWithValue("@rows", rows);
                 cmd.Parameters.AddWithValue("@note", note);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 await cmd.ExecuteNonQueryAsync();
             }
             catch (Exception ex)
@@ -1996,9 +2010,11 @@ namespace BuildConsole.Services
                            closed_backfill_chunk_at = NOW(),
                            closed_backfill_complete = CASE WHEN @markComplete THEN true ELSE closed_backfill_complete END,
                            closed_backfill_note = @note
-                     WHERE id = 1", conn);
+                     WHERE repo_owner = @owner AND repo_name = @repo", conn);
                 cmd.Parameters.AddWithValue("@markComplete", markComplete);
                 cmd.Parameters.AddWithValue("@note", note);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 await cmd.ExecuteNonQueryAsync();
             }
             catch (Exception ex)
@@ -2020,16 +2036,18 @@ namespace BuildConsole.Services
                 // reported as fresh/usable and the next tick is free to retry (subject to the
                 // in-memory FailedAttemptBackoff).
                 string sql = ok
-                    ? @"INSERT INTO bt_issue_mirror_sync_state (id, last_full_sync_at, last_sync_ok, last_sync_note)
-                        VALUES (1, NOW(), true, @note)
-                        ON CONFLICT (id) DO UPDATE
+                    ? @"INSERT INTO bt_issue_mirror_sync_state (repo_owner, repo_name, last_full_sync_at, last_sync_ok, last_sync_note)
+                        VALUES (@owner, @repo, NOW(), true, @note)
+                        ON CONFLICT (repo_owner, repo_name) DO UPDATE
                            SET last_full_sync_at = NOW(), last_sync_ok = true, last_sync_note = @note"
-                    : @"INSERT INTO bt_issue_mirror_sync_state (id, last_full_sync_at, last_sync_ok, last_sync_note)
-                        VALUES (1, NULL, false, @note)
-                        ON CONFLICT (id) DO UPDATE
+                    : @"INSERT INTO bt_issue_mirror_sync_state (repo_owner, repo_name, last_full_sync_at, last_sync_ok, last_sync_note)
+                        VALUES (@owner, @repo, NULL, false, @note)
+                        ON CONFLICT (repo_owner, repo_name) DO UPDATE
                            SET last_sync_ok = false, last_sync_note = @note";
                 await using var cmd = new NpgsqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@note", (object?)note ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 await cmd.ExecuteNonQueryAsync();
             }
             catch (Exception ex)
@@ -2055,12 +2073,14 @@ namespace BuildConsole.Services
                 string sql = ok
                     ? @"UPDATE bt_issue_mirror_sync_state
                            SET last_incremental_sync_at = NOW(), last_incremental_sync_ok = true, last_incremental_sync_note = @note
-                         WHERE id = 1"
+                         WHERE repo_owner = @owner AND repo_name = @repo"
                     : @"UPDATE bt_issue_mirror_sync_state
                            SET last_incremental_sync_ok = false, last_incremental_sync_note = @note
-                         WHERE id = 1";
+                         WHERE repo_owner = @owner AND repo_name = @repo";
                 await using var cmd = new NpgsqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@note", (object?)note ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
                 await cmd.ExecuteNonQueryAsync();
             }
             catch (Exception ex)
