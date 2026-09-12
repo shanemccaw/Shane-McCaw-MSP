@@ -1,8 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, invoicesTable, projectsTable, usersTable, contractsTable, servicesTable, clientServicesTable } from "@workspace/db";
-import { eq, and, desc, isNotNull } from "drizzle-orm";
+import { eq, and, desc, isNotNull, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { requireCustomerCapability } from "../middlewares/rbac-capability.ts";
+import { billingScopeUserIds } from "../lib/portal-billing-scope.ts";
 import { sendEmailFromTemplate, getTenantHealthBlockHtml, canSendAutomatedCustomerEmail, retainerResumedEmail } from "../lib/mailer.ts";
 import { sendAdminSms } from "../lib/sms.ts";
 import { createAuditLog } from "../lib/audit.ts";
@@ -65,34 +66,47 @@ async function getOrCreateStripeCustomer(
 // inside each handler limits WHICH rows come back — the capability decides WHO may
 // ask at all. #3629 (resolving #3587) narrowed both from every rung to the Customer
 // Admin and Billing roles plus MSP staff (lib/db/migrations/manual/
-// 2026-09-11-rbac-customer-admin-billing-roles-3629.sql). Every handler here reads
-// the caller's OWN rows (clientUserId = req.user.id), so that migration also grants
-// Billing to whoever an invoice or client service is addressed to — without it a bill
-// could be issued to someone who can neither open nor pay it.
+// 2026-09-11-rbac-customer-admin-billing-roles-3629.sql), and that migration grants
+// Billing to whoever an invoice or client service is addressed to, so a bill is
+// never issued to someone who can neither open nor pay it.
+//
+// #3648 fixed the read side of the gap #3629 left open: every read below used to
+// scope to the caller's OWN rows (clientUserId = req.user.id) regardless of the
+// capability just checked, so a Customer Admin or a Billing holder who had never
+// personally been billed saw an empty ledger. GET /portal/invoices, GET
+// /portal/invoices/:id, GET /portal/billing/stripe-receipts and GET
+// /portal/billing/subscriptions now scope by `billingScopeUserIds()` — every user
+// under the caller's tenant when the caller holds the capability, the caller alone
+// otherwise (see that helper). The money-moving writes below (pay/cancel/resume)
+// stay scoped to the caller's own row — whether a Billing holder may act on a
+// colleague's subscription is still an open entitlement question per #3648.
 
 router.get("/portal/invoices", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
-  const userId = req.user!.id;
+  const scopeUserIds = await billingScopeUserIds(req.user!);
   const invoices = await db.select().from(invoicesTable)
-    .where(eq(invoicesTable.clientUserId, userId))
+    .where(inArray(invoicesTable.clientUserId, scopeUserIds))
     .orderBy(desc(invoicesTable.createdAt));
   res.json(invoices);
 });
 
 // ─── CLIENT: Invoice detail ───────────────────────────────────────────────────
 router.get("/portal/invoices/:id", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
-  const userId = req.user!.id;
+  const scopeUserIds = await billingScopeUserIds(req.user!);
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
   const [invoice] = await db.select().from(invoicesTable)
-    .where(and(eq(invoicesTable.id, id), eq(invoicesTable.clientUserId, userId)));
+    .where(and(eq(invoicesTable.id, id), inArray(invoicesTable.clientUserId, scopeUserIds)));
   if (!invoice) { res.status(404).json({ error: "Invoice not found" }); return; }
 
+  // From here on, key off the invoice's ACTUAL owner (invoice.clientUserId), not the
+  // caller — a Customer Admin / Billing holder viewing a colleague's invoice must
+  // still get that colleague's project and contracts, not their own.
   let project: { id: number; title: string } | null = null;
   if (invoice.projectId) {
     const [p] = await db.select({ id: projectsTable.id, title: projectsTable.title })
       .from(projectsTable)
-      .where(and(eq(projectsTable.id, invoice.projectId), eq(projectsTable.clientUserId, userId)));
+      .where(and(eq(projectsTable.id, invoice.projectId), eq(projectsTable.clientUserId, invoice.clientUserId)));
     project = p ?? null;
   }
 
@@ -135,7 +149,7 @@ router.get("/portal/invoices/:id", requireAuth, requireCustomerCapability("billi
       .innerJoin(servicesTable, eq(contractsTable.serviceId, servicesTable.id))
       .where(and(
         eq(contractsTable.projectId, invoice.projectId),
-        eq(contractsTable.userId, userId),
+        eq(contractsTable.userId, invoice.clientUserId),
       ));
     contracts = rows;
   }
@@ -218,17 +232,17 @@ router.get("/portal/invoices/:id/download", requireAuth, requireCustomerCapabili
 });
 
 router.get("/portal/billing/stripe-receipts", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
-  const userId = req.user!.id;
+  const scopeUserIds = await billingScopeUserIds(req.user!);
 
   let stripeKey: string;
   try { stripeKey = getStripeKey(); } catch { res.json([]); return; }
 
-  // Find any client service with a Stripe subscription ID for this user
+  // Find any client service with a Stripe subscription ID within the caller's scope
   const rows = await db.select({ stripeSubscriptionId: clientServicesTable.stripeSubscriptionId })
     .from(clientServicesTable)
     .where(
       and(
-        eq(clientServicesTable.clientUserId, userId),
+        inArray(clientServicesTable.clientUserId, scopeUserIds),
         isNotNull(clientServicesTable.stripeSubscriptionId),
       )
     )
@@ -279,7 +293,7 @@ router.get("/portal/billing/stripe-receipts", requireAuth, requireCustomerCapabi
 
 // ─── CLIENT: Subscriptions ────────────────────────────────────────────────────
 router.get("/portal/billing/subscriptions", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
-  const userId = req.user!.id;
+  const scopeUserIds = await billingScopeUserIds(req.user!);
 
   const rows = await db.select({
     cs: clientServicesTable,
@@ -289,7 +303,7 @@ router.get("/portal/billing/subscriptions", requireAuth, requireCustomerCapabili
     .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
     .where(
       and(
-        eq(clientServicesTable.clientUserId, userId),
+        inArray(clientServicesTable.clientUserId, scopeUserIds),
         eq(servicesTable.billingType, "recurring_monthly"),
       )
     )

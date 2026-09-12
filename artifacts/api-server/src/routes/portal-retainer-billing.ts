@@ -24,9 +24,10 @@ import {
   servicesTable,
   type ClientBillingInterval,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { requireCustomerCapability } from "../middlewares/rbac-capability.ts";
+import { billingScopeUserIds } from "../lib/portal-billing-scope.ts";
 import {
   getOrCreateRetainerPrice,
   monthlyPriceCentsOf,
@@ -51,10 +52,16 @@ function apiError(res: Response, status: number, message: string) {
 // Companion to GET /portal/billing/subscriptions (portal.ts): keyed by the same
 // clientServiceId so the billing page can merge interval + pending-switch state
 // into each subscription card without touching the existing endpoint.
+//
+// #3648 (part of #1696): scoped by `billingScopeUserIds()`, not the caller's own id
+// alone — a Customer Admin / Billing holder sees every client service under their
+// tenant, matching GET /portal/billing/subscriptions. Same for the two writes below
+// (switch-interval, cancel-interval-switch): the target row is looked up within that
+// same scope, so a Billing holder can act on a colleague's retainer interval too.
 
 router.get("/portal/billing/retainer-intervals", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
+    const scopeUserIds = await billingScopeUserIds(req.user!);
 
     const rows = await db
       .select({
@@ -69,7 +76,7 @@ router.get("/portal/billing/retainer-intervals", requireAuth, requireCustomerCap
       .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
       .where(
         and(
-          eq(clientServicesTable.clientUserId, userId),
+          inArray(clientServicesTable.clientUserId, scopeUserIds),
           eq(servicesTable.billingType, "recurring_monthly"),
         ),
       );
@@ -96,7 +103,8 @@ const switchSchema = z.object({
 
 router.post("/portal/billing/subscriptions/:id/switch-interval", requireAuth, requireCustomerCapability("billing.manage"), async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
+    const actorUserId = req.user!.id;
+    const scopeUserIds = await billingScopeUserIds(req.user!);
     const id = parseInt(String(req.params.id ?? ""), 10);
     if (isNaN(id)) { apiError(res, 400, "Invalid ID"); return; }
 
@@ -111,7 +119,7 @@ router.post("/portal/billing/subscriptions/:id/switch-interval", requireAuth, re
       .select({ cs: clientServicesTable, svc: servicesTable })
       .from(clientServicesTable)
       .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
-      .where(and(eq(clientServicesTable.id, id), eq(clientServicesTable.clientUserId, userId)))
+      .where(and(eq(clientServicesTable.id, id), inArray(clientServicesTable.clientUserId, scopeUserIds)))
       .limit(1);
 
     if (!row) { apiError(res, 404, "Subscription not found"); return; }
@@ -170,14 +178,14 @@ router.post("/portal/billing/subscriptions/:id/switch-interval", requireAuth, re
       .where(eq(clientServicesTable.id, cs.id));
 
     void createAuditLog({
-      actorUserId: userId,
+      actorUserId,
       actorName: req.user!.name ?? req.user!.email,
       actorRole: "client",
       actionType: "retainer_interval_switch_scheduled",
       entityType: "service",
       entityId: cs.id,
       entityLabel: svc.name,
-      clientId: userId,
+      clientId: cs.clientUserId,
       metadata: {
         fromInterval: cs.billingInterval,
         toInterval: targetInterval,
@@ -193,7 +201,7 @@ router.post("/portal/billing/subscriptions/:id/switch-interval", requireAuth, re
     );
 
     log.info(
-      { clientServiceId: cs.id, userId, targetInterval, scheduleId, effectiveAt },
+      { clientServiceId: cs.id, actorUserId, clientUserId: cs.clientUserId, targetInterval, scheduleId, effectiveAt },
       "portal-retainer-billing: interval switch scheduled",
     );
 
@@ -213,19 +221,21 @@ router.post("/portal/billing/subscriptions/:id/switch-interval", requireAuth, re
 
 router.post("/portal/billing/subscriptions/:id/cancel-interval-switch", requireAuth, requireCustomerCapability("billing.manage"), async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
+    const actorUserId = req.user!.id;
+    const scopeUserIds = await billingScopeUserIds(req.user!);
     const id = parseInt(String(req.params.id ?? ""), 10);
     if (isNaN(id)) { apiError(res, 400, "Invalid ID"); return; }
 
     const [cs] = await db
       .select({
         id: clientServicesTable.id,
+        clientUserId: clientServicesTable.clientUserId,
         serviceId: clientServicesTable.serviceId,
         stripeScheduleId: clientServicesTable.stripeScheduleId,
         pendingBillingInterval: clientServicesTable.pendingBillingInterval,
       })
       .from(clientServicesTable)
-      .where(and(eq(clientServicesTable.id, id), eq(clientServicesTable.clientUserId, userId)))
+      .where(and(eq(clientServicesTable.id, id), inArray(clientServicesTable.clientUserId, scopeUserIds)))
       .limit(1);
 
     if (!cs) { apiError(res, 404, "Subscription not found"); return; }
@@ -267,14 +277,14 @@ router.post("/portal/billing/subscriptions/:id/cancel-interval-switch", requireA
       .where(eq(clientServicesTable.id, cs.id));
 
     void createAuditLog({
-      actorUserId: userId,
+      actorUserId,
       actorName: req.user!.name ?? req.user!.email,
       actorRole: "client",
       actionType: "retainer_interval_switch_cancelled",
       entityType: "service",
       entityId: cs.id,
       entityLabel: String(cs.serviceId),
-      clientId: userId,
+      clientId: cs.clientUserId,
       metadata: {
         stripeScheduleId: cs.stripeScheduleId,
         cancelledPendingInterval: cs.pendingBillingInterval,
@@ -282,7 +292,7 @@ router.post("/portal/billing/subscriptions/:id/cancel-interval-switch", requireA
     });
 
     log.info(
-      { clientServiceId: cs.id, userId, scheduleId: cs.stripeScheduleId },
+      { clientServiceId: cs.id, actorUserId, clientUserId: cs.clientUserId, scheduleId: cs.stripeScheduleId },
       "portal-retainer-billing: pending interval switch cancelled",
     );
 
