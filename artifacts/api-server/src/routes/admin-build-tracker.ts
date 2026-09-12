@@ -26,7 +26,14 @@ const RETIRED_BODY = {
     "This Build Tracker endpoint has been disconnected (Git #3652). It used to read/write bt_ tables out of the shared product database, which now only holds a frozen pre-#3651 copy since BuildConsole's own bt_ data moved to BUILD_DATABASE_URL. The route family is being deleted; no replacement is served here.",
 };
 
-router.all("/admin/build-tracker*", (_req: Request, res: Response) => {
+// Git #3771 — Express 5's path-to-regexp (v8) dropped the bare trailing `*`
+// wildcard this route used (`"/admin/build-tracker*"`), which throws
+// `PathError: Missing parameter name` at router-registration time and crashes
+// the ENTIRE api-server on startup — no route past this one in routes/index.ts
+// ever registers. `{/*splat}` is the v8-correct equivalent: an optional
+// group matching zero or more further path segments, so this still catches
+// both the bare path and any sub-path exactly as before.
+router.all("/admin/build-tracker{/*splat}", (_req: Request, res: Response) => {
   res.status(410).json(RETIRED_BODY);
 });
 
