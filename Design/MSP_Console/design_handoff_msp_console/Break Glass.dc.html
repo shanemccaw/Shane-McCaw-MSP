@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+@keyframes smcBgSlide{from{transform:translateX(24px);opacity:.4}to{transform:translateX(0);opacity:1}}
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+      <button onClick="{{ t.select }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+    <div style="flex:1"></div>
+    <span style="display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:#94a3b8;white-space:nowrap"><span data-icon="eye-off" style="width:13px;height:13px;color:#64748b"></span>The credential itself never reaches this console</span>
+  </div>
+
+  <sc-if value="{{ isWaiting }}" hint-placeholder-val="{{ true }}">
+    <sc-if value="{{ hasWaiting }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:11px">
+        <sc-for list="{{ waitingRows }}" as="w" hint-placeholder-count="3">
+          <div onClick="{{ w.open }}" style="border:1px solid {{ w.cardLine }};border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;gap:13px;align-items:flex-start;min-width:0;cursor:pointer;transition:border-color .15s" style-hover="border-color:rgba(96,165,250,.4)">
+            <span data-icon="key-round" style="width:30px;height:30px;flex:0 0 30px;border-radius:9px;background:{{ w.tint }};border:1px solid {{ w.line }};color:{{ w.color }};padding:7px"></span>
+            <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+              <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ w.title }}</span>
+                <span style="display:inline-flex;padding:2px 9px;border-radius:999px;background:{{ w.tint }};border:1px solid {{ w.line }};font-size:10.5px;font-weight:600;color:{{ w.color }};white-space:nowrap">{{ w.state }}</span>
+              </div>
+              <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ w.meta }}</span>
+              <span style="font-size:11.5px;color:{{ w.linkColor }};text-wrap:pretty">{{ w.links }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;flex:0 0 auto;align-items:flex-end">
+              <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ w.when }}</span>
+              <span style="font-size:11px;color:{{ w.ageColor }};white-space:nowrap">{{ w.age }}</span>
+            </div>
+          </div>
+        </sc-for>
+        <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">A credential appears here when a config pack pauses to hand one over. The run stays paused until someone verifies.</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{ noWaiting }}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+        <span data-icon="key-round" style="width:42px;height:42px;border-radius:13px;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.22);color:#34d399;padding:11px"></span>
+        <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Nothing waiting to be handed over</span>
+        <span style="font-size:12.5px;color:#94a3b8;max-width:440px;text-wrap:pretty">Break-glass credentials only appear here when a config pack creates one and pauses for the customer to claim it.</span>
+      </div>
+    </sc-if>
+  </sc-if>
+
+  <sc-if value="{{ isHistory }}" hint-placeholder-val="{{ false }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+      <div style="min-width:900px">
+        <div style="display:grid;grid-template-columns:1.2fr 1.4fr 1.3fr 1.9fr 1.2fr 100px;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+          <span>CREDENTIAL</span><span>WHERE IT ENDED</span><span>CREATED</span><span>CLAIMED BY</span><span>CLAIMED</span><span style="text-align:right"></span>
+        </div>
+        <sc-for list="{{ historyRows }}" as="h" hint-placeholder-count="4">
+          <div onClick="{{ h.open }}" style="display:grid;grid-template-columns:1.2fr 1.4fr 1.3fr 1.9fr 1.2fr 100px;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08);cursor:pointer;transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
+            <span style="display:flex;flex-direction:column;min-width:0">
+              <span style="font-family:Menlo,monospace;font-size:12px;font-weight:600;color:#93c5fd;white-space:nowrap">{{ h.ref }}</span>
+              <span style="font-size:11px;color:#64748b;white-space:nowrap">{{ h.run }}</span>
+            </span>
+            <span style="display:inline-flex;justify-self:start;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:{{ h.tint }};border:1px solid {{ h.line }};font-size:11px;font-weight:600;color:{{ h.color }};white-space:nowrap"><span data-icon="{{ h.icon }}" style="width:11px;height:11px"></span>{{ h.state }}</span>
+            <span style="font-size:12px;color:#94a3b8;white-space:nowrap">{{ h.created }}</span>
+            <span style="font-size:12px;color:{{ h.byColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.by }}</span>
+            <span style="font-size:12px;color:#94a3b8;white-space:nowrap">{{ h.claimed }}</span>
+            <span style="justify-self:end;font-size:12px;color:#64748b;white-space:nowrap">Open</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isAudit }}" hint-placeholder-val="{{ false }}">
+    <sc-if value="{{ hasAudit }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:11px">
+        <sc-for list="{{ auditRows }}" as="a" hint-placeholder-count="2">
+          <div style="border:1px solid rgba(167,139,250,.2);border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;gap:13px;align-items:flex-start;min-width:0">
+            <span data-icon="rotate-ccw" style="width:30px;height:30px;flex:0 0 30px;border-radius:9px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.26);color:#a78bfa;padding:7px"></span>
+            <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+              <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                <span style="font-size:13px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ a.title }}</span>
+                <span style="font-size:11.5px;color:#64748b">{{ a.when }}</span>
+              </div>
+              <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ a.reason }}</span>
+              <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ a.chain }}</span>
+            </div>
+          </div>
+        </sc-for>
+        <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Append-only. Every forced reset stays on this list with the name of whoever did it and why.</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{ noAudit }}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+        <span data-icon="rotate-ccw" style="width:42px;height:42px;border-radius:13px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);color:#94a3b8;padding:11px"></span>
+        <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">No forced resets</span>
+        <span style="font-size:12.5px;color:#94a3b8;max-width:430px;text-wrap:pretty">Nobody has had to reset a credential on this customer's behalf. Every handover so far went through the customer themselves.</span>
+      </div>
+    </sc-if>
+  </sc-if>
+
+  <sc-if value="{{ detailOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDetail }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(520px,95%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcBgSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+            <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b">{{ selRef }} · {{ selRun }}</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ selTitle }}</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ selSub }}</span>
+          </div>
+          <button onClick="{{ closeDetail }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px">
+          <sc-for list="{{ selFacts }}" as="f" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">{{ f.label }}</span>
+              <span style="font-size:12.5px;color:{{ f.color }};font-family:{{ f.font }};text-wrap:pretty">{{ f.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">WHO WAS INVITED, AND WHAT HAPPENED</span>
+          <sc-for list="{{ selAttempts }}" as="a" hint-placeholder-count="3">
+            <div style="border:1px solid {{ a.line }};border-radius:10px;background:{{ a.tint }};padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0">
+              <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                <span data-icon="{{ a.icon }}" style="width:15px;height:15px;color:{{ a.color }};flex:0 0 15px"></span>
+                <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1">{{ a.email }}</span>
+                <span style="display:inline-flex;padding:2px 9px;border-radius:999px;background:{{ a.tint }};border:1px solid {{ a.line }};font-size:10.5px;font-weight:600;color:{{ a.color }};white-space:nowrap">{{ a.linkState }}</span>
+              </div>
+              <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ a.outcome }}</span>
+              <sc-if value="{{ a.hasUpn }}" hint-placeholder-val="{{ false }}">
+                <span style="font-family:Menlo,monospace;font-size:11px;color:#93c5fd;word-break:break-all">{{ a.upn }}</span>
+              </sc-if>
+              <span style="font-size:11px;color:#475569">{{ a.meta }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ selCanOverride }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">FORCE A RESET</span>
+            <sc-for list="{{ selPre }}" as="p" hint-placeholder-count="5">
+              <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+                <span data-icon="{{ p.icon }}" style="width:14px;height:14px;color:{{ p.color }};flex:0 0 14px;margin-top:2px"></span>
+                <span style="font-size:12px;color:{{ p.textColor }};text-wrap:pretty">{{ p.label }}</span>
+              </div>
+            </sc-for>
+            <button onClick="{{ openOverride }}" title="{{ overrideTitle }}" style="align-self:flex-start;display:flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:8px;border:1px solid {{ overrideLine }};background:{{ overrideBg }};color:{{ overrideFg }};font-size:12.5px;font-weight:600;cursor:{{ overrideCursor }};opacity:{{ overrideOpacity }};white-space:nowrap"><span data-icon="rotate-ccw" style="width:13px;height:13px"></span>{{ overrideLabel }}</button>
+            <span style="font-size:11.5px;color:{{ preNoteColor }};text-wrap:pretty">{{ preNote }}</span>
+          </div>
+        </sc-if>
+
+        <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;padding-top:11px;border-top:1px solid rgba(148,163,184,.12)">Sending a fresh invite to the same credential is done from the customer's own portal, not from here.</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ overrideOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeOverride }}" style="position:fixed;inset:0;background:rgba(2,6,23,.7);backdrop-filter:blur(3px);z-index:92;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(450px,94%);height:100%;background:#0b1728;border-left:1px solid rgba(248,113,113,.24);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcBgSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#fca5a5">FORCE A RESET</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">Reset and re-issue the credential</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">The old credential is replaced and nothing is ever delivered from it. A fresh one is created and the invites go out again.</span>
+          </div>
+          <button onClick="{{ closeOverride }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">Why it has to be reset</span>
+          <input value="{{ ovReason }}" onChange="{{ setOvReason }}" placeholder="Goes on the permanent record" style="height:36px;padding:0 11px;border-radius:8px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;outline:none">
+          <span style="font-size:11px;color:#64748b;text-wrap:pretty">Required, and it cannot be edited afterwards.</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">Who should get the new invite</span>
+          <sc-for list="{{ ovRecipients }}" as="r" hint-placeholder-count="3">
+            <button onClick="{{ r.toggle }}" style="display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:9px;border:1px solid {{ r.line }};background:{{ r.bg }};cursor:pointer;text-align:left;min-width:0" style-hover="background:rgba(148,163,184,.1)">
+              <span data-icon="{{ r.icon }}" style="width:14px;height:14px;flex:0 0 14px;color:{{ r.iconColor }}"></span>
+              <span style="font-size:12.5px;color:#e2e8f0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.email }}</span>
+              <span style="font-size:11px;color:#64748b;white-space:nowrap">{{ r.note }}</span>
+            </button>
+          </sc-for>
+          <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ ovRecipientNote }}</span>
+        </div>
+
+        <div style="display:flex;gap:10px;padding:12px 13px;border-radius:10px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.07)">
+          <span data-icon="triangle-alert" style="width:15px;height:15px;color:#fbbf24;flex:0 0 15px;margin-top:2px"></span>
+          <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">The config pack stays paused either way. If the tenant is not set up to accept writes, or consent has not been given, this is refused outright rather than half-done.</span>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <button onClick="{{ submitOverride }}" title="{{ ovSubmitTitle }}" style="flex:1;height:38px;border-radius:8px;border:1px solid {{ ovLine }};background:{{ ovBg }};color:{{ ovFg }};font-size:13px;font-weight:600;cursor:{{ ovCursor }};opacity:{{ ovOpacity }}">Reset and re-issue</button>
+          <button onClick="{{ closeOverride }}" style="height:38px;padding:0 15px;border-radius:8px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:13px;cursor:pointer">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;align-items:center;gap:9px;padding-top:2px">
+    <span data-icon="info" style="width:13px;height:13px;color:#475569;flex:0 0 13px"></span>
+    <span style="font-size:11px;color:#475569;text-wrap:pretty">{{ honestNote }}</span>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:820},&quot;tenantName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Logistics&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  state = { tab: "waiting", sel: null, overrideOpen: false, ovReason: "", ovPicked: {}, reset: {} };
+
+  secrets = [
+    {
+      ref: "BG-2026-0412", run: "config pack run 9184", tenant: "Northwind Logistics",
+      pack: "Conditional Access hardening", account: "breakglass-01@northwindlogistics.onmicrosoft.com",
+      status: "pending_delivery", created: "9 Sep 2026, 14:02", age: "2 days waiting",
+      deliveredAt: null, deliveredTo: null,
+      attempts: [
+        { email: "dana@northwindlogistics.com", linkStatus: "pending", outcome: "role_not_active_pim_eligible", upn: "dana@northwindlogistics.com", failed: 0, attempted: "9 Sep, 15:40" },
+        { email: "g.holt@northwindlogistics.com", linkStatus: "pending", outcome: null, upn: null, failed: 0, attempted: null }
+      ]
+    },
+    {
+      ref: "BG-2026-0398", run: "config pack run 9102", tenant: "Northwind Logistics",
+      pack: "Privileged role baseline", account: "breakglass-02@northwindlogistics.onmicrosoft.com",
+      status: "pending_delivery", created: "4 Sep 2026, 09:15", age: "7 days waiting",
+      deliveredAt: null, deliveredTo: null,
+      attempts: [
+        { email: "n.cross@northwindlogistics.com", linkStatus: "expired", outcome: "expired", upn: null, failed: 0, attempted: "6 Sep, 09:15" },
+        { email: "p.bhatt@northwindlogistics.com", linkStatus: "consumed", outcome: "role_absent", upn: "p.bhatt@northwindlogistics.com", failed: 3, attempted: "5 Sep, 11:22" }
+      ]
+    },
+    {
+      ref: "BG-2026-0361", run: "config pack run 8890", tenant: "Northwind Logistics",
+      pack: "Tenant isolation baseline", account: "breakglass-03@northwindlogistics.onmicrosoft.com",
+      status: "delivered_purged", created: "22 Aug 2026, 16:40", age: "",
+      deliveredAt: "22 Aug 2026, 17:05", deliveredTo: "dana@northwindlogistics.com",
+      attempts: [
+        { email: "dana@northwindlogistics.com", linkStatus: "consumed", outcome: "success", upn: "dana@northwindlogistics.com", failed: 0, attempted: "22 Aug, 17:05" }
+      ]
+    },
+    {
+      ref: "BG-2026-0344", run: "config pack run 8801", tenant: "Northwind Logistics",
+      pack: "Privileged role baseline", account: "breakglass-02@northwindlogistics.onmicrosoft.com",
+      status: "superseded_by_reset", created: "14 Aug 2026, 10:00", age: "",
+      deliveredAt: null, deliveredTo: null,
+      attempts: [
+        { email: "t.ridley@northwindlogistics.com", linkStatus: "superseded", outcome: "superseded", upn: null, failed: 1, attempted: "15 Aug, 08:30" }
+      ]
+    }
+  ];
+
+  audit = [
+    { admin: "Shane McCaw", reason: "Recipient left the company before claiming it; re-issued to the operations director.", oldRef: "BG-2026-0344", newRef: "BG-2026-0398", when: "4 Sep 2026, 09:15" }
+  ];
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  tone(kind) {
+    const M = {
+      green: ["#34d399", "rgba(52,211,153,.1)", "rgba(52,211,153,.26)"],
+      amber: ["#fbbf24", "rgba(251,191,36,.1)", "rgba(251,191,36,.26)"],
+      red: ["#f87171", "rgba(248,113,113,.1)", "rgba(248,113,113,.26)"],
+      blue: ["#60a5fa", "rgba(96,165,250,.1)", "rgba(96,165,250,.26)"],
+      violet: ["#a78bfa", "rgba(167,139,250,.1)", "rgba(167,139,250,.26)"],
+      slate: ["#94a3b8", "rgba(148,163,184,.08)", "rgba(148,163,184,.2)"]
+    };
+    return M[kind] || M.slate;
+  }
+
+  statusOf(sec) { return this.state.reset[sec.ref] ? "superseded_by_reset" : sec.status; }
+
+  renderVals() {
+    const s = this.state, tab = s.tab;
+    const scopeName = this.props.tenantName || null;
+    const scoped = scopeName ? this.secrets.filter(x => x.tenant === scopeName) : this.secrets;
+    const waiting = scoped.filter(x => this.statusOf(x) === "pending_delivery");
+    const sel = s.sel ? scoped.find(x => x.ref === s.sel) : null;
+    const selStatus = sel ? this.statusOf(sel) : null;
+
+    const ST = {
+      pending_delivery: ["amber", "hourglass", "waiting to be claimed"],
+      delivered_purged: ["green", "circle-check-big", "claimed and wiped"],
+      superseded_by_reset: ["slate", "circle-minus", "reset, never claimed"]
+    };
+    const LINK = { pending: "blue", consumed: "slate", expired: "amber", superseded: "slate" };
+    const OUT = {
+      success: ["#6ee7b7", "circle-check-big", "Signed in and took the credential."],
+      role_not_active_pim_eligible: ["#fcd34d", "clock", "They hold the right role but it is not switched on. They can activate it and come back to the same link."],
+      role_absent: ["#fca5a5", "circle-x", "They do not hold the required role at all. The link burns after a few tries."],
+      expired: ["#fbbf24", "clock-alert", "The link ran out before they used it."],
+      superseded: ["#94a3b8", "circle-minus", "A reset replaced this credential, so the link no longer points at anything."]
+    };
+
+    const ovAll = sel ? sel.attempts.map(a => a.email) : [];
+    const picked = ovAll.filter(e => s.ovPicked[e]);
+    const canOverride = !!(s.ovReason.trim());
+    const allTerminal = sel ? sel.attempts.every(a => a.linkStatus !== "pending") : false;
+
+    return {
+      rootPad: this.props.embedded ? "0" : "20px",
+      rootBg: this.props.embedded ? "transparent" : "#020617",
+      stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+
+      tabs: [
+        { id: "waiting", label: "Waiting", count: String(waiting.length) },
+        { id: "history", label: "Everything", count: String(scoped.length) },
+        { id: "audit", label: "Forced resets", count: String(this.audit.length) }
+      ].map(t => ({
+        label: t.label, count: t.count,
+        bg: tab === t.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: tab === t.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: tab === t.id ? "#bfdbfe" : "#94a3b8",
+        countColor: tab === t.id ? "#60a5fa" : "#475569",
+        select: () => this.setState({ tab: t.id })
+      })),
+
+      isWaiting: tab === "waiting",
+      hasWaiting: tab === "waiting" && waiting.length > 0,
+      noWaiting: tab === "waiting" && waiting.length === 0,
+      waitingRows: waiting.map(x => {
+        const st = ST[this.statusOf(x)], t = this.tone(st[0]);
+        const live = x.attempts.filter(a => a.linkStatus === "pending").length;
+        const stale = x.age.indexOf("7 days") === 0 || x.age.indexOf("more") === 0;
+        return {
+          title: x.pack, state: st[2],
+          color: t[0], tint: t[1], line: t[2],
+          cardLine: stale ? "rgba(251,191,36,.24)" : "rgba(148,163,184,.16)",
+          meta: (scopeName ? "" : x.tenant + " · ") + x.run + " · " + x.account,
+          links: live > 0
+            ? live + (live === 1 ? " live invite" : " live invites") + " of " + x.attempts.length + " sent"
+            : "No live invite left — all " + x.attempts.length + " have burned out",
+          linkColor: live > 0 ? "#93c5fd" : "#fca5a5",
+          when: x.created, age: x.age,
+          ageColor: stale ? "#fcd34d" : "#64748b",
+          open: () => this.setState({ sel: x.ref, ovReason: "", ovPicked: {} })
+        };
+      }),
+
+      isHistory: tab === "history",
+      historyRows: scoped.map(x => {
+        const st = ST[this.statusOf(x)], t = this.tone(st[0]);
+        return {
+          ref: x.ref, run: x.run,
+          state: st[2], icon: st[1],
+          color: t[0], tint: t[1], line: t[2],
+          created: x.created,
+          by: x.deliveredTo || "nobody yet",
+          byColor: x.deliveredTo ? "#cbd5e1" : "#64748b",
+          claimed: x.deliveredAt || "—",
+          open: () => this.setState({ sel: x.ref, ovReason: "", ovPicked: {} })
+        };
+      }),
+
+      isAudit: tab === "audit",
+      hasAudit: tab === "audit" && this.audit.length > 0,
+      noAudit: tab === "audit" && this.audit.length === 0,
+      auditRows: this.audit.map(a => ({
+        title: a.admin + " forced a reset",
+        when: a.when, reason: a.reason,
+        chain: a.oldRef + " was replaced by " + a.newRef
+      })),
+
+      detailOpen: !!sel,
+      closeDetail: () => this.setState({ sel: null }),
+      selRef: sel ? sel.ref : "",
+      selRun: sel ? sel.run : "",
+      selTitle: sel ? sel.pack : "",
+      selSub: sel ? (scopeName ? "" : sel.tenant + " · ") + ST[selStatus][2] : "",
+      selFacts: sel ? [
+        { label: "ACCOUNT", value: sel.account, color: "#93c5fd", font: "Menlo,monospace" },
+        { label: "CREATED", value: sel.created, color: "#94a3b8", font: "inherit" },
+        { label: "CLAIMED", value: sel.deliveredAt || "not claimed", color: sel.deliveredAt ? "#6ee7b7" : "#fcd34d", font: "inherit" },
+        { label: "CLAIMED BY", value: sel.deliveredTo || "nobody", color: sel.deliveredTo ? "#cbd5e1" : "#64748b", font: "inherit" },
+        { label: "INVITES SENT", value: String(sel.attempts.length), color: "#cbd5e1", font: "inherit" },
+        { label: "STILL LIVE", value: String(sel.attempts.filter(a => a.linkStatus === "pending").length), color: "#cbd5e1", font: "inherit" }
+      ] : [],
+      selAttempts: sel ? sel.attempts.map(a => {
+        const lt = this.tone(LINK[a.linkStatus]);
+        const o = a.outcome ? OUT[a.outcome] : ["#64748b", "circle-dashed", "Invited, but they have not opened the link yet."];
+        return {
+          email: a.email,
+          linkState: a.linkStatus === "pending" ? "live" : a.linkStatus,
+          color: lt[0], tint: lt[1], line: lt[2],
+          icon: o[1], outcome: o[2],
+          hasUpn: !!a.upn, upn: a.upn || "",
+          meta: (a.attempted ? "Tried " + a.attempted : "Not tried yet") + (a.failed ? " · " + a.failed + " failed attempts" : "")
+        };
+      }) : [],
+
+      selCanOverride: selStatus === "pending_delivery",
+      selPre: sel ? [
+        { label: "Still waiting to be claimed", ok: selStatus === "pending_delivery" },
+        { label: "Every invite has burned out", ok: allTerminal },
+        { label: "The break-glass account exists in the tenant", ok: true },
+        { label: "Only a Global Administrator can claim it", ok: true },
+        { label: "The config pack run stays paused", ok: true }
+      ].map(p => ({
+        label: p.label,
+        icon: p.ok ? "circle-check-big" : "circle-alert",
+        color: p.ok ? "#34d399" : "#fbbf24",
+        textColor: p.ok ? "#cbd5e1" : "#fcd34d"
+      })) : [],
+      overrideLabel: "Reset and re-issue",
+      overrideLine: "rgba(248,113,113,.32)",
+      overrideBg: "rgba(248,113,113,.12)",
+      overrideFg: "#fca5a5",
+      overrideCursor: "pointer",
+      overrideOpacity: "1",
+      overrideTitle: "Replaces the credential outright — nothing is ever delivered from the old one",
+      openOverride: () => this.setState({ overrideOpen: true }),
+      preNote: allTerminal
+        ? "Every invite has burned out, so nobody can claim this without a reset."
+        : "There is still a live invite. Resetting cancels it, so give them a chance first if you can.",
+      preNoteColor: allTerminal ? "#fcd34d" : "#64748b",
+
+      overrideOpen: s.overrideOpen && !!sel,
+      closeOverride: () => this.setState({ overrideOpen: false }),
+      ovReason: s.ovReason,
+      setOvReason: (e) => this.setState({ ovReason: e.target.value }),
+      ovRecipients: ovAll.map(email => ({
+        email,
+        icon: s.ovPicked[email] ? "circle-check-big" : "circle",
+        iconColor: s.ovPicked[email] ? "#60a5fa" : "#475569",
+        bg: s.ovPicked[email] ? "rgba(37,99,235,.16)" : "rgba(2,6,23,.4)",
+        line: s.ovPicked[email] ? "rgba(96,165,250,.34)" : "rgba(148,163,184,.16)",
+        note: s.ovPicked[email] ? "will be invited" : "",
+        toggle: () => this.setState({ ovPicked: Object.assign({}, s.ovPicked, { [email]: !s.ovPicked[email] }) })
+      })),
+      ovRecipientNote: picked.length === 0
+        ? "Pick nobody and the same people get invited again. Up to five recipients."
+        : picked.length + (picked.length === 1 ? " recipient" : " recipients") + " selected, replacing the original list.",
+      ovLine: canOverride ? "rgba(248,113,113,.4)" : "rgba(148,163,184,.2)",
+      ovBg: canOverride ? "rgba(248,113,113,.18)" : "transparent",
+      ovFg: canOverride ? "#fca5a5" : "#64748b",
+      ovCursor: canOverride ? "pointer" : "not-allowed",
+      ovOpacity: canOverride ? "1" : ".6",
+      ovSubmitTitle: canOverride ? "" : "A reason is required",
+      submitOverride: canOverride && sel ? () => this.setState({
+        reset: Object.assign({}, s.reset, { [sel.ref]: true }),
+        overrideOpen: false, sel: null, ovReason: "", ovPicked: {}, tab: "audit"
+      }) : () => {},
+
+      honestNote: "These endpoints are live with no interface wired to them yet, so the handovers here are representative. Nothing on this screen can reveal the credential itself, and re-inviting someone to an existing credential is done from the customer's portal rather than here."
+    };
+  }
+}
+
+</script>
+</body>
+</html>

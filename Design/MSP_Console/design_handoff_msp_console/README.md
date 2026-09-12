@@ -6,16 +6,17 @@ The MSP Console is the operator-side surface of the Shane McCaw M365 governance 
 
 It is deliberately not the customer portal. The customer portal shows a tenant its own posture. This console shows an operator *many* tenants at once, and gives them the write actions the customer cannot perform on themselves: granting and revoking consent, running scans, issuing break-glass credentials, resetting MFA, recording customer signatures on risk-acceptance decisions, and deleting a tenant outright.
 
-The design covers 33 distinct screens across two trees:
+The design covers 37 screens across two trees, plus the shell they all mount in:
 
-- **Managed Tenants** — a directory, then per tenant 22 pages grouped into Overview, Monitoring, Change Control, Governance, Access & identity, Commercial, and Audit log.
+- **Console Shell** — the chrome itself: header, tenant tree, breadcrumb, screen slot, status bar, command palette, and its five states.
+- **Managed Tenants** — a directory, then per tenant 22 pages grouped into Overview, Monitoring, Change Control, Governance, Access & identity, Commercial, and Audit log, plus Ownership.
 - **Operations (MSP-wide)** — 9 cross-tenant pages: MSP settings, Executive view, Activity timeline, Configuration State, Sales, Scope & SLA, SOPs, Documents, SharePoint connectors.
 
 ## About the design files
 
 The files in this bundle are **design references created in HTML**. They are prototypes that show intended look, structure and behaviour. They are not production code and should not be copied into an application as-is.
 
-`MSP Console.dc.html` is a single self-contained page written against a small in-house streaming-component runtime (`support.js`). Its markup uses custom elements (`<x-dc>`, `<sc-if>`, `<sc-for>`, `<x-import>`) and a logic class that returns a flat bag of values to the template. None of that is meant to survive into the real app — it exists so the prototype could be authored and iterated quickly.
+`MSP Console.dc.html` is a single self-contained page written against a small in-house streaming-component runtime (`support.js`); `Console Shell.dc.html` and the nineteen module files are the same thing, one surface each. Their markup uses custom elements (`<x-dc>`, `<sc-if>`, `<sc-for>`, `<x-import>`) and a logic class that returns a flat bag of values to the template. None of that is meant to survive into the real app — it exists so the prototype could be authored and iterated quickly.
 
 **The task is to recreate these designs in the target codebase's existing environment**, using its established patterns and libraries. For this project that target is almost certainly the existing `shanemccaw/Shane-McCaw-MSP` repository, which is React + Vite + Tailwind CSS v4 + shadcn/ui ("new-york") + `lucide-react`. Every value in this document maps cleanly onto Tailwind utilities and the shadcn token system already defined in `artifacts/msp-portal/src/index.css`.
 
@@ -250,6 +251,8 @@ Selecting a tenant node itself, rather than one of its pages. This is the tenant
 
 Pages 3, 21, 4, 23 and 24 are frame-based: they render a 12-column grid of named placeholder frames (`Signal timeline` 12 cols × 220px, `Engine summary` 6 × 170px, and so on) rather than finished content. Those frames are **intentional scaffolding** — the layout and naming are decided, the contents are not. Treat them as a brief, not as a design to reproduce pixel-for-pixel.
 
+Page 3 (Overview) is now a real roll-up rather than a frame grid: four count tiles (critical and breached · awaiting a decision or signature · break-glass unclaimed · accounts locked or without MFA), four grouped row lists (Needs you · Signal and posture · Work in flight · Commercial and records), and a **How this roll-up is assembled** note block recording, per domain, which read each row comes from and what it cannot say. Those notes are load-bearing: the risk register arrives whole and is filtered client-side, the SLA and scope counts are capped at 200/100 so they are floors, SOP runs are filtered out of the MSP-wide history, data-rights activity is MSPAdmin-only and status-less, and the webhooks row counts operator-disabled endpoints separately from owner-switched-off ones.
+
 ### 25–33. MSP-wide pages
 
 | # | Screen | Purpose |
@@ -263,6 +266,20 @@ Pages 3, 21, 4, 23 and 24 are frame-based: they render a 12-column grid of named
 | 31 | SOPs | Standard operating procedures and their runs |
 | 32 | Documents | MSP-wide document library |
 | 33 | SharePoint connectors | Connector health and configuration |
+
+### 34–36. Console Shell — `34-console-shell-default.png`, `35-console-shell-collapsed-rail.png`, `36-console-shell-command-palette.png`
+
+`Console Shell.dc.html` is the chrome on its own, with the screen region left as an explicit dashed slot. Build this first; every module page mounts inside it.
+
+Five regions: **header** (56px, `#0A2540`, brand lockup, context path, 260px search button with a ⌘K pill, break-glass pill, signal feed, account menu), **tenant tree** (260px, `#061527`, root → operations pages → tenants → page groups → leaves, with a label filter), **breadcrumb bar** (`#050f1e`, derived from the selection, every segment but the last navigates), **screen slot** (eyebrow, title, note from the node's metadata, then the module's own page), **status bar** (28px, book counts at the root, tenant seats and people once a customer is selected).
+
+Five states are on the page as chips: Default, Tree collapsed, Command palette, No tenants, Loading. Collapsed is a 56px icon rail — 36px centred tiles, a 2px left accent bar on the selected one, a hairline divider between the operations block and the tenants, and group/leaf nodes dropped entirely; clicking a tenant in the rail re-expands the tree. Loading paints the chrome first and skeletons the tree; No tenants keeps the chrome, resets the selection to the root, and says the directory returned an empty array rather than an error.
+
+The shell's only state is the selection plus which nodes are expanded. It holds no module data and caches none between nodes; per-staff customer scoping and the MSPAdmin-only screens are enforced by the routes behind each page, not by the tree.
+
+### 37. Ownership — `37-tenant-ownership.png`
+
+The operator half of RACI, as its own module page (`Ownership.dc.html`): what our staff hold across the book, per-customer coverage including the zero rows, and one customer's matrix with cell detail. Its feature is not architected upstream, which the screen states on itself.
 
 ---
 
@@ -355,9 +372,11 @@ Named explicitly in the design:
 | Path | What it is |
 |---|---|
 | `MSP Console.dc.html` | The full interactive prototype. Open it in a browser to click through every screen. |
+| `Console Shell.dc.html` | The shell on its own — chrome, tree, palette, status bar, and its five states. Start here. |
+| 19 module files | `Diagnostics`, `Remediation`, `Change Control`, `Risk Register`, `Runbooks`, `Ownership`, `Data Rights`, `Team`, `Break Glass`, `Launch Control`, `Webhooks`, `Documents`, `Executive View`, `Activity Timeline`, `Configuration State`, `Sales`, `Scope and SLA`, `SOPs` (`.dc.html` each). Each opens standalone and is also mounted inside `MSP Console.dc.html`. |
 | `support.js` | The prototype runtime. Required for the HTML to run; not for production. |
 | `_ds/` | Design system tokens, stylesheet and component bundle. |
-| `screenshots/` | 33 PNGs, one per screen, numbered to match the Screens section. |
+| `screenshots/` | 36 PNGs, numbered to match the Screens section. |
 | `github.md` | Repository, branch, last sync commit, and the screen-to-source map. |
 | `README.md` | This document. |
 

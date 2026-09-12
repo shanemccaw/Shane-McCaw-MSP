@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+@keyframes smcExSlide{from{transform:translateX(24px);opacity:.4}to{transform:translateX(0);opacity:1}}
+@keyframes smcExPulse{0%,100%{opacity:1}50%{opacity:.35}}
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+    <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="4">
+      <div style="border:1px solid {{ t.line }};border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:8px;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span data-icon="{{ t.icon }}" style="width:13px;height:13px;color:{{ t.color }};flex:0 0 13px"></span>
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#64748b">{{ t.label }}</span>
+        </div>
+        <span style="font-size:27px;font-weight:800;letter-spacing:-.02em;color:{{ t.valueColor }}">{{ t.value }}</span>
+        <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ t.note }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display:grid;grid-template-columns:{{ listCols }};gap:14px;align-items:start">
+    <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#64748b">WHO NEEDS ATTENTION</span>
+        <span style="font-size:11.5px;color:#475569">{{ riskNote }}</span>
+      </div>
+      <sc-if value="{{ hasRisks }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <sc-for list="{{ riskRows }}" as="r" hint-placeholder-count="5">
+            <div onClick="{{ r.open }}" style="border:1px solid {{ r.cardLine }};border-radius:11px;background:rgba(15,23,42,.6);padding:13px 14px;display:flex;gap:12px;align-items:center;min-width:0;cursor:pointer;transition:border-color .15s" style-hover="border-color:rgba(96,165,250,.4)">
+              <span style="width:40px;height:40px;flex:0 0 40px;border-radius:11px;background:{{ r.tint }};border:1px solid {{ r.line }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:{{ r.color }}">{{ r.score }}</span>
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+                <span style="font-size:13px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+                <div style="height:4px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden">
+                  <div style="height:100%;width:{{ r.pct }};background:{{ r.color }}"></div>
+                </div>
+                <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ r.meta }}</span>
+              </div>
+              <sc-if value="{{ r.atRisk }}" hint-placeholder-val="{{ false }}">
+                <span style="display:inline-flex;padding:3px 9px;border-radius:999px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.26);font-size:10.5px;font-weight:600;color:#fca5a5;white-space:nowrap;flex:0 0 auto">at risk</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noRisks }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:34px 20px;display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center">
+          <span data-icon="activity" style="width:36px;height:36px;border-radius:11px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);color:#94a3b8;padding:9px"></span>
+          <span style="font-size:14px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">No health readings yet</span>
+          <span style="font-size:12px;color:#94a3b8;max-width:340px;text-wrap:pretty">Nobody in the book has a health score recorded, so there is nothing to rank.</span>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#64748b">WHERE THE MONEY IS</span>
+        <span style="font-size:11.5px;color:#475569">{{ oppNote }}</span>
+      </div>
+      <sc-if value="{{ hasOpps }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <sc-for list="{{ oppRows }}" as="o" hint-placeholder-count="5">
+            <div onClick="{{ o.open }}" style="border:1px solid rgba(148,163,184,.16);border-radius:11px;background:rgba(15,23,42,.6);padding:13px 14px;display:flex;gap:12px;align-items:center;min-width:0;cursor:pointer;transition:border-color .15s" style-hover="border-color:rgba(96,165,250,.4)">
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+                <span style="font-size:13px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ o.name }}</span>
+                <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ o.topOffer }}</span>
+                <span style="font-size:11px;color:#64748b">{{ o.meta }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex:0 0 auto">
+                <span style="font-size:16px;font-weight:800;letter-spacing:-.01em;color:#f8fafc">{{ o.value }}</span>
+                <span style="display:inline-flex;padding:2px 9px;border-radius:999px;background:{{ o.tint }};border:1px solid {{ o.line }};font-size:10.5px;font-weight:600;color:{{ o.color }};white-space:nowrap">{{ o.fit }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noOpps }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(251,191,36,.24);border-radius:12px;background:rgba(251,191,36,.06);padding:30px 20px;display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center">
+          <span data-icon="triangle-alert" style="width:36px;height:36px;border-radius:11px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.24);color:#fbbf24;padding:9px"></span>
+          <span style="font-size:14px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Showing nothing, wrongly</span>
+          <span style="font-size:12px;color:#cbd5e1;max-width:360px;text-wrap:pretty">There is real open pipeline in this book, but this list and the figure above it come back empty because the offers are being matched against the wrong thing. Treat both as unreliable until that is fixed.</span>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <div style="border:1px solid {{ qbrCardLine }};border-radius:12px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:13px;min-width:0">
+    <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
+      <span data-icon="{{ qbrIcon }}" style="width:30px;height:30px;flex:0 0 30px;border-radius:9px;background:{{ qbrTint }};border:1px solid {{ qbrLine }};color:{{ qbrColor }};padding:7px;animation:{{ qbrAnim }}"></span>
+      <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;min-width:180px">
+        <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ qbrTitle }}</span>
+        <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ qbrSub }}</span>
+      </div>
+      <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ qbrTint }};border:1px solid {{ qbrLine }};font-size:11px;font-weight:600;color:{{ qbrColor }};white-space:nowrap">{{ qbrState }}</span>
+    </div>
+
+    <sc-if value="{{ qbrHasBody }}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(148,163,184,.14);border-radius:11px;background:rgba(2,6,23,.5);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+        <sc-for list="{{ qbrSections }}" as="sec" hint-placeholder-count="3">
+          <div style="display:flex;flex-direction:column;gap:5px;min-width:0">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">{{ sec.heading }}</span>
+            <sc-for list="{{ sec.paras }}" as="p" hint-placeholder-count="2">
+              <span style="font-size:12.5px;color:#cbd5e1;text-wrap:pretty;line-height:1.55">{{ p.line }}</span>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ qbrHasError }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;padding:12px 13px;border-radius:10px;border:1px solid rgba(248,113,113,.26);background:rgba(248,113,113,.08)">
+        <span data-icon="circle-x" style="width:15px;height:15px;color:#f87171;flex:0 0 15px;margin-top:2px"></span>
+        <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+          <span style="font-size:12.5px;font-weight:600;color:#fca5a5;text-wrap:pretty">It did not come back</span>
+          <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ qbrError }}</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding-top:11px;border-top:1px solid rgba(148,163,184,.12)">
+      <sc-for list="{{ qbrActions }}" as="a" hint-placeholder-count="2">
+        <button onClick="{{ a.run }}" title="{{ a.title }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:8px;border:1px solid {{ a.line }};background:{{ a.bg }};color:{{ a.fg }};font-size:12.5px;font-weight:600;cursor:{{ a.cursor }};opacity:{{ a.opacity }};white-space:nowrap"><span data-icon="{{ a.icon }}" style="width:13px;height:13px"></span>{{ a.label }}</button>
+      </sc-for>
+      <span style="font-size:11.5px;color:{{ qbrNoteColor }};text-wrap:pretty;flex:1;min-width:180px">{{ qbrNote }}</span>
+    </div>
+  </div>
+
+  <sc-if value="{{ detailOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDetail }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(460px,94%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcExSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:{{ selKindColor }}">{{ selKind }}</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ selName }}</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ selSub }}</span>
+          </div>
+          <button onClick="{{ closeDetail }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px">
+          <sc-for list="{{ selFacts }}" as="f" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">{{ f.label }}</span>
+              <span style="font-size:12.5px;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ selBody }}</span>
+
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <button onClick="{{ selGo }}" style="display:flex;align-items:center;justify-content:center;gap:8px;height:38px;border-radius:8px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:13px;font-weight:600;cursor:pointer" style-hover="background:#3b82f6"><span data-icon="arrow-right" style="width:14px;height:14px"></span>Open {{ selName }}</button>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">{{ selNote }}</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;align-items:center;gap:9px;padding-top:2px">
+    <span data-icon="info" style="width:13px;height:13px;color:#475569;flex:0 0 13px"></span>
+    <span style="font-size:11px;color:#475569;text-wrap:pretty">{{ honestNote }}</span>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240,&quot;height&quot;:900},&quot;opportunityData&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;broken&quot;,&quot;fixed&quot;],&quot;default&quot;:&quot;broken&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  state = { sel: null, qbr: "ready", generating: false };
+
+  risks = [
+    { name: "Kestrel Financial", score: 68, captured: "today, 04:00", trend: "down 9 this month" },
+    { name: "Halcyon Health", score: 52, captured: "today, 04:00", trend: "down 4 this month" },
+    { name: "Mccawsoft2", score: 44, captured: "yesterday, 04:00", trend: "steady" },
+    { name: "Northwind Logistics", score: 22, captured: "today, 04:00", trend: "up 6 this month" }
+  ];
+
+  opportunities = [
+    { name: "Halcyon Health", offers: 3, valueCents: 6100000, topOffer: "Purview rollout — retention and labelling", fit: 92 },
+    { name: "Northwind Logistics", offers: 2, valueCents: 2450000, topOffer: "Copilot readiness assessment", fit: 84 },
+    { name: "Kestrel Financial", offers: 2, valueCents: 1800000, topOffer: "Conditional Access hardening", fit: 71 },
+    { name: "Mccawsoft2", offers: 1, valueCents: 400000, topOffer: "Device compliance baseline", fit: 58 }
+  ];
+
+  qbrSections = [
+    { heading: "WHERE THE BOOK STANDS", paras: [
+      "Four customers, averaging 54 out of 100 on health. One of them, Kestrel Financial, is below the line we treat as acceptable and has been for three weeks.",
+      "Northwind Logistics has moved the furthest in the right direction this quarter, largely on the back of the legacy authentication work finishing in early September."
+    ] },
+    { heading: "WHAT NEEDS ATTENTION", paras: [
+      "Kestrel Financial has a critical finding on privileged access that has been accepted rather than fixed. That acceptance is due for review on 3 October and should be revisited rather than renewed.",
+      "Halcyon Health's guest access exception is working as designed, but the quarterly re-attestation is the control that makes it defensible. It has not been done this quarter."
+    ] },
+    { heading: "WHERE THE GROWTH IS", paras: [
+      "A hundred and seven thousand of open pipeline across the book, weighted heavily towards Halcyon Health's Purview work at sixty-one thousand.",
+      "The Copilot readiness assessment at Northwind is the closest to a decision and the cheapest to deliver."
+    ] },
+    { heading: "WHAT TO DO NEXT QUARTER", paras: [
+      "Bring Kestrel Financial back above the line, close the Purview scope with Halcyon, and get the guest access re-attestation on the calendar rather than in a reminder."
+    ] }
+  ];
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+  componentWillUnmount() { if (this.timer) clearTimeout(this.timer); }
+
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  tone(kind) {
+    const M = {
+      green: ["#34d399", "rgba(52,211,153,.1)", "rgba(52,211,153,.26)"],
+      amber: ["#fbbf24", "rgba(251,191,36,.1)", "rgba(251,191,36,.26)"],
+      red: ["#f87171", "rgba(248,113,113,.1)", "rgba(248,113,113,.26)"],
+      blue: ["#60a5fa", "rgba(96,165,250,.1)", "rgba(96,165,250,.26)"],
+      violet: ["#a78bfa", "rgba(167,139,250,.1)", "rgba(167,139,250,.26)"],
+      slate: ["#94a3b8", "rgba(148,163,184,.08)", "rgba(148,163,184,.2)"]
+    };
+    return M[kind] || M.slate;
+  }
+
+  money(cents) {
+    const d = cents / 100;
+    if (d >= 1000) return "$" + Math.round(d / 1000) + "k";
+    return "$" + Math.round(d);
+  }
+
+  regenerate() {
+    if (this.timer) clearTimeout(this.timer);
+    this.setState({ qbr: "generating" });
+    this.timer = setTimeout(() => this.setState({ qbr: "ready" }), 2600);
+  }
+
+  renderVals() {
+    const s = this.state;
+    const oppsBroken = this.props.opportunityData !== "fixed";
+    const TOP = 5;
+    const risks = this.risks.slice().sort((a, b) => b.score - a.score).slice(0, TOP);
+    const opps = oppsBroken ? [] : this.opportunities.slice().sort((a, b) => b.valueCents - a.valueCents).slice(0, TOP);
+    const goodness = (r) => Math.max(0, Math.min(100, 100 - r.score));
+    const avg = Math.round(this.risks.reduce((a, r) => a + goodness(r), 0) / this.risks.length);
+    const atRisk = this.risks.filter(r => goodness(r) < 60).length;
+    const totalCents = oppsBroken ? 0 : this.opportunities.reduce((a, o) => a + o.valueCents, 0);
+    const offerCount = oppsBroken ? 0 : this.opportunities.reduce((a, o) => a + o.offers, 0);
+    const qbr = s.qbr;
+
+    const sel = s.sel
+      ? (s.sel.kind === "risk"
+        ? this.risks.find(r => r.name === s.sel.name)
+        : this.opportunities.find(o => o.name === s.sel.name))
+      : null;
+    const selKind = s.sel ? s.sel.kind : null;
+
+    const at = this.tone(avg >= 70 ? "green" : avg >= 45 ? "amber" : "red");
+    const rt = this.tone(atRisk === 0 ? "green" : "red");
+
+    const QBR = {
+      ready: ["green", "file-check", "ready"],
+      generating: ["blue", "loader", "being written"],
+      failed: ["red", "circle-x", "did not finish"],
+      none: ["slate", "file-clock", "not written yet"]
+    };
+    const q = QBR[qbr] || QBR.none;
+    const qt = this.tone(q[0]);
+
+    return {
+      rootPad: this.props.embedded ? "0" : "20px",
+      rootBg: this.props.embedded ? "transparent" : "#020617",
+      stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+      listCols: "minmax(0,1fr) minmax(0,1fr)",
+
+      tiles: [
+        { label: "CUSTOMERS", value: String(this.risks.length), note: "Everyone you can see in the book", icon: "building-2", color: "#60a5fa", line: "rgba(148,163,184,.16)", valueColor: "#f8fafc" },
+        { label: "AVERAGE HEALTH", value: avg + "%", note: "Across everyone with a reading — higher is better", icon: "activity", color: at[0], line: "rgba(148,163,184,.16)", valueColor: at[0] },
+        { label: "BELOW THE LINE", value: String(atRisk), note: atRisk === 0 ? "Nobody is under 60%" : "Under 60%, the same line their own dashboard uses", icon: "shield-alert", color: rt[0], line: atRisk > 0 ? "rgba(248,113,113,.24)" : "rgba(148,163,184,.16)", valueColor: rt[0] },
+        { label: "OPEN PIPELINE", value: this.money(totalCents), note: oppsBroken ? "Reads zero — the figure cannot be trusted yet" : offerCount + " open offers across the book", icon: "trending-up", color: oppsBroken ? "#fbbf24" : "#34d399", line: oppsBroken ? "rgba(251,191,36,.24)" : "rgba(148,163,184,.16)", valueColor: oppsBroken ? "#fcd34d" : "#f8fafc" }
+      ],
+
+      riskNote: "Worst five, and only five",
+      hasRisks: risks.length > 0,
+      noRisks: risks.length === 0,
+      riskRows: risks.map(r => {
+        const g = goodness(r);
+        const t = this.tone(g < 45 ? "red" : g < 60 ? "amber" : "green");
+        return {
+          name: r.name, score: g, pct: g + "%",
+          color: t[0], tint: t[1], line: t[2],
+          cardLine: g < 60 ? "rgba(248,113,113,.2)" : "rgba(148,163,184,.16)",
+          meta: "Read " + r.captured + " · " + r.trend,
+          atRisk: g < 60,
+          open: () => this.setState({ sel: { kind: "risk", name: r.name } })
+        };
+      }),
+
+      oppNote: oppsBroken ? "Top five by value — currently blank" : "Top five by value, and only five",
+      hasOpps: opps.length > 0,
+      noOpps: opps.length === 0,
+      oppRows: opps.map(o => {
+        const t = this.tone(o.fit >= 80 ? "green" : o.fit >= 60 ? "blue" : "slate");
+        return {
+          name: o.name, topOffer: o.topOffer,
+          meta: o.offers + (o.offers === 1 ? " open offer" : " open offers") + " · drafts and sent only",
+          value: this.money(o.valueCents),
+          fit: o.fit + "% fit",
+          color: t[0], tint: t[1], line: t[2],
+          open: () => this.setState({ sel: { kind: "opportunity", name: o.name } })
+        };
+      }),
+
+      qbrTitle: "Shane McCaw Consulting — partner review — 2026 Q3",
+      qbrSub: qbr === "ready"
+        ? "Written 8 Sep 2026 from the same numbers shown above"
+        : qbr === "generating"
+          ? "Being written now from the numbers above"
+          : qbr === "failed"
+            ? "The last attempt did not come back"
+            : "Nothing written for this quarter yet",
+      qbrState: q[2],
+      qbrIcon: q[1],
+      qbrColor: qt[0], qbrTint: qt[1], qbrLine: qt[2],
+      qbrCardLine: qbr === "failed" ? "rgba(248,113,113,.2)" : "rgba(148,163,184,.16)",
+      qbrAnim: qbr === "generating" ? "smcExPulse 1.3s ease-in-out infinite" : "none",
+      qbrHasBody: qbr === "ready",
+      qbrSections: this.qbrSections.map(sec => ({
+        heading: sec.heading,
+        paras: sec.paras.map(line => ({ line }))
+      })),
+      qbrHasError: qbr === "failed",
+      qbrError: "The model did not return anything usable. Nothing was saved, and the previous quarter's review is untouched.",
+      qbrActions: [
+        qbr === "generating"
+          ? { label: "Writing it now", icon: "loader", line: "rgba(148,163,184,.2)", bg: "transparent", fg: "#64748b", cursor: "not-allowed", opacity: ".6", title: "", run: () => {} }
+          : { label: qbr === "ready" ? "Write it again" : "Write it", icon: qbr === "ready" ? "rotate-ccw" : "sparkles", line: "#2563eb", bg: "#2563eb", fg: "#fff", cursor: "pointer", opacity: "1", title: qbr === "ready" ? "Replaces this quarter's review — there is no earlier copy kept" : "", run: () => this.regenerate() },
+        qbr === "ready"
+          ? { label: "Open as a document", icon: "external-link", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "", run: () => {} }
+          : { label: "Open as a document", icon: "lock", line: "rgba(148,163,184,.2)", bg: "transparent", fg: "#64748b", cursor: "not-allowed", opacity: ".6", title: "Nothing to open until it is written", run: () => {} }
+      ],
+      qbrNote: qbr === "generating"
+        ? "This takes a minute or two. Nothing tells this screen when it is done — refresh to check."
+        : qbr === "ready"
+          ? "One review per quarter. Writing it again overwrites this one, and covers the whole book even if your own access is limited to some of it."
+          : "Covers the whole book, not just the customers you are assigned to.",
+      qbrNoteColor: qbr === "generating" ? "#fcd34d" : "#64748b",
+
+      detailOpen: !!sel,
+      closeDetail: () => this.setState({ sel: null }),
+      selKind: selKind === "risk" ? "NEEDS ATTENTION" : "OPPORTUNITY",
+      selKindColor: selKind === "risk" ? "#fca5a5" : "#6ee7b7",
+      selName: sel ? sel.name : "",
+      selSub: sel
+        ? (selKind === "risk"
+          ? "Health read " + sel.captured
+          : sel.offers + (sel.offers === 1 ? " open offer" : " open offers") + " on the table")
+        : "",
+      selFacts: sel
+        ? (selKind === "risk"
+          ? [
+            { label: "HEALTH", value: goodness(sel) + "%", color: goodness(sel) < 60 ? "#fca5a5" : "#6ee7b7" },
+            { label: "THIS MONTH", value: sel.trend, color: "#cbd5e1" },
+            { label: "LAST READ", value: sel.captured, color: "#94a3b8" },
+            { label: "BELOW THE LINE", value: goodness(sel) < 60 ? "yes" : "no", color: goodness(sel) < 60 ? "#fca5a5" : "#6ee7b7" }
+          ]
+          : [
+            { label: "OPEN VALUE", value: this.money(sel.valueCents), color: "#f8fafc" },
+            { label: "OFFERS", value: String(sel.offers), color: "#cbd5e1" },
+            { label: "BEST FIT", value: sel.fit + "%", color: "#6ee7b7" },
+            { label: "COUNTED", value: "drafts and sent", color: "#94a3b8" }
+          ])
+        : [],
+      selBody: sel
+        ? (selKind === "risk"
+          ? "This is the same health figure the customer sees on their own dashboard, and the same line that turns their ring red. Nothing here explains which checks are dragging it down — that is on their own diagnostics."
+          : "The highest-value offer of these is \"" + sel.topOffer + "\". Only drafts and sent offers count; anything accepted, rejected or expired is left out of the total.")
+        : "",
+      selNote: selKind === "risk"
+        ? "Takes you into the tenant, where the findings behind this figure live."
+        : "Takes you into the tenant. The individual offers live on their own screen, not this one.",
+      selGo: () => this.setState({ sel: null }),
+
+      honestNote: "Both lists are capped at five with no way to ask for more. The review is written from the same numbers shown here, so anything wrong above is wrong in the document too — including the open pipeline figure, which currently reads zero on every real book."
+    };
+  }
+}
+
+</script>
+</body>
+</html>

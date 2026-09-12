@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+@keyframes smcOwSlide{from{transform:translateX(24px);opacity:.4}to{transform:translateX(0);opacity:1}}
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+      <button onClick="{{ t.select }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+    <div style="flex:1"></div>
+    <span style="font-size:11.5px;color:#64748b;white-space:nowrap">{{ headNote }}</span>
+  </div>
+
+  <sc-if value="{{ isMine }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">
+        <sc-for list="{{ mineTiles }}" as="c" hint-placeholder-count="4">
+          <div style="border:1px solid {{ c.line }};border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:7px;min-width:0">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#64748b">{{ c.label }}</span>
+            <span style="font-size:26px;font-weight:800;letter-spacing:-.02em;color:{{ c.color }}">{{ c.value }}</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ c.note }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ mineFilters }}" as="f" hint-placeholder-count="4">
+          <button onClick="{{ f.select }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ f.label }}</button>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{ hasHoldings }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+          <div style="min-width:1060px">
+            <div style="display:grid;grid-template-columns:1.4fr 2fr 1fr .7fr 1.3fr 1.3fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+              <span>CUSTOMER</span><span>WHAT WE HOLD</span><span>KIND</span><span>ROLE</span><span>WHO HOLDS IT</span><span>STATE</span>
+            </div>
+            <sc-for list="{{ holdingRows }}" as="h" hint-placeholder-count="5">
+              <div onClick="{{ h.open }}" style="display:grid;grid-template-columns:1.4fr 2fr 1fr .7fr 1.3fr 1.3fr;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08);cursor:pointer;transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
+                <span style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.customer }}</span>
+                <span style="display:flex;flex-direction:column;min-width:0">
+                  <span style="font-size:12.5px;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.objectName }}</span>
+                  <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.sub }}</span>
+                </span>
+                <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ h.kind }}</span>
+                <span style="display:inline-flex;justify-self:start;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;background:{{ h.roleTint }};border:1px solid {{ h.roleLine }};font-size:11.5px;font-weight:800;color:{{ h.roleColor }};text-transform:uppercase">{{ h.role }}</span>
+                <span style="display:flex;flex-direction:column;min-width:0">
+                  <span style="font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.holder }}</span>
+                  <span style="font-size:11px;color:{{ h.orderColor }};white-space:nowrap">{{ h.orderLabel }}</span>
+                </span>
+                <span style="display:inline-flex;justify-self:start;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:{{ h.tint }};border:1px solid {{ h.line }};font-size:11px;font-weight:600;color:{{ h.color }};white-space:nowrap"><span data-icon="{{ h.icon }}" style="width:11px;height:11px"></span>{{ h.state }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ noHoldings }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:44px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+          <span data-icon="user-round-search" style="width:40px;height:40px;border-radius:12px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:10px"></span>
+          <span style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{ noHoldingsTitle }}</span>
+          <span style="font-size:12.5px;color:#94a3b8;max-width:450px;text-wrap:pretty">{{ noHoldingsBody }}</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isCoverage }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+        <div style="min-width:760px">
+          <div style="display:grid;grid-template-columns:2fr 1fr 2.4fr 1.2fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+            <span>CUSTOMER</span><span style="text-align:right">WE HOLD</span><span>WHAT THAT MEANS</span><span></span>
+          </div>
+          <sc-for list="{{ coverageRows }}" as="c" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:2fr 1fr 2.4fr 1.2fr;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(148,163,184,.08)">
+              <span style="font-size:12.5px;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.customer }}</span>
+              <span style="font-size:15px;font-weight:800;color:{{ c.countColor }};text-align:right">{{ c.count }}</span>
+              <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ c.meaning }}</span>
+              <div style="display:flex;justify-content:flex-end">
+                <button onClick="{{ c.propose }}" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:7px;border:1px solid rgba(96,165,250,.3);background:rgba(37,99,235,.14);color:#bfdbfe;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(37,99,235,.24)"><span data-icon="user-round-plus" style="width:12px;height:12px"></span>Put us forward</button>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Every customer in your book is listed, including the ones where you hold nothing. A customer missing from this list is out of your scope entirely, not a customer with no ownership.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isMatrix }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ matrixTenants }}" as="t" hint-placeholder-count="3">
+          <button onClick="{{ t.select }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ t.label }}</button>
+        </sc-for>
+        <div style="flex:1"></div>
+        <span style="display:inline-flex;align-items:center;gap:7px;padding:3px 10px;border-radius:999px;background:{{ gateTint }};border:1px solid {{ gateLine }};font-size:11px;font-weight:600;color:{{ gateColor }};white-space:nowrap"><span data-icon="{{ gateIcon }}" style="width:11px;height:11px"></span>{{ gateLabel }}</span>
+      </div>
+
+      <sc-if value="{{ scopeFailed }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:10px;padding:13px 14px;border-radius:11px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.07)">
+          <span data-icon="unplug" style="width:15px;height:15px;color:#fbbf24;flex:0 0 15px;margin-top:2px"></span>
+          <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+            <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">Three groups are missing because we cannot resolve this tenant</span>
+            <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">Workloads, change notices and change requests are all absent for that reason, not because this customer has none. Services, freeze windows and the roster below are unaffected and real.</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;letter-spacing:-.01em">{{ g.label }}</span>
+            <span style="font-size:11.5px;color:#64748b">{{ g.note }}</span>
+          </div>
+          <sc-if value="{{ g.live }}" hint-placeholder-val="{{ true }}">
+            <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+              <div style="min-width:820px">
+                <div style="display:grid;grid-template-columns:2.4fr 1fr 1fr 1fr 1fr;gap:12px;padding:10px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+                  <span>{{ g.colLabel }}</span><span>RESPONSIBLE</span><span>ACCOUNTABLE</span><span>CONSULTED</span><span>INFORMED</span>
+                </div>
+                <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="3">
+                  <div style="display:grid;grid-template-columns:2.4fr 1fr 1fr 1fr 1fr;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08)">
+                    <span style="display:flex;flex-direction:column;min-width:0">
+                      <span style="font-size:12.5px;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+                      <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.sub }}</span>
+                    </span>
+                    <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="4">
+                      <button onClick="{{ c.open }}" style="display:flex;flex-direction:column;gap:3px;align-items:flex-start;padding:6px 9px;border-radius:8px;border:1px solid {{ c.line }};background:{{ c.bg }};cursor:pointer;min-width:0;text-align:left" style-hover="background:rgba(148,163,184,.1)">
+                        <span style="font-size:11.5px;color:{{ c.nameColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">{{ c.holder }}</span>
+                        <span style="font-size:10px;color:{{ c.metaColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">{{ c.meta }}</span>
+                      </button>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ g.dead }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px dashed rgba(148,163,184,.2);border-radius:11px;background:rgba(2,6,23,.35);padding:16px;display:flex;gap:10px;align-items:flex-start">
+              <span data-icon="circle-slash" style="width:14px;height:14px;color:#64748b;flex:0 0 14px;margin-top:2px"></span>
+              <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">{{ g.deadNote }}</span>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">WHO CAN BE PLACED</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <sc-for list="{{ people }}" as="p" hint-placeholder-count="5">
+            <div style="display:flex;gap:9px;align-items:center;padding:9px 11px;border-radius:10px;border:1px solid {{ p.line }};background:rgba(2,6,23,.4);min-width:0">
+              <span style="width:24px;height:24px;flex:0 0 24px;border-radius:8px;background:{{ p.tint }};border:1px solid {{ p.line }};display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;color:{{ p.color }}">{{ p.initials }}</span>
+              <span style="display:flex;flex-direction:column;min-width:0">
+                <span style="font-size:12px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</span>
+                <span style="font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.meta }}</span>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+        <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Everyone here is a real named person — the customer's own active users plus your staff. There is no "the MSP" placeholder to place, and nothing places your team anywhere by default. Groups, vendors and external contacts are offered by the shape but nothing produces one.</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ cellOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeCell }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(500px,95%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcOwSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:{{ cellRoleColor }}">{{ cellRoleLabel }}</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ cellObject }}</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ cellSub }}</span>
+          </div>
+          <button onClick="{{ closeCell }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <sc-if value="{{ cellHasHolders }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">WHO HOLDS THIS</span>
+              <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ cellHolderNote }}</span>
+            </div>
+            <sc-for list="{{ cellHolders }}" as="h" hint-placeholder-count="2">
+              <div style="border:1px solid {{ h.cardLine }};border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0">
+                <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                  <span style="width:26px;height:26px;flex:0 0 26px;border-radius:8px;background:{{ h.tint }};border:1px solid {{ h.line }};display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;color:{{ h.color }}">{{ h.initials }}</span>
+                  <span style="display:flex;flex-direction:column;min-width:0;flex:1">
+                    <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.name }}</span>
+                    <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.role }}</span>
+                  </span>
+                  <span style="display:inline-flex;padding:3px 9px;border-radius:999px;background:{{ h.tint }};border:1px solid {{ h.line }};font-size:10.5px;font-weight:600;color:{{ h.color }};white-space:nowrap">{{ h.state }}</span>
+                </div>
+                <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ h.provenance }}</span>
+                <sc-if value="{{ h.hasResponse }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:11.5px;color:{{ h.responseColor }};text-wrap:pretty">{{ h.response }}</span>
+                </sc-if>
+                <div style="display:flex;gap:7px;flex-wrap:wrap">
+                  <sc-for list="{{ h.buttons }}" as="b" hint-placeholder-count="2">
+                    <button onClick="{{ b.run }}" title="{{ b.title }}" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ b.line }};background:{{ b.bg }};color:{{ b.fg }};font-size:11.5px;font-weight:600;cursor:{{ b.cursor }};opacity:{{ b.opacity }};white-space:nowrap" style-hover="background:rgba(148,163,184,.12)"><span data-icon="{{ b.icon }}" style="width:12px;height:12px"></span>{{ b.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+            <span style="font-size:11px;color:#64748b;text-wrap:pretty">Order is for reading only. Everyone in this cell carries the same authority regardless of where they sit — nothing hands off on a timeout, and nothing activates a second holder when the first goes quiet.</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ cellIsGap }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed rgba(148,163,184,.24);border-radius:11px;background:rgba(2,6,23,.4);padding:24px 18px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+            <span data-icon="user-round-x" style="width:34px;height:34px;border-radius:11px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);color:#94a3b8;padding:9px"></span>
+            <span style="font-size:13.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Nobody has ever been placed here</span>
+            <span style="font-size:11.5px;color:#94a3b8;max-width:340px;text-wrap:pretty">{{ cellGapBody }}</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ cellCanPropose }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">PUT ONE OF YOUR TEAM FORWARD</span>
+            <div style="display:flex;gap:7px;flex-wrap:wrap">
+              <sc-for list="{{ proposeOptions }}" as="o" hint-placeholder-count="3">
+                <button onClick="{{ o.pick }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ o.line }};background:{{ o.bg }};color:{{ o.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ o.label }}</button>
+              </sc-for>
+            </div>
+            <button onClick="{{ propose }}" title="{{ proposeTitle }}" style="display:flex;align-items:center;justify-content:center;gap:8px;height:36px;border-radius:8px;border:1px solid {{ proposeLine }};background:{{ proposeBg }};color:{{ proposeFg }};font-size:12.5px;font-weight:600;cursor:{{ proposeCursor }};opacity:{{ proposeOpacity }}"><span data-icon="user-round-plus" style="width:13px;height:13px"></span>{{ proposeLabel }}</button>
+            <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">You can only ever place your own staff from here. Placing one of the customer's own people is their side of the page, not yours — and you cannot place another MSP's staff at all.</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ cellDeclineOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font-size:12px;font-weight:600;color:#cbd5e1">Why are you declining?</span>
+            <input value="{{ declineReason }}" onChange="{{ setDeclineReason }}" placeholder="Required — this is the durable record" style="height:36px;padding:0 11px;border-radius:8px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:12.5px;outline:none">
+            <div style="display:flex;gap:8px">
+              <button onClick="{{ submitDecline }}" title="{{ declineTitle }}" style="height:34px;padding:0 13px;border-radius:8px;border:1px solid {{ declineLine }};background:{{ declineBg }};color:{{ declineFg }};font-size:12.5px;font-weight:600;cursor:{{ declineCursor }};opacity:{{ declineOpacity }}">Decline</button>
+              <button onClick="{{ cancelDecline }}" style="height:34px;padding:0 13px;border-radius:8px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:12.5px;cursor:pointer">Cancel</button>
+            </div>
+            <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">A reason is required on your side and optional on theirs. When you put yourself forward and then step back, the scope conversation already happened — the reason is the only record of it.</span>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;flex-direction:column;gap:9px;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">EVERYTHING THAT HAPPENED HERE</span>
+          <sc-for list="{{ cellEvents }}" as="e" hint-placeholder-count="3">
+            <div style="display:flex;gap:10px;align-items:flex-start;min-width:0">
+              <span data-icon="{{ e.icon }}" style="width:13px;height:13px;flex:0 0 13px;color:{{ e.color }};margin-top:3px"></span>
+              <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ e.text }}</span>
+                <span style="font-size:10.5px;color:#475569">{{ e.when }}</span>
+              </div>
+            </div>
+          </sc-for>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">This history is written once and never edited. Re-placing someone overwrites who holds the cell today, but the line above it survives — that is what answers "who held this when the decision was signed".</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;gap:10px;padding:13px 14px;border-radius:11px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.06)">
+    <span data-icon="hard-hat" style="width:15px;height:15px;color:#fbbf24;flex:0 0 15px;margin-top:2px"></span>
+    <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+      <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">This operator screen is ahead of its own spec</span>
+      <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">The customer-facing half of ownership has a design brief; this MSP-side half does not yet — it is drawn from the finished endpoints alone. The wire shape is real and the behaviour shown is real, but treat the screen itself as a proposal, not an agreed layout.</span>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:9px;padding-top:2px">
+    <span data-icon="info" style="width:13px;height:13px;color:#475569;flex:0 0 13px"></span>
+    <span style="font-size:11px;color:#475569;text-wrap:pretty">{{ honestNote }}</span>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900},&quot;gateMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;strict&quot;,&quot;loose&quot;],&quot;default&quot;:&quot;strict&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;bookState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;populated&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;populated&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  state = {
+    tab: "mine", mineFilter: "all", tenant: "Northwind Logistics",
+    cell: null, proposePick: null, declineOpen: false, declineReason: "",
+    accepted: {}, declined: {}, proposed: {}
+  };
+
+  staff = [
+    { id: "u12", name: "Shane McCaw", role: "Principal Architect", side: "MSP" },
+    { id: "u18", name: "Rowan Ellis", role: "Service Delivery Lead", side: "MSP" },
+    { id: "u24", name: "Marcus Ibe", role: "Security Operations", side: "MSP" }
+  ];
+
+  customerPeople = {
+    "Northwind Logistics": [
+      { id: "u41", name: "Dana Whitfield", role: "Operations Director" },
+      { id: "u44", name: "Tom Beckett", role: "IT Manager" }
+    ],
+    "Halcyon Health": [
+      { id: "u52", name: "Marcus Vale", role: "Chief Medical Information Officer" }
+    ],
+    "Kestrel Financial": [
+      { id: "u38", name: "Priya Raman", role: "Head of Compliance" },
+      { id: "u39", name: "Alan Frost", role: "Infrastructure Lead" }
+    ]
+  };
+
+  holdings = [
+    { customer: "Northwind Logistics", kind: "Change request", objectName: "CR-2026-0148", sub: "Disable legacy authentication tenant-wide", role: "a", holder: "Shane McCaw", acceptance: "accepted", order: 0 },
+    { customer: "Northwind Logistics", kind: "Workload", objectName: "Exchange Online", sub: "Enabled on the tenant's plan", role: "r", holder: "Rowan Ellis", acceptance: "pending", order: 0 },
+    { customer: "Halcyon Health", kind: "Freeze window", objectName: "Clinical go-live freeze", sub: "Open since 1 Sep 2026", role: "a", holder: "Shane McCaw", acceptance: "pending", order: 0 },
+    { customer: "Halcyon Health", kind: "Service", objectName: "Tenant Monitoring — Premier", sub: "Active since Mar 2026", role: "r", holder: "Marcus Ibe", acceptance: "declined", order: 1, declineReason: "Out of scope for my team — this sits with service delivery." },
+    { customer: "Kestrel Financial", kind: "Change notice", objectName: "MC998211", sub: "Action needed by 30 Sep 2026", role: "r", holder: "Rowan Ellis", acceptance: "", order: 0 }
+  ];
+
+  coverage = [
+    { customer: "Northwind Logistics", count: 2 },
+    { customer: "Halcyon Health", count: 2 },
+    { customer: "Kestrel Financial", count: 1 },
+    { customer: "Mccawsoft2", count: 0 }
+  ];
+
+  objectGroups = {
+    "Northwind Logistics": [
+      { type: "workload", label: "Workloads", colLabel: "WORKLOAD", note: "What the tenant actually runs, not what was bought", live: true, rows: [
+        { name: "Exchange Online", sub: "Mail and mail flow", cells: { r: { holder: "Rowan Ellis", acceptance: "pending", setBy: "Dana Whitfield" }, a: null, c: null, i: null } },
+        { name: "SharePoint", sub: "Sites and sharing", cells: { r: null, a: null, c: null, i: null } },
+        { name: "Intune", sub: "Device management", cells: { r: { holder: "Tom Beckett", acceptance: "accepted", setBy: "Dana Whitfield" }, a: { holder: "Dana Whitfield", acceptance: "accepted", setBy: "Dana Whitfield" }, c: null, i: null } }
+      ] },
+      { type: "cr", label: "Change requests", colLabel: "CHANGE REQUEST", note: "The only rows that arrive with anyone already in them", live: true, rows: [
+        { name: "CR-2026-0148", sub: "Disable legacy authentication tenant-wide", cells: { r: { holder: "Tom Beckett", acceptance: "", setBy: "", fromSource: true }, a: { holder: "Shane McCaw", acceptance: "accepted", setBy: "Dana Whitfield" }, c: null, i: null } },
+        { name: "CR-2026-0151", sub: "Enable Conditional Access report-only", cells: { r: { holder: "Tom Beckett", acceptance: "", setBy: "", fromSource: true }, a: null, c: null, i: null } }
+      ] },
+      { type: "service", label: "Services", colLabel: "SERVICE", note: "One row per thing they bought", live: true, rows: [
+        { name: "Tenant Monitoring — Standard", sub: "Active since Aug 2026", cells: { r: null, a: null, c: null, i: null } }
+      ] },
+      { type: "freeze", label: "Freeze windows", colLabel: "FREEZE WINDOW", note: "Open windows only", live: true, rows: [] },
+      { type: "change", label: "Change notices", colLabel: "NOTICE", note: "Microsoft notices still needing action", live: true, rows: [
+        { name: "MC996043", sub: "Action needed by 12 Oct 2026", cells: { r: null, a: null, c: null, i: null } }
+      ] },
+      { type: "dead", label: "Controls, incidents and announcements", live: false, deadNote: "Three groups the shape makes room for and nothing fills. No table stands behind controls, incidents or announcements, so they are named here rather than quietly left out — an empty group with no explanation would read as a data problem." }
+    ],
+    "Halcyon Health": [
+      { type: "service", label: "Services", colLabel: "SERVICE", note: "One row per thing they bought", live: true, rows: [
+        { name: "Tenant Monitoring — Premier", sub: "Active since Mar 2026", cells: { r: { holder: "Marcus Ibe", acceptance: "declined", setBy: "Marcus Vale", declineReason: "Out of scope for my team — this sits with service delivery." }, a: null, c: null, i: null } }
+      ] },
+      { type: "freeze", label: "Freeze windows", colLabel: "FREEZE WINDOW", note: "Open windows only", live: true, rows: [
+        { name: "Clinical go-live freeze", sub: "Open since 1 Sep 2026", cells: { r: null, a: { holder: "Shane McCaw", acceptance: "pending", setBy: "Shane McCaw" }, c: null, i: null } }
+      ] },
+      { type: "dead", label: "Controls, incidents and announcements", live: false, deadNote: "Same three groups, same reason — nothing backs them anywhere in the platform." }
+    ],
+    "Kestrel Financial": [
+      { type: "change", label: "Change notices", colLabel: "NOTICE", note: "Microsoft notices still needing action", live: true, rows: [
+        { name: "MC998211", sub: "Action needed by 30 Sep 2026", cells: { r: { holder: "Rowan Ellis", acceptance: "", setBy: "Priya Raman" }, a: null, c: null, i: null } }
+      ] },
+      { type: "service", label: "Services", colLabel: "SERVICE", note: "One row per thing they bought", live: true, rows: [
+        { name: "Tenant Monitoring — Essentials", sub: "Active since Jan 2026", cells: { r: null, a: null, c: null, i: null } }
+      ] },
+      { type: "dead", label: "Controls, incidents and announcements", live: false, deadNote: "Same three groups, same reason — nothing backs them anywhere in the platform." }
+    ],
+    "Mccawsoft2": [
+      { type: "service", label: "Services", colLabel: "SERVICE", note: "One row per thing they bought", live: true, rows: [] },
+      { type: "dead", label: "Controls, incidents and announcements", live: false, deadNote: "Same three groups, same reason — nothing backs them anywhere in the platform." }
+    ]
+  };
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  tone(kind) {
+    const M = {
+      green: ["#34d399", "rgba(52,211,153,.1)", "rgba(52,211,153,.26)"],
+      amber: ["#fbbf24", "rgba(251,191,36,.1)", "rgba(251,191,36,.26)"],
+      red: ["#f87171", "rgba(248,113,113,.1)", "rgba(248,113,113,.26)"],
+      blue: ["#60a5fa", "rgba(96,165,250,.1)", "rgba(96,165,250,.26)"],
+      violet: ["#a78bfa", "rgba(167,139,250,.1)", "rgba(167,139,250,.26)"],
+      slate: ["#94a3b8", "rgba(148,163,184,.08)", "rgba(148,163,184,.2)"]
+    };
+    return M[kind] || M.slate;
+  }
+
+  initials(name) {
+    return name.split(" ").filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join("");
+  }
+
+  cellKey(tenant, objName, role) { return tenant + "|" + objName + "|" + role; }
+
+  stateOf(key, base) {
+    if (this.state.accepted[key]) return "accepted";
+    if (this.state.declined[key]) return "declined";
+    return base;
+  }
+
+  renderVals() {
+    const s = this.state, tab = s.tab;
+    const strict = this.props.gateMode !== "loose";
+    const emptyBook = this.props.bookState === "empty";
+
+    const ROLE = { r: ["blue", "RESPONSIBLE"], a: ["violet", "ACCOUNTABLE"], c: ["slate", "CONSULTED"], i: ["slate", "INFORMED"] };
+    const ACC = {
+      accepted: ["green", "accepted", "circle-check-big"],
+      pending: ["amber", "waiting on them", "clock"],
+      declined: ["red", "declined", "circle-x"],
+      "": ["slate", "in effect", "circle-dot"]
+    };
+
+    const holdings = emptyBook ? [] : this.holdings;
+    const coverage = emptyBook ? [] : this.coverage;
+    const filtered = holdings.filter(h => {
+      const st = this.stateOf(this.cellKey(h.customer, h.objectName, h.role), h.acceptance);
+      return s.mineFilter === "all" ? true
+        : s.mineFilter === "pending" ? st === "pending"
+        : s.mineFilter === "declined" ? st === "declined"
+        : st === "accepted";
+    });
+
+    const tenantList = Object.keys(this.objectGroups);
+    const tenant = s.tenant;
+    const groups = emptyBook ? [] : (this.objectGroups[tenant] || []);
+    const scopeFailed = tenant === "Mccawsoft2";
+    const people = emptyBook ? [] : (this.customerPeople[tenant] || []).map(p => ({ p, side: tenant })).concat(this.staff.map(p => ({ p, side: "MSP" })));
+
+    const cell = s.cell;
+    const cellHolderData = cell && cell.holder ? cell : null;
+    const cellKey = cell ? this.cellKey(tenant, cell.objectName, cell.role) : null;
+    const cellState = cell ? this.stateOf(cellKey, cell.acceptance || "") : null;
+    const proposedHere = cell && s.proposed[cellKey];
+    const canProposeCell = !!cell && (cell.role === "r" || cell.role === "a");
+    const canSubmitDecline = s.declineReason.trim().length > 0;
+
+    const roleTone = cell ? this.tone(ROLE[cell.role][0]) : this.tone("blue");
+    const gateTone = this.tone(strict ? "violet" : "slate");
+
+    return {
+      rootPad: this.props.embedded ? "0" : "20px",
+      rootBg: this.props.embedded ? "transparent" : "#020617",
+      stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+
+      tabs: [
+        { id: "mine", label: "What we hold", count: String(holdings.length) },
+        { id: "coverage", label: "Across the book", count: String(coverage.length) },
+        { id: "matrix", label: "One customer", count: "" }
+      ].map(t => ({
+        label: t.label, count: t.count,
+        bg: tab === t.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: tab === t.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: tab === t.id ? "#bfdbfe" : "#94a3b8",
+        countColor: tab === t.id ? "#60a5fa" : "#475569",
+        select: () => this.setState({ tab: t.id })
+      })),
+      headNote: emptyBook ? "Nothing placed anywhere yet" : this.staff.length + " of your staff · " + coverage.length + " customers in scope",
+
+      isMine: tab === "mine",
+      mineTiles: [
+        { label: "CELLS WE HOLD", value: String(holdings.length), note: "Across every customer you can see", color: "#f8fafc", line: "rgba(148,163,184,.16)" },
+        { label: "WAITING ON US", value: String(holdings.filter(h => this.stateOf(this.cellKey(h.customer, h.objectName, h.role), h.acceptance) === "pending").length), note: "Placed and not yet answered — nothing chases these", color: "#fcd34d", line: "rgba(251,191,36,.24)" },
+        { label: "WE DECLINED", value: String(holdings.filter(h => this.stateOf(this.cellKey(h.customer, h.objectName, h.role), h.acceptance) === "declined").length), note: "Still on the record, with the reason attached", color: "#fca5a5", line: "rgba(148,163,184,.16)" },
+        { label: "YOUR STAFF", value: String(this.staff.length), note: "Anyone here can be put forward; none is placed by default", color: "#f8fafc", line: "rgba(148,163,184,.16)" }
+      ],
+      mineFilters: [
+        { id: "all", label: "Everything" },
+        { id: "pending", label: "Waiting on us" },
+        { id: "accepted", label: "Accepted" },
+        { id: "declined", label: "Declined" }
+      ].map(f => ({
+        label: f.label,
+        bg: s.mineFilter === f.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: s.mineFilter === f.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: s.mineFilter === f.id ? "#bfdbfe" : "#94a3b8",
+        select: () => this.setState({ mineFilter: f.id })
+      })),
+      hasHoldings: tab === "mine" && filtered.length > 0,
+      noHoldings: tab === "mine" && filtered.length === 0,
+      noHoldingsTitle: emptyBook ? "Nobody has placed you anywhere" : "Nothing matches that filter",
+      noHoldingsBody: emptyBook
+        ? "Your team holds nothing across the whole book. That is the real state, not a screen that failed to load — nothing places your staff anywhere until someone does it by hand."
+        : "You hold cells elsewhere in the book; none of them is in that state right now.",
+      holdingRows: filtered.map(h => {
+        const key = this.cellKey(h.customer, h.objectName, h.role);
+        const st = this.stateOf(key, h.acceptance);
+        const a = ACC[st], t = this.tone(a[0]), rt = this.tone(ROLE[h.role][0]);
+        return {
+          customer: h.customer, objectName: h.objectName, sub: h.sub, kind: h.kind,
+          role: h.role,
+          roleColor: rt[0], roleTint: rt[1], roleLine: rt[2],
+          holder: h.holder,
+          orderLabel: h.order === 0 ? "primary" : "second in the cell",
+          orderColor: h.order === 0 ? "#64748b" : "#94a3b8",
+          state: a[1], icon: a[2], color: t[0], tint: t[1], line: t[2],
+          open: () => this.setState({
+            tab: "matrix", tenant: h.customer, declineOpen: false, declineReason: "",
+            cell: { objectName: h.objectName, sub: h.sub, role: h.role, holder: h.holder, acceptance: h.acceptance, setBy: "the customer", declineReason: h.declineReason }
+          })
+        };
+      }),
+
+      isCoverage: tab === "coverage",
+      coverageRows: coverage.map(c => ({
+        customer: c.customer,
+        count: String(c.count),
+        countColor: c.count === 0 ? "#64748b" : "#f8fafc",
+        meaning: c.count === 0
+          ? "Nothing of yours is named anywhere in their matrix. That is real information, not a gap in the list."
+          : c.count + (c.count === 1 ? " cell names one of your staff." : " cells name your staff.") + " Their own page shows the same objects, resolved the same way.",
+        propose: () => this.setState({ tab: "matrix", tenant: c.customer, cell: null })
+      })),
+
+      isMatrix: tab === "matrix",
+      matrixTenants: tenantList.map(t => ({
+        label: t,
+        bg: tenant === t ? "rgba(37,99,235,.18)" : "transparent",
+        border: tenant === t ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: tenant === t ? "#bfdbfe" : "#94a3b8",
+        select: () => this.setState({ tenant: t, cell: null })
+      })),
+      gateLabel: strict ? "Placements need accepting here" : "Placements take effect immediately here",
+      gateIcon: strict ? "shield-check" : "shield-off",
+      gateColor: gateTone[0], gateTint: gateTone[1], gateLine: gateTone[2],
+      scopeFailed,
+      groups: groups.map(g => ({
+        label: g.label, note: g.note || "", colLabel: g.colLabel || "",
+        live: g.live && (g.rows || []).length > 0,
+        dead: !g.live || (g.rows || []).length === 0,
+        deadNote: !g.live
+          ? g.deadNote
+          : "Nothing open in this group right now — read, and genuinely zero.",
+        rows: (g.rows || []).map(r => ({
+          name: r.name, sub: r.sub,
+          cells: ["r", "a", "c", "i"].map(role => {
+            const c = r.cells[role];
+            const key = this.cellKey(tenant, r.name, role);
+            const prop = s.proposed[key];
+            const holder = prop ? prop : c ? c.holder : null;
+            const baseAcc = prop ? "pending" : c ? c.acceptance : "";
+            const st = holder ? this.stateOf(key, baseAcc) : null;
+            const a = holder ? ACC[st] : null;
+            const t = holder ? this.tone(a[0]) : this.tone("slate");
+            return {
+              holder: holder || "nobody",
+              meta: !holder
+                ? (role === "c" || role === "i" ? "never guessed" : "a gap")
+                : c && c.fromSource ? "from the request itself" : a[1],
+              nameColor: holder ? "#e2e8f0" : "#64748b",
+              metaColor: holder ? t[0] : "#475569",
+              bg: holder ? "rgba(2,6,23,.4)" : "transparent",
+              line: holder ? t[2] : "rgba(148,163,184,.14)",
+              open: () => this.setState({
+                declineOpen: false, declineReason: "", proposePick: null,
+                cell: {
+                  objectName: r.name, sub: r.sub, role,
+                  holder, acceptance: baseAcc,
+                  setBy: c && c.setBy ? c.setBy : prop ? "you, just now" : "",
+                  fromSource: !!(c && c.fromSource),
+                  declineReason: c ? c.declineReason : null
+                }
+              })
+            };
+          })
+        }))
+      })),
+      people: people.map(x => {
+        const t = this.tone(x.side === "MSP" ? "blue" : "slate");
+        return {
+          name: x.p.name, initials: this.initials(x.p.name),
+          meta: x.p.role + " · " + (x.side === "MSP" ? "your team" : x.side),
+          color: t[0], tint: t[1], line: t[2]
+        };
+      }),
+
+      cellOpen: !!cell,
+      closeCell: () => this.setState({ cell: null, declineOpen: false, declineReason: "" }),
+      cellRoleLabel: cell ? ROLE[cell.role][1] : "",
+      cellRoleColor: roleTone[0],
+      cellObject: cell ? cell.objectName : "",
+      cellSub: cell ? cell.sub : "",
+
+      cellHasHolders: !!cellHolderData,
+      cellHolderNote: cell && cell.fromSource
+        ? "This one arrived with the request — it was not placed on this page"
+        : "One cell can hold several people at once",
+      cellHolders: cellHolderData ? [(() => {
+        const a = ACC[cellState], t = this.tone(a[0]);
+        const isOurs = this.staff.some(x => x.name === cell.holder);
+        const buttons = [];
+        if (cellState === "pending" && isOurs) {
+          buttons.push({ label: "Accept", icon: "check", line: "#2563eb", bg: "#2563eb", fg: "#fff", cursor: "pointer", opacity: "1", title: "", run: () => this.setState({ accepted: Object.assign({}, s.accepted, { [cellKey]: true }) }) });
+          buttons.push({ label: "Decline", icon: "x", line: "rgba(248,113,113,.3)", bg: "rgba(248,113,113,.1)", fg: "#fca5a5", cursor: "pointer", opacity: "1", title: "A reason is required", run: () => this.setState({ declineOpen: true }) });
+        } else if (cellState === "pending") {
+          buttons.push({ label: "Waiting on them", icon: "clock", line: "rgba(148,163,184,.2)", bg: "transparent", fg: "#64748b", cursor: "not-allowed", opacity: ".6", title: "Only the named holder can answer while placements need accepting", run: () => {} });
+        }
+        return {
+          name: cell.holder, initials: this.initials(cell.holder),
+          role: isOurs ? "your team" : tenant,
+          state: a[1], color: t[0], tint: t[1], line: t[2],
+          cardLine: "rgba(148,163,184,.14)",
+          provenance: cell.fromSource
+            ? "Came from the change request itself — whoever raised it is Responsible, whoever signed it is Accountable. Nothing on this page put them there."
+            : (cell.setBy ? "Placed by " + cell.setBy : "Placed here") + ". Every placement records the same reason: changed on the ownership page. There is no box to type a different one.",
+          hasResponse: cellState === "declined" || cellState === "accepted",
+          response: cellState === "declined"
+            ? "Declined — " + (s.declineReason.trim() || cell.declineReason || "no reason recorded")
+            : "Accepted, and the acceptance is theirs, not the assigner's.",
+          responseColor: cellState === "declined" ? "#fca5a5" : "#6ee7b7",
+          buttons
+        };
+      })()] : [],
+
+      cellIsGap: !!cell && !cellHolderData,
+      cellGapBody: cell && (cell.role === "c" || cell.role === "i")
+        ? "Consulted and Informed are never filled in for you. Nothing anywhere records who was consulted on anything, and guessing would invent an agreement nobody made."
+        : "This is the normal state of almost every cell. Only a change request arrives with anyone in it — everything else stays empty until someone is placed by hand.",
+
+      cellCanPropose: canProposeCell && !cellHolderData && !proposedHere,
+      proposeOptions: this.staff.map(x => ({
+        label: x.name,
+        bg: s.proposePick === x.name ? "rgba(37,99,235,.18)" : "transparent",
+        line: s.proposePick === x.name ? "rgba(96,165,250,.32)" : "rgba(148,163,184,.18)",
+        fg: s.proposePick === x.name ? "#bfdbfe" : "#94a3b8",
+        pick: () => this.setState({ proposePick: x.name })
+      })),
+      proposeLabel: s.proposePick ? "Put " + s.proposePick + " forward" : "Pick someone first",
+      proposeTitle: s.proposePick ? "" : "Pick one of your staff",
+      proposeLine: s.proposePick ? "#2563eb" : "rgba(148,163,184,.2)",
+      proposeBg: s.proposePick ? "#2563eb" : "transparent",
+      proposeFg: s.proposePick ? "#fff" : "#64748b",
+      proposeCursor: s.proposePick ? "pointer" : "not-allowed",
+      proposeOpacity: s.proposePick ? "1" : ".6",
+      propose: s.proposePick
+        ? () => this.setState({
+          proposed: Object.assign({}, s.proposed, { [cellKey]: s.proposePick }),
+          cell: Object.assign({}, cell, { holder: s.proposePick, acceptance: strict ? "pending" : "", setBy: "you, just now" }),
+          proposePick: null
+        })
+        : () => {},
+
+      cellDeclineOpen: s.declineOpen,
+      declineReason: s.declineReason,
+      setDeclineReason: (e) => this.setState({ declineReason: e.target.value }),
+      cancelDecline: () => this.setState({ declineOpen: false, declineReason: "" }),
+      declineTitle: canSubmitDecline ? "" : "A reason is required on your side",
+      declineLine: canSubmitDecline ? "rgba(248,113,113,.35)" : "rgba(148,163,184,.2)",
+      declineBg: canSubmitDecline ? "rgba(248,113,113,.14)" : "transparent",
+      declineFg: canSubmitDecline ? "#fca5a5" : "#64748b",
+      declineCursor: canSubmitDecline ? "pointer" : "not-allowed",
+      declineOpacity: canSubmitDecline ? "1" : ".6",
+      submitDecline: canSubmitDecline
+        ? () => this.setState({ declined: Object.assign({}, s.declined, { [cellKey]: true }), declineOpen: false })
+        : () => {},
+
+      cellEvents: (() => {
+        const base = [];
+        if (cell && cell.fromSource) {
+          base.push({ text: cell.holder + " named on the request itself", icon: "file-text", color: "#94a3b8", when: "when the request was raised" });
+          return base;
+        }
+        if (cellHolderData) {
+          base.push({ text: cell.holder + " placed by " + (cell.setBy || "someone on the customer side"), icon: "user-round-plus", color: "#60a5fa", when: "6 September 2026" });
+          if (cellState === "accepted") base.push({ text: cell.holder + " accepted", icon: "circle-check-big", color: "#34d399", when: "7 September 2026" });
+          if (cellState === "declined") base.push({ text: cell.holder + " declined, with a reason", icon: "circle-x", color: "#f87171", when: "7 September 2026" });
+          if (cellState === "pending") base.push({ text: "Waiting on " + cell.holder, icon: "clock", color: "#fbbf24", when: "nothing chases this" });
+          return base;
+        }
+        return [{ text: "Nothing has ever happened in this cell", icon: "circle-dot", color: "#475569", when: "—" }];
+      })(),
+
+      honestNote: "All four endpoints behind this screen are live and finished, with nothing wired to them yet, so everything here is representative. Away dates, standing deputies, groups and vendors are all offered by the shape and backed by nothing — no column records any of them. A decline escalates to whoever did the placing and stops there; there is no reporting line in the platform to climb."
+    };
+  }
+}
+
+</script>
+</body>
+</html>

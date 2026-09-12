@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+@keyframes smcTmSlide{from{transform:translateX(24px);opacity:.4}to{transform:translateX(0);opacity:1}}
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+    <sc-for list="{{ counters }}" as="c" hint-placeholder-count="4">
+      <div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:9px;border:1px solid {{ c.line }};background:{{ c.tint }};min-width:0">
+        <span data-icon="{{ c.icon }}" style="width:13px;height:13px;color:{{ c.color }};flex:0 0 13px"></span>
+        <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">{{ c.value }}</span>
+        <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ c.label }}</span>
+      </div>
+    </sc-for>
+    <div style="flex:1"></div>
+    <button onClick="{{ openInvite }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:8px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:#3b82f6"><span data-icon="user-plus" style="width:14px;height:14px"></span>Invite someone</button>
+  </div>
+
+  <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+    <div style="min-width:1060px">
+      <div style="display:grid;grid-template-columns:2fr 1.3fr 1.2fr 1.1fr 1.2fr 1.1fr 90px;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+        <span>PERSON</span><span>ROLE</span><span>SECOND FACTOR</span><span>ACCOUNT</span><span>LAST SIGN-IN</span><span>SESSIONS</span><span style="text-align:right">MANAGE</span>
+      </div>
+      <sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+        <div style="display:grid;grid-template-columns:2fr 1.3fr 1.2fr 1.1fr 1.2fr 1.1fr 90px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(148,163,184,.08);opacity:{{ r.opacity }};transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
+          <span style="display:flex;align-items:center;gap:11px;min-width:0">
+            <span style="width:32px;height:32px;flex:0 0 32px;border-radius:9px;background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.25);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#93c5fd">{{ r.initials }}</span>
+            <span style="display:flex;flex-direction:column;min-width:0">
+              <span style="font-size:13px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+              <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.email }}</span>
+            </span>
+          </span>
+          <span style="display:flex;flex-direction:column;min-width:0">
+            <span style="font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.jobTitle }}</span>
+            <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.department }}</span>
+          </span>
+          <span style="display:inline-flex;justify-self:start;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:{{ r.mfaTint }};border:1px solid {{ r.mfaLine }};font-size:11px;font-weight:600;color:{{ r.mfaColor }};white-space:nowrap"><span data-icon="{{ r.mfaIcon }}" style="width:11px;height:11px"></span>{{ r.mfa }}</span>
+          <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ r.stTint }};border:1px solid {{ r.stLine }};font-size:11px;font-weight:600;color:{{ r.stColor }};white-space:nowrap">{{ r.state }}</span>
+          <span style="font-size:12px;color:{{ r.loginColor }};white-space:nowrap">{{ r.lastLogin }}</span>
+          <span style="font-size:12px;color:{{ r.sessionColor }};white-space:nowrap">{{ r.sessions }}</span>
+          <button onClick="{{ r.open }}" style="justify-self:end;height:30px;padding:0 11px;border-radius:7px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(148,163,184,.12)">Manage</button>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <sc-if value="{{ panelOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closePanel }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(480px,95%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcTmSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:11px">
+          <span style="width:38px;height:38px;flex:0 0 38px;border-radius:11px;background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.25);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#93c5fd">{{ selInitials }}</span>
+          <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ selName }}</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ selMeta }}</span>
+          </div>
+          <button onClick="{{ closePanel }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px">
+          <sc-for list="{{ selFacts }}" as="f" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">{{ f.label }}</span>
+              <span style="font-size:12.5px;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">SETTINGS</span>
+          <sc-for list="{{ selToggles }}" as="t" hint-placeholder-count="2">
+            <div onClick="{{ t.toggle }}" style="display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:10px;border:1px solid {{ t.line }};background:{{ t.tint }};cursor:pointer;min-width:0" style-hover="background:rgba(148,163,184,.08)">
+              <span data-icon="{{ t.icon }}" style="width:16px;height:16px;flex:0 0 16px;color:{{ t.color }}"></span>
+              <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ t.title }}</span>
+                <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ t.body }}</span>
+              </div>
+              <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ t.tint }};border:1px solid {{ t.line }};font-size:11px;font-weight:700;letter-spacing:.06em;color:{{ t.color }};white-space:nowrap;flex:0 0 auto">{{ t.state }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">GET THEM BACK IN</span>
+          <sc-for list="{{ selActions }}" as="a" hint-placeholder-count="5">
+            <button onClick="{{ a.run }}" title="{{ a.title }}" style="display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:10px;border:1px solid {{ a.line }};background:{{ a.bg }};cursor:{{ a.cursor }};text-align:left;opacity:{{ a.opacity }};min-width:0" style-hover="background:rgba(148,163,184,.1)">
+              <span data-icon="{{ a.icon }}" style="width:16px;height:16px;flex:0 0 16px;color:{{ a.color }}"></span>
+              <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                <span style="font-size:12.5px;font-weight:600;color:{{ a.titleColor }};text-wrap:pretty">{{ a.label }}</span>
+                <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ a.body }}</span>
+              </div>
+            </button>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ hasSecret }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:11px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.08)">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#fbbf24">{{ secretLabel }}</span>
+            <span style="font-family:Menlo,monospace;font-size:14px;font-weight:600;color:#f8fafc;word-break:break-all">{{ secretValue }}</span>
+            <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ secretNote }}</span>
+            <button onClick="{{ clearSecret }}" style="align-self:flex-start;height:28px;padding:0 11px;border-radius:7px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer" style-hover="background:rgba(148,163,184,.12)">Done</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:10px;padding:12px 13px;border-radius:10px;border:1px solid rgba(52,211,153,.26);background:rgba(52,211,153,.08)">
+            <span data-icon="circle-check-big" style="width:15px;height:15px;color:#34d399;flex:0 0 15px;margin-top:2px"></span>
+            <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ toast }}</span>
+          </div>
+        </sc-if>
+
+        <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;padding-top:11px;border-top:1px solid rgba(148,163,184,.12)">Everything on this panel is recorded against the customer with our name on it, so their own admin can see it was us.</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ inviteOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeInvite }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(440px,94%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcTmSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">INVITE</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ inviteHeading }}</span>
+          </div>
+          <button onClick="{{ closeInvite }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <sc-for list="{{ inviteFields }}" as="f" hint-placeholder-count="4">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:12px;font-weight:600;color:#cbd5e1">{{ f.label }}</span>
+            <input value="{{ f.value }}" onChange="{{ f.set }}" placeholder="{{ f.ph }}" style="height:36px;padding:0 11px;border-radius:8px;border:1px solid {{ f.line }};background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;outline:none">
+            <sc-if value="{{ f.hasHint }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:11px;color:{{ f.hintColor }};text-wrap:pretty">{{ f.hint }}</span>
+            </sc-if>
+          </div>
+        </sc-for>
+
+        <div style="display:flex;gap:10px;padding:12px 13px;border-radius:10px;border:1px solid rgba(96,165,250,.22);background:rgba(37,99,235,.07)">
+          <span data-icon="mail" style="width:15px;height:15px;color:#60a5fa;flex:0 0 15px;margin-top:2px"></span>
+          <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+            <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">They get a setup link, not a password</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">The link works for 72 hours. They join as a standard portal user — being able to manage their own team is something their own admin grants later.</span>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <button onClick="{{ submitInvite }}" title="{{ inviteSubmitTitle }}" style="flex:1;height:38px;border-radius:8px;border:1px solid {{ inviteLine }};background:{{ inviteBg }};color:{{ inviteFg }};font-size:13px;font-weight:600;cursor:{{ inviteCursor }};opacity:{{ inviteOpacity }}">Send the invitation</button>
+          <button onClick="{{ closeInvite }}" style="height:38px;padding:0 15px;border-radius:8px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:13px;cursor:pointer">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;align-items:center;gap:9px;padding-top:2px">
+    <span data-icon="info" style="width:13px;height:13px;color:#475569;flex:0 0 13px"></span>
+    <span style="font-size:11px;color:#475569;text-wrap:pretty">{{ honestNote }}</span>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:800},&quot;tenantName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Logistics&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  state = {
+    sel: null, inviteOpen: false,
+    inEmail: "", inName: "", inDept: "", inTitle: "",
+    active: {}, enforced: {}, unlocked: {}, sessionsCut: {}, mfaCleared: {},
+    secret: null, toast: null
+  };
+
+  rosters = {
+    "Northwind Logistics": [
+      { name: "Dana Whitfield", email: "dana@northwindlogistics.com", jobTitle: "Operations Director", department: "Operations", mfa: "FIDO2", enforced: true, active: true, locked: false, lastLogin: "today, 08:12", sessions: 2 },
+      { name: "Gareth Holt", email: "g.holt@northwindlogistics.com", jobTitle: "Warehouse Manager", department: "Logistics", mfa: "TOTP", enforced: true, active: true, locked: false, lastLogin: "yesterday", sessions: 1 },
+      { name: "Nadia Cross", email: "n.cross@northwindlogistics.com", jobTitle: "Finance Lead", department: "Finance", mfa: "SMS", enforced: false, active: true, locked: true, lastLogin: "4 days ago", sessions: 0 },
+      { name: "Tom Ridley", email: "t.ridley@northwindlogistics.com", jobTitle: "Driver Coordinator", department: "Logistics", mfa: "Disabled", enforced: false, active: false, locked: false, lastLogin: "28 Aug", sessions: 0 },
+      { name: "Priya Bhatt", email: "p.bhatt@northwindlogistics.com", jobTitle: "IT Coordinator", department: "IT", mfa: "Disabled", enforced: true, active: true, locked: false, lastLogin: "never", sessions: 0 }
+    ],
+    "Halcyon Health": [
+      { name: "Marcus Vale", email: "m.vale@halcyonhealth.org", jobTitle: "Chief Medical Information Officer", department: "Clinical", mfa: "FIDO2", enforced: true, active: true, locked: false, lastLogin: "today, 07:40", sessions: 3 },
+      { name: "Ines Duarte", email: "i.duarte@halcyonhealth.org", jobTitle: "Practice Manager", department: "Operations", mfa: "TOTP", enforced: true, active: true, locked: false, lastLogin: "2 days ago", sessions: 1 }
+    ],
+    "Kestrel Financial": [
+      { name: "Priya Raman", email: "p.raman@kestrelfinancial.com", jobTitle: "Head of Compliance", department: "Risk", mfa: "TOTP", enforced: true, active: true, locked: false, lastLogin: "today, 09:55", sessions: 2 }
+    ],
+    "Mccawsoft2": [
+      { name: "Shane McCaw", email: "shane@mccawsoft2.onmicrosoft.com", jobTitle: "Principal Architect", department: "Practice", mfa: "FIDO2", enforced: true, active: true, locked: false, lastLogin: "today, 06:20", sessions: 4 }
+    ]
+  };
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  tone(kind) {
+    const M = {
+      green: ["#34d399", "rgba(52,211,153,.1)", "rgba(52,211,153,.26)"],
+      amber: ["#fbbf24", "rgba(251,191,36,.1)", "rgba(251,191,36,.26)"],
+      red: ["#f87171", "rgba(248,113,113,.1)", "rgba(248,113,113,.26)"],
+      blue: ["#60a5fa", "rgba(96,165,250,.1)", "rgba(96,165,250,.26)"],
+      violet: ["#a78bfa", "rgba(167,139,250,.1)", "rgba(167,139,250,.26)"],
+      slate: ["#94a3b8", "rgba(148,163,184,.08)", "rgba(148,163,184,.2)"]
+    };
+    return M[kind] || M.slate;
+  }
+
+  roster() {
+    const name = this.props.tenantName;
+    return (name && this.rosters[name]) || this.rosters["Northwind Logistics"];
+  }
+
+  isActive(p) { return this.state.active[p.email] === undefined ? p.active : this.state.active[p.email]; }
+  isEnforced(p) { return this.state.enforced[p.email] === undefined ? p.enforced : this.state.enforced[p.email]; }
+  isLocked(p) { return this.state.unlocked[p.email] ? false : p.locked; }
+  mfaOf(p) { return this.state.mfaCleared[p.email] ? "Disabled" : p.mfa; }
+  sessionsOf(p) { return this.state.sessionsCut[p.email] ? 0 : p.sessions; }
+
+  randHex(n) {
+    let out = "";
+    for (let i = 0; i < n; i += 1) out += "0123456789ABCDEF".charAt(Math.floor(Math.random() * 16));
+    return out;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const list = this.roster();
+    const sel = s.sel ? list.find(p => p.email === s.sel) : null;
+    const MFA = { FIDO2: ["green", "key-round", "passkey"], TOTP: ["green", "smartphone", "app code"], SMS: ["amber", "message-square", "text message"], Disabled: ["red", "shield-off", "none"] };
+    const initials = (n) => n.split(" ").map(x => x.charAt(0)).join("").slice(0, 2);
+
+    const noMfa = list.filter(p => this.mfaOf(p) === "Disabled").length;
+    const locked = list.filter(p => this.isLocked(p)).length;
+    const suspended = list.filter(p => !this.isActive(p)).length;
+    const emailTaken = list.some(p => p.email.toLowerCase() === s.inEmail.trim().toLowerCase());
+    const canInvite = s.inEmail.trim().indexOf("@") > 0 && !emailTaken;
+
+    const say = (msg) => this.setState({ toast: msg, secret: null });
+
+    return {
+      rootPad: this.props.embedded ? "0" : "20px",
+      rootBg: this.props.embedded ? "transparent" : "#020617",
+      stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+
+      counters: [
+        { label: list.length === 1 ? "person" : "people", value: String(list.length), icon: "users", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.22)" },
+        { label: noMfa === 1 ? "without a second factor" : "without a second factor", value: String(noMfa), icon: "shield-off", color: noMfa ? "#f87171" : "#34d399", tint: noMfa ? "rgba(248,113,113,.08)" : "rgba(52,211,153,.08)", line: noMfa ? "rgba(248,113,113,.22)" : "rgba(52,211,153,.22)" },
+        { label: "locked out", value: String(locked), icon: "lock", color: locked ? "#fbbf24" : "#94a3b8", tint: locked ? "rgba(251,191,36,.08)" : "rgba(148,163,184,.06)", line: locked ? "rgba(251,191,36,.22)" : "rgba(148,163,184,.18)" },
+        { label: "suspended", value: String(suspended), icon: "user-minus", color: suspended ? "#94a3b8" : "#94a3b8", tint: "rgba(148,163,184,.06)", line: "rgba(148,163,184,.18)" }
+      ],
+
+      rows: list.map(p => {
+        const m = MFA[this.mfaOf(p)], mt = this.tone(m[0]);
+        const act = this.isActive(p), lck = this.isLocked(p);
+        const st = this.tone(lck ? "amber" : act ? "green" : "slate");
+        const sess = this.sessionsOf(p);
+        return {
+          initials: initials(p.name), name: p.name, email: p.email,
+          jobTitle: p.jobTitle, department: p.department,
+          mfa: m[2], mfaIcon: m[1], mfaColor: mt[0], mfaTint: mt[1], mfaLine: mt[2],
+          state: lck ? "locked out" : act ? "active" : "suspended",
+          stColor: st[0], stTint: st[1], stLine: st[2],
+          lastLogin: p.lastLogin,
+          loginColor: p.lastLogin === "never" ? "#fcd34d" : "#94a3b8",
+          sessions: sess === 0 ? "none" : sess === 1 ? "1 signed in" : sess + " signed in",
+          sessionColor: sess > 0 ? "#cbd5e1" : "#64748b",
+          opacity: act ? "1" : ".7",
+          open: () => this.setState({ sel: p.email, secret: null, toast: null })
+        };
+      }),
+
+      panelOpen: !!sel,
+      closePanel: () => this.setState({ sel: null, secret: null, toast: null }),
+      selInitials: sel ? initials(sel.name) : "",
+      selName: sel ? sel.name : "",
+      selMeta: sel ? sel.jobTitle + " · " + sel.department + " · " + sel.email : "",
+      selFacts: sel ? [
+        { label: "ACCOUNT", value: this.isLocked(sel) ? "locked out" : this.isActive(sel) ? "active" : "suspended", color: this.isLocked(sel) ? "#fcd34d" : this.isActive(sel) ? "#6ee7b7" : "#94a3b8" },
+        { label: "SECOND FACTOR", value: MFA[this.mfaOf(sel)][2], color: this.mfaOf(sel) === "Disabled" ? "#fca5a5" : "#6ee7b7" },
+        { label: "LAST SIGN-IN", value: sel.lastLogin, color: sel.lastLogin === "never" ? "#fcd34d" : "#cbd5e1" },
+        { label: "SIGNED IN NOW", value: this.sessionsOf(sel) === 0 ? "nowhere" : this.sessionsOf(sel) + " places", color: "#cbd5e1" }
+      ] : [],
+
+      selToggles: sel ? [
+        {
+          title: this.isActive(sel) ? "Account is active" : "Account is suspended",
+          body: this.isActive(sel)
+            ? "Suspending them signs them out everywhere immediately."
+            : "They cannot sign in. Their data and history are untouched.",
+          state: this.isActive(sel) ? "ACTIVE" : "SUSPENDED",
+          icon: this.isActive(sel) ? "user-check" : "user-minus",
+          color: this.isActive(sel) ? "#34d399" : "#94a3b8",
+          tint: this.isActive(sel) ? "rgba(52,211,153,.08)" : "rgba(148,163,184,.06)",
+          line: this.isActive(sel) ? "rgba(52,211,153,.24)" : "rgba(148,163,184,.2)",
+          toggle: () => {
+            const next = !this.isActive(sel);
+            this.setState({
+              active: Object.assign({}, s.active, { [sel.email]: next }),
+              sessionsCut: next ? s.sessionsCut : Object.assign({}, s.sessionsCut, { [sel.email]: true }),
+              toast: next ? sel.name + " can sign in again." : sel.name + " is suspended and signed out everywhere.",
+              secret: null
+            });
+          }
+        },
+        {
+          title: this.isEnforced(sel) ? "Second factor is required" : "Second factor is optional",
+          body: this.isEnforced(sel)
+            ? "They must set one up. Takes effect the next time they sign in, not on their current session."
+            : "They can sign in with a password alone.",
+          state: this.isEnforced(sel) ? "REQUIRED" : "OPTIONAL",
+          icon: this.isEnforced(sel) ? "shield-check" : "shield",
+          color: this.isEnforced(sel) ? "#34d399" : "#fbbf24",
+          tint: this.isEnforced(sel) ? "rgba(52,211,153,.08)" : "rgba(251,191,36,.08)",
+          line: this.isEnforced(sel) ? "rgba(52,211,153,.24)" : "rgba(251,191,36,.24)",
+          toggle: () => {
+            const next = !this.isEnforced(sel);
+            this.setState({
+              enforced: Object.assign({}, s.enforced, { [sel.email]: next }),
+              toast: next
+                ? "They will be asked to set up a second factor next time they sign in."
+                : "Second factor is no longer required for them.",
+              secret: null
+            });
+          }
+        }
+      ] : [],
+
+      selActions: sel ? [
+        this.isLocked(sel)
+          ? { label: "Clear the lockout", body: "Wipes the failed attempts and lets them try again now.", icon: "lock-open", color: "#34d399", line: "rgba(52,211,153,.26)", bg: "rgba(52,211,153,.09)", titleColor: "#f1f5f9", cursor: "pointer", opacity: "1", title: "", run: () => this.setState({ unlocked: Object.assign({}, s.unlocked, { [sel.email]: true }), toast: "Lockout cleared. They can sign in again.", secret: null }) }
+          : { label: "Not locked out", body: "Nothing to clear — they have no failed attempts standing against them.", icon: "lock-open", color: "#475569", line: "rgba(148,163,184,.16)", bg: "transparent", titleColor: "#64748b", cursor: "not-allowed", opacity: ".65", title: "", run: () => {} },
+        { label: "Email them a reset link", body: "One hour to use it. We never see the password they choose.", icon: "mail", color: "#60a5fa", line: "rgba(96,165,250,.24)", bg: "rgba(37,99,235,.08)", titleColor: "#f1f5f9", cursor: "pointer", opacity: "1", title: "", run: () => say("Reset link sent to " + sel.email + ". It expires in an hour.") },
+        { label: "Set a temporary password", body: "Shown once, on this screen. Read it to them — it is not emailed.", icon: "key", color: "#fbbf24", line: "rgba(251,191,36,.26)", bg: "rgba(251,191,36,.08)", titleColor: "#f1f5f9", cursor: "pointer", opacity: "1", title: "", run: () => this.setState({ toast: null, secret: { label: "TEMPORARY PASSWORD", value: "Temp-" + this.randHex(12) + "!9", note: "Say it to them directly. It replaces their password immediately, so they cannot sign in with the old one." } }) },
+        { label: "Clear their second factor", body: "Removes their app codes and passkeys so they can enrol again from scratch.", icon: "shield-off", color: "#a78bfa", line: "rgba(167,139,250,.26)", bg: "rgba(167,139,250,.08)", titleColor: "#f1f5f9", cursor: "pointer", opacity: "1", title: "", run: () => this.setState({ mfaCleared: Object.assign({}, s.mfaCleared, { [sel.email]: true }), toast: "Cleared " + MFA[this.mfaOf(sel)][2] + ". They have been emailed and can enrol again.", secret: null }) },
+        this.sessionsOf(sel) > 0
+          ? { label: "Sign them out everywhere", body: "Ends all " + this.sessionsOf(sel) + " of their sessions. Not recorded on the audit trail.", icon: "log-out", color: "#f87171", line: "rgba(248,113,113,.26)", bg: "rgba(248,113,113,.08)", titleColor: "#f1f5f9", cursor: "pointer", opacity: "1", title: "", run: () => this.setState({ sessionsCut: Object.assign({}, s.sessionsCut, { [sel.email]: true }), toast: "Signed out of every session.", secret: null }) }
+          : { label: "Not signed in anywhere", body: "No live sessions to end.", icon: "log-out", color: "#475569", line: "rgba(148,163,184,.16)", bg: "transparent", titleColor: "#64748b", cursor: "not-allowed", opacity: ".65", title: "", run: () => {} },
+        { label: "Generate an emergency code", body: "Skips their second factor once, for 24 hours. Replaces any code already issued.", icon: "siren", color: "#f87171", line: "rgba(248,113,113,.3)", bg: "rgba(248,113,113,.1)", titleColor: "#f1f5f9", cursor: "pointer", opacity: "1", title: "The strongest thing on this panel — it bypasses their second factor entirely", run: () => this.setState({ toast: null, secret: { label: "EMERGENCY CODE · EXPIRES IN 24 HOURS", value: "EMERGENCY-" + this.randHex(4) + "-" + this.randHex(4) + "-" + this.randHex(4) + "-" + this.randHex(4), note: "This skips their second factor entirely. Read it to them, and only to them." } }) }
+      ] : [],
+
+      hasSecret: !!s.secret,
+      secretLabel: s.secret ? s.secret.label : "",
+      secretValue: s.secret ? s.secret.value : "",
+      secretNote: s.secret ? s.secret.note : "",
+      clearSecret: () => this.setState({ secret: null }),
+      hasToast: !!s.toast,
+      toast: s.toast || "",
+
+      inviteOpen: s.inviteOpen,
+      openInvite: () => this.setState({ inviteOpen: true }),
+      closeInvite: () => this.setState({ inviteOpen: false, inEmail: "", inName: "", inDept: "", inTitle: "" }),
+      inviteHeading: "Add someone to " + (this.props.tenantName || "this customer"),
+      inviteFields: [
+        { label: "Work email", value: s.inEmail, ph: "name@company.com", set: (e) => this.setState({ inEmail: e.target.value }),
+          line: emailTaken ? "rgba(248,113,113,.4)" : "rgba(148,163,184,.2)",
+          hasHint: emailTaken, hint: "Someone already has an account with this email.", hintColor: "#fca5a5" },
+        { label: "Name", value: s.inName, ph: "Optional", set: (e) => this.setState({ inName: e.target.value }), line: "rgba(148,163,184,.2)", hasHint: false, hint: "", hintColor: "#64748b" },
+        { label: "Job title", value: s.inTitle, ph: "Optional", set: (e) => this.setState({ inTitle: e.target.value }), line: "rgba(148,163,184,.2)", hasHint: false, hint: "", hintColor: "#64748b" },
+        { label: "Department", value: s.inDept, ph: "Optional", set: (e) => this.setState({ inDept: e.target.value }), line: "rgba(148,163,184,.2)", hasHint: false, hint: "", hintColor: "#64748b" }
+      ],
+      inviteLine: canInvite ? "#2563eb" : "rgba(148,163,184,.2)",
+      inviteBg: canInvite ? "#2563eb" : "transparent",
+      inviteFg: canInvite ? "#fff" : "#64748b",
+      inviteCursor: canInvite ? "pointer" : "not-allowed",
+      inviteOpacity: canInvite ? "1" : ".6",
+      inviteSubmitTitle: canInvite ? "" : emailTaken ? "That email is already in use" : "A work email is needed",
+      submitInvite: canInvite ? () => this.setState({ inviteOpen: false, inEmail: "", inName: "", inDept: "", inTitle: "" }) : () => {},
+
+      honestNote: "These endpoints are live with no interface wired to them yet, so this roster is representative. Who reports to whom can be set on the customer's own portal but not from here, and the roster comes back unsorted and unpaged."
+    };
+  }
+}
+
+</script>
+</body>
+</html>

@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+@keyframes smcPulse{0%,100%{opacity:.35}50%{opacity:.8}}
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <button onClick="{{ toggleRun }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:8px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:#3b82f6"><span data-icon="scan-line" style="width:14px;height:14px"></span>Run diagnostics</button>
+    <div style="display:flex;align-items:center;gap:9px;height:34px;padding:0 12px;border-radius:8px;border:1px solid rgba(148,163,184,.18);background:rgba(2,6,23,.5);min-width:0">
+      <span data-icon="package" style="width:13px;height:13px;color:#64748b;flex:0 0 13px"></span>
+      <span style="display:flex;flex-direction:column;min-width:0">
+        <span style="font-family:Menlo,monospace;font-size:11.5px;color:{{ subKeyColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ subKey }}</span>
+        <span style="font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ subMeta }}</span>
+      </span>
+    </div>
+    <div style="flex:1"></div>
+    <span style="font-size:11.5px;color:#64748b;white-space:nowrap">{{ headCount }}</span>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+      <button onClick="{{ t.select }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ t.label }}<span style="font-family:Menlo,monospace;font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ runOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="border:1px solid rgba(96,165,250,.24);border-radius:12px;background:rgba(37,99,235,.06);padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">TRIGGER A RUN</span>
+        <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">Their own package is preselected. Any other bundle can be run instead.</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:9px">
+        <sc-for list="{{ pickList }}" as="p" hint-placeholder-count="6">
+          <button onClick="{{ p.pick }}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;border:1px solid {{ p.line }};background:{{ p.tint }};cursor:pointer;text-align:left;min-width:0" style-hover="background:rgba(148,163,184,.1)">
+            <span data-icon="{{ p.icon }}" style="width:14px;height:14px;color:{{ p.color }};flex:0 0 14px"></span>
+            <span style="display:flex;flex-direction:column;min-width:0;flex:1">
+              <span style="font-family:Menlo,monospace;font-size:11.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.key }}</span>
+              <span style="font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.label }}</span>
+            </span>
+            <span style="font-size:11px;font-weight:700;color:#94a3b8;white-space:nowrap">{{ p.checks }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+        <button onClick="{{ startRun }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:8px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer" style-hover="background:#3b82f6"><span data-icon="play" style="width:13px;height:13px"></span>{{ startLabel }}</button>
+        <button onClick="{{ toggleRun }}" style="height:34px;padding:0 13px;border-radius:8px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:12.5px;cursor:pointer" style-hover="background:rgba(148,163,184,.1)">Cancel</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ liveOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="border:1px solid {{ liveLine }};border-radius:12px;background:{{ liveTint }};padding:15px;display:flex;flex-direction:column;gap:11px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span data-icon="{{ liveIcon }}" style="width:15px;height:15px;color:{{ liveColor }}"></span>
+        <span style="font-family:Menlo,monospace;font-size:12.5px;font-weight:600;color:#f8fafc">{{ liveRunId }}</span>
+        <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ liveTint }};border:1px solid {{ liveLine }};font-size:11px;font-weight:700;letter-spacing:.06em;color:{{ liveColor }}">{{ liveStatus }}</span>
+        <div style="flex:1"></div>
+        <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ liveCounts }}</span>
+      </div>
+      <div style="height:5px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden">
+        <div style="height:100%;width:{{ livePct }};background:{{ liveColor }};transition:width .5s linear"></div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isRuns }}" hint-placeholder-val="{{ true }}">
+    <sc-if value="{{ hasRuns }}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+        <div style="min-width:1060px">
+          <div style="display:grid;grid-template-columns:1.5fr 1.5fr .9fr 2.2fr 1.1fr 1fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+            <span>RUN</span><span>PACKAGE</span><span>STATUS</span><span>CHECKS</span><span>STARTED</span><span>CIO NARRATIVE</span>
+          </div>
+          <sc-for list="{{ runRows }}" as="r" hint-placeholder-count="3">
+            <div onClick="{{ r.open }}" style="display:grid;grid-template-columns:1.5fr 1.5fr .9fr 2.2fr 1.1fr 1fr;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08);cursor:pointer;transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
+              <span style="display:flex;flex-direction:column;min-width:0">
+                <span style="font-family:Menlo,monospace;font-size:12px;font-weight:600;color:#93c5fd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.id }}</span>
+                <span style="font-size:11px;color:#64748b">{{ r.trigger }}</span>
+              </span>
+              <span style="font-family:Menlo,monospace;font-size:11.5px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.pkg }}</span>
+              <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ r.tint }};border:1px solid {{ r.line }};font-size:11px;font-weight:600;color:{{ r.color }};white-space:nowrap">{{ r.status }}</span>
+              <span style="font-size:12px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.counts }}</span>
+              <span style="font-size:12px;color:#94a3b8;white-space:nowrap">{{ r.started }}</span>
+              <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ r.nTint }};border:1px solid {{ r.nLine }};font-size:11px;font-weight:600;color:{{ r.nColor }};white-space:nowrap">{{ r.narrative }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ noRuns }}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+        <span data-icon="stethoscope" style="width:42px;height:42px;border-radius:13px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:11px"></span>
+        <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Never scanned</span>
+        <span style="font-size:12.5px;color:#94a3b8;max-width:440px;text-wrap:pretty">Start a run and it uses this customer's own monitoring package, or the security baseline if they aren't subscribed to one.</span>
+      </div>
+    </sc-if>
+  </sc-if>
+
+  <sc-if value="{{ isFindings }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <sc-for list="{{ runChips }}" as="c" hint-placeholder-count="3">
+          <button onClick="{{ c.select }}" style="height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ c.border }};background:{{ c.bg }};color:{{ c.fg }};font-family:Menlo,monospace;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ c.label }}</button>
+        </sc-for>
+        <div style="flex:1"></div>
+        <button onClick="{{ toggleOrder }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid rgba(148,163,184,.2);background:transparent;color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(148,163,184,.1)"><span data-icon="arrow-down-up" style="width:13px;height:13px"></span>{{ orderLabel }}</button>
+      </div>
+
+      <sc-if value="{{ hasFindings }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+          <div style="min-width:1180px">
+            <div style="display:grid;grid-template-columns:1.6fr 1.4fr .9fr 1.2fr 2.2fr 1.7fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+              <span>CHECK</span><span>LABEL</span><span>SEVERITY</span><span>CHECK STATUS</span><span>FINDING</span><span>CLASSIFICATION</span>
+            </div>
+            <sc-for list="{{ findingRows }}" as="f" hint-placeholder-count="5">
+              <div style="display:grid;grid-template-columns:1.6fr 1.4fr .9fr 1.2fr 2.2fr 1.7fr;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08);transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
+                <span style="font-family:Menlo,monospace;font-size:11.5px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.key }}</span>
+                <span style="font-size:12px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.label }}</span>
+                <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ f.sevTint }};border:1px solid {{ f.sevLine }};font-size:11px;font-weight:600;color:{{ f.sevColor }};white-space:nowrap">{{ f.severity }}</span>
+                <span style="font-family:Menlo,monospace;font-size:11.5px;color:{{ f.statusColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.status }}</span>
+                <span style="font-size:12px;color:#94a3b8;text-wrap:pretty;overflow:hidden">{{ f.title }}</span>
+                <span style="font-size:11.5px;color:{{ f.clsColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.cls }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ noFindings }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+          <span data-icon="stethoscope" style="width:42px;height:42px;border-radius:13px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:11px"></span>
+          <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{ emptyFindTitle }}</span>
+          <span style="font-size:12.5px;color:#94a3b8;max-width:460px;text-wrap:pretty">{{ emptyFindBody }}</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isScripts }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+        <span data-icon="file-code" style="width:42px;height:42px;border-radius:13px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.22);color:#a78bfa;padding:11px"></span>
+        <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">No scripts to hand over</span>
+        <span style="font-size:12.5px;color:#94a3b8;max-width:470px;text-wrap:pretty">Some checks can't be fixed from this console — those hand back a script for the customer's own admin to run. Nothing in this estate has produced one yet.</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isPackages }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+        <div style="min-width:720px">
+          <div style="display:grid;grid-template-columns:2fr 2.2fr .9fr 1.1fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+            <span>KEY</span><span>LABEL</span><span style="text-align:right">CHECKS</span><span>USE</span>
+          </div>
+          <sc-for list="{{ pkgRows }}" as="p" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:2fr 2.2fr .9fr 1.1fr;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08)">
+              <span style="font-family:Menlo,monospace;font-size:11.5px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.key }}</span>
+              <span style="font-size:12px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.label }}</span>
+              <span style="font-size:12.5px;font-weight:700;color:#e2e8f0;text-align:right">{{ p.checkCount }}</span>
+              <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ p.tint }};border:1px solid {{ p.line }};font-size:11px;font-weight:600;color:{{ p.color }};white-space:nowrap">{{ p.use }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:760},&quot;tenantName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Traders&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;tenantIndex&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:0,&quot;min&quot;:0,&quot;max&quot;:3,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;findingOrder&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;as_returned&quot;,&quot;rank&quot;],&quot;default&quot;:&quot;as_returned&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;}}">
+class Component extends DCLogic {
+  state = { tab: "runs", runIdx: 0, runOpen: false, pickKey: null, live: null, order: null };
+
+  packages = [
+    { key: "core:premier", label: "Premier monitoring", checkCount: 198 },
+    { key: "core:security-baseline", label: "Security baseline", checkCount: 41 },
+    { key: "core:essentials", label: "Essentials monitoring", checkCount: 26 },
+    { key: "assess:security-posture", label: "Security posture assessment", checkCount: 22 },
+    { key: "assess:copilot-readiness", label: "Copilot readiness assessment", checkCount: 18 },
+    { key: "core:identity-baseline", label: "Identity baseline", checkCount: 17 },
+    { key: "core:device-baseline", label: "Device baseline", checkCount: 14 },
+    { key: "core:exchange-baseline", label: "Exchange Online baseline", checkCount: 12 },
+    { key: "assess:sharepoint-hygiene", label: "SharePoint hygiene assessment", checkCount: 11 },
+    { key: "assess:purview-readiness", label: "Purview readiness assessment", checkCount: 9 },
+    { key: "assess:teams-governance", label: "Teams governance assessment", checkCount: 3 }
+  ];
+
+  subscriptions = {
+    0: { packageKey: "core:security-baseline", serviceId: 4021, serviceName: "Tenant Monitoring — Standard" },
+    1: { packageKey: "core:security-baseline", serviceId: 4188, serviceName: "Tenant Monitoring — Essentials" },
+    2: { packageKey: "core:premier", serviceId: 4290, serviceName: "Tenant Monitoring — Premier" },
+    3: { packageKey: null, serviceId: null, serviceName: null }
+  };
+
+  runs = {
+    0: [
+      { id: "run-8f21c904", pkg: "core:security-baseline", status: "completed", counts: "41 checks · 38 ok · 2 license gap · 1 error", started: "5 Sep 04:00", narrative: "ready", trigger: "scheduled" },
+      { id: "run-7b10a442", pkg: "core:security-baseline", status: "partial", counts: "41 checks · 27 ok · 9 license gap · 5 error", started: "4 Sep 04:00", narrative: "not_started", trigger: "operator" },
+      { id: "run-6a02f118", pkg: "assess:copilot-readiness", status: "completed", counts: "18 checks · 18 ok", started: "28 Aug 10:20", narrative: "ready", trigger: "assessment" }
+    ],
+    1: [
+      { id: "run-9c41e770", pkg: "core:security-baseline", status: "partial", counts: "41 checks · 19 ok · 18 license gap · 4 error", started: "3 Sep 04:00", narrative: "failed", trigger: "scheduled" },
+      { id: "run-9a02b331", pkg: "core:security-baseline", status: "failed", counts: "0 checks ran · read refused", started: "2 Sep 04:00", narrative: "not_started", trigger: "scheduled" }
+    ],
+    2: [
+      { id: "run-4f2a91c8", pkg: "core:premier", status: "completed", counts: "198 checks · 171 ok · 19 license gap · 8 error", started: "5 Sep 06:02", narrative: "generating", trigger: "operator" }
+    ],
+    3: []
+  };
+
+  findings = {
+    0: {
+      "run-8f21c904": [
+        { key: "identity.mfa_privileged", label: "MFA on privileged roles", severity: "warning", status: "ok", title: "Two privileged accounts rely on SMS", cls: null },
+        { key: "identity.legacy_auth", label: "Legacy authentication", severity: "critical", status: "ok", title: "Basic auth still permitted for IMAP", cls: null },
+        { key: "purview.retention", label: "Retention labels", severity: "info", status: "license_gap", title: "Check requires a Purview licence this tenant does not hold", cls: "license_gap · not a fault" },
+        { key: "spo.sharing", label: "External sharing", severity: "warning", status: "ok", title: "Anonymous links enabled on four sites", cls: null },
+        { key: "teams.guest", label: "Guest access", severity: "info", status: "error", title: "Graph returned 403 for this endpoint", cls: "missing_scope · Group.Read.All" },
+        { key: "intune.compliance", label: "Device compliance", severity: "ok", status: "ok", title: "All enrolled devices compliant", cls: null }
+      ],
+      "run-7b10a442": [
+        { key: "identity.mfa_privileged", label: "MFA on privileged roles", severity: "warning", status: "ok", title: "Two privileged accounts rely on SMS", cls: null },
+        { key: "purview.retention", label: "Retention labels", severity: "info", status: "license_gap", title: "Check requires a Purview licence this tenant does not hold", cls: "license_gap · not a fault" },
+        { key: "exo.transport", label: "Transport rules", severity: "info", status: "error", title: "PowerShell session timed out", cls: "unclassified · matched nothing known" },
+        { key: "spo.sharing", label: "External sharing", severity: "warning", status: "ok", title: "Anonymous links enabled on four sites", cls: null }
+      ],
+      "run-6a02f118": [
+        { key: "copilot.licence_coverage", label: "Copilot licence coverage", severity: "ok", status: "ok", title: "Assigned licences match the seat count", cls: null },
+        { key: "copilot.data_readiness", label: "Data readiness", severity: "ok", status: "ok", title: "Sensitivity labels applied across the estate", cls: null },
+        { key: "copilot.sharing_hygiene", label: "Sharing hygiene", severity: "ok", status: "ok", title: "No tenant-wide anonymous sharing on Copilot-indexed sites", cls: null }
+      ]
+    },
+    1: {
+      "run-9c41e770": [
+        { key: "identity.mfa_privileged", label: "MFA on privileged roles", severity: "critical", status: "ok", title: "Nine privileged accounts without enforced MFA", cls: null },
+        { key: "purview.retention", label: "Retention labels", severity: "info", status: "license_gap", title: "Check requires a Purview licence this tenant does not hold", cls: "license_gap · not a fault" },
+        { key: "exo.transport", label: "Transport rules", severity: "info", status: "service_not_configured", title: "Exchange Online not configured for this tenant", cls: "service_not_configured · not a fault" },
+        { key: "spo.sharing", label: "External sharing", severity: "warning", status: "ok", title: "Anonymous links enabled tenant-wide", cls: null }
+      ],
+      "run-9a02b331": []
+    },
+    2: {
+      "run-4f2a91c8": [
+        { key: "identity.mfa_privileged", label: "MFA on privileged roles", severity: "critical", status: "ok", title: "Twelve privileged accounts without enforced MFA", cls: null },
+        { key: "identity.legacy_auth", label: "Legacy authentication", severity: "critical", status: "ok", title: "Basic auth permitted across the tenant", cls: null },
+        { key: "purview.dlp", label: "DLP policy coverage", severity: "warning", status: "partial", title: "Two of six workloads returned no policy state", cls: null },
+        { key: "audit.retention", label: "Audit retention", severity: "ok", status: "ok", title: "Unified audit log enabled", cls: null }
+      ]
+    },
+    3: {}
+  };
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+  componentWillUnmount() { if (this.timer) clearInterval(this.timer); }
+
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { this.iconTimer = setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  tone(kind) {
+    const M = {
+      green: ["#34d399", "rgba(52,211,153,.1)", "rgba(52,211,153,.26)"],
+      amber: ["#fbbf24", "rgba(251,191,36,.1)", "rgba(251,191,36,.26)"],
+      red: ["#f87171", "rgba(248,113,113,.1)", "rgba(248,113,113,.26)"],
+      blue: ["#60a5fa", "rgba(96,165,250,.1)", "rgba(96,165,250,.26)"],
+      violet: ["#a78bfa", "rgba(167,139,250,.1)", "rgba(167,139,250,.26)"],
+      slate: ["#94a3b8", "rgba(148,163,184,.08)", "rgba(148,163,184,.2)"]
+    };
+    return M[kind] || M.slate;
+  }
+
+  tIdx() {
+    const i = Number(this.props.tenantIndex);
+    return Number.isFinite(i) && this.runs[i] !== undefined ? i : 0;
+  }
+
+  startRun = () => {
+    const key = this.state.pickKey || this.resolvedKey();
+    const id = "run-" + Math.random().toString(16).slice(2, 10);
+    const total = (this.packages.find(p => p.key === key) || { checkCount: 41 }).checkCount;
+    if (this.timer) clearInterval(this.timer);
+    this.setState({ runOpen: false, live: { id, pkg: key, status: "pending", done: 0, total, ok: 0, gap: 0, err: 0 } });
+    this.timer = setInterval(() => {
+      this.setState(s => {
+        if (!s.live) return {};
+        const L = s.live;
+        if (L.done >= L.total) { clearInterval(this.timer); return { live: Object.assign({}, L, { status: "completed" }) }; }
+        const step = Math.max(1, Math.round(L.total / 12));
+        const done = Math.min(L.total, L.done + step);
+        const gap = Math.round(done * 0.07), err = Math.round(done * 0.03);
+        return { live: Object.assign({}, L, { status: "running", done, ok: done - gap - err, gap, err }) };
+      });
+    }, 550);
+  };
+
+  resolvedKey() {
+    const sub = this.subscriptions[this.tIdx()];
+    return sub.packageKey || "core:security-baseline";
+  }
+
+  renderVals() {
+    const s = this.state, i = this.tIdx();
+    const tab = s.tab;
+    const runsT = this.runs[i] || [];
+    const sub = this.subscriptions[i];
+    const order = s.order || this.props.findingOrder || "as_returned";
+    const sel = runsT[Math.min(s.runIdx, Math.max(0, runsT.length - 1))] || null;
+    const raw = sel ? ((this.findings[i] || {})[sel.id] || []) : [];
+    const RANK = { critical: 0, warning: 1, info: 2, ok: 3 };
+    const rows = raw.slice().sort((a, b) => order === "rank"
+      ? RANK[a.severity] - RANK[b.severity]
+      : a.severity.localeCompare(b.severity));
+
+    const SEV = { critical: "red", warning: "amber", info: "blue", ok: "green" };
+    const ST = { completed: "green", partial: "amber", failed: "red", running: "blue", pending: "slate" };
+    const NAR = { ready: "green", generating: "violet", failed: "red", not_started: "slate" };
+    const CS = { ok: "#6ee7b7", license_gap: "#a78bfa", service_not_configured: "#94a3b8", error: "#fca5a5", partial: "#fcd34d", requires_script: "#93c5fd" };
+
+    const tabDefs = [
+      { id: "runs", label: "Runs", count: String(runsT.length) },
+      { id: "findings", label: "Findings", count: String(raw.length) },
+      { id: "scripts", label: "Scripts", count: "0" },
+      { id: "packages", label: "Packages", count: String(this.packages.length) }
+    ];
+
+    const live = s.live;
+    const liveTone = live ? this.tone(ST[live.status] || "blue") : this.tone("blue");
+
+    return {
+      rootPad: this.props.embedded ? "0" : "20px",
+      rootBg: this.props.embedded ? "transparent" : "#020617",
+
+      subKey: sub.packageKey || "no active subscription",
+      subKeyColor: sub.packageKey ? "#93c5fd" : "#94a3b8",
+      subMeta: sub.packageKey
+        ? sub.serviceName + " · service " + sub.serviceId
+        : "Falls back to core:security-baseline on trigger",
+      headCount: runsT.length + " runs · " + (this.props.tenantName || "this tenant"),
+
+      tabs: tabDefs.map(t => ({
+        label: t.label, count: t.count,
+        bg: tab === t.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: tab === t.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: tab === t.id ? "#bfdbfe" : "#94a3b8",
+        countColor: tab === t.id ? "#60a5fa" : "#475569",
+        select: () => this.setState({ tab: t.id })
+      })),
+
+      runOpen: s.runOpen,
+      toggleRun: () => this.setState({ runOpen: !s.runOpen, pickKey: s.pickKey || this.resolvedKey() }),
+      startRun: this.startRun,
+      startLabel: "Start " + (s.pickKey || this.resolvedKey()),
+      pickList: this.packages.map(p => {
+        const active = (s.pickKey || this.resolvedKey()) === p.key;
+        const isDefault = p.key === this.resolvedKey();
+        return {
+          key: p.key, label: isDefault ? p.label + " · resolved default" : p.label,
+          checks: p.checkCount + " checks",
+          icon: active ? "circle-check-big" : isDefault ? "star" : "circle",
+          color: active ? "#60a5fa" : isDefault ? "#fbbf24" : "#475569",
+          tint: active ? "rgba(37,99,235,.16)" : "rgba(2,6,23,.4)",
+          line: active ? "rgba(96,165,250,.34)" : "rgba(148,163,184,.16)",
+          pick: () => this.setState({ pickKey: p.key })
+        };
+      }),
+
+      liveOpen: !!live,
+      liveRunId: live ? live.id : "",
+      liveStatus: live ? live.status : "",
+      liveColor: liveTone[0], liveTint: liveTone[1], liveLine: liveTone[2],
+      liveIcon: live && live.status === "completed" ? "circle-check-big" : "radar",
+      livePct: live ? Math.round((live.done / live.total) * 100) + "%" : "0%",
+      liveCounts: live ? live.done + " of " + live.total + " checks · " + live.ok + " ok · " + live.gap + " license gap · " + live.err + " error" : "",
+      liveWire: live
+        ? "GET .../diagnostics/runs/" + live.id + "/sse?jwt= · diagnostics_progress → diagnostics_complete"
+        : "",
+
+      isRuns: tab === "runs",
+      hasRuns: tab === "runs" && runsT.length > 0,
+      noRuns: tab === "runs" && runsT.length === 0,
+      runRows: runsT.map((r, n) => {
+        const st = this.tone(ST[r.status]), na = this.tone(NAR[r.narrative]);
+        return {
+          id: r.id, trigger: r.trigger, pkg: r.pkg, status: r.status, counts: r.counts, started: r.started,
+          color: st[0], tint: st[1], line: st[2],
+          narrative: r.narrative, nColor: na[0], nTint: na[1], nLine: na[2],
+          open: () => this.setState({ tab: "findings", runIdx: n })
+        };
+      }),
+
+      isFindings: tab === "findings",
+      runChips: runsT.map((r, n) => ({
+        label: r.id,
+        bg: sel && sel.id === r.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: sel && sel.id === r.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: sel && sel.id === r.id ? "#bfdbfe" : "#94a3b8",
+        select: () => this.setState({ runIdx: n })
+      })),
+      toggleOrder: () => this.setState({ order: order === "rank" ? "as_returned" : "rank" }),
+      orderLabel: order === "rank" ? "Most severe first" : "As returned",
+
+      hasFindings: tab === "findings" && rows.length > 0,
+      noFindings: tab === "findings" && rows.length === 0,
+      emptyFindTitle: sel ? "This run recorded no findings" : "No run selected",
+      emptyFindBody: sel && sel.status === "failed"
+        ? "The run failed before it could read anything, so it produced no findings at all — not a clean result."
+        : "Findings only exist once a run has executed against a connected tenant.",
+      findingRows: rows.map(f => {
+        const sv = this.tone(SEV[f.severity]);
+        return {
+          key: f.key, label: f.label, severity: f.severity, status: f.status, title: f.title,
+          sevColor: sv[0], sevTint: sv[1], sevLine: sv[2],
+          statusColor: CS[f.status] || "#94a3b8",
+          cls: f.cls || "—", clsColor: f.cls ? "#c4b5fd" : "#475569"
+        };
+      }),
+
+      isScripts: tab === "scripts",
+
+      isPackages: tab === "packages",
+      pkgRows: this.packages.map(p => {
+        const isDefault = p.key === this.resolvedKey();
+        const t = this.tone(isDefault ? "blue" : "slate");
+        return {
+          key: p.key, label: p.label, checkCount: p.checkCount,
+          use: isDefault ? "resolved default" : "selectable",
+          color: t[0], tint: t[1], line: t[2]
+        };
+      }),
+
+      liveWire: ""
+    };
+  }
+}
+
+</script>
+</body>
+</html>

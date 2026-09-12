@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+@keyframes smcTlSlide{from{transform:translateX(24px);opacity:.4}to{transform:translateX(0);opacity:1}}
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+    <sc-for list="{{ customerChips }}" as="c" hint-placeholder-count="5">
+      <button onClick="{{ c.select }}" style="height:29px;padding:0 11px;border-radius:7px;border:1px solid {{ c.border }};background:{{ c.bg }};color:{{ c.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ c.label }}</button>
+    </sc-for>
+    <div style="flex:1"></div>
+    <span style="font-size:11.5px;color:#64748b;white-space:nowrap">{{ countLabel }}</span>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+    <sc-for list="{{ typeChips }}" as="t" hint-placeholder-count="7">
+      <button onClick="{{ t.select }}" style="display:flex;align-items:center;gap:6px;height:27px;padding:0 10px;border-radius:999px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap"><span data-icon="{{ t.icon }}" style="width:11px;height:11px"></span>{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ isError }}" hint-placeholder-val="{{ false }}">
+    <div style="border:1px solid rgba(248,113,113,.26);border-radius:12px;background:rgba(248,113,113,.07);padding:40px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+      <span data-icon="circle-x" style="width:40px;height:40px;border-radius:12px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.26);color:#f87171;padding:10px"></span>
+      <span style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">The timeline did not load</span>
+      <span style="font-size:12.5px;color:#cbd5e1;max-width:420px;text-wrap:pretty">Unable to load the activity timeline right now. Please try again shortly.</span>
+      <button onClick="{{ retry }}" style="display:flex;align-items:center;gap:7px;height:32px;padding:0 13px;margin-top:4px;border-radius:8px;border:1px solid rgba(148,163,184,.24);background:transparent;color:#cbd5e1;font-size:12.5px;font-weight:600;cursor:pointer" style-hover="background:rgba(148,163,184,.1)"><span data-icon="rotate-ccw" style="width:13px;height:13px"></span>Try again</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ hasEvents }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;gap:0;min-width:0">
+      <sc-for list="{{ events }}" as="e" hint-placeholder-count="8">
+        <div onClick="{{ e.open }}" style="display:flex;gap:13px;min-width:0;cursor:pointer;border-radius:11px;padding:2px;transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
+          <div style="display:flex;flex-direction:column;align-items:center;flex:0 0 auto;padding-top:11px">
+            <span data-icon="{{ e.icon }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:{{ e.tint }};border:1px solid {{ e.line }};color:{{ e.color }};padding:7px"></span>
+            <div style="width:1px;flex:1;min-height:{{ e.railMin }};background:linear-gradient(rgba(148,163,184,.22),rgba(148,163,184,.05))"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;padding:11px 11px 17px 0">
+            <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+              <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ e.title }}</span>
+              <span style="display:inline-flex;padding:2px 8px;border-radius:999px;background:{{ e.tint }};border:1px solid {{ e.line }};font-size:10px;font-weight:700;letter-spacing:.04em;color:{{ e.color }};white-space:nowrap">{{ e.typeLabel }}</span>
+            </div>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ e.description }}</span>
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+              <span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:{{ e.customerColor }};white-space:nowrap"><span data-icon="{{ e.customerIcon }}" style="width:11px;height:11px"></span>{{ e.customerName }}</span>
+              <span style="font-size:11px;color:#475569">{{ e.when }}</span>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
+      <button onClick="{{ loadMore }}" title="{{ moreTitle }}" style="display:flex;align-items:center;gap:7px;height:33px;padding:0 13px;border-radius:8px;border:1px solid {{ moreLine }};background:{{ moreBg }};color:{{ moreFg }};font-size:12.5px;font-weight:600;cursor:{{ moreCursor }};opacity:{{ moreOpacity }};white-space:nowrap"><span data-icon="{{ moreIcon }}" style="width:13px;height:13px"></span>{{ moreLabel }}</button>
+      <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;flex:1;min-width:180px">{{ moreNote }}</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:46px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+      <span data-icon="activity" style="width:42px;height:42px;border-radius:13px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:11px"></span>
+      <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{ emptyTitle }}</span>
+      <span style="font-size:12.5px;color:#94a3b8;max-width:440px;text-wrap:pretty">{{ emptyBody }}</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ detailOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDetail }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(450px,94%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcTlSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <span data-icon="{{ selIcon }}" style="width:32px;height:32px;flex:0 0 32px;border-radius:10px;background:{{ selTint }};border:1px solid {{ selLine }};color:{{ selColor }};padding:8px"></span>
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:{{ selColor }}">{{ selTypeLabel }}</span>
+            <span style="font-size:16.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ selTitle }}</span>
+          </div>
+          <button onClick="{{ closeDetail }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <span style="font-size:12.5px;color:#cbd5e1;text-wrap:pretty">{{ selDescription }}</span>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px">
+          <sc-for list="{{ selFacts }}" as="f" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">{{ f.label }}</span>
+              <span style="font-size:12.5px;color:{{ f.color }};font-family:{{ f.font }};text-wrap:pretty">{{ f.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <button onClick="{{ selGo }}" title="{{ selGoTitle }}" style="display:flex;align-items:center;justify-content:center;gap:8px;height:38px;border-radius:8px;border:1px solid {{ selGoLine }};background:{{ selGoBg }};color:{{ selGoFg }};font-size:13px;font-weight:600;cursor:{{ selGoCursor }};opacity:{{ selGoOpacity }}"><span data-icon="{{ selGoIcon }}" style="width:14px;height:14px"></span>{{ selGoLabel }}</button>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">{{ selGoNote }}</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;align-items:center;gap:9px;padding-top:2px">
+    <span data-icon="info" style="width:13px;height:13px;color:#475569;flex:0 0 13px"></span>
+    <span style="font-size:11px;color:#475569;text-wrap:pretty">{{ honestNote }}</span>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;staffScope&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;unrestricted&quot;,&quot;scoped&quot;],&quot;default&quot;:&quot;unrestricted&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  state = { customer: null, type: "all", sel: null, pages: 1, error: false };
+
+  customers = [
+    { id: 41, name: "Northwind Logistics" },
+    { id: 52, name: "Halcyon Health" },
+    { id: 38, name: "Kestrel Financial" },
+    { id: 19, name: "Mccawsoft2" }
+  ];
+
+  all = [
+    { id: "finding:8f21c904", type: "finding", customerId: 52, title: "Guest sharing enabled tenant-wide", description: "Drift engine · severity warning", when: "5 Sep, 09:41", tone: "amber" },
+    { id: "finding:7b10a442", type: "finding", customerId: 38, title: "12 privileged accounts without enforced MFA", description: "Security engine · severity critical", when: "5 Sep, 06:12", tone: "red" },
+    { id: "run:4f2a91c8", type: "scan_completed", customerId: 38, title: "Scan finished — 198 checks", description: "core:premier · 171 ok, 19 license gap, 8 error", when: "5 Sep, 06:02", tone: "green" },
+    { id: "offer:1841", type: "offer", customerId: 52, title: "Offer sent — Purview rollout", description: "$61,000 · awaiting a decision", when: "4 Sep, 16:20", tone: "blue" },
+    { id: "run:9c41e770", type: "scan_completed", customerId: 41, title: "Scan finished with gaps — 41 checks", description: "core:security-baseline · coverage below the 50% floor, graded as partial", when: "4 Sep, 04:00", tone: "amber" },
+    { id: "score:2201", type: "score_change", customerId: 41, title: "Security score improved", description: "62 → 71 · moved 9, past the significance floor of 5", when: "3 Sep, 04:10", tone: "green" },
+    { id: "document:914", type: "document", customerId: 38, title: "New document ready: Q3 security review", description: "Delivered to the customer's own portal", when: "2 Sep, 11:30", tone: "green" },
+    { id: "run:9a02b331", type: "scan_failed", customerId: 41, title: "Scan did not finish", description: "Tenant read refused before any check ran", when: "2 Sep, 04:00", tone: "amber" },
+    { id: "offer:1802", type: "offer", customerId: 19, title: "Offer accepted — Device compliance baseline", description: "$4,000 · signed 1 Sep", when: "1 Sep, 14:05", tone: "green" },
+    { id: "score:2144", type: "score_change", customerId: 52, title: "Drift score declined", description: "58 → 47 · moved 11 the wrong way", when: "31 Aug, 04:10", tone: "red" },
+    { id: "finding:6a02f118", type: "finding", customerId: 19, title: "Break-glass account outside every access policy", description: "Security engine · severity critical", when: "30 Aug, 09:02", tone: "red" },
+    { id: "offer:1788", type: "offer", customerId: 41, title: "Offer expired — Copilot readiness", description: "$24,500 · nobody decided before the date", when: "28 Aug, 00:00", tone: "slate" },
+    { id: "document:902", type: "document", customerId: null, title: "New document ready: Tenant hygiene summary", description: "Delivered against a login that is not in your own customer list", when: "27 Aug, 15:41", tone: "green" },
+    { id: "run:6a02f118", type: "scan_completed", customerId: 41, title: "Scan finished — 18 checks", description: "assess:copilot-readiness · all 18 ok", when: "26 Aug, 10:20", tone: "green" }
+  ];
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  tone(kind) {
+    const M = {
+      green: ["#34d399", "rgba(52,211,153,.1)", "rgba(52,211,153,.26)"],
+      amber: ["#fbbf24", "rgba(251,191,36,.1)", "rgba(251,191,36,.26)"],
+      red: ["#f87171", "rgba(248,113,113,.1)", "rgba(248,113,113,.26)"],
+      blue: ["#60a5fa", "rgba(96,165,250,.1)", "rgba(96,165,250,.26)"],
+      violet: ["#a78bfa", "rgba(167,139,250,.1)", "rgba(167,139,250,.26)"],
+      slate: ["#94a3b8", "rgba(148,163,184,.08)", "rgba(148,163,184,.2)"]
+    };
+    return M[kind] || M.slate;
+  }
+
+  meta(type) {
+    const M = {
+      finding: ["triangle-alert", "FINDING"],
+      scan_completed: ["circle-check-big", "SCAN"],
+      scan_failed: ["circle-x", "SCAN FAILED"],
+      score_change: ["trending-up", "SCORE"],
+      document: ["file-text", "DOCUMENT"],
+      offer: ["handshake", "OFFER"]
+    };
+    return M[type] || ["circle", type.toUpperCase()];
+  }
+
+  renderVals() {
+    const s = this.state;
+    const scoped = this.props.staffScope === "scoped";
+    const scopedIds = [41, 19];
+    const PAGE = 8;
+
+    let list = this.all;
+    if (scoped) list = list.filter(e => e.customerId != null && scopedIds.indexOf(e.customerId) >= 0);
+    if (s.customer != null) list = list.filter(e => e.customerId === s.customer);
+    const byType = list;
+    if (s.type !== "all") list = list.filter(e => e.type === s.type);
+
+    const shown = list.slice(0, PAGE * s.pages);
+    const more = list.length > shown.length;
+    const name = (id) => {
+      if (id == null) return null;
+      const c = this.customers.find(x => x.id === id);
+      if (!c) return null;
+      if (scoped && scopedIds.indexOf(id) < 0) return null;
+      return c.name;
+    };
+
+    const chipCustomers = scoped ? this.customers.filter(c => scopedIds.indexOf(c.id) >= 0) : this.customers;
+    const typeDefs = ["all", "finding", "scan_completed", "scan_failed", "score_change", "document", "offer"];
+
+    const sel = s.sel ? this.all.find(e => e.id === s.sel) : null;
+    const selTone = sel ? this.tone(sel.tone) : this.tone("slate");
+    const selMeta = sel ? this.meta(sel.type) : ["circle", ""];
+    const selName = sel ? name(sel.customerId) : null;
+
+    return {
+      rootPad: this.props.embedded ? "0" : "20px",
+      rootBg: this.props.embedded ? "transparent" : "#020617",
+      stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+
+      customerChips: [{ id: null, label: scoped ? "Everyone you are assigned" : "Whole book" }]
+        .concat(chipCustomers.map(c => ({ id: c.id, label: c.name })))
+        .map(c => ({
+          label: c.label,
+          bg: s.customer === c.id ? "rgba(37,99,235,.18)" : "transparent",
+          border: s.customer === c.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+          fg: s.customer === c.id ? "#bfdbfe" : "#94a3b8",
+          select: () => this.setState({ customer: c.id, pages: 1 })
+        })),
+      countLabel: shown.length + " of " + list.length + " events · 30 per read",
+
+      typeChips: typeDefs.map(t => {
+        const m = t === "all" ? ["layers", "Everything"] : this.meta(t);
+        const count = t === "all" ? byType.length : byType.filter(e => e.type === t).length;
+        return {
+          label: t === "all" ? "Everything" : m[1].charAt(0) + m[1].slice(1).toLowerCase(),
+          icon: m[0], count: String(count),
+          bg: s.type === t ? "rgba(37,99,235,.18)" : "transparent",
+          border: s.type === t ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+          fg: s.type === t ? "#bfdbfe" : "#94a3b8",
+          countColor: s.type === t ? "#60a5fa" : "#475569",
+          select: () => this.setState({ type: t, pages: 1 })
+        };
+      }),
+
+      isError: s.error,
+      retry: () => this.setState({ error: false }),
+
+      hasEvents: !s.error && shown.length > 0,
+      events: shown.map((e, n) => {
+        const t = this.tone(e.tone), m = this.meta(e.type);
+        const cn = name(e.customerId);
+        return {
+          title: e.title, description: e.description, when: e.when,
+          typeLabel: m[1], icon: m[0],
+          color: t[0], tint: t[1], line: t[2],
+          customerName: cn || "Customer not in your list",
+          customerColor: cn ? "#93c5fd" : "#64748b",
+          customerIcon: cn ? "building-2" : "circle-help",
+          railMin: n === shown.length - 1 ? "0px" : "14px",
+          open: () => this.setState({ sel: e.id })
+        };
+      }),
+
+      loadMore: more ? () => this.setState({ pages: s.pages + 1 }) : () => {},
+      moreLabel: more ? "Load older events" : "Nothing older",
+      moreIcon: more ? "chevron-down" : "check",
+      moreLine: more ? "rgba(148,163,184,.24)" : "rgba(148,163,184,.16)",
+      moreBg: "transparent",
+      moreFg: more ? "#cbd5e1" : "#64748b",
+      moreCursor: more ? "pointer" : "not-allowed",
+      moreOpacity: more ? "1" : ".6",
+      moreTitle: more ? "" : "Every source came back under its own cap, so this is genuinely the end",
+      moreNote: more
+        ? "Paging is by timestamp, not page number. If something new lands while you read, it will not appear until you reload."
+        : "This is the whole feed. The end is real, not a page that stopped offering more.",
+
+      isEmpty: !s.error && shown.length === 0,
+      emptyTitle: s.customer != null
+        ? "No activity for " + (name(s.customer) || "this customer")
+        : s.type !== "all"
+          ? "No events of that kind"
+          : "No activity yet",
+      emptyBody: scoped && s.customer != null && scopedIds.indexOf(s.customer) < 0
+        ? "You are not assigned to this customer, so nothing comes back. The filter narrows what you can already see — it never widens it."
+        : "Nothing has been scanned, found, scored, delivered or offered across what you can see. An empty feed here is a real answer, not a failed load.",
+
+      detailOpen: !!sel,
+      closeDetail: () => this.setState({ sel: null }),
+      selIcon: selMeta[0], selTypeLabel: selMeta[1],
+      selColor: selTone[0], selTint: selTone[1], selLine: selTone[2],
+      selTitle: sel ? sel.title : "",
+      selDescription: sel ? sel.description : "",
+      selFacts: sel ? [
+        { label: "WHEN", value: sel.when, color: "#cbd5e1", font: "inherit" },
+        { label: "CUSTOMER", value: selName || "not in your list", color: selName ? "#93c5fd" : "#64748b", font: "inherit" },
+        { label: "EVENT ID", value: sel.id, color: "#94a3b8", font: "Menlo,monospace" },
+        { label: "SOURCE", value: sel.id.split(":")[0], color: "#94a3b8", font: "Menlo,monospace" }
+      ] : [],
+      selGoLabel: selName ? "Open " + selName : "No customer to open",
+      selGoIcon: selName ? "arrow-right" : "circle-slash",
+      selGoLine: selName ? "#2563eb" : "rgba(148,163,184,.2)",
+      selGoBg: selName ? "#2563eb" : "transparent",
+      selGoFg: selName ? "#fff" : "#64748b",
+      selGoCursor: selName ? "pointer" : "not-allowed",
+      selGoOpacity: selName ? "1" : ".6",
+      selGoTitle: selName ? "" : "This event has no customer attached, so there is nowhere to go",
+      selGo: selName ? () => this.setState({ sel: null }) : () => {},
+      selGoNote: selName
+        ? "Takes you to the customer, not to the event — there is no per-event screen behind this."
+        : "The event is real; the customer behind it sits outside what you can see, so it shows unattributed.",
+
+      honestNote: "Live endpoint, no screen wired to it yet — everything here is representative. Scans still running are left out entirely, only warning and critical findings appear, score moves under 5 points are dropped, and draft offers are not events yet. Open policy incidents live on Alerts and never appear here."
+    };
+  }
+}
+
+</script>
+</body>
+</html>

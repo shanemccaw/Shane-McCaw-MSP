@@ -4,6 +4,28 @@ path: artifacts/api-server/src/routes (plus artifacts/admin-panel/src/components
 
 ## Last sync
 
+date: 2026-09-11T22:16:00Z
+
+### Updated in this project
+
+- Checked the Tenant Overview roll-up's remaining eight domains against their own contract packs under `docs/msp-console/` (risk register, runbooks, scope & SLA, SOPs, documents, data rights, webhooks, break-glass).
+- Added a "How this roll-up is assembled" note block to Tenant Overview recording, per domain, which read each row actually comes from and what it cannot say: the risk register is returned whole and filtered client-side; runbooks/holds are one call with no cross-book read; SLA and scope counts are capped at 200/100 so they are floors; SOP runs are filtered out of the MSP-wide history and a hybrid run with open manual steps settles to Blocked; documents is the one records row with a real customerId filter; data rights is MSPAdmin-only, limit-capped and status-less; break-glass can never show the credential.
+- Corrected the webhooks row: operator-disabled (who/when/why recorded) is now counted separately from owner-switched-off, because the owner touching the active flag clears all three columns. SOP row now leads with runs blocked on a manual step.
+- Break-glass needed no change — its pack's design cross-check confirms the overview tile and row apply the same `pending_delivery` filter the server does.
+
+## Previous sync
+
+date: 2026-09-11T22:10:00Z
+
+### Updated in this project
+
+- Compared `artifacts/api-server/src/routes` against the last-synced commit: 38 files changed, of which four map to screens here — `msp-customer-scores.ts`, `msp-customer-timeline.ts`, `msp-diagnostics.ts`, `msp-sales-offers.ts`.
+- Client → Tenant, Scores and results: priority items now carry the recommendation text alongside the finding. The operator route reads recommendations out of each engine's breakdown and never applies the customer-side paywall, so both lines show in full here.
+- Activity Timeline re-checked against the cross-tenant timeline route as it now stands (graded partial runs, the five sources, the significance floor of 5, sent/accepted/rejected/expired offers, unattributed documents) — already accurate, nothing rebuilt.
+- Ownership (new screen this session) is the operator half of RACI: what our staff hold across the book, per-customer coverage including the zero rows, and one customer's matrix with cell detail. Its own feature is not architected upstream, which the screen states on itself.
+
+## Previous sync
+
 date: 2026-09-11T02:09:40Z
 commit: c10d85919617
 
@@ -76,16 +98,22 @@ date: 2026-09-10T22:43:07Z
 | Client → Launch Control | `msp-launch-control.ts` |
 | Client → Remediation | `msp-remediation-tracker.ts`, `msp-evidence-attachments.ts`, `msp-remediation-tracker-scores.ts`, `msp-remediation-tracker-export.ts`, `msp-remediation-checklist.ts`, `msp-remediation-fix-routes.ts`, `msp-remediation-reveal.ts`, `msp-remediation-bypass-resolutions.ts` |
 | Client → Risk Register | `msp-rbd.ts`, `msp-rbd-instances.ts`, `msp-rbd-versions.ts` |
+| Client → Ownership | `msp-ownership.ts`, `portal-ownership.ts`, `portal-settings-ownership.ts` |
 | Client → Runbooks | `msp-runbooks.ts` |
 | Operations → Executive view | `msp-executive.ts` |
 | Operations → Scope & SLA | `msp-sla.ts`, `msp-scope-creep.ts` |
 | Operations → SOPs | `msp-sops.ts` |
+| Operations → Sales | `msp-sales-offers.ts`, `msp-sales-bundles.ts` |
+| Operations → Configuration state | `msp-config-state.ts`, `msp-config-state-diffs.ts` |
+| Operations → Activity timeline | `msp-customer-timeline.ts` |
+| Client → Overview (roll-up + assembly notes) | `msp-rbd.ts`, `msp-runbooks.ts`, `msp-sla.ts`, `msp-scope-creep.ts`, `msp-sops.ts`, `msp-documents-hub.ts`, `msp-data-rights.ts`, `msp-console-webhooks.ts`, `msp-break-glass.ts` |
+| Client → Diagnostics | `msp-diagnostics.ts` |
 | Operations → Documents, SharePoint connectors | `msp-documents.ts` |
 
 ## Not yet covered
 
 Route files on main with no screen in this console yet:
 
-`msp-active-directory` · `msp-admin-settings` · `msp-alerts` · `msp-audit-log` · `msp-compliance-frameworks` · `msp-config-state` · `msp-config-state-diffs` · `msp-consent` · `msp-custom-domain` · `msp-customer-timeline` · `msp-diagnostics` · `msp-dlq` · `msp-engine-history` · `msp-engines` · `msp-m365-sla` · `msp-marketplace-purchase` · `msp-message-center` · `msp-onboarding` · `msp-ownership` · `msp-partner-revenue` · `msp-plan-management` · `msp-plan-self-service` · `msp-poams` · `msp-policy-decisions` · `msp-policy-engine-settings` · `msp-portal` · `msp-reports` · `msp-retention-queue` · `msp-sales-bundles` · `msp-sales-offers` · `msp-security-plan` · `msp-settings` · `msp-sow` · `msp-staff` · `msp-staff-search` · `msp-standing-policies` · `msp-support` · `msp-vip-classifications`
+`msp-active-directory` · `msp-admin-settings` · `msp-alerts` · `msp-audit-log` · `msp-compliance-frameworks` · `msp-consent` · `msp-custom-domain` · `msp-dlq` · `msp-engine-history` · `msp-engines` · `msp-m365-sla` · `msp-marketplace-purchase` · `msp-message-center` · `msp-onboarding` · `msp-partner-revenue` · `msp-plan-management` · `msp-plan-self-service` · `msp-poams` · `msp-policy-decisions` · `msp-policy-engine-settings` · `msp-portal` · `msp-reports` · `msp-retention-queue` · `msp-security-plan` · `msp-settings` · `msp-sow` · `msp-staff` · `msp-staff-search` · `msp-standing-policies` · `msp-support` · `msp-vip-classifications`
 
 Deliberately out of scope: `msp-billing-webhook`, `msp-webhooks` (inbound Stripe / app-signature receivers, no operator surface), `msp-signup` (public), `msp-v1` (the `/api/msp/v1/*` programmatic mount — an API surface, not an operator screen).

@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+@keyframes smcDocSlide{from{transform:translateX(24px);opacity:.4}to{transform:translateX(0);opacity:1}}
+@keyframes smcDocPulse{0%,100%{opacity:1}50%{opacity:.35}}
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+      <button onClick="{{ t.select }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+    <div style="flex:1"></div>
+    <sc-if value="{{ showAuthor }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ openAuthor }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:7px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:#3b82f6"><span data-icon="plus" style="width:13px;height:13px"></span>{{ authorLabel }}</button>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ isHub }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ hubFilters }}" as="f" hint-placeholder-count="4">
+          <button onClick="{{ f.select }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ f.label }}<span style="font-size:10.5px;color:{{ f.countColor }};margin-left:6px">{{ f.count }}</span></button>
+        </sc-for>
+        <div style="flex:1"></div>
+        <span style="font-size:11.5px;color:#64748b;white-space:nowrap">{{ hubCount }}</span>
+      </div>
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+        <div style="min-width:1020px">
+          <div style="display:grid;grid-template-columns:2.4fr 1.3fr 1.2fr 1.1fr 1.1fr 120px;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+            <span>DOCUMENT</span><span>CUSTOMER</span><span>KIND</span><span>STATE</span><span>DELIVERED</span><span style="text-align:right"></span>
+          </div>
+          <sc-for list="{{ hubRows }}" as="d" hint-placeholder-count="5">
+            <div onClick="{{ d.open }}" style="display:grid;grid-template-columns:2.4fr 1.3fr 1.2fr 1.1fr 1.1fr 120px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(148,163,184,.08);cursor:pointer;transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
+              <span style="display:flex;flex-direction:column;min-width:0">
+                <span style="font-size:13px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ d.title }}</span>
+                <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.project }}</span>
+              </span>
+              <span style="font-size:12px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.customer }}</span>
+              <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ d.kindTint }};border:1px solid {{ d.kindLine }};font-size:11px;font-weight:600;color:{{ d.kindColor }};white-space:nowrap">{{ d.kind }}</span>
+              <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ d.stTint }};border:1px solid {{ d.stLine }};font-size:11px;font-weight:600;color:{{ d.stColor }};white-space:nowrap">{{ d.state }}</span>
+              <span style="font-size:12px;color:#94a3b8;white-space:nowrap">{{ d.delivered }}</span>
+              <span style="justify-self:end;font-size:12px;color:{{ d.valueColor }};white-space:nowrap">{{ d.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">The platform generated these for customers. This view reads and shares them — it never edits or regenerates one.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isAuthored }}" hint-placeholder-val="{{ false }}">
+    <sc-if value="{{ hasAuthored }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:11px">
+        <sc-for list="{{ authoredRows }}" as="a" hint-placeholder-count="3">
+          <div onClick="{{ a.open }}" style="border:1px solid {{ a.cardLine }};border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:12px;min-width:0;cursor:pointer;transition:border-color .15s" style-hover="border-color:rgba(96,165,250,.4)">
+            <div style="display:flex;align-items:flex-start;gap:11px;flex-wrap:wrap">
+              <span data-icon="file-text" style="width:30px;height:30px;flex:0 0 30px;border-radius:9px;background:{{ a.tint }};border:1px solid {{ a.line }};color:{{ a.color }};padding:7px"></span>
+              <span style="display:flex;flex-direction:column;min-width:0;flex:1;min-width:180px">
+                <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ a.title }}</span>
+                <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ a.meta }}</span>
+              </span>
+              <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ a.stTint }};border:1px solid {{ a.stLine }};font-size:11px;font-weight:600;color:{{ a.stColor }};white-space:nowrap">{{ a.state }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+              <sc-for list="{{ a.steps }}" as="st" hint-placeholder-count="7">
+                <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:7px;background:{{ st.tint }};border:1px solid {{ st.line }};font-size:10.5px;font-weight:600;color:{{ st.color }};white-space:nowrap;animation:{{ st.anim }}"><span data-icon="{{ st.icon }}" style="width:10px;height:10px"></span>{{ st.label }}</span>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap;padding-top:10px;border-top:1px solid rgba(148,163,184,.12)">
+              <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ a.versions }}</span>
+              <span style="font-size:11.5px;color:{{ a.destColor }};white-space:nowrap">{{ a.dest }}</span>
+              <div style="flex:1"></div>
+              <span style="font-size:11.5px;color:#64748b;white-space:nowrap">{{ a.updated }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+    <sc-if value="{{ noAuthored }}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+        <span data-icon="file-plus" style="width:42px;height:42px;border-radius:13px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:11px"></span>
+        <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Nothing published yet</span>
+        <span style="font-size:12.5px;color:#94a3b8;max-width:440px;text-wrap:pretty">Write a document here and it is turned into a PDF, filed in SharePoint and published in one pass.</span>
+      </div>
+    </sc-if>
+  </sc-if>
+
+  <sc-if value="{{ isConnectors }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:11px">
+      <sc-for list="{{ connectorRows }}" as="c" hint-placeholder-count="2">
+        <div style="border:1px solid {{ c.cardLine }};border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:12px;min-width:0;opacity:{{ c.opacity }}">
+          <div style="display:flex;align-items:flex-start;gap:11px;flex-wrap:wrap">
+            <span data-icon="folder-open" style="width:30px;height:30px;flex:0 0 30px;border-radius:9px;background:{{ c.tint }};border:1px solid {{ c.line }};color:{{ c.color }};padding:7px"></span>
+            <span style="display:flex;flex-direction:column;min-width:0;flex:1;min-width:180px">
+              <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ c.label }}</span>
+              <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ c.site }}</span>
+            </span>
+            <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ c.tint }};border:1px solid {{ c.line }};font-size:11px;font-weight:600;color:{{ c.color }};white-space:nowrap">{{ c.state }}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+            <sc-for list="{{ c.facts }}" as="f" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">{{ f.label }}</span>
+                <span style="font-size:12px;color:{{ f.color }};font-family:{{ f.font }};word-break:break-all">{{ f.value }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:11px;border-top:1px solid rgba(148,163,184,.12)">
+            <button onClick="{{ c.toggle }}" style="height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ c.ctaLine }};background:{{ c.ctaBg }};color:{{ c.ctaFg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(148,163,184,.12)">{{ c.cta }}</button>
+            <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;flex:1;min-width:160px">{{ c.note }}</span>
+          </div>
+        </div>
+      </sc-for>
+      <div style="display:flex;gap:10px;padding:12px 13px;border-radius:11px;border:1px solid rgba(148,163,184,.18);background:rgba(2,6,23,.4)">
+        <span data-icon="key-round" style="width:15px;height:15px;color:#94a3b8;flex:0 0 15px;margin-top:2px"></span>
+        <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">Credentials are held in the vault and only ever referenced by name. Nothing on this screen can show a secret back to you, and only an admin can add or change one.</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ hubDetailOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeHub }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(500px,95%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcDocSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">{{ hubSelCustomer }}</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ hubSelTitle }}</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ hubSelProject }}</span>
+          </div>
+          <button onClick="{{ closeHub }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px">
+          <sc-for list="{{ hubSelFacts }}" as="f" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">{{ f.label }}</span>
+              <span style="font-size:12.5px;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:11px;background:rgba(2,6,23,.5);padding:16px;display:flex;flex-direction:column;gap:9px;min-width:0">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">PREVIEW</span>
+          <span style="font-size:15px;font-weight:700;color:#f1f5f9;letter-spacing:-.01em;text-wrap:pretty">{{ hubSelTitle }}</span>
+          <sc-for list="{{ hubSelPreview }}" as="p" hint-placeholder-count="3">
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ p.line }}</span>
+          </sc-for>
+          <span style="font-size:11px;color:#475569;text-wrap:pretty">Shown as the customer sees it, with any internal review banner removed.</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <sc-for list="{{ hubActions }}" as="a" hint-placeholder-count="2">
+              <button onClick="{{ a.run }}" title="{{ a.title }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:8px;border:1px solid {{ a.line }};background:{{ a.bg }};color:{{ a.fg }};font-size:12.5px;font-weight:600;cursor:{{ a.cursor }};opacity:{{ a.opacity }};white-space:nowrap"><span data-icon="{{ a.icon }}" style="width:13px;height:13px"></span>{{ a.label }}</button>
+            </sc-for>
+          </div>
+          <span style="font-size:11.5px;color:{{ hubActionNoteColor }};text-wrap:pretty">{{ hubActionNote }}</span>
+          <sc-if value="{{ hubShared }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:5px;padding:11px;border-radius:10px;border:1px solid rgba(96,165,250,.24);background:rgba(37,99,235,.08)">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">SHARE LINK · GOOD FOR 30 DAYS</span>
+              <span style="font-family:Menlo,monospace;font-size:11px;color:#cbd5e1;word-break:break-all">{{ hubShareUrl }}</span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Creating another link replaces this one. There is only ever one live link per document.</span>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ docDetailOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDoc }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(500px,95%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcDocSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">{{ docSelKind }}</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ docSelTitle }}</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ docSelMeta }}</span>
+          </div>
+          <button onClick="{{ closeDoc }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">WHERE IT IS UP TO</span>
+          <sc-for list="{{ docSelSteps }}" as="st" hint-placeholder-count="7">
+            <div style="display:flex;gap:10px;align-items:flex-start;min-width:0">
+              <span data-icon="{{ st.icon }}" style="width:15px;height:15px;color:{{ st.color }};flex:0 0 15px;margin-top:2px;animation:{{ st.anim }}"></span>
+              <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                <span style="font-size:12.5px;font-weight:600;color:{{ st.titleColor }};text-wrap:pretty">{{ st.title }}</span>
+                <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ st.body }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">VERSIONS</span>
+          <sc-for list="{{ docSelVersions }}" as="v" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;border:1px solid {{ v.line }};background:{{ v.tint }};min-width:0">
+              <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;flex:0 0 auto">v{{ v.n }}</span>
+              <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1">
+                <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ v.note }}</span>
+                <span style="font-size:11px;color:#475569">{{ v.meta }}</span>
+              </div>
+              <sc-if value="{{ v.isCurrent }}" hint-placeholder-val="{{ false }}">
+                <span style="display:inline-flex;padding:2px 9px;border-radius:999px;background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.28);font-size:10.5px;font-weight:600;color:#93c5fd;white-space:nowrap;flex:0 0 auto">current</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <sc-for list="{{ docActions }}" as="a" hint-placeholder-count="3">
+              <button onClick="{{ a.run }}" title="{{ a.title }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:8px;border:1px solid {{ a.line }};background:{{ a.bg }};color:{{ a.fg }};font-size:12.5px;font-weight:600;cursor:{{ a.cursor }};opacity:{{ a.opacity }};white-space:nowrap"><span data-icon="{{ a.icon }}" style="width:13px;height:13px"></span>{{ a.label }}</button>
+            </sc-for>
+          </div>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">{{ docActionNote }}</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ authorOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeAuthor }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:91;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(470px,94%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcDocSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">NEW DOCUMENT</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Write and publish</span>
+          </div>
+          <button onClick="{{ closeAuthor }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">Title</span>
+          <input value="{{ newTitle }}" onChange="{{ setNewTitle }}" placeholder="What this document is" style="height:36px;padding:0 11px;border-radius:8px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;outline:none">
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">Who it belongs to</span>
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <sc-for list="{{ ownerOptions }}" as="o" hint-placeholder-count="2">
+              <button onClick="{{ o.pick }}" style="height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ o.line }};background:{{ o.bg }};color:{{ o.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ o.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">Where it gets filed</span>
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <sc-for list="{{ destOptions }}" as="o" hint-placeholder-count="2">
+              <button onClick="{{ o.pick }}" style="height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ o.line }};background:{{ o.bg }};color:{{ o.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ o.label }}</button>
+            </sc-for>
+          </div>
+          <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ destNote }}</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">The document itself</span>
+          <textarea value="{{ newBody }}" onChange="{{ setNewBody }}" placeholder="Paste or write the content" style="min-height:120px;padding:10px 11px;border-radius:8px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:12.5px;font-family:Menlo,monospace;outline:none;resize:vertical"></textarea>
+        </div>
+
+        <div style="display:flex;gap:10px;padding:12px 13px;border-radius:10px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.07)">
+          <span data-icon="triangle-alert" style="width:15px;height:15px;color:#fbbf24;flex:0 0 15px;margin-top:2px"></span>
+          <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+            <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">Submitting runs the whole thing through to published</span>
+            <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">There is no draft stop. The PDF it produces is plain text today — layout, images and tables do not survive.</span>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <button onClick="{{ submitAuthor }}" title="{{ submitTitle }}" style="flex:1;height:38px;border-radius:8px;border:1px solid {{ submitLine }};background:{{ submitBg }};color:{{ submitFg }};font-size:13px;font-weight:600;cursor:{{ submitCursor }};opacity:{{ submitOpacity }}">Submit and publish</button>
+          <button onClick="{{ closeAuthor }}" style="height:38px;padding:0 15px;border-radius:8px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:13px;cursor:pointer">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;align-items:center;gap:9px;padding-top:2px">
+    <span data-icon="info" style="width:13px;height:13px;color:#475569;flex:0 0 13px"></span>
+    <span style="font-size:11px;color:#475569;text-wrap:pretty">{{ honestNote }}</span>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1220,&quot;height&quot;:860},&quot;initialTab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;hub&quot;,&quot;authored&quot;,&quot;connectors&quot;],&quot;default&quot;:&quot;hub&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;tenantName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  state = {
+    tab: null, filter: "all", hubSel: null, docSel: null,
+    authorOpen: false, newTitle: "", newBody: "", owner: "us", dest: "our own SharePoint",
+    shared: {}, published: {}
+  };
+
+  hubDocs = [
+    { id: "d1", title: "Q3 tenant review", customer: "Northwind Logistics", kind: "report", state: "delivered", delivered: "5 Sep 2026", value: null, project: "Quarterly governance review", preview: ["Monitoring covered 41 checks across the estate this quarter, with two license gaps and one read failure.", "Privileged role membership was re-attested on 4 September.", "Two accepted risks remain open and are due for review in November."] },
+    { id: "d2", title: "Statement of work — Copilot readiness", customer: "Northwind Logistics", kind: "scoped SOW", state: "approved", delivered: "28 Aug 2026", value: 24500, project: "Copilot rollout", preview: ["Eighteen readiness checks across licensing, data hygiene and sharing.", "Three phases over six weeks, with a go or no-go decision after phase one."] },
+    { id: "d3", title: "Security posture assessment", customer: "Halcyon Health", kind: "report", state: "delivered", delivered: "22 Aug 2026", value: null, project: null, preview: ["Twenty-two checks against the clinical baseline.", "Guest access on the coordination site is the one accepted exception."] },
+    { id: "d4", title: "Statement of work — Purview rollout", customer: "Halcyon Health", kind: "scoped SOW", state: "draft", delivered: null, value: 61000, project: "Purview readiness", preview: ["Draft scope, not yet priced with the customer.", "Retention and sensitivity labelling across three workloads."] },
+    { id: "d5", title: "Annual compliance pack", customer: "Kestrel Financial", kind: "report", state: "generating", delivered: null, value: null, project: "SOC 2 evidence", preview: ["Still being put together."] }
+  ];
+
+  authored = [
+    { id: "a1", title: "Managed services agreement 2026", kind: "general", owner: "us", stage: 7, versions: 3, dest: "our own SharePoint", updated: "published 2 Sep 2026", note: "Annual refresh, new SLA schedule" },
+    { id: "a2", title: "Northwind onboarding pack", kind: "branded deliverable", owner: "Northwind Logistics", stage: 4, versions: 1, dest: "our own SharePoint", updated: "started 3 minutes ago", note: "First draft" },
+    { id: "a3", title: "Incident response playbook", kind: "general", owner: "us", stage: 7, versions: 5, dest: "platform SharePoint", updated: "published 18 Aug 2026", note: "Added the compromised-app path" },
+    { id: "a4", title: "Halcyon governance charter", kind: "branded deliverable", owner: "Halcyon Health", stage: 2, versions: 2, dest: "our own SharePoint", updated: "started 12 minutes ago", note: "Board feedback incorporated" }
+  ];
+
+  connectors = [
+    { id: "c1", label: "Shane McCaw Consulting — deliverables", site: "shanemccaw.sharepoint.com/sites/deliverables", mode: "our own", active: true, secret: "kv://smc-sp-deliverables", added: "14 Jun 2026", docs: 3 },
+    { id: "c2", label: "Legacy client portal library", site: "shanemccaw.sharepoint.com/sites/legacy", mode: "our own", active: false, secret: "kv://smc-sp-legacy", added: "2 Feb 2026", docs: 1 }
+  ];
+
+  STEPS = [
+    { key: "html", title: "Content stored", body: "The text is saved and fingerprinted, so re-submitting the same thing does not create a duplicate." },
+    { key: "pdf", title: "PDF produced", body: "Plain text only today — layout, images and tables from the source do not carry over." },
+    { key: "sharepoint", title: "Filed in SharePoint", body: "Uploaded to the chosen site. Identical content is reused rather than uploaded twice." },
+    { key: "version", title: "Version recorded", body: "Becomes the document's current version." },
+    { key: "publish", title: "Published", body: "Marked active and visible. Running this twice is detected and skipped." },
+    { key: "audit", title: "Logged", body: "An export record is raised. If that fails, the document still publishes." },
+    { key: "cleanup", title: "Tidied up", body: "Nothing to do yet — reserved for clearing temporary files later." }
+  ];
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate(prevProps) {
+    if (prevProps && prevProps.initialTab !== this.props.initialTab && this.state.tab !== null) {
+      this.setState({ tab: null, hubSel: null, docSel: null });
+    }
+    this.icons();
+  }
+
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  tone(kind) {
+    const M = {
+      green: ["#34d399", "rgba(52,211,153,.1)", "rgba(52,211,153,.26)"],
+      amber: ["#fbbf24", "rgba(251,191,36,.1)", "rgba(251,191,36,.26)"],
+      red: ["#f87171", "rgba(248,113,113,.1)", "rgba(248,113,113,.26)"],
+      blue: ["#60a5fa", "rgba(96,165,250,.1)", "rgba(96,165,250,.26)"],
+      violet: ["#a78bfa", "rgba(167,139,250,.1)", "rgba(167,139,250,.26)"],
+      slate: ["#94a3b8", "rgba(148,163,184,.08)", "rgba(148,163,184,.2)"]
+    };
+    return M[kind] || M.slate;
+  }
+
+  money(n) { return n >= 1000 ? "$" + Math.round(n / 1000) + "k" : "$" + n; }
+
+  renderVals() {
+    const s = this.state;
+    const tab = s.tab || this.props.initialTab || "hub";
+    const scopeName = this.props.tenantName || null;
+    const hub = scopeName ? this.hubDocs.filter(d => d.customer === scopeName) : this.hubDocs;
+    const authored = scopeName ? this.authored.filter(a => a.owner === scopeName || a.owner === "us") : this.authored;
+
+    const ST = { delivered: "green", approved: "blue", draft: "amber", generating: "violet", failed: "red", archived: "slate" };
+    const KIND = { report: "blue", "scoped SOW": "violet" };
+
+    const filterDefs = [
+      { id: "all", label: "Everything", match: () => true },
+      { id: "report", label: "Reports", match: (d) => d.kind === "report" },
+      { id: "sow", label: "Statements of work", match: (d) => d.kind === "scoped SOW" },
+      { id: "shareable", label: "Shareable", match: (d) => d.state === "delivered" || d.state === "approved" || d.kind === "scoped SOW" }
+    ];
+    const active = filterDefs.find(f => f.id === s.filter) || filterDefs[0];
+    const hubSel = s.hubSel ? hub.find(d => d.id === s.hubSel) : null;
+    const docSel = s.docSel ? authored.find(a => a.id === s.docSel) : null;
+    const canShare = hubSel ? (hubSel.state === "delivered" || hubSel.state === "approved" || hubSel.kind === "scoped SOW") : false;
+    const canPdf = hubSel ? (hubSel.state === "delivered" || hubSel.state === "approved") : false;
+    const canSubmit = s.newTitle.trim().length > 0 && s.newBody.trim().length > 0;
+
+    return {
+      rootPad: this.props.embedded ? "0" : "20px",
+      rootBg: this.props.embedded ? "transparent" : "#020617",
+      stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+
+      tabs: [
+        { id: "hub", label: "For customers", count: String(hub.length) },
+        { id: "authored", label: "Ours", count: String(authored.length) },
+        { id: "connectors", label: "Where they go", count: String(this.connectors.length) }
+      ].map(t => ({
+        label: t.label, count: t.count,
+        bg: tab === t.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: tab === t.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: tab === t.id ? "#bfdbfe" : "#94a3b8",
+        countColor: tab === t.id ? "#60a5fa" : "#475569",
+        select: () => this.setState({ tab: t.id, hubSel: null, docSel: null })
+      })),
+      showAuthor: tab === "authored",
+      authorLabel: "Write a document",
+      openAuthor: () => this.setState({ authorOpen: true }),
+      closeAuthor: () => this.setState({ authorOpen: false, newTitle: "", newBody: "" }),
+
+      isHub: tab === "hub",
+      hubFilters: filterDefs.map(f => ({
+        label: f.label,
+        count: String(hub.filter(f.match).length),
+        bg: s.filter === f.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: s.filter === f.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: s.filter === f.id ? "#bfdbfe" : "#94a3b8",
+        countColor: s.filter === f.id ? "#60a5fa" : "#475569",
+        select: () => this.setState({ filter: f.id })
+      })),
+      hubCount: hub.filter(active.match).length + " of " + hub.length + " documents",
+      hubRows: hub.filter(active.match).map(d => {
+        const st = this.tone(ST[d.state]), kd = this.tone(KIND[d.kind]);
+        return {
+          title: d.title, project: d.project || "no linked project",
+          customer: d.customer, kind: d.kind,
+          kindColor: kd[0], kindTint: kd[1], kindLine: kd[2],
+          state: d.state, stColor: st[0], stTint: st[1], stLine: st[2],
+          delivered: d.delivered || "not yet",
+          value: d.value ? this.money(d.value) : "",
+          valueColor: "#cbd5e1",
+          open: () => this.setState({ hubSel: d.id })
+        };
+      }),
+
+      isAuthored: tab === "authored",
+      hasAuthored: tab === "authored" && authored.length > 0,
+      noAuthored: tab === "authored" && authored.length === 0,
+      authoredRows: authored.map(a => {
+        const done = a.stage >= 7;
+        const t = this.tone(done ? "green" : "blue");
+        return {
+          title: a.title,
+          meta: a.kind + " · " + (a.owner === "us" ? "ours" : "for " + a.owner) + " · " + a.note,
+          state: done ? "published" : "working through it",
+          stColor: t[0], stTint: t[1], stLine: t[2],
+          color: t[0], tint: t[1], line: t[2],
+          cardLine: done ? "rgba(148,163,184,.16)" : "rgba(96,165,250,.24)",
+          steps: this.STEPS.map((st, n) => {
+            const at = n + 1;
+            const state = at < a.stage ? "done" : at === a.stage ? "now" : "todo";
+            const tt = this.tone(state === "done" ? "green" : state === "now" ? "blue" : "slate");
+            return {
+              label: st.title,
+              icon: state === "done" ? "check" : state === "now" ? "loader" : "circle",
+              color: state === "todo" ? "#475569" : tt[0],
+              tint: state === "todo" ? "rgba(148,163,184,.05)" : tt[1],
+              line: state === "todo" ? "rgba(148,163,184,.14)" : tt[2],
+              anim: state === "now" ? "smcDocPulse 1.4s ease-in-out infinite" : "none"
+            };
+          }),
+          versions: a.versions + (a.versions === 1 ? " version" : " versions"),
+          dest: "filed in " + a.dest,
+          destColor: a.dest === "platform SharePoint" ? "#94a3b8" : "#93c5fd",
+          updated: a.updated,
+          open: () => this.setState({ docSel: a.id })
+        };
+      }),
+
+      isConnectors: tab === "connectors",
+      connectorRows: this.connectors.map(c => {
+        const t = this.tone(c.active ? "green" : "slate");
+        return {
+          label: c.label, site: c.site,
+          state: c.active ? "in use" : "retired",
+          color: t[0], tint: t[1], line: t[2],
+          cardLine: "rgba(148,163,184,.16)",
+          opacity: c.active ? "1" : ".72",
+          facts: [
+            { label: "OWNERSHIP", value: c.mode, color: "#cbd5e1", font: "inherit" },
+            { label: "CREDENTIAL", value: c.secret, color: "#93c5fd", font: "Menlo,monospace" },
+            { label: "ADDED", value: c.added, color: "#94a3b8", font: "inherit" },
+            { label: "DOCUMENTS FILED", value: String(c.docs), color: "#cbd5e1", font: "inherit" }
+          ],
+          cta: c.active ? "Retire" : "Retired",
+          ctaLine: "rgba(148,163,184,.22)",
+          ctaBg: "transparent",
+          ctaFg: c.active ? "#cbd5e1" : "#64748b",
+          toggle: () => {},
+          note: c.active
+            ? "Retiring hides it from new documents. Anything already pointed at it keeps using it."
+            : "Retired, but still reachable by documents that were already pointed at it."
+        };
+      }),
+
+      hubDetailOpen: !!hubSel,
+      closeHub: () => this.setState({ hubSel: null }),
+      hubSelTitle: hubSel ? hubSel.title : "",
+      hubSelCustomer: hubSel ? hubSel.customer.toUpperCase() : "",
+      hubSelProject: hubSel ? (hubSel.project || "Not linked to a project") : "",
+      hubSelFacts: hubSel ? [
+        { label: "KIND", value: hubSel.kind, color: "#cbd5e1" },
+        { label: "STATE", value: hubSel.state, color: this.tone(ST[hubSel.state])[0] },
+        { label: "DELIVERED", value: hubSel.delivered || "not yet", color: "#94a3b8" },
+        { label: "VALUE", value: hubSel.value ? this.money(hubSel.value) : "not priced", color: hubSel.value ? "#cbd5e1" : "#64748b" }
+      ] : [],
+      hubSelPreview: hubSel ? hubSel.preview.map(line => ({ line })) : [],
+      hubActions: hubSel ? [
+        canPdf
+          ? { label: "Download the PDF", icon: "download", line: "#2563eb", bg: "#2563eb", fg: "#fff", cursor: "pointer", opacity: "1", title: "Built fresh each time you ask for it", run: () => {} }
+          : { label: "Download the PDF", icon: "lock", line: "rgba(148,163,184,.2)", bg: "transparent", fg: "#64748b", cursor: "not-allowed", opacity: ".6", title: "Only an approved or delivered document can be downloaded", run: () => {} },
+        canShare
+          ? { label: s.shared[hubSel.id] ? "Replace the link" : "Create a share link", icon: "link", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "", run: () => this.setState({ shared: Object.assign({}, s.shared, { [hubSel.id]: true }) }) }
+          : { label: "Create a share link", icon: "lock", line: "rgba(148,163,184,.2)", bg: "transparent", fg: "#64748b", cursor: "not-allowed", opacity: ".6", title: "Not shareable until it is approved or delivered", run: () => {} }
+      ] : [],
+      hubActionNote: hubSel
+        ? (canPdf
+          ? "The preview above is always available. The PDF and the share link are only offered once the document is approved or delivered."
+          : "Still being worked on, so only the preview is available. Statements of work can be shared before approval; nothing else can.")
+        : "",
+      hubActionNoteColor: canPdf ? "#64748b" : "#fcd34d",
+      hubShared: !!(hubSel && s.shared[hubSel.id]),
+      hubShareUrl: hubSel && s.shared[hubSel.id]
+        ? "shanemccaw.com/portal/shared-documents/" + hubSel.id + "-" + Math.random().toString(16).slice(2, 12)
+        : "",
+
+      docDetailOpen: !!docSel,
+      closeDoc: () => this.setState({ docSel: null }),
+      docSelTitle: docSel ? docSel.title : "",
+      docSelKind: docSel ? (docSel.kind + " · " + (docSel.owner === "us" ? "OURS" : "FOR " + docSel.owner)).toUpperCase() : "",
+      docSelMeta: docSel ? docSel.note + " · " + docSel.updated : "",
+      docSelSteps: docSel ? this.STEPS.map((st, n) => {
+        const at = n + 1;
+        const state = at < docSel.stage ? "done" : at === docSel.stage ? "now" : "todo";
+        return {
+          title: st.title, body: st.body,
+          icon: state === "done" ? "circle-check-big" : state === "now" ? "loader" : "circle",
+          color: state === "done" ? "#34d399" : state === "now" ? "#60a5fa" : "#475569",
+          titleColor: state === "todo" ? "#64748b" : "#f1f5f9",
+          anim: state === "now" ? "smcDocPulse 1.4s ease-in-out infinite" : "none"
+        };
+      }) : [],
+      docSelVersions: docSel ? Array.apply(null, { length: docSel.versions }).map((x, i) => {
+        const n = docSel.versions - i;
+        const cur = n === docSel.versions;
+        return {
+          n: n, isCurrent: cur,
+          note: cur ? docSel.note : "Earlier revision",
+          meta: cur ? "Written by Shane McCaw" : "Superseded",
+          tint: cur ? "rgba(37,99,235,.08)" : "rgba(2,6,23,.4)",
+          line: cur ? "rgba(96,165,250,.24)" : "rgba(148,163,184,.14)"
+        };
+      }) : [],
+      docActions: docSel ? [
+        { label: "New version", icon: "file-plus", line: "#2563eb", bg: "#2563eb", fg: "#fff", cursor: "pointer", opacity: "1", title: "Runs the whole thing again from the new content", run: () => this.setState({ authorOpen: true, docSel: null }) },
+        { label: "Open the filed copy", icon: "external-link", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "", run: () => {} },
+        docSel.stage >= 7
+          ? { label: "Publish again", icon: "upload", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "Re-stamps the published date — it does not warn you it was already published", run: () => {} }
+          : { label: "Still working", icon: "lock", line: "rgba(148,163,184,.2)", bg: "transparent", fg: "#64748b", cursor: "not-allowed", opacity: ".6", title: "Wait for it to finish", run: () => {} }
+      ] : [],
+      docActionNote: docSel && docSel.stage >= 7
+        ? "Publishing again re-stamps the date rather than telling you it was already published."
+        : "Progress has to be refreshed to be seen — nothing pushes an update to this screen while it works.",
+
+      authorOpen: s.authorOpen,
+      newTitle: s.newTitle,
+      setNewTitle: (e) => this.setState({ newTitle: e.target.value }),
+      newBody: s.newBody,
+      setNewBody: (e) => this.setState({ newBody: e.target.value }),
+      ownerOptions: ["us", "a customer"].map(o => ({
+        label: o,
+        bg: s.owner === o ? "rgba(37,99,235,.18)" : "transparent",
+        line: s.owner === o ? "rgba(96,165,250,.32)" : "rgba(148,163,184,.18)",
+        fg: s.owner === o ? "#bfdbfe" : "#94a3b8",
+        pick: () => this.setState({ owner: o })
+      })),
+      destOptions: ["our own SharePoint", "platform SharePoint"].map(o => ({
+        label: o,
+        bg: s.dest === o ? "rgba(37,99,235,.18)" : "transparent",
+        line: s.dest === o ? "rgba(96,165,250,.32)" : "rgba(148,163,184,.18)",
+        fg: s.dest === o ? "#bfdbfe" : "#94a3b8",
+        pick: () => this.setState({ dest: o })
+      })),
+      destNote: s.dest === "our own SharePoint"
+        ? "Uses one of our own connectors. If none resolves, the whole thing stops rather than filing it somewhere else."
+        : "Uses the shared platform library.",
+      submitLine: canSubmit ? "#2563eb" : "rgba(148,163,184,.2)",
+      submitBg: canSubmit ? "#2563eb" : "transparent",
+      submitFg: canSubmit ? "#fff" : "#64748b",
+      submitCursor: canSubmit ? "pointer" : "not-allowed",
+      submitOpacity: canSubmit ? "1" : ".6",
+      submitTitle: canSubmit ? "" : "A title and some content are both needed",
+      submitAuthor: canSubmit ? () => this.setState({ authorOpen: false, newTitle: "", newBody: "", tab: "authored" }) : () => {},
+
+      honestNote: "All of this runs on live endpoints with no interface wired to them yet, so what is shown here is representative. Submitting a document always publishes it — there is no draft stop — and the PDF it produces is plain text."
+    };
+  }
+}
+
+</script>
+</body>
+</html>

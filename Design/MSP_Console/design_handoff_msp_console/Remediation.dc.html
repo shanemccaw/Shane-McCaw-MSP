@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+@keyframes smcRemSlide{from{transform:translateX(22px);opacity:.4}to{transform:translateX(0);opacity:1}}
+@keyframes smcRemBlink{0%,100%{opacity:1}50%{opacity:.25}}
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <sc-if value="{{ showPillars }}" hint-placeholder-val="{{ true }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px">
+      <sc-for list="{{ pillars }}" as="p" hint-placeholder-count="4">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#64748b">{{ p.label }}</span>
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <span style="font-size:26px;font-weight:800;letter-spacing:-.02em;color:#f8fafc">{{ p.score }}</span>
+            <span style="font-size:12px;font-weight:600;color:{{ p.deltaColor }}">{{ p.delta }}</span>
+          </div>
+          <div style="height:4px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden">
+            <div style="height:100%;width:{{ p.pct }};background:{{ p.color }}"></div>
+          </div>
+          <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ p.meta }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+      <button onClick="{{ t.select }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+    <div style="flex:1"></div>
+    <sc-for list="{{ exports }}" as="e" hint-placeholder-count="3">
+      <button onClick="{{ e.run }}" title="{{ e.title }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid rgba(148,163,184,.2);background:transparent;color:{{ e.fg }};font-size:12px;font-weight:600;cursor:{{ e.cursor }};white-space:nowrap;opacity:{{ e.opacity }}" style-hover="background:rgba(148,163,184,.1)"><span data-icon="{{ e.icon }}" style="width:13px;height:13px"></span>{{ e.label }}</button>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ isTracker }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto;min-width:0">
+        <div style="min-width:760px">
+          <div style="display:grid;grid-template-columns:2.6fr 1.3fr 1fr 1fr 1fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+            <span>STEP</span><span>STATUS</span><span>VERIFICATION</span><span>STATE</span><span>UPDATED</span>
+          </div>
+          <sc-for list="{{ stepRows }}" as="r" hint-placeholder-count="6">
+            <div onClick="{{ r.open }}" style="display:grid;grid-template-columns:2.6fr 1.3fr 1fr 1fr 1fr;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08);cursor:pointer;background:{{ r.rowBg }};transition:background-color .15s" style-hover="background:rgba(148,163,184,.06)">
+              <span style="display:flex;align-items:center;gap:10px;min-width:0">
+                <span style="font-family:Menlo,monospace;font-size:11px;color:#64748b;flex:0 0 26px">{{ r.id }}</span>
+                <span style="display:flex;flex-direction:column;min-width:0">
+                  <span style="font-size:13px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ r.title }}</span>
+                  <span style="font-size:11px;color:#64748b">{{ r.pillar }}</span>
+                </span>
+              </span>
+              <span style="font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.statusLabel }}</span>
+              <span style="display:inline-flex;justify-self:start;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:{{ r.vTint }};border:1px solid {{ r.vLine }};font-size:11px;font-weight:600;color:{{ r.vColor }};white-space:nowrap"><span data-icon="{{ r.vIcon }}" style="width:11px;height:11px"></span>{{ r.verification }}</span>
+              <span style="font-size:12px;font-weight:600;color:{{ r.tColor }};white-space:nowrap">{{ r.terminal }}</span>
+              <span style="font-size:12px;color:#94a3b8;white-space:nowrap">{{ r.updated }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <sc-if value="{{ hasStepSel }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeStep }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+        <div onClick="{{ stop }}" style="width:min(420px,92%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:14px;min-width:0;overflow-y:auto;animation:smcRemSlide .18s ease-out">
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+              <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b">{{ selId }} · {{ selPillar }}</span>
+              <span style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ selTitle }}</span>
+            </div>
+            <button onClick="{{ closeStep }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">MARK THIS STEP</span>
+            <sc-for list="{{ statusOptions }}" as="o" hint-placeholder-count="6">
+              <button onClick="{{ o.pick }}" title="{{ o.title }}" style="display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:9px;border:1px solid {{ o.line }};background:{{ o.tint }};color:{{ o.fg }};font-size:12.5px;font-weight:600;cursor:{{ o.cursor }};text-align:left;opacity:{{ o.opacity }}" style-hover="background:rgba(148,163,184,.1)">
+                <span data-icon="{{ o.icon }}" style="width:14px;height:14px;flex:0 0 14px;color:{{ o.iconColor }}"></span>
+                <span style="flex:1;min-width:0;text-wrap:pretty">{{ o.label }}</span>
+                <span style="font-size:11px;color:#64748b;white-space:nowrap">{{ o.hint }}</span>
+              </button>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:9px;padding-top:12px;border-top:1px solid rgba(148,163,184,.12)">
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+              <button onClick="{{ verifyStep }}" title="{{ verifyTitle }}" style="display:flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:8px;border:1px solid {{ verifyLine }};background:{{ verifyBg }};color:{{ verifyFg }};font-size:12.5px;font-weight:600;cursor:{{ verifyCursor }};opacity:{{ verifyOpacity }};white-space:nowrap"><span data-icon="radar" style="width:13px;height:13px"></span>{{ verifyLabel }}</button>
+              <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;flex:1;min-width:120px">{{ verifyNote }}</span>
+            </div>
+            <sc-if value="{{ verifyOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid rgba(96,165,250,.22);border-radius:10px;background:rgba(2,6,23,.6);padding:12px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="width:7px;height:7px;border-radius:999px;background:{{ verifyStreamColor }};animation:smcRemBlink 1s ease-in-out infinite"></span>
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:{{ verifyStreamColor }}">{{ verifyStreamLabel }}</span>
+                  <div style="flex:1"></div>
+                  <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b">{{ verifyPct }}</span>
+                </div>
+                <div style="height:4px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden">
+                  <div style="height:100%;width:{{ verifyPct }};background:{{ verifyBarColor }};transition:width .45s linear"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:3px">
+                  <sc-for list="{{ verifyLines }}" as="l" hint-placeholder-count="2">
+                    <span style="font-family:Menlo,monospace;font-size:11px;color:{{ l.color }};text-wrap:pretty;word-break:break-word">{{ l.text }}</span>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">HOW THIS GETS VERIFIED</span>
+            <sc-for list="{{ guide }}" as="g" hint-placeholder-count="3">
+              <div style="display:flex;gap:9px;align-items:flex-start">
+                <span data-icon="{{ g.icon }}" style="width:13px;height:13px;color:#60a5fa;margin-top:3px;flex:0 0 13px"></span>
+                <span style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                  <span style="font-size:12px;color:#e2e8f0;text-wrap:pretty">{{ g.line }}</span>
+                  <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b">{{ g.key }}</span>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isChecklist }}" hint-placeholder-val="{{ false }}">
+    <sc-if value="{{ hasChecklist }}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+        <div style="min-width:1080px">
+          <div style="display:grid;grid-template-columns:2.4fr .9fr 1.4fr 1.2fr 1.5fr 130px;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+            <span>FINDING</span><span>SEVERITY</span><span>STATUS</span><span>FIX ROUTE</span><span>CHANGE REQUEST</span><span style="text-align:right">ACTION</span>
+          </div>
+          <sc-for list="{{ clRows }}" as="c" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:2.4fr .9fr 1.4fr 1.2fr 1.5fr 130px;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08);transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
+              <span style="display:flex;flex-direction:column;min-width:0">
+                <span style="font-size:13px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ c.finding }}</span>
+                <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.key }}</span>
+              </span>
+              <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ c.sevTint }};border:1px solid {{ c.sevLine }};font-size:11px;font-weight:600;color:{{ c.sevColor }};white-space:nowrap">{{ c.severity }}</span>
+              <span style="font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.statusLabel }}</span>
+              <span style="display:inline-flex;justify-self:start;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:{{ c.rTint }};border:1px solid {{ c.rLine }};font-size:11px;font-weight:600;color:{{ c.rColor }};white-space:nowrap"><span data-icon="{{ c.rIcon }}" style="width:11px;height:11px"></span>{{ c.route }}</span>
+              <span style="font-size:12px;color:{{ c.crColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.cr }}</span>
+              <button onClick="{{ c.raise }}" style="justify-self:end;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ c.ctaLine }};background:{{ c.ctaBg }};color:{{ c.ctaFg }};font-size:12px;font-weight:600;cursor:{{ c.ctaCursor }};white-space:nowrap;opacity:{{ c.ctaOpacity }}" style-hover="background:rgba(148,163,184,.12)">{{ c.cta }}</button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ noChecklist }}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+        <span data-icon="list-checks" style="width:42px;height:42px;border-radius:13px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:11px"></span>
+        <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Nothing to remediate yet</span>
+        <span style="font-size:12.5px;color:#94a3b8;max-width:430px;text-wrap:pretty">This list is built from the critical and warning findings a diagnostic run produced. Run diagnostics against this tenant and the work appears here.</span>
+      </div>
+    </sc-if>
+  </sc-if>
+
+  <sc-if value="{{ isRoutes }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:11px;border:1px solid {{ ceilLine }};background:{{ ceilTint }};flex-wrap:wrap">
+        <span data-icon="{{ ceilIcon }}" style="width:15px;height:15px;color:{{ ceilColor }};flex:0 0 15px"></span>
+        <span style="font-size:12.5px;font-weight:600;color:#f1f5f9">{{ ceilTitle }}</span>
+        <span style="font-size:11.5px;color:#94a3b8;flex:1;min-width:160px;text-wrap:pretty">{{ ceilBody }}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
+        <sc-for list="{{ fixCards }}" as="f" hint-placeholder-count="4">
+          <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:11px;min-width:0">
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <span data-icon="{{ f.icon }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;background:{{ f.tint }};border:1px solid {{ f.line }};color:{{ f.color }};padding:7px"></span>
+              <span style="display:flex;flex-direction:column;min-width:0;flex:1">
+                <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ f.title }}</span>
+                <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.key }}</span>
+              </span>
+            </div>
+            <div style="display:flex;gap:7px;flex-wrap:wrap">
+              <span style="display:inline-flex;padding:3px 9px;border-radius:999px;background:{{ f.tint }};border:1px solid {{ f.line }};font-size:11px;font-weight:600;color:{{ f.color }}">{{ f.shapeLabel }}</span>
+              <span style="display:inline-flex;padding:3px 9px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8">{{ f.crLabel }}</span>
+            </div>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ f.note }}</span>
+            <button onClick="{{ f.act }}" title="{{ f.title2 }}" style="align-self:flex-start;display:flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:8px;border:1px solid {{ f.ctaLine }};background:{{ f.ctaBg }};color:{{ f.ctaFg }};font-size:12.5px;font-weight:600;cursor:{{ f.ctaCursor }};opacity:{{ f.ctaOpacity }};white-space:nowrap"><span data-icon="{{ f.ctaIcon }}" style="width:13px;height:13px"></span>{{ f.cta }}</button>
+            <sc-if value="{{ f.revealed }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid rgba(96,165,250,.22);border-radius:9px;background:rgba(2,6,23,.6);padding:11px;display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#64748b">SCRIPT FOR THE CUSTOMER TO RUN</span>
+                <span style="font-family:Menlo,monospace;font-size:11px;color:#cbd5e1;white-space:pre-wrap;word-break:break-word">{{ f.script }}</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isBypass }}" hint-placeholder-val="{{ false }}">
+    <sc-if value="{{ hasBypass }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{ bypassRows }}" as="b" hint-placeholder-count="3">
+          <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:14px 15px;display:flex;gap:13px;align-items:flex-start;min-width:0">
+            <span data-icon="git-merge" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;background:{{ b.tint }};border:1px solid {{ b.line }};color:{{ b.color }};padding:7px"></span>
+            <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+              <span style="font-size:13px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ b.title }}</span>
+              <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ b.body }}</span>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">
+                <span style="display:inline-flex;padding:3px 9px;border-radius:999px;background:{{ b.tint }};border:1px solid {{ b.line }};font-size:11px;font-weight:600;color:{{ b.color }}">{{ b.verdict }}</span>
+                <span style="display:inline-flex;padding:3px 9px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8">{{ b.step }}</span>
+                <span style="display:inline-flex;align-items:center;font-size:11px;color:#64748b">{{ b.when }}</span>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+        <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Read-only. A resolution records that the estate changed outside change control — it does not score the tenant or reopen the step.</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{ noBypass }}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+        <span data-icon="git-merge" style="width:42px;height:42px;border-radius:13px;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.22);color:#34d399;padding:11px"></span>
+        <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">No work landed outside change control</span>
+        <span style="font-size:12.5px;color:#94a3b8;max-width:440px;text-wrap:pretty">Every verified step in this tenant matches an approved change. Anything fixed without one would be listed here.</span>
+      </div>
+    </sc-if>
+  </sc-if>
+
+  <div style="display:flex;align-items:center;gap:9px;padding-top:2px">
+    <span data-icon="info" style="width:13px;height:13px;color:#475569;flex:0 0 13px"></span>
+    <span style="font-size:11px;color:#475569;text-wrap:pretty">{{ honestNote }}</span>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240,&quot;height&quot;:840},&quot;tenantName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Traders&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;tenantIndex&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:0,&quot;min&quot;:0,&quot;max&quot;:3,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;writeConsent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;granted&quot;,&quot;denied&quot;],&quot;default&quot;:&quot;granted&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;showPillarScores&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  state = { tab: "tracker", stepSel: null, revealed: {}, toast: null, verify: null };
+
+  startVerify(step) {
+    if (!step || step.checks.length === 0) return;
+    if (this.vTimer) clearInterval(this.vTimer);
+    const script = [];
+    script.push({ text: "connected · listening for check results", tone: "#64748b" });
+    step.checks.forEach(k => {
+      script.push({ text: "reading " + k, tone: "#94a3b8" });
+      script.push({ text: k + " → returned current tenant state", tone: "#93c5fd" });
+    });
+    script.push({ text: "comparing against the step's expected state", tone: "#94a3b8" });
+    const drift = step.verification === "drift" || step.status !== "completed";
+    script.push(drift
+      ? { text: "result · still outstanding, the expected state is not in place", tone: "#fcd34d" }
+      : { text: "result · verified, the expected state is in place", tone: "#6ee7b7" });
+    this.setState({ verify: { stepId: step.id, lines: [], total: script.length, status: "running" } });
+    let n = 0;
+    this.vTimer = setInterval(() => {
+      n += 1;
+      if (n > script.length) {
+        clearInterval(this.vTimer);
+        this.setState(s => ({ verify: Object.assign({}, s.verify, { status: "done" }) }));
+        const i = this.tIdx();
+        const list = (this.steps[i] || []).map(x => x.id === step.id
+          ? Object.assign({}, x, { verification: drift ? "drift" : "verified", updated: "just now" })
+          : x);
+        this.steps = Object.assign({}, this.steps, { [i]: list });
+        this.forceUpdate();
+        return;
+      }
+      this.setState(s => ({ verify: Object.assign({}, s.verify, { lines: script.slice(0, n) }) }));
+    }, 520);
+  }
+
+  componentWillUnmount() { if (this.vTimer) clearInterval(this.vTimer); }
+
+  STATUS_LABELS = {
+    not_started: "Not started",
+    completed: "Completed",
+    already_handled: "Already handled another way",
+    not_applicable: "Not applicable to this tenant",
+    deferred: "Deferring to a later phase",
+    shane_handles: "Have Shane do this one",
+    accepted_risk: "Risk accepted by the customer"
+  };
+
+  steps = {
+    0: [
+      { id: "s4", title: "Enforce MFA for all admins", pillar: "Identity", status: "completed", verification: "verified", updated: "3 Sep 11:20", checks: ["identity.mfa_privileged"] },
+      { id: "s7", title: "Block legacy authentication", pillar: "Identity", status: "completed", verification: "drift", updated: "2 Sep 08:05", checks: ["identity.legacy_auth"] },
+      { id: "s11", title: "Restrict guest sharing defaults", pillar: "Collaboration", status: "shane_handles", verification: "unverified", updated: "1 Sep 16:44", checks: ["spo.sharing", "teams.guest"] },
+      { id: "s16", title: "Enable unified audit log", pillar: "Compliance", status: "already_handled", verification: "unverified", updated: "28 Aug 09:12", checks: ["audit.retention"] },
+      { id: "s19", title: "Deploy compliant device policy", pillar: "Devices", status: "deferred", verification: "unverified", updated: "22 Aug 14:30", checks: ["intune.compliance"] },
+      { id: "s23", title: "Retire shared mailbox sign-ins", pillar: "Identity", status: "accepted_risk", verification: "unverified", updated: "19 Aug 10:02", checks: [] },
+      { id: "s27", title: "Configure DLP for financial data", pillar: "Compliance", status: "not_started", verification: "unverified", updated: "—", checks: ["purview.dlp"] }
+    ],
+    1: [
+      { id: "s4", title: "Enforce MFA for all admins", pillar: "Identity", status: "not_started", verification: "unverified", updated: "—", checks: ["identity.mfa_privileged"] },
+      { id: "s7", title: "Block legacy authentication", pillar: "Identity", status: "not_started", verification: "unverified", updated: "—", checks: ["identity.legacy_auth"] },
+      { id: "s11", title: "Restrict guest sharing defaults", pillar: "Collaboration", status: "deferred", verification: "unverified", updated: "27 Aug 13:05", checks: ["spo.sharing"] }
+    ],
+    2: [
+      { id: "s4", title: "Enforce MFA for all admins", pillar: "Identity", status: "completed", verification: "verified", updated: "5 Sep 07:40", checks: ["identity.mfa_privileged"] },
+      { id: "s7", title: "Block legacy authentication", pillar: "Identity", status: "not_started", verification: "unverified", updated: "—", checks: ["identity.legacy_auth"] }
+    ],
+    3: []
+  };
+
+  checklist = {
+    0: [
+      { key: "identity.mfa_admin_gap", finding: "Privileged accounts without enforced MFA", severity: "critical", status: "not_started", route: "we_can_run", cr: null },
+      { key: "identity.legacy_auth", finding: "Legacy authentication still permitted", severity: "critical", status: "completed", route: "we_can_run", cr: "CR-2026-116 approved" },
+      { key: "collab.guest_sharing", finding: "Anonymous sharing links enabled tenant-wide", severity: "warning", status: "not_started", route: "you_must_run", cr: null },
+      { key: "compliance.audit_log", finding: "Unified audit log disabled", severity: "warning", status: "already_handled", route: "admin_center_only", cr: "not applicable" }
+    ],
+    1: [
+      { key: "identity.mfa_admin_gap", finding: "Nine privileged accounts without enforced MFA", severity: "critical", status: "not_started", route: "you_must_run", cr: null },
+      { key: "collab.guest_sharing", finding: "Anonymous sharing links enabled tenant-wide", severity: "warning", status: "not_started", route: "you_must_run", cr: "CR-2026-131 pending" }
+    ],
+    2: [
+      { key: "identity.mfa_admin_gap", finding: "Twelve privileged accounts without enforced MFA", severity: "critical", status: "not_started", route: "we_can_run", cr: null }
+    ],
+    3: []
+  };
+
+  fixes = {
+    0: [
+      { key: "identity.mfa_admin_gap", title: "Enforce MFA on privileged roles", shape: "we_can_run", cr: "CR-2026-118 approved", note: "A live config pack covers this check, so the console can apply it once the change is approved.", script: null },
+      { key: "identity.legacy_auth", title: "Block legacy authentication protocols", shape: "we_can_run", cr: "CR-2026-116 approved", note: "Approved and armed. Execution is logged against the retainer.", script: null },
+      { key: "collab.guest_sharing", title: "Restrict anonymous sharing links", shape: "you_must_run", cr: "none raised", note: "The script is withheld until a change request for this check clears approval.", script: "Set-SPOTenant -SharingCapability ExternalUserSharingOnly\nSet-SPOTenant -DefaultSharingLinkType Internal" },
+      { key: "compliance.audit_log", title: "Enable the unified audit log", shape: "admin_center_only", cr: "not applicable", note: "No API path exists for this change. It has to be made in the Microsoft 365 admin centre.", script: null }
+    ],
+    1: [
+      { key: "identity.mfa_admin_gap", title: "Enforce MFA on privileged roles", shape: "you_must_run", cr: "none raised", note: "Write-back consent is not granted for this tenant, so the fix caps at a script the customer runs.", script: "Update-MgPolicyAuthenticationMethodPolicy -BodyParameter $params" },
+      { key: "collab.guest_sharing", title: "Restrict anonymous sharing links", shape: "you_must_run", cr: "CR-2026-131 pending", note: "Raised but not yet approved. The script stays withheld while the request is pending.", script: "Set-SPOTenant -SharingCapability ExternalUserSharingOnly" }
+    ],
+    2: [
+      { key: "identity.mfa_admin_gap", title: "Enforce MFA on privileged roles", shape: "we_can_run", cr: "none raised", note: "Ready to arm. Raise a change request from the checklist to unlock execution.", script: null }
+    ],
+    3: []
+  };
+
+  bypass = {
+    0: [
+      { step: "s7", title: "Legacy authentication was re-enabled after the step was verified", body: "An authentication policy change landed on the identity domain inside the same run window as the verified step, with no approved change request behind it.", verdict: "attributed_unapproved", when: "2 Sep 19:14" },
+      { step: "s16", title: "Audit retention changed outside change control", body: "A compliance-domain drift event could not be attributed to any actor in the tenant's audit log.", verdict: "unattributed", when: "29 Aug 04:02" }
+    ],
+    1: [],
+    2: [],
+    3: []
+  };
+
+  pillarSets = {
+    0: [
+      { label: "IDENTITY", score: 78, delta: "+12", meta: "2 of 3 steps verified" },
+      { label: "COLLABORATION", score: 54, delta: "−6", meta: "1 step awaiting Shane" },
+      { label: "COMPLIANCE", score: 66, delta: "+4", meta: "1 step handled elsewhere" },
+      { label: "DEVICES", score: 41, delta: "0", meta: "1 step deferred" }
+    ],
+    1: [
+      { label: "IDENTITY", score: 22, delta: "0", meta: "nothing started" },
+      { label: "COLLABORATION", score: 35, delta: "−3", meta: "1 step deferred" },
+      { label: "COMPLIANCE", score: 18, delta: "0", meta: "no verified steps" },
+      { label: "DEVICES", score: 12, delta: "0", meta: "no verified steps" }
+    ],
+    2: [
+      { label: "IDENTITY", score: 61, delta: "+9", meta: "1 of 2 steps verified" },
+      { label: "COLLABORATION", score: 48, delta: "0", meta: "no steps recorded" },
+      { label: "COMPLIANCE", score: 52, delta: "+2", meta: "no steps recorded" },
+      { label: "DEVICES", score: 37, delta: "0", meta: "no steps recorded" }
+    ],
+    3: [
+      { label: "IDENTITY", score: 0, delta: "0", meta: "never scanned" },
+      { label: "COLLABORATION", score: 0, delta: "0", meta: "never scanned" },
+      { label: "COMPLIANCE", score: 0, delta: "0", meta: "never scanned" },
+      { label: "DEVICES", score: 0, delta: "0", meta: "never scanned" }
+    ]
+  };
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  tone(kind) {
+    const M = {
+      green: ["#34d399", "rgba(52,211,153,.1)", "rgba(52,211,153,.26)"],
+      amber: ["#fbbf24", "rgba(251,191,36,.1)", "rgba(251,191,36,.26)"],
+      red: ["#f87171", "rgba(248,113,113,.1)", "rgba(248,113,113,.26)"],
+      blue: ["#60a5fa", "rgba(96,165,250,.1)", "rgba(96,165,250,.26)"],
+      violet: ["#a78bfa", "rgba(167,139,250,.1)", "rgba(167,139,250,.26)"],
+      slate: ["#94a3b8", "rgba(148,163,184,.08)", "rgba(148,163,184,.2)"]
+    };
+    return M[kind] || M.slate;
+  }
+
+  tIdx() {
+    const i = Number(this.props.tenantIndex);
+    return Number.isFinite(i) && this.steps[i] !== undefined ? i : 0;
+  }
+
+  terminal(st) {
+    if (st.verification === "verified") return "verified";
+    if (st.status === "accepted_risk") return "accepted";
+    return "outstanding";
+  }
+
+  setStatus(id, status) {
+    const i = this.tIdx();
+    const list = (this.steps[i] || []).map(s => s.id === id
+      ? Object.assign({}, s, { status, verification: "unverified", updated: "just now" })
+      : s);
+    this.steps = Object.assign({}, this.steps, { [i]: list });
+    this.forceUpdate();
+  }
+
+  renderVals() {
+    const s = this.state, i = this.tIdx();
+    const tab = s.tab;
+    const stepsT = this.steps[i] || [];
+    const clT = this.checklist[i] || [];
+    const fixT = this.fixes[i] || [];
+    const bpT = this.bypass[i] || [];
+    const consent = this.props.writeConsent || (i === 1 ? "denied" : "granted");
+    const sel = s.stepSel ? stepsT.find(x => x.id === s.stepSel) : null;
+
+    const VS = { verified: "green", drift: "amber", unverified: "slate" };
+    const VI = { verified: "circle-check-big", drift: "triangle-alert", unverified: "circle-dashed" };
+    const TC = { verified: "#6ee7b7", accepted: "#c4b5fd", outstanding: "#fcd34d" };
+    const SHAPE = {
+      we_can_run: { label: "we can run it", icon: "zap", tone: "blue", cta: "Arm the fix", ctaIcon: "zap" },
+      you_must_run: { label: "you run it", icon: "clipboard-copy", tone: "violet", cta: "Reveal script", ctaIcon: "eye" },
+      admin_center_only: { label: "admin centre only", icon: "external-link", tone: "slate", cta: "Open admin centre", ctaIcon: "external-link" }
+    };
+
+    const tabDefs = [
+      { id: "tracker", label: "Tracker", count: stepsT.length + " of 30" },
+      { id: "checklist", label: "Checklist", count: String(clT.length) },
+      { id: "routes", label: "Fix routes", count: String(fixT.length) },
+      { id: "bypass", label: "Outside CR", count: String(bpT.length) }
+    ];
+
+    const verifiedCount = stepsT.filter(x => x.verification === "verified").length;
+
+    return {
+      rootPad: this.props.embedded ? "0" : "20px",
+      rootBg: this.props.embedded ? "transparent" : "#020617",
+
+      showPillars: this.props.showPillarScores !== false,
+      pillars: (this.pillarSets[i] || []).map(p => {
+        const t = this.tone(p.score >= 70 ? "green" : p.score >= 45 ? "amber" : "red");
+        return {
+          label: p.label, score: p.score, delta: p.delta, meta: p.meta, pct: p.score + "%",
+          color: t[0],
+          deltaColor: p.delta.charAt(0) === "+" ? "#6ee7b7" : p.delta.charAt(0) === "\u2212" ? "#fca5a5" : "#64748b"
+        };
+      }),
+
+      tabs: tabDefs.map(t => ({
+        label: t.label, count: t.count,
+        bg: tab === t.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: tab === t.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: tab === t.id ? "#bfdbfe" : "#94a3b8",
+        countColor: tab === t.id ? "#60a5fa" : "#475569",
+        select: () => this.setState({ tab: t.id, stepSel: null })
+      })),
+
+      exports: [
+        { label: "CSV", icon: "table", title: "Every step and its current state", fg: "#cbd5e1", cursor: "pointer", opacity: "1", run: () => {} },
+        { label: "PDF", icon: "file-text", title: "The tracker as a client-ready document", fg: "#cbd5e1", cursor: "pointer", opacity: "1", run: () => {} },
+        verifiedCount > 0
+          ? { label: "Evidence pack", icon: "shield-check", title: verifiedCount + " verified steps included", fg: "#cbd5e1", cursor: "pointer", opacity: "1", run: () => {} }
+          : { label: "Evidence pack", icon: "shield-check", title: "Nothing is verified yet, so there is no evidence to pack", fg: "#64748b", cursor: "not-allowed", opacity: ".55", run: () => {} }
+      ],
+
+      isTracker: tab === "tracker",
+      stepRows: stepsT.map(st => {
+        const v = this.tone(VS[st.verification]), term = this.terminal(st);
+        return {
+          id: st.id, title: st.title, pillar: st.pillar,
+          statusLabel: this.STATUS_LABELS[st.status],
+          verification: st.verification, vIcon: VI[st.verification],
+          vColor: v[0], vTint: v[1], vLine: v[2],
+          terminal: term, tColor: TC[term],
+          updated: st.updated,
+          rowBg: sel && sel.id === st.id ? "rgba(37,99,235,.1)" : "transparent",
+          open: () => this.setState({ stepSel: st.id })
+        };
+      }),
+
+      hasStepSel: !!sel,
+      selId: sel ? sel.id : "",
+      selTitle: sel ? sel.title : "",
+      selPillar: sel ? sel.pillar : "",
+      closeStep: () => this.setState({ stepSel: null }),
+      stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+      statusOptions: ["completed", "already_handled", "not_applicable", "deferred", "shane_handles", "not_started", "accepted_risk"].map(k => {
+        const active = sel && sel.status === k;
+        const locked = k === "accepted_risk";
+        return {
+          label: this.STATUS_LABELS[k],
+          hint: locked ? "customer only" : active ? "current" : "",
+          title: locked ? "Only the customer can accept a risk — it is a signed record in their name" : "",
+          icon: locked ? "lock" : active ? "circle-check-big" : "circle",
+          iconColor: locked ? "#64748b" : active ? "#60a5fa" : "#475569",
+          fg: locked ? "#64748b" : "#e2e8f0",
+          tint: active ? "rgba(37,99,235,.14)" : "rgba(2,6,23,.4)",
+          line: active ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.16)",
+          cursor: locked ? "not-allowed" : "pointer",
+          opacity: locked ? ".6" : "1",
+          pick: locked ? () => {} : () => this.setStatus(sel.id, k)
+        };
+      }),
+      verifyLabel: sel && sel.checks.length === 0 ? "No automated check" : "Re-check this step now",
+      verifyLine: sel && sel.checks.length > 0 ? "#2563eb" : "rgba(148,163,184,.2)",
+      verifyBg: sel && sel.checks.length > 0 ? "#2563eb" : "transparent",
+      verifyFg: sel && sel.checks.length > 0 ? "#fff" : "#64748b",
+      verifyCursor: sel && sel.checks.length > 0 ? "pointer" : "not-allowed",
+      verifyOpacity: sel && sel.checks.length > 0 ? "1" : ".6",
+      verifyTitle: sel && sel.checks.length === 0 ? "This step has no check mapped to it, so it can only be marked by hand" : "",
+      verifyStep: () => this.startVerify(sel),
+      verifyOpen: !!(s.verify && sel && s.verify.stepId === sel.id),
+      verifyPct: s.verify ? Math.round((s.verify.lines.length / s.verify.total) * 100) + "%" : "0%",
+      verifyBarColor: s.verify && s.verify.status === "done" ? "#34d399" : "#60a5fa",
+      verifyStreamLabel: s.verify && s.verify.status === "done" ? "stream closed" : "streaming",
+      verifyStreamColor: s.verify && s.verify.status === "done" ? "#6ee7b7" : "#93c5fd",
+      verifyLines: s.verify ? s.verify.lines.map((l, n) => ({ text: l.text, color: l.tone, key: n })) : [],
+      verifyNote: sel
+        ? (sel.checks.length === 0
+          ? "Nothing in the estate reports on this step, so its state is a claim rather than a verified fact."
+          : sel.verification === "drift"
+            ? "This step was verified once and has since drifted back. A re-check confirms where it stands today."
+            : "A pointed scan runs the mapped checks only, and returns while it works.")
+        : "",
+      guide: sel
+        ? (sel.checks.length
+          ? sel.checks.map(k => ({ icon: "check", line: "Checked against the tenant's live configuration", key: k }))
+          : [{ icon: "circle-dashed", line: "No check is mapped to this step", key: "manual attestation only" }])
+        : [],
+
+      isChecklist: tab === "checklist",
+      hasChecklist: tab === "checklist" && clT.length > 0,
+      noChecklist: tab === "checklist" && clT.length === 0,
+      clRows: clT.map(c => {
+        const sv = this.tone(c.severity === "critical" ? "red" : "amber");
+        const shape = SHAPE[c.route], rt = this.tone(shape.tone);
+        const approved = c.cr && c.cr.indexOf("approved") >= 0;
+        const raiseable = !c.cr;
+        return {
+          key: c.key, finding: c.finding, severity: c.severity,
+          sevColor: sv[0], sevTint: sv[1], sevLine: sv[2],
+          statusLabel: this.STATUS_LABELS[c.status],
+          route: shape.label, rIcon: shape.icon, rColor: rt[0], rTint: rt[1], rLine: rt[2],
+          cr: c.cr || "none raised",
+          crColor: approved ? "#6ee7b7" : c.cr ? "#fcd34d" : "#64748b",
+          cta: raiseable ? "Raise change" : approved ? "View change" : "View request",
+          ctaLine: raiseable ? "#2563eb" : "rgba(148,163,184,.22)",
+          ctaBg: raiseable ? "#2563eb" : "transparent",
+          ctaFg: raiseable ? "#fff" : "#cbd5e1",
+          ctaCursor: "pointer", ctaOpacity: "1",
+          raise: () => {}
+        };
+      }),
+
+      isRoutes: tab === "routes",
+      ceilIcon: consent === "granted" ? "shield-check" : "shield-x",
+      ceilColor: consent === "granted" ? "#34d399" : "#fbbf24",
+      ceilTint: consent === "granted" ? "rgba(52,211,153,.07)" : "rgba(251,191,36,.07)",
+      ceilLine: consent === "granted" ? "rgba(52,211,153,.24)" : "rgba(251,191,36,.24)",
+      ceilTitle: consent === "granted" ? "Write-back consent granted" : "Write-back consent not granted",
+      ceilBody: consent === "granted"
+        ? "Fixes with a live config pack can be applied from here once their change request clears."
+        : "Every fix caps at a script the customer runs themselves. Nothing in this console writes to their tenant.",
+      fixCards: fixT.map(f => {
+        const shape = SHAPE[f.shape], t = this.tone(shape.tone);
+        const approved = f.cr.indexOf("approved") >= 0;
+        const revealed = !!s.revealed[f.key];
+        const gated = f.shape === "you_must_run" ? !approved : f.shape === "we_can_run" ? !approved : false;
+        return {
+          key: f.key, title: f.title, note: f.note,
+          icon: shape.icon, color: t[0], tint: t[1], line: t[2],
+          shapeLabel: shape.label, crLabel: f.cr,
+          cta: f.shape === "admin_center_only" ? shape.cta : gated ? "Needs an approved change" : shape.cta,
+          ctaIcon: gated ? "lock" : shape.ctaIcon,
+          ctaLine: gated ? "rgba(148,163,184,.2)" : f.shape === "we_can_run" ? "#2563eb" : "rgba(167,139,250,.34)",
+          ctaBg: gated ? "transparent" : f.shape === "we_can_run" ? "#2563eb" : "rgba(167,139,250,.14)",
+          ctaFg: gated ? "#64748b" : f.shape === "we_can_run" ? "#fff" : "#ddd6fe",
+          ctaCursor: gated ? "not-allowed" : "pointer",
+          ctaOpacity: gated ? ".65" : "1",
+          title2: gated ? "Raise and clear a change request for this check first" : "",
+          revealed: revealed && !!f.script,
+          script: f.script || "",
+          act: gated || !f.script ? () => {} : () => this.setState({ revealed: Object.assign({}, s.revealed, { [f.key]: !revealed }) })
+        };
+      }),
+
+      isBypass: tab === "bypass",
+      hasBypass: tab === "bypass" && bpT.length > 0,
+      noBypass: tab === "bypass" && bpT.length === 0,
+      bypassRows: bpT.map(b => {
+        const t = this.tone(b.verdict === "attributed_unapproved" ? "red" : "amber");
+        return {
+          step: "step " + b.step, title: b.title, body: b.body, verdict: b.verdict, when: b.when,
+          color: t[0], tint: t[1], line: t[2]
+        };
+      }),
+
+      honestNote: "Remediation endpoints are built and live but not yet wired to this console, so the states shown here are representative rather than read from " + (this.props.tenantName || "this tenant") + "."
+    };
+  }
+}
+
+</script>
+</body>
+</html>

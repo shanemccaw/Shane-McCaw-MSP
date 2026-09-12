@@ -204,6 +204,22 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
           </div>
         </sc-if>
 
+        <sc-if value="{{ isSalesScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Sales" embedded="{{ true }}" hint-size="100%,760px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isSlaScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Scope and SLA" embedded="{{ true }}" hint-size="100%,780px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isCfgScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Configuration State" embedded="{{ true }}" hint-size="100%,780px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isTimelineScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Activity Timeline" embedded="{{ true }}" hint-size="100%,720px"></dc-import>
+        </sc-if>
+
         <sc-if value="{{ isTimeline }}" hint-placeholder-val="{{ false }}">
           <div style="display:flex;flex-direction:column;gap:14px">
             <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
@@ -461,7 +477,7 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
           <div style="display:flex;flex-direction:column;gap:9px">
             <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
               <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#64748b">SCORES AND RESULTS</span>
-              <span style="font-size:11.5px;color:#475569">The same engine snapshot the customer sees in their own portal — finding text is never redacted here</span>
+              <span style="font-size:11.5px;color:#475569">The same engine snapshot the customer sees in their own portal — finding and recommendation text is never redacted here</span>
             </div>
             <sc-if value="{{ hasScores }}" hint-placeholder-val="{{ true }}">
               <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:14px">
@@ -500,6 +516,9 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
                             <span style="font-family:Menlo,monospace;font-size:11px;color:#64748b;word-break:break-all">{{ i.checkKey }}</span>
                           </span>
                           <span style="font-size:12px;line-height:1.5;color:#94a3b8;text-wrap:pretty">{{ i.description }}</span>
+                          <sc-if value="{{ i.hasFix }}" hint-placeholder-val="{{ false }}">
+                            <span style="font-size:12px;line-height:1.5;color:#6ee7b7;text-wrap:pretty">{{ i.fix }}</span>
+                          </sc-if>
                         </span>
                       </div>
                     </sc-for>
@@ -633,82 +652,21 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
                 </div>
               </div>
             </sc-for>
-          </div>
-        </sc-if>
 
-        <sc-if value="{{ isSignals }}" hint-placeholder-val="{{ false }}">
-          <div style="display:flex;flex-direction:column;gap:16px">
-            <sc-if value="{{ hasSigView }}" hint-placeholder-val="{{ true }}">
-              <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:14px">
-                <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-                  <span style="display:flex;align-items:baseline;gap:7px">
-                    <span style="font-size:34px;font-weight:800;line-height:1;color:{{ sigView.compositeColor }}">{{ sigView.composite }}</span>
-                    <span style="font-size:11px;font-weight:700;letter-spacing:.1em;color:#64748b">COMPOSITE</span>
-                  </span>
-                  <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
-                    <span style="font-family:Menlo,monospace;font-size:12px;color:#93c5fd;word-break:break-all">{{ sigView.runId }}</span>
-                    <span style="font-size:11.5px;color:#64748b">{{ sigView.meta }}</span>
-                  </span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:9px;border-top:1px solid rgba(148,163,184,.12);padding-top:13px">
-                  <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#475569">PRIORITY ITEMS · WORST SEVERITY FIRST</span>
-                  <sc-for list="{{ sigView.priorityItems }}" as="i" hint-placeholder-count="4">
-                    <div style="display:flex;gap:11px;align-items:flex-start">
-                      <span style="width:7px;height:7px;border-radius:99px;background:{{ i.dot }};flex:0 0 7px;margin-top:6px"></span>
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0">
-                        <span style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
-                          <span style="font-size:13px;font-weight:600;color:#f1f5f9">{{ i.title }}</span>
-                          <span style="font-family:Menlo,monospace;font-size:11px;color:#64748b;word-break:break-all">{{ i.checkKey }}</span>
-                        </span>
-                        <span style="font-size:12px;line-height:1.5;color:#94a3b8;text-wrap:pretty">{{ i.description }}</span>
-                      </span>
+            <sc-if value="{{ hasOvNotes }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">HOW THIS ROLL-UP IS ASSEMBLED</span>
+                <sc-for list="{{ ovNotes }}" as="n" hint-placeholder-count="3">
+                  <div style="display:flex;gap:10px;padding:11px 13px;border-radius:10px;border:1px solid {{ n.line }};background:{{ n.tint }}">
+                    <span data-icon="{{ n.icon }}" style="width:15px;height:15px;color:{{ n.color }};margin-top:2px"></span>
+                    <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                      <span style="font-size:12.5px;font-weight:600;color:#e2e8f0;text-wrap:pretty">{{ n.title }}</span>
+                      <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ n.body }}</span>
+                      <span style="font-family:Menlo,monospace;font-size:10.5px;color:#475569;word-break:break-all">{{ n.wire }}</span>
                     </div>
-                  </sc-for>
-                  <sc-if value="{{ sigView.noPriorityItems }}" hint-placeholder-val="{{ false }}">
-                    <span style="font-size:12px;color:#64748b">No critical or warning findings from the latest diagnostic run.</span>
-                  </sc-if>
-                </div>
-              </div>
-
-              <div style="display:flex;flex-direction:column;gap:9px">
-                <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
-                  <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#64748b">PILLARS</span>
-                  <span style="font-size:11.5px;color:#475569">Every engine's own score, and what it actually found — not just the worst of it</span>
-                </div>
-                <sc-for list="{{ sigView.pillars }}" as="p" hint-placeholder-count="6">
-                  <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:14px 15px;display:flex;flex-direction:column;gap:10px">
-                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                      <span style="font-size:13px;font-weight:700;color:#f1f5f9;flex:1;min-width:120px">{{ p.name }}</span>
-                      <span style="font-size:16px;font-weight:800;color:{{ p.color }}">{{ p.score }}</span>
-                      <div style="height:4px;width:120px;border-radius:99px;background:rgba(148,163,184,.14);overflow:hidden">
-                        <div style="height:4px;width:{{ p.bar }};background:{{ p.color }}"></div>
-                      </div>
-                    </div>
-                    <sc-if value="{{ p.hasFindings }}" hint-placeholder-val="{{ true }}">
-                      <div style="display:flex;flex-direction:column;gap:5px">
-                        <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#475569">FINDINGS</span>
-                        <sc-for list="{{ p.findings }}" as="f" hint-placeholder-count="2">
-                          <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">· {{ f }}</span>
-                        </sc-for>
-                      </div>
-                    </sc-if>
-                    <sc-if value="{{ p.hasRecommendations }}" hint-placeholder-val="{{ false }}">
-                      <div style="display:flex;flex-direction:column;gap:5px">
-                        <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#475569">RECOMMENDATIONS</span>
-                        <sc-for list="{{ p.recommendations }}" as="r" hint-placeholder-count="2">
-                          <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">· {{ r }}</span>
-                        </sc-for>
-                      </div>
-                    </sc-if>
-                    <sc-if value="{{ p.clean }}" hint-placeholder-val="{{ false }}">
-                      <span style="font-size:12px;color:#64748b">Nothing wrong here — no findings from the latest run.</span>
-                    </sc-if>
                   </div>
                 </sc-for>
               </div>
-            </sc-if>
-            <sc-if value="{{ noSigView }}" hint-placeholder-val="{{ false }}">
-              <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:14px 15px;font-size:12.5px;color:#64748b">{{ sigViewEmpty }}</div>
             </sc-if>
           </div>
         </sc-if>
@@ -723,6 +681,26 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
               </div>
             </sc-for>
           </div>
+        </sc-if>
+
+        <sc-if value="{{ isDocsScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Documents" initial-tab="{{ docsInitialTab }}" tenant-name="{{ docsTenantName }}" embedded="{{ true }}" hint-size="100%,720px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isWhScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Webhooks" tenant-name="{{ diagTenantName }}" embedded="{{ true }}" hint-size="100%,700px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isLcScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Launch Control" tenant-name="{{ diagTenantName }}" embedded="{{ true }}" hint-size="100%,720px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isBgScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Break Glass" tenant-name="{{ diagTenantName }}" embedded="{{ true }}" hint-size="100%,680px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isTeamScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Team" tenant-name="{{ diagTenantName }}" embedded="{{ true }}" hint-size="100%,660px"></dc-import>
         </sc-if>
 
         <sc-if value="{{ isTeam }}" hint-placeholder-val="{{ false }}">
@@ -1021,6 +999,10 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
           </div>
         </sc-if>
 
+        <sc-if value="{{ isExecScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Executive View" embedded="{{ true }}" hint-size="100%,760px"></dc-import>
+        </sc-if>
+
         <sc-if value="{{ isExec }}" hint-placeholder-val="{{ false }}">
           <div style="display:flex;flex-direction:column;gap:16px">
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
@@ -1293,6 +1275,34 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
               </div>
             </div>
           </div>
+        </sc-if>
+
+        <sc-if value="{{ isDiagScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Diagnostics" tenant-name="{{ diagTenantName }}" tenant-index="{{ diagTenantIndex }}" embedded="{{ true }}" hint-size="100%,640px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isDrScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Data Rights" tenant-name="{{ diagTenantName }}" embedded="{{ true }}" hint-size="100%,700px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isRunScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Runbooks" tenant-name="{{ diagTenantName }}" embedded="{{ true }}" hint-size="100%,720px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isRaciScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Ownership" embedded="{{ true }}" book-state="{{ raciBookState }}" hint-size="100%,760px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isRiskScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Risk Register" tenant-name="{{ diagTenantName }}" embedded="{{ true }}" hint-size="100%,720px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isCcScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Change Control" initial-tab="{{ ccInitialTab }}" embedded="{{ true }}" hint-size="100%,720px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isRemScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Remediation" tenant-name="{{ diagTenantName }}" tenant-index="{{ diagTenantIndex }}" embedded="{{ true }}" hint-size="100%,700px"></dc-import>
         </sc-if>
 
         <sc-if value="{{ isTable }}" hint-placeholder-val="{{ false }}">
@@ -1661,6 +1671,7 @@ class Component extends DCLogic {
     ] },
     { id: "g.gov", label: "Governance", icon: "scale", children: [
       { id: "risk", label: "Risk Register", icon: "shield-alert" },
+      { id: "raci", label: "Ownership", icon: "users-round" },
       { id: "run", label: "Runbooks", icon: "book-open" },
       { id: "dr", label: "Data rights", icon: "scale" }
     ] },
@@ -1996,13 +2007,13 @@ class Component extends DCLogic {
   };
 
   ccNotes = {
-    "cc.register": "Every change request raised against this tenant. The list route returns raw rows with no filters or pagination.",
-    "cc.catalog": "Approve once, execute many. Governed MSP-wide; raising a change from an item happens on the customer side.",
-    "cc.cab": "The board that decides normal and emergency changes. ECAB meetings are retroactive by definition.",
-    "cc.calendars": "Freeze and maintenance windows enforced at CR creation when the tenant's policy switches them on.",
-    "cc.deps": "blocked_by edges between change requests. The write gate enforces them; this surface only edits them.",
-    "cc.exec": "One row per time an authorized change was actually carried out, and by which executor.",
-    "cc.pir": "Post-implementation reviews, each attached to one execution and never edited."
+    "cc.register": "Every change raised against this tenant, and where each one stands.",
+    "cc.catalog": "Approved once, run many times. Governed across the practice, not per tenant.",
+    "cc.cab": "The board that decides normal and emergency changes.",
+    "cc.calendars": "When change is allowed, and when it is held.",
+    "cc.deps": "Changes that have to wait on another change first.",
+    "cc.exec": "Every time an approved change was actually carried out.",
+    "cc.pir": "What each completed change looked like afterwards."
   };
 
   catalogData = [
@@ -2402,24 +2413,23 @@ class Component extends DCLogic {
     return this.remData[tIdx] || { steps: [], checklist: [], fix: [], bypass: [], pillars: [] };
   }
 
-  /**
-   * Per-engine `findings`/`recommendations` mirror the real
-   * `pillars[engineKey]` shape `GET /msp/customers/:id/scores` returns —
-   * derived server-side from `tenant_engine_snapshots.breakdown` (each row's
-   * `finding`/`message`/`label` and `recommendation`/`action`). An engine
-   * with neither array populated is a real clean pillar, not a missing one.
-   */
+  scoreFixes = {
+    "identity.mfa_admin_gap": "enrol both accounts in phishing-resistant MFA, then require it in Conditional Access for the directory roles",
+    "collab.anonymous_links": "switch the four sites to specific-people links and set a 30-day expiry tenant-wide",
+    "identity.legacy_auth": "block basic authentication in Conditional Access, with the scanning mailbox excluded and IP-restricted",
+    "devices.compliance_policy": "assign the existing Windows policy to All devices and require compliance for sign-in",
+    "compliance.retention_clinical": "apply the clinical retention label policy to the records libraries",
+    "collab.teams_external": "restrict Teams external access to the allow-list the framework mapping expects",
+    "identity.locum_lifecycle": "set an expiry and a quarterly review on the eleven temporary accounts",
+    "identity.privileged_standing": "move the nine standing assignments to activation-on-request with approval",
+    "compliance.dlp_financial": "publish a DLP policy matching the financial sensitivity labels across SharePoint and Exchange"
+  };
+
   tenantScores = {
     0: { runId: "run_8f14e45f_20260905", generatedAt: "5 Sep 2026, 6:12 AM UTC", status: "complete",
       engines: [
-        { key: "security", score: 68,
-          findings: ["Two Global Administrators without MFA", "Anonymous sharing links on four sites"],
-          recommendations: ["Require a strong authentication method on every standing Global Administrator", "Set an expiry on every anonymous link and block new ones by policy"] },
-        { key: "health", score: 81, findings: [], recommendations: [] },
-        { key: "governance", score: 74, findings: ["Windows compliance policy not assigned"], recommendations: ["Assign the existing compliance policy to a device group"] },
-        { key: "drift", score: 63, findings: ["Legacy authentication still permitted"], recommendations: ["Add a Conditional Access policy blocking basic authentication protocols"] },
-        { key: "sla", score: 92, findings: [], recommendations: [] },
-        { key: "scope_creep", score: 77, findings: [], recommendations: [] }
+        { key: "security", score: 68 }, { key: "health", score: 81 }, { key: "governance", score: 74 },
+        { key: "drift", score: 63 }, { key: "sla", score: 92 }, { key: "scope_creep", score: 77 }
       ],
       items: [
         { checkKey: "identity.mfa_admin_gap", severity: "critical", title: "Two Global Administrators without MFA", description: "Both accounts hold standing Global Administrator and have no strong authentication method registered." },
@@ -2429,14 +2439,8 @@ class Component extends DCLogic {
       ] },
     1: { runId: "run_b21d9c07_20260903", generatedAt: "3 Sep 2026, 11:40 PM UTC", status: "complete",
       engines: [
-        { key: "security", score: 54, findings: [], recommendations: [] },
-        { key: "health", score: 66, findings: ["External access open to all domains"], recommendations: ["Restrict Teams external access to an allow-list of trusted domains"] },
-        { key: "governance", score: 48,
-          findings: ["No retention policy on clinical records", "Locum accounts with no expiry"],
-          recommendations: ["Apply a retention label policy to every clinical records library, mapped to the tenant's HIPAA framework", "Set an account expiry or review date on every temporary-staff account"] },
-        { key: "drift", score: 71, findings: [], recommendations: [] },
-        { key: "sla", score: 59, findings: [], recommendations: [] },
-        { key: "scope_creep", score: 71, findings: [], recommendations: [] }
+        { key: "security", score: 54 }, { key: "health", score: 66 }, { key: "governance", score: 48 },
+        { key: "drift", score: 71 }, { key: "sla", score: 59 }, { key: "scope_creep", score: 71 }
       ],
       items: [
         { checkKey: "compliance.retention_clinical", severity: "critical", title: "No retention policy on clinical records", description: "Clinical records libraries have no retention label policy applied, against the tenant's own HIPAA framework mapping." },
@@ -2445,14 +2449,8 @@ class Component extends DCLogic {
       ] },
     2: { runId: "run_d0c4a9b6_20260828", generatedAt: "28 Aug 2026, 3:05 PM UTC", status: "complete",
       engines: [
-        { key: "security", score: 31,
-          findings: ["MFA not enforced for any administrator", "Nine standing privileged assignments"],
-          recommendations: ["Require multifactor authentication for every privileged role through Conditional Access", "Move standing privileged role assignments to PIM-activated, time-bound assignments"] },
-        { key: "health", score: 52, findings: [], recommendations: [] },
-        { key: "governance", score: 44, findings: ["No DLP policy for financial data"], recommendations: ["Add a DLP policy in SharePoint and Exchange matching the financial data sensitive-info types"] },
-        { key: "drift", score: 40, findings: [], recommendations: [] },
-        { key: "sla", score: 61, findings: [], recommendations: [] },
-        { key: "scope_creep", score: 48, findings: [], recommendations: [] }
+        { key: "security", score: 31 }, { key: "health", score: 52 }, { key: "governance", score: 44 },
+        { key: "drift", score: 40 }, { key: "sla", score: 61 }, { key: "scope_creep", score: 48 }
       ],
       items: [
         { checkKey: "identity.mfa_admin_gap", severity: "critical", title: "MFA not enforced for any administrator", description: "No Conditional Access policy requires multifactor authentication for privileged roles." },
@@ -2567,7 +2565,6 @@ class Component extends DCLogic {
     const t = tIdx == null ? null : this.tenantData[tIdx];
     const page = sel.kind === "page" ? sel.page : null;
     const isTeam = page === "team";
-    const isSignals = page === "signals";
     const st = s.uiState;
     const tq = s.treeQuery.trim().toLowerCase();
 
@@ -3053,7 +3050,7 @@ class Component extends DCLogic {
     const HUB_STATUS_TONE = { draft: "amber", approved: "blue", delivered: "green", archived: "slate", generating: "violet", failed: "red" };
 
     const isOverview = page === "overview";
-    let ovTiles = [], ovSections = [];
+    let ovTiles = [], ovSections = [], ovNotes = [];
     const isTenantHome = !!t && !page;
     let tenHead = null, tenPicker = null, tenOutcome = null, tenTiles = [], tenBu = null, tenConsent = [], tenWrite = null, tenScans = [], tenServices = [], tenUsers = [], tenDelete = null;
     let consentNote = "", tenScansEmpty = "", tenUserCount = "", openMsp = () => {}, copyReconsent = () => {};
@@ -3176,6 +3173,8 @@ class Component extends DCLogic {
           })),
           items: sc.items.map(i => ({
             checkKey: i.checkKey,
+            hasFix: !!this.scoreFixes[i.checkKey],
+            fix: this.scoreFixes[i.checkKey] ? "Recommended: " + this.scoreFixes[i.checkKey] : "",
             title: i.title,
             description: i.description,
             severity: i.severity,
@@ -3221,55 +3220,6 @@ class Component extends DCLogic {
         { icon: "pencil", color: "#94a3b8", tint: "rgba(148,163,184,.06)", line: "rgba(148,163,184,.18)", title: "Business unit is the only editable field here", body: "It backs the Security Plan assembly's scope dimension the same way pillar and framework do. Everything else on this screen is read-only, and the write actions are routes, not fields.", wire: "PATCH /admin/customers/:id/business-unit" }
       ];
     }
-
-    // Signals — the expanded scores + findings view. Same route and same
-    // engine-snapshot source as the Tenant Home "Scores and results" block
-    // (GET /msp/customers/:id/scores), but per-pillar: every engine's own
-    // findings and recommendations, not just the flat worst-severity list.
-    // An engine with neither array is a real clean pillar, said as one.
-    let sigView = null, sigViewEmpty = "";
-    if (isSignals && t) {
-      const sc = this.tenantScores[tIdx];
-      if (sc) {
-        const vals = sc.engines.filter(e => typeof e.score === "number");
-        const comp = vals.length ? Math.round(vals.reduce((a, e) => a + e.score, 0) / vals.length) : null;
-        const priorityItems = sc.items.map(i => ({
-          checkKey: i.checkKey, title: i.title, description: i.description, severity: i.severity,
-          dot: i.severity === "critical" ? "#f87171" : "#fbbf24"
-        }));
-        sigView = {
-          composite: comp === null ? "—" : String(comp),
-          compositeColor: comp === null ? "#64748b" : comp < 60 ? "#fca5a5" : comp < 80 ? "#fcd34d" : "#6ee7b7",
-          runId: sc.runId,
-          meta: sc.status === "running" ? "Scan in progress" : "Latest run · " + sc.generatedAt,
-          priorityItems,
-          noPriorityItems: priorityItems.length === 0,
-          pillars: sc.engines.map(e => {
-            const findings = e.findings || [];
-            const recommendations = e.recommendations || [];
-            return {
-              key: e.key,
-              name: this.engineLabels[e.key] || e.key,
-              score: String(e.score),
-              bar: e.score + "%",
-              color: e.score < 60 ? "#fca5a5" : e.score < 80 ? "#fcd34d" : "#6ee7b7",
-              findings, recommendations,
-              hasFindings: findings.length > 0,
-              hasRecommendations: recommendations.length > 0,
-              clean: findings.length === 0 && recommendations.length === 0
-            };
-          })
-        };
-      } else {
-        sigViewEmpty = "No engine snapshot yet for this tenant — scores and findings appear here after the first completed scan.";
-      }
-      notes = [
-        { icon: "eye", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "The customer's free-tier paywall does not apply to this console", body: "The customer portal redacts finding and recommendation text behind a paid assessment, but scores are never gated. On the MSP side the operator is the one doing the work, so full finding and recommendation text shows regardless of the customer's paid status.", wire: "GET /msp/customers/:id/scores" },
-        { icon: "layers", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Findings and recommendations are per pillar, not one flat list", body: "The route derives them from each engine snapshot's own breakdown array (finding / message / label, recommendation / action). A pillar with an empty breakdown shows a score with nothing under it — a real clean result, not a missing one.", wire: "tenant_engine_snapshots.breakdown" },
-        { icon: "radar", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Priority items are worst-severity-first, capped at five", body: "Pulled from the tenant's latest diagnostic findings run — critical before warning, newest within each — a different real source than the per-pillar breakdown above.", wire: "msp_diagnostic_findings · latest runId, severity in (critical, warning)" }
-      ];
-    }
-
     if (isOverview && t) {
       const crs = this.crs[tIdx] || [];
       const roster = this.rosters[tIdx] || [];
@@ -3292,6 +3242,9 @@ class Component extends DCLogic {
       const pendingBg = bgs.filter(b => b.status === "pending_delivery");
       const unsignedRbds = rbdsT.filter(r => r.status === "pending_signature");
       const openRem = remBundle.steps.filter(r => r.terminal === "outstanding");
+      const sopBlocked = sopRunsT.filter(x => x.status === "Blocked").length;
+      const whMspDisabled = whT.filter(w => !w.active && w.disabledBy).length;
+      const whOwnerOff = whT.filter(w => !w.active && !w.disabledBy).length;
 
       const tile = (icon, value, label, tone, go) => ({
         icon, value: String(value), label,
@@ -3327,7 +3280,7 @@ class Component extends DCLogic {
         ] },
         { title: "WORK IN FLIGHT", note: "Already authorized, already moving", rows: [
           row("Change requests scheduled or in progress", inFlightCrs.length ? String(inFlightCrs.length) : "none", inFlightCrs.length ? inFlightCrs[0].code + " · " + inFlightCrs[0].scheduled : "nothing booked", "blue", () => this.selectNode(tIdx, "cc.register")),
-          row("SOP runs against this tenant", sopRunsT.length ? String(sopRunsT.length) : "none", sopRunsT.length ? sopRunsT[0].runId + " · " + sopRunsT[0].status : "no procedure running", "blue", () => this.setState({ sel: { kind: "msp", page: "sops" }, sopTab: "runs" })),
+          row("SOP runs against this tenant", sopRunsT.length ? String(sopRunsT.length) : "none", sopRunsT.length ? (sopBlocked ? sopBlocked + " blocked on a manual step · " : "") + sopRunsT[0].runId + " · " + sopRunsT[0].status : "no procedure running", sopBlocked ? "amber" : "blue", () => this.setState({ sel: { kind: "msp", page: "sops" }, sopTab: "runs" })),
           row("Runbook cycles active", String(runsT.filter(r => r.cycle === "active").length), runsT.length ? runsT[0].title + " · " + runsT[0].progress : "no runbook assigned", "blue", () => this.selectNode(tIdx, "run")),
           row("Launch Control", tIdx === 3 ? "testbed" : "staging only", "no catalog action is wired to a template yet", "slate", () => this.selectNode(tIdx, "lc"))
         ] },
@@ -3335,8 +3288,19 @@ class Component extends DCLogic {
           row("Generated documents", String(hubT.length), hubT.length ? hubT[0].title : "nothing generated yet", "slate", () => this.selectNode(tIdx, "hub")),
           row("Risk decisions on record", String(rbdsT.length), rbdsT.filter(r => r.status === "active").length + " active · " + rbdsT.filter(r => r.status === "revoked").length + " revoked", "slate", () => this.selectNode(tIdx, "risk")),
           row("Data-rights activity", String(drT.length), drT.length ? drT[0].action : "no export or deletion request", "slate", () => this.selectNode(tIdx, "dr")),
-          row("Outbound webhooks", String(whT.length), whT.filter(w => !w.active).length + " disabled by an operator", whT.some(w => !w.active) ? "amber" : "slate", () => this.selectNode(tIdx, "wh"))
+          row("Outbound webhooks", String(whT.length), whT.length ? whMspDisabled + " disabled by an operator" + (whOwnerOff ? " · " + whOwnerOff + " switched off by the owner" : "") : "no endpoint registered", whMspDisabled ? "amber" : "slate", () => this.selectNode(tIdx, "wh"))
         ] }
+      ];
+
+      ovNotes = [
+        { icon: "file-json", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The risk register arrives whole, then gets filtered here", body: "The list route takes no query params and returns every risk decision for the MSP as raw table rows with no derived fields, so both risk rows above filter it client-side on the raw tenantId text column. The only statuses are pending_signature, active and revoked — expired was removed from the vocabulary.", wire: "GET /api/msp/rbd" },
+        { icon: "book-open", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Both runbook rows come out of one request", body: "The operator read returns runbooks, hold windows and a summary together for one customer. Cycles are active, complete or abandoned; a hold counts as open until it is closed. No cross-book read exists, so the same roll-up for every tenant is one call each.", wire: "GET /api/msp/runbooks?customerId=" },
+        { icon: "gauge", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "The SLA and scope counts are capped reads, so they are floors", body: "Timers, breaches and detections each accept a customerId filter — three scoped reads, not a filter of the whole book. Timers and detections cap at 200 rows and breaches at 100, so a very noisy tenant's count is the cap, not the total.", wire: "GET /msp/sla/timers · /msp/sla/breaches · /msp/scope-creep/detections" },
+        { icon: "list-checks", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "SOP runs are filtered out of the MSP-wide history", body: "The run history has no customer filter, so this row narrows the whole MSP's runs by tenant. A hybrid run whose automated steps all finish while manual steps are still open settles to Blocked, not Completed — that is the state worth opening.", wire: "GET /api/msp/sop-runs" },
+        { icon: "folder", color: "#94a3b8", tint: "rgba(148,163,184,.06)", line: "rgba(148,163,184,.18)", title: "Documents is the one records row that is a real scoped read", body: "The hub list takes customerId alongside docType, category, status and paging, so this count is the tenant's own rather than a client-side slice.", wire: "GET /api/msp/documents-hub?customerId=" },
+        { icon: "shield-x", color: "#f87171", tint: "rgba(248,113,113,.08)", line: "rgba(248,113,113,.24)", title: "Data-rights activity needs MSPAdmin and only sees the newest rows", body: "An MSPOperator who can read every other row on this page gets a 403 on this one. The feed takes only a limit (200 maximum, no paging, no customer or action filter) and the underlying audit rows carry no status at all, so this is a client-side count of recent activity and can never say how many are outstanding.", wire: "GET /api/msp/data-rights?limit=" },
+        { icon: "webhook", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Disabled by an operator is a different fact from switched off", body: "Who disabled it, when and why are recorded only while an MSP operator holds the endpoint disabled; the owner touching the active flag in either direction clears all three. There is no cross-customer list, so this row is one request per tenant.", wire: "GET /api/msp/customers/:customerId/webhooks" },
+        { icon: "key-round", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Break-glass counts unclaimed credentials, nothing more", body: "Pending delivery is the same filter the cross-tenant list applies server-side. The credential itself never reaches this console on any route, so the tile can only ever say that one is waiting.", wire: "GET /msp/break-glass" }
       ];
     }
 
@@ -3488,7 +3452,7 @@ class Component extends DCLogic {
     const isSales = mspSel === "sales";
     const offerSel = isSales && s.offerSel != null ? this.offers[s.offerSel] : null;
     const OFFER_TONE = { draft: "slate", sent: "blue", accepted: "green", rejected: "red", expired: "amber" };
-    if (isSales) {
+    if (false) {
       if (s.salesTab === "bundles") {
         table = {
           cols: "2fr .9fr 1.1fr 1fr 1fr 1.1fr", minWidth: "1100px",
@@ -3572,7 +3536,7 @@ class Component extends DCLogic {
     }
 
     const isCfg = mspSel === "config";
-    if (isCfg) {
+    if (false) {
       if (s.cfgTab === "snapshots") {
         table = {
           cols: "1.1fr 1.5fr 1.2fr 1fr 1fr 1.8fr", minWidth: "1120px",
@@ -3748,7 +3712,7 @@ class Component extends DCLogic {
 
     const isSla = mspSel === "sla";
     const SEV_TONE = { critical: "red", high: "amber", medium: "blue", low: "slate" };
-    if (isSla) {
+    if (false) {
       if (s.slaTab === "sla") {
         table = {
           cols: "1.5fr 1fr 1fr 1.4fr 1.2fr 1fr 1fr", minWidth: "1120px",
@@ -4752,7 +4716,6 @@ class Component extends DCLogic {
         : isRbd ? (rbdSel ? "RISK DECISION · " + rbdSel.rbdId : "RISK REGISTER")
         : isMspSet ? "MSP RECORD AND PLATFORM SETTINGS"
         : mspSel ? (mspSel === "docs" ? (docSel ? "MSP-AUTHORED DOCUMENT" : "MSP-AUTHORED DOCUMENTS") : "SHAREPOINT CONNECTORS · MSPADMIN")
-        : isSignals ? "SIGNALS"
         : isTenantHome ? "TENANT CONTROL · " + t.domain
         : !t ? "DIRECTORY" : isHub ? "DOCUMENTS HUB" : isTeam ? "TEAM MANAGEMENT AND INVITATIONS" : isDr ? "DATA RIGHTS AND PRIVACY · MSPADMIN" : isBg ? "BREAK-GLASS ACCESS" : ccPage ? (showCrDetail ? "CHANGE REQUEST · " + activeCr.code : "CHANGE CONTROL") : meta.eyebrow,
       pageTitle: isWh ? (whSel ? whSel.label : "Webhooks")
@@ -4769,7 +4732,6 @@ class Component extends DCLogic {
         : isRbd ? (rbdSel ? rbdSel.title : "Risk Register")
         : isMspSet ? "Shane McCaw Consulting"
         : mspSel ? (mspSel === "docs" ? (docSel ? docSel.title : "Documents") : "SharePoint connectors")
-        : isSignals ? "Signals"
         : isTenantHome ? t.name
         : !t ? "Managed Tenants" : isHub ? (hubSel ? hubSel.title : "Documents") : isTeam ? "Team" : isDr ? "Data rights" : isBg ? (showBgDetail ? bgSel.ref : "Break-glass") : ccPage ? (showCrDetail ? activeCr.title : ccChild.label) : (this.childPages.find(x => x.id === page) || {}).label,
       pageNote: isWh ? (whSel ? "Customer-owned endpoint. You can disable and re-enable it; everything else stays with the owner." : "Outbound endpoints a customer registered. One customer at a time — there is no cross-customer list.")
@@ -4786,7 +4748,6 @@ class Component extends DCLogic {
         : isRbd ? (rbdSel ? "Accepted risk for " + rbdSel.tenant + ", signed off by their own approver." : "Risk this tenant has accepted, each one signed off by a named customer approver.")
         : isMspSet ? "The MSP record itself — profile, subscription, derived entitlements, platform agreement and the admin actions available against it."
         : mspSel ? (mspSel === "docs" ? "Documents this MSP authors and publishes through the HTML to PDF to SharePoint pipeline." : "Credentials the pipeline uploads through. Creating, editing and deactivating all require MSPAdmin.")
-        : isSignals ? "The same engine snapshot behind Tenant Control's scores, expanded to what each pillar actually found — every engine's real findings and recommendations, not just the worst of them."
         : isTenantHome ? "The tenant record itself — subscription, payment state, consent, scanning and every control this console has against it."
         : !t ? "Every tenant in your book. Expand one in the tree to work inside it."
         : isHub ? (hubSel ? "Generated for " + t.name + " · read-only on this surface." : "Documents the platform generated for " + t.name + ". This surface reads and shares them, never edits them.")
@@ -4799,7 +4760,9 @@ class Component extends DCLogic {
       isDirectory: sel.kind === "root",
       directoryRows: this.tenantData.map((x, i) => Object.assign({}, x, { people: (this.rosters[i] || []).length, open: () => this.selectNode(i, null) })),
 
-      isTimeline, tlEvents, tlChips,
+      isTimeline: false,
+      isTimelineScreen: isTimeline,
+      tlEvents, tlChips,
       tlHasEvents: tlEvents.length > 0,
       tlIsEmpty: isTimeline && tlEvents.length === 0,
       tlEmptyTitle: s.tlCustomer == null ? "No activity across the book" : "No activity for " + this.tenantData[s.tlCustomer].name,
@@ -4807,7 +4770,7 @@ class Component extends DCLogic {
       tlEnd: "End of feed — no cursor returned, so nothing further exists for this filter.",
 
       isOverview,
-      ovTiles, ovSections,
+      ovTiles, ovSections, ovNotes, hasOvNotes: ovNotes.length > 0,
       isTenantHome,
       tenHead, tenPicker, tenOutcome, tenTiles, tenBu, tenConsent, tenWrite, tenScans, tenServices, tenUsers, tenDelete,
       consentNote, tenScansEmpty, tenUserCount, openMsp, copyReconsent,
@@ -4818,13 +4781,17 @@ class Component extends DCLogic {
       hasConsentNote: !!consentNote,
       hasScans: tenScans.length > 0, hasServices: tenServices.length > 0, hasUsers: tenUsers.length > 0,
       noScans: isTenantHome && tenScans.length === 0, noServices: isTenantHome && tenServices.length === 0, noUsers: isTenantHome && tenUsers.length === 0,
-      isFrames: !!meta && !isOverview && !isSignals,
+      isFrames: !!meta && !isOverview,
       frames: meta ? meta.frames : [],
 
-      isSignals, sigView, sigViewEmpty,
-      hasSigView: !!sigView, noSigView: isSignals && !sigView,
-
-      isTeam,
+      isDocsScreen: (isHub || mspSel === "docs" || mspSel === "connectors") && !emptyMode,
+      docsInitialTab: isHub ? "hub" : mspSel === "connectors" ? "connectors" : "authored",
+      docsTenantName: isHub && t ? t.name : "",
+      isWhScreen: isWh && !emptyMode,
+      isLcScreen: isLc && !emptyMode,
+      isBgScreen: isBg && !emptyMode,
+      isTeam: isTeam && emptyMode,
+      isTeamScreen: isTeam && !emptyMode,
       showStates: isTeam || !!ccPage || isExec || (isWh && !whSel && s.whTab === "endpoints"),
       stateChips: (isExec
         ? [{ id: false, label: "Populated" }, { id: true, label: "Empty" }].map(o => ({
@@ -4858,7 +4825,19 @@ class Component extends DCLogic {
             select: () => this.setState({ uiState: o.id })
           }))),
 
-      isTable: !!table && !showCrDetail,
+      isDiagScreen: isDiag,
+      isRemScreen: isRem,
+      isDrScreen: isDr && !emptyMode,
+      isRunScreen: isRun && !emptyMode,
+      isRaciScreen: page === "raci",
+      raciBookState: emptyMode ? "empty" : "populated",
+      isRiskScreen: isRbd && !emptyMode,
+      isCcScreen: !!ccPage && !emptyMode,
+      ccInitialTab: ({ "cc.register": "register", "cc.catalog": "catalog", "cc.cab": "cab", "cc.calendars": "windows", "cc.deps": "deps", "cc.exec": "exec", "cc.pir": "pir" })[ccPage] || "register",
+      diagTenantName: t ? t.name : "",
+      diagTenantIndex: tIdx == null ? 0 : tIdx,
+
+      isTable: !!table && !showCrDetail && !isDiag && !isRem && !((isHub || mspSel === "docs" || mspSel === "connectors") && !emptyMode) && !(isWh && !emptyMode) && !(isLc && !emptyMode) && !(isBg && !emptyMode) && !(isDr && !emptyMode) && !(isRun && !emptyMode) && !(isRbd && !emptyMode) && !(ccPage && !emptyMode),
       showTableToolbar: !!table && table.filters.length > 0 && !emptyMode,
       tableCols: table ? table.cols : "1fr",
       tableMinWidth: table ? table.minWidth : "100%",
@@ -4888,22 +4867,22 @@ class Component extends DCLogic {
       crApprovalSummary: activeCr ? activeCr.approvals : "",
       crApprovalColor: activeCr && activeCr.approvalState === "waiting" ? "#fcd34d" : "#6ee7b7",
 
-      hasNotes: (isTenantHome || isSignals || !!ccPage || isBg || isDr || isHub || !!mspSel || isWh || isLc || isRem || isRbd || isRun || isDiag) && notes.length > 0,
+      hasNotes: (isTenantHome || (!isOverview && !!mspSel && mspSel !== "docs" && mspSel !== "connectors" && mspSel !== "exec" && mspSel !== "timeline")) && notes.length > 0,
 
       isMspSet, mspProfile, mspContact, mspPlanF, mspEnt, mspActions, mspAgree, mspActivity, mspNotesText,
 
-      isRunDetail: !!runSel,
+      isRunDetail: !!runSel && emptyMode,
       runSteps,
       runProgress: runSel ? runSel.progress + " · " + runSel.due : "",
-      isHoldDetail: !!holdSel,
+      isHoldDetail: !!holdSel && emptyMode,
       holdFacts, holdEvents,
       openExtend: () => this.setState({ drawer: "extend" }),
 
-      isRbdDetail: !!rbdSel,
+      isRbdDetail: !!rbdSel && emptyMode,
       rbdFacts, rbdControls, rbdInstances, rbdVersions, rbdActions,
       rbdHazard: rbdSel ? rbdSel.hazard : "",
 
-      showSlaStats: isSla && s.slaTab === "sla",
+      showSlaStats: false,
       slaStats: [
         { icon: "timer", value: String(this.slaSummary.active), label: "Timers running", color: "#6ee7b7", tint: "rgba(52,211,153,.12)", line: "rgba(52,211,153,.28)" },
         { icon: "triangle-alert", value: String(this.slaSummary.warning), label: "Past the warning threshold", color: "#fcd34d", tint: "rgba(251,191,36,.12)", line: "rgba(251,191,36,.28)" },
@@ -4918,7 +4897,8 @@ class Component extends DCLogic {
         color: p.score < 60 ? "#fca5a5" : p.score < 80 ? "#fcd34d" : "#6ee7b7"
       })),
 
-      isExec,
+      isExec: isExec && s.execEmpty,
+      isExecScreen: isExec && !s.execEmpty,
       execIsEmpty: s.execEmpty,
       execStats: (() => {
         const b = this.execBook, e = s.execEmpty;
@@ -4969,7 +4949,7 @@ class Component extends DCLogic {
         select: () => this.setState({ qbrState: x.id })
       })),
 
-      isDocDetail: !!docSel,
+      isDocDetail: !!docSel && emptyMode,
       docFacts,
       pipelineStages,
       pipelineNote: docSel ? "current: " + docSel.pipeline + " · linear graph, no branching" : "",
@@ -4978,7 +4958,7 @@ class Component extends DCLogic {
       openPublish: () => this.setState({ drawer: "publish" }),
       docActionHint: "Both actions return before the work finishes",
 
-      isHubDoc: !!hubSel,
+      isHubDoc: !!hubSel && emptyMode,
       hubFacts,
       openShare: () => this.setState({ drawer: "share" }),
       pdfColor: pdfAllowed ? "#cbd5e1" : "#64748b",
@@ -5019,7 +4999,10 @@ class Component extends DCLogic {
       watchlistCount: watchlist.length + " pending across " + this.tenantData.length + " tenants",
       watchlistBlocked: true,
 
-      hasSubTabs: (isBg && !showBgDetail) || isDr || isLc || isRem || isDiag || isSla || isSops || isCfg || isSales || (isRun && !runSel && !holdSel) || (isWh && !whSel),
+      isSalesScreen: isSales,
+      isSlaScreen: isSla,
+      isCfgScreen: isCfg,
+      hasSubTabs: isSops,
       subTabs: (isDiag
         ? [{ id: "runs", label: "Runs" }, { id: "findings", label: "Findings" }, { id: "scripts", label: "Scripts" }].map(x => ({
             label: x.label,
@@ -5108,7 +5091,7 @@ class Component extends DCLogic {
             select: () => this.setState({ bgTab: x.id })
           }))),
 
-      isBgDetail: showBgDetail,
+      isBgDetail: showBgDetail && emptyMode,
       bgFacts, bgAttempts, bgPre,
       openBgInvite: () => this.setState({ drawer: "bginvite" }),
       openOverride: () => { if (overrideOk) this.setState({ drawer: "override" }); },
@@ -5207,7 +5190,7 @@ class Component extends DCLogic {
 
       isWhPicker: false,
       whTenants: [],
-      isWhDetail: !!whSel,
+      isWhDetail: !!whSel && emptyMode,
       whFacts, whEvents, whDeliveries,
       whDisabled: !!(whSel && !whSel.active),
       whDisabledBy: whSel && whSel.disabledBy ? whSel.disabledBy : "",

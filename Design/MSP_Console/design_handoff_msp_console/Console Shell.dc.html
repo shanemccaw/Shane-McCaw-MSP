@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+html,body{margin:0;padding:0;background:#020617;}
+*{box-sizing:border-box;}
+a{color:#60a5fa;text-decoration:none;}
+a:hover{color:#93c5fd;}
+input{font-family:inherit;}
+::placeholder{color:#64748b;}
+span[data-icon]{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
+span[data-icon]>svg{width:100%;height:100%;display:block;}
+@keyframes smcFade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@keyframes smcPop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes smcPulse{0%,100%{opacity:.35}50%{opacity:.7}}
+</style>
+</helmet>
+
+<div style="display:flex;flex-direction:column;height:100vh;min-height:640px;background:#020617;color:#e2e8f0;font-family:Inter,system-ui,sans-serif;font-size:14px;overflow:hidden;position:relative">
+
+  <header style="display:flex;align-items:center;gap:16px;height:56px;flex:0 0 56px;padding:0 16px;background:#0A2540;border-bottom:1px solid rgba(148,163,184,.16);position:relative;z-index:40">
+    <div style="display:flex;align-items:center;gap:10px;flex:0 0 auto">
+      <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#0078D4,#00B4D8);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;color:#fff">SM</div>
+      <div style="display:flex;flex-direction:column;line-height:1.1">
+        <span style="font-weight:700;font-size:13.5px;letter-spacing:-.01em;color:#fff">Shane McCaw</span>
+        <span style="font-size:9.5px;font-weight:600;letter-spacing:.14em;color:#7dd3fc">MSP CONSOLE</span>
+      </div>
+    </div>
+
+    <div style="width:1px;height:24px;background:rgba(148,163,184,.2)"></div>
+
+    <span style="font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ contextPath }}</span>
+
+    <div style="flex:1"></div>
+
+    <button onClick="{{ openPalette }}" style="display:flex;align-items:center;gap:9px;width:260px;height:34px;padding:0 11px;border-radius:8px;border:1px solid rgba(148,163,184,.18);background:rgba(2,6,23,.5);color:#64748b;font-size:12.5px;cursor:pointer;transition:border-color .15s" style-hover="border-color:rgba(96,165,250,.4)">
+      <span data-icon="search" style="width:14px;height:14px"></span>
+      <span style="flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Search the directory</span>
+      <span style="font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;border:1px solid rgba(148,163,184,.25);color:#94a3b8">⌘K</span>
+    </button>
+
+    <div style="display:flex;align-items:center;gap:4px">
+      <sc-if value="{{ bgAlert }}" hint-placeholder-val="{{ true }}">
+        <button title="Pending break-glass credentials across your book" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:999px;border:1px solid rgba(248,113,113,.35);background:rgba(248,113,113,.12);color:#fca5a5;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;margin-right:6px" style-hover="background:rgba(248,113,113,.2)">
+          <span data-icon="key-round" style="width:13px;height:13px"></span>{{ bgAlertText }}
+        </button>
+      </sc-if>
+      <div style="position:relative">
+        <button onClick="{{ toggleNotifs }}" style="width:34px;height:34px;border-radius:8px;border:1px solid transparent;background:transparent;color:#cbd5e1;cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative;transition:background-color .15s" style-hover="background:rgba(148,163,184,.12)">
+          <span data-icon="bell" style="width:16px;height:16px"></span>
+          <span style="position:absolute;top:6px;right:7px;width:6px;height:6px;border-radius:50%;background:#f87171;border:2px solid #0A2540"></span>
+        </button>
+        <sc-if value="{{ notifsOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;top:42px;right:0;width:340px;background:#0f172a;border:1px solid rgba(148,163,184,.2);border-radius:12px;box-shadow:0 24px 48px rgba(2,6,23,.6);animation:smcFade .14s ease-out;overflow:hidden">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(148,163,184,.14)">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#64748b">SIGNAL FEED</span>
+              <span style="font-size:11px;color:#60a5fa;cursor:pointer">Mark all read</span>
+            </div>
+            <sc-for list="{{ notifs }}" as="n" hint-placeholder-count="3">
+              <div style="display:flex;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(148,163,184,.08)">
+                <span style="width:26px;height:26px;flex:0 0 26px;border-radius:8px;background:{{ n.tint }};border:1px solid {{ n.line }};display:flex;align-items:center;justify-content:center">
+                  <span data-icon="{{ n.icon }}" style="width:13px;height:13px;color:{{ n.color }}"></span>
+                </span>
+                <div style="display:flex;flex-direction:column;gap:2px">
+                  <span style="font-size:13px;font-weight:600;color:#e2e8f0;text-wrap:pretty">{{ n.title }}</span>
+                  <span style="font-size:11px;color:#64748b">{{ n.meta }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="position:relative">
+        <button onClick="{{ toggleUser }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 7px 0 5px;border-radius:8px;border:1px solid transparent;background:transparent;color:#cbd5e1;cursor:pointer;transition:background-color .15s" style-hover="background:rgba(148,163,184,.12)">
+          <span style="width:25px;height:25px;border-radius:50%;background:rgba(96,165,250,.18);border:1px solid rgba(96,165,250,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#93c5fd">SM</span>
+          <span data-icon="chevron-down" style="width:13px;height:13px"></span>
+        </button>
+        <sc-if value="{{ userOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;top:42px;right:0;width:250px;background:#0f172a;border:1px solid rgba(148,163,184,.2);border-radius:12px;box-shadow:0 24px 48px rgba(2,6,23,.6);padding:8px;animation:smcFade .14s ease-out">
+            <div style="padding:8px 10px 10px;border-bottom:1px solid rgba(148,163,184,.14);margin-bottom:6px">
+              <div style="font-size:13px;font-weight:600;color:#f1f5f9">Shane McCaw</div>
+              <div style="font-size:11px;color:#64748b">{{ roleLabel }}</div>
+            </div>
+            <sc-for list="{{ userMenu }}" as="m" hint-placeholder-count="4">
+              <button style="display:flex;width:100%;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;border:1px solid transparent;background:transparent;color:#cbd5e1;font-size:13px;cursor:pointer;text-align:left" style-hover="background:rgba(148,163,184,.1)">
+                <span data-icon="{{ m.icon }}" style="width:14px;height:14px;color:#64748b"></span>{{ m.label }}
+              </button>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </header>
+
+  <div style="display:flex;flex:1;min-height:0">
+
+    <aside style="width:{{ treeWidth }};flex:0 0 {{ treeWidth }};background:#061527;border-right:1px solid rgba(148,163,184,.14);display:flex;flex-direction:column;transition:width .18s ease,flex-basis .18s ease;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;height:38px;flex:0 0 38px;padding:0 10px;border-bottom:1px solid rgba(148,163,184,.12)">
+        <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:7px;flex:1;height:26px;padding:0 8px;border-radius:6px;border:1px solid rgba(148,163,184,.16);background:rgba(2,6,23,.5)">
+            <span data-icon="filter" style="width:12px;height:12px;color:#64748b"></span>
+            <input value="{{ treeQuery }}" onChange="{{ setTreeQuery }}" placeholder="Filter tree" style="flex:1;min-width:0;background:transparent;border:0;outline:none;color:#e2e8f0;font-size:12px">
+          </div>
+        </sc-if>
+        <button onClick="{{ toggleSidebar }}" title="Collapse tree" style="width:26px;height:26px;flex:0 0 26px;border-radius:6px;border:1px solid transparent;background:transparent;color:#64748b;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12);color:#cbd5e1">
+          <span data-icon="{{ collapseIcon }}" style="width:15px;height:15px"></span>
+        </button>
+      </div>
+
+      <div style="flex:1;overflow-y:auto;padding:6px 6px 10px">
+        <sc-if value="{{ treeLoading }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:6px;padding:4px">
+            <sc-for list="{{ skeletons }}" as="s" hint-placeholder-count="8">
+              <div style="height:26px;border-radius:6px;background:rgba(148,163,184,.09);width:{{ s.w }};animation:smcPulse 1.4s ease-in-out infinite"></div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ treeEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px 12px">
+            <span data-icon="building-2" style="width:30px;height:30px;border-radius:9px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:7px"></span>
+            <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">No tenants in this book</span>
+            <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">The directory returns an empty array, not an error. The tree keeps its root node and the onboard action stays the only thing to press.</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ railView }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+            <sc-for list="{{ railNodes }}" as="r" hint-placeholder-count="9">
+              <div style="display:flex;flex-direction:column;align-items:center;width:100%;gap:4px">
+                <sc-if value="{{ r.divider }}" hint-placeholder-val="{{ false }}">
+                  <div style="width:24px;height:1px;background:rgba(148,163,184,.2);margin:5px 0"></div>
+                </sc-if>
+                <div onClick="{{ r.click }}" title="{{ r.label }}" style="position:relative;display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:9px;border:1px solid {{ r.line }};background:{{ r.bg }};cursor:pointer;transition:background-color .12s" style-hover="background:rgba(148,163,184,.1)">
+                  <span style="position:absolute;left:-6px;top:9px;width:2px;height:18px;border-radius:2px;background:{{ r.bar }}"></span>
+                  <span data-icon="{{ r.icon }}" style="width:16px;height:16px;color:{{ r.color }}"></span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ treeReady }}" hint-placeholder-val="{{ true }}">
+          <sc-for list="{{ treeNodes }}" as="n" hint-placeholder-count="12">
+            <div onClick="{{ n.click }}" title="{{ n.label }}" style="display:flex;align-items:center;gap:7px;height:{{ n.h }};padding-left:{{ n.indent }};padding-right:8px;border-radius:6px;background:{{ n.bg }};color:{{ n.fg }};font-size:{{ n.size }};font-weight:{{ n.weight }};cursor:pointer;white-space:nowrap;user-select:none;transition:background-color .12s" style-hover="background:rgba(148,163,184,.08)">
+              <span data-icon="{{ n.chevron }}" style="width:13px;height:13px;flex:0 0 13px;color:#64748b;opacity:{{ n.chevronOpacity }}"></span>
+              <span data-icon="{{ n.icon }}" style="width:15px;height:15px;flex:0 0 15px;color:{{ n.iconColor }}"></span>
+              <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}">
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis">{{ n.label }}</span>
+              </sc-if>
+              <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}">
+                <span style="font-size:10.5px;font-weight:600;color:{{ n.metaColor }}">{{ n.meta }}</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{ railView }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:0 0 auto;padding:10px;border-top:1px solid rgba(148,163,184,.12);display:flex;align-items:center;justify-content:center">
+          <div title="Onboard tenant" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:1px dashed rgba(148,163,184,.3);color:#64748b;cursor:pointer" style-hover="background:rgba(148,163,184,.1);color:#e2e8f0">
+            <span data-icon="plus" style="width:14px;height:14px"></span>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:0 0 auto;padding:10px;border-top:1px solid rgba(148,163,184,.12);display:flex;align-items:center;gap:8px">
+          <button style="display:flex;align-items:center;gap:7px;flex:1;height:30px;padding:0 10px;border-radius:7px;border:1px solid rgba(148,163,184,.2);background:transparent;color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(148,163,184,.1);color:#e2e8f0"><span data-icon="plus" style="width:13px;height:13px"></span>Onboard tenant</button>
+        </div>
+      </sc-if>
+    </aside>
+
+    <main style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+
+      <div style="flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:10px 20px;border-bottom:1px solid rgba(148,163,184,.12);background:#050f1e;overflow-x:auto">
+        <sc-for list="{{ crumbs }}" as="c" hint-placeholder-count="3">
+          <span onClick="{{ c.go }}" style="display:flex;align-items:center;gap:8px;font-size:12px;color:{{ c.color }};font-weight:{{ c.weight }};cursor:{{ c.cursor }};white-space:nowrap">
+            <span data-icon="{{ c.sep }}" style="width:12px;height:12px;color:#475569;opacity:{{ c.sepOpacity }}"></span>{{ c.label }}
+          </span>
+        </sc-for>
+      </div>
+
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:20px 20px 40px;display:flex;flex-direction:column;gap:16px">
+
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;gap:5px;min-width:0">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.14em;color:#64748b">CONSOLE SHELL</span>
+            <h1 style="margin:0;font-size:23px;font-weight:800;letter-spacing:-.02em;color:#f8fafc">{{ pageTitle }}</h1>
+            <span style="font-size:12.5px;color:#94a3b8;text-wrap:pretty">{{ pageNote }}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">STATE</span>
+            <sc-for list="{{ stateChips }}" as="s" hint-placeholder-count="5">
+              <button onClick="{{ s.select }}" title="{{ s.title }}" style="height:24px;padding:0 9px;border-radius:6px;border:1px solid {{ s.border }};background:{{ s.bg }};color:{{ s.fg }};font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">{{ s.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="border:1px dashed rgba(96,165,250,.35);border-radius:12px;background:rgba(15,23,42,.45);padding:26px 22px;display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+          <span style="display:inline-flex;align-items:center;gap:7px;padding:3px 9px;border-radius:999px;background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.28);font-size:10px;font-weight:700;letter-spacing:.1em;color:#93c5fd;white-space:nowrap">SCREEN SLOT</span>
+          <span style="font-size:15.5px;font-weight:700;letter-spacing:-.01em;color:#f8fafc">Everything below the breadcrumb belongs to the screen, not the shell</span>
+          <span style="font-size:12.5px;color:#94a3b8;max-width:620px;text-wrap:pretty">The shell renders the page eyebrow, title and note from the selected node's own metadata, then hands the region over. Each module page — Diagnostics, Change Control, Risk Register and the rest — mounts here unchanged; the shell never reads a module's data or knows which endpoints it calls.</span>
+          <span style="font-family:Menlo,monospace;font-size:11px;color:#475569">MSP Console.dc.html · page === &lt;node id&gt;</span>
+        </div>
+
+        <sc-if value="{{ showSpecCards }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#64748b">WHAT THE SHELL OWNS</span>
+              <span style="font-size:11.5px;color:#475569">Five regions, one selection model</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+              <sc-for list="{{ regions }}" as="r" hint-placeholder-count="5">
+                <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:14px;display:flex;flex-direction:column;gap:7px">
+                  <span data-icon="{{ r.icon }}" style="width:28px;height:28px;border-radius:9px;background:{{ r.tint }};border:1px solid {{ r.line }};color:{{ r.color }};padding:7px"></span>
+                  <span style="font-size:13px;font-weight:700;color:#f1f5f9">{{ r.title }}</span>
+                  <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ r.body }}</span>
+                  <span style="font-family:Menlo,monospace;font-size:10.5px;color:#475569;word-break:break-all">{{ r.wire }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#64748b">KEYBOARD AND DISMISS</span>
+              <span style="font-size:11.5px;color:#475569">The only global bindings the shell claims</span>
+            </div>
+            <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow:hidden">
+              <sc-for list="{{ keys }}" as="k" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:14px;padding:11px 15px;border-bottom:1px solid rgba(148,163,184,.08);flex-wrap:wrap">
+                  <span style="font-family:Menlo,monospace;font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;border:1px solid rgba(148,163,184,.25);color:#cbd5e1;flex:0 0 auto">{{ k.combo }}</span>
+                  <span style="font-size:12.5px;color:#cbd5e1;flex:1;min-width:200px;text-wrap:pretty">{{ k.what }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">CONTRACT NOTES</span>
+            <sc-for list="{{ notes }}" as="n" hint-placeholder-count="3">
+              <div style="display:flex;gap:10px;padding:11px 13px;border-radius:10px;border:1px solid {{ n.line }};background:{{ n.tint }}">
+                <span data-icon="{{ n.icon }}" style="width:15px;height:15px;color:{{ n.color }};margin-top:2px"></span>
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                  <span style="font-size:12.5px;font-weight:600;color:#e2e8f0;text-wrap:pretty">{{ n.title }}</span>
+                  <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ n.body }}</span>
+                  <span style="font-family:Menlo,monospace;font-size:10.5px;color:#475569;word-break:break-all">{{ n.wire }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="flex:0 0 auto;display:flex;align-items:center;gap:16px;height:28px;padding:0 20px;border-top:1px solid rgba(148,163,184,.12);background:#050f1e;font-size:11px;color:#64748b;overflow:hidden">
+        <span style="white-space:nowrap">{{ statusLeft }}</span>
+        <div style="flex:1"></div>
+        <span style="white-space:nowrap">{{ statusRight }}</span>
+      </div>
+    </main>
+  </div>
+
+  <sc-if value="{{ paletteOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closePalette }}" style="position:absolute;inset:0;background:rgba(2,6,23,.7);backdrop-filter:blur(3px);z-index:80;display:flex;align-items:flex-start;justify-content:center;padding-top:14vh">
+      <div onClick="{{ stop }}" style="width:min(620px,90%);background:#0f172a;border:1px solid rgba(148,163,184,.22);border-radius:14px;box-shadow:0 32px 64px rgba(2,6,23,.7);overflow:hidden;animation:smcPop .16s ease-out">
+        <div style="display:flex;align-items:center;gap:10px;padding:13px 15px;border-bottom:1px solid rgba(148,163,184,.14)">
+          <span data-icon="search" style="width:15px;height:15px;color:#64748b"></span>
+          <input autofocus="true" value="{{ query }}" onChange="{{ setQuery }}" placeholder="Jump to a tenant node" style="flex:1;min-width:0;background:transparent;border:0;outline:none;color:#f1f5f9;font-size:14.5px">
+          <span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:5px;border:1px solid rgba(148,163,184,.25);color:#64748b">ESC</span>
+        </div>
+        <div style="max-height:340px;overflow-y:auto;padding:8px">
+          <sc-for list="{{ results }}" as="r" hint-placeholder-count="5">
+            <button onClick="{{ r.run }}" style="display:flex;width:100%;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;border:1px solid transparent;background:transparent;color:#e2e8f0;cursor:pointer;text-align:left" style-hover="background:rgba(148,163,184,.1)">
+              <span data-icon="{{ r.icon }}" style="width:14px;height:14px;color:#60a5fa"></span>
+              <span style="flex:1;font-size:13px">{{ r.label }}</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#475569">{{ r.group }}</span>
+            </button>
+          </sc-for>
+          <sc-if value="{{ noResults }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:18px 12px;font-size:12.5px;color:#64748b;text-wrap:pretty">Nothing in the tree matches that. The palette searches node labels the shell already holds — it never issues a search request.</div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showSpecCards&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Shell&quot;}}">
+class Component extends DCLogic {
+  state = {
+    sel: { kind: "page", tenant: 1, page: "risk" },
+    open: { 1: true },
+    openGroups: { "1:g.gov": true },
+    collapsed: false,
+    paletteOpen: false,
+    notifsOpen: false,
+    userOpen: false,
+    query: "",
+    treeQuery: "",
+    shellState: "ready"
+  };
+
+  tenantData = [
+    { name: "Northwind Logistics", domain: "northwind.onmicrosoft.com", seats: "480", people: 6, dot: "#34d399", last: "4 Sep 09:12" },
+    { name: "Halcyon Health", domain: "halcyonhg.onmicrosoft.com", seats: "1,240", people: 34, dot: "#fbbf24", last: "2 Sep 22:40" },
+    { name: "Kestrel Financial", domain: "kestrelfin.onmicrosoft.com", seats: "215", people: 12, dot: "#f87171", last: "5 Sep 06:02" },
+    { name: "Mccawsoft2", domain: "mccawsoft2.onmicrosoft.com", seats: "18", people: 0, dot: "#64748b", last: "No run" }
+  ];
+
+  childGroups = [
+    { id: "overview", label: "Overview", icon: "gauge", leaf: true },
+    { id: "g.monitor", label: "Monitoring", icon: "radar", children: [
+      { id: "signals", label: "Signals", icon: "radar" },
+      { id: "diag", label: "Diagnostics", icon: "stethoscope" },
+      { id: "rem", label: "Remediation", icon: "wrench" }
+    ] },
+    { id: "cc", label: "Change Control", icon: "git-pull-request", children: [
+      { id: "cc.register", label: "CR register", icon: "list-checks" },
+      { id: "cc.cab", label: "CAB", icon: "gavel" },
+      { id: "cc.exec", label: "Executions", icon: "play" }
+    ] },
+    { id: "g.gov", label: "Governance", icon: "scale", children: [
+      { id: "risk", label: "Risk Register", icon: "shield-alert" },
+      { id: "raci", label: "Ownership", icon: "users-round" },
+      { id: "run", label: "Runbooks", icon: "book-open" },
+      { id: "dr", label: "Data rights", icon: "scale" }
+    ] },
+    { id: "g.access", label: "Access & identity", icon: "key-round", children: [
+      { id: "team", label: "Team", icon: "users" },
+      { id: "bg", label: "Break-glass", icon: "key-round" },
+      { id: "wh", label: "Webhooks", icon: "webhook" }
+    ] },
+    { id: "audit", label: "Audit log", icon: "history", leaf: true }
+  ];
+
+  mspPages = [
+    { id: "exec", label: "Executive view", icon: "chart-no-axes-column" },
+    { id: "sla", label: "Scope & SLA", icon: "timer" },
+    { id: "sops", label: "SOPs", icon: "list-checks" },
+    { id: "sales", label: "Sales", icon: "badge-dollar-sign" },
+    { id: "timeline", label: "Activity timeline", icon: "activity" },
+    { id: "docs", label: "Documents", icon: "files" }
+  ];
+
+  notifs = [
+    { icon: "key-round", color: "#fca5a5", tint: "rgba(248,113,113,.12)", line: "rgba(248,113,113,.3)", title: "Break-glass credential unclaimed for 19 hours", meta: "Northwind Logistics · secret #4412" },
+    { icon: "shield-alert", color: "#fcd34d", tint: "rgba(251,191,36,.12)", line: "rgba(251,191,36,.3)", title: "Risk decision RR-2026-014 still unsigned", meta: "Northwind Logistics · raised 28 Aug" },
+    { icon: "git-pull-request", color: "#93c5fd", tint: "rgba(96,165,250,.12)", line: "rgba(96,165,250,.3)", title: "CR-2026-0184 scheduled for tonight", meta: "Halcyon Health · 22:00 UTC" }
+  ];
+
+  userMenu = [
+    { icon: "user", label: "My profile" },
+    { icon: "building-2", label: "MSP settings" },
+    { icon: "life-buoy", label: "Support" },
+    { icon: "log-out", label: "Sign out" }
+  ];
+
+  groupFor(pageId) {
+    const g = this.childGroups.find(x => !x.leaf && x.children.some(c => c.id === pageId));
+    return g ? g.id : null;
+  }
+
+  componentDidMount() {
+    this.onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); this.setState({ paletteOpen: true, query: "" }); }
+      if (e.key === "Escape") this.setState({ paletteOpen: false, notifsOpen: false, userOpen: false });
+    };
+    document.addEventListener("keydown", this.onKey);
+    this.icons();
+  }
+  componentWillUnmount() { document.removeEventListener("keydown", this.onKey); }
+  componentDidUpdate() { this.icons(); }
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  selectNode(tenant, page) {
+    const groupId = this.groupFor(page);
+    const openGroups = Object.assign({}, this.state.openGroups);
+    if (groupId) openGroups[tenant + ":" + groupId] = true;
+    this.setState({
+      sel: { kind: "page", tenant, page },
+      open: Object.assign({}, this.state.open, { [tenant]: true }),
+      openGroups, paletteOpen: false, notifsOpen: false, userOpen: false
+    });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const expanded = !s.collapsed;
+    const st = s.shellState;
+    const sel = (st === "empty" || st === "loading") ? { kind: "root" } : s.sel;
+    const t = sel.kind === "page" ? this.tenantData[sel.tenant] : null;
+    const selPage = sel.kind === "page" ? this.childGroups.reduce((f, g) => f || (g.leaf ? (g.id === sel.page ? g : null) : g.children.find(c => c.id === sel.page)), null) : null;
+    const mspPage = sel.kind === "msp" ? this.mspPages.find(p => p.id === sel.page) : null;
+    const q = s.treeQuery.trim().toLowerCase();
+
+    const nodes = [];
+    const push = (o) => {
+      const n = Object.assign({
+        h: "28px", size: "12.5px", weight: 500, indent: "8px", chevron: "dot", chevronOpacity: 0,
+        bg: "transparent", fg: "#cbd5e1", iconColor: "#64748b", meta: "", metaColor: "#475569", click: () => {}
+      }, o);
+      if (!expanded) { n.indent = "8px"; n.chevron = "dot"; n.chevronOpacity = 0; n.meta = ""; }
+      nodes.push(n);
+    };
+
+    push({
+      label: "Shane McCaw Consulting", icon: "network", h: "32px", size: "13px", weight: 700,
+      fg: sel.kind === "root" ? "#f8fafc" : "#e2e8f0", iconColor: "#60a5fa",
+      bg: sel.kind === "root" ? "rgba(96,165,250,.14)" : "transparent",
+      chevron: "chevron-down", chevronOpacity: 1, meta: this.tenantData.length + "",
+      click: () => this.setState({ sel: { kind: "root" } })
+    });
+
+    this.mspPages.forEach(p => {
+      if (q && !p.label.toLowerCase().includes(q)) return;
+      push({
+        label: p.label, icon: p.icon, indent: "24px",
+        bg: sel.kind === "msp" && sel.page === p.id ? "rgba(96,165,250,.14)" : "transparent",
+        fg: sel.kind === "msp" && sel.page === p.id ? "#f8fafc" : "#cbd5e1",
+        iconColor: sel.kind === "msp" && sel.page === p.id ? "#93c5fd" : "#64748b",
+        click: () => this.setState({ sel: { kind: "msp", page: p.id }, paletteOpen: false })
+      });
+    });
+
+    this.tenantData.forEach((x, i) => {
+      const tenantMatches = !q || x.name.toLowerCase().includes(q);
+      const isOpen = !!s.open[i];
+      if (tenantMatches) {
+        push({
+          label: x.name, icon: "building-2", indent: "20px", h: "30px", size: "12.5px", weight: 600,
+          chevron: isOpen ? "chevron-down" : "chevron-right", chevronOpacity: 1,
+          iconColor: x.dot, meta: x.seats, metaColor: "#475569",
+          bg: sel.kind === "page" && sel.tenant === i && !selPage ? "rgba(96,165,250,.14)" : "transparent",
+          click: () => this.setState({ open: Object.assign({}, s.open, { [i]: !isOpen }) })
+        });
+      }
+      if (!isOpen && !q) return;
+      this.childGroups.forEach(g => {
+        if (g.leaf) {
+          if (q && !g.label.toLowerCase().includes(q) && !tenantMatches) return;
+          const on = sel.kind === "page" && sel.tenant === i && sel.page === g.id;
+          push({
+            label: g.label, icon: g.icon, indent: "40px",
+            bg: on ? "rgba(96,165,250,.14)" : "transparent", fg: on ? "#f8fafc" : "#94a3b8",
+            iconColor: on ? "#93c5fd" : "#475569",
+            click: () => this.selectNode(i, g.id)
+          });
+          return;
+        }
+        const gOpen = !!s.openGroups[i + ":" + g.id] || !!q;
+        const kids = g.children.filter(c => !q || c.label.toLowerCase().includes(q) || tenantMatches);
+        if (q && kids.length === 0 && !tenantMatches) return;
+        push({
+          label: g.label, icon: g.icon, indent: "36px", weight: 600, fg: "#94a3b8",
+          chevron: gOpen ? "chevron-down" : "chevron-right", chevronOpacity: 1,
+          click: () => this.setState({ openGroups: Object.assign({}, s.openGroups, { [i + ":" + g.id]: !gOpen }) })
+        });
+        if (!gOpen) return;
+        kids.forEach(c => {
+          const on = sel.kind === "page" && sel.tenant === i && sel.page === c.id;
+          push({
+            label: c.label, icon: c.icon, indent: "56px", size: "12px",
+            bg: on ? "rgba(96,165,250,.14)" : "transparent", fg: on ? "#f8fafc" : "#94a3b8",
+            iconColor: on ? "#93c5fd" : "#475569",
+            click: () => this.selectNode(i, c.id)
+          });
+        });
+      });
+    });
+
+    const railNodes = [];
+    if (!expanded) {
+      railNodes.push({
+        label: "Shane McCaw Consulting", icon: "network", color: "#60a5fa",
+        bg: sel.kind === "root" ? "rgba(96,165,250,.16)" : "transparent",
+        line: sel.kind === "root" ? "rgba(96,165,250,.4)" : "transparent",
+        bar: sel.kind === "root" ? "#60a5fa" : "transparent", divider: false,
+        click: () => this.setState({ sel: { kind: "root" } })
+      });
+      this.mspPages.forEach(p => {
+        const on = sel.kind === "msp" && sel.page === p.id;
+        railNodes.push({
+          label: "Operations — " + p.label, icon: p.icon, color: on ? "#93c5fd" : "#64748b",
+          bg: on ? "rgba(96,165,250,.16)" : "transparent",
+          line: on ? "rgba(96,165,250,.4)" : "transparent",
+          bar: on ? "#60a5fa" : "transparent", divider: false,
+          click: () => this.setState({ sel: { kind: "msp", page: p.id } })
+        });
+      });
+      this.tenantData.forEach((x, i) => {
+        const on = sel.kind === "page" && sel.tenant === i;
+        railNodes.push({
+          label: x.name + (on && selPage ? " — " + selPage.label : ""), icon: "building-2", color: x.dot,
+          bg: on ? "rgba(96,165,250,.16)" : "transparent",
+          line: on ? "rgba(96,165,250,.4)" : "transparent",
+          bar: on ? "#60a5fa" : "transparent", divider: i === 0,
+          click: () => this.setState({ sel: { kind: "page", tenant: i, page: sel.kind === "page" ? sel.page : "overview" }, collapsed: false, shellState: "ready" })
+        });
+      });
+    }
+
+    const crumbs = [{ label: "Shane McCaw Consulting", color: "#94a3b8", weight: 500, cursor: "pointer", sep: "network", sepOpacity: 1, go: () => this.setState({ sel: { kind: "root" } }) }];
+    if (t) crumbs.push({ label: t.name, color: "#94a3b8", weight: 500, cursor: "pointer", sep: "chevron-right", sepOpacity: 1, go: () => this.setState({ sel: { kind: "page", tenant: sel.tenant, page: null } }) });
+    if (selPage) crumbs.push({ label: selPage.label, color: "#e2e8f0", weight: 600, cursor: "default", sep: "chevron-right", sepOpacity: 1, go: () => {} });
+    if (mspPage) crumbs.push({ label: mspPage.label, color: "#e2e8f0", weight: 600, cursor: "default", sep: "chevron-right", sepOpacity: 1, go: () => {} });
+
+    const commands = [{ label: "Managed Tenants", group: "ROOT", icon: "network", run: () => this.setState({ sel: { kind: "root" }, paletteOpen: false }) }]
+      .concat(this.mspPages.map(p => ({ label: "Operations › " + p.label, group: "MSP", icon: p.icon, run: () => this.setState({ sel: { kind: "msp", page: p.id }, paletteOpen: false }) })));
+    this.tenantData.forEach((x, i) => this.childGroups.forEach(g => {
+      const list = g.leaf ? [g] : g.children;
+      list.forEach(c => commands.push({ label: x.name + " › " + c.label, group: "NODE", icon: c.icon, run: () => this.selectNode(i, c.id) }));
+    }));
+    const pq = s.query.trim().toLowerCase();
+    const results = (pq ? commands.filter(c => c.label.toLowerCase().includes(pq)) : commands).slice(0, 8);
+
+    const chip = (id, label, title) => ({
+      label, title, select: () => this.setState({ shellState: id, collapsed: id === "collapsed", paletteOpen: id === "palette", notifsOpen: false, userOpen: false }),
+      border: st === id ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.22)",
+      bg: st === id ? "rgba(96,165,250,.16)" : "transparent",
+      fg: st === id ? "#bfdbfe" : "#94a3b8"
+    });
+
+    const title = st === "loading" ? "Tree loading" : st === "empty" ? "No tenants yet" : selPage ? selPage.label : mspPage ? mspPage.label : t ? t.name : "Managed Tenants";
+    const note = st === "loading"
+      ? "The chrome paints first and the tree fills in after. Nothing in the header or status bar waits on the directory request."
+      : st === "empty"
+        ? "An MSP with no customers gets the same chrome and an honest empty tree, not a blocked console."
+        : "The shell holds the header, the tenant tree, the breadcrumb, the status bar and the command palette. Which node is selected is the only state it owns.";
+
+    return {
+      expanded, treeWidth: expanded ? "260px" : "56px",
+      collapseIcon: expanded ? "panel-left-close" : "panel-left-open",
+      toggleSidebar: () => this.setState({ collapsed: !s.collapsed, shellState: s.collapsed ? "ready" : "collapsed" }),
+      treeQuery: s.treeQuery,
+      setTreeQuery: (e) => this.setState({ treeQuery: e.target.value }),
+
+      treeNodes: nodes,
+      railNodes,
+      railView: !expanded && st !== "loading" && st !== "empty",
+      treeReady: expanded && st !== "loading" && st !== "empty",
+      treeLoading: st === "loading",
+      treeEmpty: st === "empty",
+      skeletons: [{ w: "88%" }, { w: "64%" }, { w: "72%" }, { w: "56%" }, { w: "80%" }, { w: "48%" }, { w: "68%" }, { w: "60%" }],
+
+      contextPath: t ? "Managed Tenants / " + t.name + (selPage ? " / " + selPage.label : "") : mspPage ? "Operations / " + mspPage.label : "Managed Tenants",
+      crumbs,
+      pageTitle: title,
+      pageNote: note,
+      roleLabel: "PlatformAdmin — full access",
+
+      bgAlert: st === "ready" || st === "collapsed" || st === "palette",
+      bgAlertText: "1 break-glass pending",
+      notifs: this.notifs,
+      userMenu: this.userMenu,
+      notifsOpen: s.notifsOpen, userOpen: s.userOpen,
+      toggleNotifs: () => this.setState({ notifsOpen: !s.notifsOpen, userOpen: false }),
+      toggleUser: () => this.setState({ userOpen: !s.userOpen, notifsOpen: false }),
+
+      paletteOpen: s.paletteOpen, query: s.query, results, noResults: results.length === 0,
+      setQuery: (e) => this.setState({ query: e.target.value }),
+      openPalette: () => this.setState({ paletteOpen: true, query: "", notifsOpen: false, userOpen: false }),
+      closePalette: () => this.setState({ paletteOpen: false, shellState: st === "palette" ? "ready" : st }),
+      stop: (e) => e.stopPropagation(),
+
+      stateChips: [
+        chip("ready", "Default", "A tenant node selected"),
+        chip("collapsed", "Tree collapsed", "Icon rail only"),
+        chip("palette", "Command palette", "⌘K over any screen"),
+        chip("empty", "No tenants", "An MSP with an empty book"),
+        chip("loading", "Loading", "Chrome first, tree after")
+      ],
+
+      showSpecCards: this.props.showSpecCards ?? true,
+
+      regions: [
+        { icon: "panel-top", color: "#60a5fa", tint: "rgba(96,165,250,.1)", line: "rgba(96,165,250,.24)", title: "Header", body: "Brand lockup, the context path, the directory search, the break-glass pill, the signal feed and the account menu. Fixed 56px, navy, never scrolls.", wire: "GET /msp/break-glass · GET /api/msp/alerts" },
+        { icon: "list-tree", color: "#a78bfa", tint: "rgba(167,139,250,.1)", line: "rgba(167,139,250,.24)", title: "Tenant tree", body: "One root for the MSP, its operations pages, then every customer with the same set of module nodes underneath. Collapses to a 56px icon rail; the filter matches labels the shell already holds.", wire: "GET /api/msp/customers" },
+        { icon: "chevron-right", color: "#7dd3fc", tint: "rgba(125,211,252,.1)", line: "rgba(125,211,252,.24)", title: "Breadcrumb", body: "Derived from the selected node, never stored separately. Every segment but the last navigates; the last is the page you are on.", wire: "derived from sel" },
+        { icon: "square-dashed", color: "#34d399", tint: "rgba(52,211,153,.1)", line: "rgba(52,211,153,.24)", title: "Screen slot", body: "Eyebrow, title and note come from the node's metadata; everything under them is the module's own page. The shell passes the tenant and nothing else.", wire: "page === <node id>" },
+        { icon: "panel-bottom", color: "#94a3b8", tint: "rgba(148,163,184,.08)", line: "rgba(148,163,184,.2)", title: "Status bar", body: "Book-level counts at the root, tenant seats and people once a customer is selected, last scan on the right. A 28px strip, informational only.", wire: "GET /api/msp/customers → seats · people" }
+      ],
+
+      keys: [
+        { combo: "⌘K  /  Ctrl+K", what: "Open the command palette from anywhere, including over an open drawer" },
+        { combo: "Esc", what: "Close the palette, the signal feed, the account menu and any open drawer, in one press" },
+        { combo: "Type to filter", what: "The palette matches node labels; the sidebar filter matches the tree in place" },
+        { combo: "Click a crumb", what: "Walks back up to the tenant or the root without losing the tree's expansion state" }
+      ],
+
+      notes: [
+        { icon: "route", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Selection is the shell's only state", body: "Which tenant and which node are selected, plus which groups are expanded. Every module page reads its own data from its own routes; the shell holds none of it and caches none of it between nodes.", wire: "sel = { tenant, page }" },
+        { icon: "user-search", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "The palette searches what is already loaded", body: "It composes tenant names against the fixed node list in the browser. There is no cross-tenant search endpoint behind it, so it can only ever jump to a node, never find a record inside one.", wire: "no request" },
+        { icon: "shield-x", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "The tree does not know what the operator may open", body: "Per-staff customer scoping and the MSPAdmin-only screens are enforced by each route, not by the chrome. A scoped operator can still see a node here and be refused by the page behind it.", wire: "resolveStaffScopedCustomerIds · requireRole" },
+        { icon: "circle-slash", color: "#94a3b8", tint: "rgba(148,163,184,.06)", line: "rgba(148,163,184,.18)", title: "Onboard tenant has no route yet", body: "The action sits in the tree footer because that is where an operator looks for it, but nothing is wired behind it in this console today.", wire: "not architected" }
+      ],
+
+      statusLeft: st === "loading" ? "Loading the directory…" : st === "empty" ? "0 tenants · nothing to scan yet" : t ? "Tenant " + t.name + " · " + t.seats + " seats · " + t.people + " people" : this.tenantData.length + " tenants · 1,953 seats",
+      statusRight: st === "empty" ? "Signed in as PlatformAdmin" : t ? "Last scan " + t.last : "Signed in as PlatformAdmin"
+    };
+  }
+}
+</script>
+</body>
+</html>

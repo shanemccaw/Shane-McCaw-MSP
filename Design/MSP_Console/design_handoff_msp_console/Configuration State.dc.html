@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+@keyframes smcCsSlide{from{transform:translateX(24px);opacity:.4}to{transform:translateX(0);opacity:1}}
+@keyframes smcCsPulse{0%,100%{opacity:1}50%{opacity:.4}}
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+      <button onClick="{{ t.select }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+    <div style="flex:1"></div>
+    <span style="font-size:11.5px;color:#64748b;white-space:nowrap">{{ headNote }}</span>
+  </div>
+
+  <sc-if value="{{ isCoverage }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">
+        <sc-for list="{{ covTiles }}" as="c" hint-placeholder-count="3">
+          <div style="border:1px solid {{ c.line }};border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:7px;min-width:0">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#64748b">{{ c.label }}</span>
+            <span style="font-size:26px;font-weight:800;letter-spacing:-.02em;color:{{ c.color }}">{{ c.value }}</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ c.note }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+        <div style="min-width:920px">
+          <div style="display:grid;grid-template-columns:1.8fr 1.3fr 1fr 1.2fr 1.3fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+            <span>CUSTOMER</span><span>LAST READ</span><span>HOW COMPLETE</span><span>AGE</span><span></span>
+          </div>
+          <sc-for list="{{ covRows }}" as="r" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:1.8fr 1.3fr 1fr 1.2fr 1.3fr;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(148,163,184,.08)">
+              <span style="display:flex;flex-direction:column;min-width:0">
+                <span style="font-size:13px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+                <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.meta }}</span>
+              </span>
+              <span style="font-size:12px;color:{{ r.lastColor }};white-space:nowrap">{{ r.last }}</span>
+              <span style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                <span style="font-size:12px;color:#cbd5e1;white-space:nowrap">{{ r.completeness }}</span>
+                <div style="height:4px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden">
+                  <div style="height:100%;width:{{ r.pct }};background:{{ r.pctColor }}"></div>
+                </div>
+              </span>
+              <span style="font-size:12px;color:{{ r.ageColor }};white-space:nowrap">{{ r.age }}</span>
+              <div style="display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap">
+                <button onClick="{{ r.collect }}" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:7px;border:1px solid rgba(96,165,250,.3);background:rgba(37,99,235,.14);color:#bfdbfe;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(37,99,235,.24)"><span data-icon="scan-line" style="width:12px;height:12px"></span>Read it now</button>
+                <button onClick="{{ r.open }}" title="{{ r.openTitle }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ r.openLine }};background:transparent;color:{{ r.openFg }};font-size:11.5px;font-weight:600;cursor:{{ r.openCursor }};opacity:{{ r.openOpacity }};white-space:nowrap" style-hover="background:rgba(148,163,184,.1)">History</button>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isSnapshots }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ snapFilters }}" as="f" hint-placeholder-count="5">
+          <button onClick="{{ f.select }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ f.label }}</button>
+        </sc-for>
+      </div>
+      <sc-if value="{{ hasSnaps }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+          <div style="min-width:1000px">
+            <div style="display:grid;grid-template-columns:1.5fr 1.5fr 1fr 1.4fr 1.2fr 1.2fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+              <span>READ</span><span>CUSTOMER</span><span>STATE</span><span>WHAT CAME BACK</span><span>STARTED BY</span><span>WHEN</span>
+            </div>
+            <sc-for list="{{ snapRows }}" as="r" hint-placeholder-count="4">
+              <div onClick="{{ r.open }}" style="display:grid;grid-template-columns:1.5fr 1.5fr 1fr 1.4fr 1.2fr 1.2fr;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08);cursor:pointer;transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
+                <span style="font-family:Menlo,monospace;font-size:11.5px;color:#93c5fd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.id }}</span>
+                <span style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.tenant }}</span>
+                <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ r.tint }};border:1px solid {{ r.line }};font-size:11px;font-weight:600;color:{{ r.color }};white-space:nowrap">{{ r.status }}</span>
+                <span style="font-size:12px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.counts }}</span>
+                <span style="font-size:12px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.trigger }}</span>
+                <span style="font-size:12px;color:#94a3b8;white-space:nowrap">{{ r.when }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noSnaps }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:44px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+          <span data-icon="camera-off" style="width:40px;height:40px;border-radius:12px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:10px"></span>
+          <span style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Nothing read yet</span>
+          <span style="font-size:12.5px;color:#94a3b8;max-width:430px;text-wrap:pretty">No tenant in the book has been read. Nothing else on this screen has anything to show until one is — comparisons and baselines both point at reads.</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isDiffs }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ modeFilters }}" as="f" hint-placeholder-count="5">
+          <button onClick="{{ f.select }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ f.label }}</button>
+        </sc-for>
+        <div style="flex:1"></div>
+        <button onClick="{{ openCompare }}" style="display:flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:7px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:#3b82f6"><span data-icon="git-compare" style="width:12px;height:12px"></span>New comparison</button>
+      </div>
+      <sc-if value="{{ hasDiffs }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <sc-for list="{{ diffRows }}" as="d" hint-placeholder-count="3">
+            <div onClick="{{ d.open }}" style="border:1px solid rgba(148,163,184,.16);border-radius:11px;background:rgba(15,23,42,.6);padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0;cursor:pointer;transition:border-color .15s" style-hover="border-color:rgba(96,165,250,.4)">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ d.tint }};border:1px solid {{ d.line }};font-size:10.5px;font-weight:700;letter-spacing:.05em;color:{{ d.color }};white-space:nowrap">{{ d.modeLabel }}</span>
+                <span style="font-size:13px;font-weight:600;color:#f1f5f9;text-wrap:pretty;min-width:0">{{ d.title }}</span>
+                <div style="flex:1"></div>
+                <span style="font-size:12px;color:#64748b;white-space:nowrap">{{ d.when }}</span>
+              </div>
+              <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ d.sides }}</span>
+              <div style="display:flex;gap:7px;flex-wrap:wrap">
+                <sc-for list="{{ d.verdicts }}" as="v" hint-placeholder-count="4">
+                  <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:7px;background:{{ v.tint }};border:1px solid {{ v.line }};font-size:11px;font-weight:600;color:{{ v.color }};white-space:nowrap">{{ v.count }} {{ v.label }}</span>
+                </sc-for>
+              </div>
+              <sc-if value="{{ d.unattributed }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:11.5px;color:#fcd34d;text-wrap:pretty">{{ d.unattributedNote }}</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noDiffs }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:44px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+          <span data-icon="git-compare" style="width:40px;height:40px;border-radius:12px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:10px"></span>
+          <span style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{ noDiffsTitle }}</span>
+          <span style="font-size:12.5px;color:#94a3b8;max-width:440px;text-wrap:pretty">{{ noDiffsBody }}</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isBaselines }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ baseFilters }}" as="f" hint-placeholder-count="3">
+          <button onClick="{{ f.select }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ f.label }}</button>
+        </sc-for>
+        <div style="flex:1"></div>
+        <button onClick="{{ openDeclare }}" style="display:flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:7px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:#3b82f6"><span data-icon="bookmark-plus" style="width:12px;height:12px"></span>Declare a baseline</button>
+      </div>
+      <sc-if value="{{ hasBaselines }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <sc-for list="{{ baseRows }}" as="b" hint-placeholder-count="3">
+            <div style="border:1px solid {{ b.cardLine }};border-radius:11px;background:rgba(15,23,42,.6);padding:14px;display:flex;gap:12px;align-items:flex-start;min-width:0">
+              <span data-icon="{{ b.icon }}" style="width:30px;height:30px;flex:0 0 30px;border-radius:9px;background:{{ b.tint }};border:1px solid {{ b.line }};color:{{ b.color }};padding:7px"></span>
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+                <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                  <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ b.name }}</span>
+                  <span style="display:inline-flex;padding:2px 9px;border-radius:999px;background:{{ b.tint }};border:1px solid {{ b.line }};font-size:10.5px;font-weight:600;color:{{ b.color }};white-space:nowrap">{{ b.purpose }}</span>
+                </div>
+                <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ b.meta }}</span>
+                <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                  <span style="font-size:11.5px;color:{{ b.completenessColor }};text-wrap:pretty;min-width:0">{{ b.completeness }}</span>
+                  <span style="font-family:Menlo,monospace;font-size:10.5px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.snapshot }}</span>
+                </div>
+                <sc-if value="{{ b.retired }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ b.retiredNote }}</span>
+                </sc-if>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px;flex:0 0 auto">
+                <sc-for list="{{ b.buttons }}" as="x" hint-placeholder-count="2">
+                  <button onClick="{{ x.run }}" title="{{ x.title }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ x.line }};background:{{ x.bg }};color:{{ x.fg }};font-size:11.5px;font-weight:600;cursor:{{ x.cursor }};opacity:{{ x.opacity }};white-space:nowrap" style-hover="background:rgba(148,163,184,.12)">{{ x.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noBaselines }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:44px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+          <span data-icon="bookmark" style="width:40px;height:40px;border-radius:12px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:10px"></span>
+          <span style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">No known-good references declared</span>
+          <span style="font-size:12.5px;color:#94a3b8;max-width:440px;text-wrap:pretty">A baseline points at one sealed read and says "this is what right looks like". You need at least one sealed read before you can declare one.</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isRegistry }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">
+        <sc-for list="{{ regTiles }}" as="c" hint-placeholder-count="3">
+          <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:7px;min-width:0">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#64748b">{{ c.label }}</span>
+            <span style="font-size:26px;font-weight:800;letter-spacing:-.02em;color:{{ c.color }}">{{ c.value }}</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ c.note }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ regFilters }}" as="f" hint-placeholder-count="5">
+          <button onClick="{{ f.select }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ f.label }}</button>
+        </sc-for>
+      </div>
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+        <div style="min-width:960px">
+          <div style="display:grid;grid-template-columns:2.1fr 1.2fr 1.3fr 1.5fr 1.1fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+            <span>RESOURCE</span><span>WORKLOAD</span><span>READ VIA</span><span>AVAILABILITY</span><span>COLLECTABLE</span>
+          </div>
+          <sc-for list="{{ regRows }}" as="r" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:2.1fr 1.2fr 1.3fr 1.5fr 1.1fr;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08)">
+              <span style="display:flex;flex-direction:column;min-width:0">
+                <span style="font-size:12.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.label }}</span>
+                <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.key }}</span>
+              </span>
+              <span style="font-size:12px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.workload }}</span>
+              <span style="font-family:Menlo,monospace;font-size:11.5px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.transport }}</span>
+              <span style="font-size:11.5px;color:{{ r.availColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.availability }}</span>
+              <span style="display:inline-flex;justify-self:start;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:{{ r.tint }};border:1px solid {{ r.line }};font-size:11px;font-weight:600;color:{{ r.color }};white-space:nowrap"><span data-icon="{{ r.icon }}" style="width:11px;height:11px"></span>{{ r.collectable }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Six of these rows are what the platform can read from Microsoft, not anyone's configuration. The list is identical for every customer, and it is not yours — it moves when the platform's own model is rebuilt.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ runOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeRun }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(470px,94%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcCsSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <span data-icon="{{ runIcon }}" style="width:32px;height:32px;flex:0 0 32px;border-radius:10px;background:{{ runTint }};border:1px solid {{ runLine }};color:{{ runColor }};padding:8px;animation:{{ runAnim }}"></span>
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:{{ runColor }}">READING THE TENANT</span>
+            <span style="font-size:16.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ runTenant }}</span>
+            <span style="font-family:Menlo,monospace;font-size:11px;color:#64748b">{{ runId }}</span>
+          </div>
+          <button onClick="{{ closeRun }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+            <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">{{ runStateLabel }}</span>
+            <div style="flex:1"></div>
+            <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ runCounts }}</span>
+          </div>
+          <div style="height:5px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden">
+            <div style="height:100%;width:{{ runPct }};background:{{ runColor }};transition:width .5s linear"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">WHAT IT IS DOING</span>
+          <sc-for list="{{ runLogs }}" as="l" hint-placeholder-count="4">
+            <div style="display:flex;gap:9px;align-items:baseline;min-width:0">
+              <span data-icon="{{ l.icon }}" style="width:12px;height:12px;flex:0 0 12px;color:{{ l.color }};margin-top:3px"></span>
+              <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty;flex:1">{{ l.text }}</span>
+              <span style="font-family:Menlo,monospace;font-size:10.5px;color:#475569;white-space:nowrap">{{ l.at }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">{{ runNote }}</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ compareOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeCompare }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(470px,94%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcCsSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">NEW COMPARISON</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">What do you want to compare?</span>
+          </div>
+          <button onClick="{{ closeCompare }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <sc-for list="{{ modeCards }}" as="m" hint-placeholder-count="4">
+            <button onClick="{{ m.pick }}" style="display:flex;gap:11px;align-items:flex-start;padding:12px;border-radius:10px;border:1px solid {{ m.line }};background:{{ m.bg }};cursor:pointer;text-align:left;min-width:0" style-hover="background:rgba(148,163,184,.1)">
+              <span data-icon="{{ m.icon }}" style="width:26px;height:26px;flex:0 0 26px;border-radius:8px;background:{{ m.tint }};border:1px solid {{ m.line }};color:{{ m.color }};padding:6px"></span>
+              <span style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                <span style="font-size:12.5px;font-weight:600;color:#f1f5f9">{{ m.label }}</span>
+                <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ m.note }}</span>
+              </span>
+            </button>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">{{ baseFieldLabel }}</span>
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <sc-for list="{{ baseOptions }}" as="o" hint-placeholder-count="3">
+              <button onClick="{{ o.pick }}" style="height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ o.line }};background:{{ o.bg }};color:{{ o.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ o.label }}</button>
+            </sc-for>
+          </div>
+          <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ baseFieldHint }}</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">Compare against</span>
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <sc-for list="{{ headOptions }}" as="o" hint-placeholder-count="3">
+              <button onClick="{{ o.pick }}" style="height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ o.line }};background:{{ o.bg }};color:{{ o.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ o.label }}</button>
+            </sc-for>
+          </div>
+          <span style="font-size:11px;color:#64748b;text-wrap:pretty">Only sealed reads can be compared. A read still in flight is not a complete picture of anything.</span>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <button onClick="{{ runCompare }}" title="{{ compareTitle }}" style="flex:1;height:38px;border-radius:8px;border:1px solid {{ compareLine }};background:{{ compareBg }};color:{{ compareFg }};font-size:13px;font-weight:600;cursor:{{ compareCursor }};opacity:{{ compareOpacity }}">Compare</button>
+          <button onClick="{{ closeCompare }}" style="height:38px;padding:0 15px;border-radius:8px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:13px;cursor:pointer">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ diffOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDiff }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(560px,95%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcCsSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:{{ dvColor }}">{{ dvModeLabel }}</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ dvTitle }}</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ dvSides }}</span>
+          </div>
+          <button onClick="{{ closeDiff }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <sc-for list="{{ dvVerdicts }}" as="v" hint-placeholder-count="4">
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:8px;background:{{ v.tint }};border:1px solid {{ v.line }};font-size:11.5px;font-weight:600;color:{{ v.color }};white-space:nowrap">{{ v.count }} {{ v.label }}</span>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">WHAT CHANGED</span>
+          <sc-for list="{{ dvChanges }}" as="c" hint-placeholder-count="4">
+            <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;flex-direction:column;gap:7px;min-width:0">
+              <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ c.label }}</span>
+                <span style="display:inline-flex;padding:2px 8px;border-radius:999px;background:{{ c.kindTint }};border:1px solid {{ c.kindLine }};font-size:10px;font-weight:700;letter-spacing:.04em;color:{{ c.kindColor }};white-space:nowrap">{{ c.kind }}</span>
+              </div>
+              <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b;word-break:break-all">{{ c.path }}</span>
+              <div style="display:flex;gap:9px;align-items:baseline;flex-wrap:wrap">
+                <span style="font-size:12px;color:#fca5a5;text-decoration:line-through;text-wrap:pretty">{{ c.from }}</span>
+                <span data-icon="arrow-right" style="width:12px;height:12px;color:#475569;flex:0 0 12px"></span>
+                <span style="font-size:12px;color:#6ee7b7;text-wrap:pretty">{{ c.to }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:7px;background:{{ c.vTint }};border:1px solid {{ c.vLine }};font-size:11px;font-weight:600;color:{{ c.vColor }};white-space:nowrap"><span data-icon="{{ c.vIcon }}" style="width:11px;height:11px"></span>{{ c.verdict }}</span>
+                <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;flex:1;min-width:120px">{{ c.explain }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <button onClick="{{ reattribute }}" style="display:flex;align-items:center;justify-content:center;gap:8px;height:36px;border-radius:8px;border:1px solid rgba(148,163,184,.24);background:transparent;color:#cbd5e1;font-size:12.5px;font-weight:600;cursor:pointer" style-hover="background:rgba(148,163,184,.1)"><span data-icon="rotate-ccw" style="width:13px;height:13px"></span>{{ reattributeLabel }}</button>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Matching changes to approvals again is safe to repeat. It reads Change Control and the Risk Register and writes nothing back to either — and it never alters the comparison itself.</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;align-items:center;gap:9px;padding-top:2px">
+    <span data-icon="info" style="width:13px;height:13px;color:#475569;flex:0 0 13px"></span>
+    <span style="font-size:11px;color:#475569;text-wrap:pretty">{{ honestNote }}</span>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900},&quot;bookState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;populated&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;populated&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  state = {
+    tab: "coverage", snapFilter: "all", modeFilter: "all", baseFilter: "active", regFilter: "all",
+    run: null, runStep: 0, compareOpen: false, mode: "drift", base: null, head: null, diff: null,
+    extraDiffs: [], retired: {}, reattributed: false
+  };
+
+  tenants = [
+    { id: 41, name: "Northwind Logistics", domain: "northwindlogistics.com", collected: true, last: "today, 04:12", ageHours: 6.4, ok: 812, gap: 41, failed: 6 },
+    { id: 52, name: "Halcyon Health", domain: "halcyonhealth.org", collected: true, last: "yesterday, 04:08", ageHours: 30.2, ok: 604, gap: 122, failed: 19 },
+    { id: 38, name: "Kestrel Financial", domain: "kestrelfinancial.com", collected: true, last: "2 Sep, 04:05", ageHours: 219.6, ok: 977, gap: 18, failed: 2 },
+    { id: 19, name: "Mccawsoft2", domain: null, collected: false, last: null, ageHours: null, ok: 0, gap: 0, failed: 0 }
+  ];
+
+  snapshots = [
+    { id: "snap-8f21c904", tenant: "Northwind Logistics", status: "sealed", counts: "859 read · 41 needs a licence · 6 refused", trigger: "Scheduled", when: "today, 04:12" },
+    { id: "snap-7b10a442", tenant: "Halcyon Health", status: "sealed", counts: "745 read · 122 needs a licence · 19 refused", trigger: "Shane McCaw", when: "yesterday, 04:08" },
+    { id: "snap-6a02f118", tenant: "Kestrel Financial", status: "sealed", counts: "997 read · 18 needs a licence · 2 refused", trigger: "Scheduled", when: "2 Sep, 04:05" },
+    { id: "snap-4f2a91c8", tenant: "Halcyon Health", status: "failed", counts: "nothing read — tenant refused the connection", trigger: "Shane McCaw", when: "1 Sep, 16:40" },
+    { id: "snap-9c41e770", tenant: "Northwind Logistics", status: "abandoned", counts: "partial — run cancelled at 312 resources", trigger: "Scheduled", when: "31 Aug, 04:02" }
+  ];
+
+  diffs = [
+    { id: "diff-1041", mode: "drift", title: "Northwind Logistics moved in the last day", sides: "Yesterday's read against this morning's · same tenant", when: "today, 04:20", counts: { attributed_change: 14, accepted_risk: 2, contested: 1, unattributed: 27, ignored: 61 } },
+    { id: "diff-1038", mode: "baseline_assessment", title: "Halcyon Health against the hardened reference", sides: "Reference \"Hardened identity — Aug 2026\" against yesterday's read", when: "yesterday, 09:11", counts: { attributed_change: 5, accepted_risk: 4, contested: 0, unattributed: 51, ignored: 33 } },
+    { id: "diff-1024", mode: "tenant_compare", title: "Kestrel Financial against Northwind Logistics", sides: "Kestrel's 2 Sep read against Northwind's 2 Sep read", when: "3 Sep, 11:40", counts: { attributed_change: 0, accepted_risk: 0, contested: 0, unattributed: 188, ignored: 94 } }
+  ];
+
+  changes = [
+    { label: "Legacy authentication", path: "identity/authenticationPolicy.allowLegacyAuth", kind: "changed", from: "blocked", to: "allowed for IMAP", verdict: "accepted_risk", explain: "Covered by an accepted risk — RR-2026-041, signed 12 Aug." },
+    { label: "Conditional Access — require MFA", path: "identity/conditionalAccess/policies/ca-004.state", kind: "changed", from: "enabled", to: "reportOnly", verdict: "attributed_change", explain: "Matches change request CR-2026-118, approved 4 Sep." },
+    { label: "External sharing", path: "sharepoint/tenantSettings.sharingCapability", kind: "changed", from: "internal only", to: "anyone with the link", verdict: "unattributed", explain: "Nothing in Change Control or the register explains this one." },
+    { label: "Guest invite setting", path: "identity/authorizationPolicy.allowInvitesFrom", kind: "changed", from: "adminsOnly", to: "everyone", verdict: "contested", explain: "A change request covers this resource, but not this value — the two disagree." },
+    { label: "Audit log retention", path: "purview/auditConfig.retentionDays", kind: "added", from: "not set", to: "365", verdict: "attributed_change", explain: "Matches change request CR-2026-101, approved 22 Aug." }
+  ];
+
+  baselines = [
+    { id: "base-77", name: "Hardened identity — Aug 2026", purpose: "known_good", tenant: "Northwind Logistics", snapshot: "snap-6a02f118", declared: "by Shane McCaw · 14 Aug 2026", ok: 977, gap: 18, failed: 2, active: true },
+    { id: "base-64", name: "Promotion source — Dev tenant", purpose: "promotion_source", tenant: "Mccawsoft2", snapshot: "snap-3a11c700", declared: "by Rowan Ellis · 2 Jul 2026", ok: 402, gap: 61, failed: 0, active: true },
+    { id: "base-41", name: "Pre-migration state", purpose: "known_good", tenant: "Halcyon Health", snapshot: "snap-1d0022ff", declared: "by Shane McCaw · 3 Mar 2026", ok: 588, gap: 140, failed: 12, active: false, retiredReason: "Superseded after the tenant migration finished." }
+  ];
+
+  registry = [
+    { key: "identity.conditionalAccessPolicies", label: "Conditional Access policies", workload: "Entra ID", transport: "graph", availability: "available_now", collectable: true },
+    { key: "identity.authorizationPolicy", label: "Authorization policy", workload: "Entra ID", transport: "graph", availability: "available_now", collectable: true },
+    { key: "exchange.transportRules", label: "Mail flow rules", workload: "Exchange Online", transport: "powershell", availability: "available_now", collectable: true },
+    { key: "sharepoint.tenantSettings", label: "SharePoint tenant settings", workload: "SharePoint", transport: "sharepoint-admin", availability: "available_now", collectable: true },
+    { key: "purview.retentionPolicies", label: "Retention policies", workload: "Purview", transport: "graph", availability: "needs_license", collectable: false },
+    { key: "purview.dlpPolicies", label: "DLP policies", workload: "Purview", transport: "powershell", availability: "needs_additional_scope", collectable: false },
+    { key: "powerPlatform.environments", label: "Power Platform environments", workload: "Power Platform", transport: "power-platform", availability: "available_now", collectable: true },
+    { key: "devops.organizationPolicies", label: "Azure DevOps org policies", workload: "Azure DevOps", transport: "azure-devops", availability: "unavailable", collectable: false }
+  ];
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+  componentWillUnmount() { if (this.timer) clearInterval(this.timer); }
+
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  tone(kind) {
+    const M = {
+      green: ["#34d399", "rgba(52,211,153,.1)", "rgba(52,211,153,.26)"],
+      amber: ["#fbbf24", "rgba(251,191,36,.1)", "rgba(251,191,36,.26)"],
+      red: ["#f87171", "rgba(248,113,113,.1)", "rgba(248,113,113,.26)"],
+      blue: ["#60a5fa", "rgba(96,165,250,.1)", "rgba(96,165,250,.26)"],
+      violet: ["#a78bfa", "rgba(167,139,250,.1)", "rgba(167,139,250,.26)"],
+      slate: ["#94a3b8", "rgba(148,163,184,.08)", "rgba(148,163,184,.2)"]
+    };
+    return M[kind] || M.slate;
+  }
+
+  startCollection(tenant) {
+    if (this.timer) clearInterval(this.timer);
+    const id = "wf-run-" + Math.random().toString(16).slice(2, 8);
+    this.setState({ run: { id, tenant: tenant.name, total: 1063 }, runStep: 0 });
+    this.timer = setInterval(() => {
+      this.setState(s => {
+        if (!s.run) return {};
+        if (s.runStep >= 5) { clearInterval(this.timer); return {}; }
+        return { runStep: s.runStep + 1 };
+      });
+    }, 900);
+  }
+
+  renderVals() {
+    const s = this.state, tab = s.tab;
+    const emptyBook = this.props.bookState === "empty";
+
+    const tenants = emptyBook ? [] : this.tenants;
+    const snapshots = emptyBook ? [] : this.snapshots;
+    const diffList = emptyBook ? [] : this.diffs.concat(s.extraDiffs);
+    const baselines = emptyBook ? [] : this.baselines;
+
+    const SNAP_TONE = { sealed: "green", failed: "red", running: "blue", abandoned: "slate" };
+    const MODE = {
+      drift: ["violet", "How it moved", "clock", "One tenant now, against its own earlier state."],
+      baseline_assessment: ["blue", "Against a reference", "bookmark-check", "One tenant against a known-good reference you declared."],
+      tenant_compare: ["amber", "Tenant against tenant", "git-compare-arrows", "Two different customers, side by side."],
+      promotion: ["green", "Promotion check", "arrow-up-from-line", "A dev or test tenant against what it promotes into."]
+    };
+    const VERDICT = {
+      attributed_change: ["green", "explained", "circle-check-big"],
+      accepted_risk: ["violet", "accepted risk", "shield"],
+      contested: ["amber", "disputed", "triangle-alert"],
+      unattributed: ["red", "unexplained", "circle-help"],
+      ignored: ["slate", "noise", "eye-off"]
+    };
+    const AVAIL = {
+      available_now: ["#6ee7b7", "readable now"],
+      needs_additional_scope: ["#fcd34d", "needs more permission"],
+      needs_license: ["#c4b5fd", "needs a licence"],
+      unavailable: ["#fca5a5", "not readable"],
+      unknown: ["#94a3b8", "unknown"]
+    };
+
+    const collected = tenants.filter(t => t.collected).length;
+    const never = tenants.length - collected;
+    const stale = tenants.filter(t => t.collected && t.ageHours > 48).length;
+
+    const run = s.run;
+    const runSteps = [
+      { text: "Run accepted — waiting for a slot", icon: "clock", color: "#94a3b8", at: "0s" },
+      { text: "Connected to the tenant, reading Entra ID", icon: "shield", color: "#60a5fa", at: "3s" },
+      { text: "Exchange Online and SharePoint read", icon: "mail", color: "#60a5fa", at: "41s" },
+      { text: "Purview skipped — the tenant has no licence for it", icon: "circle-minus", color: "#a78bfa", at: "52s" },
+      { text: "1,041 resources read, 22 refused", icon: "circle-check-big", color: "#34d399", at: "1m 18s" },
+      { text: "Read sealed — it cannot change now", icon: "lock", color: "#34d399", at: "1m 19s" }
+    ];
+    const runDone = s.runStep >= 5;
+    const runTone = this.tone(runDone ? "green" : "blue");
+
+    const snapFiltered = s.snapFilter === "all" ? snapshots : snapshots.filter(x => x.status === s.snapFilter);
+    const diffFiltered = s.modeFilter === "all" ? diffList : diffList.filter(d => d.mode === s.modeFilter);
+    const baseFiltered = baselines.filter(b => {
+      const active = s.retired[b.id] ? false : b.active;
+      return s.baseFilter === "active" ? active : s.baseFilter === "retired" ? !active : true;
+    });
+    const regFiltered = s.regFilter === "all" ? this.registry
+      : s.regFilter === "collectable" ? this.registry.filter(r => r.collectable)
+      : this.registry.filter(r => !r.collectable);
+
+    const diff = s.diff ? diffList.find(d => d.id === s.diff) : null;
+    const dm = diff ? MODE[diff.mode] : MODE.drift;
+    const dTone = this.tone(dm[0]);
+
+    const sealedSnaps = snapshots.filter(x => x.status === "sealed");
+    const canCompare = !!s.base && !!s.head && s.base !== s.head;
+
+    return {
+      rootPad: this.props.embedded ? "0" : "20px",
+      rootBg: this.props.embedded ? "transparent" : "#020617",
+      stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+
+      tabs: [
+        { id: "coverage", label: "Coverage", count: String(tenants.length) },
+        { id: "snapshots", label: "Reads", count: String(snapshots.length) },
+        { id: "diffs", label: "Comparisons", count: String(diffList.length) },
+        { id: "baselines", label: "References", count: String(baselines.length) },
+        { id: "registry", label: "What we can read", count: "1,541" }
+      ].map(t => ({
+        label: t.label, count: t.count,
+        bg: tab === t.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: tab === t.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: tab === t.id ? "#bfdbfe" : "#94a3b8",
+        countColor: tab === t.id ? "#60a5fa" : "#475569",
+        select: () => this.setState({ tab: t.id })
+      })),
+      headNote: emptyBook ? "No customers in your book yet" : tenants.length + " customers in your book",
+
+      isCoverage: tab === "coverage",
+      covTiles: [
+        { label: "READ AT LEAST ONCE", value: String(collected), note: collected === tenants.length && tenants.length > 0 ? "Everyone has been read" : never + " never have", color: "#f8fafc", line: "rgba(148,163,184,.16)" },
+        { label: "NEVER READ", value: String(never), note: "Different from read-and-found-nothing, and shown as such", color: never > 0 ? "#fcd34d" : "#6ee7b7", line: never > 0 ? "rgba(251,191,36,.24)" : "rgba(148,163,184,.16)" },
+        { label: "OLDER THAN 2 DAYS", value: String(stale), note: "Anything older is a guess about the tenant, not a reading", color: stale > 0 ? "#fca5a5" : "#6ee7b7", line: stale > 0 ? "rgba(248,113,113,.24)" : "rgba(148,163,184,.16)" }
+      ],
+      covRows: tenants.map(t => {
+        const total = t.ok + t.gap + t.failed;
+        const pct = total ? Math.round((t.ok / total) * 100) : 0;
+        return {
+          name: t.name,
+          meta: t.domain || "no domain recorded",
+          last: t.collected ? t.last : "never read",
+          lastColor: t.collected ? "#cbd5e1" : "#fcd34d",
+          completeness: t.collected ? pct + "% read cleanly" : "—",
+          pct: (t.collected ? pct : 0) + "%",
+          pctColor: pct >= 90 ? "#34d399" : pct >= 70 ? "#fbbf24" : "#f87171",
+          age: t.collected ? (t.ageHours < 24 ? t.ageHours + "h old" : Math.round(t.ageHours / 24) + "d old") : "—",
+          ageColor: !t.collected ? "#64748b" : t.ageHours > 48 ? "#fca5a5" : "#94a3b8",
+          collect: () => this.startCollection(t),
+          open: t.collected ? () => this.setState({ tab: "snapshots" }) : () => {},
+          openTitle: t.collected ? "" : "Nothing to show — this tenant has never been read",
+          openLine: t.collected ? "rgba(148,163,184,.22)" : "rgba(148,163,184,.14)",
+          openFg: t.collected ? "#cbd5e1" : "#64748b",
+          openCursor: t.collected ? "pointer" : "not-allowed",
+          openOpacity: t.collected ? "1" : ".5"
+        };
+      }),
+
+      isSnapshots: tab === "snapshots",
+      snapFilters: ["all", "sealed", "failed", "abandoned"].map(f => ({
+        label: f === "all" ? "All reads" : f === "sealed" ? "Sealed" : f === "failed" ? "Failed" : "Abandoned",
+        bg: s.snapFilter === f ? "rgba(37,99,235,.18)" : "transparent",
+        border: s.snapFilter === f ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: s.snapFilter === f ? "#bfdbfe" : "#94a3b8",
+        select: () => this.setState({ snapFilter: f })
+      })),
+      hasSnaps: tab === "snapshots" && snapFiltered.length > 0,
+      noSnaps: tab === "snapshots" && snapFiltered.length === 0,
+      snapRows: snapFiltered.map(x => {
+        const t = this.tone(SNAP_TONE[x.status]);
+        return {
+          id: x.id, tenant: x.tenant, status: x.status, counts: x.counts, trigger: x.trigger, when: x.when,
+          color: t[0], tint: t[1], line: t[2],
+          open: () => {}
+        };
+      }),
+
+      isDiffs: tab === "diffs",
+      modeFilters: ["all", "drift", "baseline_assessment", "tenant_compare", "promotion"].map(f => ({
+        label: f === "all" ? "All comparisons" : MODE[f][1],
+        bg: s.modeFilter === f ? "rgba(37,99,235,.18)" : "transparent",
+        border: s.modeFilter === f ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: s.modeFilter === f ? "#bfdbfe" : "#94a3b8",
+        select: () => this.setState({ modeFilter: f })
+      })),
+      openCompare: () => this.setState({ compareOpen: true, base: null, head: null }),
+      hasDiffs: tab === "diffs" && diffFiltered.length > 0,
+      noDiffs: tab === "diffs" && diffFiltered.length === 0,
+      noDiffsTitle: s.modeFilter === "all" ? "Nothing compared yet" : "No comparisons of that kind",
+      noDiffsBody: snapshots.length === 0
+        ? "A comparison needs two sealed reads. There are none yet."
+        : "Every comparison is started by hand here. Nothing compares tenants on a schedule.",
+      diffRows: diffFiltered.map(d => {
+        const m = MODE[d.mode], t = this.tone(m[0]);
+        return {
+          modeLabel: m[1], title: d.title, sides: d.sides, when: d.when,
+          color: t[0], tint: t[1], line: t[2],
+          verdicts: Object.keys(d.counts).filter(k => d.counts[k] > 0).map(k => {
+            const v = VERDICT[k], vt = this.tone(v[0]);
+            return { count: d.counts[k], label: v[1], color: vt[0], tint: vt[1], line: vt[2] };
+          }),
+          unattributed: d.counts.unattributed > 0,
+          unattributedNote: d.counts.unattributed + " changes nobody approved and nobody accepted. Reading the total without that number makes this look settled when it is not.",
+          open: () => this.setState({ diff: d.id, reattributed: false })
+        };
+      }),
+
+      isBaselines: tab === "baselines",
+      baseFilters: [
+        { id: "active", label: "In use" },
+        { id: "retired", label: "Retired" },
+        { id: "all", label: "All" }
+      ].map(f => ({
+        label: f.label,
+        bg: s.baseFilter === f.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: s.baseFilter === f.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: s.baseFilter === f.id ? "#bfdbfe" : "#94a3b8",
+        select: () => this.setState({ baseFilter: f.id })
+      })),
+      openDeclare: () => this.setState({ tab: "snapshots" }),
+      hasBaselines: tab === "baselines" && baseFiltered.length > 0,
+      noBaselines: tab === "baselines" && baseFiltered.length === 0,
+      baseRows: baseFiltered.map(b => {
+        const active = s.retired[b.id] ? false : b.active;
+        const t = this.tone(active ? (b.purpose === "known_good" ? "green" : "blue") : "slate");
+        const total = b.ok + b.gap + b.failed;
+        const pct = total ? Math.round((b.ok / total) * 100) : 0;
+        return {
+          name: b.name,
+          purpose: b.purpose === "known_good" ? "known good" : "promotion source",
+          meta: b.tenant + " · declared " + b.declared,
+          completeness: pct + "% of the reference read cleanly" + (pct < 90 ? " — assessing against a partial reference will look like drift" : ""),
+          completenessColor: pct >= 90 ? "#6ee7b7" : "#fcd34d",
+          snapshot: b.snapshot,
+          icon: active ? "bookmark-check" : "bookmark-x",
+          color: t[0], tint: t[1], line: t[2],
+          cardLine: active ? "rgba(148,163,184,.16)" : "rgba(148,163,184,.1)",
+          retired: !active,
+          retiredNote: "Retired — " + (b.retiredReason || "no reason recorded") + " Past assessments against it still read.",
+          buttons: active
+            ? [
+              { label: "Assess", line: "rgba(96,165,250,.3)", bg: "rgba(37,99,235,.14)", fg: "#bfdbfe", cursor: "pointer", opacity: "1", title: "", run: () => this.setState({ compareOpen: true, mode: "baseline_assessment", base: b.name, head: null }) },
+              { label: "Retire", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "Retiring needs a reason and cannot be undone — declare a new one instead", run: () => this.setState({ retired: Object.assign({}, s.retired, { [b.id]: true }) }) }
+            ]
+            : [{ label: "Retired", line: "rgba(148,163,184,.16)", bg: "transparent", fg: "#64748b", cursor: "not-allowed", opacity: ".6", title: "A reference can be retired but never repointed or deleted", run: () => {} }]
+        };
+      }),
+
+      isRegistry: tab === "registry",
+      regTiles: [
+        { label: "RESOURCE TYPES", value: "1,541", note: "What the platform knows how to read from Microsoft", color: "#f8fafc" },
+        { label: "READABLE", value: "1,063", note: "Actually collectable today", color: "#6ee7b7" },
+        { label: "NOT READABLE", value: "478", note: "Blocked by licence, permission, or no API at all", color: "#fcd34d" }
+      ],
+      regFilters: [
+        { id: "all", label: "Everything" },
+        { id: "collectable", label: "Readable" },
+        { id: "blocked", label: "Not readable" }
+      ].map(f => ({
+        label: f.label,
+        bg: s.regFilter === f.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: s.regFilter === f.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: s.regFilter === f.id ? "#bfdbfe" : "#94a3b8",
+        select: () => this.setState({ regFilter: f.id })
+      })),
+      regRows: regFiltered.map(r => {
+        const t = this.tone(r.collectable ? "green" : "slate");
+        const a = AVAIL[r.availability];
+        return {
+          key: r.key, label: r.label, workload: r.workload, transport: r.transport,
+          availability: a[1], availColor: a[0],
+          collectable: r.collectable ? "yes" : "no",
+          icon: r.collectable ? "check" : "x",
+          color: t[0], tint: t[1], line: t[2]
+        };
+      }),
+
+      runOpen: !!run,
+      closeRun: () => { if (this.timer) clearInterval(this.timer); this.setState({ run: null, runStep: 0 }); },
+      runTenant: run ? run.tenant : "",
+      runId: run ? run.id : "",
+      runIcon: runDone ? "circle-check-big" : "radar",
+      runColor: runTone[0], runTint: runTone[1], runLine: runTone[2],
+      runAnim: runDone ? "none" : "smcCsPulse 1.3s ease-in-out infinite",
+      runStateLabel: runDone ? "Sealed" : s.runStep === 0 ? "Queued" : "Reading",
+      runCounts: runDone ? "1,041 read · 22 refused" : Math.round((s.runStep / 5) * 1041) + " of 1,063 resources",
+      runPct: Math.round((s.runStep / 5) * 100) + "%",
+      runLogs: runSteps.slice(0, Math.max(1, s.runStep + 1)).map(x => x),
+      runNote: runDone
+        ? "The read is sealed and cannot be edited — that is what makes it usable as evidence later."
+        : "This only ever reads the tenant. Nothing on this screen writes a setting back to Microsoft.",
+
+      compareOpen: s.compareOpen,
+      closeCompare: () => this.setState({ compareOpen: false }),
+      modeCards: Object.keys(MODE).map(k => {
+        const m = MODE[k], t = this.tone(m[0]);
+        const active = s.mode === k;
+        return {
+          label: m[1], note: m[3], icon: m[2],
+          color: t[0], tint: t[1],
+          line: active ? "rgba(96,165,250,.34)" : "rgba(148,163,184,.16)",
+          bg: active ? "rgba(37,99,235,.14)" : "rgba(2,6,23,.4)",
+          pick: () => this.setState({ mode: k, base: null })
+        };
+      }),
+      baseFieldLabel: s.mode === "baseline_assessment" || s.mode === "promotion" ? "Reference to measure against" : "Starting point",
+      baseFieldHint: s.mode === "baseline_assessment" || s.mode === "promotion"
+        ? "A retired reference cannot start a new assessment, only explain an old one."
+        : s.mode === "drift"
+          ? "Both sides must be the same tenant. The database refuses a drift comparison across two customers."
+          : "Both sides must be different tenants. A tenant cannot be compared against itself in this mode.",
+      baseOptions: (s.mode === "baseline_assessment" || s.mode === "promotion"
+        ? baselines.filter(b => !s.retired[b.id] && b.active).map(b => b.name)
+        : sealedSnaps.map(x => x.tenant + " · " + x.when)
+      ).map(label => ({
+        label,
+        bg: s.base === label ? "rgba(37,99,235,.18)" : "transparent",
+        line: s.base === label ? "rgba(96,165,250,.32)" : "rgba(148,163,184,.18)",
+        fg: s.base === label ? "#bfdbfe" : "#94a3b8",
+        pick: () => this.setState({ base: label })
+      })),
+      headOptions: sealedSnaps.map(x => x.tenant + " · " + x.when).map(label => ({
+        label,
+        bg: s.head === label ? "rgba(37,99,235,.18)" : "transparent",
+        line: s.head === label ? "rgba(96,165,250,.32)" : "rgba(148,163,184,.18)",
+        fg: s.head === label ? "#bfdbfe" : "#94a3b8",
+        pick: () => this.setState({ head: label })
+      })),
+      compareLine: canCompare ? "#2563eb" : "rgba(148,163,184,.2)",
+      compareBg: canCompare ? "#2563eb" : "transparent",
+      compareFg: canCompare ? "#fff" : "#64748b",
+      compareCursor: canCompare ? "pointer" : "not-allowed",
+      compareOpacity: canCompare ? "1" : ".6",
+      compareTitle: canCompare ? "" : "Pick both sides first",
+      runCompare: canCompare
+        ? () => {
+          const id = "diff-" + Math.floor(1050 + Math.random() * 40);
+          const m = MODE[s.mode];
+          this.setState({
+            compareOpen: false, tab: "diffs",
+            extraDiffs: s.extraDiffs.concat([{
+              id, mode: s.mode, title: m[1] + " — just run", sides: s.base + " against " + s.head,
+              when: "just now",
+              counts: { attributed_change: 3, accepted_risk: 1, contested: 0, unattributed: 9, ignored: 22 }
+            }])
+          });
+        }
+        : () => {},
+
+      diffOpen: !!diff,
+      closeDiff: () => this.setState({ diff: null }),
+      dvModeLabel: dm[1], dvColor: dTone[0],
+      dvTitle: diff ? diff.title : "",
+      dvSides: diff ? diff.sides + " · " + diff.when : "",
+      dvVerdicts: diff ? Object.keys(diff.counts).filter(k => diff.counts[k] > 0).map(k => {
+        const v = VERDICT[k], vt = this.tone(v[0]);
+        return { count: diff.counts[k], label: v[1], color: vt[0], tint: vt[1], line: vt[2] };
+      }) : [],
+      dvChanges: this.changes.map(c => {
+        const v = VERDICT[c.verdict], vt = this.tone(v[0]);
+        const kt = this.tone(c.kind === "added" ? "green" : c.kind === "removed" ? "red" : "blue");
+        return {
+          label: c.label, path: c.path, from: c.from, to: c.to, kind: c.kind,
+          kindColor: kt[0], kindTint: kt[1], kindLine: kt[2],
+          verdict: s.reattributed && c.verdict === "unattributed" ? "explained" : v[1],
+          vIcon: v[2], vColor: vt[0], vTint: vt[1], vLine: vt[2],
+          explain: s.reattributed && c.verdict === "unattributed"
+            ? "Matched to change request CR-2026-124, approved since this comparison was computed."
+            : c.explain
+        };
+      }),
+      reattribute: () => this.setState({ reattributed: true }),
+      reattributeLabel: s.reattributed ? "Matched again just now" : "Match against approvals again",
+
+      honestNote: "All sixteen endpoints behind this screen are live with nothing wired to them yet, so everything here is representative. Reading a tenant is always a read — nothing on this screen writes a setting back to Microsoft, and a promotion comparison tells you the difference without applying it."
+    };
+  }
+}
+
+</script>
+</body>
+</html>

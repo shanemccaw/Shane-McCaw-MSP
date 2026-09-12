@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+@keyframes smcCcSlide{from{transform:translateX(24px);opacity:.4}to{transform:translateX(0);opacity:1}}
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="6">
+      <button onClick="{{ t.select }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+    <div style="flex:1"></div>
+    <button onClick="{{ openCreate }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:7px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:#3b82f6"><span data-icon="plus" style="width:13px;height:13px"></span>Raise a change</button>
+  </div>
+
+  <sc-if value="{{ isRegister }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ statusFilters }}" as="f" hint-placeholder-count="5">
+          <button onClick="{{ f.select }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ f.label }}</button>
+        </sc-for>
+        <div style="flex:1"></div>
+        <span style="font-size:11.5px;color:#64748b;white-space:nowrap">{{ registerCount }}</span>
+      </div>
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+        <div style="min-width:1140px">
+          <div style="display:grid;grid-template-columns:1.1fr 2.2fr 1fr .9fr 1.2fr 1.4fr 1.2fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+            <span>CODE</span><span>CHANGE</span><span>CLASS</span><span>RISK</span><span>STATUS</span><span>APPROVALS</span><span>WINDOW</span>
+          </div>
+          <sc-for list="{{ crRows }}" as="r" hint-placeholder-count="5">
+            <div onClick="{{ r.open }}" style="display:grid;grid-template-columns:1.1fr 2.2fr 1fr .9fr 1.2fr 1.4fr 1.2fr;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(148,163,184,.08);cursor:pointer;background:{{ r.rowBg }};transition:background-color .15s" style-hover="background:rgba(148,163,184,.06)">
+              <span style="font-family:Menlo,monospace;font-size:12px;font-weight:600;color:#93c5fd;white-space:nowrap">{{ r.code }}</span>
+              <span style="display:flex;flex-direction:column;min-width:0">
+                <span style="font-size:13px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ r.title }}</span>
+                <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.meta }}</span>
+              </span>
+              <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ r.clsTint }};border:1px solid {{ r.clsLine }};font-size:11px;font-weight:600;color:{{ r.clsColor }};white-space:nowrap">{{ r.cls }}</span>
+              <span style="font-size:12px;font-weight:600;color:{{ r.riskColor }};white-space:nowrap">{{ r.risk }}</span>
+              <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ r.stTint }};border:1px solid {{ r.stLine }};font-size:11px;font-weight:600;color:{{ r.stColor }};white-space:nowrap">{{ r.status }}</span>
+              <span style="display:flex;align-items:center;gap:7px;min-width:0">
+                <span style="display:flex;gap:3px;flex:0 0 auto">
+                  <sc-for list="{{ r.pips }}" as="p" hint-placeholder-count="2">
+                    <span style="width:7px;height:7px;border-radius:999px;background:{{ p.color }}"></span>
+                  </sc-for>
+                </span>
+                <span style="font-size:11.5px;color:{{ r.apprColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.appr }}</span>
+              </span>
+              <span style="font-size:12px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.window }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isCatalog }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px">
+      <sc-for list="{{ catRows }}" as="c" hint-placeholder-count="4">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:11px;min-width:0">
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <span data-icon="package-check" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;background:{{ c.tint }};border:1px solid {{ c.line }};color:{{ c.color }};padding:7px"></span>
+            <span style="display:flex;flex-direction:column;min-width:0;flex:1">
+              <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ c.title }}</span>
+              <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.packKey }}</span>
+            </span>
+            <span style="display:inline-flex;padding:3px 9px;border-radius:999px;background:{{ c.tint }};border:1px solid {{ c.line }};font-size:11px;font-weight:600;color:{{ c.color }};white-space:nowrap">{{ c.status }}</span>
+          </div>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ c.body }}</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <span style="display:inline-flex;padding:3px 9px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8">{{ c.category }}</span>
+            <span style="display:inline-flex;padding:3px 9px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8">risk {{ c.risk }}</span>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-top:10px;border-top:1px solid rgba(148,163,184,.12)">
+            <sc-for list="{{ c.actions }}" as="a" hint-placeholder-count="2">
+              <button onClick="{{ a.run }}" title="{{ a.title }}" style="display:flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ a.line }};background:{{ a.bg }};color:{{ a.fg }};font-size:12px;font-weight:600;cursor:{{ a.cursor }};opacity:{{ a.opacity }};white-space:nowrap" style-hover="background:rgba(148,163,184,.12)"><span data-icon="{{ a.icon }}" style="width:13px;height:13px"></span>{{ a.label }}</button>
+            </sc-for>
+            <span style="font-size:11px;color:#64748b;flex:1;min-width:100px;text-wrap:pretty">{{ c.authority }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isCab }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid;grid-template-columns:{{ cabCols }};gap:14px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+        <sc-for list="{{ meetings }}" as="m" hint-placeholder-count="2">
+          <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ m.tint }};border:1px solid {{ m.line }};font-size:11px;font-weight:700;letter-spacing:.06em;color:{{ m.color }}">{{ m.type }}</span>
+              <span style="font-size:14px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ m.title }}</span>
+              <div style="flex:1"></div>
+              <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ m.when }}</span>
+              <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ m.sTint }};border:1px solid {{ m.sLine }};font-size:11px;font-weight:600;color:{{ m.sColor }};white-space:nowrap">{{ m.status }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ m.agenda }}" as="a" hint-placeholder-count="2">
+                <div style="display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.14);background:rgba(2,6,23,.4);min-width:0;flex-wrap:wrap">
+                  <span style="font-family:Menlo,monospace;font-size:11px;color:#64748b;flex:0 0 auto">{{ a.ordinal }}</span>
+                  <span style="display:flex;flex-direction:column;flex:1;min-width:150px">
+                    <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ a.title }}</span>
+                    <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ a.meta }}</span>
+                  </span>
+                  <sc-if value="{{ a.retro }}" hint-placeholder-val="{{ false }}">
+                    <span style="display:inline-flex;padding:3px 9px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.26);font-size:10.5px;font-weight:600;color:#fbbf24;white-space:nowrap">reviewed after the fact</span>
+                  </sc-if>
+                  <sc-for list="{{ a.buttons }}" as="b" hint-placeholder-count="3">
+                    <button onClick="{{ b.run }}" title="{{ b.title }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ b.line }};background:{{ b.bg }};color:{{ b.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(148,163,184,.12)">{{ b.label }}</button>
+                  </sc-for>
+                  <sc-if value="{{ a.decided }}" hint-placeholder-val="{{ false }}">
+                    <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ a.dTint }};border:1px solid {{ a.dLine }};font-size:11px;font-weight:700;letter-spacing:.06em;color:{{ a.dColor }};white-space:nowrap">{{ a.decision }}</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding-top:10px;border-top:1px solid rgba(148,163,184,.12)">
+              <button onClick="{{ m.close }}" title="{{ m.closeTitle }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ m.closeLine }};background:{{ m.closeBg }};color:{{ m.closeFg }};font-size:12px;font-weight:600;cursor:{{ m.closeCursor }};opacity:{{ m.closeOpacity }};white-space:nowrap"><span data-icon="gavel" style="width:13px;height:13px"></span>{{ m.closeLabel }}</button>
+              <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;flex:1;min-width:140px">{{ m.closeNote }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+        <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">THE BOARD</span>
+        <sc-for list="{{ cabMembers }}" as="p" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0">
+            <span style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.25);display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;color:#93c5fd">{{ p.initials }}</span>
+            <span style="display:flex;flex-direction:column;min-width:0;flex:1">
+              <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</span>
+              <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.meta }}</span>
+            </span>
+            <span style="font-size:11px;font-weight:700;letter-spacing:.06em;color:{{ p.color }};white-space:nowrap">{{ p.role }}</span>
+          </div>
+        </sc-for>
+        <span style="font-size:11px;color:#475569;text-wrap:pretty;padding-top:8px;border-top:1px solid rgba(148,163,184,.12)">Removing someone keeps their past votes on the record — the seat is closed, not erased.</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isWindows }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <sc-for list="{{ windowGroups }}" as="g" hint-placeholder-count="2">
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#64748b">{{ g.title }}</span>
+            <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">{{ g.note }}</span>
+          </div>
+          <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+            <div style="min-width:920px">
+              <div style="display:grid;grid-template-columns:2fr 1fr 1.4fr 1.4fr 1fr 110px;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+                <span>WINDOW</span><span>SCOPE</span><span>OPENS</span><span>CLOSES</span><span>REPEATS</span><span style="text-align:right">STATE</span>
+              </div>
+              <sc-for list="{{ g.rows }}" as="w" hint-placeholder-count="3">
+                <div style="display:grid;grid-template-columns:2fr 1fr 1.4fr 1.4fr 1fr 110px;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08);opacity:{{ w.opacity }}">
+                  <span style="display:flex;flex-direction:column;min-width:0">
+                    <span style="font-size:13px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ w.name }}</span>
+                    <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ w.reason }}</span>
+                  </span>
+                  <span style="font-size:12px;color:#cbd5e1;white-space:nowrap">{{ w.scope }}</span>
+                  <span style="font-size:12px;color:#94a3b8;white-space:nowrap">{{ w.starts }}</span>
+                  <span style="font-size:12px;color:#94a3b8;white-space:nowrap">{{ w.ends }}</span>
+                  <span style="font-size:12px;color:#94a3b8;white-space:nowrap">{{ w.recurrence }}</span>
+                  <button onClick="{{ w.retire }}" style="justify-self:end;height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ w.line }};background:{{ w.tint }};color:{{ w.color }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(148,163,184,.12)">{{ w.cta }}</button>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isDeps }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <sc-for list="{{ depRows }}" as="d" hint-placeholder-count="3">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;gap:13px;align-items:flex-start;min-width:0">
+          <span data-icon="{{ d.icon }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;background:{{ d.tint }};border:1px solid {{ d.line }};color:{{ d.color }};padding:7px"></span>
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:0;flex:1">
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+              <span style="font-family:Menlo,monospace;font-size:12px;font-weight:600;color:#93c5fd">{{ d.blocked }}</span>
+              <span style="font-size:12.5px;color:#e2e8f0;text-wrap:pretty">{{ d.blockedTitle }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+              <span style="font-size:11.5px;color:#64748b">waits on</span>
+              <span style="font-family:Menlo,monospace;font-size:12px;font-weight:600;color:#93c5fd">{{ d.blocker }}</span>
+              <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ d.blockerTitle }}</span>
+              <span style="display:inline-flex;padding:3px 9px;border-radius:999px;background:{{ d.tint }};border:1px solid {{ d.line }};font-size:11px;font-weight:600;color:{{ d.color }};white-space:nowrap">{{ d.state }}</span>
+            </div>
+            <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">{{ d.note }}</span>
+          </div>
+          <button title="{{ d.removeTitle }}" style="flex:0 0 auto;height:30px;padding:0 11px;border-radius:7px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(148,163,184,.12)">{{ d.cta }}</button>
+        </div>
+      </sc-for>
+      <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">A rejected or rolled-back blocker does not release the link on its own — the change never landed, so clearing it is a deliberate call.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isExec }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <sc-for list="{{ execRows }}" as="e" hint-placeholder-count="3">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:12px;min-width:0">
+          <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
+            <span data-icon="{{ e.icon }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;background:{{ e.tint }};border:1px solid {{ e.line }};color:{{ e.color }};padding:7px"></span>
+            <span style="display:flex;flex-direction:column;min-width:0;flex:1;min-width:180px">
+              <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ e.title }}</span>
+              <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ e.meta }}</span>
+            </span>
+            <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ e.tint }};border:1px solid {{ e.line }};font-size:11px;font-weight:600;color:{{ e.color }};white-space:nowrap">{{ e.outcome }}</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:{{ e.cTint }};border:1px solid {{ e.cLine }};font-size:11px;font-weight:600;color:{{ e.cColor }};white-space:nowrap"><span data-icon="{{ e.cIcon }}" style="width:11px;height:11px"></span>{{ e.confirmed }}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+            <sc-for list="{{ e.facts }}" as="f" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">{{ f.label }}</span>
+                <span style="font-size:12.5px;color:{{ f.color }};font-family:{{ f.font }};text-wrap:pretty">{{ f.value }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-top:11px;border-top:1px solid rgba(148,163,184,.12)">
+            <sc-for list="{{ e.actions }}" as="a" hint-placeholder-count="2">
+              <button onClick="{{ a.run }}" title="{{ a.title }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ a.line }};background:{{ a.bg }};color:{{ a.fg }};font-size:12px;font-weight:600;cursor:{{ a.cursor }};opacity:{{ a.opacity }};white-space:nowrap" style-hover="background:rgba(148,163,184,.12)"><span data-icon="{{ a.icon }}" style="width:13px;height:13px"></span>{{ a.label }}</button>
+            </sc-for>
+            <span style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:#64748b;white-space:nowrap"><span data-icon="image" style="width:13px;height:13px"></span>{{ e.evidence }}</span>
+            <div style="flex:1"></div>
+            <span style="font-size:11.5px;color:{{ e.pirColor }};white-space:nowrap">{{ e.pir }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isPir }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <sc-for list="{{ pirRows }}" as="p" hint-placeholder-count="2">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+          <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
+            <span style="font-family:Menlo,monospace;font-size:12px;font-weight:600;color:#93c5fd">{{ p.code }}</span>
+            <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;flex:1;min-width:160px;text-wrap:pretty">{{ p.title }}</span>
+            <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ p.tint }};border:1px solid {{ p.line }};font-size:11px;font-weight:600;color:{{ p.color }};white-space:nowrap">{{ p.closeCode }}</span>
+            <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ p.reviewed }}</span>
+          </div>
+          <span style="font-size:12.5px;color:#cbd5e1;text-wrap:pretty">{{ p.summary }}</span>
+          <sc-if value="{{ p.hasIssues }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:10px;padding:11px 13px;border-radius:10px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.07)">
+              <span data-icon="triangle-alert" style="width:14px;height:14px;color:#fbbf24;flex:0 0 14px;margin-top:2px"></span>
+              <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ p.issues }}</span>
+            </div>
+          </sc-if>
+          <div style="border:1px solid {{ p.dLine }};border-radius:10px;background:{{ p.dTint }};padding:13px;display:flex;flex-direction:column;gap:7px">
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+              <span data-icon="radar" style="width:14px;height:14px;color:{{ p.dColor }}"></span>
+              <span style="font-size:12px;font-weight:700;letter-spacing:.06em;color:{{ p.dColor }}">{{ p.driftState }}</span>
+              <div style="flex:1"></div>
+              <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ p.driftCounts }}</span>
+            </div>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ p.driftNote }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ crOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeCr }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(520px,94%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcCcSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+            <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b">{{ selCode }} · {{ selMeta }}</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ selTitle }}</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ selDesc }}</span>
+          </div>
+          <button onClick="{{ closeCr }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px">
+          <sc-for list="{{ selFacts }}" as="f" hint-placeholder-count="6">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">{{ f.label }}</span>
+              <span style="font-size:12.5px;color:{{ f.color }};font-family:{{ f.font }};text-wrap:pretty">{{ f.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">APPROVALS</span>
+          <sc-for list="{{ selApprovals }}" as="a" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.14);background:rgba(2,6,23,.4);min-width:0;flex-wrap:wrap">
+              <span data-icon="{{ a.icon }}" style="width:26px;height:26px;flex:0 0 26px;border-radius:8px;background:{{ a.tint }};border:1px solid {{ a.line }};color:{{ a.color }};padding:6px"></span>
+              <span style="display:flex;flex-direction:column;flex:1;min-width:120px">
+                <span style="font-size:12.5px;font-weight:600;color:#f1f5f9">{{ a.stage }}</span>
+                <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.meta }}</span>
+              </span>
+              <sc-for list="{{ a.buttons }}" as="b" hint-placeholder-count="2">
+                <button onClick="{{ b.run }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ b.line }};background:{{ b.bg }};color:{{ b.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(148,163,184,.12)">{{ b.label }}</button>
+              </sc-for>
+              <sc-if value="{{ a.settled }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:11px;font-weight:700;letter-spacing:.06em;color:{{ a.color }};white-space:nowrap">{{ a.decision }}</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">MOVE THIS CHANGE</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <sc-for list="{{ selTransitions }}" as="t" hint-placeholder-count="3">
+              <button onClick="{{ t.run }}" title="{{ t.title }}" style="display:flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:8px;border:1px solid {{ t.line }};background:{{ t.bg }};color:{{ t.fg }};font-size:12.5px;font-weight:600;cursor:{{ t.cursor }};opacity:{{ t.opacity }};white-space:nowrap"><span data-icon="{{ t.icon }}" style="width:13px;height:13px"></span>{{ t.label }}</button>
+            </sc-for>
+          </div>
+          <span style="font-size:11.5px;color:{{ gateColor }};text-wrap:pretty">{{ gateNote }}</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">TIMELINE</span>
+          <sc-for list="{{ selTimeline }}" as="e" hint-placeholder-count="4">
+            <div style="display:flex;gap:10px;min-width:0">
+              <div style="display:flex;flex-direction:column;align-items:center;flex:0 0 auto">
+                <span data-icon="{{ e.icon }}" style="width:24px;height:24px;border-radius:7px;background:{{ e.tint }};border:1px solid {{ e.line }};color:{{ e.color }};padding:5px"></span>
+                <span style="flex:1;width:1px;background:rgba(148,163,184,.18);margin:4px 0;min-height:8px"></span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px;padding-bottom:9px;min-width:0">
+                <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ e.title }}</span>
+                <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ e.body }}</span>
+                <span style="font-size:11px;color:#475569">{{ e.meta }}</span>
+              </div>
+            </div>
+          </sc-for>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input value="{{ commentDraft }}" onChange="{{ setComment }}" placeholder="Add a comment" style="flex:1;min-width:0;height:32px;padding:0 11px;border-radius:8px;border:1px solid rgba(148,163,184,.18);background:rgba(2,6,23,.5);color:#e2e8f0;font-size:12.5px;outline:none">
+            <button onClick="{{ postComment }}" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(148,163,184,.1)">Post</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ createOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeCreate }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(460px,94%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcCcSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">RAISE A CHANGE</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">New change request</span>
+          </div>
+          <button onClick="{{ closeCreate }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">Title</span>
+          <input value="{{ newTitle }}" onChange="{{ setNewTitle }}" placeholder="What is changing" style="height:36px;padding:0 11px;border-radius:8px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;outline:none">
+        </div>
+
+        <sc-for list="{{ newChoices }}" as="c" hint-placeholder-count="3">
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <span style="font-size:12px;font-weight:600;color:#cbd5e1">{{ c.label }}</span>
+            <div style="display:flex;gap:7px;flex-wrap:wrap">
+              <sc-for list="{{ c.options }}" as="o" hint-placeholder-count="3">
+                <button onClick="{{ o.pick }}" style="height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ o.line }};background:{{ o.bg }};color:{{ o.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ o.label }}</button>
+              </sc-for>
+            </div>
+            <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ c.hint }}</span>
+          </div>
+        </sc-for>
+
+        <sc-if value="{{ freezeHit }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:9px;padding:13px;border-radius:11px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.09)">
+            <div style="display:flex;gap:10px">
+              <span data-icon="snowflake" style="width:15px;height:15px;color:#f87171;flex:0 0 15px;margin-top:2px"></span>
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                <span style="font-size:12.5px;font-weight:600;color:#fca5a5;text-wrap:pretty">{{ freezeTitle }}</span>
+                <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ freezeBody }}</span>
+              </div>
+            </div>
+            <input value="{{ freezeJust }}" onChange="{{ setFreezeJust }}" placeholder="Why this cannot wait" style="height:34px;padding:0 11px;border-radius:8px;border:1px solid rgba(248,113,113,.3);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:12.5px;outline:none">
+          </div>
+        </sc-if>
+
+        <div style="display:flex;gap:10px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <button onClick="{{ submitCreate }}" title="{{ submitTitle }}" style="flex:1;height:38px;border-radius:8px;border:1px solid {{ submitLine }};background:{{ submitBg }};color:{{ submitFg }};font-size:13px;font-weight:600;cursor:{{ submitCursor }};opacity:{{ submitOpacity }}">{{ submitLabel }}</button>
+          <button onClick="{{ closeCreate }}" style="height:38px;padding:0 15px;border-radius:8px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:13px;cursor:pointer">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;align-items:center;gap:9px;padding-top:2px">
+    <span data-icon="info" style="width:13px;height:13px;color:#475569;flex:0 0 13px"></span>
+    <span style="font-size:11px;color:#475569;text-wrap:pretty">{{ honestNote }}</span>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:880},&quot;initialTab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;register&quot;,&quot;catalog&quot;,&quot;cab&quot;,&quot;windows&quot;,&quot;deps&quot;,&quot;exec&quot;,&quot;pir&quot;],&quot;default&quot;:&quot;register&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  state = {
+    tab: null, filter: "all", crSel: null, createOpen: false,
+    newTitle: "", newClass: "normal", newRisk: "medium", newCategory: "ConditionalAccess",
+    freezeJust: "", comment: "", decided: {}, retired: {}, moved: {}
+  };
+
+  crs = [
+    {
+      code: "CR-2026-118", tenant: "Northwind Logistics", title: "Enforce MFA on privileged roles",
+      desc: "Apply the Conditional Access baseline to the four privileged directory roles that still allow SMS as a second factor.",
+      cls: "normal", risk: "high", category: "ConditionalAccess", target: "pack:ca-privileged-mfa",
+      status: "pending_approval", window: "12 Sep 22:00–23:30", impacted: 42, psa: "PSA-4471",
+      approvals: [
+        { stage: "Customer sign-off", role: "customer", name: "Dana Whitfield", decision: "approved", when: "6 Sep 09:12" },
+        { stage: "MSP technical review", role: "msp", name: "Shane McCaw", decision: "pending", when: null }
+      ],
+      events: [
+        { type: "raised", title: "Raised", body: "From remediation finding identity.mfa_admin_gap", meta: "Shane McCaw · 6 Sep 08:40" },
+        { type: "approved", title: "Customer approved", body: "Dana Whitfield signed off on behalf of Northwind", meta: "customer · 6 Sep 09:12" }
+      ]
+    },
+    {
+      code: "CR-2026-116", tenant: "Northwind Logistics", title: "Block legacy authentication protocols",
+      desc: "Disable basic authentication for IMAP, POP and SMTP across the tenant.",
+      cls: "normal", risk: "critical", category: "Identity", target: "pack:legacy-auth-block",
+      status: "completed", window: "4 Sep 21:00–22:00", impacted: 180, psa: "PSA-4402",
+      approvals: [
+        { stage: "Customer sign-off", role: "customer", name: "Dana Whitfield", decision: "approved", when: "2 Sep 14:03" },
+        { stage: "MSP technical review", role: "msp", name: "Shane McCaw", decision: "approved", when: "2 Sep 16:20" }
+      ],
+      events: [
+        { type: "raised", title: "Raised", body: "From remediation finding identity.legacy_auth", meta: "Shane McCaw · 2 Sep 11:00" },
+        { type: "approved", title: "Both stages approved", body: "Customer and MSP review both cleared", meta: "6 Sep 16:20" },
+        { type: "scheduled", title: "Scheduled", body: "Booked into the Thursday evening maintenance window", meta: "3 Sep 09:00" },
+        { type: "completed", title: "Completed", body: "Logged 40 minutes against the retainer", meta: "4 Sep 21:48" }
+      ]
+    },
+    {
+      code: "CR-2026-131", tenant: "Halcyon Health", title: "Restrict anonymous sharing links",
+      desc: "Set tenant sharing capability to authenticated external users only and default new links to internal.",
+      cls: "normal", risk: "medium", category: "SharePoint", target: "pack:spo-sharing-tighten",
+      status: "pending_approval", window: "not booked", impacted: 96, psa: "PSA-4488",
+      approvals: [
+        { stage: "Customer sign-off", role: "customer", name: "awaiting Priya Raman", decision: "pending", when: null }
+      ],
+      events: [
+        { type: "raised", title: "Raised", body: "From remediation finding collab.guest_sharing", meta: "Shane McCaw · 5 Sep 10:22" }
+      ]
+    },
+    {
+      code: "CR-2026-127", tenant: "Kestrel Financial", title: "Emergency block on compromised app registration",
+      desc: "Revoke consent and disable the third-party app registration flagged by Defender overnight.",
+      cls: "emergency", risk: "critical", category: "Defender", target: "sop:compromised-app-revoke",
+      status: "completed", window: "3 Sep 02:14 (out of hours)", impacted: 310, psa: "PSA-4479",
+      approvals: [
+        { stage: "MSP emergency authority", role: "msp", name: "Shane McCaw", decision: "approved", when: "3 Sep 02:11" }
+      ],
+      events: [
+        { type: "raised", title: "Raised under emergency authority", body: "Defender incident 88214, acted on before board review", meta: "Shane McCaw · 3 Sep 02:08" },
+        { type: "completed", title: "Completed", body: "App registration disabled, consent grants revoked", meta: "3 Sep 02:31" },
+        { type: "pir_recorded", title: "Reviewed after the fact", body: "ECAB reviewed and endorsed the action", meta: "4 Sep 09:00" }
+      ]
+    },
+    {
+      code: "CR-2026-124", tenant: "Northwind Logistics", title: "Enable the unified audit log",
+      desc: "Turn on unified audit logging so search and retention reporting work.",
+      cls: "standard", risk: "low", category: "Purview", target: "pack:audit-log-enable",
+      status: "scheduled", window: "10 Sep 20:00–20:30", impacted: 0, psa: "PSA-4466",
+      approvals: [
+        { stage: "Inherited from catalog", role: "catalog_inherited", name: "Shane McCaw", decision: "approved", when: "approved once, 18 Aug" }
+      ],
+      events: [
+        { type: "raised", title: "Raised from the catalog", body: "Standard change — inherits the catalog item's approval", meta: "Shane McCaw · 5 Sep 13:40" },
+        { type: "scheduled", title: "Scheduled", body: "Booked into the Tuesday evening window", meta: "5 Sep 13:41" }
+      ]
+    },
+    {
+      code: "CR-2026-109", tenant: "Halcyon Health", title: "Apply device compliance baseline",
+      desc: "Push the Intune compliance policy set to all enrolled Windows devices.",
+      cls: "normal", risk: "medium", category: "Intune", target: "pack:intune-compliance-base",
+      status: "rejected", window: "withdrawn", impacted: 64, psa: "PSA-4390",
+      approvals: [
+        { stage: "Customer sign-off", role: "customer", name: "Priya Raman", decision: "rejected", when: "28 Aug 15:10" }
+      ],
+      events: [
+        { type: "raised", title: "Raised", body: "From remediation step s19", meta: "Shane McCaw · 26 Aug 09:15" },
+        { type: "rejected", title: "Customer rejected", body: "Deferred to the Q4 laptop refresh — recorded as an accepted risk", meta: "customer · 28 Aug 15:10" }
+      ]
+    }
+  ];
+
+  catalog = [
+    { packKey: "pack:ca-privileged-mfa", title: "Privileged role MFA enforcement", status: "approved", category: "ConditionalAccess", risk: "high", body: "Approved once by an MSP admin. Any change raised from it is a standard change and skips the board.", authority: "Approved by Shane McCaw, 14 Aug" },
+    { packKey: "pack:audit-log-enable", title: "Unified audit log enablement", status: "approved", category: "Purview", risk: "low", body: "Low-risk, reversible, and run often enough that per-instance board review buys nothing.", authority: "Approved by Shane McCaw, 18 Aug" },
+    { packKey: "pack:spo-sharing-tighten", title: "SharePoint sharing tightening", status: "draft", category: "SharePoint", risk: "medium", body: "Authored but not yet approved, so changes raised from it still need full approval.", authority: "Drafted by Shane McCaw, 2 Sep" },
+    { packKey: "pack:exo-transport-rewrite", title: "Exchange transport rule rewrite", status: "revoked", category: "Exchange", risk: "high", body: "Revoked after a rule change caused mail loops at one tenant. Raise these individually until it is re-approved.", authority: "Revoked by Shane McCaw, 21 Aug — mail loop incident" }
+  ];
+
+  meetings = [
+    {
+      type: "cab", title: "Weekly change advisory board", when: "Thu 11 Sep, 09:00", status: "in_progress",
+      agenda: [
+        { ordinal: "1.", title: "CR-2026-118 · Enforce MFA on privileged roles", meta: "Presented by Shane McCaw · high risk · Northwind Logistics", retro: false, decision: null },
+        { ordinal: "2.", title: "CR-2026-131 · Restrict anonymous sharing links", meta: "Presented by Shane McCaw · medium risk · Halcyon Health", retro: false, decision: null }
+      ]
+    },
+    {
+      type: "ecab", title: "Emergency board review", when: "Fri 4 Sep, 09:00", status: "completed",
+      agenda: [
+        { ordinal: "1.", title: "CR-2026-127 · Emergency block on compromised app registration", meta: "Presented by Shane McCaw · critical risk · Kestrel Financial", retro: true, decision: "approve" }
+      ]
+    }
+  ];
+
+  cabMembers = [
+    { name: "Shane McCaw", meta: "Shane McCaw MSP · board-wide", role: "CHAIR", side: "msp" },
+    { name: "Rowan Ellis", meta: "Shane McCaw MSP · board-wide", role: "VOTING", side: "msp" },
+    { name: "Dana Whitfield", meta: "Northwind Logistics", role: "VOTING", side: "customer" },
+    { name: "Priya Raman", meta: "Halcyon Health", role: "ADVISORY", side: "customer" },
+    { name: "Tess Okafor", meta: "Shane McCaw MSP · minutes", role: "SECRETARY", side: "msp" }
+  ];
+
+  freezes = [
+    { name: "Financial year end", reason: "No non-emergency change during close", scope: "global", starts: "25 Sep 17:00", ends: "3 Oct 08:00", recurrence: "annually", active: true },
+    { name: "Halcyon Health trial week", reason: "Court filing deadlines", scope: "tenant", starts: "15 Sep 00:00", ends: "20 Sep 00:00", recurrence: "none", active: true },
+    { name: "August audit freeze", reason: "External audit fieldwork", scope: "global", starts: "5 Aug 00:00", ends: "16 Aug 00:00", recurrence: "none", active: false }
+  ];
+
+  maintenance = [
+    { name: "Tuesday evening window", reason: "Standard and low-risk changes", scope: "global", starts: "Tue 20:00", ends: "Tue 23:00", recurrence: "weekly", active: true },
+    { name: "Thursday evening window", reason: "Normal changes with customer sign-off", scope: "global", starts: "Thu 21:00", ends: "Fri 00:00", recurrence: "weekly", active: true },
+    { name: "Kestrel Financial monthly patch", reason: "Clinical systems out-of-hours only", scope: "tenant", starts: "First Sun 01:00", ends: "First Sun 05:00", recurrence: "monthly", active: true }
+  ];
+
+  executions = [
+    {
+      code: "CR-2026-116", title: "Block legacy authentication protocols", kind: "runbook_run",
+      outcome: "succeeded", confirmed: true, tenant: "Northwind Logistics",
+      planned: "12 nodes planned", actual: "12 nodes ran, all matched", planMatched: true,
+      executedAt: "4 Sep 21:48", attested: null, evidence: "2 screenshots", pir: "reviewed · successful", rollbackable: true
+    },
+    {
+      code: "CR-2026-127", title: "Emergency block on compromised app registration", kind: "write_action",
+      outcome: "succeeded", confirmed: true, tenant: "Kestrel Financial",
+      planned: "3 writes planned", actual: "3 writes applied", planMatched: true,
+      executedAt: "3 Sep 02:31", attested: null, evidence: "4 screenshots", pir: "reviewed · successful with issues", rollbackable: true
+    },
+    {
+      code: "CR-2026-124", title: "Enable the unified audit log", kind: "human_action",
+      outcome: "pending", confirmed: false, tenant: "Northwind Logistics",
+      planned: "manual step in the admin centre", actual: "awaiting attestation", planMatched: null,
+      executedAt: "not yet", attested: null, evidence: "none captured", pir: "no review yet", rollbackable: false
+    }
+  ];
+
+  pirs = [
+    {
+      code: "CR-2026-116", title: "Block legacy authentication protocols", closeCode: "successful",
+      reviewed: "Shane McCaw · 5 Sep 08:10",
+      summary: "Basic authentication is off for IMAP, POP and SMTP. No mail flow tickets were raised in the 24 hours after the change.",
+      issues: null,
+      driftApplicable: false,
+      driftState: "DRIFT RE-SCAN NOT APPLICABLE",
+      driftCounts: "identity category",
+      driftNote: "Only Conditional Access changes have a drift re-scan path today. Recording this as not applicable is more honest than reporting a clean result the platform cannot actually observe."
+    },
+    {
+      code: "CR-2026-127", title: "Emergency block on compromised app registration", closeCode: "successful_with_issues",
+      reviewed: "Shane McCaw · 4 Sep 09:40",
+      summary: "The app registration is disabled and consent grants are revoked. Acting under emergency authority meant the board reviewed it after the fact.",
+      issues: "Two service accounts depended on the revoked app and needed manual reconnection the next morning.",
+      driftApplicable: false,
+      driftState: "DRIFT RE-SCAN NOT APPLICABLE",
+      driftCounts: "defender category",
+      driftNote: "Defender changes have no re-scan path. The change was confirmed by the incident timeline and captured screenshots instead."
+    }
+  ];
+
+  deps = [
+    { blocked: "CR-2026-131", blockedTitle: "Restrict anonymous sharing links", blocker: "CR-2026-118", blockerTitle: "Enforce MFA on privileged roles", blockerStatus: "pending_approval", note: "Sharing restrictions assume privileged accounts are already protected." },
+    { blocked: "CR-2026-124", blockedTitle: "Enable the unified audit log", blocker: "CR-2026-116", blockerTitle: "Block legacy authentication protocols", blockerStatus: "completed", note: "Audit reporting is only meaningful once basic auth sign-ins have stopped." },
+    { blocked: "CR-2026-109", blockedTitle: "Apply device compliance baseline", blocker: "CR-2026-127", blockerTitle: "Emergency block on compromised app registration", blockerStatus: "completed", note: "Raised during the incident, kept for the record." }
+  ];
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate(prevProps) {
+    if (prevProps && prevProps.initialTab !== this.props.initialTab && this.state.tab !== null) {
+      this.setState({ tab: null, crSel: null });
+    }
+    this.icons();
+  }
+
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  tone(kind) {
+    const M = {
+      green: ["#34d399", "rgba(52,211,153,.1)", "rgba(52,211,153,.26)"],
+      amber: ["#fbbf24", "rgba(251,191,36,.1)", "rgba(251,191,36,.26)"],
+      red: ["#f87171", "rgba(248,113,113,.1)", "rgba(248,113,113,.26)"],
+      blue: ["#60a5fa", "rgba(96,165,250,.1)", "rgba(96,165,250,.26)"],
+      violet: ["#a78bfa", "rgba(167,139,250,.1)", "rgba(167,139,250,.26)"],
+      slate: ["#94a3b8", "rgba(148,163,184,.08)", "rgba(148,163,184,.2)"]
+    };
+    return M[kind] || M.slate;
+  }
+
+  STATUS_LABEL = {
+    pending_approval: "pending approval", scheduled: "scheduled", in_progress: "in progress",
+    completed: "completed", rolled_back: "rolled back", rejected: "rejected"
+  };
+
+  crStatus(cr) { return this.state.moved[cr.code] || cr.status; }
+
+  moveCr(code, status) {
+    this.setState(s => ({ moved: Object.assign({}, s.moved, { [code]: status }) }));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const tab = s.tab || this.props.initialTab || "register";
+    const CLS = { standard: "blue", normal: "slate", emergency: "red" };
+    const RISK = { critical: "#fca5a5", high: "#fcd34d", medium: "#93c5fd", low: "#94a3b8" };
+    const ST = { pending_approval: "amber", scheduled: "blue", in_progress: "violet", completed: "green", rolled_back: "slate", rejected: "red" };
+    const CAT = { approved: "green", draft: "amber", revoked: "red" };
+    const EV_ICON = { raised: "file-plus", approved: "circle-check-big", rejected: "circle-x", scheduled: "calendar-clock", in_progress: "loader", completed: "circle-check-big", rolled_back: "undo-2", script_revealed: "eye", pir_recorded: "clipboard-check", comment: "message-square" };
+    const EV_TONE = { raised: "blue", approved: "green", rejected: "red", scheduled: "blue", in_progress: "violet", completed: "green", rolled_back: "slate", script_revealed: "violet", pir_recorded: "violet", comment: "slate" };
+
+    const filters = [
+      { id: "all", label: "All" },
+      { id: "pending_approval", label: "Pending approval" },
+      { id: "scheduled", label: "Scheduled" },
+      { id: "completed", label: "Completed" },
+      { id: "rejected", label: "Rejected" }
+    ];
+    const visible = this.crs.filter(c => s.filter === "all" || this.crStatus(c) === s.filter);
+    const sel = s.crSel ? this.crs.find(c => c.code === s.crSel) : null;
+    const selStatus = sel ? this.crStatus(sel) : null;
+    const selPending = sel ? sel.approvals.filter(a => a.decision === "pending").length : 0;
+    const selRejected = sel ? sel.approvals.some(a => a.decision === "rejected") : false;
+    const gated = selPending > 0 || selRejected;
+
+    const tabDefs = [
+      { id: "register", label: "Register", count: String(this.crs.length) },
+      { id: "catalog", label: "Standard catalog", count: String(this.catalog.length) },
+      { id: "cab", label: "Advisory board", count: String(this.meetings.length) },
+      { id: "windows", label: "Windows", count: String(this.freezes.length + this.maintenance.length) },
+      { id: "deps", label: "Dependencies", count: String(this.deps.length) },
+      { id: "exec", label: "Executions", count: String(this.executions.length) },
+      { id: "pir", label: "Reviews", count: String(this.pirs.length) }
+    ];
+
+    const newClassOptions = ["standard", "normal", "emergency"];
+    const newRiskOptions = ["critical", "high", "medium", "low"];
+    const newCatOptions = ["ConditionalAccess", "Exchange", "Identity", "Intune", "Defender", "SharePoint", "Purview", "Teams"];
+    const chooser = (label, hint, options, value, key) => ({
+      label, hint,
+      options: options.map(o => ({
+        label: o,
+        bg: value === o ? "rgba(37,99,235,.18)" : "transparent",
+        line: value === o ? "rgba(96,165,250,.32)" : "rgba(148,163,184,.18)",
+        fg: value === o ? "#bfdbfe" : "#94a3b8",
+        pick: () => this.setState({ [key]: o })
+      }))
+    });
+
+    const freezeHit = s.newClass !== "emergency" && s.newCategory === "SharePoint";
+    const canSubmit = s.newTitle.trim().length > 0 && (!freezeHit || s.freezeJust.trim().length > 0);
+
+    return {
+      rootPad: this.props.embedded ? "0" : "20px",
+      rootBg: this.props.embedded ? "transparent" : "#020617",
+
+      tabs: tabDefs.map(t => ({
+        label: t.label, count: t.count,
+        bg: tab === t.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: tab === t.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: tab === t.id ? "#bfdbfe" : "#94a3b8",
+        countColor: tab === t.id ? "#60a5fa" : "#475569",
+        select: () => this.setState({ tab: t.id })
+      })),
+
+      stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+      openCreate: () => this.setState({ createOpen: true }),
+      closeCreate: () => this.setState({ createOpen: false }),
+
+      isRegister: tab === "register",
+      statusFilters: filters.map(f => ({
+        label: f.label,
+        bg: s.filter === f.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: s.filter === f.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: s.filter === f.id ? "#bfdbfe" : "#94a3b8",
+        select: () => this.setState({ filter: f.id })
+      })),
+      registerCount: visible.length + " of " + this.crs.length + " changes",
+      crRows: visible.map(c => {
+        const st = this.crStatus(c);
+        const cl = this.tone(CLS[c.cls]), stt = this.tone(ST[st]);
+        const approved = c.approvals.filter(a => a.decision === "approved").length;
+        const rejected = c.approvals.some(a => a.decision === "rejected");
+        return {
+          code: c.code, title: c.title, meta: c.tenant + " · " + c.category + " · " + c.psa,
+          cls: c.cls, clsColor: cl[0], clsTint: cl[1], clsLine: cl[2],
+          risk: c.risk, riskColor: RISK[c.risk],
+          status: this.STATUS_LABEL[st], stColor: stt[0], stTint: stt[1], stLine: stt[2],
+          pips: c.approvals.map(a => ({
+            color: a.decision === "approved" ? "#34d399" : a.decision === "rejected" ? "#f87171" : "#475569"
+          })),
+          appr: rejected ? "rejected" : approved + " of " + c.approvals.length + " stages",
+          apprColor: rejected ? "#fca5a5" : approved === c.approvals.length ? "#6ee7b7" : "#fcd34d",
+          window: c.window,
+          rowBg: sel && sel.code === c.code ? "rgba(37,99,235,.1)" : "transparent",
+          open: () => this.setState({ crSel: c.code })
+        };
+      }),
+
+      isCatalog: tab === "catalog",
+      catRows: this.catalog.map(c => {
+        const t = this.tone(CAT[c.status]);
+        const actions = c.status === "approved"
+          ? [{ label: "Revoke", icon: "ban", line: "rgba(248,113,113,.3)", bg: "rgba(248,113,113,.1)", fg: "#fca5a5", cursor: "pointer", opacity: "1", title: "Needs a reason, and an admin", run: () => {} }]
+          : c.status === "draft"
+            ? [{ label: "Approve once", icon: "stamp", line: "#2563eb", bg: "#2563eb", fg: "#fff", cursor: "pointer", opacity: "1", title: "Signed and dated by an MSP admin", run: () => {} }]
+            : [{ label: "Re-approve", icon: "rotate-ccw", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "Clears the revocation and re-signs the item", run: () => {} }];
+        return {
+          packKey: c.packKey, title: c.title, status: c.status, category: c.category, risk: c.risk,
+          body: c.body, authority: c.authority,
+          color: t[0], tint: t[1], line: t[2], actions
+        };
+      }),
+
+      isCab: tab === "cab",
+      cabCols: "minmax(0,1fr) minmax(240px,.55fr)",
+      meetings: this.meetings.map((m, mi) => {
+        const t = this.tone(m.type === "ecab" ? "red" : "blue");
+        const st = this.tone(m.status === "completed" ? "green" : m.status === "in_progress" ? "violet" : "slate");
+        const agenda = m.agenda.map((a, ai) => {
+          const key = mi + ":" + ai;
+          const decision = s.decided[key] || a.decision;
+          const dt = this.tone(decision === "approve" ? "green" : decision === "reject" ? "red" : "amber");
+          return {
+            ordinal: a.ordinal, title: a.title, meta: a.meta, retro: a.retro,
+            decided: !!decision, decision: decision ? decision.toUpperCase() : "",
+            dColor: dt[0], dTint: dt[1], dLine: dt[2],
+            buttons: decision ? [] : [
+              { label: "Approve", line: "rgba(52,211,153,.3)", bg: "rgba(52,211,153,.12)", fg: "#6ee7b7", title: "Writes a real approval against the change", run: () => this.setState({ decided: Object.assign({}, s.decided, { [key]: "approve" }) }) },
+              { label: "Reject", line: "rgba(248,113,113,.3)", bg: "rgba(248,113,113,.1)", fg: "#fca5a5", title: "Writes a real rejection against the change", run: () => this.setState({ decided: Object.assign({}, s.decided, { [key]: "reject" }) }) },
+              { label: "Defer", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", title: "Rolls the item to a later meeting and decides nothing", run: () => this.setState({ decided: Object.assign({}, s.decided, { [key]: "defer" }) }) }
+            ]
+          };
+        });
+        const undecided = agenda.filter(a => !a.decided).length;
+        const closed = m.status === "completed";
+        return {
+          type: m.type === "ecab" ? "EMERGENCY BOARD" : "STANDING BOARD",
+          title: m.title, when: m.when, status: m.status.split("_").join(" "),
+          color: t[0], tint: t[1], line: t[2],
+          sColor: st[0], sTint: st[1], sLine: st[2],
+          agenda,
+          closeLabel: closed ? "Minutes compiled" : undecided > 0 ? "Close · " + undecided + " undecided" : "Close and compile minutes",
+          closeLine: closed || undecided > 0 ? "rgba(148,163,184,.22)" : "#2563eb",
+          closeBg: closed || undecided > 0 ? "transparent" : "#2563eb",
+          closeFg: closed || undecided > 0 ? "#64748b" : "#fff",
+          closeCursor: closed || undecided > 0 ? "not-allowed" : "pointer",
+          closeOpacity: closed || undecided > 0 ? ".6" : "1",
+          closeTitle: undecided > 0 ? "Every item needs a determination first" : "",
+          closeNote: closed
+            ? "Minutes record each item, its presenter, the discussion and the determination."
+            : "A board determination is recorded on the change itself, not held separately here.",
+          close: () => {}
+        };
+      }),
+      cabMembers: this.cabMembers.map(p => ({
+        name: p.name, meta: p.meta, role: p.role,
+        initials: p.name.split(" ").map(x => x.charAt(0)).join("").slice(0, 2),
+        color: p.role === "CHAIR" ? "#93c5fd" : p.role === "SECRETARY" ? "#c4b5fd" : "#94a3b8"
+      })),
+
+      isWindows: tab === "windows",
+      windowGroups: [
+        { title: "FREEZE WINDOWS", note: "Nothing but an emergency change gets through one of these.", rows: this.freezes },
+        { title: "MAINTENANCE WINDOWS", note: "A booked change has to land inside one of these.", rows: this.maintenance }
+      ].map(g => ({
+        title: g.title, note: g.note,
+        rows: g.rows.map(w => {
+          const retired = !!s.retired[w.name] || !w.active;
+          return {
+            name: w.name, reason: w.reason, scope: w.scope,
+            starts: w.starts, ends: w.ends, recurrence: w.recurrence,
+            opacity: retired ? ".5" : "1",
+            cta: retired ? "retired" : "Retire",
+            color: retired ? "#94a3b8" : "#cbd5e1",
+            tint: "transparent",
+            line: "rgba(148,163,184,.22)",
+            retire: retired ? () => {} : () => this.setState({ retired: Object.assign({}, s.retired, { [w.name]: true }) })
+          };
+        })
+      })),
+
+      isDeps: tab === "deps",
+      depRows: this.deps.map(d => {
+        const cleared = d.blockerStatus === "completed";
+        const t = this.tone(cleared ? "green" : "amber");
+        return {
+          blocked: d.blocked, blockedTitle: d.blockedTitle,
+          blocker: d.blocker, blockerTitle: d.blockerTitle,
+          state: cleared ? "cleared" : "still blocking",
+          color: t[0], tint: t[1], line: t[2],
+          icon: cleared ? "circle-check-big" : "circle-dashed",
+          note: d.note,
+          cta: "Remove link",
+          removeTitle: cleared ? "The blocker landed — the link can be removed" : "Removing this lets the blocked change proceed without it"
+        };
+      }),
+
+      isExec: tab === "exec",
+      execRows: this.executions.map(e => {
+        const t = this.tone(e.outcome === "succeeded" ? "green" : e.outcome === "failed" ? "red" : "amber");
+        const c = this.tone(e.confirmed ? "green" : "amber");
+        const KIND = { runbook_run: "Runbook run", write_action: "Direct write", human_action: "Human action" };
+        const actions = [];
+        if (e.kind === "human_action" && !e.confirmed) {
+          actions.push({ label: "Attest this was done", icon: "signature", line: "#2563eb", bg: "#2563eb", fg: "#fff", cursor: "pointer", opacity: "1", title: "An unattested human action is indistinguishable from unexplained drift", run: () => {} });
+        }
+        if (e.rollbackable) {
+          actions.push({ label: "Raise the reverse change", icon: "undo-2", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "Raises an inverse change for approval — it does not revert the tenant", run: () => {} });
+        }
+        actions.push({ label: "Capture evidence", icon: "camera", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "Images only, up to 20 MB", run: () => {} });
+        return {
+          title: e.code + " · " + e.title, meta: e.tenant + " · " + KIND[e.kind],
+          icon: e.kind === "runbook_run" ? "workflow" : e.kind === "write_action" ? "zap" : "user-round",
+          color: t[0], tint: t[1], line: t[2], outcome: e.outcome,
+          confirmed: e.confirmed ? "confirmed" : "unconfirmed",
+          cIcon: e.confirmed ? "circle-check-big" : "circle-dashed",
+          cColor: c[0], cTint: c[1], cLine: c[2],
+          facts: [
+            { label: "PLANNED", value: e.planned, color: "#cbd5e1", font: "inherit" },
+            { label: "WHAT ACTUALLY RAN", value: e.actual, color: e.planMatched === false ? "#fcd34d" : "#cbd5e1", font: "inherit" },
+            { label: "PLAN MATCHED", value: e.planMatched === null ? "not compared yet" : e.planMatched ? "yes" : "no — diff recorded", color: e.planMatched === null ? "#64748b" : e.planMatched ? "#6ee7b7" : "#fcd34d", font: "inherit" },
+            { label: "EXECUTED", value: e.executedAt, color: "#94a3b8", font: "inherit" }
+          ],
+          actions, evidence: e.evidence,
+          pir: e.pir, pirColor: e.pir.indexOf("no review") === 0 ? "#64748b" : "#c4b5fd"
+        };
+      }),
+
+      isPir: tab === "pir",
+      pirRows: this.pirs.map(p => {
+        const t = this.tone(p.closeCode === "successful" ? "green" : p.closeCode === "failed" ? "red" : "amber");
+        const d = this.tone(p.driftApplicable ? "blue" : "slate");
+        return {
+          code: p.code, title: p.title,
+          closeCode: p.closeCode.split("_").join(" "),
+          color: t[0], tint: t[1], line: t[2],
+          reviewed: p.reviewed, summary: p.summary,
+          hasIssues: !!p.issues, issues: p.issues || "",
+          driftState: p.driftState, driftCounts: p.driftCounts, driftNote: p.driftNote,
+          dColor: d[0], dTint: d[1], dLine: d[2]
+        };
+      }),
+
+      crOpen: !!sel,
+      closeCr: () => this.setState({ crSel: null }),
+      selCode: sel ? sel.code : "",
+      selMeta: sel ? sel.tenant : "",
+      selTitle: sel ? sel.title : "",
+      selDesc: sel ? sel.desc : "",
+      selFacts: sel ? [
+        { label: "CLASS", value: sel.cls, color: "#cbd5e1", font: "inherit" },
+        { label: "RISK", value: sel.risk, color: RISK[sel.risk], font: "inherit" },
+        { label: "CATEGORY", value: sel.category, color: "#cbd5e1", font: "inherit" },
+        { label: "STATUS", value: this.STATUS_LABEL[selStatus], color: this.tone(ST[selStatus])[0], font: "inherit" },
+        { label: "AUTHORIZED TARGET", value: sel.target, color: "#93c5fd", font: "Menlo,monospace" },
+        { label: "WINDOW", value: sel.window, color: "#94a3b8", font: "inherit" },
+        { label: "PEOPLE AFFECTED", value: String(sel.impacted), color: "#cbd5e1", font: "inherit" },
+        { label: "PSA TICKET", value: sel.psa, color: "#93c5fd", font: "Menlo,monospace" }
+      ] : [],
+      selApprovals: sel ? sel.approvals.map(a => {
+        const t = this.tone(a.decision === "approved" ? "green" : a.decision === "rejected" ? "red" : "slate");
+        const ROLE = { customer: "the customer", msp: "us", catalog_inherited: "the catalog", microsoft_forced: "Microsoft" };
+        return {
+          stage: a.stage,
+          meta: (a.when ? a.when + " · " : "") + a.name + " · authority: " + ROLE[a.role],
+          icon: a.decision === "approved" ? "circle-check-big" : a.decision === "rejected" ? "circle-x" : "circle-dashed",
+          color: t[0], tint: t[1], line: t[2],
+          settled: a.decision !== "pending",
+          decision: a.decision.toUpperCase(),
+          buttons: a.decision === "pending" && a.role === "msp" ? [
+            { label: "Approve", line: "rgba(52,211,153,.3)", bg: "rgba(52,211,153,.12)", fg: "#6ee7b7", run: () => {} },
+            { label: "Reject", line: "rgba(248,113,113,.3)", bg: "rgba(248,113,113,.1)", fg: "#fca5a5", run: () => {} }
+          ] : []
+        };
+      }) : [],
+      selTransitions: sel ? [
+        { id: "scheduled", label: "Schedule", icon: "calendar-clock" },
+        { id: "in_progress", label: "Start work", icon: "play" },
+        { id: "completed", label: "Mark completed", icon: "circle-check-big" },
+        { id: "rejected", label: "Reject", icon: "circle-x" }
+      ].map(t => {
+        const blocked = gated && t.id !== "rejected";
+        const current = selStatus === t.id;
+        return {
+          label: current ? t.label + " · current" : t.label,
+          icon: blocked ? "lock" : t.icon,
+          line: blocked || current ? "rgba(148,163,184,.2)" : t.id === "rejected" ? "rgba(248,113,113,.3)" : "#2563eb",
+          bg: blocked || current ? "transparent" : t.id === "rejected" ? "rgba(248,113,113,.1)" : "#2563eb",
+          fg: blocked ? "#64748b" : current ? "#94a3b8" : t.id === "rejected" ? "#fca5a5" : "#fff",
+          cursor: blocked || current ? "not-allowed" : "pointer",
+          opacity: blocked || current ? ".6" : "1",
+          title: blocked ? "Every approval stage has to clear first" : "",
+          run: blocked || current ? () => {} : () => this.moveCr(sel.code, t.id)
+        };
+      }) : [],
+      gateColor: gated ? "#fcd34d" : "#6ee7b7",
+      gateNote: sel
+        ? (selRejected
+          ? "This change was rejected. Rejecting never needed an approval, so nothing was blocking it."
+          : selPending > 0
+            ? selPending + " approval stage still pending. Scheduling, starting and completing stay locked until it clears."
+            : "All approval stages cleared. This change can be scheduled, started and completed.")
+        : "",
+      selTimeline: sel ? sel.events.slice().reverse().map(e => {
+        const t = this.tone(EV_TONE[e.type] || "slate");
+        return { icon: EV_ICON[e.type] || "circle", title: e.title, body: e.body, meta: e.meta, color: t[0], tint: t[1], line: t[2] };
+      }) : [],
+      commentDraft: s.comment,
+      setComment: (e) => this.setState({ comment: e.target.value }),
+      postComment: () => this.setState({ comment: "" }),
+
+      createOpen: s.createOpen,
+      newTitle: s.newTitle,
+      setNewTitle: (e) => this.setState({ newTitle: e.target.value }),
+      newChoices: [
+        chooser("Class", "A standard change inherits its approval from the catalog and skips the board. An emergency change is acted on first and reviewed after.", newClassOptions, s.newClass, "newClass"),
+        chooser("Risk", "Recorded as entered on this door — nothing recalculates it for you.", newRiskOptions, s.newRisk, "newRisk"),
+        chooser("Category", "Sets which baseline and which drift checks this change is measured against.", newCatOptions, s.newCategory, "newCategory")
+      ],
+      freezeHit,
+      freezeTitle: "Halcyon Health trial week runs 15–20 Sep",
+      freezeBody: "A change in this category lands inside an active freeze. Raising it anyway needs a written justification and adds an MSP sign-off stage.",
+      freezeJust: s.freezeJust,
+      setFreezeJust: (e) => this.setState({ freezeJust: e.target.value }),
+      submitLabel: freezeHit ? "Raise with a freeze exception" : "Raise this change",
+      submitLine: canSubmit ? "#2563eb" : "rgba(148,163,184,.2)",
+      submitBg: canSubmit ? "#2563eb" : "transparent",
+      submitFg: canSubmit ? "#fff" : "#64748b",
+      submitCursor: canSubmit ? "pointer" : "not-allowed",
+      submitOpacity: canSubmit ? "1" : ".6",
+      submitTitle: canSubmit ? "" : freezeHit ? "A freeze exception needs a justification" : "Give the change a title first",
+      submitCreate: canSubmit ? () => this.setState({ createOpen: false, newTitle: "", freezeJust: "" }) : () => {},
+
+      honestNote: "Change control runs end to end on the server — register, catalog, board, windows, executions and reviews are all live endpoints with nothing wired to them yet, so the records here are representative. Fleet change metrics (success rate, lead time, emergency ratio) have no operator endpoint at all and are not shown."
+    };
+  }
+}
+
+</script>
+</body>
+</html>

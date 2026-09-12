@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+@keyframes smcSoSlide{from{transform:translateX(24px);opacity:.4}to{transform:translateX(0);opacity:1}}
+@keyframes smcSoPulse{0%,100%{opacity:1}50%{opacity:.4}}
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+      <button onClick="{{ t.select }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid rgba(148,163,184,.18);background:rgba(148,163,184,.06);white-space:nowrap">
+      <span data-icon="radio" style="width:12px;height:12px;color:#94a3b8"></span>
+      <span style="font-size:11.5px;font-weight:600;color:#94a3b8">Live updates idle</span>
+    </div>
+  </div>
+
+  <sc-if value="{{ isOffers }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ offerFilters }}" as="f" hint-placeholder-count="6">
+          <button onClick="{{ f.select }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ f.label }}</button>
+        </sc-for>
+        <div style="flex:1"></div>
+        <button onClick="{{ openGenerate }}" style="display:flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:7px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:#3b82f6"><span data-icon="sparkles" style="width:12px;height:12px"></span>Find offers for a customer</button>
+        <button onClick="{{ expireStale }}" title="Closes every sent offer whose date has passed. Nothing does this on a schedule." style="display:flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:7px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(148,163,184,.1)"><span data-icon="calendar-x" style="width:12px;height:12px"></span>{{ expireLabel }}</button>
+      </div>
+
+      <sc-if value="{{ hasOffers }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <sc-for list="{{ offerRows }}" as="o" hint-placeholder-count="5">
+            <div onClick="{{ o.open }}" style="border:1px solid {{ o.cardLine }};border-radius:11px;background:rgba(15,23,42,.6);padding:14px;display:flex;gap:12px;align-items:center;min-width:0;cursor:pointer;transition:border-color .15s" style-hover="border-color:rgba(96,165,250,.4)">
+              <span style="width:42px;height:42px;flex:0 0 42px;border-radius:12px;background:{{ o.scoreTint }};border:1px solid {{ o.scoreLine }};display:flex;flex-direction:column;align-items:center;justify-content:center">
+                <span style="font-size:14px;font-weight:800;line-height:1;color:{{ o.scoreColor }}">{{ o.score }}</span>
+                <span style="font-size:8px;font-weight:700;letter-spacing:.08em;color:#64748b">FIT</span>
+              </span>
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+                <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                  <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ o.title }}</span>
+                  <span style="display:inline-flex;padding:2px 9px;border-radius:999px;background:{{ o.tint }};border:1px solid {{ o.line }};font-size:10.5px;font-weight:600;color:{{ o.color }};white-space:nowrap">{{ o.state }}</span>
+                </div>
+                <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ o.rationale }}</span>
+                <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ o.meta }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex:0 0 auto">
+                <span style="font-size:16px;font-weight:800;letter-spacing:-.01em;color:#f8fafc">{{ o.price }}</span>
+                <span style="font-size:11px;color:{{ o.expiryColor }};white-space:nowrap">{{ o.expiry }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noOffers }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:44px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+          <span data-icon="sparkles" style="width:40px;height:40px;border-radius:12px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:10px"></span>
+          <span style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{ noOffersTitle }}</span>
+          <span style="font-size:12.5px;color:#94a3b8;max-width:440px;text-wrap:pretty">{{ noOffersBody }}</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isBundles }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ bundleFilters }}" as="f" hint-placeholder-count="4">
+          <button onClick="{{ f.select }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ f.label }}</button>
+        </sc-for>
+        <div style="flex:1"></div>
+        <button onClick="{{ openBuilder }}" title="{{ builderTitle }}" style="display:flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:7px;border:1px solid {{ builderLine }};background:{{ builderBg }};color:{{ builderFg }};font-size:11.5px;font-weight:600;cursor:{{ builderCursor }};opacity:{{ builderOpacity }};white-space:nowrap" style-hover="background:#3b82f6"><span data-icon="layers" style="width:12px;height:12px"></span>Build a bundle</button>
+      </div>
+
+      <sc-if value="{{ hasBundles }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <sc-for list="{{ bundleRows }}" as="b" hint-placeholder-count="3">
+            <div onClick="{{ b.open }}" style="border:1px solid {{ b.cardLine }};border-radius:11px;background:rgba(15,23,42,.6);padding:14px;display:flex;flex-direction:column;gap:11px;min-width:0;cursor:pointer;transition:border-color .15s" style-hover="border-color:rgba(96,165,250,.4)">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span data-icon="layers" style="width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:{{ b.tint }};border:1px solid {{ b.line }};color:{{ b.color }};padding:7px"></span>
+                <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty;min-width:0">{{ b.name }}</span>
+                <span style="display:inline-flex;padding:2px 9px;border-radius:999px;background:{{ b.tint }};border:1px solid {{ b.line }};font-size:10.5px;font-weight:600;color:{{ b.color }};white-space:nowrap">{{ b.status }}</span>
+                <div style="flex:1"></div>
+                <span style="font-size:16px;font-weight:800;letter-spacing:-.01em;color:#f8fafc;white-space:nowrap">{{ b.price }}</span>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <sc-for list="{{ b.chips }}" as="c" hint-placeholder-count="4">
+                  <span style="display:inline-flex;padding:3px 9px;border-radius:7px;background:{{ c.tint }};border:1px solid {{ c.line }};font-family:Menlo,monospace;font-size:10.5px;font-weight:600;color:{{ c.color }};white-space:nowrap">{{ c.label }}</span>
+                </sc-for>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ b.assignments }}</span>
+                <span style="font-size:11.5px;color:#64748b;white-space:nowrap">{{ b.cost }}</span>
+                <span style="font-size:11.5px;color:#64748b;white-space:nowrap">{{ b.trial }}</span>
+              </div>
+              <sc-if value="{{ b.orphaned }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:9px;padding:10px 12px;border-radius:9px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.07)">
+                  <span data-icon="triangle-alert" style="width:14px;height:14px;color:#fbbf24;flex:0 0 14px;margin-top:2px"></span>
+                  <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">Every package this bundle names is missing from the catalog, so it is selling nothing. It reads as an empty bundle rather than a broken one, which is why nobody has noticed.</span>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noBundles }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:44px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+          <span data-icon="layers" style="width:40px;height:40px;border-radius:12px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:10px"></span>
+          <span style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">No bundles yet</span>
+          <span style="font-size:12.5px;color:#94a3b8;max-width:430px;text-wrap:pretty">A bundle is your own branded wrapper around the platform's monitoring packages, with your own price on it.</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isPackages }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+        <div style="min-width:940px">
+          <div style="display:grid;grid-template-columns:1.8fr 2fr 1.6fr 1fr 1.1fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+            <span>KEY</span><span>PACKAGE</span><span>ENGINES</span><span style="text-align:right">YOUR COST</span><span>AVAILABLE TO YOU</span>
+          </div>
+          <sc-for list="{{ packageRows }}" as="p" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:1.8fr 2fr 1.6fr 1fr 1.1fr;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08)">
+              <span style="font-family:Menlo,monospace;font-size:11.5px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.key }}</span>
+              <span style="font-size:12.5px;color:#e2e8f0;text-wrap:pretty">{{ p.label }}</span>
+              <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.engines }}</span>
+              <span style="font-size:12.5px;font-weight:700;color:{{ p.costColor }};text-align:right;white-space:nowrap">{{ p.cost }}</span>
+              <span style="display:inline-flex;justify-self:start;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:{{ p.tint }};border:1px solid {{ p.line }};font-size:11px;font-weight:600;color:{{ p.color }};white-space:nowrap"><span data-icon="{{ p.icon }}" style="width:11px;height:11px"></span>{{ p.gate }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Every package currently costs you nothing, so every margin figure on this screen is the full resale price. That is what the platform's cost data actually says today, not a placeholder. Only active packages are listed — a platform draft never appears here.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isAssignments }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ assignFilters }}" as="f" hint-placeholder-count="3">
+          <button onClick="{{ f.select }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ f.label }}</button>
+        </sc-for>
+      </div>
+      <sc-if value="{{ hasAssign }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+          <div style="min-width:940px">
+            <div style="display:grid;grid-template-columns:1.7fr 1.7fr 1fr 1.2fr 1.3fr 1fr;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+              <span>CUSTOMER</span><span>BUNDLE</span><span>STATE</span><span>TRIAL</span><span>ASSIGNED</span><span></span>
+            </div>
+            <sc-for list="{{ assignRows }}" as="a" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:1.7fr 1.7fr 1fr 1.2fr 1.3fr 1fr;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08)">
+                <span style="display:flex;flex-direction:column;min-width:0">
+                  <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.customer }}</span>
+                  <span style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.domain }}</span>
+                </span>
+                <span style="font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.bundle }}</span>
+                <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ a.tint }};border:1px solid {{ a.line }};font-size:11px;font-weight:600;color:{{ a.color }};white-space:nowrap">{{ a.status }}</span>
+                <span style="font-size:12px;color:{{ a.trialColor }};white-space:nowrap">{{ a.trial }}</span>
+                <span style="font-size:12px;color:#94a3b8;white-space:nowrap">{{ a.assigned }}</span>
+                <div style="display:flex;justify-content:flex-end">
+                  <button onClick="{{ a.revoke }}" title="{{ a.revokeTitle }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ a.rLine }};background:{{ a.rBg }};color:{{ a.rFg }};font-size:11.5px;font-weight:600;cursor:{{ a.rCursor }};opacity:{{ a.rOpacity }};white-space:nowrap" style-hover="background:rgba(148,163,184,.12)">{{ a.revokeLabel }}</button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noAssign }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:44px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+          <span data-icon="user-plus" style="width:40px;height:40px;border-radius:12px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:10px"></span>
+          <span style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Nobody is on a bundle yet</span>
+          <span style="font-size:12.5px;color:#94a3b8;max-width:420px;text-wrap:pretty">A bundle has to be live before anyone can be put on it, and a bundle with somebody on it cannot be deleted until they are taken off.</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ offerOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeOffer }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(520px,95%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcSoSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:{{ ovColor }}">{{ ovState }}</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ ovTitle }}</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ ovCustomer }}</span>
+          </div>
+          <button onClick="{{ closeOffer }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:11px">
+          <sc-for list="{{ ovFacts }}" as="f" hint-placeholder-count="5">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">{{ f.label }}</span>
+              <span style="font-size:12.5px;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">WHY IT FIRED</span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <sc-for list="{{ ovSignals }}" as="s" hint-placeholder-count="3">
+              <span style="display:inline-flex;padding:4px 10px;border-radius:7px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.26);font-size:11.5px;font-weight:600;color:#c4b5fd;white-space:nowrap">{{ s.label }}</span>
+            </sc-for>
+          </div>
+          <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ ovRationale }}</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">WHAT HAPPENED TO IT</span>
+          <sc-for list="{{ ovEvents }}" as="e" hint-placeholder-count="3">
+            <div style="display:flex;gap:9px;align-items:baseline;min-width:0">
+              <span data-icon="{{ e.icon }}" style="width:12px;height:12px;flex:0 0 12px;color:{{ e.color }};margin-top:3px"></span>
+              <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty;flex:1">{{ e.text }}</span>
+              <span style="font-size:10.5px;color:#475569;white-space:nowrap">{{ e.at }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ ovAcceptWarn }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:10px;padding:12px 13px;border-radius:10px;border:1px solid rgba(248,113,113,.26);background:rgba(248,113,113,.08)">
+            <span data-icon="triangle-alert" style="width:15px;height:15px;color:#f87171;flex:0 0 15px;margin-top:2px"></span>
+            <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+              <span style="font-size:12.5px;font-weight:600;color:#fca5a5;text-wrap:pretty">Accepting here does not deliver anything</span>
+              <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">Marking it accepted from this panel writes no statement of work, takes no payment, and turns nothing on. It is also final — there is no way back out of accepted, and the offer cannot be deleted afterwards. Let the customer accept it from their own portal instead.</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <sc-for list="{{ ovActions }}" as="a" hint-placeholder-count="3">
+              <button onClick="{{ a.run }}" title="{{ a.title }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:8px;border:1px solid {{ a.line }};background:{{ a.bg }};color:{{ a.fg }};font-size:12.5px;font-weight:600;cursor:{{ a.cursor }};opacity:{{ a.opacity }};white-space:nowrap"><span data-icon="{{ a.icon }}" style="width:13px;height:13px"></span>{{ a.label }}</button>
+            </sc-for>
+          </div>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">{{ ovNote }}</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ genOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeGenerate }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(460px,94%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcSoSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">FIND OFFERS</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">What should we be selling them?</span>
+          </div>
+          <button onClick="{{ closeGenerate }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">Which customer</span>
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <sc-for list="{{ genTenants }}" as="o" hint-placeholder-count="4">
+              <button onClick="{{ o.pick }}" style="height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ o.line }};background:{{ o.bg }};color:{{ o.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ o.label }}</button>
+            </sc-for>
+          </div>
+          <span style="font-size:11px;color:#64748b;text-wrap:pretty">Their live signals are read against the product catalogue. Prices come from the catalogue, never from anything typed here.</span>
+        </div>
+
+        <sc-if value="{{ genResult }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid {{ genResLine }};border-radius:11px;background:{{ genResTint }};padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span data-icon="{{ genResIcon }}" style="width:26px;height:26px;flex:0 0 26px;border-radius:8px;background:{{ genResTint }};border:1px solid {{ genResLine }};color:{{ genResColor }};padding:6px"></span>
+              <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ genResTitle }}</span>
+                <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ genResBody }}</span>
+              </div>
+            </div>
+            <sc-for list="{{ genResRows }}" as="r" hint-placeholder-count="2">
+              <div style="display:flex;align-items:baseline;gap:9px;min-width:0">
+                <span style="font-size:12px;color:#cbd5e1;flex:1;min-width:0;text-wrap:pretty">{{ r.label }}</span>
+                <span style="font-size:12px;font-weight:700;color:#f8fafc;white-space:nowrap">{{ r.value }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;gap:10px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <button onClick="{{ runGenerate }}" title="{{ genTitle }}" style="flex:1;height:38px;border-radius:8px;border:1px solid {{ genLine }};background:{{ genBg }};color:{{ genFg }};font-size:13px;font-weight:600;cursor:{{ genCursor }};opacity:{{ genOpacity }}">{{ genLabel }}</button>
+          <button onClick="{{ closeGenerate }}" style="height:38px;padding:0 15px;border-radius:8px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:13px;cursor:pointer">Close</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ builderOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeBuilder }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(520px,95%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcSoSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">BUILD A BUNDLE</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Your own wrapper, your own price</span>
+          </div>
+          <button onClick="{{ closeBuilder }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">Bundle name</span>
+          <input value="{{ bName }}" onChange="{{ setBName }}" placeholder="e.g. Northwind Essential Care" style="height:36px;padding:0 11px;border-radius:8px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;outline:none">
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+            <span style="font-size:12px;font-weight:600;color:#cbd5e1">What goes in it</span>
+            <div style="flex:1"></div>
+            <span style="font-size:11px;color:#64748b;white-space:nowrap">{{ bPickedCount }}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <sc-for list="{{ bPackages }}" as="p" hint-placeholder-count="6">
+              <button onClick="{{ p.pick }}" title="{{ p.title }}" style="display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:9px;border:1px solid {{ p.line }};background:{{ p.bg }};cursor:{{ p.cursor }};opacity:{{ p.opacity }};text-align:left;min-width:0" style-hover="background:rgba(148,163,184,.1)">
+                <span data-icon="{{ p.icon }}" style="width:14px;height:14px;flex:0 0 14px;color:{{ p.color }}"></span>
+                <span style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                  <span style="font-size:12.5px;color:#e2e8f0;text-wrap:pretty">{{ p.label }}</span>
+                  <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.key }}</span>
+                </span>
+                <span style="font-size:11.5px;font-weight:600;color:#94a3b8;white-space:nowrap">{{ p.cost }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">Your price, per month</span>
+          <input value="{{ bPrice }}" onChange="{{ setBPrice }}" placeholder="e.g. 1200" style="height:36px;padding:0 11px;border-radius:8px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;outline:none">
+        </div>
+
+        <div style="border:1px solid rgba(96,165,250,.24);border-radius:11px;background:rgba(37,99,235,.07);padding:14px;display:flex;flex-direction:column;gap:9px;min-width:0">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">WHAT IT COSTS YOU</span>
+          <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+            <span style="font-size:24px;font-weight:800;letter-spacing:-.02em;color:#f8fafc">{{ bCost }}</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty;flex:1;min-width:120px">{{ bCostNote }}</span>
+          </div>
+          <sc-if value="{{ bHasMargin }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:baseline;gap:9px">
+              <span style="font-size:11.5px;color:#cbd5e1;flex:1">Your margin</span>
+              <span style="font-size:13px;font-weight:700;color:#6ee7b7;white-space:nowrap">{{ bMargin }}</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{ bMultiGate }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:10px;padding:12px 13px;border-radius:10px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.07)">
+            <span data-icon="lock" style="width:15px;height:15px;color:#fbbf24;flex:0 0 15px;margin-top:2px"></span>
+            <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">Combining more than one package is a paid feature on your plan. One package on its own is always allowed.</span>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;gap:10px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <button onClick="{{ saveBundle }}" title="{{ saveTitle }}" style="flex:1;height:38px;border-radius:8px;border:1px solid {{ saveLine }};background:{{ saveBg }};color:{{ saveFg }};font-size:13px;font-weight:600;cursor:{{ saveCursor }};opacity:{{ saveOpacity }}">Save as a draft</button>
+          <button onClick="{{ closeBuilder }}" style="height:38px;padding:0 15px;border-radius:8px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:13px;cursor:pointer">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ bundleOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeBundle }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(500px,95%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcSoSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:{{ bvColor }}">{{ bvStatus }}</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ bvName }}</span>
+            <span style="font-size:12px;color:#94a3b8;text-wrap:pretty">{{ bvMeta }}</span>
+          </div>
+          <button onClick="{{ closeBundle }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:11px">
+          <sc-for list="{{ bvFacts }}" as="f" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">{{ f.label }}</span>
+              <span style="font-size:12.5px;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">WHAT IS IN IT</span>
+          <sc-if value="{{ bvHasPackages }}" hint-placeholder-val="{{ true }}">
+            <sc-for list="{{ bvPackages }}" as="p" hint-placeholder-count="3">
+              <div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:9px;border:1px solid rgba(148,163,184,.14);background:rgba(2,6,23,.4);min-width:0">
+                <span data-icon="package" style="width:14px;height:14px;flex:0 0 14px;color:#60a5fa"></span>
+                <span style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                  <span style="font-size:12.5px;color:#e2e8f0;text-wrap:pretty">{{ p.label }}</span>
+                  <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.key }}</span>
+                </span>
+                <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ p.cost }}</span>
+              </div>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{ bvNoPackages }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:10px;padding:12px 13px;border-radius:10px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.07)">
+              <span data-icon="triangle-alert" style="width:15px;height:15px;color:#fbbf24;flex:0 0 15px;margin-top:2px"></span>
+              <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ bvOrphanTitle }}</span>
+                <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ bvOrphanBody }}</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{ bvOrphanKeys }}" as="k" hint-placeholder-count="4">
+                <span style="display:inline-flex;padding:3px 9px;border-radius:7px;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.24);font-family:Menlo,monospace;font-size:10.5px;color:#fca5a5;white-space:nowrap">{{ k.label }}</span>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <sc-for list="{{ bvActions }}" as="a" hint-placeholder-count="3">
+              <button onClick="{{ a.run }}" title="{{ a.title }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:8px;border:1px solid {{ a.line }};background:{{ a.bg }};color:{{ a.fg }};font-size:12.5px;font-weight:600;cursor:{{ a.cursor }};opacity:{{ a.opacity }};white-space:nowrap"><span data-icon="{{ a.icon }}" style="width:13px;height:13px"></span>{{ a.label }}</button>
+            </sc-for>
+          </div>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">{{ bvNote }}</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;align-items:center;gap:9px;padding-top:2px">
+    <span data-icon="info" style="width:13px;height:13px;color:#475569;flex:0 0 13px"></span>
+    <span style="font-size:11px;color:#475569;text-wrap:pretty">{{ honestNote }}</span>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900},&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;admin&quot;,&quot;operator&quot;],&quot;default&quot;:&quot;admin&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  state = {
+    tab: "offers", offerFilter: "all", bundleFilter: "all", assignFilter: "active",
+    offer: null, bundle: null, genOpen: false, genTenant: null, genResult: null, builderOpen: false,
+    bName: "", bPrice: "", bPicked: [], expired: false,
+    offerStates: {}, revoked: {}, extraBundles: []
+  };
+
+  offers = [
+    { id: "so-1", title: "Identity & Access Hardening", customer: "Northwind Logistics", state: "draft", score: 94, priceCents: 1450000, rationale: "Nine privileged accounts without enforced MFA, and legacy authentication still permitted tenant-wide.", signals: ["MFA gaps on privileged roles", "Legacy auth enabled", "No Conditional Access baseline"], created: "5 Sep", expires: null },
+    { id: "so-2", title: "Sharing Exposure Remediation", customer: "Halcyon Health", state: "sent", score: 88, priceCents: 980000, rationale: "Anonymous links enabled on four sites, and guest access is unmanaged on the clinical collaboration site.", signals: ["Anonymous sharing", "Unmanaged guest access"], created: "3 Sep", expires: "17 Sep" },
+    { id: "so-3", title: "Data Protection Baseline", customer: "Halcyon Health", state: "draft", score: 81, priceCents: 1200000, rationale: "No retention labelling across mail or sites, and the tenant holds no Purview licence to apply one.", signals: ["No retention policy", "Purview not licensed"], created: "3 Sep", expires: null },
+    { id: "so-4", title: "Drift Baseline & Handover", customer: "Kestrel Financial", state: "accepted", score: 76, priceCents: 640000, rationale: "Configuration has moved twenty-two times in ninety days with nothing approved behind it.", signals: ["Unattributed drift", "No known-good reference"], created: "28 Aug", expires: null },
+    { id: "so-5", title: "White-Glove Copilot Adoption — Micro", customer: "Mccawsoft2", state: "expired", score: 62, priceCents: 320000, rationale: "Copilot licences assigned but usage flat for sixty days.", signals: ["Licence underuse"], created: "12 Aug", expires: "26 Aug" },
+    { id: "so-6", title: "Conditional Access Hardening", customer: "Kestrel Financial", state: "rejected", score: 71, priceCents: 880000, rationale: "Break-glass exclusion is the only path in, and it is excluded from every policy.", signals: ["Policy exclusion", "MFA gaps on privileged roles"], created: "20 Aug", expires: null }
+  ];
+
+  packages = [
+    { key: "core:premier", label: "Premier monitoring", engines: "Drift, Security, Health, SLA", costCents: 0, gate: null },
+    { key: "core:security-baseline", label: "Security baseline", engines: "Security, Drift", costCents: 0, gate: null },
+    { key: "core:essentials", label: "Essentials monitoring", engines: "Health, Drift", costCents: 0, gate: null },
+    { key: "assess:security-posture", label: "Security posture assessment", engines: "Security", costCents: 0, gate: "assessments" },
+    { key: "assess:copilot-readiness", label: "Copilot readiness assessment", engines: "Health, Sales Offer", costCents: 0, gate: "assessments" },
+    { key: "core:identity-baseline", label: "Identity baseline", engines: "Security", costCents: 0, gate: null },
+    { key: "detail:full-item-collection", label: "Full item detail collection", engines: "Drift", costCents: 0, gate: "deep_collection" },
+    { key: "cat-executive", label: "Executive dashboard tab", engines: "none — dashboard only", costCents: 0, gate: null }
+  ];
+
+  bundles = [
+    { id: "b-1", name: "Northwind Essential Care", status: "active", priceCents: 120000, keys: ["core:essentials", "core:identity-baseline"], trialDays: 30, assignments: 2, created: "12 Aug", orphaned: false },
+    { id: "b-2", name: "Halcyon Clinical Watch", status: "draft", priceCents: 340000, keys: ["core:premier", "assess:security-posture"], trialDays: null, assignments: 0, created: "4 Sep", orphaned: false },
+    { id: "b-3", name: "Customer Dashboard Category Tabs", status: "active", priceCents: 0, keys: ["executive", "identity-access", "security-posture", "compliance-governance", "collaboration-sharing", "licensing-cost", "configuration-drift", "intune-devices", "usage-adoption", "operational-maturity"], trialDays: null, assignments: 0, created: "19 Jul", orphaned: true }
+  ];
+
+  assignments = [
+    { id: "a-1", customer: "Northwind Logistics", domain: "northwindlogistics.com", bundle: "Northwind Essential Care", status: "active", trialEnds: "11 Sep", assigned: "12 Aug" },
+    { id: "a-2", customer: "Kestrel Financial", domain: "kestrelfinancial.com", bundle: "Northwind Essential Care", status: "active", trialEnds: null, assigned: "22 Aug" },
+    { id: "a-3", customer: "Mccawsoft2", domain: "mccawsoft2.onmicrosoft.com", bundle: "Northwind Essential Care", status: "revoked", trialEnds: null, assigned: "3 Jul" }
+  ];
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  tone(kind) {
+    const M = {
+      green: ["#34d399", "rgba(52,211,153,.1)", "rgba(52,211,153,.26)"],
+      amber: ["#fbbf24", "rgba(251,191,36,.1)", "rgba(251,191,36,.26)"],
+      red: ["#f87171", "rgba(248,113,113,.1)", "rgba(248,113,113,.26)"],
+      blue: ["#60a5fa", "rgba(96,165,250,.1)", "rgba(96,165,250,.26)"],
+      violet: ["#a78bfa", "rgba(167,139,250,.1)", "rgba(167,139,250,.26)"],
+      slate: ["#94a3b8", "rgba(148,163,184,.08)", "rgba(148,163,184,.2)"]
+    };
+    return M[kind] || M.slate;
+  }
+
+  money(cents) {
+    if (cents === 0) return "$0";
+    const d = cents / 100;
+    if (d >= 1000) return "$" + (d / 1000).toFixed(1).replace(".0", "") + "k";
+    return "$" + Math.round(d);
+  }
+
+  stateOf(o) { return this.state.offerStates[o.id] || o.state; }
+
+  renderVals() {
+    const s = this.state, tab = s.tab;
+    const isAdmin = this.props.role !== "operator";
+
+    const STATE = {
+      draft: ["slate", "draft"],
+      sent: ["blue", "sent"],
+      accepted: ["green", "accepted"],
+      rejected: ["red", "rejected"],
+      expired: ["amber", "expired"]
+    };
+    const BSTATUS = { draft: "slate", active: "green", archived: "amber" };
+    const ASTATUS = { active: "green", suspended: "amber", revoked: "slate" };
+
+    const offersAll = this.offers.map(o => {
+      const st = s.expired && this.stateOf(o) === "sent" && o.expires === "26 Aug" ? "expired" : this.stateOf(o);
+      return Object.assign({}, o, { state: st });
+    });
+    const offers = s.offerFilter === "all" ? offersAll : offersAll.filter(o => o.state === s.offerFilter);
+    const bundlesAll = this.bundles.concat(s.extraBundles);
+    const bundles = s.bundleFilter === "all" ? bundlesAll : bundlesAll.filter(b => b.status === s.bundleFilter);
+    const assignsAll = this.assignments.map(a => s.revoked[a.id] ? Object.assign({}, a, { status: "revoked" }) : a);
+    const assigns = s.assignFilter === "all" ? assignsAll : assignsAll.filter(a => a.status === s.assignFilter);
+
+    const offer = s.offer ? offersAll.find(o => o.id === s.offer) : null;
+    const oState = offer ? offer.state : null;
+    const oTone = offer ? this.tone(STATE[oState][0]) : this.tone("slate");
+
+    const bundle = s.bundle ? bundlesAll.find(b => b.id === s.bundle) : null;
+    const bTone = bundle ? this.tone(BSTATUS[bundle.status]) : this.tone("slate");
+    const bvPkgs = bundle ? bundle.keys.map(k => this.packages.find(p => p.key === k)).filter(Boolean) : [];
+
+    const pickedCost = s.bPicked.reduce((a, k) => {
+      const p = this.packages.find(x => x.key === k);
+      return a + (p ? p.costCents : 0);
+    }, 0);
+    const priceNum = parseInt(s.bPrice, 10);
+    const canSave = s.bName.trim().length > 0 && s.bPicked.length > 0 && isAdmin;
+
+    return {
+      rootPad: this.props.embedded ? "0" : "20px",
+      rootBg: this.props.embedded ? "transparent" : "#020617",
+      stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+
+      tabs: [
+        { id: "offers", label: "Offers", count: String(offersAll.length) },
+        { id: "bundles", label: "Bundles", count: String(bundlesAll.length) },
+        { id: "packages", label: "Packages", count: String(this.packages.length) },
+        { id: "assignments", label: "Who has what", count: String(assignsAll.filter(a => a.status === "active").length) }
+      ].map(t => ({
+        label: t.label, count: t.count,
+        bg: tab === t.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: tab === t.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: tab === t.id ? "#bfdbfe" : "#94a3b8",
+        countColor: tab === t.id ? "#60a5fa" : "#475569",
+        select: () => this.setState({ tab: t.id })
+      })),
+
+      isOffers: tab === "offers",
+      offerFilters: ["all", "draft", "sent", "accepted", "rejected", "expired"].map(f => ({
+        label: f === "all" ? "All offers" : STATE[f][1],
+        bg: s.offerFilter === f ? "rgba(37,99,235,.18)" : "transparent",
+        border: s.offerFilter === f ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: s.offerFilter === f ? "#bfdbfe" : "#94a3b8",
+        select: () => this.setState({ offerFilter: f })
+      })),
+      openGenerate: () => this.setState({ genOpen: true, genResult: null }),
+      expireLabel: s.expired ? "Stale offers closed" : "Close stale offers",
+      expireStale: () => this.setState({ expired: true }),
+      hasOffers: tab === "offers" && offers.length > 0,
+      noOffers: tab === "offers" && offers.length === 0,
+      noOffersTitle: offersAll.length === 0 ? "Nothing to sell them yet" : "None in that state",
+      noOffersBody: offersAll.length === 0
+        ? "The engine reads a customer's live signals and matches them against the product catalogue. Nothing has been run for anyone in the book yet."
+        : "Offers move through draft, sent, and then one of accepted, rejected or expired. This filter will fill as they do.",
+      offerRows: offers.map(o => {
+        const t = this.tone(STATE[o.state][0]);
+        const sc = this.tone(o.score >= 85 ? "green" : o.score >= 70 ? "blue" : "slate");
+        return {
+          title: o.title, state: STATE[o.state][1], score: o.score,
+          rationale: o.rationale,
+          meta: o.customer + " · found " + o.created,
+          price: this.money(o.priceCents),
+          expiry: o.state === "sent" ? "expires " + o.expires : o.state === "expired" ? "expired " + o.expires : "no clock",
+          expiryColor: o.state === "sent" ? "#fcd34d" : "#64748b",
+          color: t[0], tint: t[1], line: t[2],
+          scoreColor: sc[0], scoreTint: sc[1], scoreLine: sc[2],
+          cardLine: o.state === "sent" ? "rgba(96,165,250,.24)" : "rgba(148,163,184,.16)",
+          open: () => this.setState({ offer: o.id })
+        };
+      }),
+
+      isBundles: tab === "bundles",
+      bundleFilters: ["all", "draft", "active", "archived"].map(f => ({
+        label: f === "all" ? "All bundles" : f === "draft" ? "Drafts" : f === "active" ? "Live" : "Archived",
+        bg: s.bundleFilter === f ? "rgba(37,99,235,.18)" : "transparent",
+        border: s.bundleFilter === f ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: s.bundleFilter === f ? "#bfdbfe" : "#94a3b8",
+        select: () => this.setState({ bundleFilter: f })
+      })),
+      builderTitle: isAdmin ? "" : "Only an MSP admin can build or change a bundle — pricing decisions are not an operator's to make",
+      builderLine: isAdmin ? "#2563eb" : "rgba(148,163,184,.2)",
+      builderBg: isAdmin ? "#2563eb" : "transparent",
+      builderFg: isAdmin ? "#fff" : "#64748b",
+      builderCursor: isAdmin ? "pointer" : "not-allowed",
+      builderOpacity: isAdmin ? "1" : ".6",
+      openBuilder: isAdmin ? () => this.setState({ builderOpen: true, bName: "", bPrice: "", bPicked: [] }) : () => {},
+      hasBundles: tab === "bundles" && bundles.length > 0,
+      noBundles: tab === "bundles" && bundles.length === 0,
+      bundleRows: bundles.map(b => {
+        const t = this.tone(BSTATUS[b.status]);
+        const known = b.keys.filter(k => this.packages.some(p => p.key === k));
+        return {
+          name: b.name, status: b.status === "active" ? "live" : b.status,
+          price: b.priceCents === 0 ? "no price set" : this.money(b.priceCents) + "/mo",
+          color: t[0], tint: t[1], line: t[2],
+          cardLine: b.orphaned ? "rgba(251,191,36,.22)" : "rgba(148,163,184,.16)",
+          chips: b.keys.slice(0, 5).map(k => {
+            const ok = this.packages.some(p => p.key === k);
+            const ct = this.tone(ok ? "blue" : "red");
+            return { label: k, color: ct[0], tint: ct[1], line: ct[2] };
+          }).concat(b.keys.length > 5 ? [{ label: "+" + (b.keys.length - 5) + " more", color: "#94a3b8", tint: "rgba(148,163,184,.08)", line: "rgba(148,163,184,.2)" }] : []),
+          assignments: b.assignments === 0 ? "nobody on it" : b.assignments + (b.assignments === 1 ? " customer on it" : " customers on it"),
+          cost: known.length === 0 ? "costs you nothing — it contains nothing" : "costs you nothing",
+          trial: b.trialDays ? b.trialDays + " day trial" : "no trial",
+          orphaned: b.orphaned,
+          open: () => this.setState({ bundle: b.id })
+        };
+      }),
+
+      isPackages: tab === "packages",
+      packageRows: this.packages.map(p => {
+        const t = this.tone(p.gate ? "amber" : "green");
+        return {
+          key: p.key, label: p.label, engines: p.engines,
+          cost: this.money(p.costCents),
+          costColor: p.costCents === 0 ? "#94a3b8" : "#f8fafc",
+          gate: p.gate ? "needs " + p.gate : "on your plan",
+          icon: p.gate ? "lock" : "check",
+          color: t[0], tint: t[1], line: t[2]
+        };
+      }),
+
+      isAssignments: tab === "assignments",
+      assignFilters: [
+        { id: "active", label: "Live" },
+        { id: "revoked", label: "Taken off" },
+        { id: "all", label: "All" }
+      ].map(f => ({
+        label: f.label,
+        bg: s.assignFilter === f.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: s.assignFilter === f.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: s.assignFilter === f.id ? "#bfdbfe" : "#94a3b8",
+        select: () => this.setState({ assignFilter: f.id })
+      })),
+      hasAssign: tab === "assignments" && assigns.length > 0,
+      noAssign: tab === "assignments" && assigns.length === 0,
+      assignRows: assigns.map(a => {
+        const t = this.tone(ASTATUS[a.status]);
+        const live = a.status === "active";
+        return {
+          customer: a.customer, domain: a.domain, bundle: a.bundle,
+          status: a.status === "revoked" ? "taken off" : a.status,
+          color: t[0], tint: t[1], line: t[2],
+          trial: a.trialEnds ? "ends " + a.trialEnds : "—",
+          trialColor: a.trialEnds ? "#fcd34d" : "#64748b",
+          assigned: a.assigned,
+          revokeLabel: live ? "Take off" : "Off",
+          revokeTitle: live
+            ? (isAdmin ? "Stops every package in this bundle for them" : "Only an MSP admin can take a customer off a bundle")
+            : "Already taken off — doing it again does nothing",
+          rLine: live && isAdmin ? "rgba(248,113,113,.3)" : "rgba(148,163,184,.16)",
+          rBg: live && isAdmin ? "rgba(248,113,113,.1)" : "transparent",
+          rFg: live && isAdmin ? "#fca5a5" : "#64748b",
+          rCursor: live && isAdmin ? "pointer" : "not-allowed",
+          rOpacity: live && isAdmin ? "1" : ".6",
+          revoke: live && isAdmin ? () => this.setState({ revoked: Object.assign({}, s.revoked, { [a.id]: true }) }) : () => {}
+        };
+      }),
+
+      offerOpen: !!offer,
+      closeOffer: () => this.setState({ offer: null }),
+      ovState: offer ? STATE[oState][1].toUpperCase() : "",
+      ovColor: oTone[0],
+      ovTitle: offer ? offer.title : "",
+      ovCustomer: offer ? offer.customer : "",
+      ovFacts: offer ? [
+        { label: "PRICE", value: this.money(offer.priceCents), color: "#f8fafc" },
+        { label: "FIT", value: offer.score + " of 100", color: offer.score >= 85 ? "#6ee7b7" : "#cbd5e1" },
+        { label: "FOUND", value: offer.created, color: "#94a3b8" },
+        { label: "EXPIRES", value: offer.expires || "no clock yet", color: offer.expires ? "#fcd34d" : "#64748b" },
+        { label: "PRICED FROM", value: "the product catalogue", color: "#94a3b8" }
+      ] : [],
+      ovSignals: offer ? offer.signals.map(x => ({ label: x })) : [],
+      ovRationale: offer ? offer.rationale : "",
+      ovEvents: offer ? [
+        { text: "Raised by the engine from the signals above", icon: "sparkles", color: "#a78bfa", at: offer.created },
+        oState === "draft"
+          ? { text: "Still a draft — nobody has seen it", icon: "file-pen", color: "#94a3b8", at: "now" }
+          : { text: "Sent to the customer", icon: "send", color: "#60a5fa", at: offer.created },
+        oState === "accepted" ? { text: "Marked accepted", icon: "circle-check-big", color: "#34d399", at: "later" }
+          : oState === "rejected" ? { text: "Turned down", icon: "circle-x", color: "#f87171", at: "later" }
+          : oState === "expired" ? { text: "Ran out of time", icon: "calendar-x", color: "#fbbf24", at: offer.expires }
+          : { text: "Waiting on the customer", icon: "clock", color: "#94a3b8", at: "now" }
+      ] : [],
+      ovAcceptWarn: oState === "sent",
+      ovActions: offer ? (
+        oState === "draft"
+          ? [
+            { label: "Send it", icon: "send", line: "#2563eb", bg: "#2563eb", fg: "#fff", cursor: "pointer", opacity: "1", title: "Sends it and starts the clock", run: () => this.setState({ offerStates: Object.assign({}, s.offerStates, { [offer.id]: "sent" }) }) },
+            { label: "Edit the wording", icon: "file-pen", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "Only a draft can be edited", run: () => {} },
+            { label: "Delete", icon: "trash-2", line: "rgba(248,113,113,.3)", bg: "rgba(248,113,113,.1)", fg: "#fca5a5", cursor: "pointer", opacity: "1", title: "Only a draft can be deleted", run: () => this.setState({ offer: null }) }
+          ]
+          : oState === "sent"
+            ? [
+              { label: "Mark rejected", icon: "circle-x", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "Records a reason and closes it", run: () => this.setState({ offerStates: Object.assign({}, s.offerStates, { [offer.id]: "rejected" }) }) },
+              { label: "Mark accepted anyway", icon: "triangle-alert", line: "rgba(248,113,113,.3)", bg: "rgba(248,113,113,.1)", fg: "#fca5a5", cursor: "pointer", opacity: "1", title: "Final, and delivers nothing — read the warning above", run: () => this.setState({ offerStates: Object.assign({}, s.offerStates, { [offer.id]: "accepted" }) }) }
+            ]
+            : [
+              { label: "Closed", icon: "lock", line: "rgba(148,163,184,.2)", bg: "transparent", fg: "#64748b", cursor: "not-allowed", opacity: ".6", title: "An offer that has reached accepted, rejected or expired cannot move, be edited, or be deleted", run: () => {} }
+            ]
+      ) : [],
+      ovNote: oState === "draft"
+        ? "A draft can be edited or deleted. Once sent, neither is possible again."
+        : oState === "sent"
+          ? "Sending again is not a thing — the offer moves forward only."
+          : "This offer is at the end of its life. Raise a new one instead.",
+
+      genOpen: s.genOpen,
+      closeGenerate: () => this.setState({ genOpen: false }),
+      genTenants: ["Northwind Logistics", "Halcyon Health", "Kestrel Financial", "Mccawsoft2"].map(n => ({
+        label: n,
+        bg: s.genTenant === n ? "rgba(37,99,235,.18)" : "transparent",
+        line: s.genTenant === n ? "rgba(96,165,250,.32)" : "rgba(148,163,184,.18)",
+        fg: s.genTenant === n ? "#bfdbfe" : "#94a3b8",
+        pick: () => this.setState({ genTenant: n, genResult: null })
+      })),
+      genLabel: s.genResult ? "Run it again" : "Run it",
+      genTitle: s.genTenant ? "" : "Pick a customer first",
+      genLine: s.genTenant ? "#2563eb" : "rgba(148,163,184,.2)",
+      genBg: s.genTenant ? "#2563eb" : "transparent",
+      genFg: s.genTenant ? "#fff" : "#64748b",
+      genCursor: s.genTenant ? "pointer" : "not-allowed",
+      genOpacity: s.genTenant ? "1" : ".6",
+      runGenerate: s.genTenant
+        ? () => this.setState({ genResult: s.genResult === "new" ? "none" : "new" })
+        : () => {},
+      genResult: !!s.genResult,
+      genResIcon: s.genResult === "new" ? "circle-check-big" : "circle-minus",
+      genResColor: s.genResult === "new" ? "#34d399" : "#94a3b8",
+      genResTint: s.genResult === "new" ? "rgba(52,211,153,.08)" : "rgba(148,163,184,.06)",
+      genResLine: s.genResult === "new" ? "rgba(52,211,153,.26)" : "rgba(148,163,184,.2)",
+      genResTitle: s.genResult === "new" ? "Two new offers raised" : "Ran, nothing new",
+      genResBody: s.genResult === "new"
+        ? "They arrive as drafts and nobody sees them until you send them. The customer gets a notice only once one is sent."
+        : "The same signals produced the same matches as last time, so nothing was raised again. Running this repeatedly never duplicates an offer.",
+      genResRows: s.genResult === "new" ? [
+        { label: "Identity & Access Hardening", value: "$14.5k" },
+        { label: "Data Protection Baseline", value: "$12k" }
+      ] : [],
+
+      builderOpen: s.builderOpen,
+      closeBuilder: () => this.setState({ builderOpen: false }),
+      bName: s.bName,
+      setBName: (e) => this.setState({ bName: e.target.value }),
+      bPrice: s.bPrice,
+      setBPrice: (e) => this.setState({ bPrice: e.target.value }),
+      bPickedCount: s.bPicked.length === 0 ? "nothing picked" : s.bPicked.length + " picked",
+      bPackages: this.packages.map(p => {
+        const on = s.bPicked.indexOf(p.key) >= 0;
+        const blocked = !!p.gate;
+        return {
+          key: p.key, label: p.label, cost: this.money(p.costCents),
+          icon: on ? "square-check-big" : "square",
+          color: on ? "#60a5fa" : blocked ? "#64748b" : "#475569",
+          line: on ? "rgba(96,165,250,.34)" : "rgba(148,163,184,.16)",
+          bg: on ? "rgba(37,99,235,.14)" : "rgba(2,6,23,.4)",
+          cursor: blocked ? "not-allowed" : "pointer",
+          opacity: blocked ? ".55" : "1",
+          title: blocked ? "Not on your plan — it is listed so you know it exists, but it cannot go in a bundle" : "",
+          pick: blocked ? () => {} : () => this.setState({
+            bPicked: on ? s.bPicked.filter(k => k !== p.key) : s.bPicked.concat([p.key])
+          })
+        };
+      }),
+      bCost: this.money(pickedCost),
+      bCostNote: s.bPicked.length === 0
+        ? "Pick a package and this fills in. It is worked out here, never from anything you type."
+        : "Every package you picked currently costs you nothing, so this is genuinely zero — not a missing figure.",
+      bHasMargin: !!priceNum && priceNum > 0,
+      bMargin: priceNum ? "$" + priceNum + " per month, all of it" : "",
+      bMultiGate: s.bPicked.length > 1,
+      saveTitle: canSave ? "" : !isAdmin ? "Only an MSP admin can create a bundle" : "A name and at least one package are both needed",
+      saveLine: canSave ? "#2563eb" : "rgba(148,163,184,.2)",
+      saveBg: canSave ? "#2563eb" : "transparent",
+      saveFg: canSave ? "#fff" : "#64748b",
+      saveCursor: canSave ? "pointer" : "not-allowed",
+      saveOpacity: canSave ? "1" : ".6",
+      saveBundle: canSave
+        ? () => this.setState({
+          builderOpen: false,
+          extraBundles: s.extraBundles.concat([{
+            id: "b-" + Date.now(), name: s.bName.trim(), status: "draft",
+            priceCents: (parseInt(s.bPrice, 10) || 0) * 100,
+            keys: s.bPicked.slice(), trialDays: null, assignments: 0, created: "just now", orphaned: false
+          }])
+        })
+        : () => {},
+
+      bundleOpen: !!bundle,
+      closeBundle: () => this.setState({ bundle: null }),
+      bvStatus: bundle ? (bundle.status === "active" ? "LIVE BUNDLE" : bundle.status.toUpperCase()) : "",
+      bvColor: bTone[0],
+      bvName: bundle ? bundle.name : "",
+      bvMeta: bundle ? ("Built " + bundle.created + " · " + bundle.keys.length + (bundle.keys.length === 1 ? " package named" : " packages named")) : "",
+      bvFacts: bundle ? [
+        { label: "YOUR PRICE", value: bundle.priceCents === 0 ? "not set" : this.money(bundle.priceCents) + "/mo", color: bundle.priceCents === 0 ? "#64748b" : "#f8fafc" },
+        { label: "COSTS YOU", value: "$0", color: "#94a3b8" },
+        { label: "ON IT NOW", value: String(bundle.assignments), color: bundle.assignments > 0 ? "#6ee7b7" : "#94a3b8" },
+        { label: "TRIAL", value: bundle.trialDays ? bundle.trialDays + " days" : "none", color: "#94a3b8" }
+      ] : [],
+      bvHasPackages: !!bundle && bvPkgs.length > 0,
+      bvNoPackages: !!bundle && bvPkgs.length === 0,
+      bvPackages: bvPkgs.map(p => ({ key: p.key, label: p.label, cost: this.money(p.costCents) })),
+      bvOrphanTitle: "None of these packages exist",
+      bvOrphanBody: "This bundle names ten packages and the catalogue has none of them. It was seeded with short names while the catalogue uses prefixed ones, so the two have never matched. An empty bundle and a broken bundle look identical here.",
+      bvOrphanKeys: bundle ? bundle.keys.map(k => ({ label: k })) : [],
+      bvActions: bundle ? (
+        !isAdmin
+          ? [{ label: "Admin only", icon: "lock", line: "rgba(148,163,184,.2)", bg: "transparent", fg: "#64748b", cursor: "not-allowed", opacity: ".6", title: "An operator can look but not change", run: () => {} }]
+          : bundle.status === "draft"
+            ? [
+              { label: "Make it live", icon: "circle-check-big", line: "#2563eb", bg: "#2563eb", fg: "#fff", cursor: "pointer", opacity: "1", title: "It has to be live before anyone can be put on it", run: () => this.setState({ bundle: null }) },
+              { label: "Edit", icon: "file-pen", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "", run: () => this.setState({ bundle: null, builderOpen: true, bName: bundle.name, bPrice: String(bundle.priceCents / 100), bPicked: bundle.keys.filter(k => this.packages.some(p => p.key === k)) }) },
+              { label: "Delete", icon: "trash-2", line: "rgba(248,113,113,.3)", bg: "rgba(248,113,113,.1)", fg: "#fca5a5", cursor: "pointer", opacity: "1", title: "", run: () => this.setState({ bundle: null }) }
+            ]
+            : [
+              { label: "Put a customer on it", icon: "user-plus", line: "#2563eb", bg: "#2563eb", fg: "#fff", cursor: "pointer", opacity: "1", title: "", run: () => this.setState({ bundle: null, tab: "assignments" }) },
+              { label: "Edit", icon: "file-pen", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "", run: () => this.setState({ bundle: null }) },
+              bundle.assignments > 0
+                ? { label: "Delete", icon: "lock", line: "rgba(148,163,184,.2)", bg: "transparent", fg: "#64748b", cursor: "not-allowed", opacity: ".6", title: "Somebody is on this bundle — take them off first", run: () => {} }
+                : { label: "Delete", icon: "trash-2", line: "rgba(248,113,113,.3)", bg: "rgba(248,113,113,.1)", fg: "#fca5a5", cursor: "pointer", opacity: "1", title: "", run: () => this.setState({ bundle: null }) }
+            ]
+      ) : [],
+      bvNote: bundle && bundle.assignments > 0
+        ? "A bundle somebody is on cannot be deleted. Take every customer off it first."
+        : "Putting a customer on a bundle turns each of its packages on for them separately, so a bundle of mixed packages starts them at their own rhythms.",
+
+      honestNote: "All twenty endpoints behind this screen are live with nothing wired to them yet, so everything here is representative. Marking an offer accepted from this console records the state and nothing else — no statement of work, no payment, no delivery, and no way back. Stale offers are only closed when somebody presses the button; nothing does it on a schedule."
+    };
+  }
+}
+
+</script>
+</body>
+</html>

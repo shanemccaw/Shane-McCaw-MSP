@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+@keyframes smcWhSlide{from{transform:translateX(24px);opacity:.4}to{transform:translateX(0);opacity:1}}
+[data-icon] svg{width:100%;height:100%;display:block}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+      <button onClick="{{ t.select }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+    <div style="flex:1"></div>
+    <span style="font-size:11.5px;color:#64748b;white-space:nowrap">{{ headNote }}</span>
+  </div>
+
+  <sc-if value="{{ isOutbound }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
+        <div style="min-width:1020px">
+          <div style="display:grid;grid-template-columns:2.2fr 1.4fr 1.1fr 1.3fr 1.2fr 110px;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
+            <span>ENDPOINT</span><span>CUSTOMER</span><span>STATE</span><span>SUBSCRIBED TO</span><span>LAST DELIVERY</span><span style="text-align:right"></span>
+          </div>
+          <sc-for list="{{ endpointRows }}" as="e" hint-placeholder-count="4">
+            <div onClick="{{ e.open }}" style="display:grid;grid-template-columns:2.2fr 1.4fr 1.1fr 1.3fr 1.2fr 110px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(148,163,184,.08);cursor:pointer;opacity:{{ e.opacity }};transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
+              <span style="display:flex;flex-direction:column;min-width:0">
+                <span style="font-size:13px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.label }}</span>
+                <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.url }}</span>
+              </span>
+              <span style="font-size:12px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.customer }}</span>
+              <span style="display:inline-flex;justify-self:start;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:{{ e.tint }};border:1px solid {{ e.line }};font-size:11px;font-weight:600;color:{{ e.color }};white-space:nowrap"><span data-icon="{{ e.icon }}" style="width:11px;height:11px"></span>{{ e.state }}</span>
+              <span style="font-size:12px;color:#cbd5e1;white-space:nowrap">{{ e.events }}</span>
+              <span style="font-size:12px;color:{{ e.deliveryColor }};white-space:nowrap">{{ e.lastDelivery }}</span>
+              <span style="justify-self:end;font-size:12px;color:#64748b;white-space:nowrap">Open</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">The customer owns these. From here they can be read and switched off — creating, editing and rotating the secret stay with them.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isDeliveries }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <sc-for list="{{ deliveryFilters }}" as="f" hint-placeholder-count="3">
+          <button onClick="{{ f.select }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ f.label }}<span style="font-size:10.5px;color:{{ f.countColor }};margin-left:6px">{{ f.count }}</span></button>
+        </sc-for>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <sc-for list="{{ deliveryRows }}" as="d" hint-placeholder-count="5">
+          <div style="border:1px solid {{ d.cardLine }};border-radius:11px;background:rgba(15,23,42,.6);padding:13px 14px;display:flex;gap:12px;align-items:flex-start;min-width:0">
+            <span data-icon="{{ d.icon }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:{{ d.tint }};border:1px solid {{ d.line }};color:{{ d.color }};padding:7px"></span>
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+              <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                <span style="font-family:Menlo,monospace;font-size:12px;font-weight:600;color:#93c5fd;white-space:nowrap">{{ d.event }}</span>
+                <span style="font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">{{ d.endpoint }}</span>
+              </div>
+              <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ d.detail }}</span>
+              <span style="font-size:11px;color:#475569">{{ d.when }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;flex:0 0 auto;align-items:flex-end">
+              <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ d.tint }};border:1px solid {{ d.line }};font-size:11px;font-weight:600;color:{{ d.color }};white-space:nowrap">{{ d.result }}</span>
+              <button onClick="{{ d.replay }}" title="{{ d.replayTitle }}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid rgba(148,163,184,.2);background:transparent;color:#64748b;font-size:11.5px;font-weight:600;cursor:not-allowed;opacity:.6;white-space:nowrap">Replay</button>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Replaying a delivery is not built yet. A failed delivery retries on its own schedule and then stops.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isInbound }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px">
+        <sc-for list="{{ inboundCards }}" as="i" hint-placeholder-count="2">
+          <div style="border:1px solid {{ i.cardLine }};border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;flex-direction:column;gap:12px;min-width:0">
+            <div style="display:flex;align-items:flex-start;gap:11px">
+              <span data-icon="{{ i.icon }}" style="width:30px;height:30px;flex:0 0 30px;border-radius:9px;background:{{ i.tint }};border:1px solid {{ i.line }};color:{{ i.color }};padding:7px"></span>
+              <span style="display:flex;flex-direction:column;min-width:0;flex:1">
+                <span style="font-size:13.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ i.title }}</span>
+                <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ i.who }}</span>
+              </span>
+              <span style="display:inline-flex;padding:3px 10px;border-radius:999px;background:{{ i.stTint }};border:1px solid {{ i.stLine }};font-size:11px;font-weight:600;color:{{ i.stColor }};white-space:nowrap">{{ i.state }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">HOW IT IS PROTECTED</span>
+              <sc-for list="{{ i.guards }}" as="g" hint-placeholder-count="3">
+                <div style="display:flex;gap:9px;align-items:flex-start">
+                  <span data-icon="{{ g.icon }}" style="width:13px;height:13px;color:{{ g.color }};flex:0 0 13px;margin-top:2px"></span>
+                  <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ g.label }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:7px;padding-top:11px;border-top:1px solid rgba(148,163,184,.12)">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">EVENTS IT RECOGNISES</span>
+              <div style="display:flex;flex-wrap:wrap;gap:6px">
+                <sc-for list="{{ i.events }}" as="ev" hint-placeholder-count="4">
+                  <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:7px;background:rgba(2,6,23,.5);border:1px solid rgba(148,163,184,.16);font-family:Menlo,monospace;font-size:10.5px;color:#94a3b8;white-space:nowrap"><span data-icon="{{ ev.icon }}" style="width:10px;height:10px;color:{{ ev.color }}"></span>{{ ev.name }}</span>
+                </sc-for>
+              </div>
+              <span style="font-size:11.5px;color:{{ i.noteColor }};text-wrap:pretty">{{ i.note }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:44px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+        <span data-icon="inbox" style="width:40px;height:40px;border-radius:12px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);color:#94a3b8;padding:10px"></span>
+        <span style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Nothing has arrived yet</span>
+        <span style="font-size:12.5px;color:#94a3b8;max-width:460px;text-wrap:pretty">Neither of these has ever received a call in this environment. Duplicate protection remembers an event for 24 hours, so a very late retry from Stripe could still be treated as new.</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ detailOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDetail }}" style="position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(2px);z-index:90;display:flex;justify-content:flex-end">
+      <div onClick="{{ stop }}" style="width:min(480px,95%);height:100%;background:#0b1728;border-left:1px solid rgba(148,163,184,.2);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto;animation:smcWhSlide .18s ease-out;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">{{ selCustomer }}</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;text-wrap:pretty">{{ selLabel }}</span>
+            <span style="font-family:Menlo,monospace;font-size:11px;color:#94a3b8;word-break:break-all">{{ selUrl }}</span>
+          </div>
+          <button onClick="{{ closeDetail }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px">
+          <sc-for list="{{ selFacts }}" as="f" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">{{ f.label }}</span>
+              <span style="font-size:12.5px;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">WHAT THEY RECEIVE</span>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <sc-for list="{{ selEvents }}" as="ev" hint-placeholder-count="4">
+              <span style="display:inline-flex;padding:3px 9px;border-radius:7px;background:rgba(2,6,23,.5);border:1px solid rgba(148,163,184,.16);font-family:Menlo,monospace;font-size:10.5px;color:#cbd5e1;white-space:nowrap">{{ ev.name }}</span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">RECENT DELIVERIES</span>
+          <sc-for list="{{ selDeliveries }}" as="d" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:9px;border:1px solid rgba(148,163,184,.14);background:rgba(2,6,23,.4);min-width:0">
+              <span data-icon="{{ d.icon }}" style="width:14px;height:14px;color:{{ d.color }};flex:0 0 14px"></span>
+              <span style="font-family:Menlo,monospace;font-size:11px;color:#cbd5e1;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.event }}</span>
+              <span style="font-size:11px;color:{{ d.color }};white-space:nowrap">{{ d.result }}</span>
+              <span style="font-size:11px;color:#475569;white-space:nowrap">{{ d.when }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
+          <button onClick="{{ toggleEndpoint }}" style="display:flex;align-items:center;justify-content:center;gap:8px;height:38px;border-radius:8px;border:1px solid {{ toggleLine }};background:{{ toggleBg }};color:{{ toggleFg }};font-size:13px;font-weight:600;cursor:pointer" style-hover="background:rgba(148,163,184,.12)"><span data-icon="{{ toggleIcon }}" style="width:14px;height:14px"></span>{{ toggleLabel }}</button>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ toggleNote }}</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <sc-for list="{{ lockedActions }}" as="a" hint-placeholder-count="3">
+              <button title="{{ a.title }}" style="display:flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:7px;border:1px solid rgba(148,163,184,.18);background:transparent;color:#64748b;font-size:11.5px;font-weight:600;cursor:not-allowed;opacity:.6;white-space:nowrap"><span data-icon="lock" style="width:12px;height:12px"></span>{{ a.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;align-items:center;gap:9px;padding-top:2px">
+    <span data-icon="info" style="width:13px;height:13px;color:#475569;flex:0 0 13px"></span>
+    <span style="font-size:11px;color:#475569;text-wrap:pretty">{{ honestNote }}</span>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1220,&quot;height&quot;:840},&quot;tenantName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  state = { tab: "outbound", filter: "all", sel: null, disabled: {} };
+
+  endpoints = [
+    {
+      id: "wh-1", label: "Service desk intake", url: "https://hooks.northwindlogistics.com/msp/events",
+      customer: "Northwind Logistics", enabled: true, created: "14 Jun 2026", owner: "Dana Whitfield",
+      events: ["diagnostics.run.completed", "risk.decision.signed", "change.request.approved", "sla.breach.opened"],
+      deliveries: [
+        { event: "diagnostics.run.completed", result: "202", ok: true, when: "today, 04:02" },
+        { event: "sla.breach.opened", result: "202", ok: true, when: "yesterday, 16:40" },
+        { event: "change.request.approved", result: "202", ok: true, when: "6 Sep, 16:21" }
+      ]
+    },
+    {
+      id: "wh-2", label: "Ops Teams channel", url: "https://prod-14.northeurope.logic.azure.com/workflows/…",
+      customer: "Northwind Logistics", enabled: true, created: "2 Aug 2026", owner: "Gareth Holt",
+      events: ["sla.breach.opened", "drift.event.detected"],
+      deliveries: [
+        { event: "drift.event.detected", result: "timed out", ok: false, when: "today, 09:15" },
+        { event: "drift.event.detected", result: "timed out", ok: false, when: "today, 09:12" },
+        { event: "sla.breach.opened", result: "202", ok: true, when: "4 Sep, 11:02" }
+      ]
+    },
+    {
+      id: "wh-3", label: "Clinical governance log", url: "https://api.halcyonhealth.org/inbound/msp",
+      customer: "Halcyon Health", enabled: true, created: "21 Jul 2026", owner: "Marcus Vale",
+      events: ["risk.decision.signed", "change.request.approved", "remediation.step.verified"],
+      deliveries: [
+        { event: "risk.decision.signed", result: "200", ok: true, when: "5 Sep, 10:30" },
+        { event: "remediation.step.verified", result: "200", ok: true, when: "3 Sep, 11:20" }
+      ]
+    },
+    {
+      id: "wh-4", label: "Compliance archive (retired)", url: "https://legacy.kestrelfinancial.com/webhook",
+      customer: "Kestrel Financial", enabled: false, created: "3 Feb 2026", owner: "Priya Raman",
+      events: ["risk.decision.signed"],
+      deliveries: [
+        { event: "risk.decision.signed", result: "410 gone", ok: false, when: "18 Aug, 08:00" },
+        { event: "risk.decision.signed", result: "410 gone", ok: false, when: "11 Aug, 08:00" }
+      ]
+    }
+  ];
+
+  inbound = [
+    {
+      key: "stripe", title: "Stripe billing callbacks", who: "Stripe, about our own subscription and invoices",
+      icon: "credit-card", tone: "violet", configured: false,
+      guards: [
+        { label: "Every call is signed, and the signature is checked against the shared secret." },
+        { label: "Anything more than five minutes old or out of sync is rejected." },
+        { label: "The same event arriving twice is answered from the first result, not run again." }
+      ],
+      events: [
+        { name: "checkout.session.completed", acted: false },
+        { name: "customer.subscription.created", acted: false },
+        { name: "customer.subscription.updated", acted: false },
+        { name: "customer.subscription.deleted", acted: false },
+        { name: "invoice.paid", acted: false },
+        { name: "invoice.payment_failed", acted: false }
+      ],
+      note: "Accepted and acknowledged, but nothing happens with them yet — billing state is not updated from these."
+    },
+    {
+      key: "app", title: "Internal service callbacks", who: "Our own background workers reporting back",
+      icon: "server", tone: "blue", configured: false,
+      guards: [
+        { label: "Signed and timestamped the same way, with its own separate secret." },
+        { label: "An unsigned or badly signed call is refused before anything is read." },
+        { label: "Duplicates are remembered for a day and answered from the first result." }
+      ],
+      events: [
+        { name: "provisioning.completed", acted: false },
+        { name: "provisioning.failed", acted: false },
+        { name: "health.scan.completed", acted: false }
+      ],
+      note: "The body of these calls is accepted but never read. Nothing acts on them yet."
+    }
+  ];
+
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+
+  icons() {
+    const L = window.lucide;
+    if (!L || !L.icons) { setTimeout(() => this.icons(), 150); return; }
+    const pascal = (n) => n.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+    const toSvg = (node) => {
+      let kids = node;
+      if (typeof node[0] === "string") kids = node[2] || [];
+      const inner = kids.map(c => {
+        const tag = c[0], attrs = c[1] || {};
+        return "<" + tag + " " + Object.keys(attrs).map(k => k + '="' + attrs[k] + '"').join(" ") + "/>";
+      }).join("");
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+    };
+    document.querySelectorAll("[data-icon]").forEach(el => {
+      const name = el.getAttribute("data-icon");
+      if (!name || el.getAttribute("data-rendered") === name) return;
+      const node = L.icons[pascal(name)];
+      el.innerHTML = node ? toSvg(node) : "";
+      el.setAttribute("data-rendered", name);
+    });
+  }
+
+  tone(kind) {
+    const M = {
+      green: ["#34d399", "rgba(52,211,153,.1)", "rgba(52,211,153,.26)"],
+      amber: ["#fbbf24", "rgba(251,191,36,.1)", "rgba(251,191,36,.26)"],
+      red: ["#f87171", "rgba(248,113,113,.1)", "rgba(248,113,113,.26)"],
+      blue: ["#60a5fa", "rgba(96,165,250,.1)", "rgba(96,165,250,.26)"],
+      violet: ["#a78bfa", "rgba(167,139,250,.1)", "rgba(167,139,250,.26)"],
+      slate: ["#94a3b8", "rgba(148,163,184,.08)", "rgba(148,163,184,.2)"]
+    };
+    return M[kind] || M.slate;
+  }
+
+  isEnabled(e) { return this.state.disabled[e.id] === undefined ? e.enabled : !this.state.disabled[e.id]; }
+
+  allDeliveries() {
+    const out = [];
+    this.endpoints.forEach(e => e.deliveries.forEach(d => out.push({ endpoint: e.label, customer: e.customer, d })));
+    return out;
+  }
+
+  renderVals() {
+    const s = this.state, tab = s.tab;
+    const scopeName = this.props.tenantName || null;
+    const scoped = scopeName ? this.endpoints.filter(e => e.customer === scopeName) : this.endpoints;
+    const sel = s.sel ? scoped.find(e => e.id === s.sel) : null;
+    const deliveries = this.allDeliveries().filter(x => !scopeName || x.customer === scopeName);
+    const failing = deliveries.filter(x => !x.d.ok).length;
+
+    const filterDefs = [
+      { id: "all", label: "Everything", match: () => true },
+      { id: "ok", label: "Delivered", match: (x) => x.d.ok },
+      { id: "failed", label: "Failed", match: (x) => !x.d.ok }
+    ];
+    const active = filterDefs.find(f => f.id === s.filter) || filterDefs[0];
+
+    return {
+      rootPad: this.props.embedded ? "0" : "20px",
+      rootBg: this.props.embedded ? "transparent" : "#020617",
+      stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+
+      tabs: [
+        { id: "outbound", label: "Customer endpoints", count: String(scoped.length) },
+        { id: "deliveries", label: "Deliveries", count: String(deliveries.length) },
+        { id: "inbound", label: "What comes in to us", count: String(this.inbound.length) }
+      ].map(t => ({
+        label: t.label, count: t.count,
+        bg: tab === t.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: tab === t.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: tab === t.id ? "#bfdbfe" : "#94a3b8",
+        countColor: tab === t.id ? "#60a5fa" : "#475569",
+        select: () => this.setState({ tab: t.id, sel: null })
+      })),
+      headNote: failing > 0
+        ? failing + (failing === 1 ? " delivery failed recently" : " deliveries failed recently")
+        : "Every recent delivery landed",
+
+      isOutbound: tab === "outbound",
+      endpointRows: scoped.map(e => {
+        const on = this.isEnabled(e);
+        const t = this.tone(on ? "green" : "slate");
+        const last = e.deliveries[0];
+        return {
+          label: e.label, url: e.url, customer: e.customer,
+          state: on ? "on" : "switched off", icon: on ? "radio" : "power-off",
+          color: t[0], tint: t[1], line: t[2],
+          opacity: on ? "1" : ".7",
+          events: e.events.length + (e.events.length === 1 ? " event" : " events"),
+          lastDelivery: last ? (last.ok ? last.when : "failed " + last.when) : "never",
+          deliveryColor: last && !last.ok ? "#fca5a5" : "#94a3b8",
+          open: () => this.setState({ sel: e.id })
+        };
+      }),
+
+      isDeliveries: tab === "deliveries",
+      deliveryFilters: filterDefs.map(f => ({
+        label: f.label,
+        count: String(deliveries.filter(f.match).length),
+        bg: s.filter === f.id ? "rgba(37,99,235,.18)" : "transparent",
+        border: s.filter === f.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
+        fg: s.filter === f.id ? "#bfdbfe" : "#94a3b8",
+        countColor: s.filter === f.id ? "#60a5fa" : "#475569",
+        select: () => this.setState({ filter: f.id })
+      })),
+      deliveryRows: deliveries.filter(active.match).map(x => {
+        const t = this.tone(x.d.ok ? "green" : "red");
+        return {
+          event: x.d.event,
+          endpoint: x.endpoint + (scopeName ? "" : " · " + x.customer),
+          result: x.d.ok ? "accepted " + x.d.result : x.d.result,
+          detail: x.d.ok
+            ? "The endpoint accepted it."
+            : "The endpoint did not accept it. It was retried on a backoff and then given up on.",
+          when: x.d.when,
+          icon: x.d.ok ? "circle-check-big" : "circle-x",
+          color: t[0], tint: t[1], line: t[2],
+          cardLine: x.d.ok ? "rgba(148,163,184,.16)" : "rgba(248,113,113,.2)",
+          replay: () => {},
+          replayTitle: "Replaying a delivery is not built yet"
+        };
+      }),
+
+      isInbound: tab === "inbound",
+      inboundCards: this.inbound.map(i => {
+        const t = this.tone(i.tone);
+        const st = this.tone(i.configured ? "green" : "amber");
+        return {
+          title: i.title, who: i.who, icon: i.icon,
+          color: t[0], tint: t[1], line: t[2],
+          cardLine: "rgba(148,163,184,.16)",
+          state: i.configured ? "listening" : "not set up here",
+          stColor: st[0], stTint: st[1], stLine: st[2],
+          guards: i.guards.map(g => ({ label: g.label, icon: "shield-check", color: "#34d399" })),
+          events: i.events.map(ev => ({
+            name: ev.name,
+            icon: ev.acted ? "circle-check-big" : "circle-dashed",
+            color: ev.acted ? "#34d399" : "#64748b"
+          })),
+          note: i.note, noteColor: "#fcd34d"
+        };
+      }),
+
+      detailOpen: !!sel,
+      closeDetail: () => this.setState({ sel: null }),
+      selLabel: sel ? sel.label : "",
+      selUrl: sel ? sel.url : "",
+      selCustomer: sel ? sel.customer.toUpperCase() : "",
+      selFacts: sel ? [
+        { label: "STATE", value: this.isEnabled(sel) ? "on" : "switched off", color: this.isEnabled(sel) ? "#6ee7b7" : "#94a3b8" },
+        { label: "REGISTERED BY", value: sel.owner, color: "#cbd5e1" },
+        { label: "SET UP", value: sel.created, color: "#94a3b8" },
+        { label: "RECENT FAILURES", value: String(sel.deliveries.filter(d => !d.ok).length), color: sel.deliveries.some(d => !d.ok) ? "#fca5a5" : "#94a3b8" }
+      ] : [],
+      selEvents: sel ? sel.events.map(name => ({ name })) : [],
+      selDeliveries: sel ? sel.deliveries.map(d => ({
+        event: d.event, result: d.ok ? d.result : d.result, when: d.when,
+        icon: d.ok ? "circle-check-big" : "circle-x",
+        color: d.ok ? "#6ee7b7" : "#fca5a5"
+      })) : [],
+      toggleLabel: sel && this.isEnabled(sel) ? "Switch this endpoint off" : "Switch this endpoint back on",
+      toggleIcon: sel && this.isEnabled(sel) ? "power-off" : "power",
+      toggleLine: sel && this.isEnabled(sel) ? "rgba(248,113,113,.3)" : "rgba(52,211,153,.3)",
+      toggleBg: sel && this.isEnabled(sel) ? "rgba(248,113,113,.1)" : "rgba(52,211,153,.12)",
+      toggleFg: sel && this.isEnabled(sel) ? "#fca5a5" : "#6ee7b7",
+      toggleNote: sel && this.isEnabled(sel)
+        ? "Deliveries stop immediately. The endpoint and its settings stay exactly as they are, and the customer can see it was switched off here."
+        : "Deliveries resume from the next event. Nothing that was missed while it was off gets sent.",
+      toggleEndpoint: sel ? () => this.setState({
+        disabled: Object.assign({}, s.disabled, { [sel.id]: this.isEnabled(sel) })
+      }) : () => {},
+      lockedActions: [
+        { label: "Edit", title: "The customer owns the endpoint's settings — editing stays with them" },
+        { label: "Rotate the secret", title: "Rotating the signing secret stays with the customer" },
+        { label: "Delete", title: "Only the customer can remove their own endpoint" }
+      ],
+
+      honestNote: "Reading a customer's endpoints and switching one off has no server-side route yet, so this list is representative. What comes in to us is real and properly signed, but nothing acts on those calls once they arrive."
+    };
+  }
+}
+
+</script>
+</body>
+</html>
