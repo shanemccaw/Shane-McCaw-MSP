@@ -19,6 +19,9 @@ import {
   Check, GitMerge, ShieldCheck, Table, Image, Upload, Download, Loader2,
   CircleCheck, CircleX, Copy, Folder, ChevronUp, Split,
   Fingerprint, Layers,
+  // Risk Register (#2582)
+  ArrowDown, ArrowRight, Camera, Printer, Link, FileClock, Signature, Ban,
+  CircleDot, BellOff, Shield, FileCheck, FileX,
   type LucideIcon,
 } from "lucide-react";
 
@@ -102,6 +105,20 @@ const REGISTRY: Record<string, LucideIcon> = {
   split: Split,
   fingerprint: Fingerprint,
   layers: Layers,
+  // Risk Register (#2582)
+  "arrow-down": ArrowDown,
+  "arrow-right": ArrowRight,
+  camera: Camera,
+  printer: Printer,
+  link: Link,
+  "file-clock": FileClock,
+  signature: Signature,
+  ban: Ban,
+  "circle-dot": CircleDot,
+  "bell-off": BellOff,
+  shield: Shield,
+  "file-check": FileCheck,
+  "file-x": FileX,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

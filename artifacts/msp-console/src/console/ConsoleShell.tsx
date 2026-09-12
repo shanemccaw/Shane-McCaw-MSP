@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import type { MspUserProfile } from "@workspace/api-client-react";
-import { useAlerts, useBreakGlass, useDirectory } from "@/api/console-api";
+import { useAlerts, useBreakGlass, useDirectory, type DirectoryCustomer } from "@/api/console-api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Header } from "./Header";
 import { TreeSidebar } from "./TreeSidebar";
@@ -22,6 +22,7 @@ import {
 import {
   groupForPage, parseLocation, selectionToPath, type Selection,
 } from "./nav";
+import { RiskRegister } from "@/modules/risk-register/RiskRegister";
 
 function roleLabelFor(p: MspUserProfile): string {
   if (p.mspRole === "PlatformAdmin") return "PlatformAdmin — full access";
@@ -190,7 +191,7 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
         <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Breadcrumbs crumbs={crumbs} />
           <ScreenSlot meta={meta} wire={wire}>
-            {moduleFor(effectiveSel)}
+            {moduleFor(effectiveSel, customers)}
           </ScreenSlot>
           <StatusBar left={left} right={right} />
         </main>
@@ -214,12 +215,18 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
  * designed placeholder — this function returning `undefined` for every
  * not-yet-built page is that fallback, not a stubbed empty state.
  */
-function moduleFor(sel: Selection): React.ReactNode {
+function moduleFor(sel: Selection, customers: DirectoryCustomer[]): React.ReactNode {
   if (sel.kind === "page" && sel.page === "run") {
     return <RunbooksPage customerId={sel.tenant} />;
   }
   if (sel.kind === "page" && sel.page === "rem") {
     return <Remediation customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "risk") {
+    // Risk Register needs the full customer row (the real M365 tenantId GUID
+    // the register scopes on), not just the numeric id the other modules take.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    return customer ? <RiskRegister customer={customer} /> : undefined;
   }
   if (sel.kind === "msp" && sel.page === "sops") {
     return <SopsPage />;
