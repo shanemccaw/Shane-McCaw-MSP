@@ -115,8 +115,25 @@ namespace BuildConsole.Services
         /// <see cref="ServiceKeyForRoute"/>; the highest-scoring service wins. When nothing is clearly owned,
         /// falls back to <see cref="DefaultServiceKey"/> (Marketing). Classified from the RAW manifest routes
         /// (placeholders intact) so a "/{{TEST_PORTAL_SLUG}}/…" route still classifies as Portal.
+        ///
+        /// Git #3835 — <paramref name="manifestSourcePath"/> (the manifest's own file path, e.g.
+        /// <see cref="TestManifest.SourcePath"/>) is an OPTIONAL secondary signal, scored alongside the
+        /// per-route classification rather than replacing it. Portal's real routes
+        /// (<c>artifacts/portal/src/App.tsx</c>) are bare paths relative to the SPA's own router base
+        /// (<c>/config-state</c>, <c>/billing</c>, <c>/account-security</c>, …) with no <c>/portal/</c>
+        /// prefix and no slug segment, so <see cref="ServiceKeyForRoute"/> can never tell them apart from
+        /// an unknown/shared route by shape alone — every <c>test-manifests/portal/*</c> manifest scored
+        /// 0 for every service and silently fell through to <see cref="DefaultServiceKey"/> (Marketing).
+        /// A manifest that lives under <c>test-manifests/portal/</c> is, by construction, testing the
+        /// Portal app, so that directory is used as a weak same-directory hint FOR PORTAL ONLY — every
+        /// other service (Admin, Marketing, Website) already has a genuine path prefix its routes carry,
+        /// so no directory hint is added for them. The hint's weight (2) beats the existing "bare /" weak
+        /// Marketing signal (1) but stays below a single genuinely-classified route (3), so a manifest
+        /// that legitimately starts elsewhere (a cross-service flow with a real Marketing/Admin-prefixed
+        /// route) is unaffected — this only changes the outcome for a Portal manifest whose routes are
+        /// ALL unclassifiable, which used to default to Marketing and now defaults to Portal instead.
         /// </summary>
-        public static string PrimaryServiceKey(IEnumerable<string> navRoutes)
+        public static string PrimaryServiceKey(IEnumerable<string> navRoutes, string? manifestSourcePath = null)
         {
             var score = new Dictionary<string, int>
             {
@@ -132,6 +149,10 @@ namespace BuildConsole.Services
                     score[Marketing] += 1; // bare "/" is a weak Marketing signal.
             }
 
+            var directoryHint = DirectoryServiceHint(manifestSourcePath);
+            if (directoryHint != null)
+                score[directoryHint] += 2;
+
             string best = DefaultServiceKey;
             int bestScore = 0;
             foreach (var kv in score)
@@ -143,6 +164,21 @@ namespace BuildConsole.Services
                 }
             }
             return best;
+        }
+
+        /// <summary>
+        /// Git #3835 — the weak same-directory service hint described on <see cref="PrimaryServiceKey"/>.
+        /// Returns <see cref="Portal"/> for a manifest path under a <c>test-manifests/portal/</c>
+        /// directory (any path-separator style, case-insensitive), else null. Deliberately Portal-only:
+        /// every other app's routes are already unambiguous by prefix (see <see cref="ServiceKeyForRoute"/>),
+        /// so adding a hint for them would be pure redundancy with a chance of masking a real
+        /// misclassification instead of one genuinely undetectable from route shape alone.
+        /// </summary>
+        private static string? DirectoryServiceHint(string? manifestSourcePath)
+        {
+            if (string.IsNullOrWhiteSpace(manifestSourcePath)) return null;
+            string normalized = manifestSourcePath.Replace('\\', '/').ToLowerInvariant();
+            return normalized.Contains("/test-manifests/portal/") ? Portal : null;
         }
 
         private static string StripQuery(string s)

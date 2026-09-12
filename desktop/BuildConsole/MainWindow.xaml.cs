@@ -9952,7 +9952,7 @@ namespace BuildConsole
                             .Where(s => BuildConsole.Services.DevServiceRouting.IsNavAction(s.Action))
                             .Select(s => s.Target ?? s.Selector ?? string.Empty)
                             .ToList();
-                        string primaryServiceKey = BuildConsole.Services.DevServiceRouting.PrimaryServiceKey(uiNavRoutes);
+                        string primaryServiceKey = BuildConsole.Services.DevServiceRouting.PrimaryServiceKey(uiNavRoutes, manifest.SourcePath);
                         uiTargetUrl = BuildConsole.Services.DevServiceRouting.OriginForServiceKey(primaryServiceKey);
                         uiOriginResolver = route => BuildConsole.Services.DevServiceRouting.OriginForRoute(route, primaryServiceKey);
                         BuildConsole.Services.ActivityLog.Log("testing.ui-executor",
