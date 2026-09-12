@@ -1736,16 +1736,18 @@ namespace BuildConsole.Controls
 
         /// <summary>
         /// Git #1862 / #3615 — refreshes the QUEUE header: a single unified readout in the order
-        /// Queue → Up Next → Active → Blocked → Verifying → Total. "Active" is still sourced from
-        /// GetActiveUsageSummary's active-slot count, now folded inline instead of a separate
-        /// trailing parenthetical. On a cold start, before the first Git Board refresh, the
-        /// Blocked figure is provisional (computed from declared blockers alone) and is rendered
-        /// muted with a "*" and an explanatory tooltip rather than as a confident number.
+        /// Queue → Up Next → Active → Blocked → Verifying → Total. Git #3848 — "Active" is sourced
+        /// from RunningCount (the real, complete `_running.Count`, no Interactive filter), not
+        /// GetActiveUsageSummary's ActiveBuildCount, which was built for interactive-only token/cost
+        /// aggregation and silently excluded any real running non-interactive (batch) build. On a
+        /// cold start, before the first Git Board refresh, the Blocked figure is provisional
+        /// (computed from declared blockers alone) and is rendered muted with a "*" and an
+        /// explanatory tooltip rather than as a confident number.
         /// </summary>
         public void UpdateQueueStatusCounts()
         {
             var c = ComputeQueueStatusCounts();
-            var (_, _, active) = _watcher?.GetActiveUsageSummary() ?? (0, 0, 0);
+            var active = _watcher?.RunningCount ?? 0;
 
             string blockedText = c.Provisional ? $"{c.Blocked}*" : c.Blocked.ToString();
             QueueStatusCountsText.Text =
