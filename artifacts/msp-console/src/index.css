@@ -164,6 +164,12 @@ body {
   0%, 100% { opacity: .35; }
   50%      { opacity: .7; }
 }
+@keyframes smcSpin {
+  to { transform: rotate(360deg); }
+}
+.smc-spin {
+  animation: smcSpin 0.8s linear infinite;
+}
 
 /* Thin, dark scrollbar for the tree and page body — the design's surfaces read
  * as one dark plane, so the default light chrome scrollbar is wrong here. */

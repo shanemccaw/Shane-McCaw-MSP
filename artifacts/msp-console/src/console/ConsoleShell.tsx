@@ -10,6 +10,7 @@ import { Breadcrumbs } from "./Breadcrumbs";
 import { StatusBar } from "./StatusBar";
 import { CommandPalette } from "./CommandPalette";
 import { ScreenSlot } from "./ScreenSlot";
+import { Remediation } from "./modules/Remediation";
 import { surface } from "./tokens";
 import { RunbooksPage } from "@/pages/runbooks/RunbooksPage";
 import {
@@ -215,6 +216,9 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
 function moduleFor(sel: Selection): React.ReactNode {
   if (sel.kind === "page" && sel.page === "run") {
     return <RunbooksPage customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "rem") {
+    return <Remediation customerId={sel.tenant} />;
   }
   return undefined;
 }

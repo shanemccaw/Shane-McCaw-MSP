@@ -15,6 +15,8 @@ import {
   Info, TriangleAlert, Circle, CornerDownLeft,
   Pause, CalendarPlus, X, Square, SquareCheckBig, CircleCheckBig, CircleMinus,
   ClockAlert, FastForward,
+  Zap, ClipboardCopy, Eye, ExternalLink, Lock, CircleDashed,
+  Check, GitMerge, ShieldCheck, Table, Image, Upload, Download, Loader2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -76,6 +78,20 @@ const REGISTRY: Record<string, LucideIcon> = {
   "circle-minus": CircleMinus,
   "clock-alert": ClockAlert,
   "fast-forward": FastForward,
+  zap: Zap,
+  "clipboard-copy": ClipboardCopy,
+  eye: Eye,
+  "external-link": ExternalLink,
+  lock: Lock,
+  "circle-dashed": CircleDashed,
+  check: Check,
+  "git-merge": GitMerge,
+  "shield-check": ShieldCheck,
+  table: Table,
+  image: Image,
+  upload: Upload,
+  download: Download,
+  loader: Loader2,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});
