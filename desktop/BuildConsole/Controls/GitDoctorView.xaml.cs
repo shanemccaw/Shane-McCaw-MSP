@@ -27,10 +27,14 @@ namespace BuildConsole.Controls
     //     "secret:token:github" key; BuildConsole keeps its PAT in
     //     BuildConsoleSettings.GitHubPat (%AppData%\BuildConsole\settings.json,
     //     the same store GitHubApiClient reads), so ApplyPastedPat writes there.
-    //   • Theming — ShaneBuilder's Brush.*/FontFamily.*/FontSize.*/FontWeight.*
-    //     semantic resource keys are registered into this control's Resources in
-    //     the ctor (mapped to BuildConsole's Catppuccin palette) so the ported
-    //     render code resolves them unchanged.
+    //   • Theming — ShaneBuilder's Brush.* semantic resource keys were originally
+    //     registered locally, mapped to BuildConsole's Catppuccin palette by hex, so
+    //     the ported render code didn't need rewriting. Git #3811 replaced every one
+    //     of those with its real, exact-hex DarkTheme.xaml equivalent (Surface0Brush,
+    //     TextBrush, BlueBrush, …) — only two real gaps with no opaque DarkTheme
+    //     equivalent remain locally registered (see RegisterThemeResources).
+    //     FontFamily.*/FontSize.*/FontWeight.* stay locally registered, unchanged —
+    //     out of scope per #3811's explicit "colors" ask.
     //   • The chat-tool-rail MINI panel (ShaneBuilder's GdMiniPanel) is a
     //     separate sibling issue and is deliberately NOT ported here — only the
     //     full document's render/plan/log/bridge paths.
@@ -65,10 +69,14 @@ namespace BuildConsole.Controls
             InitializeComponent();
         }
 
-        // ShaneBuilder's ported render code looks up semantic keys via FindResource;
-        // map each to BuildConsole's Catppuccin palette / real fonts so nothing in
-        // that code has to change. Registered before InitializeComponent so the XAML
-        // (which uses BuildConsole keys directly) and the code-behind both resolve.
+        // Git #3811 — ShaneBuilder's ported render code used to look up semantic keys
+        // (Brush.Text.Primary, etc.) that didn't exist in BuildConsole's own theme, so
+        // this ctor registered a local, duplicated Catppuccin palette mapped to those
+        // names as a shortcut. Every one of those had an exact-hex real equivalent
+        // already in DarkTheme.xaml (Surface0Brush, TextBrush, BlueBrush, …), so the
+        // render code below now calls FindResource directly with the real shared key —
+        // the local palette is gone except for two real gaps DarkTheme.xaml has no
+        // opaque equivalent for (see Brush.Local.Bg.* below).
         private void RegisterThemeResources()
         {
             void B(string key, string hex)
@@ -78,22 +86,13 @@ namespace BuildConsole.Controls
                 Resources[key] = brush;
             }
 
-            B("Brush.Bg.Card", "#1C2128");
-            B("Brush.Bg.Chip", "#313244");
-            B("Brush.Bg.Window", "#0D1117");
-            B("Brush.Border.Card", "#313244");
-            B("Brush.Border.Strong", "#45475A");
-            B("Brush.Claude.Accent", "#FAB387");
-            B("Brush.Danger.Soft", "#EBA0AC");
-            B("Brush.Epic.AppCore", "#89B4FA");
-            B("Brush.Epic.Gate", "#F38BA8");
-            B("Brush.LogSource.Console", "#94E2D5");
-            B("Brush.NextUp.NoBuild.Fg", "#A6ADC8");
-            B("Brush.Status.Running", "#A6E3A1");
-            B("Brush.Text.Dim", "#6C7086");
-            B("Brush.Text.Heading", "#CDD6F4");
-            B("Brush.Text.Muted", "#A6ADC8");
-            B("Brush.Text.Primary", "#CDD6F4");
+            // DarkTheme.xaml's BaseBrush/CrustBrush share these exact RGB values but
+            // carry baked-in alpha (0x66/0xCC) for their own use elsewhere — compositing
+            // them here would visibly shift these opaque card/window backgrounds, so
+            // these two stay local and opaque, honestly named as GitDoctor-local rather
+            // than disguised as ported ShaneBuilder semantic keys.
+            B("Brush.Local.Bg.Card", "#1C2128");
+            B("Brush.Local.Bg.Window", "#0D1117");
 
             Resources["FontFamily.Sans"] = new FontFamily("Segoe UI");
             Resources["FontFamily.Monospace"] = new FontFamily("Consolas");
@@ -150,9 +149,9 @@ namespace BuildConsole.Controls
             GitDoctorNightmareLabel.Text = open.Count > 0 ? "End this git nightmare" : "Nothing left to fix";
             BtnGitDoctorNightmare.IsEnabled = open.Count > 0;
             BtnGitDoctorNightmare.Background = open.Count > 0
-                ? (Brush)FindResource("Brush.Epic.Gate")
-                : (Brush)FindResource("Brush.Bg.Card");
-            GitDoctorNightmareLabel.Foreground = open.Count > 0 ? Brushes.Black : (Brush)FindResource("Brush.Text.Dim");
+                ? (Brush)FindResource("RedBrush")
+                : (Brush)FindResource("Brush.Local.Bg.Card");
+            GitDoctorNightmareLabel.Foreground = open.Count > 0 ? Brushes.Black : (Brush)FindResource("OverlayBrush");
             int totalSteps = open.Sum(f => RemedyFor(f)?.Steps.Count ?? 0);
             GitDoctorNightmareSub.Text = open.Count > 0 ? $"backup branch first, then {totalSteps} commands" : "run a fresh check any time";
             GitDoctorOpenCount.Text = open.Count.ToString();
@@ -174,16 +173,16 @@ namespace BuildConsole.Controls
 
         private Brush SeverityBrush(GitDoctorSeverity s) => s switch
         {
-            GitDoctorSeverity.Low => (Brush)FindResource("Brush.NextUp.NoBuild.Fg"),
-            GitDoctorSeverity.Medium => (Brush)FindResource("Brush.Epic.AppCore"),
-            _ => (Brush)FindResource("Brush.Epic.Gate")
+            GitDoctorSeverity.Low => (Brush)FindResource("Subtext1Brush"),
+            GitDoctorSeverity.Medium => (Brush)FindResource("BlueBrush"),
+            _ => (Brush)FindResource("RedBrush")
         };
 
         private Brush RiskBrush(GitDoctorRisk r) => r switch
         {
-            GitDoctorRisk.Safe => (Brush)FindResource("Brush.Status.Running"),
-            GitDoctorRisk.Careful => (Brush)FindResource("Brush.Epic.AppCore"),
-            _ => (Brush)FindResource("Brush.Epic.Gate")
+            GitDoctorRisk.Safe => (Brush)FindResource("GreenBrush"),
+            GitDoctorRisk.Careful => (Brush)FindResource("BlueBrush"),
+            _ => (Brush)FindResource("RedBrush")
         };
 
         private void RenderGitDoctorFindingsList() => RenderGitDoctorFindingsList(GitDoctorFindingsPanel);
@@ -198,7 +197,7 @@ namespace BuildConsole.Controls
                 {
                     Text = "Running checks…", Margin = new Thickness(8),
                     FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11"),
-                    Foreground = (Brush)FindResource("Brush.Text.Dim")
+                    Foreground = (Brush)FindResource("OverlayBrush")
                 });
                 return;
             }
@@ -209,7 +208,7 @@ namespace BuildConsole.Controls
                 {
                     Text = "No findings. Git is clean.", Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap,
                     FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11"),
-                    Foreground = (Brush)FindResource("Brush.Text.Dim")
+                    Foreground = (Brush)FindResource("OverlayBrush")
                 });
                 return;
             }
@@ -224,7 +223,7 @@ namespace BuildConsole.Controls
                     CornerRadius = new CornerRadius(7),
                     Cursor = Cursors.Hand,
                     Opacity = f.Fixed ? 0.5 : 1.0,
-                    Background = selected ? (Brush)FindResource("Brush.Bg.Chip") : Brushes.Transparent,
+                    Background = selected ? (Brush)FindResource("Surface0Brush") : Brushes.Transparent,
                     BorderThickness = new Thickness(2, 0, 0, 0),
                     BorderBrush = selected ? SeverityBrush(f.Severity) : Brushes.Transparent
                 };
@@ -236,13 +235,13 @@ namespace BuildConsole.Controls
                     TextDecorations = f.Fixed ? TextDecorations.Strikethrough : null,
                     FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11.5"),
                     FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
-                    Foreground = f.Fixed ? (Brush)FindResource("Brush.Status.Running") : (Brush)FindResource("Brush.Text.Heading")
+                    Foreground = f.Fixed ? (Brush)FindResource("GreenBrush") : (Brush)FindResource("TextBrush")
                 });
                 textCol.Children.Add(new TextBlock
                 {
                     Text = f.Where, TextTrimming = TextTrimming.CharacterEllipsis,
                     FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = (double)FindResource("FontSize.9"),
-                    Foreground = (Brush)FindResource("Brush.Text.Dim")
+                    Foreground = (Brush)FindResource("OverlayBrush")
                 });
 
                 var grid = new Grid();
@@ -263,7 +262,7 @@ namespace BuildConsole.Controls
                     }
                 };
 
-                var ellipse = new Ellipse { Width = 7, Height = 7, VerticalAlignment = VerticalAlignment.Center, Fill = f.Fixed ? (Brush)FindResource("Brush.Status.Running") : SeverityBrush(f.Severity) };
+                var ellipse = new Ellipse { Width = 7, Height = 7, VerticalAlignment = VerticalAlignment.Center, Fill = f.Fixed ? (Brush)FindResource("GreenBrush") : SeverityBrush(f.Severity) };
                 Grid.SetColumn(ellipse, 0);
                 var textColWrap = new Border { Margin = new Thickness(8, 0, 8, 0), Child = textCol };
                 Grid.SetColumn(textColWrap, 1);
@@ -293,7 +292,7 @@ namespace BuildConsole.Controls
         {
             Text = text, Margin = new Thickness(0, 0, 0, 5),
             FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.8.5"),
-            FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("Brush.Text.Dim")
+            FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("OverlayBrush")
         };
 
         private void RenderGitDoctorDetail()
@@ -319,7 +318,7 @@ namespace BuildConsole.Controls
                     Text = _gdLoaded ? "Nothing to show — pick a finding above." : "Running checks against the real repo…",
                     TextWrapping = TextWrapping.Wrap,
                     FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.12"),
-                    Foreground = (Brush)FindResource("Brush.Text.Dim")
+                    Foreground = (Brush)FindResource("OverlayBrush")
                 });
                 return;
             }
@@ -337,13 +336,13 @@ namespace BuildConsole.Controls
                 Text = sel.Title, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 9, 0),
                 TextWrapping = TextWrapping.Wrap,
                 FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.15"),
-                FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("Brush.Text.Heading")
+                FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("TextBrush")
             });
             header.Children.Add(new TextBlock
             {
                 Text = sel.Where, VerticalAlignment = VerticalAlignment.Center,
                 FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = (double)FindResource("FontSize.10"),
-                Foreground = (Brush)FindResource("Brush.Text.Dim")
+                Foreground = (Brush)FindResource("OverlayBrush")
             });
             GitDoctorDetailPanel.Children.Add(header);
 
@@ -351,14 +350,14 @@ namespace BuildConsole.Controls
             {
                 Text = sel.PlainEnglish, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12),
                 FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.12.5"),
-                Foreground = (Brush)FindResource("Brush.Text.Primary")
+                Foreground = (Brush)FindResource("TextBrush")
             });
 
             GitDoctorDetailPanel.Children.Add(GdLabel("WHAT GIT ACTUALLY SAID"));
             GitDoctorDetailPanel.Children.Add(new Border
             {
                 Padding = new Thickness(10, 9, 10, 9), CornerRadius = new CornerRadius(7), Margin = new Thickness(0, 0, 0, 14),
-                Background = (Brush)FindResource("Brush.Bg.Window"), BorderBrush = (Brush)FindResource("Brush.Border.Card"), BorderThickness = new Thickness(1),
+                Background = (Brush)FindResource("Brush.Local.Bg.Window"), BorderBrush = (Brush)FindResource("Surface0Brush"), BorderThickness = new Thickness(1),
                 Child = new TextBlock
                 {
                     Text = sel.RawGitOutput, TextWrapping = TextWrapping.Wrap,
@@ -379,8 +378,8 @@ namespace BuildConsole.Controls
                 {
                     Padding = new Thickness(11, 10, 11, 10), CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand,
                     Margin = new Thickness(0, 0, 0, 7),
-                    Background = active ? new SolidColorBrush(((SolidColorBrush)RiskBrush(r.Risk)).Color) { Opacity = 0.07 } : (Brush)FindResource("Brush.Bg.Card"),
-                    BorderBrush = active ? RiskBrush(r.Risk) : (Brush)FindResource("Brush.Border.Card"),
+                    Background = active ? new SolidColorBrush(((SolidColorBrush)RiskBrush(r.Risk)).Color) { Opacity = 0.07 } : (Brush)FindResource("Brush.Local.Bg.Card"),
+                    BorderBrush = active ? RiskBrush(r.Risk) : (Brush)FindResource("Surface0Brush"),
                     BorderThickness = new Thickness(1)
                 };
                 var body = new StackPanel();
@@ -388,7 +387,7 @@ namespace BuildConsole.Controls
                 top.Children.Add(new Ellipse
                 {
                     Width = 12, Height = 12, Margin = new Thickness(0, 0, 8, 0),
-                    Stroke = active ? RiskBrush(r.Risk) : (Brush)FindResource("Brush.Border.Strong"),
+                    Stroke = active ? RiskBrush(r.Risk) : (Brush)FindResource("Surface1Brush"),
                     Fill = active ? RiskBrush(r.Risk) : Brushes.Transparent, StrokeThickness = 1
                 });
                 top.Children.Add(new TextBlock
@@ -396,14 +395,14 @@ namespace BuildConsole.Controls
                     Text = r.Label, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
                     TextWrapping = TextWrapping.Wrap,
                     FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.12"),
-                    FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = (Brush)FindResource("Brush.Text.Heading")
+                    FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = (Brush)FindResource("TextBrush")
                 });
                 if (r.Recommended)
                     top.Children.Add(new Border
                     {
                         CornerRadius = new CornerRadius(3), Padding = new Thickness(5, 1, 5, 1), Margin = new Thickness(0, 0, 8, 0),
-                        Background = new SolidColorBrush(((SolidColorBrush)FindResource("Brush.Status.Running")).Color) { Opacity = 0.16 },
-                        Child = new TextBlock { Text = "RECOMMENDED", FontSize = 8, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("Brush.Status.Running") }
+                        Background = new SolidColorBrush(((SolidColorBrush)FindResource("GreenBrush")).Color) { Opacity = 0.16 },
+                        Child = new TextBlock { Text = "RECOMMENDED", FontSize = 8, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("GreenBrush") }
                     });
                 top.Children.Add(new Border
                 {
@@ -416,7 +415,7 @@ namespace BuildConsole.Controls
                 {
                     Text = r.Preserves, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(20, 6, 0, 8),
                     FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.10.5"),
-                    Foreground = (Brush)FindResource("Brush.Text.Muted")
+                    Foreground = (Brush)FindResource("Subtext1Brush")
                 });
                 foreach (var st in r.Steps)
                 {
@@ -431,7 +430,7 @@ namespace BuildConsole.Controls
                     {
                         Text = st.Why, TextTrimming = TextTrimming.CharacterEllipsis,
                         FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.9.5"),
-                        Foreground = (Brush)FindResource("Brush.Text.Dim")
+                        Foreground = (Brush)FindResource("OverlayBrush")
                     });
                     body.Children.Add(stepRow);
                 }
@@ -448,7 +447,7 @@ namespace BuildConsole.Controls
             var runBtn = new Button
             {
                 Content = sel.Fixed ? "Run it again" : "Run this fix", Height = 32, Padding = new Thickness(14, 0, 14, 0), Margin = new Thickness(0, 0, 6, 0),
-                Background = chosen != null ? RiskBrush(chosen.Risk) : (Brush)FindResource("Brush.Status.Running"), Foreground = Brushes.Black,
+                Background = chosen != null ? RiskBrush(chosen.Risk) : (Brush)FindResource("GreenBrush"), Foreground = Brushes.Black,
                 FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.12"),
                 FontWeight = (FontWeight)FindResource("FontWeight.Bold"), BorderThickness = new Thickness(0), Cursor = Cursors.Hand
             };
@@ -458,8 +457,8 @@ namespace BuildConsole.Controls
             var askBtn = new Button
             {
                 Content = "Ask Claude", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 6, 0),
-                Background = new SolidColorBrush(((SolidColorBrush)FindResource("Brush.Claude.Accent")).Color) { Opacity = 0.13 },
-                Foreground = (Brush)FindResource("Brush.Claude.Accent"), BorderBrush = (Brush)FindResource("Brush.Claude.Accent"),
+                Background = new SolidColorBrush(((SolidColorBrush)FindResource("PeachBrush")).Color) { Opacity = 0.13 },
+                Foreground = (Brush)FindResource("PeachBrush"), BorderBrush = (Brush)FindResource("PeachBrush"),
                 BorderThickness = new Thickness(1), FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11.5"),
                 FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand
             };
@@ -469,8 +468,8 @@ namespace BuildConsole.Controls
             var copyBtn = new Button
             {
                 Content = "Copy plan JSON", Height = 32, Padding = new Thickness(12, 0, 12, 0),
-                Background = Brushes.Transparent, Foreground = (Brush)FindResource("Brush.Text.Muted"),
-                BorderBrush = (Brush)FindResource("Brush.Border.Strong"), BorderThickness = new Thickness(1),
+                Background = Brushes.Transparent, Foreground = (Brush)FindResource("Subtext1Brush"),
+                BorderBrush = (Brush)FindResource("Surface1Brush"), BorderThickness = new Thickness(1),
                 FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11.5"), Cursor = Cursors.Hand
             };
             copyBtn.Click += (s, e) => CopyFindingPlanJson(sel);
@@ -489,34 +488,34 @@ namespace BuildConsole.Controls
             {
                 Padding = new Thickness(11, 10, 11, 10), CornerRadius = new CornerRadius(8),
                 Margin = new Thickness(0, 0, 0, 7),
-                Background = (Brush)FindResource("Brush.Bg.Card"), BorderBrush = (Brush)FindResource("Brush.Border.Card"), BorderThickness = new Thickness(1),
+                Background = (Brush)FindResource("Brush.Local.Bg.Card"), BorderBrush = (Brush)FindResource("Surface0Brush"), BorderThickness = new Thickness(1),
             };
             var body = new StackPanel();
             body.Children.Add(new TextBlock
             {
                 Text = "Or paste a fresh PAT directly", Margin = new Thickness(0, 0, 0, 3),
                 FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.12"),
-                FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = (Brush)FindResource("Brush.Text.Heading"),
+                FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = (Brush)FindResource("TextBrush"),
             });
             body.Children.Add(new TextBlock
             {
                 Text = "Applies it as the real git credential and saves it to BuildConsole Settings, no browser login.",
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 7),
                 FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.10.5"),
-                Foreground = (Brush)FindResource("Brush.Text.Muted"),
+                Foreground = (Brush)FindResource("Subtext1Brush"),
             });
 
             var row = new DockPanel();
             var patBox = new PasswordBox
             {
                 Height = 28, Padding = new Thickness(8, 0, 8, 0), VerticalContentAlignment = VerticalAlignment.Center,
-                Background = (Brush)FindResource("Brush.Bg.Window"), BorderBrush = (Brush)FindResource("Brush.Border.Card"),
-                Foreground = (Brush)FindResource("Brush.Text.Primary"), FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5,
+                Background = (Brush)FindResource("Brush.Local.Bg.Window"), BorderBrush = (Brush)FindResource("Surface0Brush"),
+                Foreground = (Brush)FindResource("TextBrush"), FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5,
             };
             var applyBtn = new Button
             {
                 Content = "Apply", Height = 28, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(6, 0, 0, 0),
-                Background = (Brush)FindResource("Brush.Status.Running"), Foreground = Brushes.Black, BorderThickness = new Thickness(0),
+                Background = (Brush)FindResource("GreenBrush"), Foreground = Brushes.Black, BorderThickness = new Thickness(0),
                 FontSize = 11, FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand,
             };
             DockPanel.SetDock(applyBtn, Dock.Right);
@@ -585,12 +584,12 @@ namespace BuildConsole.Controls
                 var pill = new Border
                 {
                     Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(0, 0, 5, 5), CornerRadius = new CornerRadius(6), Cursor = Cursors.Hand,
-                    Background = active ? new SolidColorBrush(((SolidColorBrush)FindResource("Brush.Epic.AppCore")).Color) { Opacity = 0.14 } : Brushes.Transparent,
-                    BorderBrush = active ? (Brush)FindResource("Brush.Epic.AppCore") : (Brush)FindResource("Brush.Border.Card"), BorderThickness = new Thickness(1),
+                    Background = active ? new SolidColorBrush(((SolidColorBrush)FindResource("BlueBrush")).Color) { Opacity = 0.14 } : Brushes.Transparent,
+                    BorderBrush = active ? (Brush)FindResource("BlueBrush") : (Brush)FindResource("Surface0Brush"), BorderThickness = new Thickness(1),
                     Child = new TextBlock
                     {
                         Text = $"{label} ({count})", FontSize = 10, FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
-                        Foreground = active ? (Brush)FindResource("Brush.Epic.AppCore") : (Brush)FindResource("Brush.Text.Muted")
+                        Foreground = active ? (Brush)FindResource("BlueBrush") : (Brush)FindResource("Subtext1Brush")
                     }
                 };
                 var capturedId = id;
@@ -605,7 +604,7 @@ namespace BuildConsole.Controls
             var listBorder = new Border
             {
                 MaxHeight = 230, CornerRadius = new CornerRadius(8), Padding = new Thickness(6), Margin = new Thickness(0, 0, 0, 8),
-                Background = (Brush)FindResource("Brush.Bg.Window"), BorderBrush = (Brush)FindResource("Brush.Border.Card"), BorderThickness = new Thickness(1)
+                Background = (Brush)FindResource("Brush.Local.Bg.Window"), BorderBrush = (Brush)FindResource("Surface0Brush"), BorderThickness = new Thickness(1)
             };
             var listScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             var listPanel = new StackPanel();
@@ -617,21 +616,21 @@ namespace BuildConsole.Controls
                 rowStack.Children.Add(new Border
                 {
                     Width = 12, Height = 12, CornerRadius = new CornerRadius(3), Margin = new Thickness(0, 0, 8, 0),
-                    Background = picked ? (Brush)FindResource("Brush.Epic.AppCore") : Brushes.Transparent,
-                    BorderBrush = picked ? (Brush)FindResource("Brush.Epic.AppCore") : (Brush)FindResource("Brush.Border.Strong"), BorderThickness = new Thickness(1)
+                    Background = picked ? (Brush)FindResource("BlueBrush") : Brushes.Transparent,
+                    BorderBrush = picked ? (Brush)FindResource("BlueBrush") : (Brush)FindResource("Surface1Brush"), BorderThickness = new Thickness(1)
                 });
                 rowStack.Children.Add(new TextBlock
                 {
                     Text = b.Name, MaxWidth = 220, TextTrimming = TextTrimming.CharacterEllipsis,
                     FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5,
-                    Foreground = b.Merged ? (Brush)FindResource("Brush.Text.Muted") : new SolidColorBrush(Color.FromRgb(0xF0, 0xC9, 0xC2))
+                    Foreground = b.Merged ? (Brush)FindResource("Subtext1Brush") : new SolidColorBrush(Color.FromRgb(0xF0, 0xC9, 0xC2))
                 });
-                rowStack.Children.Add(new TextBlock { Text = $"{b.AgeDays}d", MinWidth = 42, TextAlignment = TextAlignment.Right, FontSize = 9, Foreground = (Brush)FindResource("Brush.Text.Dim") });
+                rowStack.Children.Add(new TextBlock { Text = $"{b.AgeDays}d", MinWidth = 42, TextAlignment = TextAlignment.Right, FontSize = 9, Foreground = (Brush)FindResource("OverlayBrush") });
                 rowStack.Children.Add(new Border
                 {
                     CornerRadius = new CornerRadius(3), Padding = new Thickness(5, 1, 5, 1), Margin = new Thickness(6, 0, 0, 0),
-                    Background = new SolidColorBrush(((SolidColorBrush)(b.Merged ? FindResource("Brush.Status.Running") : FindResource("Brush.Epic.Gate"))).Color) { Opacity = 0.14 },
-                    Child = new TextBlock { Text = b.Merged ? "merged" : $"{b.Ahead} unmerged", FontSize = 8.5, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = b.Merged ? (Brush)FindResource("Brush.Status.Running") : (Brush)FindResource("Brush.Epic.Gate") }
+                    Background = new SolidColorBrush(((SolidColorBrush)(b.Merged ? FindResource("GreenBrush") : FindResource("RedBrush"))).Color) { Opacity = 0.14 },
+                    Child = new TextBlock { Text = b.Merged ? "merged" : $"{b.Ahead} unmerged", FontSize = 8.5, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = b.Merged ? (Brush)FindResource("GreenBrush") : (Brush)FindResource("RedBrush") }
                 });
                 if (b.RemoteGone || b.InWorktree)
                     rowStack.Children.Add(new TextBlock { Text = b.RemoteGone ? "remote gone" : "in a worktree", Margin = new Thickness(6, 0, 0, 0), FontSize = 8.5, Foreground = new SolidColorBrush(Color.FromRgb(0xA3, 0x74, 0xEA)) });
@@ -651,15 +650,15 @@ namespace BuildConsole.Controls
             var deleteBtn = new Button
             {
                 Content = $"Delete {pickedCount} selected — backup tag first", Height = 32, Padding = new Thickness(14, 0, 14, 0), Margin = new Thickness(0, 0, 6, 6),
-                Background = (Brush)FindResource("Brush.Danger.Soft"), Foreground = Brushes.Black, BorderThickness = new Thickness(0),
+                Background = (Brush)FindResource("MaroonBrush"), Foreground = Brushes.Black, BorderThickness = new Thickness(0),
                 FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11.5"), FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand
             };
             deleteBtn.Click += (s, e) => _ = DeleteSelectedBranchesAsync();
             actionRow.Children.Add(deleteBtn);
-            var mergedOnlyBtn = new Button { Content = "Select merged only", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 6, 6), Background = Brushes.Transparent, Foreground = (Brush)FindResource("Brush.Text.Primary"), BorderBrush = (Brush)FindResource("Brush.Border.Strong"), BorderThickness = new Thickness(1), FontSize = 11.5, Cursor = Cursors.Hand };
+            var mergedOnlyBtn = new Button { Content = "Select merged only", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 6, 6), Background = Brushes.Transparent, Foreground = (Brush)FindResource("TextBrush"), BorderBrush = (Brush)FindResource("Surface1Brush"), BorderThickness = new Thickness(1), FontSize = 11.5, Cursor = Cursors.Hand };
             mergedOnlyBtn.Click += (s, e) => { foreach (var b in _gdBranches) _gdBranchSelection[b.Name] = b.Merged; RenderGitDoctorDetail(); };
             actionRow.Children.Add(mergedOnlyBtn);
-            var clearBtn = new Button { Content = "Clear", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 0, 6), Background = Brushes.Transparent, Foreground = (Brush)FindResource("Brush.Text.Muted"), BorderBrush = (Brush)FindResource("Brush.Border.Strong"), BorderThickness = new Thickness(1), FontSize = 11.5, Cursor = Cursors.Hand };
+            var clearBtn = new Button { Content = "Clear", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 0, 6), Background = Brushes.Transparent, Foreground = (Brush)FindResource("Subtext1Brush"), BorderBrush = (Brush)FindResource("Surface1Brush"), BorderThickness = new Thickness(1), FontSize = 11.5, Cursor = Cursors.Hand };
             clearBtn.Click += (s, e) => { foreach (var b in _gdBranches) _gdBranchSelection[b.Name] = false; RenderGitDoctorDetail(); };
             actionRow.Children.Add(clearBtn);
             GitDoctorDetailPanel.Children.Add(actionRow);
@@ -688,21 +687,21 @@ namespace BuildConsole.Controls
             top.Children.Add(new Border
             {
                 CornerRadius = new CornerRadius(4), Padding = new Thickness(7, 3, 7, 3), Margin = new Thickness(0, 0, 9, 0),
-                Background = new SolidColorBrush(((SolidColorBrush)(hit.Reachable ? FindResource("Brush.Status.Running") : FindResource("Brush.Epic.Gate"))).Color) { Opacity = 0.16 },
-                Child = new TextBlock { Text = hit.Reachable ? "REACHABLE" : "UNREACHABLE", FontSize = 8.5, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = hit.Reachable ? (Brush)FindResource("Brush.Status.Running") : (Brush)FindResource("Brush.Epic.Gate") }
+                Background = new SolidColorBrush(((SolidColorBrush)(hit.Reachable ? FindResource("GreenBrush") : FindResource("RedBrush"))).Color) { Opacity = 0.16 },
+                Child = new TextBlock { Text = hit.Reachable ? "REACHABLE" : "UNREACHABLE", FontSize = 8.5, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = hit.Reachable ? (Brush)FindResource("GreenBrush") : (Brush)FindResource("RedBrush") }
             });
-            top.Children.Add(new TextBlock { Text = hit.Sha[..Math.Min(9, hit.Sha.Length)], FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 15, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("Brush.Text.Heading") });
+            top.Children.Add(new TextBlock { Text = hit.Sha[..Math.Min(9, hit.Sha.Length)], FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 15, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("TextBrush") });
             GitDoctorDetailPanel.Children.Add(top);
-            GitDoctorDetailPanel.Children.Add(new TextBlock { Text = hit.Subject, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 9), FontSize = 12.5, Foreground = (Brush)FindResource("Brush.Text.Primary") });
+            GitDoctorDetailPanel.Children.Add(new TextBlock { Text = hit.Subject, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 9), FontSize = 12.5, Foreground = (Brush)FindResource("TextBrush") });
             GitDoctorDetailPanel.Children.Add(new Border
             {
                 Padding = new Thickness(10, 9, 10, 9), CornerRadius = new CornerRadius(7), Margin = new Thickness(0, 0, 0, 11),
-                Background = (Brush)FindResource("Brush.Bg.Window"), BorderBrush = (Brush)FindResource("Brush.Border.Card"), BorderThickness = new Thickness(1),
+                Background = (Brush)FindResource("Brush.Local.Bg.Window"), BorderBrush = (Brush)FindResource("Surface0Brush"), BorderThickness = new Thickness(1),
                 Child = new TextBlock
                 {
                     Text = $"commit {hit.Sha}\nAuthor: {hit.Author}\nDate:   {hit.When}\nFound in: {hit.Where}\n{hit.Stat}",
                     TextWrapping = TextWrapping.Wrap,
-                    FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5, Foreground = (Brush)FindResource("Brush.Text.Muted")
+                    FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5, Foreground = (Brush)FindResource("Subtext1Brush")
                 }
             });
             GitDoctorDetailPanel.Children.Add(GdLabel("FILES"));
@@ -711,22 +710,22 @@ namespace BuildConsole.Controls
             GitDoctorDetailPanel.Children.Add(new Border
             {
                 Padding = new Thickness(9, 8, 9, 8), CornerRadius = new CornerRadius(7), Margin = new Thickness(0, 11, 0, 12),
-                Background = new SolidColorBrush(((SolidColorBrush)FindResource("Brush.Epic.AppCore")).Color) { Opacity = 0.07 },
-                BorderBrush = new SolidColorBrush(((SolidColorBrush)FindResource("Brush.Epic.AppCore")).Color) { Opacity = 0.28 }, BorderThickness = new Thickness(1),
+                Background = new SolidColorBrush(((SolidColorBrush)FindResource("BlueBrush")).Color) { Opacity = 0.07 },
+                BorderBrush = new SolidColorBrush(((SolidColorBrush)FindResource("BlueBrush")).Color) { Opacity = 0.28 }, BorderThickness = new Thickness(1),
                 Child = new TextBlock { Text = hit.Notes, TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = new SolidColorBrush(Color.FromRgb(0xE6, 0xC9, 0x8D)) }
             });
 
             var actions = new WrapPanel { Margin = new Thickness(0, 0, 0, 18) };
-            var branchBtn = new Button { Content = "Save it on a branch", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 6, 6), Background = (Brush)FindResource("Brush.Status.Running"), Foreground = Brushes.Black, BorderThickness = new Thickness(0), FontSize = 11.5, FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand };
+            var branchBtn = new Button { Content = "Save it on a branch", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 6, 6), Background = (Brush)FindResource("GreenBrush"), Foreground = Brushes.Black, BorderThickness = new Thickness(0), FontSize = 11.5, FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand };
             branchBtn.Click += (s, e) => _ = RunGitDoctorStepsAsync(new[] { new GitDoctorStep($"git branch recover/{hit.Sha[..Math.Min(7, hit.Sha.Length)]} {hit.Sha[..Math.Min(9, hit.Sha.Length)]}", "make the commit reachable so it cannot be garbage collected") }, $"Save {hit.Sha[..Math.Min(9, hit.Sha.Length)]} on a branch", null);
             actions.Children.Add(branchBtn);
-            var cherryBtn = new Button { Content = "Cherry-pick here", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 6, 6), Background = Brushes.Transparent, Foreground = (Brush)FindResource("Brush.Text.Primary"), BorderBrush = (Brush)FindResource("Brush.Border.Strong"), BorderThickness = new Thickness(1), FontSize = 11.5, Cursor = Cursors.Hand };
+            var cherryBtn = new Button { Content = "Cherry-pick here", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 6, 6), Background = Brushes.Transparent, Foreground = (Brush)FindResource("TextBrush"), BorderBrush = (Brush)FindResource("Surface1Brush"), BorderThickness = new Thickness(1), FontSize = 11.5, Cursor = Cursors.Hand };
             cherryBtn.Click += (s, e) => _ = RunGitDoctorStepsAsync(new[] { new GitDoctorStep($"git cherry-pick {hit.Sha[..Math.Min(9, hit.Sha.Length)]}", "replay it onto the branch you are on") }, $"Cherry-pick {hit.Sha[..Math.Min(9, hit.Sha.Length)]}", null);
             actions.Children.Add(cherryBtn);
-            var showBtn = new Button { Content = "Copy git show", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 6, 6), Background = Brushes.Transparent, Foreground = (Brush)FindResource("Brush.Text.Primary"), BorderBrush = (Brush)FindResource("Brush.Border.Strong"), BorderThickness = new Thickness(1), FontSize = 11.5, Cursor = Cursors.Hand };
+            var showBtn = new Button { Content = "Copy git show", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 6, 6), Background = Brushes.Transparent, Foreground = (Brush)FindResource("TextBrush"), BorderBrush = (Brush)FindResource("Surface1Brush"), BorderThickness = new Thickness(1), FontSize = 11.5, Cursor = Cursors.Hand };
             showBtn.Click += (s, e) => { Clipboard.SetText($"git show {hit.Sha[..Math.Min(9, hit.Sha.Length)]} --stat"); ToastEngine.Show("Git Doctor", "Copied git show command.", ToastKind.Info); };
             actions.Children.Add(showBtn);
-            var askBtn = new Button { Content = "Ask Claude", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 0, 6), Background = new SolidColorBrush(((SolidColorBrush)FindResource("Brush.Claude.Accent")).Color) { Opacity = 0.13 }, Foreground = (Brush)FindResource("Brush.Claude.Accent"), BorderBrush = (Brush)FindResource("Brush.Claude.Accent"), BorderThickness = new Thickness(1), FontSize = 11.5, FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand };
+            var askBtn = new Button { Content = "Ask Claude", Height = 32, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 0, 6), Background = new SolidColorBrush(((SolidColorBrush)FindResource("PeachBrush")).Color) { Opacity = 0.13 }, Foreground = (Brush)FindResource("PeachBrush"), BorderBrush = (Brush)FindResource("PeachBrush"), BorderThickness = new Thickness(1), FontSize = 11.5, FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand };
             askBtn.Click += (s, e) =>
             {
                 var md = $"**Git Doctor — commit {hit.Sha[..Math.Min(9, hit.Sha.Length)]}**\n\n```\ncommit {hit.Sha}\nAuthor: {hit.Author}\nDate:   {hit.When}\n\n    {hit.Subject}\n\n{hit.Stat}\n```\n{hit.Notes}";
@@ -743,17 +742,17 @@ namespace BuildConsole.Controls
             top.Children.Add(new Border
             {
                 CornerRadius = new CornerRadius(4), Padding = new Thickness(7, 3, 7, 3), Margin = new Thickness(0, 0, 9, 0),
-                Background = new SolidColorBrush(((SolidColorBrush)FindResource("Brush.Epic.AppCore")).Color) { Opacity = 0.16 },
-                Child = new TextBlock { Text = "NOT FOUND", FontSize = 8.5, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("Brush.Epic.AppCore") }
+                Background = new SolidColorBrush(((SolidColorBrush)FindResource("BlueBrush")).Color) { Opacity = 0.16 },
+                Child = new TextBlock { Text = "NOT FOUND", FontSize = 8.5, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("BlueBrush") }
             });
-            top.Children.Add(new TextBlock { Text = _gdLookupQueryShown, FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 15, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("Brush.Text.Heading") });
+            top.Children.Add(new TextBlock { Text = _gdLookupQueryShown, FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 15, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = (Brush)FindResource("TextBrush") });
             GitDoctorDetailPanel.Children.Add(top);
             GitDoctorDetailPanel.Children.Add(new TextBlock
             {
                 Text = "No object starting with that text was found in this repository or any of its worktrees. It may live on a remote you have not fetched, or in a worktree that was deleted.",
-                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12), FontSize = 12.5, Foreground = (Brush)FindResource("Brush.Text.Primary")
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12), FontSize = 12.5, Foreground = (Brush)FindResource("TextBrush")
             });
-            var huntBtn = new Button { Content = "Hunt for it everywhere", Height = 32, Padding = new Thickness(14, 0, 14, 0), Background = (Brush)FindResource("Brush.Epic.AppCore"), Foreground = Brushes.Black, BorderThickness = new Thickness(0), FontSize = 11.5, FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand, HorizontalAlignment = HorizontalAlignment.Left };
+            var huntBtn = new Button { Content = "Hunt for it everywhere", Height = 32, Padding = new Thickness(14, 0, 14, 0), Background = (Brush)FindResource("BlueBrush"), Foreground = Brushes.Black, BorderThickness = new Thickness(0), FontSize = 11.5, FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand, HorizontalAlignment = HorizontalAlignment.Left };
             var capturedQuery = _gdLookupQueryShown;
             huntBtn.Click += (s, e) => _ = RunGitDoctorStepsAsync(new[]
             {
@@ -862,7 +861,7 @@ namespace BuildConsole.Controls
                 {
                     Text = "Every command the doctor runs shows up here with the reason it ran, so you can paste the whole session into a chat if something still goes wrong.",
                     TextWrapping = TextWrapping.Wrap, FontStyle = FontStyles.Italic,
-                    FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10, Foreground = (Brush)FindResource("Brush.Text.Dim")
+                    FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10, Foreground = (Brush)FindResource("OverlayBrush")
                 });
                 return;
             }
@@ -873,10 +872,10 @@ namespace BuildConsole.Controls
                 {
                     Text = text, TextWrapping = TextWrapping.Wrap,
                     FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5,
-                    Foreground = isHead ? (Brush)FindResource("Brush.Text.Heading") : (Brush)FindResource("Brush.Status.Running")
+                    Foreground = isHead ? (Brush)FindResource("TextBrush") : (Brush)FindResource("GreenBrush")
                 });
                 if (why != null)
-                    row.Children.Add(new TextBlock { Text = why, TextWrapping = TextWrapping.Wrap, FontSize = 9, Foreground = (Brush)FindResource("Brush.Text.Dim") });
+                    row.Children.Add(new TextBlock { Text = why, TextWrapping = TextWrapping.Wrap, FontSize = 9, Foreground = (Brush)FindResource("OverlayBrush") });
                 target.Children.Add(row);
             }
         }
@@ -943,7 +942,7 @@ namespace BuildConsole.Controls
             var box = new Border
             {
                 Padding = new Thickness(7, 6, 7, 6), CornerRadius = new CornerRadius(6),
-                Background = (Brush)FindResource("Brush.Bg.Window"), BorderBrush = (Brush)FindResource("Brush.Border.Card"), BorderThickness = new Thickness(1)
+                Background = (Brush)FindResource("Brush.Local.Bg.Window"), BorderBrush = (Brush)FindResource("Surface0Brush"), BorderThickness = new Thickness(1)
             };
             var stack = new StackPanel();
             for (int i = 0; i < _gdPlan.Count; i++)
@@ -953,14 +952,14 @@ namespace BuildConsole.Controls
                 row.Children.Add(new Border
                 {
                     Width = 12, Height = 12, Margin = new Thickness(0, 2, 7, 0), CornerRadius = new CornerRadius(3),
-                    Background = approved ? (Brush)FindResource("Brush.Status.Running") : Brushes.Transparent,
-                    BorderBrush = approved ? (Brush)FindResource("Brush.Status.Running") : (Brush)FindResource("Brush.Border.Strong"), BorderThickness = new Thickness(1)
+                    Background = approved ? (Brush)FindResource("GreenBrush") : Brushes.Transparent,
+                    BorderBrush = approved ? (Brush)FindResource("GreenBrush") : (Brush)FindResource("Surface1Brush"), BorderThickness = new Thickness(1)
                 });
                 row.Children.Add(new TextBlock
                 {
                     Text = cmd, TextWrapping = TextWrapping.Wrap,
                     FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5,
-                    Foreground = approved ? (Brush)FindResource("Brush.Text.Primary") : (Brush)FindResource("Brush.Text.Dim")
+                    Foreground = approved ? (Brush)FindResource("TextBrush") : (Brush)FindResource("OverlayBrush")
                 });
                 int capturedIndex = i;
                 row.MouseLeftButtonDown += (s, e) =>
