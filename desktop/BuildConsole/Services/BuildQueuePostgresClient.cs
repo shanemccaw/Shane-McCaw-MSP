@@ -213,18 +213,18 @@ namespace BuildConsole.Services
         /// </summary>
         public async Task<List<QueueItem>> GetQueueAsync()
         {
-            // Git #2119/#3583/#3607 — optional trailing ordinals, strictly append-only per the
+            // Git #2119/#3583/#3607/#3742 — optional trailing ordinals, strictly append-only per the
             // #1384 fixed-ordinal contract (MapRow reads each by a fixed absolute ordinal, so a
             // later one can only be added by also selecting every earlier one, in the SAME order,
             // even where this specific query has no other use for it): superseded_by_id (21),
-            // repo_owner (22), repo_name (23), then Git #3607's new archived (24) / archived_at (25)
-            // — needed here so the board's Canceled filter can read QueueItem.Archived.
+            // repo_owner (22), repo_name (23), archived (24) / archived_at (25), then Git #3742's
+            // new note (26) — needed here so the card's note chip can read QueueItem.Note.
             const string sql = @"
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
                        originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at,
-                       superseded_by_id, repo_owner, repo_name, archived, archived_at
+                       superseded_by_id, repo_owner, repo_name, archived, archived_at, note
                 FROM bt_build_queue
                 ORDER BY created_at ASC";
 
@@ -1742,6 +1742,26 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #3742 — writes (or clears, when <paramref name="note"/> is null/empty) the free-text
+        /// note for a queue row, from the card's right-click "Add Note…"/"Edit Note…" context-menu
+        /// item. Available for a card in ANY status — no status guard, matching the issue's explicit
+        /// "any status" ask. Lives on the same row as everything else, so it needs no special-casing
+        /// anywhere else in the codebase (Mark Complete, etc. never touch this column).
+        /// </summary>
+        public async Task SetNoteAsync(int id, string? note)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET note = @note, updated_at = NOW()
+                 WHERE id = @id", conn);
+            cmd.Parameters.AddWithValue("@note",
+                string.IsNullOrWhiteSpace(note) ? (object)DBNull.Value : note.Trim());
+            cmd.Parameters.AddWithValue("@id", id);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        /// <summary>
         /// Git #2685, widened by #2775 — the deliberate, narrow exception to
         /// <see cref="MarkSupersededByReplyAsync"/>'s "never rewrite a terminal row" guard: a NEW,
         /// dedicated method (the Reply-supersede guard exists for good reason and is NOT weakened
@@ -2975,6 +2995,10 @@ namespace BuildConsole.Services
                 // sequence stays unambiguous — see that query's own comment).
                 Archived          = r.FieldCount > 24 && !r.IsDBNull(24) && r.GetBoolean(24),
                 ArchivedAt        = r.FieldCount > 25 && !r.IsDBNull(25) ? r.GetFieldValue<DateTimeOffset>(25) : (DateTimeOffset?)null,
+                // Git #3742 — optional trailing ordinal 26, present only on GetQueueAsync's display
+                // query (which also selects archived/archived_at at 24/25 so the ordinal sequence
+                // stays unambiguous — see that query's own comment).
+                Note              = r.FieldCount > 26 && !r.IsDBNull(26) ? r.GetString(26) : null,
             };
         }
 

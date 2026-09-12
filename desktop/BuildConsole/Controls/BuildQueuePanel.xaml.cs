@@ -5128,6 +5128,31 @@ namespace BuildConsole.Controls
                 topRow.Children.Add(chatBadge);
             }
 
+            // Git #3742 — note-icon chip: only rendered when a note actually exists (no
+            // empty-state placeholder). Hovering shows the real note text via ToolTip —
+            // no dialog reopen needed to read it back.
+            if (!string.IsNullOrWhiteSpace(item.Note))
+            {
+                var noteBadge = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x28, 0x29, 0x3D)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1.5, 5, 1.5),
+                    Margin = new Thickness(6, 0, 0, 0)
+                };
+                noteBadge.Child = new TextBlock
+                {
+                    Text = "📝",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF))
+                };
+                AttachBubbleTooltip(noteBadge, item.Note);
+                topRow.Children.Add(noteBadge);
+            }
+
             mainStack.Children.Add(topRow);
 
             // ── Second Row: Title Block ──
@@ -6068,6 +6093,38 @@ namespace BuildConsole.Controls
                 await RefreshAsync();
             };
             cm.Items.Add(miMarkComplete);
+
+            // Git #3742 — "Add Note…"/"Edit Note…", available for EVERY card regardless of
+            // item.Status (no status guard, matching the issue's explicit "any status" ask —
+            // Running/Blocked/Waiting/Ask-Shane/Done all get it). Label reflects real current
+            // state rather than always saying "Add".
+            var miNote = new MenuItem
+            {
+                Header = string.IsNullOrWhiteSpace(item.Note) ? "📝 Add Note…" : "📝 Edit Note…"
+            };
+            miNote.Click += async (_, _) =>
+            {
+                if (_db == null)
+                {
+                    ToastEngine.Warning("Note", "No direct DB connection — can't save a note.");
+                    return;
+                }
+                string? text = PromptForNoteText(item.Title, item.Note);
+                if (text == null) return; // cancelled
+                try
+                {
+                    await _db.SetNoteAsync(item.Id, text);
+                    ActivityLog.Log("build-queue", string.IsNullOrWhiteSpace(text)
+                        ? $"Cleared note on queue item #{item.Id} ({item.Title})."
+                        : $"Saved note on queue item #{item.Id} ({item.Title}).");
+                    await RefreshAsync();
+                }
+                catch (Exception ex)
+                {
+                    ToastEngine.Error("Note Failed", $"Couldn't save the note: {ex.Message}");
+                }
+            };
+            cm.Items.Add(miNote);
             cm.Items.Add(new Separator());
 
             // Reply… — send a message to THIS build and resume its exact Claude session with
@@ -6819,6 +6876,94 @@ namespace BuildConsole.Controls
 
             win.Content = root;
             win.Loaded += (_, _) => box.Focus();
+            return win.ShowDialog() == true ? result : null;
+        }
+
+        /// <summary>
+        /// Git #3742 — modal input for the "Add Note…"/"Edit Note…" context-menu item, matching
+        /// <see cref="PromptForReplyMessage"/>'s exact shape (same window/box/button chrome) rather
+        /// than inventing new dialog chrome. Two real differences from Reply: the box is pre-filled
+        /// with <paramref name="existingNote"/> (so editing never starts blank), and Save is allowed
+        /// on empty text — clearing an existing note is a legitimate action, not a no-op cancel.
+        /// Returns the trimmed text (possibly empty, to clear the note) on Save, or null on Cancel.
+        /// </summary>
+        private string? PromptForNoteText(string buildTitle, string? existingNote)
+        {
+            var win = new Window
+            {
+                Title = "Note",
+                Width = 540,
+                Height = 320,
+                Owner = Window.GetWindow(this),
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x2E))
+            };
+
+            var root = new DockPanel { Margin = new Thickness(14) };
+
+            var header = new TextBlock
+            {
+                Text = $"Note for “{buildTitle}”. Shown as a small chip on the card; hover the chip "
+                     + "to read it back without reopening this dialog. Persists across status "
+                     + "changes, including Mark Complete (Hide).",
+                Foreground = new SolidColorBrush(Color.FromRgb(0xBA, 0xC2, 0xDE)),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            DockPanel.SetDock(header, Dock.Top);
+            root.Children.Add(header);
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            DockPanel.SetDock(buttons, Dock.Bottom);
+
+            string? result = null;
+
+            var box = new TextBox
+            {
+                Text = existingNote ?? "",
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Background = new SolidColorBrush(Color.FromRgb(0x18, 0x18, 0x25)),
+                Foreground = new SolidColorBrush(Color.FromRgb(0xCD, 0xD6, 0xF4)),
+                CaretBrush = new SolidColorBrush(Color.FromRgb(0xCD, 0xD6, 0xF4)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x45, 0x47, 0x5A)),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(8),
+                FontSize = 13,
+                MinHeight = 120
+            };
+            box.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+                {
+                    result = box.Text?.Trim() ?? "";
+                    win.DialogResult = true;
+                }
+            };
+
+            var cancel = new Button { Content = "Cancel", Padding = new Thickness(14, 6, 14, 6), IsCancel = true };
+            cancel.Click += (_, _) => win.DialogResult = false;
+
+            var save = new Button { Content = "Save  (Ctrl+Enter)", Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(14, 6, 14, 6), IsDefault = true };
+            save.Click += (_, _) =>
+            {
+                result = box.Text?.Trim() ?? "";
+                win.DialogResult = true;
+            };
+
+            buttons.Children.Add(cancel);
+            buttons.Children.Add(save);
+            root.Children.Add(buttons);
+            root.Children.Add(box); // last child fills the remaining space
+
+            win.Content = root;
+            win.Loaded += (_, _) => { box.Focus(); box.CaretIndex = box.Text.Length; };
             return win.ShowDialog() == true ? result : null;
         }
 

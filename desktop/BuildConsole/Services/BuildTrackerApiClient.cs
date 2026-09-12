@@ -83,6 +83,13 @@ namespace BuildConsole.Services
         /// is checked against for the per-repo pause control (#3583).</summary>
         public string OwnerRepo =>
             $"{(string.IsNullOrWhiteSpace(RepoOwner) ? RepoIdentity.DefaultOwner : RepoOwner)}/{(string.IsNullOrWhiteSpace(RepoName) ? RepoIdentity.DefaultName : RepoName)}";
+        /// <summary>Git #3742 — a free-text note Shane attached to this card via the right-click
+        /// "Add Note…" context-menu item, available regardless of the item's status. Threaded from
+        /// <c>bt_build_queue.note</c> (added additively by #3742's migration). Lives on the same row
+        /// as everything else, so it survives Mark Complete (Hide) and every other status change
+        /// automatically. Null/empty when no note has been added, or when the selecting query didn't
+        /// request this optional trailing column (see MapRow's #1384 fixed-ordinal contract).</summary>
+        public string? Note { get; set; }
     }
 
     /// <summary>Matches POST /admin/simulator/deploy/console's real `{ ok, command, output }` response shape.</summary>
