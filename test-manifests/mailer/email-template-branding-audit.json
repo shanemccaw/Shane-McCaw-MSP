@@ -2,7 +2,7 @@
   "issue": 976,
   "feature": "Email template branding audit — 27 DB email_templates slugs: DB-row-used + wrapped in branded-layout {{body}} (Epic #803, screenshot-gated per #975)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "555278b430cff19719adbc38e715f32676540b5a",
+  "lastVerifiedAgainstCommit": "b410543b3",
 
   "notes": [
     "PURPOSE: verify, per #976, that each of the 27 real email_templates slugs (a) is actually sent from the DB row rather than a hardcoded mailer.ts body, and (b) is wrapped in the branded-layout {{body}} substitution before it goes out. branded-layout (the wrapper) and tenant-health-block (an embedded snippet) are exempt from the top-level wrap check by design.",
