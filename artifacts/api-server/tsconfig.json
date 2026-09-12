@@ -9,19 +9,12 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true
   },
-  "include": ["src"],
-  "references": [
-    {
-      "path": "../../lib/db"
-    },
-    {
-      "path": "../../lib/api-zod"
-    },
-    {
-      "path": "../../lib/integrations-anthropic-ai"
-    },
-    {
-      "path": "../../lib/integrations-openai-ai-server"
-    }
-  ]
+  // Git #3522 — deliberately NO "references" to lib/*. A project reference makes a
+  // plain `tsc -p` swap every @workspace/* source file for that lib's built
+  // dist/*.d.ts, so a schema edit in lib/db/src read as "no exported member" until
+  // someone remembered `tsc -b` (#1778, #2087, #2778). Without references, every
+  // invocation path — `tsc --noEmit` direct, `pnpm run typecheck`, the editor —
+  // resolves @workspace/* through package.json "exports" to live src/**/*.ts.
+  // Root `tsc --build` still typechecks each lib on its own. Don't add them back.
+  "include": ["src"]
 }

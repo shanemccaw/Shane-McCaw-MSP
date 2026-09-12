@@ -81,10 +81,12 @@ function nodeModulesHosts(repoRoot) {
 }
 
 /**
- * lib/* (and lib/integrations/*) packages with a composite tsconfig.json --
- * these are the ones that need a built dist/ for TS project-reference
- * consumers (composite: true, emitDeclarationOnly). Checked by tsconfig
- * content, not by an existing dist/, since a fresh worktree has none yet.
+ * lib/* (and lib/integrations/*) packages with a composite tsconfig.json
+ * (composite: true, emitDeclarationOnly) -- the projects root `tsc --build`
+ * builds. Since Git #3522 no artifact tsconfig references them, so a consumer's
+ * typecheck never reads this dist/; it only keeps root `tsc --build` warm.
+ * Checked by tsconfig content, not by an existing dist/, since a fresh
+ * worktree has none yet.
  */
 function compositeLibDirs(repoRoot) {
   const out = [];

@@ -15,10 +15,7 @@
     "paths": {
       "@/*": ["./src/*"]
     }
-  },
-  "references": [
-    {
-      "path": "../../lib/api-client-react"
-    }
-  ]
+  }
+  // Git #3522 — no "references" to lib/*: they make tsc read stale lib/*/dist/*.d.ts
+  // instead of live src. See artifacts/api-server/tsconfig.json.
 }
