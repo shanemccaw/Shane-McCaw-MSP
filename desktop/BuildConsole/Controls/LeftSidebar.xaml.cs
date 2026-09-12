@@ -3604,12 +3604,11 @@ namespace BuildConsole.Controls
             }
 
             var epicById = _chatEpicById;
-            // Git: Chats panel Archive — a soft-hidden chat (and all its real
-            // associations) stays fully intact server-side; the toggle just
-            // decides which slice of _lastBoardChats this render shows. Off
-            // (default): archived chats drop out entirely, same as today.
-            // On: ONLY archived chats show, so Shane can find and unarchive one.
-            bool showArchivedOnly = ChatShowArchived?.IsChecked == true;
+            // Git #3790 — a soft-hidden (archived) chat, and all its real associations,
+            // stays fully intact server-side. It used to drop out of this render entirely
+            // unless the "Show Archived" toggle was checked; that toggle is gone. Every
+            // chat renders here now — BuildChatCard applies the ghosted/muted visual
+            // treatment for chat.Archived, same shape as its existing ctxFull ghosting.
 
             // Closed-issue/build filtering (Git #1450) and closed-epic filtering below both
             // need the SAME live open-issue signal, so it's computed once, up front, and
@@ -3660,7 +3659,6 @@ namespace BuildConsole.Controls
             var focusChats = _lastBoardChats
                 .Where(c => string.Equals(c.Account, currentAccount, StringComparison.OrdinalIgnoreCase))
                 .Where(c => milestoneMode || BuildConsole.Services.FocusModeService.Instance.IsChatInFocus(c))
-                .Where(c => showArchivedOnly ? c.Archived : !c.Archived)
                 .Where(c =>
                 {
                     bool closed = AreAllLinkedIssuesClosed(c, queueItemsForClosure, openGithubNumbers);
@@ -3857,9 +3855,7 @@ namespace BuildConsole.Controls
                 TxtNoChats.Visibility = empty && !_chatsIsStale ? Visibility.Visible : Visibility.Collapsed;
                 TxtNoChats.Text = searching && empty
                     ? $"No chats match \"{search}\"."
-                    : showArchivedOnly
-                        ? "No archived chats."
-                        : "No chats linked yet.";
+                    : "No chats linked yet.";
             }
         }
 
@@ -4405,7 +4401,12 @@ namespace BuildConsole.Controls
         /// with no recorded context reading yet falls back to the prior relative-time readout rather than
         /// fabricating a context value. <paramref name="indented"/> applies the sub-epic row indent.
         /// Retains #828's "Assign to Epic..." right-click and every other real context-menu action
-        /// unchanged below — this restyle only touches the visual shell.</summary>
+        /// unchanged below — this restyle only touches the visual shell.
+        ///
+        /// Git #3790 — an archived chat now renders inline in this same list (the "Show Archived"
+        /// toggle that used to hide it entirely is gone) using the identical ghosted/muted treatment
+        /// this method already applies for a full context window (<c>ghosted</c> below covers both
+        /// causes), rather than a second bespoke "archived" visual style.</summary>
         private Border BuildChatCard(BoardChat chat, Color accentColor, HashSet<int>? openGithubNumbers, bool indented)
         {
             bool inProgress = BuildConsole.Services.FocusModeService.Instance.IsChatInProgressForAccount(chat.ConversationId, BuildConsole.Services.BuildConsoleSettings.CurrentAccountLabel());
@@ -4414,8 +4415,12 @@ namespace BuildConsole.Controls
             var ctxEntry = BuildConsole.Services.ChatContextMeterStore.Get(chat.ConversationId);
             double? ctxTokens = ctxEntry?.EstTokens;
             bool ctxFull = ctxTokens.HasValue && ctxTokens.Value >= ChatContextBudget;
+            // Git #3790 — archived is a second, independent reason to ghost the row. The ctx
+            // readout itself (below) still reflects the chat's REAL context usage regardless of
+            // archived state — only the shell/title muting is shared between the two causes.
+            bool ghosted = ctxFull || chat.Archived;
 
-            Brush BorderForState() => ctxFull ? GetBrush("ChatsPanel.BorderSubtle") : Tint(accentColor, 0x38);
+            Brush BorderForState() => ghosted ? GetBrush("ChatsPanel.BorderSubtle") : Tint(accentColor, 0x38);
 
             // Card shell — background/border per the design's real context-usage ghosting, not the
             // old "highlighted when In Progress" treatment (In Progress is still shown, as the lead dot).
@@ -4426,7 +4431,7 @@ namespace BuildConsole.Controls
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
                 ClipToBounds = true,
-                Opacity = ctxFull ? 0.62 : 1.0,
+                Opacity = ghosted ? 0.62 : 1.0,
                 Margin = new Thickness(indented ? 12 : 0, 0, 0, 4),
                 Tag = chat,
                 Cursor = System.Windows.Input.Cursors.Hand,
@@ -4436,7 +4441,7 @@ namespace BuildConsole.Controls
 
             var rowSurface = new Border
             {
-                Background = Tint(accentColor, ctxFull ? (byte)0x08 : (byte)0x14),
+                Background = Tint(accentColor, ghosted ? (byte)0x08 : (byte)0x14),
                 Padding = new Thickness(8, 6, 8, 6),
             };
 
@@ -4450,7 +4455,7 @@ namespace BuildConsole.Controls
                 icons.Children.Add(new TextBlock { Text = "⚡", FontSize = 11, Foreground = GetBrush("YellowBrush"), Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = "Marked as In Progress (quickly accessible in Focus mode)" });
             if (chat.Archived)
                 icons.Children.Add(new TextBlock { Text = "🗄", FontSize = 11, Foreground = GetBrush("ChatsPanel.Text4"), Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = chat.ArchivedAt.HasValue ? $"Archived {chat.ArchivedAt.Value.ToLocalTime():MMM d, h:mm tt} — right-click to Unarchive" : "Archived — right-click to Unarchive" });
-            icons.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = ctxFull ? GetBrush("ChatsPanel.GhostedDot") : accentBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+            icons.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = ghosted ? GetBrush("ChatsPanel.GhostedDot") : accentBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
             Grid.SetColumn(icons, 0);
             titleRow.Children.Add(icons);
 
@@ -4459,7 +4464,7 @@ namespace BuildConsole.Controls
                 Text = string.IsNullOrWhiteSpace(chat.Title) ? "(untitled chat)" : chat.Title,
                 FontSize = 11,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = ctxFull ? GetBrush("ChatsPanel.GhostedText") : (inProgress ? GetBrush("YellowBrush") : GetBrush("ChatsPanel.Text2")),
+                Foreground = ghosted ? GetBrush("ChatsPanel.GhostedText") : (inProgress ? GetBrush("YellowBrush") : GetBrush("ChatsPanel.Text2")),
                 FontWeight = FontWeights.SemiBold,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Margin = new Thickness(0, 0, 6, 0),
@@ -5025,9 +5030,9 @@ namespace BuildConsole.Controls
 
             // Archive / Unarchive — soft-hide (not delete). The real bt_chats
             // row and every association (bt_chat_issues, epic/issue links) are
-            // left fully intact server-side; this just flags the chat out of
-            // the default active Chats panel view, reversible from here or from
-            // the "Show Archived" toggle above the tree.
+            // left fully intact server-side; this just flags the chat, which
+            // BuildChatCard then renders ghosted inline (Git #3790) instead of
+            // hiding it — reversible from here at any time.
             var miArchiveToggle = new MenuItem
             {
                 Header = chat.Archived ? "♻ Unarchive Chat" : "🗄 Archive Chat"
@@ -5070,7 +5075,7 @@ namespace BuildConsole.Controls
                     _lastBoardSignature = null;
                     RenderChatsTree();
                     ToastEngine.Success(archiving ? "Archive Chat" : "Unarchive Chat",
-                        archiving ? $"\"{chat.Title}\" archived — enable \"Show Archived\" to find it again." : $"\"{chat.Title}\" restored.");
+                        archiving ? $"\"{chat.Title}\" archived — it stays in this list, ghosted." : $"\"{chat.Title}\" restored.");
                 }
                 catch (System.Exception ex)
                 {
@@ -5094,13 +5099,10 @@ namespace BuildConsole.Controls
 
         private void ChatSearch_TextChanged(object sender, TextChangedEventArgs e) => RenderChatsTree();
 
-        /// <summary>Git: Chats panel Archive — "Show Archived" toggle above the tree; re-renders from the already-cached board, no re-fetch.</summary>
-        private void ChatShowArchived_Changed(object sender, RoutedEventArgs e) => RenderChatsTree();
-
         /// <summary>Git #1480 — MainWindow calls this when the title-bar Primary/Secondary
         /// account toggle flips, so the Chats panel re-scopes immediately from the already-
         /// cached board (no re-fetch needed — same re-render-only pattern as the search box
-        /// and the Show Archived toggle above).</summary>
+        /// above).</summary>
         public void RefreshForAccountToggle() => RenderChatsTree();
 
         /// <summary>

@@ -149,17 +149,10 @@
                                     <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
                                 </Button>
                             </Grid>
-                            <!-- Git: Chats panel Archive — reversible soft-hide. Off by default
-                                 (archived chats stay out of the normal view); checking this shows
-                                 ONLY the archived ones, mirroring the Git Board's closed-filter toggle
-                                 shape, so Shane can find and unarchive one without losing anything. -->
-                            <CheckBox x:Name="ChatShowArchived"
-                                      Content="Show Archived"
-                                      FontSize="11"
-                                      Margin="2,6,0,0"
-                                      Foreground="{StaticResource Subtext1Brush}"
-                                      Checked="ChatShowArchived_Changed"
-                                      Unchecked="ChatShowArchived_Changed"/>
+                            <!-- Git #3790 — Archive is a reversible soft-hide, but archived chats now
+                                 always render inline (ghosted, via BuildChatCard's real ctxFull-style
+                                 muted treatment) instead of being hidden behind a toggle. The former
+                                 "Show Archived" CheckBox is gone. -->
 
                             <!-- Git #3676 — the Chats panel's own real "New Chat" flow. Clicking
                                  flips the chevron and reveals an inline panel below the button
