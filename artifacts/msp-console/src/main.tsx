@@ -2,11 +2,9 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
-// Seed the initial theme class synchronously from the OS preference to avoid a
-// flash of the wrong theme before React mounts, same pattern as the other
-// front-end artifacts in this repo.
-if (window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
-  document.documentElement.classList.add("dark");
-}
+// The MSP Console is an all-day operator surface and ships in the design
+// system's dark mode only (Design/MSP_Console README, "The design system") —
+// there is no light variant, so force `.dark` rather than following the OS.
+document.documentElement.classList.add("dark");
 
 createRoot(document.getElementById("root")!).render(<App />);

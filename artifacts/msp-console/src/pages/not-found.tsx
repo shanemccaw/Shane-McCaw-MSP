@@ -2,20 +2,21 @@ import { Link } from "wouter";
 
 export default function NotFound() {
   return (
-    <div className="py-24 text-center">
-      <p className="text-sm font-semibold text-muted-foreground">404</p>
-      <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-foreground">
-        Page not found
-      </h1>
-      <p className="mt-3 text-sm text-muted-foreground">
-        The page you are looking for does not exist.
-      </p>
-      <Link
-        href="/"
-        className="mt-6 inline-block text-sm font-medium text-foreground underline underline-offset-4"
-      >
-        Back to MSP Console
-      </Link>
+    <div
+      style={{
+        minHeight: "100vh", background: "#020617", color: "#e2e8f0",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+        fontFamily: "Inter, system-ui, sans-serif",
+      }}
+    >
+      <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 8 }}>
+        <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: ".12em", color: "#64748b" }}>404</p>
+        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em", color: "#f8fafc" }}>Page not found</h1>
+        <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>This route isn't part of the MSP Console.</p>
+        <Link href="/tenants" style={{ marginTop: 8, fontSize: 13, fontWeight: 500, color: "#60a5fa", textDecoration: "underline", textUnderlineOffset: 4 }}>
+          Back to Managed Tenants
+        </Link>
+      </div>
     </div>
   );
 }
