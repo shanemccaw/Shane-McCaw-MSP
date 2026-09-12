@@ -24,7 +24,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { wfRunsTable, usersTable, scriptPackagesTable, activeDirectoryOusTable, type MspRole } from "./index.ts";
+import { wfRunsTable, usersTable, scriptPackagesTable, activeDirectoryOusTable, projectsTable, type MspRole } from "./index.ts";
 import { LEGACY_ROLE } from "../rbac/legacy-ladder.ts";
 
 // ── MSPs (Managed Service Provider organisations) ─────────────────────────────
@@ -3849,6 +3849,12 @@ export const mspSowsTable = pgTable("msp_sows", {
   // MSP-authored clickwrap text embedded in the SOW document if configured.
   customerAgreementSnapshotText: text("customer_agreement_snapshot_text"),
 
+  // ── Fulfillment (Git #2009) ───────────────────────────────────────────────
+  // Set once signing this SOW has kicked off fulfillAcceptedProjectOffer()
+  // and it returned a real projects row — the operator-facing surface for
+  // "this signed SOW became a real project", not just a shareToken/status.
+  projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -3858,6 +3864,7 @@ export const mspSowsTable = pgTable("msp_sows", {
   index("msp_sows_status_idx").on(t.status),
   index("msp_sows_share_token_idx").on(t.shareToken),
   index("msp_sows_expires_at_idx").on(t.expiresAt),
+  index("msp_sows_project_id_idx").on(t.projectId),
 ]);
 
 export type MspSow = typeof mspSowsTable.$inferSelect;

@@ -8,6 +8,16 @@
  * Billing model: platform bills the MSP (not the end-customer).
  * Charge flows: SOW signed → charge MSP's Stripe card on file → fulfillment unlocked.
  *
+ * Project creation (Git #2009): signing is what turns a SOW into a real
+ * engagement, independent of the (separate, back-office) MSP charge above. A
+ * SOW is the contract language and agreed scope; a project is the extraction
+ * and action of that scope. Both sign routes call
+ * triggerProjectFulfillmentFromSignedSow(), which reuses the same
+ * fulfillAcceptedProjectOffer() pipeline (project-sow-fulfillment.ts) the
+ * customer-facing accept route (portal-offers.ts) already uses — a real
+ * `projects` row plus an AI-priced SOW document, not a second engine. The
+ * resulting projects.id is recorded back onto msp_sows.project_id.
+ *
  * Routes:
  *   POST   /api/msp/sows                        — create SOW from accepted offer
  *   GET    /api/msp/sows                        — list SOWs for an MSP/customer
@@ -675,6 +685,16 @@ router.post(
 
     log.info({ sowId, mspId: sow.mspId, signerName }, "msp-sow: SOW signed");
 
+    // Git #2009 — signing is what triggers real project creation, not payment.
+    // acceptedByUserId is the signer only when the signer IS the assigned
+    // customer; an MSP operator signing on the customer's behalf carries no
+    // customer identity of its own, so fulfillAcceptedProjectOffer falls back
+    // to resolving the customer's canonical portal user itself.
+    triggerProjectFulfillmentFromSignedSow(
+      { sowId, offerId: sow.offerId },
+      isAssignedCustomer ? user.id : null,
+    );
+
     // Charge now requires MSP approval (spec: MSP_Full_Catalog_Purchase_Charging_Spec_v1,
     // Phase 1) — no longer auto-fires here. Fires the "MSP SOW Charge Approval" seeded
     // workflow instead, which pauses at an approval_gate before calling charge_msp_card.
@@ -849,6 +869,7 @@ router.post(
         status: mspSowsTable.status,
         mspId: mspSowsTable.mspId,
         customerId: mspSowsTable.customerId,
+        offerId: mspSowsTable.offerId,
         amountCents: mspSowsTable.amountCents,
         shareTokenExpiresAt: mspSowsTable.shareTokenExpiresAt,
         expiresAt: mspSowsTable.expiresAt,
@@ -898,6 +919,12 @@ router.post(
     }, null);
 
     log.info({ sowId: sow.sowId, signerName }, "msp-sow: SOW signed via public share link");
+
+    // Git #2009 — signing is what triggers real project creation, not
+    // payment. No auth on this route, so there's no customer identity to
+    // pass through; fulfillAcceptedProjectOffer resolves the customer's
+    // canonical portal user itself.
+    triggerProjectFulfillmentFromSignedSow({ sowId: sow.sowId, offerId: sow.offerId }, null);
 
     // Auto-trigger MSP charge
     void triggerMspCharge(sow.sowId, sow.mspId, sow.amountCents, null).catch((err) => {
@@ -1179,6 +1206,57 @@ async function getMspDefaultPaymentMethod(
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Kick off real project creation for a signed project-class SOW (Git #2009).
+ *
+ * Reuses the same fulfillAcceptedProjectOffer() pipeline the customer-facing
+ * accept route (portal-offers.ts) already uses to create a real `projects`
+ * row + AI-priced SOW document. Per Shane's resolution on #2009: a SOW is the
+ * contract language and agreed scope, a project is the extraction and action
+ * of that scope — signing the SOW is what should trigger real project
+ * creation as the next step, not bypass it. Fire-and-forget, same discipline
+ * as portal-offers.ts: the SOW is already marked signed, so a fulfillment
+ * failure must never turn a successful signature into an error response.
+ *
+ * Standalone SOWs created via POST /api/msp/sows (no offerId) have no offer
+ * to resolve a service/serviceClass from, so there is genuinely nothing to
+ * fulfill here — that's a no-op, not a bug.
+ */
+function triggerProjectFulfillmentFromSignedSow(
+  sow: { sowId: string; offerId: number | null },
+  acceptedByUserId: number | null,
+): void {
+  const offerId = sow.offerId;
+  if (offerId == null) {
+    log.info({ sowId: sow.sowId }, "msp-sow: signed SOW has no offerId — no project-class offer to fulfill");
+    return;
+  }
+  // Dynamic import, same discipline as the sow.signed workflow-event import
+  // just below: project-sow-fulfillment.ts transitively pulls in
+  // document-engine-sow.ts -> the Anthropic AI integration client, which
+  // throws at module load if its env vars aren't provisioned. A signed SOW
+  // must not 500 — and importers of this route module must not crash at
+  // load — just because the AI-priced SOW-generation pipeline isn't
+  // configured in this environment.
+  void (async () => {
+    try {
+      const { fulfillAcceptedProjectOffer } = await import("../lib/project-sow-fulfillment.ts");
+      const result = await fulfillAcceptedProjectOffer({ offerId, acceptedByUserId });
+      log.info({ sowId: sow.sowId, offerId, result }, "msp-sow: project fulfillment kicked off from signed SOW");
+
+      // Record the real projects row on the SOW itself, so the operator-facing
+      // SOW drawer can show "this became project #N" rather than only a
+      // signed/paid status with no visible link to the engagement it produced.
+      if (result.status === "sow_generating" && result.projectId != null) {
+        await db.update(mspSowsTable).set({ projectId: result.projectId, updatedAt: new Date() })
+          .where(eq(mspSowsTable.sowId, sow.sowId));
+      }
+    } catch (err) {
+      log.error({ err, sowId: sow.sowId, offerId }, "msp-sow: project fulfillment kickoff failed for signed SOW");
+    }
+  })();
 }
 
 /** Unlock fulfillment queue entry for this SOW */

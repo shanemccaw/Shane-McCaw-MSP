@@ -1233,6 +1233,15 @@ function SowDrawer({ sowId, onClose }: { sowId: string; onClose: () => void }) {
           { label: "SIGNED", value: s.signedAt ? fmtDateTime(s.signedAt) : "—", color: text.muted },
           { label: "EXPIRES", value: s.expiresAt ? fmtDate(s.expiresAt) : "—", color: text.muted },
           { label: "CHARGE", value: s.chargeConfirmedAt ? "confirmed" : s.chargeAttemptedAt ? "attempted, unconfirmed" : "not attempted", color: s.chargeConfirmedAt ? signal.ok.text : text.muted },
+          // Git #2009 — signing this SOW kicks off real project creation
+          // (fulfillAcceptedProjectOffer); this is the operator's visible
+          // confirmation that the signed contract became a real engagement,
+          // not just a signed/paid document.
+          {
+            label: "PROJECT",
+            value: s.projectId != null ? `Project #${s.projectId} created` : s.signedAt ? "creating…" : "not created yet",
+            color: s.projectId != null ? signal.ok.text : text.faint,
+          },
         ].map((f) => (
           <div key={f.label} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
             <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".1em", color: text.faint }}>{f.label}</span>

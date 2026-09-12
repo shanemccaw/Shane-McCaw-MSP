@@ -45,7 +45,7 @@ function makeChain(rows: unknown[]) {
 // selectResults / insertResults / updateResult are filled per-test via helpers.
 // The mock reads from these arrays in call-order.
 
-const { mockDb, mockState, mockStripeSessionCreate } = vi.hoisted(() => {
+const { mockDb, mockState, mockStripeSessionCreate, mockFulfillAcceptedProjectOffer } = vi.hoisted(() => {
   const mockState = {
     selectResults: [] as unknown[][],
     insertResults: [] as unknown[][],
@@ -68,7 +68,16 @@ const { mockDb, mockState, mockStripeSessionCreate } = vi.hoisted(() => {
     url: "https://checkout.stripe.com/pay/cs_test",
   });
 
-  return { mockDb, mockState, mockStripeSessionCreate };
+  // Git #2009 — the sign routes dynamically `import()` project-sow-fulfillment.ts
+  // to kick off real project creation. Mocked for the same reason
+  // ../lib/workflow-executor.ts is: the real module transitively pulls in
+  // document-engine-sow.ts -> the Anthropic AI integration client, which
+  // throws at module-load time if its env vars aren't provisioned.
+  const mockFulfillAcceptedProjectOffer = vi.fn().mockResolvedValue({
+    status: "sow_generating", projectId: 501, documentId: 9001,
+  });
+
+  return { mockDb, mockState, mockStripeSessionCreate, mockFulfillAcceptedProjectOffer };
 });
 
 // ── Module mocks ───────────────────────────────────────────────────────────────
@@ -174,6 +183,11 @@ vi.mock("../lib/workflow-executor.ts", () => ({
   emitWorkflowEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Git #2009 — see mockFulfillAcceptedProjectOffer's own comment above.
+vi.mock("../lib/project-sow-fulfillment.ts", () => ({
+  fulfillAcceptedProjectOffer: mockFulfillAcceptedProjectOffer,
+}));
+
 // ── Import router AFTER all mocks ─────────────────────────────────────────────
 
 import router from "./msp-sow.ts";
@@ -237,6 +251,18 @@ function queueSelect(...rowSets: unknown[][]) {
 /** Queue rows to return on the n-th insert() call (in call order). */
 function queueInsert(...rowSets: unknown[][]) {
   mockState.insertResults.push(...rowSets);
+}
+
+/**
+ * The sign routes kick off project fulfillment fire-and-forget (a dynamic
+ * `import()` followed by an async call) — it is not awaited by the request
+ * handler. Flush the microtask queue a few times so it settles before a test
+ * asserts on it.
+ */
+async function flushMicrotasks(times = 5) {
+  for (let i = 0; i < times; i++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -423,6 +449,76 @@ describe("POST /msp/sows/:sowId/sign", () => {
     expect(res.body.status).toBe("signed");
   });
 
+  // Git #2009 — signing a project-class SOW is what should trigger real
+  // project creation, reusing the same fulfillAcceptedProjectOffer() pipeline
+  // the customer-facing accept route already uses.
+  it("kicks off project fulfillment for a signed SOW that carries an offerId", async () => {
+    const app = buildApp();
+
+    queueSelect([{
+      sowId: "sign-test-uuid-with-offer", status: "sent", mspId: 42, customerId: 5,
+      amountCents: 100000, customerUserId: 2, offerId: 77,
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    }]);
+    queueInsert([], []); // signed event + MSP event
+
+    // The signer here is the MSP operator (mspId matches; buildApp()'s user.id
+    // is 1, which does NOT match this SOW's customerUserId: 2), so
+    // acceptedByUserId falls through as null and fulfillAcceptedProjectOffer
+    // resolves the customer's own portal user itself.
+    const res = await request(app).post("/msp/sows/sign-test-uuid-with-offer/sign").send({
+      signerName: "Jane Customer",
+      signatureData: validSignature,
+    });
+    expect(res.status).toBe(200);
+
+    await flushMicrotasks();
+    expect(mockFulfillAcceptedProjectOffer).toHaveBeenCalledWith({ offerId: 77, acceptedByUserId: null });
+  });
+
+  it("passes the signer's own user id when the assigned customer signs directly", async () => {
+    const app = buildApp();
+
+    queueSelect([{
+      sowId: "sign-test-customer-signer", status: "sent", mspId: 999, customerId: 5,
+      amountCents: 100000, customerUserId: 1, offerId: 88,
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    }]);
+    queueInsert([], []); // signed event + MSP event
+
+    // buildApp()'s req.user has id: 1, mspId: 42 — mspId 999 on this SOW means
+    // isMspUser is false, but customerUserId: 1 matches user.id, so this is
+    // the assigned-customer signing path.
+    const res = await request(app).post("/msp/sows/sign-test-customer-signer/sign").send({
+      signerName: "Jane Customer",
+      signatureData: validSignature,
+    });
+    expect(res.status).toBe(200);
+
+    await flushMicrotasks();
+    expect(mockFulfillAcceptedProjectOffer).toHaveBeenCalledWith({ offerId: 88, acceptedByUserId: 1 });
+  });
+
+  it("does not attempt project fulfillment for a standalone SOW with no offerId", async () => {
+    const app = buildApp();
+
+    queueSelect([{
+      sowId: "sign-test-standalone", status: "sent", mspId: 42, customerId: 5,
+      amountCents: 100000, customerUserId: 1, offerId: null,
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    }]);
+    queueInsert([], []); // signed event + MSP event
+
+    const res = await request(app).post("/msp/sows/sign-test-standalone/sign").send({
+      signerName: "Jane Customer",
+      signatureData: validSignature,
+    });
+    expect(res.status).toBe(200);
+
+    await flushMicrotasks();
+    expect(mockFulfillAcceptedProjectOffer).not.toHaveBeenCalled();
+  });
+
   it("rejects signing an already-signed SOW", async () => {
     const app = buildApp();
 
@@ -572,6 +668,51 @@ describe("POST /public/sows/:shareToken/sign", () => {
     });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
+  });
+
+  // Git #2009 — the public share-link sign path is unauthenticated, so
+  // acceptedByUserId is always null there; fulfillAcceptedProjectOffer falls
+  // back to resolving the customer's own canonical portal user.
+  it("kicks off project fulfillment for a project-class SOW signed via share link", async () => {
+    const app = buildApp();
+
+    queueSelect([{
+      sowId: "pub-sign-with-offer", status: "sent", mspId: 42, customerId: 5,
+      amountCents: 0, offerId: 55,
+      shareTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      expiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+    }]);
+    queueInsert([], []); // signed event + MSP event
+
+    const res = await request(app).post("/public/sows/offer-token/sign").send({
+      signerName: "John Public",
+      signatureData: validSignature,
+    });
+    expect(res.status).toBe(200);
+
+    await flushMicrotasks();
+    expect(mockFulfillAcceptedProjectOffer).toHaveBeenCalledWith({ offerId: 55, acceptedByUserId: null });
+  });
+
+  it("does not attempt project fulfillment for a standalone SOW signed via share link", async () => {
+    const app = buildApp();
+
+    queueSelect([{
+      sowId: "pub-sign-standalone", status: "sent", mspId: 42, customerId: 5,
+      amountCents: 0, offerId: null,
+      shareTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      expiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+    }]);
+    queueInsert([], []); // signed event + MSP event
+
+    const res = await request(app).post("/public/sows/no-offer-token/sign").send({
+      signerName: "John Public",
+      signatureData: validSignature,
+    });
+    expect(res.status).toBe(200);
+
+    await flushMicrotasks();
+    expect(mockFulfillAcceptedProjectOffer).not.toHaveBeenCalled();
   });
 
   it("rejects signing an already-signed SOW via public endpoint", async () => {

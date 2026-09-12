@@ -182,6 +182,10 @@ export interface MspSow {
   id: number;
   sowId: string;
   offerId: number | null;
+  /** Set once signing this SOW kicked off fulfillAcceptedProjectOffer() and it
+   * produced a real projects row (Git #2009) — null until then, and always
+   * null for a standalone SOW with no offerId. */
+  projectId: number | null;
   mspId: number;
   customerId: number | null;
   customerUserId: number | null;
