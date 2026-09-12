@@ -102,9 +102,17 @@ namespace BuildConsole
                 var manifest = manifestPath != null ? BuildConsole.Services.TestManifest.LoadFromFile(manifestPath) : null;
                 if (manifest == null)
                 {
+                    // Git #3059 — before reporting a plain "not found," check whether this
+                    // checkout's own test-manifests/ tree is simply behind origin/main and the
+                    // file exists there. See DiagnoseManifestNotFoundAsync's own header for why
+                    // this, not a path-construction bug, was the real cause of a "repeatable
+                    // manifest-not-found" report against test-manifests/portal/.
+                    string staleness = await DiagnoseManifestNotFoundAsync(repoRoot, fileArg!, manifestPath);
+                    string error = $"manifest not found or unparseable: {fileArg}" + (staleness.Length > 0 ? $" — {staleness}" : "");
+
                     BuildConsole.Services.ActivityLog.Log(ch,
-                        $"runTest: manifest not found or unparseable: '{fileArg}' (searched recursively under {Path.Combine(repoRoot, "test-manifests")}).");
-                    WriteShaneAppRunTestResult(req, fileArg, ok: false, error: $"manifest not found or unparseable: {fileArg}", manifestPath: manifestPath, result: null);
+                        $"runTest: manifest not found or unparseable: '{fileArg}' (searched recursively under {Path.Combine(repoRoot, "test-manifests")}).{(staleness.Length > 0 ? " " + staleness : "")}");
+                    WriteShaneAppRunTestResult(req, fileArg, ok: false, error: error, manifestPath: manifestPath, result: null);
                     return;
                 }
 
@@ -285,6 +293,70 @@ namespace BuildConsole
             string bare = Path.GetFileName(fileArg);
             if (string.IsNullOrWhiteSpace(bare)) return null;
             return Directory.EnumerateFiles(testManifestsRoot, bare, SearchOption.AllDirectories).FirstOrDefault();
+        }
+
+        /// <summary>
+        /// Git #3059 — the real cause behind a "manifest not found or unparseable" report against
+        /// test-manifests/portal/ (repeatable in that session, for two already-merged-to-origin/main
+        /// manifests, both bare-filename and full-repo-relative-path forms).
+        ///
+        /// ResolveManifestPath's directory scan is NOT depth- or directory-name-sensitive — proven by
+        /// re-running it standalone against this exact repo root and by re-invoking the real
+        /// shaneapp://runTest end-to-end against test-manifests/portal/risk-register.json and
+        /// .../security-plan.json (both resolved and ran through RunManifestAsync cleanly). There is
+        /// no path-construction or portal/-specific scanning bug to fix.
+        ///
+        /// What IS real: <see cref="BuildConsole.Services.BuildTrackerConfig.FindRepoRoot"/> anchors on
+        /// THIS PROCESS's own checkout (the one BuildConsole.exe runs from) — a checkout that only ever
+        /// advances via an explicit dev-server merge-back (scripts/dev-server/request-restart.mjs), not
+        /// a periodic pull. A manifest merged into origin/main minutes before an agent's runTest call
+        /// is genuinely invisible here until the next merge-back lands it — a real, evidenced gap
+        /// (confirmed live: this checkout sat 15 commits behind origin/main during this build with no
+        /// error surfaced anywhere). That is the actual, repeatable failure mode the report hit, not a
+        /// resolution-logic defect — and it self-resolves on the next merge-back, which is exactly why
+        /// it no longer reproduces days later.
+        ///
+        /// This turns a misleading generic "not found" into an accurate one so nobody re-chases a path
+        /// bug that isn't there. Best-effort and bounded (5s per git call): never throws, never blocks
+        /// the caller's poll, and returns "" (falls back to the plain message) if git/origin isn't
+        /// reachable, the checkout isn't behind, or the filename genuinely doesn't exist upstream either.
+        /// </summary>
+        private static async Task<string> DiagnoseManifestNotFoundAsync(string repoRoot, string fileArg, string? manifestPath)
+        {
+            // A resolved path that failed to PARSE is a real JSON/content bug, not staleness —
+            // nothing to diagnose here.
+            if (manifestPath != null) return "";
+
+            try
+            {
+                string bare = Path.GetFileName(fileArg);
+                if (string.IsNullOrWhiteSpace(bare)) return "";
+
+                var behind = await BuildConsole.Services.SubprocessRunner.RunAsync(
+                    "git", new[] { "-C", repoRoot, "rev-list", "--count", "HEAD..origin/main" },
+                    timeout: TimeSpan.FromSeconds(5));
+                if (!behind.Ok) return "";
+                if (!int.TryParse(behind.StdOut.Trim(), out int behindCount) || behindCount <= 0) return "";
+
+                var upstream = await BuildConsole.Services.SubprocessRunner.RunAsync(
+                    "git", new[] { "-C", repoRoot, "ls-tree", "-r", "--name-only", "origin/main", "--", "test-manifests" },
+                    timeout: TimeSpan.FromSeconds(5));
+                if (!upstream.Ok) return "";
+
+                string? upstreamMatch = upstream.StdOut
+                    .Split('\n')
+                    .Select(l => l.Trim())
+                    .FirstOrDefault(l => l.Length > 0 &&
+                        string.Equals(Path.GetFileName(l), bare, StringComparison.OrdinalIgnoreCase));
+
+                if (upstreamMatch == null) return "";
+
+                return $"this checkout is {behindCount} commit(s) behind origin/main and '{upstreamMatch}' exists there but not here yet — a stale local checkout (Git #3059), not a resolution bug; it self-resolves on the next dev-server merge-back";
+            }
+            catch
+            {
+                return "";
+            }
         }
 
         /// <summary>
