@@ -41,6 +41,25 @@ const createSopSchema = z.object({
   versionStatus: z.string(),
 });
 
+// #2597 — MSP Console's SOPs page needs to edit and version an existing
+// definition (bump `version`/`versionStatus`, correct steps/tags), not just
+// create one. `sopId` is the row's stable identity and is never patchable
+// here — a version bump keeps overwriting the SAME row per this table's own
+// (mspId, sopId) unique constraint; a genuinely new procedure is a new POST.
+const updateSopSchema = z.object({
+  code: z.string().optional(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  category: z.string().optional(),
+  version: z.string().optional(),
+  automationType: z.enum(["automated", "hybrid", "manual"]).optional(),
+  estimatedMinutes: z.number().int().nonnegative().optional(),
+  complianceTags: z.array(z.string()).optional(),
+  workloadTags: z.array(z.string()).optional(),
+  steps: z.array(sopStepSchema).optional(),
+  versionStatus: z.string().optional(),
+});
+
 const runSopSchema = z.object({
   customerId: z.number().int().positive(),
   // Substituted for {id}/{upn} placeholders in the SOP's automated steps — the
@@ -181,6 +200,72 @@ router.post(
       });
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/sops failed");
+      const msg = err instanceof Error ? err.message : String(err);
+      apiError(res, 500, ApiErrorCode.INTERNAL, msg);
+    }
+  }
+);
+
+// PATCH /api/msp/sops/:sopId
+// Edit / version an existing SOP definition (title, steps, tags, category,
+// version, versionStatus, ...). `sopId` itself never changes here — see
+// updateSopSchema's own header for why a version bump is an update, not an
+// insert.
+router.patch(
+  "/msp/sops/:sopId",
+  requireAuth,
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+
+      const sopId = String(req.params.sopId);
+      const parsedBody = updateSopSchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid SOP update payload", parsedBody.error.flatten());
+        return;
+      }
+
+      const [existing] = await db
+        .select({ id: mspSopsTable.id })
+        .from(mspSopsTable)
+        .where(and(eq(mspSopsTable.mspId, mspId), eq(mspSopsTable.sopId, sopId)))
+        .limit(1);
+
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "SOP not found");
+        return;
+      }
+
+      const userEmail = req.user?.email || "unknown@mspplatform.com";
+      const nowUtc = new Date().toISOString().substring(0, 10);
+
+      const updateData: Partial<typeof mspSopsTable.$inferInsert> = {
+        lastUpdatedBy: userEmail,
+        lastUpdatedAt: nowUtc,
+      };
+      const d = parsedBody.data;
+      if (d.code !== undefined) updateData.code = d.code;
+      if (d.title !== undefined) updateData.title = d.title;
+      if (d.description !== undefined) updateData.description = d.description;
+      if (d.category !== undefined) updateData.category = d.category;
+      if (d.version !== undefined) updateData.version = d.version;
+      if (d.automationType !== undefined) updateData.automationType = d.automationType;
+      if (d.estimatedMinutes !== undefined) updateData.estimatedMinutes = d.estimatedMinutes;
+      if (d.complianceTags !== undefined) updateData.complianceTags = d.complianceTags;
+      if (d.workloadTags !== undefined) updateData.workloadTags = d.workloadTags;
+      if (d.steps !== undefined) updateData.steps = d.steps;
+      if (d.versionStatus !== undefined) updateData.versionStatus = d.versionStatus;
+
+      await db.update(mspSopsTable).set(updateData).where(eq(mspSopsTable.id, existing.id));
+
+      res.json({ sopId, message: "SOP updated successfully" });
+    } catch (err: unknown) {
+      log.error({ err }, "PATCH /api/msp/sops/:sopId failed");
       const msg = err instanceof Error ? err.message : String(err);
       apiError(res, 500, ApiErrorCode.INTERNAL, msg);
     }

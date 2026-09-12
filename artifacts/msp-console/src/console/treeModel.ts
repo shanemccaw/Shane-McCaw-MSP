@@ -357,6 +357,17 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
   }
   if (sel.kind === "msp") {
     const mp = mspPageMeta(sel.page);
+    // #2597 — SOPs is the first Operations page with a real module built; its
+    // eyebrow/note are the design's own exact copy (`MSP Console.dc.html`
+    // logic class). Other Operations pages keep the generic fallback until
+    // they land their own module.
+    if (sel.page === "sops") {
+      return {
+        eyebrow: "STANDARD OPERATING PROCEDURES",
+        title: "SOPs",
+        note: "The procedures this MSP authors, and every run fired against a customer's tenant.",
+      };
+    }
     return { eyebrow: "OPERATIONS · MSP-WIDE", title: mp?.label ?? "", note: "" };
   }
   const c = find(sel.tenant);

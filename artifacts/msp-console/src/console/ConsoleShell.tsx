@@ -11,6 +11,7 @@ import { StatusBar } from "./StatusBar";
 import { CommandPalette } from "./CommandPalette";
 import { ScreenSlot } from "./ScreenSlot";
 import { Remediation } from "./modules/Remediation";
+import { SopsPage } from "@/pages/Sops";
 import { surface } from "./tokens";
 import { RunbooksPage } from "@/pages/runbooks/RunbooksPage";
 import {
@@ -219,6 +220,9 @@ function moduleFor(sel: Selection): React.ReactNode {
   }
   if (sel.kind === "page" && sel.page === "rem") {
     return <Remediation customerId={sel.tenant} />;
+  }
+  if (sel.kind === "msp" && sel.page === "sops") {
+    return <SopsPage />;
   }
   return undefined;
 }

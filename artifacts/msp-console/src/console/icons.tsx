@@ -17,6 +17,8 @@ import {
   ClockAlert, FastForward,
   Zap, ClipboardCopy, Eye, ExternalLink, Lock, CircleDashed,
   Check, GitMerge, ShieldCheck, Table, Image, Upload, Download, Loader2,
+  CircleCheck, CircleX, Copy, Folder, ChevronUp, Split,
+  Fingerprint, Layers,
   type LucideIcon,
 } from "lucide-react";
 
@@ -92,6 +94,14 @@ const REGISTRY: Record<string, LucideIcon> = {
   upload: Upload,
   download: Download,
   loader: Loader2,
+  "circle-check": CircleCheck,
+  "circle-x": CircleX,
+  copy: Copy,
+  folder: Folder,
+  "chevron-up": ChevronUp,
+  split: Split,
+  fingerprint: Fingerprint,
+  layers: Layers,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});
