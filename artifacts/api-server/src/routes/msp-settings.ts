@@ -238,7 +238,7 @@ function validateMergeFields(key: string, body: string): string | null {
 // The frontend fetches /api/msp/profile; the canonical route is /api/msp/settings/profile.
 // This thin alias avoids a frontend change while keeping one source of truth.
 //
-// Role: Assessment (lowest real role) — this endpoint returns purely cosmetic
+// Role: Free (ladder.free, lowest real role) — this endpoint returns purely cosmetic
 // branding data (name, logoUrl, primaryColor) needed by every authenticated page
 // for white-label display. No sensitive MSP-internal data is exposed here.
 // The write/management surface (PATCH /msp/settings/profile) remains MSPAdmin-gated.
