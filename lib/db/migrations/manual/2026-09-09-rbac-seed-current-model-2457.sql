@@ -47,11 +47,24 @@
 -- stay separate: `ladder.*` exists only in the msp system, because `requireRole`
 -- is one gate and must be answerable from one evaluator.
 --
--- ── Converging, not just idempotent ─────────────────────────────────────────
--- Re-running this file is safe and brings the data back into agreement with the
--- `users` table: stale ladder grants are deleted before current ones are
--- inserted, and a capability role is revoked from anyone whose column no longer
--- grants it. #3408's triggers on `users`
+-- ── Superseded — this file REFUSES to run once #3590 has (Git #3867) ─────────
+-- This file transcribes the SEVEN-rung ladder (Assessment, CustomerUser, ...) and
+-- overwrites every mapping row it touches. After #3590 renamed CustomerUser ->
+-- Customer and folded Assessment into Free, and #3629 narrowed billing and added
+-- Customer Admin, a re-run is not converging — it is a rollback. It happened once
+-- (2026-09-12, reseeding a description for #3638): it resurrected CustomerUser and
+-- Assessment as NEW role ids, rewrote every ladder.* allow-list onto them, and
+-- widened customer:billing.view back to every rung — so every Customer-rung account
+-- failed requireCapability("ladder.customer-user") and ladder.free. The guard below
+-- now refuses. Repair: 2026-09-12-rbac-repair-2457-rerun-3867.sql. A catalog
+-- description change goes through syncCapabilityCatalog() or a new migration,
+-- never a re-run of this file.
+--
+-- ── Converging, not just idempotent (before #3590 only) ─────────────────────
+-- On a pre-#3590 database, re-running this file brought the data back into
+-- agreement with the `users` table: stale ladder grants are deleted before current
+-- ones are inserted, and a capability role is revoked from anyone whose column no
+-- longer grants it. #3408's triggers on `users`
 -- (2026-09-10-rbac-user-roles-maintained-3408.sql) keep the rung and
 -- cap.changes.approve rows in sync automatically from then on. Before that
 -- migration, nothing did, and this note wrongly credited #2458.
@@ -66,6 +79,16 @@
 -- ============================================================================
 
 BEGIN;
+
+-- Git #3867 — see the header. The platform `Customer` role exists only once #3590
+-- has run; from then on this seven-rung transcription can only regress the data.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM msp_roles      WHERE msp_id    IS NULL AND key = 'Customer')
+     OR EXISTS (SELECT 1 FROM customer_roles WHERE tenant_id IS NULL AND key = 'Customer') THEN
+    RAISE EXCEPTION 'REFUSING: #3590 has already run on this database, and re-running the #2457 seed would resurrect CustomerUser/Assessment and overwrite every ladder and customer mapping (Git #3867). Run 2026-09-12-rbac-repair-2457-rerun-3867.sql if it already happened.';
+  END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 1. Catalogue the seven ladder rungs
