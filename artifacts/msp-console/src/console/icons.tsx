@@ -35,6 +35,8 @@ import {
   UserX,
   // Team Management and Invitations (#2640)
   UserPlus, ShieldOff, UserMinus, Mail, Key, LockOpen, Siren, Smartphone, UserCheck,
+  // Diagnostics and Scripts (#2653)
+  ScanLine, Package, ArrowDownUp, FileCode, Star,
   type LucideIcon,
 } from "lucide-react";
 
@@ -166,6 +168,12 @@ const REGISTRY: Record<string, LucideIcon> = {
   siren: Siren,
   smartphone: Smartphone,
   "user-check": UserCheck,
+  // Diagnostics and Scripts (#2653)
+  "scan-line": ScanLine,
+  package: Package,
+  "arrow-down-up": ArrowDownUp,
+  "file-code": FileCode,
+  star: Star,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

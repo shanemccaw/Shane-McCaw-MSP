@@ -10,6 +10,7 @@ import { Breadcrumbs } from "./Breadcrumbs";
 import { StatusBar } from "./StatusBar";
 import { CommandPalette } from "./CommandPalette";
 import { ScreenSlot } from "./ScreenSlot";
+import { Diagnostics } from "./modules/Diagnostics";
 import { Remediation } from "./modules/Remediation";
 import { Webhooks } from "./modules/Webhooks";
 import { DataRights } from "./modules/DataRights";
@@ -231,6 +232,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "page" && sel.page === "run") {
     return <RunbooksPage customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "diag") {
+    return <Diagnostics customerId={sel.tenant} />;
   }
   if (sel.kind === "page" && sel.page === "rem") {
     return <Remediation customerId={sel.tenant} />;
