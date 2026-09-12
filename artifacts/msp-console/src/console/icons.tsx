@@ -13,6 +13,8 @@ import {
   UsersRound, BookOpen, Users, Webhook, Rocket, Receipt, FileText, Files,
   History, Gauge, ChartLine, Activity, Database, Handshake, ScrollText, Plug,
   Info, TriangleAlert, Circle, CornerDownLeft,
+  Pause, CalendarPlus, X, Square, SquareCheckBig, CircleCheckBig, CircleMinus,
+  ClockAlert, FastForward,
   type LucideIcon,
 } from "lucide-react";
 
@@ -65,6 +67,15 @@ const REGISTRY: Record<string, LucideIcon> = {
   info: Info,
   "triangle-alert": TriangleAlert,
   "corner-down-left": CornerDownLeft,
+  pause: Pause,
+  "calendar-plus": CalendarPlus,
+  x: X,
+  square: Square,
+  "square-check-big": SquareCheckBig,
+  "circle-check-big": CircleCheckBig,
+  "circle-minus": CircleMinus,
+  "clock-alert": ClockAlert,
+  "fast-forward": FastForward,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

@@ -11,6 +11,7 @@ import { StatusBar } from "./StatusBar";
 import { CommandPalette } from "./CommandPalette";
 import { ScreenSlot } from "./ScreenSlot";
 import { surface } from "./tokens";
+import { RunbooksPage } from "@/pages/runbooks/RunbooksPage";
 import {
   buildCommands, buildCrumbs, buildRailNodes, buildTreeNodes,
   contextPath, pageMeta, statusLeft, statusRight,
@@ -186,7 +187,9 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
 
         <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <Breadcrumbs crumbs={crumbs} />
-          <ScreenSlot meta={meta} wire={wire} />
+          <ScreenSlot meta={meta} wire={wire}>
+            {moduleFor(effectiveSel)}
+          </ScreenSlot>
           <StatusBar left={left} right={right} />
         </main>
       </div>
@@ -200,6 +203,20 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
       />
     </div>
   );
+}
+
+/**
+ * Which module page (if any) mounts into the screen slot for the current
+ * selection. Each module is dispatched as its own issue, blocked_by the shell
+ * (#3677); until a given module lands, `ScreenSlot` falls back to its own
+ * designed placeholder — this function returning `undefined` for every
+ * not-yet-built page is that fallback, not a stubbed empty state.
+ */
+function moduleFor(sel: Selection): React.ReactNode {
+  if (sel.kind === "page" && sel.page === "run") {
+    return <RunbooksPage customerId={sel.tenant} />;
+  }
+  return undefined;
 }
 
 function wireFor(sel: Selection): string {
