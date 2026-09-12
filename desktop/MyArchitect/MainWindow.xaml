@@ -96,6 +96,15 @@
                             <TextBlock Text="Search or run…" FontSize="11" Foreground="#858585" />
                         </StackPanel>
                     </Button>
+                    <Button x:Name="LogViewerButton"
+                            Style="{StaticResource NavBarButtonStyle}"
+                            Width="34"
+                            Margin="4,0,0,0"
+                            ToolTip="Log Viewer — Loaded (local history) / Live (SSE + console stdout), UI_RULES.md §1"
+                            Click="LogViewerButton_Click"
+                            HorizontalContentAlignment="Center">
+                        <TextBlock Text="Log" FontSize="11" FontWeight="Bold" />
+                    </Button>
                 </StackPanel>
             </ui:TitleBar.Header>
         </ui:TitleBar>
@@ -360,5 +369,8 @@
 
         <!-- Command Palette overlay — topmost, spans the whole window (UI_RULES.md §5) -->
         <shell:CommandPaletteOverlay x:Name="PaletteOverlay" Grid.Row="0" Grid.RowSpan="4" Panel.ZIndex="1000" />
+
+        <!-- Log Viewer (UI_RULES.md §1, #3506) — title-bar command area, not the Ribbon or either panel -->
+        <shell:LogViewerOverlay x:Name="LogViewerOverlayControl" Grid.Row="0" Grid.RowSpan="4" Panel.ZIndex="1000" />
     </Grid>
 </ui:FluentWindow>

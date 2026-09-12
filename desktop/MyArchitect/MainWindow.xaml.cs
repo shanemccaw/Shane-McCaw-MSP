@@ -54,6 +54,7 @@ public partial class MainWindow : FluentWindow
     private readonly IPoamsService _poamsService;
     private readonly ISlaService _slaService;
     private readonly ITaskQueueService _taskQueueService;
+    private readonly ILogStreamService _logStreamService;
     private readonly IAlertsService _alertsService;
     private readonly IConsentService _consentService;
     private readonly IActivityContextService _activityContextService;
@@ -105,6 +106,7 @@ public partial class MainWindow : FluentWindow
         _poamsService = new PoamsService();
         _slaService = new SlaService();
         _taskQueueService = new TaskQueueService();
+        _logStreamService = new LogStreamService();
         _alertsService = new AlertsService();
         _consentService = new ConsentService();
         _authService.SessionChanged += OnAuthSessionChanged;
@@ -171,6 +173,7 @@ public partial class MainWindow : FluentWindow
     {
         _ribbonRenderer = new FixedRibbonRenderer(AppRibbon, _shellRegistry);
         PaletteOverlay.Initialize(_shellRegistry);
+        LogViewerOverlayControl.Initialize(_consoleHistoryService, _consoleService, _logStreamService, _authService);
 
         _shellRegistry.RecordOpened += spec =>
         {
@@ -5278,6 +5281,8 @@ public partial class MainWindow : FluentWindow
 
     private void PaletteTriggerButton_Click(object sender, RoutedEventArgs e) => PaletteOverlay.Open();
 
+    private void LogViewerButton_Click(object sender, RoutedEventArgs e) => LogViewerOverlayControl.Open();
+
     private async void UndoButton_Click(object sender, RoutedEventArgs e)
     {
         // UI_RULES.md §7 — thin trigger over the real backend rollback only, no client-side undo
@@ -5513,6 +5518,7 @@ public partial class MainWindow : FluentWindow
         _versionCheckTimer?.Stop();
         _taskQueueSseCts?.Cancel();
         _taskQueueSseCts?.Dispose();
+        LogViewerOverlayControl.StopLiveOnShutdown();
         _trayIconManager.Dispose();
         foreach (var tab in _tabs)
         {
