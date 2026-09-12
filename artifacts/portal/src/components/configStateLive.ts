@@ -31,6 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import {
   buildAttrPills,
+  buildChangeDetailRows,
   buildChangeGroups,
   buildKindChips,
   buildLegend,
@@ -40,7 +41,6 @@ import {
   fmtSnapDateTime,
   fmtSnapWhen,
   groupByNotComparableReason,
-  groupChangesByKind,
   largestGroupLine,
   mostCommonUnreadReason,
   pctLine,
@@ -344,7 +344,11 @@ export function useConfigStateLive(): ConfigStateLiveState {
           );
           if (!res.ok) throw new Error(`diff changes ${res.status}`);
           const body = (await res.json()) as DiffChangesResponse;
-          const rows = groupChangesByKind(body.changes);
+          // #2820 — each row's real attribution (verdict + CR/risk-decision ref +
+          // match scope) and real lifecycle (open/resolved/reopened), not just a
+          // count grouped by change kind. Both fields already come back from
+          // `readDiffChanges()`; this is the first place either is rendered.
+          const rows = buildChangeDetailRows(body.changes);
           const note = g.partial
             ? "This resource type is partially comparable — its object set was truncated on at least one side, so absences are unknown and never read as deletions."
             : "Rows keep their stored sequence — the order is part of the result.";

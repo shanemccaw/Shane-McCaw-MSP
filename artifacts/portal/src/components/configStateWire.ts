@@ -147,13 +147,38 @@ export interface DiffResourcesResponse {
   readonly resources: readonly WireDiffResourceStatus[];
 }
 
+/** open | resolved | reopened — see `config_change_lifecycle`'s own header for the
+ *  resolution rule (only an OBSERVED return to the baseline value resolves a row). */
+export type ConfigChangeLifecycleStatus = "open" | "resolved" | "reopened";
+
+export interface WireChangeAttribution {
+  readonly verdict: ConfigChangeVerdict;
+  readonly changeRequestId: number | null;
+  readonly crRef: string | null;
+  readonly riskDecisionId: number | null;
+  readonly rbdRef: string | null;
+  /** property | object | resource — how precisely the covering claim matched. */
+  readonly matchScope: string | null;
+  readonly matchCount: number;
+}
+
+export interface WireChangeLifecycle {
+  readonly status: ConfigChangeLifecycleStatus;
+  readonly firstDetectedAt: string;
+  readonly lastDetectedAt: string;
+  readonly resolvedAt: string | null;
+  readonly reopenedAt: string | null;
+  readonly reopenCount: number;
+}
+
 export interface WireChangeRow {
   readonly sequence: number;
   readonly resourceKey: string;
   readonly objectDisplayName: string | null;
   readonly changeKind: string;
   readonly propertyPath: string | null;
-  readonly attribution: { readonly verdict: ConfigChangeVerdict } | null;
+  readonly attribution: WireChangeAttribution | null;
+  readonly lifecycle: WireChangeLifecycle | null;
 }
 
 export interface DiffChangesResponse {
@@ -394,13 +419,42 @@ export function groupByNotComparableReason(resources: readonly WireDiffResourceS
     .map(([reason, n]) => ({ k: `${reason} · ${n}`, v: "Resource types with this reason" }));
 }
 
-/** Groups one resource's real change rows by change kind. */
-export function groupChangesByKind(changes: readonly WireChangeRow[]): readonly CountRow[] {
-  const counts = new Map<string, number>();
-  for (const c of changes) counts.set(c.changeKind, (counts.get(c.changeKind) ?? 0) + 1);
-  return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(([kind, n]) => ({ k: `${kind} · ${n}`, v: "Changes of this kind in this resource" }));
+const LIFECYCLE_LABEL: Record<ConfigChangeLifecycleStatus, string> = {
+  open: "open",
+  resolved: "resolved",
+  reopened: "reopened",
+};
+
+/** One real row's real attribution verdict + real CR/risk-decision ref + real
+ *  lifecycle status (#2820) — the per-change detail #2759's endpoints already
+ *  return but nothing rendered. `null` attribution means the pass has not run
+ *  over this diff yet, which reads differently from `unattributed` and must
+ *  never be flattened into it (same rule `readDiffVerdictRollup` documents). */
+export function describeChangeAttribution(a: WireChangeAttribution | null): string {
+  if (!a) return "Not attributed yet";
+  const ref = a.crRef ?? a.rbdRef;
+  const label = ATTR_LABEL[a.verdict];
+  const withRef = ref ? `${label} · ${ref}` : label;
+  return a.matchScope ? `${withRef} (matched at ${a.matchScope} level)` : withRef;
+}
+
+export function describeChangeLifecycle(l: WireChangeLifecycle | null): string | null {
+  if (!l) return null;
+  const base = LIFECYCLE_LABEL[l.status];
+  return l.reopenCount > 0 ? `${base} · reopened ${l.reopenCount}×` : base;
+}
+
+/** Per-change detail rows for the change-group drill-down panel — real identity,
+ *  real verdict/CR-or-risk-ref, real lifecycle status on every row, capped the same
+ *  way `buildChangeGroups` caps its own list (a panel is a drill-down, not a dump). */
+export function buildChangeDetailRows(changes: readonly WireChangeRow[], limit = 50): readonly CountRow[] {
+  return changes.slice(0, limit).map((c) => {
+    const label = c.objectDisplayName ?? shortResourceKey(c.resourceKey);
+    const k = c.propertyPath ? `${label} · ${c.propertyPath}` : `${label} · ${c.changeKind}`;
+    const lifecycle = describeChangeLifecycle(c.lifecycle);
+    const v = lifecycle ? `${describeChangeAttribution(c.attribution)} · ${lifecycle}` : describeChangeAttribution(c.attribution);
+    return { k, v };
+  });
 }
 
 /** The most common skip/fail reason among a workload's real resource rows — the
