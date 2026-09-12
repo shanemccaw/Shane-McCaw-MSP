@@ -5293,6 +5293,19 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>
+        /// Git #3850 — the real, already-populated list of every Epic (real GitHub number +
+        /// real title) for the Command Center's epic-*name* matching branch to fuzzy/substring
+        /// match against. Same real source and same <c>i.IsEpic</c> definition
+        /// <see cref="CreateNewIssueAsync"/>'s own epic picker already uses (#842/#844/#845) —
+        /// <see cref="_lastBoardIssues"/>, the board's own last GraphQL fetch — no second
+        /// GitHub round-trip and no duplicated epic-resolution logic.
+        /// </summary>
+        public List<(int Number, string Title)> GetAllEpics()
+            => _lastBoardIssues.Where(i => i.IsEpic)
+                .Select(i => (i.Number, i.Title))
+                .ToList();
+
+        /// <summary>
         /// Git #2795 — resolves ANY raw GitHub issue number to its real top-level Epic, without
         /// requiring a <see cref="BoardChat"/> wrapper (generalizes <see cref="GetEpicForChat"/>'s
         /// issue-resolution step). Walks <see cref="GitBoardIssue.ParentNumber"/> all the way to

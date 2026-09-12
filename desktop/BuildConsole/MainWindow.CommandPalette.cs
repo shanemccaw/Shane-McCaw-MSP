@@ -31,7 +31,13 @@ namespace BuildConsole
                 return;
             }
 
-            var win = new CommandPaletteWindow(BuildPaletteCommands(), BuildTrackerApi) { Owner = this };
+            var win = new CommandPaletteWindow(BuildPaletteCommands(), BuildTrackerApi, LeftSidebar.GetAllEpics()) { Owner = this };
+
+            // Git #3850 — the epic-*name* matching branch (sibling #3831 covers epic/issue
+            // number smart detection). Reuses OpenOrCreateEpicChat(int) verbatim — the same
+            // real open-or-create flow (FindChatForIssue's real "latest chat" lookup, falling
+            // back to a new epic chat) every other epic chat entry point already uses.
+            win.EpicOpenRequested += (_, epicNumber) => OpenOrCreateEpicChat(epicNumber);
 
             // Git #3828 — SQL results panel's "Send to Chat" reuses the exact same shared
             // SendTextToActiveClaudeChatAsync path the SQL Runner floaty's own Send to Chat

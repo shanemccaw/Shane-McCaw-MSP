@@ -40,6 +40,10 @@ namespace BuildConsole
             public string DetailBody { get; init; } = string.Empty;
             /// <summary>Label on the right pane's primary button (and the tile).</summary>
             public string ActionLabel { get; init; } = string.Empty;
+            /// <summary>The small pill tag shown on the result row (e.g. "ACTION", "EPIC").</summary>
+            public string Tag { get; init; } = "ACTION";
+            /// <summary>The pill tag shown above the title in the right-hand detail pane.</summary>
+            public string DetailTag { get; init; } = "QUICK ACTION";
             public Action? Run { get; init; }
 
             /// <summary>
@@ -71,6 +75,16 @@ namespace BuildConsole
 
         private readonly List<PaletteCommand> _commands;
         private readonly BuildConsole.Services.BuildTrackerApiClient? _api;
+
+        /// <summary>
+        /// Git #3850 — the real, already-populated Epics (title + real GitHub number) to
+        /// fuzzy/substring-match typed text against, straight from <see cref="Controls.LeftSidebar.GetAllEpics"/>
+        /// (the Git Board's own real epic list — the same real source every other epic
+        /// lookup in the app reads from; never a fixture). Empty until the caller passes
+        /// real epics in.
+        /// </summary>
+        private readonly List<(int Number, string Title)> _epics;
+
         private string _categoryKey = "All";
         private List<PaletteCommand> _filtered = new();
         private int _selectedIndex = -1;
@@ -95,22 +109,38 @@ namespace BuildConsole
         /// the SQL Runner floaty already uses, never a second mechanism.</summary>
         public event EventHandler<string>? SqlSendToChatRequested;
 
-        public CommandPaletteWindow(IEnumerable<PaletteCommand> commands, BuildConsole.Services.BuildTrackerApiClient? api = null)
+        /// <summary>
+        /// Git #3850 — raised when Enter/click fires a matched-epic result row. Carries the
+        /// real GitHub epic number; the caller (MainWindow) wires this to the existing
+        /// <c>OpenOrCreateEpicChat(int)</c> verbatim — this window never opens a chat itself.
+        /// </summary>
+        public event EventHandler<int>? EpicOpenRequested;
+
+        public CommandPaletteWindow(
+            IEnumerable<PaletteCommand> commands,
+            BuildConsole.Services.BuildTrackerApiClient? api = null,
+            IEnumerable<(int Number, string Title)>? epics = null)
         {
             InitializeComponent();
             _commands = commands.ToList();
             _api = api;
+            _epics = epics?.ToList() ?? new List<(int Number, string Title)>();
             RenderTiles();
             RenderTabs();
             RenderResults();
         }
 
-        /// <summary>Rows a category would show right now. Every non-All category is
-        /// genuinely 0 until its real data source is wired (its own future build) —
-        /// never seeded with fixture rows. "All" counts the real command entries
-        /// matching the current query.</summary>
-        private int CategoryCount(string key)
-            => key == "All" ? FilterCommands(PaletteInput.Text).Count : 0;
+        /// <summary>Rows a category would show right now. "All" counts the real command
+        /// entries plus real Epic-name matches for the current query. "GitEpics" counts
+        /// its own real Epic-name matches (Git #3850). Every other category is genuinely 0
+        /// until its real data source is wired (its own future build) — never seeded with
+        /// fixture rows.</summary>
+        private int CategoryCount(string key) => key switch
+        {
+            "All" => FilterCommands(PaletteInput.Text).Count + MatchEpics(PaletteInput.Text).Count,
+            "GitEpics" => MatchEpics(PaletteInput.Text).Count,
+            _ => 0,
+        };
 
         private List<PaletteCommand> FilterCommands(string query)
         {
@@ -121,6 +151,37 @@ namespace BuildConsole
                 .ToList();
             static bool Has(string s, string q)
                 => s.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        /// <summary>
+        /// Git #3850 — the real epic-*name* matching branch (the number/issue-id smart
+        /// detection is #3831's separate, sibling concern). Case-insensitive substring
+        /// match against each real Epic's title — e.g. typing "admin panel" matches
+        /// "Feature: Admin Panel (...)". Never guesses when more than one title matches;
+        /// every real match becomes its own row. Empty query returns no matches, same as
+        /// the empty-query behavior of the quick-action commands below it in "All".
+        /// </summary>
+        private List<PaletteCommand> MatchEpics(string query)
+        {
+            string q = (query ?? string.Empty).Trim();
+            if (q.Length == 0 || _epics.Count == 0) return new List<PaletteCommand>();
+
+            return _epics
+                .Where(e => e.Title.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0)
+                .Select(e => new PaletteCommand
+                {
+                    Title = e.Title,
+                    Subtitle = $"Git Epic #{e.Number} — open its most recent linked chat",
+                    DetailBody = $"Opens Epic #{e.Number}'s real, most-recently-used linked chat in a "
+                               + "Claude Document Tab — or creates one if it doesn't have one yet. Same "
+                               + "open-or-create flow (OpenOrCreateEpicChat) Git Board's own epic chat "
+                               + "entry points already use.",
+                    ActionLabel = "Open Epic Chat",
+                    Tag = "EPIC",
+                    DetailTag = "GIT EPIC",
+                    Run = () => EpicOpenRequested?.Invoke(this, e.Number),
+                })
+                .ToList();
         }
 
         // ── Open/close & keyboard ───────────────────────────────────────────
@@ -405,7 +466,25 @@ namespace BuildConsole
                 return;
             }
 
-            if (_categoryKey != "All")
+            if (_categoryKey == "GitEpics")
+            {
+                // Git #3850 — real epic-name matching, wired for real (not the honest
+                // "not wired yet" empty state the other still-unwired categories show below).
+                _filtered = MatchEpics(PaletteInput.Text);
+                if (!preserveSelection)
+                    _selectedIndex = _filtered.Count > 0 ? 0 : -1;
+
+                if (_filtered.Count == 0)
+                {
+                    string q = PaletteInput.Text.Trim();
+                    PaletteResults.Children.Add(q.Length == 0
+                        ? EmptyState("Type an Epic's title", "Type part of a real Epic's title (e.g. \"Admin Panel\") to jump straight to its most recent linked chat.")
+                        : EmptyState($"No Git Epics match “{q}”", "No real Epic title contains that text."));
+                    RenderDetail();
+                    return;
+                }
+            }
+            else if (_categoryKey != "All")
             {
                 // Honest empty state — this category's real data source is not
                 // wired yet (its own future build). Never placeholder rows.
@@ -418,19 +497,22 @@ namespace BuildConsole
                 RenderDetail();
                 return;
             }
-
-            _filtered = FilterCommands(PaletteInput.Text);
-            if (!preserveSelection)
-                _selectedIndex = _filtered.Count > 0 ? 0 : -1;
-
-            if (_filtered.Count == 0)
+            else
             {
-                string q = PaletteInput.Text.Trim();
-                PaletteResults.Children.Add(EmptyState(
-                    $"No matches for “{q}”",
-                    "Category data sources (epics, issues, builds, services…) aren't wired yet — only the quick-action commands are searchable in this shell."));
-                RenderDetail();
-                return;
+                // "All" — real quick-action commands plus real Epic-name matches (Git #3850).
+                _filtered = FilterCommands(PaletteInput.Text).Concat(MatchEpics(PaletteInput.Text)).ToList();
+                if (!preserveSelection)
+                    _selectedIndex = _filtered.Count > 0 ? 0 : -1;
+
+                if (_filtered.Count == 0)
+                {
+                    string q = PaletteInput.Text.Trim();
+                    PaletteResults.Children.Add(EmptyState(
+                        $"No matches for “{q}”",
+                        "Category data sources (issues, builds, services…) aren't wired yet — only the quick-action commands and Git Epic titles are searchable in this shell."));
+                    RenderDetail();
+                    return;
+                }
             }
 
             for (int i = 0; i < _filtered.Count; i++)
@@ -469,7 +551,7 @@ namespace BuildConsole
                     BorderThickness = new Thickness(1),
                     Child = new TextBlock
                     {
-                        Text = "ACTION",
+                        Text = cmd.Tag,
                         FontSize = 8.5,
                         FontWeight = FontWeights.Bold,
                         Foreground = (Brush)FindResource("AccentBrush"),
@@ -600,7 +682,7 @@ namespace BuildConsole
                 Background = (Brush)FindResource("AccentWashLightBrush"),
                 Child = new TextBlock
                 {
-                    Text = "QUICK ACTION",
+                    Text = cmd.DetailTag,
                     FontSize = 8.5,
                     FontWeight = FontWeights.Bold,
                     Foreground = (Brush)FindResource("AccentBrush"),
