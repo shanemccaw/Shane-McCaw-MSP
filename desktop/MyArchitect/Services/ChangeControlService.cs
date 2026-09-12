@@ -224,6 +224,33 @@ public sealed class ChangeControlService : IChangeControlService
             body);
     }
 
+    public async Task<ChangeRequestRollbackResult> RaiseRollbackAsync(
+        int changeRequestId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{_baseUrl}/api/msp/change-control/change-requests/{changeRequestId}/rollback");
+        Authorize(request);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new ChangeControlException(
+                $"POST /api/msp/change-control/change-requests/{changeRequestId}/rollback returned {(int)response.StatusCode} {response.ReasonPhrase}",
+                (int)response.StatusCode,
+                body);
+        }
+
+        var parsed = JsonSerializer.Deserialize<ChangeRequestRollbackResult>(body, JsonOptions);
+        return parsed ?? throw new ChangeControlException(
+            $"POST /api/msp/change-control/change-requests/{changeRequestId}/rollback returned an empty result",
+            (int)response.StatusCode,
+            body);
+    }
+
     public async Task<IReadOnlyList<ChangeFreezeWindow>> GetFreezeWindowsAsync(CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/api/msp/change-freeze-windows");

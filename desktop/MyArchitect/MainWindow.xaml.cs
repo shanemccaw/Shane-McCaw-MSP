@@ -62,6 +62,11 @@ public partial class MainWindow : FluentWindow
 
     private readonly ShellRegistry _shellRegistry = new();
     private FixedRibbonRenderer? _ribbonRenderer;
+
+    /// <summary>The change request currently open in the record workspace, if any — title-bar
+    /// Undo (UI_RULES.md §7, #3508) is a thin trigger over the real rollback for exactly this
+    /// record, and is disabled/absent the moment anything else (or nothing) is open.</summary>
+    private ChangeRequest? _undoTargetChangeRequest;
     private readonly DispatcherTimer _clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
     // Document views live in the center area; only one is visible at a time (WebView tabs are
@@ -179,6 +184,17 @@ public partial class MainWindow : FluentWindow
             {
                 _activityContextService.RecordOpen(spec.Kind, spec.Id, spec.Title);
             }
+
+            // Undo (UI_RULES.md §7, #3508) — screen-aware: OpenChangeRequestRecordAsync sets
+            // _undoTargetChangeRequest just before calling OpenRecord, so it's already current by
+            // the time this handler runs. Anything else opening (or the panel closing) clears it —
+            // absent/disabled for Remediation Tracker steps, Runbooks, and everything else that has
+            // no real rollback endpoint.
+            if (spec?.Kind != "change-request")
+            {
+                _undoTargetChangeRequest = null;
+            }
+            UndoButton.IsEnabled = _undoTargetChangeRequest != null;
         };
 
         RegisterHomeTab();
@@ -2432,6 +2448,7 @@ public partial class MainWindow : FluentWindow
             },
             onSearchEverything: () => PaletteOverlay.Open());
 
+        _undoTargetChangeRequest = cr;
         _shellRegistry.OpenRecord(spec);
     }
 
@@ -5261,12 +5278,39 @@ public partial class MainWindow : FluentWindow
 
     private void PaletteTriggerButton_Click(object sender, RoutedEventArgs e) => PaletteOverlay.Open();
 
-    private void UndoButton_Click(object sender, RoutedEventArgs e)
+    private async void UndoButton_Click(object sender, RoutedEventArgs e)
     {
-        // UI_RULES.md §7 — thin trigger over real backend rollback only, no client-side undo
-        // stack. IChangeControlService has no rollback client method today (only
-        // human-action/attest); the button stays disabled until that real endpoint is wired,
-        // rather than faking an undo. See build-journal/3493.md for the filed follow-up.
+        // UI_RULES.md §7 — thin trigger over the real backend rollback only, no client-side undo
+        // stack. Only ever enabled while a change request is the open record (see the
+        // RecordOpened handler in InitializeShell), so _undoTargetChangeRequest is real here.
+        var cr = _undoTargetChangeRequest;
+        var numericId = cr?.NumericId;
+        if (cr == null || numericId == null) return;
+
+        var confirm = System.Windows.MessageBox.Show(
+            $"Roll back {cr.Id}? This raises a new inverse change request to revert it — it must " +
+            "clear its own approval and run through the same authorization gate as any other " +
+            "change. It does not touch the tenant directly.",
+            "Undo — roll back change", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
+        if (confirm != System.Windows.MessageBoxResult.Yes) return;
+
+        ShowDocument(ConsolePanel);
+        ConsolePanel.AppendExternal($"[Undo] Raising rollback for {cr.Id}…");
+        try
+        {
+            var result = await _changeControlService.RaiseRollbackAsync(numericId.Value).ConfigureAwait(true);
+            ConsolePanel.AppendExternal(
+                $"[Undo] Raised {result.InverseChangeCode} as the rollback of {cr.Id} " +
+                $"({result.ApprovalsCreated} approval(s) required before it can execute).");
+        }
+        catch (ChangeControlException ex)
+        {
+            ConsolePanel.AppendExternal($"[Undo] Rollback failed ({ex.StatusCode}): {ex.ResponseBody}");
+        }
+        catch (Exception ex)
+        {
+            ConsolePanel.AppendExternal($"[Undo] Exception: {ex.Message}");
+        }
     }
 
     // ---- Document toggling (SOW / Telemetry / Console / Screenshot Evidence) ---------------

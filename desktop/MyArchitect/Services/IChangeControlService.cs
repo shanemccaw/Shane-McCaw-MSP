@@ -84,6 +84,18 @@ public interface IChangeControlService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// POST /api/msp/change-control/change-requests/:id/rollback — the real backend rollback
+    /// UI_RULES.md §7's title-bar Undo is a thin trigger over. Does NOT revert the tenant: it
+    /// raises a new INVERSE change request (pointing back at <paramref name="changeRequestId"/>)
+    /// that must clear its own approval and execute through the same authorization gate as any
+    /// other change. 409s (surfaced as <see cref="ChangeControlException"/>) if the original
+    /// isn't a completed change with a defined rollback script, or is itself already a rollback.
+    /// </summary>
+    Task<ChangeRequestRollbackResult> RaiseRollbackAsync(
+        int changeRequestId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// GET /api/msp/change-freeze-windows — every standing freeze/blackout rule
     /// for this MSP (#1500). Evaluated client-side against a specific
     /// (tenant, workload, instant) via <see cref="Models.ChangeCalendarMatching"/>
