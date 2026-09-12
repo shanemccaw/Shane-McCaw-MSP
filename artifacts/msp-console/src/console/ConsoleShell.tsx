@@ -18,6 +18,7 @@ import { Documents } from "./modules/Documents";
 import { Team } from "./modules/Team";
 import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
 import { ScopeSla } from "./modules/ScopeSla";
+import { Ownership } from "./modules/Ownership";
 import { SopsPage } from "@/pages/Sops";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
 import { ChangeControl, CHANGE_CONTROL_TABS, type ChangeControlTab } from "@/pages/change-control/ChangeControl";
@@ -260,6 +261,21 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "page" && sel.page === "bg") {
     return <BreakGlassPage customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "raci") {
+    // Ownership / RACI (#2594) needs the full customer row for its display
+    // name — the "mine"/"coverage" tabs read across every customer in the
+    // book regardless, but the matrix tab's own header wants this tenant's
+    // real name, same reason Team needs it above.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    return (
+      <Ownership
+        customerId={sel.tenant}
+        customerName={customer?.name ?? `Customer ${sel.tenant}`}
+        customers={customers}
+        onOpenTenant={(customerId) => navigate({ kind: "page", tenant: customerId, page: "raci" })}
+      />
+    );
   }
   if (sel.kind === "page" && sel.page === "hub") {
     // Documents (#2647), README screen 22 — the tenant-scoped hub, "Ours" and

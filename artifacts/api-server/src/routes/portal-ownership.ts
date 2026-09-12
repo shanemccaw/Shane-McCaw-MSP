@@ -419,6 +419,122 @@ export interface WireOwnershipPayload {
   readonly gateMode: "strict" | "loose";
 }
 
+/**
+ * Assembles one customer's full ownership payload — people, objects, the
+ * write overlay and the gate mode — exactly as `GET /portal/ownership`
+ * builds it for that customer's own page. Factored out so the MSP-side
+ * per-customer matrix read (`GET /msp/ownership/:customerId`, #2594) calls
+ * the SAME assembly instead of forking it: the console adds write
+ * affordances, it does not duplicate reads (#1686's own rule). `callerEmail`
+ * is used only to resolve `currentUserId`/`currentUserName` against the
+ * `people` list this function already builds — it works identically for a
+ * customer user and an MSP staff member, since `people` carries both sides.
+ */
+export async function assembleOwnershipPayload(customerId: number, callerEmail: string): Promise<WireOwnershipPayload> {
+  const scope = await resolveTenantScope(customerId);
+
+  // ── People + objects ─────────────────────────────────────────────────
+  // Suspended accounts are left out of the people list rather than shown
+  // as "away": `away` holds a RETURN date, and a suspended account has no
+  // return date — it has a decision behind it. `people` includes the
+  // customer's MSP staff (side "MSP") as well as their own team (#1520) —
+  // see `gatherOwnershipObjects`.
+  const [{ objects, people, emails, counts }, gateMode] = await Promise.all([
+    gatherOwnershipObjects(customerId, scope),
+    resolveGateMode(customerId),
+  ]);
+  const customerName = scope?.tenantName ?? "Your organisation";
+  const sides = sidesFor(customerName);
+
+  const normalizedEmail = callerEmail.toLowerCase();
+  const currentUserId = normalizedEmail ? (emails.get(normalizedEmail) ?? "") : "";
+  const currentUser = people.find((p) => p.id === currentUserId);
+
+  // ── The write overlay ─────────────────────────────────────────────────
+  // The customer's own saved edits, layered on top of the objects above.
+  // Read in parallel — three small, customer-scoped tables — and returned
+  // whole so the client seeds its state from real data on load.
+  const [assignmentRows, delegationRows, ownRowRows] = await Promise.all([
+    db
+      .select({
+        objectId: portalOwnershipAssignmentsTable.objectId,
+        roleKey: portalOwnershipAssignmentsTable.roleKey,
+        ownerPersonId: portalOwnershipAssignmentsTable.ownerPersonId,
+        acceptance: portalOwnershipAssignmentsTable.acceptance,
+        setBy: portalOwnershipAssignmentsTable.setBy,
+        setAt: portalOwnershipAssignmentsTable.setAt,
+        setWhy: portalOwnershipAssignmentsTable.setWhy,
+        orderRank: portalOwnershipAssignmentsTable.orderRank,
+        respondedBy: portalOwnershipAssignmentsTable.respondedBy,
+        respondedAt: portalOwnershipAssignmentsTable.respondedAt,
+        declineReason: portalOwnershipAssignmentsTable.declineReason,
+      })
+      .from(portalOwnershipAssignmentsTable)
+      .where(eq(portalOwnershipAssignmentsTable.customerId, customerId))
+      // Precedence within a cell is `orderRank` (#1517), not insertion order —
+      // `id` is only the tiebreaker for two holders inserted at the same rank.
+      .orderBy(asc(portalOwnershipAssignmentsTable.orderRank), asc(portalOwnershipAssignmentsTable.id)),
+    db
+      .select({
+        fromPersonId: portalOwnershipDelegationsTable.fromPersonId,
+        toPersonId: portalOwnershipDelegationsTable.toPersonId,
+        until: portalOwnershipDelegationsTable.until,
+        scope: portalOwnershipDelegationsTable.scope,
+        done: portalOwnershipDelegationsTable.done,
+      })
+      .from(portalOwnershipDelegationsTable)
+      .where(eq(portalOwnershipDelegationsTable.customerId, customerId))
+      .orderBy(asc(portalOwnershipDelegationsTable.id)),
+    db
+      .select({
+        rowId: portalOwnershipRowsTable.rowId,
+        source: portalOwnershipRowsTable.source,
+        objType: portalOwnershipRowsTable.objType,
+        name: portalOwnershipRowsTable.name,
+        sub: portalOwnershipRowsTable.sub,
+      })
+      .from(portalOwnershipRowsTable)
+      .where(eq(portalOwnershipRowsTable.customerId, customerId))
+      .orderBy(asc(portalOwnershipRowsTable.id)),
+  ]);
+
+  const overlay: WireOwnershipOverlay = {
+    assignments: assignmentRows.map(toWireAssignment),
+    delegations: delegationRows.map(toWireDelegation),
+    rows: ownRowRows.map(toWireRow),
+  };
+
+  log.info(
+    {
+      customerId,
+      tenantScoped: scope !== null,
+      people: people.length,
+      mspStaff: people.filter((p) => p.side === "MSP").length,
+      objects: objects.length,
+      counts,
+      overlay: {
+        assignments: overlay.assignments.length,
+        delegations: overlay.delegations.length,
+        rows: overlay.rows.length,
+      },
+    },
+    "ownership matrix assembled",
+  );
+
+  return {
+    customer: { id: customerId, name: customerName },
+    sides,
+    people,
+    objects,
+    sources: buildSources(counts),
+    currentUserId,
+    currentUserName: currentUser?.name ?? "",
+    tenantScoped: scope !== null,
+    overlay,
+    gateMode,
+  };
+}
+
 router.get(
   "/portal/ownership",
   requireCapability("ladder.customer-user"),
@@ -433,109 +549,8 @@ router.get(
     }
 
     try {
-      const scope = await resolveTenantScope(customerId);
-
-      // ── People + objects ─────────────────────────────────────────────────
-      // Suspended accounts are left out of the people list rather than shown
-      // as "away": `away` holds a RETURN date, and a suspended account has no
-      // return date — it has a decision behind it. `people` includes the
-      // customer's MSP staff (side "MSP") as well as their own team (#1520) —
-      // see `gatherOwnershipObjects`.
-      const [{ objects, people, emails, counts }, gateMode] = await Promise.all([
-        gatherOwnershipObjects(customerId, scope),
-        resolveGateMode(customerId),
-      ]);
-      const customerName = scope?.tenantName ?? "Your organisation";
-      const sides = sidesFor(customerName);
-
-      const callerEmail = ((req.user as { email?: string } | undefined)?.email ?? "").toLowerCase();
-      const currentUserId = callerEmail ? (emails.get(callerEmail) ?? "") : "";
-      const currentUser = people.find((p) => p.id === currentUserId);
-
-      // ── The write overlay ─────────────────────────────────────────────────
-      // The customer's own saved edits, layered on top of the objects above.
-      // Read in parallel — three small, customer-scoped tables — and returned
-      // whole so the client seeds its state from real data on load.
-      const [assignmentRows, delegationRows, ownRowRows] = await Promise.all([
-        db
-          .select({
-            objectId: portalOwnershipAssignmentsTable.objectId,
-            roleKey: portalOwnershipAssignmentsTable.roleKey,
-            ownerPersonId: portalOwnershipAssignmentsTable.ownerPersonId,
-            acceptance: portalOwnershipAssignmentsTable.acceptance,
-            setBy: portalOwnershipAssignmentsTable.setBy,
-            setAt: portalOwnershipAssignmentsTable.setAt,
-            setWhy: portalOwnershipAssignmentsTable.setWhy,
-            orderRank: portalOwnershipAssignmentsTable.orderRank,
-            respondedBy: portalOwnershipAssignmentsTable.respondedBy,
-            respondedAt: portalOwnershipAssignmentsTable.respondedAt,
-            declineReason: portalOwnershipAssignmentsTable.declineReason,
-          })
-          .from(portalOwnershipAssignmentsTable)
-          .where(eq(portalOwnershipAssignmentsTable.customerId, customerId))
-          // Precedence within a cell is `orderRank` (#1517), not insertion order —
-          // `id` is only the tiebreaker for two holders inserted at the same rank.
-          .orderBy(asc(portalOwnershipAssignmentsTable.orderRank), asc(portalOwnershipAssignmentsTable.id)),
-        db
-          .select({
-            fromPersonId: portalOwnershipDelegationsTable.fromPersonId,
-            toPersonId: portalOwnershipDelegationsTable.toPersonId,
-            until: portalOwnershipDelegationsTable.until,
-            scope: portalOwnershipDelegationsTable.scope,
-            done: portalOwnershipDelegationsTable.done,
-          })
-          .from(portalOwnershipDelegationsTable)
-          .where(eq(portalOwnershipDelegationsTable.customerId, customerId))
-          .orderBy(asc(portalOwnershipDelegationsTable.id)),
-        db
-          .select({
-            rowId: portalOwnershipRowsTable.rowId,
-            source: portalOwnershipRowsTable.source,
-            objType: portalOwnershipRowsTable.objType,
-            name: portalOwnershipRowsTable.name,
-            sub: portalOwnershipRowsTable.sub,
-          })
-          .from(portalOwnershipRowsTable)
-          .where(eq(portalOwnershipRowsTable.customerId, customerId))
-          .orderBy(asc(portalOwnershipRowsTable.id)),
-      ]);
-
-      const overlay: WireOwnershipOverlay = {
-        assignments: assignmentRows.map(toWireAssignment),
-        delegations: delegationRows.map(toWireDelegation),
-        rows: ownRowRows.map(toWireRow),
-      };
-
-      const payload: WireOwnershipPayload = {
-        customer: { id: customerId, name: customerName },
-        sides,
-        people,
-        objects,
-        sources: buildSources(counts),
-        currentUserId,
-        currentUserName: currentUser?.name ?? "",
-        tenantScoped: scope !== null,
-        overlay,
-        gateMode,
-      };
-
-      log.info(
-        {
-          customerId,
-          tenantScoped: scope !== null,
-          people: people.length,
-          mspStaff: people.filter((p) => p.side === "MSP").length,
-          objects: objects.length,
-          counts,
-          overlay: {
-            assignments: overlay.assignments.length,
-            delegations: overlay.delegations.length,
-            rows: overlay.rows.length,
-          },
-        },
-        "portal ownership matrix served",
-      );
-
+      const callerEmail = (req.user as { email?: string } | undefined)?.email ?? "";
+      const payload = await assembleOwnershipPayload(customerId, callerEmail);
       res.json(payload);
     } catch (err) {
       log.error(
@@ -1158,34 +1173,12 @@ router.get(
       return;
     }
     const roleKey: OwnRoleKey = roleKeyRaw;
-
-    const conditions = [
-      eq(portalOwnershipEventsTable.customerId, customerId),
-      eq(portalOwnershipEventsTable.objectId, objectId),
-      eq(portalOwnershipEventsTable.roleKey, roleKey),
-    ];
-    const ownerPersonId = bodyStr(req.query.ownerPersonId);
-    if (typeof req.query.ownerPersonId === "string") {
-      conditions.push(eq(portalOwnershipEventsTable.ownerPersonId, ownerPersonId));
-    }
+    const ownerPersonId = typeof req.query.ownerPersonId === "string" ? bodyStr(req.query.ownerPersonId) : undefined;
 
     try {
-      const rows = await db
-        .select({
-          objectId: portalOwnershipEventsTable.objectId,
-          roleKey: portalOwnershipEventsTable.roleKey,
-          ownerPersonId: portalOwnershipEventsTable.ownerPersonId,
-          eventType: portalOwnershipEventsTable.eventType,
-          actor: portalOwnershipEventsTable.actor,
-          reason: portalOwnershipEventsTable.reason,
-          createdAt: portalOwnershipEventsTable.createdAt,
-        })
-        .from(portalOwnershipEventsTable)
-        .where(and(...conditions))
-        .orderBy(asc(portalOwnershipEventsTable.createdAt), asc(portalOwnershipEventsTable.id));
-
-      log.info({ customerId, objectId, roleKey, events: rows.length }, "portal ownership cell history served");
-      res.json({ events: rows.map(toWireEvent) });
+      const events = await fetchOwnershipEvents(customerId, objectId, roleKey, ownerPersonId);
+      log.info({ customerId, objectId, roleKey, events: events.length }, "portal ownership cell history served");
+      res.json({ events });
     } catch (err) {
       log.error(
         { customerId, objectId, roleKey, err: err instanceof Error ? err.message : String(err) },
@@ -1195,5 +1188,45 @@ router.get(
     }
   },
 );
+
+/**
+ * One cell's append-only event history — shared by the customer-scoped
+ * `GET /portal/ownership/events` and the MSP-scoped
+ * `GET /msp/ownership/:customerId/events` (#2594), same reason
+ * `assembleOwnershipPayload` above is shared: the console reads through the
+ * identical assembly, it does not maintain its own copy of the query.
+ * `ownerPersonId` undefined means "every holder's events for this cell".
+ */
+export async function fetchOwnershipEvents(
+  customerId: number,
+  objectId: string,
+  roleKey: OwnRoleKey,
+  ownerPersonId: string | undefined,
+) {
+  const conditions = [
+    eq(portalOwnershipEventsTable.customerId, customerId),
+    eq(portalOwnershipEventsTable.objectId, objectId),
+    eq(portalOwnershipEventsTable.roleKey, roleKey),
+  ];
+  if (ownerPersonId !== undefined) {
+    conditions.push(eq(portalOwnershipEventsTable.ownerPersonId, ownerPersonId));
+  }
+
+  const rows = await db
+    .select({
+      objectId: portalOwnershipEventsTable.objectId,
+      roleKey: portalOwnershipEventsTable.roleKey,
+      ownerPersonId: portalOwnershipEventsTable.ownerPersonId,
+      eventType: portalOwnershipEventsTable.eventType,
+      actor: portalOwnershipEventsTable.actor,
+      reason: portalOwnershipEventsTable.reason,
+      createdAt: portalOwnershipEventsTable.createdAt,
+    })
+    .from(portalOwnershipEventsTable)
+    .where(and(...conditions))
+    .orderBy(asc(portalOwnershipEventsTable.createdAt), asc(portalOwnershipEventsTable.id));
+
+  return rows.map(toWireEvent);
+}
 
 export default router;

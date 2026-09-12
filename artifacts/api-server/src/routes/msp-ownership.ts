@@ -41,7 +41,7 @@ import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { requireCustomerScope, requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { resolveTenantScope } from "../lib/portal-customer-scope";
-import { gatherOwnershipObjects } from "./portal-ownership";
+import { assembleOwnershipPayload, fetchOwnershipEvents, gatherOwnershipObjects } from "./portal-ownership";
 import {
   actorMayRespond,
   assignEventType,
@@ -82,7 +82,7 @@ router.get(
 
       // ── Who counts as "me" — every MSP-side person on this caller's MSP ──
       const mspUserRows = await db
-        .select({ id: usersTable.id })
+        .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
         .from(usersTable)
         .where(
           and(
@@ -94,6 +94,12 @@ router.get(
           ),
         );
       const mspPersonIds = mspUserRows.map((r) => personIdForUser(r.id));
+      // Real display names for the "mine" holdings list (#2594) — every holder
+      // this route ever surfaces is one of these MSP-side rows by construction,
+      // so one roster lookup resolves every holding's name.
+      const mspPersonNameById = new Map(
+        mspUserRows.map((r) => [personIdForUser(r.id), (r.name ?? "").trim() || r.email]),
+      );
 
       // ── The book of customers (scoped exactly like msp-executive.ts) ─────
       const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
@@ -139,7 +145,7 @@ router.get(
 
           const scope = await resolveTenantScope(customer.id);
           const { objects } = await gatherOwnershipObjects(customer.id, scope);
-          const resolved = resolveHoldingsForCustomer(customer.id, customerName, objects, assignmentRows);
+          const resolved = resolveHoldingsForCustomer(customer.id, customerName, objects, assignmentRows, mspPersonNameById);
           holdings.push(...resolved);
           byCustomer.push({ customerId: customer.id, customerName, count: resolved.length });
         }
@@ -169,6 +175,70 @@ router.get(
     } catch (err) {
       log.error({ err: err instanceof Error ? err.message : String(err) }, "msp-ownership: GET /msp/ownership/mine failed");
       res.status(500).json({ error: "Could not load what you hold across customers." });
+    }
+  },
+);
+
+/**
+ * One customer's full ownership matrix — the MSP-side read behind the
+ * console's "One customer" tab (Git #2594). Scoped by `requireCustomerScope`
+ * (honours per-staff customer scoping) instead of a customer JWT, since an
+ * MSP caller carries no `customerId` claim of their own. Calls the exact same
+ * `assembleOwnershipPayload` the customer-facing `GET /portal/ownership`
+ * uses — people, objects, the write overlay and gate mode are read once, not
+ * forked per caller (#1686's own rule: "Read hooks are SHARED... never
+ * forked"). `currentUserId` resolves against the caller's own email, which
+ * matches an MSP staff person exactly when they appear in this customer's
+ * roster (`gatherOwnershipObjects` always includes the customer's MSP staff,
+ * side "MSP" — see that function's header).
+ */
+router.get(
+  "/msp/ownership/:customerId",
+  requireCapability("ladder.msp-operator"),
+  requireCustomerScope("params"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = Number(req.params.customerId);
+    try {
+      const callerEmail = (req.user as { email?: string } | undefined)?.email ?? "";
+      const payload = await assembleOwnershipPayload(customerId, callerEmail);
+      res.json(payload);
+    } catch (err) {
+      log.error(
+        { customerId, err: err instanceof Error ? err.message : String(err) },
+        "msp-ownership: GET /msp/ownership/:customerId failed",
+      );
+      res.status(500).json({ error: "That customer's ownership matrix could not be loaded." });
+    }
+  },
+);
+
+/** One cell's append-only history — MSP-scoped equivalent of the customer's
+ *  `GET /portal/ownership/events`, same shared `fetchOwnershipEvents` query. */
+router.get(
+  "/msp/ownership/:customerId/events",
+  requireCapability("ladder.msp-operator"),
+  requireCustomerScope("params"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = Number(req.params.customerId);
+    const objectId = bodyStr(req.query.objectId);
+    const roleKeyRaw = req.query.roleKey;
+    if (!objectId || !isOwnRoleKey(roleKeyRaw)) {
+      res.status(400).json({ error: "objectId and a valid roleKey (r|a|c|i) are required" });
+      return;
+    }
+    const roleKey: OwnRoleKey = roleKeyRaw;
+    const ownerPersonId = typeof req.query.ownerPersonId === "string" ? bodyStr(req.query.ownerPersonId) : undefined;
+
+    try {
+      const events = await fetchOwnershipEvents(customerId, objectId, roleKey, ownerPersonId);
+      log.info({ customerId, objectId, roleKey, events: events.length }, "msp ownership cell history served");
+      res.json({ events });
+    } catch (err) {
+      log.error(
+        { customerId, objectId, roleKey, err: err instanceof Error ? err.message : String(err) },
+        "msp ownership cell history failed",
+      );
+      res.status(500).json({ error: "That cell's history could not be loaded." });
     }
   },
 );
@@ -496,6 +566,68 @@ router.post(
         "msp ownership decline failed",
       );
       res.status(500).json({ error: "That decline could not be saved." });
+    }
+  },
+);
+
+/**
+ * Chase a pending cell — a real write affordance #1686 asks the console to
+ * add that the design's own `honestNote` says does not exist anywhere today
+ * ("nothing chases these"). It resends the exact best-effort nudge
+ * `notifyOwnershipPending` already fires on assign; it writes nothing to
+ * `portal_ownership_assignments` or the append-only event log, because a
+ * chase changes nobody's acceptance state — only a real accept/decline does.
+ * The cell must actually be pending, so this can't be used to notify someone
+ * about a cell that already has an answer.
+ */
+router.post(
+  "/msp/ownership/:customerId/chase",
+  requireCapability("ladder.msp-operator"),
+  requireCustomerScope("params"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = Number(req.params.customerId);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const objectId = bodyStr(body.objectId);
+    const roleKeyRaw = body.roleKey;
+    const ownerPersonId = bodyStr(body.ownerPersonId);
+    if (!objectId || !isOwnRoleKey(roleKeyRaw) || !ownerPersonId) {
+      res.status(400).json({ error: "objectId, ownerPersonId and a valid roleKey (r|a) are required" });
+      return;
+    }
+    const roleKey: OwnRoleKey = roleKeyRaw;
+    if (roleKey !== "r" && roleKey !== "a") {
+      res.status(400).json({ error: "Only Responsible and Accountable cells carry an acceptance to chase" });
+      return;
+    }
+
+    try {
+      const [row] = await db
+        .select({ acceptance: portalOwnershipAssignmentsTable.acceptance })
+        .from(portalOwnershipAssignmentsTable)
+        .where(
+          and(
+            eq(portalOwnershipAssignmentsTable.customerId, customerId),
+            eq(portalOwnershipAssignmentsTable.objectId, objectId),
+            eq(portalOwnershipAssignmentsTable.roleKey, roleKey),
+            eq(portalOwnershipAssignmentsTable.ownerPersonId, ownerPersonId),
+          ),
+        )
+        .limit(1);
+
+      if (!row || row.acceptance !== "pending") {
+        res.status(400).json({ error: "That cell is not waiting on an acceptance." });
+        return;
+      }
+
+      await notifyOwnershipPending({ customerId, ownerPersonId, objectId, roleKey });
+      log.info({ customerId, objectId, roleKey, ownerPersonId }, "msp ownership cell chased");
+      res.json({ ok: true });
+    } catch (err) {
+      log.error(
+        { customerId, objectId, err: err instanceof Error ? err.message : String(err) },
+        "msp ownership chase failed",
+      );
+      res.status(500).json({ error: "That chase could not be sent." });
     }
   },
 );

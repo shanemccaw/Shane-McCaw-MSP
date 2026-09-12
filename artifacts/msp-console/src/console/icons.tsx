@@ -43,6 +43,8 @@ import {
   Timer, MoveDiagonal, Calculator, TimerOff, ChartNoAxesColumn,
   // Documents (#2647)
   FolderOpen,
+  // Ownership / RACI (#2594)
+  UserRoundPlus, UserRoundX, UserRoundSearch, Unplug, HardHat, CircleSlash,
   type LucideIcon,
 } from "lucide-react";
 
@@ -191,6 +193,13 @@ const REGISTRY: Record<string, LucideIcon> = {
   "chart-no-axes-column": ChartNoAxesColumn,
   // Documents (#2647)
   "folder-open": FolderOpen,
+  // Ownership / RACI (#2594)
+  "user-round-plus": UserRoundPlus,
+  "user-round-x": UserRoundX,
+  "user-round-search": UserRoundSearch,
+  unplug: Unplug,
+  "hard-hat": HardHat,
+  "circle-slash": CircleSlash,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

@@ -51,6 +51,7 @@ describe("resolveHoldingsForCustomer()", () => {
         link: "CR →",
         roleKey: "a",
         holderPersonId: "u1",
+        holderPersonName: "u1",
         acceptance: "accepted",
         order: 0,
         declineReason: "",

@@ -46,6 +46,13 @@ export interface WireMspOwnHolding {
   readonly link: string;
   readonly roleKey: OwnRoleKey;
   readonly holderPersonId: string;
+  /** The holder's real display name, resolved from the caller's own MSP staff
+   *  roster (#2594) — this is always an MSP-side person by construction (the
+   *  route only ever collects `owner_person_id`s already filtered to
+   *  `mspPersonIds`), so one roster lookup covers every row. Falls back to
+   *  the raw person id only when the map genuinely has no entry for it,
+   *  rather than leaving a caller to print "u42" as if it were a name. */
+  readonly holderPersonName: string;
   readonly acceptance: string;
   readonly order: number;
   /** Free-text reason for a decline (#1519) — "" unless `acceptance` is "declined". */
@@ -88,6 +95,7 @@ export function resolveHoldingsForCustomer(
   customerName: string,
   objects: readonly WireOwnObject[],
   assignmentRows: readonly RawMspAssignmentRow[],
+  personNameById: ReadonlyMap<string, string> = new Map(),
 ): WireMspOwnHolding[] {
   const objectById = new Map(objects.map((o) => [o.id, o]));
   const holdings: WireMspOwnHolding[] = [];
@@ -105,6 +113,7 @@ export function resolveHoldingsForCustomer(
       link: obj.link,
       roleKey: row.roleKey,
       holderPersonId: row.ownerPersonId,
+      holderPersonName: personNameById.get(row.ownerPersonId) ?? row.ownerPersonId,
       acceptance: row.acceptance ?? "",
       order: row.orderRank ?? 0,
       declineReason: row.declineReason ?? "",
