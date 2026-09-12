@@ -1320,6 +1320,10 @@ namespace BuildConsole.Controls
                     // Git #3336 — resolve each build set's real top Epic(s) from the local mirror
                     // BEFORE rendering, so the rollup below can nest under a real Epic header.
                     _buildSetEpics = await ResolveBuildSetEpicsAsync(_lastItems);
+                    // Git #3866 — piggyback the "stay locked as new build sets appear" catch-up
+                    // on this same real recompute, no new timer: any build set that now resolves
+                    // to a currently-locked Epic and isn't already tracked gets marked Priority.
+                    Services.EpicPriorityStore.ApplyLockedEpics(_buildSetEpics);
                     // Git #1834 — independent of _filter (the rollup summarizes the whole real
                     // queue, not just whatever status the combo/DAG is currently showing).
                     RenderBuildSetRollup(_lastItems);
@@ -3960,7 +3964,10 @@ namespace BuildConsole.Controls
 
             int totalUnsent = unsentByBuildSet.Sum(kv => kv.Value.Count);
             int totalNeedsAttention = needsAttentionByBuildSet.Sum(kv => kv.Value.Count);
-            if (totalUnsent == 0 && totalNeedsAttention == 0)
+            // Git #3866 — the lock toggle renders only for a real, single-epic header (never
+            // "(mixed Epics)"/"No Epic"), independent of whether there's anything to send/flag.
+            bool showLockButton = key.EpicNumber.HasValue;
+            if (totalUnsent == 0 && totalNeedsAttention == 0 && !showLockButton)
             {
                 headerText.Margin = new Thickness(2, 10, 0, 4);
                 return headerText;
@@ -4000,6 +4007,36 @@ namespace BuildConsole.Controls
                     Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush"),
                     ToolTip = $"Verifying, but no verified DONE bookend yet — not reported as landed: {string.Join(", ", allNeedsAttentionNumbers.Select(FormatIssueRef))}"
                 });
+            }
+
+            // Git #3866 — 🔒/🔓 lock toggle: marks every real build-set name currently resolving
+            // to this Epic (via _buildSetEpics) as Priority through the existing
+            // BuildSetPriorityStore, and keeps applying to any build set that shows up under this
+            // same Epic later (see the ApplyLockedEpics call alongside _buildSetEpics's own
+            // recompute). Reflects the epic's real current locked/unlocked state on every render —
+            // the header's own pool key (RollupEpicHeaderKey.IsLocked) changes whenever the lock
+            // state flips, so this button is never left stale after a click.
+            Button? lockButton = null;
+            if (showLockButton)
+            {
+                int epicNumber = key.EpicNumber!.Value;
+                bool isLocked = Services.EpicPriorityStore.IsLocked(epicNumber);
+                lockButton = new Button
+                {
+                    Content = isLocked ? "🔒" : "🔓",
+                    FontSize = 12,
+                    Padding = new Thickness(5, 1, 5, 2),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Cursor = Cursors.Hand,
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
+                    Foreground = (Brush)Application.Current.FindResource(isLocked ? "YellowBrush" : "Subtext1Brush"),
+                    ToolTip = isLocked
+                        ? $"Locked — every build set under \"{key.Label}\" is kept marked Priority. Click to unlock (reverts only the build sets this lock auto-marked)."
+                        : $"Lock \"{key.Label}\" — mark every build set currently under this Epic Priority, and keep marking any that show up under it later."
+                };
+                headerRow.Children.Add(lockButton);
             }
 
             var statusText = new TextBlock
@@ -4083,6 +4120,34 @@ namespace BuildConsole.Controls
                         };
                         hideTimer.Start();
                     }));
+                };
+            }
+
+            if (lockButton != null)
+            {
+                int epicNumber = key.EpicNumber!.Value;
+                lockButton.Click += (s, e) =>
+                {
+                    bool currentlyLocked = Services.EpicPriorityStore.IsLocked(epicNumber);
+                    if (currentlyLocked)
+                    {
+                        Services.EpicPriorityStore.Unlock(epicNumber);
+                        ActivityLog.Log("build-queue-panel.epic-lock", $"Epic #{epicNumber} unlocked — reverted the build set(s) this lock had auto-marked Priority.");
+                    }
+                    else
+                    {
+                        // Git #3866 — every real build-set name currently resolving to this Epic,
+                        // not just the ones with unsent/needs-attention items passed into this
+                        // header — a fully-verifying/done build set under the same Epic still
+                        // gets locked in.
+                        var names = _buildSetEpics
+                            .Where(kv => kv.Value.Any(ep => ep.Number == epicNumber))
+                            .Select(kv => kv.Key)
+                            .ToList();
+                        Services.EpicPriorityStore.Lock(epicNumber, names);
+                        ActivityLog.Log("build-queue-panel.epic-lock", $"Epic #{epicNumber} locked — marked {names.Count} build set(s) Priority: {string.Join(", ", names)}.");
+                    }
+                    RenderBuildSetRollup(_lastItems);
                 };
             }
 
@@ -4235,7 +4300,8 @@ namespace BuildConsole.Controls
                     if (needsAttention.Count > 0) needsAttentionByBuildSet[key] = needsAttention;
                 }
 
-                var headerKey = new RollupEpicHeaderKey(epicGroup.Key, RollupSignature(unsentByBuildSet), RollupSignature(needsAttentionByBuildSet));
+                bool epicIsLocked = epicGroup.Key.EpicNumber.HasValue && Services.EpicPriorityStore.IsLocked(epicGroup.Key.EpicNumber.Value);
+                var headerKey = new RollupEpicHeaderKey(epicGroup.Key, RollupSignature(unsentByBuildSet), RollupSignature(needsAttentionByBuildSet), epicIsLocked);
                 var header = _rollupCards.Acquire(("epicHeader", epicGroup.Key), headerKey,
                     () => BuildEpicGroupHeader(epicGroup.Key, unsentByBuildSet, needsAttentionByBuildSet), out _);
                 desired.Add(header);
@@ -4279,7 +4345,7 @@ namespace BuildConsole.Controls
         /// group key itself: the two send-eligibility buckets, order-independent-safe because
         /// both are keyed dictionaries whose (buildSet, sorted-issue-list) pairs are joined in a
         /// stable order below.</summary>
-        private sealed record RollupEpicHeaderKey(BuildSetEpicGroupKey Group, string UnsentSignature, string NeedsAttentionSignature);
+        private sealed record RollupEpicHeaderKey(BuildSetEpicGroupKey Group, string UnsentSignature, string NeedsAttentionSignature, bool IsLocked);
 
         /// <summary>Git #3834 — everything <see cref="BuildRollupRow"/> draws for one build set:
         /// its three bucketed issue-number lists, the selected/expanded UI state
