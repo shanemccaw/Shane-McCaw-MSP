@@ -40,7 +40,7 @@
 // api-server every few seconds, so renewing once per call comfortably beats the
 // default 10-minute TTL.
 
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, renameSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { pathToFileURL } from "node:url";
@@ -68,9 +68,16 @@ export function readHold(config, name) {
   }
 }
 
+// Atomic write (temp-file + rename), same pattern as queue.mjs/buildset.mjs/lock.mjs
+// (Git #3068 class). A plain truncate-then-write leaves a window where a reader can
+// see a torn/partial file; JSON.parse on that fails, and isExpired(null) treats a
+// parse failure as "no hold => expired," making an active hold look expired (#1855).
 function writeHold(config, name, hold) {
   ensureDir(config);
-  writeFileSync(holdPath(config, name), JSON.stringify(hold, null, 2));
+  const file = holdPath(config, name);
+  const tmp = `${file}.tmp-${process.pid}-${Math.floor(Math.random() * 1e9)}`;
+  writeFileSync(tmp, JSON.stringify(hold, null, 2));
+  renameSync(tmp, file); // atomic on same volume
   return hold;
 }
 
