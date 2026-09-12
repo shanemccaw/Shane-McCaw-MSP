@@ -70,7 +70,7 @@
                     <TextBox x:Name="TxtRequestBody" Height="140" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="Courier New" FontSize="11.5" Background="{StaticResource Surface0Brush}" Foreground="{StaticResource TextBrush}" Padding="6" Margin="0,0,0,16" Visibility="Collapsed"/>
 
                     <!-- Execute Button -->
-                    <Button x:Name="BtnExecute" Content="⚡ Execute Graph API" Height="32" FontWeight="SemiBold" Background="{StaticResource PeachBrush}" Foreground="{StaticResource CrustBrush}" BorderThickness="0" Click="BtnExecute_Click" Cursor="Hand" Margin="0,8,0,0"/>
+                    <Button x:Name="BtnExecute" Content="⚡ Execute Graph API" Height="32" FontWeight="SemiBold" Background="{StaticResource PeachBrushTint}" Foreground="{StaticResource PeachBrush}" BorderBrush="{StaticResource PeachBrush}" BorderThickness="1" Click="BtnExecute_Click" Cursor="Hand" Margin="0,8,0,0"/>
                 </StackPanel>
             </ScrollViewer>
 

@@ -62,6 +62,27 @@
     <SolidColorBrush x:Key="RosewaterBrush" Color="#F5E0DC"/>
     <SolidColorBrush x:Key="MaroonBrush"    Color="#EBA0AC"/>
 
+    <!-- ══════════════════════════════════════════════════════════════════
+         PRIMARY-ACTION TINT FILLS (Git #3812) — the tint+border pattern
+         GitDoctorView.xaml.cs's "Ask Claude" button already proved
+         (low-opacity tinted Background + full-saturation BorderBrush/
+         Foreground) is now the one, consistent look for every real
+         moderate-to-large primary-action button app-wide, replacing a
+         large blast of solid full-saturation fill. 0.13 is the exact
+         opacity that reference button already uses — checked here across
+         Maroon/Peach/Blue/Sapphire specifically (per #3812's own ask) and
+         it reads consistently on all four; they sit in the same pastel/
+         light-Catppuccin lightness band, unlike e.g. Yellow. One tint per
+         accent color actually consumed by an in-scope button — not every
+         Catppuccin accent gets one speculatively. BlueBrushTint follows
+         BlueBrush itself in referencing Colors.xaml's AccentColor rather
+         than a literal hex, so a future accent retarget carries through
+         automatically. -->
+    <SolidColorBrush x:Key="MaroonBrushTint"   Color="#EBA0AC" Opacity="0.13"/> <!-- same Color as MaroonBrush -->
+    <SolidColorBrush x:Key="PeachBrushTint"    Color="#FAB387" Opacity="0.13"/> <!-- same Color as PeachBrush -->
+    <SolidColorBrush x:Key="BlueBrushTint"     Color="{StaticResource AccentColor}" Opacity="0.13"/> <!-- same Color as BlueBrush -->
+    <SolidColorBrush x:Key="SapphireBrushTint" Color="#74C7EC" Opacity="0.13"/> <!-- same Color as SapphireBrush -->
+
     <!-- Status-semantic brushes StatusSuccessBrush/StatusErrorBrush/
          StatusWarningBrush/StatusRunningBrush are declared once, in
          Themes/Colors.xaml — used ONLY where a call site genuinely means

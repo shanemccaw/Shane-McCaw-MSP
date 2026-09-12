@@ -650,7 +650,12 @@ namespace BuildConsole.Controls
             var deleteBtn = new Button
             {
                 Content = $"Delete {pickedCount} selected — backup tag first", Height = 32, Padding = new Thickness(14, 0, 14, 0), Margin = new Thickness(0, 0, 6, 6),
-                Background = (Brush)FindResource("MaroonBrush"), Foreground = Brushes.Black, BorderThickness = new Thickness(0),
+                // Git #3812 — same tint+border pattern as the "Ask Claude" button below
+                // (low-opacity tinted fill + full-saturation border/text) instead of a
+                // large blast of solid MaroonBrush; still reads as the destructive action
+                // via the Maroon accent, just not a full-saturation block of it.
+                Background = (Brush)FindResource("MaroonBrushTint"), Foreground = (Brush)FindResource("MaroonBrush"),
+                BorderBrush = (Brush)FindResource("MaroonBrush"), BorderThickness = new Thickness(1),
                 FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11.5"), FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand
             };
             deleteBtn.Click += (s, e) => _ = DeleteSelectedBranchesAsync();
