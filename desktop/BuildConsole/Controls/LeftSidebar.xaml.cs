@@ -379,12 +379,13 @@ namespace BuildConsole.Controls
         /// refresh (board fetch + first render + the blocked-by sweep that follows it),
         /// dismissed the moment it genuinely completes rather than on a fixed timer.
         /// Git #1836 — Shane: the Build Queue panel's own refresh button
-        /// (BuildQueuePanel.BtnRefreshCombined, cascaded via FullGitRefreshRequested)
+        /// (BuildQueuePanel.BtnRefreshBoard, cascaded via BoardRefreshRequested — Git #3767
+        /// renamed/narrowed this from BtnRefreshCombined/FullGitRefreshRequested)
         /// triggers this exact same GitHub fetch but showed none of this feedback,
-        /// because MainWindow's FullGitRefreshRequested handler called
+        /// because MainWindow's BoardRefreshRequested handler called
         /// PopulateGitTrackerBoard(forceFresh: true) directly instead of going through
         /// this method. Extracted out of BtnRefreshGitBoard_Click so both trigger paths
-        /// call the one real implementation — MainWindow's FullGitRefreshRequested
+        /// call the one real implementation — MainWindow's BoardRefreshRequested
         /// handler now awaits this too — rather than duplicating the animation/disable
         /// logic a second time.
         /// </summary>

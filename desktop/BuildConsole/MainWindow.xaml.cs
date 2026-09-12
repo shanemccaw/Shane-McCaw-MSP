@@ -837,16 +837,28 @@ namespace BuildConsole
             // LeftSidebar.RefreshGitBoardWithLoadingFeedbackAsync — awaited here so the
             // strip has genuinely finished before the rest of this cascade runs, and
             // BuildQueuePanel's own button is disabled for that same real span.
-            // Git #2976 — assigned (not +=) because FullGitRefreshRequested is now a single-
-            // subscriber awaitable Func<Task>, so BuildQueuePanel can genuinely await the WHOLE
-            // cascade before it toasts "Refreshed!". The board fetch alone was never enough:
-            // RefreshGitBoardWithLoadingFeedbackAsync fires BoardRefreshCompleted, whose Batter Up /
-            // AI Batter Up handlers each kick off their OWN independent GitHub fetch fire-and-forget
-            // (async void), so awaiting only the board left those two still loading. We therefore
-            // explicitly await both here too — coalesced onto whatever in-flight refresh the
-            // BoardRefreshCompleted cascade already started (Git #2976 coalescing wrapper), so this
-            // is the real completion, not a duplicate fetch.
-            BuildQueuePanel.FullGitRefreshRequested = async () =>
+            // Git #3767 — real, partial reversal of #2976/#3702: FullGitRefreshRequested used to
+            // be one single-subscriber awaitable Func<Task> covering Board + Batter Up + AI Batter
+            // Up, so BuildQueuePanel's old combined button could await the WHOLE cascade before
+            // toasting "Refreshed!". That single combined cascade is exactly the six-subsystem
+            // fan-out this issue splits back apart. BoardRefreshRequested is the cheap half —
+            // Board diff sync + the purely local pieces that consume it — and deliberately does
+            // NOT await Batter Up / AI Batter Up itself.
+            //
+            // Real, confirmed caveat (found while implementing this split, not fixed here — see
+            // the bookend/issue comment): LeftSidebar.RefreshGitBoardWithLoadingFeedbackAsync
+            // fires BoardRefreshCompleted unconditionally on every successful board fetch, and
+            // that event ALREADY has permanent subscribers below (Git #952/#953) that kick off
+            // Batter Up's and AI Batter Up's own independent refreshes as a side effect — a
+            // pre-existing coupling that predates #3702 and also fires from Git Board's OWN
+            // manual refresh button, not something this delegate controls. So this narrower Board
+            // button is no longer explicitly awaiting/fanning-out Batter Up itself, but a board
+            // fetch still indirectly triggers it via that separate event. Unwinding THAT coupling
+            // is a larger, separate change (touches RequestImmediateReevaluation,
+            // RecheckPendingBuildCommentsAsync, editor-pane stats — everything else riding the same
+            // event) and is out of this issue's stated scope (BtnRefreshCombined_Click's own
+            // fan-out); filed separately.
+            BuildQueuePanel.BoardRefreshRequested = async () =>
             {
                 BuildQueuePanel.SetGitHubTilesRefreshInProgress(true);
                 try
@@ -860,19 +872,6 @@ namespace BuildConsole
                         _homeView.RenderDashboardState(LeftSidebar.CurrentBoardIssues, LeftSidebar.CurrentMilestones);
                     }
                     RefreshOpenGitDetailTabs();
-                    // Wait out the Batter Up / AI Batter Up refreshes the board cascade started.
-                    await System.Threading.Tasks.Task.WhenAll(
-                        _batterUpPanel.RefreshAsync(),
-                        _aiBatterUpPanel.RefreshAsync());
-
-                    // Git #3448 — Shane: whichever refresh action he uses, the result should
-                    // honestly report real sync status ("Batter Up out of sync" / "no issues")
-                    // instead of a generic success message. Both panels just landed their own
-                    // real closed-sweep result above; hand the honest summary to BuildQueuePanel
-                    // so BtnRefreshCombined_Click's toast can use it instead of static text.
-                    BuildQueuePanel.LastGitSyncSummary =
-                        Services.BatterUpQueueService.BuildSyncSummary("Batter Up", _batterUpPanel.LastSweepResult) + " " +
-                        Services.BatterUpQueueService.BuildSyncSummary("AI Batter Up", _aiBatterUpPanel.LastSweepResult);
                 }
                 finally
                 {
@@ -880,10 +879,25 @@ namespace BuildConsole
                 }
             };
 
+            // Git #3767 — the other half of the split: a narrow, real Batter-Up-ONLY refresh,
+            // deliberately excluding AI Batter Up (and Board, Issues in Epic, In-Flight, Focus
+            // Progress) — the cheap, targeted call the automatic queue-claim loop needs.
+            BuildQueuePanel.BatterUpOnlyRefreshRequested = async () =>
+            {
+                await _batterUpPanel.RefreshAsync();
+
+                // Git #3448, narrowed by #3767 — Shane: whichever refresh action he uses, the
+                // result should honestly report real sync status ("Batter Up out of sync" /
+                // "no issues") instead of a generic success message. AI Batter Up is deliberately
+                // excluded — this button never touches it.
+                BuildQueuePanel.LastGitSyncSummary =
+                    Services.BatterUpQueueService.BuildSyncSummary("Batter Up", _batterUpPanel.LastSweepResult);
+            };
+
             // Shane, 2026-08-28: "when a build is in Verifying state and then
             // the Git issue behind it is closed, it should change to closed
             // and hide." LeftSidebar's board refresh (triggered by the above
-            // FullGitRefreshRequested, or the Git Board's own refresh button)
+            // BoardRefreshRequested, or the Git Board's own refresh button)
             // just promoted one or more Verifying rows to Done — redraw the
             // Build Queue panel now so it drops out of the Active view right
             // away instead of waiting for the panel's own next poll.

@@ -42,11 +42,15 @@
                 BorderThickness="0,0,1,0">
             <DockPanel LastChildFill="True">
 
-                <!-- Header — Git #1816: this panel's own BtnRefresh is gone; refreshing is now
-                     the Build Queue header's single shared icon (BuildQueuePanel.xaml
-                     BtnRefreshCombined), which cascades here via BoardRefreshCompleted
-                     (#1813). TxtCount also carries the "no items" empty-state note inline now,
-                     so an empty panel never grows past this one header row.
+                <!-- Header — Git #1816: this panel's own BtnRefresh is gone; refreshing rides only
+                     LeftSidebar.BoardRefreshCompleted (#1813) now, fired whenever the Build Queue
+                     header's Board button (BuildQueuePanel.xaml BtnRefreshBoard — Git #3767 split
+                     this apart from the old BtnRefreshCombined) or Git Board's own refresh button
+                     fetches. Unlike Batter Up, AI Batter Up has no dedicated refresh button of its
+                     own — it was deliberately left off both of #3767's new narrow buttons (Batter
+                     Up ONLY means ONLY, per that issue's own ask). TxtCount also carries the "no
+                     items" empty-state note inline now, so an empty panel never grows past this
+                     one header row.
 
                      Git #1863 — TxtFilter fits into this same column-1 slot next to TxtCount
                      (same overlay-placeholder trick as the Build Queue's #950 QueueSearchBox,

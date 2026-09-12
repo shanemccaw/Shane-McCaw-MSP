@@ -44,9 +44,12 @@ namespace BuildConsole.Controls
         private Border? _selectedCard;
         private Brush? _selectedCardOriginalBrush;
 
-        /// <summary>Git #3448 — the real closed-sweep result from the most recent RefreshAsync,
-        /// consumed by MainWindow's FullGitRefreshRequested handler to build the honest "Git Sync"
-        /// toast (AI Batter Up out of sync vs. no issues) instead of a generic success message.
+        /// <summary>Git #3448 — the real closed-sweep result from the most recent RefreshAsync.
+        /// Git #3767 — no longer consumed by a toast: AI Batter Up's own refresh now rides only
+        /// MainWindow's LeftSidebar.BoardRefreshCompleted cascade (Git #952/#953), not either of
+        /// the new narrow BoardRefreshRequested/BatterUpOnlyRefreshRequested delegates, so nothing
+        /// awaits/reports its result at the toast layer anymore. Still real, still updated on
+        /// every refresh — just no longer surfaced in a success message.
         /// Stays at its last real value on a refresh that errors before reaching the sweep read.</summary>
         public Services.ClosedSweepResult LastSweepResult { get; private set; }
             = Services.ClosedSweepResult.Clean;

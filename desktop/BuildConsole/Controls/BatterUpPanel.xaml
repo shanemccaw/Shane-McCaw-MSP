@@ -74,11 +74,13 @@
                 BorderThickness="0,0,1,0">
             <DockPanel LastChildFill="True">
 
-                <!-- Header — Git #1816: this panel's own BtnRefresh is gone; refreshing is now
-                     the Build Queue header's single shared icon (BuildQueuePanel.xaml
-                     BtnRefreshCombined), which cascades here via BoardRefreshCompleted
-                     (#1813). TxtCount also carries the "no items" empty-state note inline now,
-                     so an empty panel never grows past this one header row. -->
+                <!-- Header — Git #1816: this panel's own BtnRefresh is gone; refreshing rides
+                     two real paths from the Build Queue header now (Git #3767 split
+                     BtnRefreshCombined back apart): BtnRefreshBoard, indirectly via
+                     LeftSidebar.BoardRefreshCompleted (#1813), and BtnRefreshBatterUp, directly
+                     and exclusively via BuildQueuePanel.BatterUpOnlyRefreshRequested. TxtCount
+                     also carries the "no items" empty-state note inline now, so an empty panel
+                     never grows past this one header row. -->
                 <!-- Git #1870 — the Free flow gate toggle sits in this same header row (title,
                      count, toggle) so the collapsed footprint #1816 minimised does not grow.
                      State is unmistakable at a glance: TxtCount carries a "· gated" / "· free

@@ -145,20 +145,23 @@
                                        Foreground="{StaticResource GreenBrush}"
                                        VerticalAlignment="Center"/>
                         </Button>
-                        <!-- Git #3702 — one real, combined refresh icon replacing both
-                             BtnRefreshQueueLocal (local-only Postgres re-read) and the old
-                             overflow menu's BtnRefreshGitHubTiles (Git Board + Batter Up + AI
-                             Batter Up + epic issues + in-flight + focus progress). Sequential,
-                             not parallel: Git first, then — once that completes — the local
-                             queue re-read, per Shane's exact ask. Spins for the whole span via
-                             BtnRefreshCombined_Click (RefreshCombinedIconRotate). -->
-                        <Button x:Name="BtnRefreshCombined"
+                        <!-- Git #3767 — real, partial reversal of #3702's combined button.
+                             That combined button fired six independent GitHub-calling subsystems
+                             in one Task.WhenAll (Board + Batter Up + AI Batter Up + Issues in Epic
+                             + In-Flight + Focus Progress) — enough real GitHub load from a single
+                             manual click to trip GitHubRateLimitCircuit and, with it, block the
+                             automatic queue-claim loop's live blocked_by checks for the length of
+                             the backoff window. Split back into two narrow, real buttons: this one
+                             is the cheap Board-diff-only Refresh (plus the two genuinely
+                             zero-GitHub-cost local pieces it folds in — Active Sessions +
+                             dev-server rollback check, see BtnRefreshBoard_Click). -->
+                        <Button x:Name="BtnRefreshBoard"
                                 Style="{StaticResource IconButton}"
-                                ToolTip="Refresh — Git Board, Batter Up, AI Batter Up, then the queue"
+                                ToolTip="Refresh — Git Board diff sync only (cheap; also re-reads Active Sessions + dev-server rollback state, zero extra GitHub cost)"
                                 Padding="6,4"
                                 Margin="2,0,0,0"
-                                Click="BtnRefreshCombined_Click">
-                            <TextBlock x:Name="RefreshCombinedIcon"
+                                Click="BtnRefreshBoard_Click">
+                            <TextBlock x:Name="RefreshBoardIcon"
                                        Text="&#xE72C;"
                                        FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
                                        FontSize="13"
@@ -166,7 +169,31 @@
                                        VerticalAlignment="Center"
                                        RenderTransformOrigin="0.5,0.5">
                                 <TextBlock.RenderTransform>
-                                    <RotateTransform x:Name="RefreshCombinedIconRotate" Angle="0"/>
+                                    <RotateTransform x:Name="RefreshBoardIconRotate" Angle="0"/>
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
+                        </Button>
+                        <!-- Git #3767 — the other half of the split: a dedicated, narrow
+                             Batter-Up-ONLY refresh (does not touch Board, AI Batter Up, Issues in
+                             Epic, In-Flight, or Focus Progress). This is the real, cheap trigger
+                             the automatic queue-claim loop needs to get a fresh Batter Up read
+                             without paying for — or tripping the rate limit via — the other five
+                             subsystems every time. -->
+                        <Button x:Name="BtnRefreshBatterUp"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Refresh Batter Up only (cheap, targeted — does not touch Board/AI Batter Up/Issues in Epic/In-Flight/Focus Progress)"
+                                Padding="6,4"
+                                Margin="2,0,0,0"
+                                Click="BtnRefreshBatterUp_Click">
+                            <TextBlock x:Name="RefreshBatterUpIcon"
+                                       Text="&#xE72C;"
+                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontSize="13"
+                                       Foreground="{StaticResource GreenBrush}"
+                                       VerticalAlignment="Center"
+                                       RenderTransformOrigin="0.5,0.5">
+                                <TextBlock.RenderTransform>
+                                    <RotateTransform x:Name="RefreshBatterUpIconRotate" Angle="0"/>
                                 </TextBlock.RenderTransform>
                             </TextBlock>
                         </Button>
@@ -722,13 +749,34 @@
                             BorderThickness="0,0,0,1"
                             Visibility="Collapsed">
                         <StackPanel>
-                            <TextBlock x:Name="ChatEpicIssuesHeader"
-                                       Text="ISSUES IN THIS EPIC"
-                                       FontSize="11"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource Subtext1Brush}"
-                                       TextWrapping="Wrap"
-                                       Margin="0,0,0,8"/>
+                            <!-- Git #3767 — RefreshActiveChatEpicIssuesAsync (force-refetch of THIS
+                                 epic's sub-issues, e.g. to pick up one that just closed) used to
+                                 ride the old combined refresh button. Deliberately NOT folded onto
+                                 either of the two new narrow buttons (Board-diff-only / Batter-Up-
+                                 only) — that would reintroduce real GitHub cost onto both. Its own
+                                 real trigger instead: this small refresh icon, right on the section
+                                 it actually refreshes. -->
+                            <DockPanel Margin="0,0,0,8">
+                                <Button x:Name="BtnRefreshChatEpicIssues"
+                                        DockPanel.Dock="Right"
+                                        Style="{StaticResource IconButton}"
+                                        ToolTip="Refresh issues in this epic"
+                                        Padding="4,2"
+                                        Click="BtnRefreshChatEpicIssues_Click">
+                                    <TextBlock Text="&#xE72C;"
+                                               FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                               FontSize="11"
+                                               Foreground="{StaticResource Subtext1Brush}"
+                                               VerticalAlignment="Center"/>
+                                </Button>
+                                <TextBlock x:Name="ChatEpicIssuesHeader"
+                                           Text="ISSUES IN THIS EPIC"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource Subtext1Brush}"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Center"/>
+                            </DockPanel>
 
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                 <ToggleButton x:Name="ChipEpicAll"    Content="All"    Style="{StaticResource FilterChip}" Click="EpicFilterChip_Click" Tag="All"/>

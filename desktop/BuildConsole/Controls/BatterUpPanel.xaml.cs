@@ -42,9 +42,10 @@ namespace BuildConsole.Controls
         private bool _sortByState;
 
         /// <summary>Git #3448 — the real closed-sweep result from the most recent RefreshAsync,
-        /// consumed by MainWindow's FullGitRefreshRequested handler to build the honest "Git Sync"
-        /// toast (Batter Up out of sync vs. no issues) instead of a generic success message. Stays
-        /// at its last real value on a refresh that errors before reaching the sweep read.</summary>
+        /// consumed by MainWindow's BatterUpOnlyRefreshRequested handler (Git #3767 — narrowed
+        /// from FullGitRefreshRequested) to build the honest "Batter Up Sync" toast (out of sync
+        /// vs. no issues) instead of a generic success message. Stays at its last real value on a
+        /// refresh that errors before reaching the sweep read.</summary>
         public Services.ClosedSweepResult LastSweepResult { get; private set; }
             = Services.ClosedSweepResult.Clean;
 
