@@ -21,6 +21,25 @@
 // has commits ahead of base that base does not have. Checked against every
 // `origin/agent/*` remote-tracking branch (refreshed via `git fetch --prune`
 // first) plus any local `agent/*` branch not tracked to a remote at all.
+//
+// Git #3025: `resolvedBase` used to be a single fixed ref (`origin/main` by
+// default) applied to every branch. That's wrong for a branch deliberately
+// forked from something other than main -- real example: `agent/2955-prodbase`
+// / `agent/2960-prodbase-q1711` (New Site v2 / #2953 work), forked from
+// `production-base-2026-09-05` per that effort's own branch-split plan. Diffed
+// against `origin/main` those looked like 14/2 "stranded" commits of real,
+// diverged work; diffed against their actual base they're genuinely clean.
+//
+// Fix: discover any ref following the `<name>-base-<YYYY-MM-DD>` naming
+// convention already in use for this (see #2953's branch-split plan) as a
+// candidate alternate base, then resolve each `agent/*` branch's real base
+// independently -- whichever candidate (main, or one of the discovered
+// alternates) yields the LOWEST ahead-count is the branch's actual fork
+// point, since a branch shares the most history with (and so has the fewest
+// exclusive commits ahead of) whatever it was really built on. Ties favor
+// `origin/main`. This needs no hardcoded branch name or issue-specific
+// special-case -- any future `<name>-base-<date>` branch is picked up the
+// same way.
 
 import { pathToFileURL } from "node:url";
 import { loadConfig } from "./config.mjs";
@@ -36,6 +55,28 @@ function parseArgs(argv) {
     else a._.push(t);
   }
   return a;
+}
+
+// Matches the real "alternate base branch" naming convention already in use in
+// this repo (e.g. `production-base-2026-09-05`) -- a dated snapshot branch that
+// some `agent/*` work is deliberately forked from instead of `main`. Deliberately
+// generic (not hardcoded to "production") so any future `<name>-base-<date>`
+// branch is picked up the same way.
+const ALT_BASE_PATTERN = /-base-\d{4}-\d{2}-\d{2}$/;
+
+function listAlternateBaseRefs(repoRoot) {
+  const refs = new Set();
+  for (const pattern of ["refs/heads/", "refs/remotes/origin/"]) {
+    const res = git(repoRoot, ["for-each-ref", "--format=%(refname:short)", pattern]);
+    if (res.code !== 0) continue;
+    for (const line of res.stdout.split("\n")) {
+      const short = line.trim();
+      if (!short) continue;
+      const bare = short.startsWith("origin/") ? short.slice("origin/".length) : short;
+      if (ALT_BASE_PATTERN.test(bare)) refs.add(short);
+    }
+  }
+  return [...refs];
 }
 
 function listAgentBranches(repoRoot) {
@@ -86,6 +127,13 @@ export function checkStrandedBranches({ cwd, base, noFetch } = {}) {
     return { ok: false, error: `Could not resolve base ref '${resolvedBase}'.` };
   }
 
+  // Candidate alternate bases -- refs that actually resolve, deduped against
+  // resolvedBase itself so main isn't double-counted as its own "alternate".
+  const altBaseCandidates = listAlternateBaseRefs(repoRoot).filter((ref) => {
+    if (ref === resolvedBase) return false;
+    return revParse(repoRoot, ref) !== null;
+  });
+
   const branches = listAgentBranches(repoRoot);
   const stranded = [];
   const clean = [];
@@ -94,13 +142,38 @@ export function checkStrandedBranches({ cwd, base, noFetch } = {}) {
     const branchSha = revParse(repoRoot, branch);
     if (!branchSha) continue; // ref vanished mid-sweep, skip rather than error
 
-    const aheadRes = git(repoRoot, ["rev-list", "--count", `${resolvedBase}..${branch}`]);
-    const aheadCount = aheadRes.code === 0 ? Number(aheadRes.stdout.trim()) || 0 : null;
+    // Resolve THIS branch's real base: try `resolvedBase` (main) plus every
+    // discovered alternate base ref, and keep whichever gives the lowest
+    // ahead-count -- that's the ref the branch shares the most history with,
+    // i.e. its actual fork point. Ties favor resolvedBase.
+    let bestBase = resolvedBase;
+    let bestAheadRes = git(repoRoot, ["rev-list", "--count", `${resolvedBase}..${branch}`]);
+    let bestAheadCount = bestAheadRes.code === 0 ? Number(bestAheadRes.stdout.trim()) || 0 : null;
+
+    for (const altBase of altBaseCandidates) {
+      const altRes = git(repoRoot, ["rev-list", "--count", `${altBase}..${branch}`]);
+      const altCount = altRes.code === 0 ? Number(altRes.stdout.trim()) || 0 : null;
+      if (altCount === null) continue;
+      if (bestAheadCount === null || altCount < bestAheadCount) {
+        bestBase = altBase;
+        bestAheadCount = altCount;
+        bestAheadRes = altRes;
+      }
+    }
+
+    const aheadCount = bestAheadCount;
+    const aheadRes = bestAheadRes;
 
     const dateRes = git(repoRoot, ["log", "-1", "--format=%cI", branch]);
     const lastCommitDate = dateRes.code === 0 ? dateRes.stdout.trim() : null;
 
-    const entry = { branch, headSha: branchSha, aheadCount, lastCommitDate };
+    const entry = {
+      branch,
+      headSha: branchSha,
+      aheadCount,
+      lastCommitDate,
+      resolvedBaseUsed: bestBase,
+    };
 
     if (aheadCount === null) {
       // rev-list failed (e.g. unrelated history) -- surface it rather than silently
@@ -117,6 +190,7 @@ export function checkStrandedBranches({ cwd, base, noFetch } = {}) {
     ok: true,
     base: resolvedBase,
     baseSha,
+    altBaseCandidates,
     inspectedCount: branches.length,
     strandedCount: stranded.length,
     cleanCount: clean.length,
@@ -139,13 +213,17 @@ if (isMain) {
     console.log(JSON.stringify(res, null, 2));
   } else {
     console.log(`Stranded-branch sweep against '${res.base}' (${res.baseSha.slice(0, 8)}):`);
+    if (res.altBaseCandidates.length) {
+      console.log(`  Alt bases : ${res.altBaseCandidates.join(", ")} (used per-branch when closer than '${res.base}')`);
+    }
     console.log(`  Inspected : ${res.inspectedCount}`);
     console.log(`  Stranded  : ${res.strandedCount}`);
     console.log(`  Clean     : ${res.cleanCount}`);
     if (res.stranded.length) {
-      console.log("  Stranded branches (commits ahead of base, NOT represented on main):");
+      console.log("  Stranded branches (commits ahead of their real base, NOT represented there):");
       for (const b of res.stranded) {
-        const suffix = b.error ? ` — ERROR: ${b.error}` : ` — ${b.aheadCount} commit(s) ahead, last commit ${b.lastCommitDate}`;
+        const baseNote = b.resolvedBaseUsed && b.resolvedBaseUsed !== res.base ? ` [base: ${b.resolvedBaseUsed}]` : "";
+        const suffix = b.error ? ` — ERROR: ${b.error}` : ` — ${b.aheadCount} commit(s) ahead, last commit ${b.lastCommitDate}${baseNote}`;
         console.log(`    - ${b.branch} (${b.headSha.slice(0, 8)})${suffix}`);
       }
     }
