@@ -279,6 +279,132 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #3091 — the result of <see cref="EnsureFrontEndReadyAsync"/>: whether the service is
+        /// actually reachable on its port by the time this returns, plus which real condition (if
+        /// any) it had to correct so the caller can log/report a clear, specific reason on failure
+        /// rather than a generic "not ready".
+        /// </summary>
+        public readonly record struct FrontEndReadiness(bool Ready, bool WasDown, bool WasStale, string Message);
+
+        /// <summary>
+        /// Git #3091 — closes the real gap: <c>shaneapp://runTest</c> resolved every <c>uiStep</c>
+        /// <c>goto</c> to a local front-end origin via <see cref="DevServiceRouting"/> without ever
+        /// confirming that SPECIFIC port was up, or serving current code — only the API server on
+        /// :8080 got probed (MainWindow.EnsureServerReadyWithProbeAsync). Call this for every distinct
+        /// front-end a manifest's uiSteps actually navigate to, before the first goto:
+        ///
+        ///  1. Not listening on its port at all → <see cref="StartServiceAsync"/> it.
+        ///  2. Listening, but its process has been running since BEFORE the latest real commit under
+        ///     its own <c>artifacts/&lt;serviceName&gt;</c> — genuinely stale, per the issue's own
+        ///     account of why this happens (the dev-server restart coordinator only restarts a
+        ///     service whose OWN changed-file footprint touched it, so a long-lived front-end process
+        ///     can keep serving env/config baked in at its last startup through many merge cycles that
+        ///     never touch its directory) → stop + restart it so uiSteps see current code.
+        ///  3. Either way, poll the port for up to <paramref name="maxWaitSeconds"/> before giving up.
+        ///
+        /// Returns Ready=false (never throws) when the service never came up in time, so the caller
+        /// can fail the uiSteps portion of the run clearly instead of silently navigating to a dead or
+        /// stale port.
+        /// </summary>
+        public static async Task<FrontEndReadiness> EnsureFrontEndReadyAsync(string serviceName, string channel, int maxWaitSeconds = 60)
+        {
+            if (!KnownServices.TryGetValue(serviceName, out var def))
+                return new FrontEndReadiness(false, false, false, $"Unknown dev service '{serviceName}' — not in scripts/dev-server/services.json.");
+
+            string label = $"{def.Title} ({serviceName}, :{def.Port})";
+            bool isUp = await IsPortOpenAsync(def.Port);
+            bool wasDown = !isUp;
+            bool wasStale = false;
+
+            if (wasDown)
+            {
+                ActivityLog.Log(channel, $"[Front-End Readiness] {label} is not running — starting it before navigating a uiStep goto to it…");
+                await StartServiceAsync(serviceName);
+            }
+            else
+            {
+                var startedAt = await GetServiceStartedAtUtcAsync(serviceName);
+                var latestCommit = await GetLatestArtifactCommitUtcAsync(serviceName);
+                if (startedAt.HasValue && latestCommit.HasValue && latestCommit.Value > startedAt.Value)
+                {
+                    wasStale = true;
+                    ActivityLog.Log(channel,
+                        $"[Front-End Readiness] {label} has been running since {startedAt:u} but artifacts/{serviceName} has a commit at {latestCommit:u} — restarting so this run's uiSteps see current code, not a stale long-lived process…");
+                    await StopServiceAsync(serviceName);
+                    await StartServiceAsync(serviceName);
+                }
+            }
+
+            if (!wasDown && !wasStale)
+                return new FrontEndReadiness(true, false, false, $"{label} already running current code.");
+
+            var deadline = DateTime.UtcNow.AddSeconds(maxWaitSeconds);
+            int attempt = 0;
+            while (DateTime.UtcNow < deadline)
+            {
+                attempt++;
+                if (await IsPortOpenAsync(def.Port))
+                {
+                    ActivityLog.Log(channel, $"[Front-End Readiness] {label} ready on attempt #{attempt}{(wasStale ? " (after stale restart)" : "")}.");
+                    return new FrontEndReadiness(true, wasDown, wasStale, $"{label} ready.");
+                }
+                await Task.Delay(1500);
+            }
+
+            string reason = wasStale
+                ? $"{label} was restarted for stale code but never came back up within {maxWaitSeconds}s."
+                : $"{label} was down and did not start within {maxWaitSeconds}s.";
+            ActivityLog.Log(channel, $"[Front-End Readiness] {reason}");
+            return new FrontEndReadiness(false, wasDown, wasStale, reason);
+        }
+
+        /// <summary>Git #3091 — when the service's process last (re)started, read from the same
+        /// meta.json <see cref="GetServiceStatusAsync"/> already reads for its pid (recordServiceMeta's
+        /// <c>updatedAt</c>, written once at spawn time and again only on exit — so while a process is
+        /// alive this is genuinely its start time, not a rolling heartbeat). Null if the meta file is
+        /// missing/unparseable — the staleness check is then simply skipped (readiness still applies).</summary>
+        private static async Task<DateTime?> GetServiceStartedAtUtcAsync(string serviceName)
+        {
+            try
+            {
+                string metaFile = Path.Combine(GetLogDir(), $"{serviceName}.meta.json");
+                if (!File.Exists(metaFile)) return null;
+                string json = await File.ReadAllTextAsync(metaFile);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("updatedAt", out var u) && u.ValueKind == JsonValueKind.Number)
+                    return DateTimeOffset.FromUnixTimeMilliseconds(u.GetInt64()).UtcDateTime;
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>Git #3091 — the commit time of the latest real commit under this service's own
+        /// <c>artifacts/&lt;serviceName&gt;</c> directory in the SAME checkout <see cref="StartServiceAsync"/>
+        /// runs <c>dev-all.mjs</c> from (<see cref="BuildTrackerConfig.FindRepoRoot"/> — the main
+        /// checkout the dev server actually serves from, not necessarily this build session's own
+        /// worktree). Routed through <see cref="SubprocessRunner"/> (Git #2539) rather than a raw
+        /// <see cref="Process"/> spawn, same as every other git shell-out in this app. Null on any
+        /// failure (unknown repo root, no matching commit, git launch failure) — the staleness check
+        /// is then skipped rather than guessed at.</summary>
+        private static async Task<DateTime?> GetLatestArtifactCommitUtcAsync(string serviceName)
+        {
+            string? repoRoot = BuildTrackerConfig.FindRepoRoot();
+            if (repoRoot == null) return null;
+
+            var res = await SubprocessRunner.RunAsync(
+                "git",
+                new[] { "log", "-1", "--format=%cI", "--", $"artifacts/{serviceName}" },
+                repoRoot,
+                TimeSpan.FromSeconds(10),
+                LogChannel);
+
+            if (!res.Ok) return null;
+            string output = res.StdOut.Trim();
+            if (string.IsNullOrEmpty(output)) return null;
+            return DateTimeOffset.TryParse(output, out var dto) ? dto.UtcDateTime : null;
+        }
+
+        /// <summary>
         /// Starts all configured dev services.
         /// </summary>
         public static async Task<bool> StartAllServicesAsync()

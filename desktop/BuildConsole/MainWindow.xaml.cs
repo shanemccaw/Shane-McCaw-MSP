@@ -9959,6 +9959,11 @@ namespace BuildConsole
                     // and pass no resolver.
                     string uiTargetUrl;
                     Func<string, string>? uiOriginResolver = null;
+                    // Git #3091 — every distinct front-end service the run's uiSteps actually navigate
+                    // to (goto/navigate/logout/ensureloggedout targets), so it can be readiness-checked
+                    // below BEFORE the first goto — empty for Staging/Production, where a single origin
+                    // serves everything and there is no per-service Dev process to verify.
+                    var uiTargetedServiceKeys = new List<string>();
                     if (targetEnv == BuildConsole.Services.TargetEnvironment.Dev)
                     {
                         var uiNavRoutes = manifest.UiSteps
@@ -9970,6 +9975,12 @@ namespace BuildConsole
                         uiOriginResolver = route => BuildConsole.Services.DevServiceRouting.OriginForRoute(route, primaryServiceKey);
                         BuildConsole.Services.ActivityLog.Log("testing.ui-executor",
                             $"[{mode}] Issue #{manifest.Issue} uiSteps Dev front-end routing: primary service {BuildConsole.Services.DevServiceRouting.DescribeServiceKey(primaryServiceKey)} (base {uiTargetUrl}); each goto remaps to its owning front-end port (API server 8080 is not a uiSteps target).");
+
+                        uiTargetedServiceKeys = uiNavRoutes
+                            .Select(r => BuildConsole.Services.DevServiceRouting.ServiceKeyForRoute(r) ?? primaryServiceKey)
+                            .Append(primaryServiceKey)
+                            .Distinct()
+                            .ToList();
                     }
                     else
                     {
@@ -9982,7 +9993,37 @@ namespace BuildConsole
                         ? System.IO.Path.Combine(uiRepoRoot, "test-results", runResult.RunFolderName, "screenshots")
                         : null;
 
-                    var uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars, uiDefaultViewport, screenshotDir, uiOriginResolver);
+                    // Git #3091 — the real gap this closes: EnsureServerReadyWithProbeAsync above only ever
+                    // probed the API server (:8080); nothing confirmed the SPECIFIC front-end port(s) these
+                    // uiSteps are about to navigate to were actually up or serving current code. Check/start/
+                    // restart each one now, BEFORE the first goto, so a down or stale front-end fails the run
+                    // clearly instead of silently testing against nothing or stale code.
+                    var uiReadinessFailures = new List<BuildConsole.Services.DevServicesManager.FrontEndReadiness>();
+                    foreach (var serviceKey in uiTargetedServiceKeys)
+                    {
+                        var readiness = await BuildConsole.Services.DevServicesManager.EnsureFrontEndReadyAsync(serviceKey, "testing.ui-executor");
+                        if (!readiness.Ready) uiReadinessFailures.Add(readiness);
+                    }
+
+                    BuildConsole.Services.UiTestRunResult uiResult;
+                    if (uiReadinessFailures.Count > 0)
+                    {
+                        string reason = string.Join(" ", uiReadinessFailures.Select(f => f.Message));
+                        BuildConsole.Services.ActivityLog.Log("testing.ui-executor",
+                            $"[{mode}] Issue #{manifest.Issue} uiSteps SKIPPED — front-end readiness check failed: {reason}");
+                        uiResult = new BuildConsole.Services.UiTestRunResult
+                        {
+                            TargetUrl = uiTargetUrl,
+                            TotalSteps = uiActions.Count,
+                            PassedSteps = 0,
+                            Success = false,
+                            StatusText = $"Front-end dev server not ready — {reason}",
+                        };
+                    }
+                    else
+                    {
+                        uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars, uiDefaultViewport, screenshotDir, uiOriginResolver);
+                    }
                     capturedShots = uiResult.Screenshots;
                     var uiStepResults = uiResult.ToTestStepResults();
 
