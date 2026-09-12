@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using Microsoft.Win32.SafeHandles;
 
 namespace BuildConsole.Services
@@ -458,6 +459,47 @@ namespace BuildConsole.Services
 
         /// <summary>True once the process has terminated (authoritative — waits on the handle, 0 timeout).</summary>
         public bool HasExited => WaitForSingleObject(_handle, 0) == WAIT_OBJECT_0;
+
+        /// <summary>
+        /// Git #3774 — real, event-driven exit notification with NO polling loop and NO timer of any
+        /// kind: <see cref="ThreadPool.RegisterWaitForSingleObject"/> asks the OS itself to wake a
+        /// thread-pool thread the instant this process's handle signals (i.e. the process exits),
+        /// exactly the mechanism .NET's own <c>Process.Exited</c> uses internally — the process handle
+        /// is a real waitable kernel object, not something that has to be polled to know it changed.
+        /// Fires <paramref name="onExited"/> at most once, then unregisters and cleans up its own
+        /// wait handle.
+        ///
+        /// Deliberately does NOT wait on <c>_handle</c> directly: <c>ManualResetEvent.SafeWaitHandle</c>
+        /// takes ownership of whatever <see cref="SafeHandle"/> it's assigned, so waiting on <c>_handle</c>
+        /// itself would let this wait handle's own <c>Dispose()</c> close the real process handle out
+        /// from under <see cref="HasExited"/>/<see cref="ExitCode"/>/<see cref="Kill"/>, which the reap
+        /// path still needs to call right after this fires. Instead this duplicates the raw handle
+        /// value into a brand-new <see cref="SafeWaitHandle"/> constructed with <c>ownsHandle: false</c>
+        /// — a second, non-owning view of the SAME OS handle — so disposing the wait wrapper below is
+        /// safe and never touches the real handle's lifetime.
+        /// </summary>
+        public void RegisterExitCallback(Action onExited)
+        {
+            var waitHandle = new ManualResetEvent(false)
+            {
+                SafeWaitHandle = new SafeWaitHandle(_handle.DangerousGetHandle(), ownsHandle: false)
+            };
+            RegisteredWaitHandle? registration = null;
+            registration = ThreadPool.RegisterWaitForSingleObject(
+                waitHandle,
+                (state, timedOut) =>
+                {
+                    try { onExited(); }
+                    finally
+                    {
+                        registration?.Unregister(null);
+                        waitHandle.Dispose();
+                    }
+                },
+                null,
+                Timeout.InfiniteTimeSpan,
+                executeOnlyOnce: true);
+        }
 
         /// <summary>The process exit code (only meaningful once <see cref="HasExited"/> is true).</summary>
         public int ExitCode
