@@ -40,6 +40,16 @@ namespace BuildConsole.Controls
         public void Initialize(BuildTrackerApiClient? api)
         {
             _api = api;
+            // Git #3884 — live diagnostic: settles, on every real run, whether `_api` was
+            // actually null (the real cause of the window's silent permanent no-op) vs.
+            // non-null-but-unconfigured (the issue's original hypothesis) vs. both fine
+            // (meaning some other failure). LoadDataAsync no longer gates on `_api` at all
+            // for the normal local-Dev case (see LocalSqlExecutor), so this is reporting
+            // only, not a functional guard.
+            BuildConsole.Services.ActivityLog.Log("chat-mappings",
+                _api == null
+                    ? "Initialize: _buildTrackerApi is null (deferred startup not finished yet, or client failed to init)"
+                    : $"Initialize: _buildTrackerApi non-null, IsConfigured={_api.IsConfigured}");
             _ = LoadDataAsync();
         }
 
@@ -50,15 +60,23 @@ namespace BuildConsole.Controls
 
         private async Task LoadDataAsync()
         {
-            if (_api == null) return;
-
+            // Git #3884 — must never silently no-op here. `_api` (the legacy HTTP
+            // BuildTrackerApiClient) is not actually required for the normal local-Dev
+            // path (LocalSqlExecutor talks straight to Postgres in that case) — only
+            // Staging/Production genuinely need it, and LocalSqlExecutor now throws a
+            // real, visible error in that case instead of this view refusing to even try.
             TxtStatus.Text = "Loading...";
             BtnReload.IsEnabled = false;
 
             try
             {
                 // 1. Fetch epics
-                var epicsRes = await LocalSqlExecutor.ExecuteAsync(_api, "SELECT id, github_number, title FROM bt_epics ORDER BY title;");
+                // Git #3884 — bt_epics/bt_chats/bt_chat_issues live in BuildConsole's own
+                // database, not the default "product" database LocalSqlExecutor otherwise
+                // falls to. Every query/write below must pass DatabaseRegistry.BuildConsoleKey
+                // explicitly, or it silently runs against the wrong DB (loudly wrong there —
+                // "relation does not exist" — but still wrong).
+                var epicsRes = await LocalSqlExecutor.ExecuteAsync(_api, "SELECT id, github_number, title FROM bt_epics ORDER BY title;", DatabaseRegistry.BuildConsoleKey);
                 var epics = new List<EpicComboItem> { new EpicComboItem { Id = null, DisplayName = "(Unlinked / None)" } };
                 if (epicsRes != null && epicsRes.Count > 0 && epicsRes[0].Rows != null)
                 {
@@ -80,7 +98,7 @@ namespace BuildConsole.Controls
                     SELECT c.id, c.conversation_id, c.title, c.epic_id, c.category, c.account,
                            (SELECT string_agg(cast(issue_number as text), ', ') FROM bt_chat_issues ci WHERE ci.chat_id = c.id) as associated_issues
                     FROM bt_chats c
-                    ORDER BY c.updated_at DESC;");
+                    ORDER BY c.updated_at DESC;", DatabaseRegistry.BuildConsoleKey);
 
                 _allChats.Clear();
                 if (chatsRes != null && chatsRes.Count > 0 && chatsRes[0].Rows != null)
@@ -186,7 +204,7 @@ namespace BuildConsole.Controls
 
         private async Task SaveEpicChangeAsync(ComboBox? cb)
         {
-            if (_api == null || cb == null) return;
+            if (cb == null) return;
             if (cb.DataContext is ChatMappingItem item)
             {
                 var selected = cb.SelectedItem as EpicComboItem;
@@ -201,7 +219,7 @@ namespace BuildConsole.Controls
                 try
                 {
                     string sqlVal = newEpicId.HasValue ? newEpicId.Value.ToString() : "NULL";
-                    await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET epic_id = {sqlVal}, updated_at = now() WHERE id = {item.Id}");
+                    await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET epic_id = {sqlVal}, updated_at = now() WHERE id = {item.Id}", DatabaseRegistry.BuildConsoleKey);
                     TxtStatus.Text = "Epic saved.";
                     if (Application.Current.MainWindow is MainWindow mw)
                     {
@@ -218,7 +236,6 @@ namespace BuildConsole.Controls
 
         private async void TitleTextBox_LostFocus(object sender, RoutedEventArgs e)
         {
-            if (_api == null) return;
             if (sender is TextBox tb && tb.DataContext is ChatMappingItem item)
             {
                 string text = (tb.Text ?? "").Trim();
@@ -230,7 +247,7 @@ namespace BuildConsole.Controls
 
                 try
                 {
-                    await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET title = '{text.Replace("'", "''")}', updated_at = now() WHERE id = {item.Id}");
+                    await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET title = '{text.Replace("'", "''")}', updated_at = now() WHERE id = {item.Id}", DatabaseRegistry.BuildConsoleKey);
                     item.LastSavedTitle = text;
                     TxtStatus.Text = "Title saved.";
                     if (Application.Current.MainWindow is MainWindow mw)
@@ -248,7 +265,6 @@ namespace BuildConsole.Controls
 
         private async void AccountComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (_api == null) return;
             if (sender is ComboBox cb && cb.DataContext is ChatMappingItem item)
             {
                 string account = (cb.SelectedValue as string) ?? "primary";
@@ -258,7 +274,7 @@ namespace BuildConsole.Controls
                 TxtStatus.Text = "Saving account...";
                 try
                 {
-                    await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET account = '{account}', updated_at = now() WHERE id = {item.Id}");
+                    await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET account = '{account}', updated_at = now() WHERE id = {item.Id}", DatabaseRegistry.BuildConsoleKey);
                     item.LastSavedAccount = account;
                     TxtStatus.Text = "Account saved.";
                     if (Application.Current.MainWindow is MainWindow mw)
@@ -285,8 +301,6 @@ namespace BuildConsole.Controls
         /// </summary>
         private async void BtnSaveAll_Click(object sender, RoutedEventArgs e)
         {
-            if (_api == null) return;
-
             var sql = new StringBuilder();
             var touched = new List<ChatMappingItem>();
 
@@ -341,7 +355,7 @@ namespace BuildConsole.Controls
             TxtStatus.Text = $"Saving {touched.Count} changed row(s)...";
             try
             {
-                await LocalSqlExecutor.ExecuteAsync(_api, sql.ToString());
+                await LocalSqlExecutor.ExecuteAsync(_api, sql.ToString(), DatabaseRegistry.BuildConsoleKey);
                 foreach (var item in touched)
                 {
                     item.LastSavedTitle = item.Title;
@@ -370,7 +384,6 @@ namespace BuildConsole.Controls
 
         private async void IssuesTextBox_LostFocus(object sender, RoutedEventArgs e)
         {
-            if (_api == null) return;
             if (sender is TextBox tb && tb.DataContext is ChatMappingItem item)
             {
                 string text = (tb.Text ?? "").Trim();
@@ -393,7 +406,7 @@ namespace BuildConsole.Controls
                         }
                     }
 
-                    await LocalSqlExecutor.ExecuteAsync(_api, sqlBatch.ToString());
+                    await LocalSqlExecutor.ExecuteAsync(_api, sqlBatch.ToString(), DatabaseRegistry.BuildConsoleKey);
                     item.LastSavedAssociatedIssuesString = text;
                     TxtStatus.Text = "Issues saved.";
                     if (Application.Current.MainWindow is MainWindow mw)
@@ -411,7 +424,6 @@ namespace BuildConsole.Controls
 
         private async void CategoryTextBox_LostFocus(object sender, RoutedEventArgs e)
         {
-            if (_api == null) return;
             if (sender is TextBox tb && tb.DataContext is ChatMappingItem item)
             {
                 string? text = (tb.Text ?? "").Trim();
@@ -424,7 +436,7 @@ namespace BuildConsole.Controls
                 try
                 {
                     string sqlVal = text == null ? "NULL" : $"'{text.Replace("'", "''")}'";
-                    await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET category = {sqlVal}, updated_at = now() WHERE id = {item.Id}");
+                    await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET category = {sqlVal}, updated_at = now() WHERE id = {item.Id}", DatabaseRegistry.BuildConsoleKey);
                     item.LastSavedCategory = text;
                     TxtStatus.Text = "Category saved.";
                     if (Application.Current.MainWindow is MainWindow mw)
@@ -442,7 +454,6 @@ namespace BuildConsole.Controls
 
         private async void BtnDeleteChat_Click(object sender, RoutedEventArgs e)
         {
-            if (_api == null) return;
             if (sender is Button btn && btn.DataContext is ChatMappingItem item)
             {
                 var result = MessageBox.Show(
@@ -456,7 +467,7 @@ namespace BuildConsole.Controls
 
                 try
                 {
-                    await LocalSqlExecutor.ExecuteAsync(_api, $"DELETE FROM bt_chat_issues WHERE chat_id = {item.Id}; DELETE FROM bt_chats WHERE id = {item.Id};");
+                    await LocalSqlExecutor.ExecuteAsync(_api, $"DELETE FROM bt_chat_issues WHERE chat_id = {item.Id}; DELETE FROM bt_chats WHERE id = {item.Id};", DatabaseRegistry.BuildConsoleKey);
                     _allChats.Remove(item);
                     ApplyFilter();
                     TxtStatus.Text = "Chat mapping deleted successfully.";

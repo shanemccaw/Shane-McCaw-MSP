@@ -96,7 +96,7 @@ namespace BuildConsole.Services
             return DatabaseRegistry.Resolve(entry, repoRoot);
         }
 
-        public static async Task<List<SqlStatementResult>> ExecuteAsync(BuildTrackerApiClient api, string sql)
+        public static async Task<List<SqlStatementResult>> ExecuteAsync(BuildTrackerApiClient? api, string sql)
             => await ExecuteAsync(api, sql, DatabaseRegistry.DefaultKey);
 
         /// <summary>
@@ -107,11 +107,17 @@ namespace BuildConsole.Services
         /// which only ever serves the product database — there is no Staging/Production
         /// equivalent of BuildConsole's or shanes-life's own database to switch to there.
         /// </summary>
-        public static async Task<List<SqlStatementResult>> ExecuteAsync(BuildTrackerApiClient api, string sql, string databaseKey)
+        public static async Task<List<SqlStatementResult>> ExecuteAsync(BuildTrackerApiClient? api, string sql, string databaseKey)
         {
             var env = GetCurrentTargetEnvironment();
             if (env == TargetEnvironment.Dev)
             {
+                // Git #3884 — the Dev path never touches `api`; it's a direct Npgsql connection
+                // against the local/registry-resolved database. `api` used to be a required,
+                // non-null parameter here even though it's genuinely unused for this branch —
+                // a vestigial requirement that pushed callers (e.g. ChatMappingsDocumentView) to
+                // gate their whole load on "is the HTTP api-server client non-null", which is a
+                // completely different, unrelated dependency for the normal local-Dev case.
                 var connStr = GetConnectionString(databaseKey);
                 if (string.IsNullOrWhiteSpace(connStr))
                 {
@@ -125,7 +131,15 @@ namespace BuildConsole.Services
             }
             else
             {
-                if (api == null) throw new ArgumentNullException(nameof(api));
+                // Only the Staging/Production path genuinely needs the HTTP api-server client —
+                // this is the one branch where `api` being null or unconfigured is a real,
+                // reportable failure, not a silent no-op.
+                if (api == null)
+                {
+                    throw new InvalidOperationException(
+                        "No Build Tracker API client is available for the Staging/Production target — " +
+                        "this session hasn't finished starting up yet, or the client failed to initialize.");
+                }
                 if (!api.IsConfigured)
                 {
                     throw new InvalidOperationException(

@@ -76,6 +76,14 @@ namespace BuildConsole.Services
         /// <summary>Default selection — matches the SQL Runner's existing pre-#3705 behavior.</summary>
         public const string DefaultKey = "product";
 
+        /// <summary>
+        /// Git #3884 — named constant for the "buildconsole" key so real bt_* callers (e.g.
+        /// ChatMappingsDocumentView) can't accidentally fall through to <see cref="DefaultKey"/>
+        /// ("product") by omitting the databaseKey argument. bt_epics/bt_chats/bt_chat_issues
+        /// live in BuildConsole's own database, not the product database.
+        /// </summary>
+        public const string BuildConsoleKey = "buildconsole";
+
         public static DatabaseRegistryEntry? FindByKey(string? key)
         {
             if (string.IsNullOrWhiteSpace(key)) return null;
