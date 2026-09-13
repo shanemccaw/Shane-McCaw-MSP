@@ -481,8 +481,10 @@ namespace BuildConsole.Controls
 
         /// <summary>Git #3676 — real epic/gate anchor rows, one per real open epic currently
         /// known to the app (<see cref="_chatEpicById"/> — the same real source the epic-header
-        /// list itself renders from, filtered to OPEN epics by the server already), plus the
-        /// "No feature yet — decide later" closing row.</summary>
+        /// list itself renders from), plus the "No feature yet — decide later" closing row.
+        /// Git #3886 — closed epics are excluded here (the underlying dictionary is not
+        /// guaranteed pre-filtered to OPEN), and when Focus mode has an active milestone the
+        /// list is further narrowed to that milestone's real open epics only.</summary>
         private void PopulateNewChatPickerHost()
         {
             if (NewChatPickerHost == null) return;
@@ -502,10 +504,32 @@ namespace BuildConsole.Controls
                 }
             });
 
+            // Git #3886 — never show a closed epic (BoardEpic.Status follows the same
+            // OrdinalIgnoreCase "CLOSED" convention GitDetailView.StatePill already uses),
+            // and when Focus mode has an active milestone, narrow further to that milestone's
+            // real open epics only (Focus is an additional narrowing, not a requirement).
             var epics = _chatEpicById.Values
                 .Where(ep => ep.GithubNumber.HasValue)
+                .Where(ep => !string.Equals(ep.Status, "CLOSED", StringComparison.OrdinalIgnoreCase))
+                .Where(ep => !FocusModeService.Instance.IsActive || FocusModeService.Instance.IsIssueInActiveMilestone(ep.GithubNumber))
                 .OrderBy(ep => ep.Title, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+
+            if (epics.Count == 0)
+            {
+                string emptyMessage = FocusModeService.Instance.IsActive
+                    ? "No open epics in the active Focus milestone yet."
+                    : "No open epics found.";
+                NewChatPickerHost.Children.Add(new TextBlock
+                {
+                    Text = emptyMessage,
+                    FontSize = 10.5,
+                    Foreground = HexBrush("#8B949E"),
+                    FontStyle = FontStyles.Italic,
+                    Margin = new Thickness(10, 8, 10, 8),
+                    TextWrapping = TextWrapping.Wrap
+                });
+            }
 
             foreach (var epic in epics)
             {
