@@ -41,6 +41,7 @@ namespace BuildConsole.Controls
 
             if (_store != null)
             {
+                await _store.ReconcileGitIssueSyncAsync();
                 _allEntries = await _store.ListAllBugsAsync();
             }
             else
@@ -50,6 +51,22 @@ namespace BuildConsole.Controls
 
             PopulateDropdowns();
             ApplyFilters();
+        }
+
+        private async void BtnCleanFiles_Click(object sender, RoutedEventArgs e)
+        {
+            BtnCleanFiles.IsEnabled = false;
+            try
+            {
+                var result = await VisualTestTrackerCleanup.RunCleanupAsync(_store);
+                BdrBanner.Visibility = Visibility.Visible;
+                TxtBanner.Text = $"🧹 Disk Cleanup Completed: {result.SummaryDisplay}";
+                await RefreshBugsAsync();
+            }
+            finally
+            {
+                BtnCleanFiles.IsEnabled = true;
+            }
         }
 
         private void PopulateDropdowns()

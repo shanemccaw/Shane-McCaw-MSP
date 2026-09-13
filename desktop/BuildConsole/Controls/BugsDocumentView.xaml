@@ -20,7 +20,8 @@
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <Button x:Name="BtnRefresh" Content="⟳ Refresh" Style="{StaticResource SecondaryButton}" Padding="10,4" Margin="0,0,8,0" Click="BtnRefresh_Click"/>
+                    <Button x:Name="BtnCleanFiles" Content="🧹 Clean Up Files" Style="{StaticResource SecondaryButton}" Padding="10,4" Margin="0,0,8,0" Click="BtnCleanFiles_Click" ToolTip="Purge old resolved screenshots and orphan capture files from disk"/>
+                    <Button x:Name="BtnRefresh" Content="⟳ Refresh &amp; Sync" Style="{StaticResource SecondaryButton}" Padding="10,4" Click="BtnRefresh_Click"/>
                 </StackPanel>
             </DockPanel>
 

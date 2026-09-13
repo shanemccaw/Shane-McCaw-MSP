@@ -383,6 +383,62 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>
+        /// Reconciles local bugs with GitHub Issue state via GitHubIssueMirror.
+        /// If a linked Git issue is closed on GitHub, marks the local bug as Resolved.
+        /// If SiteName, EpicName, or Title are blank, populates them from GitHub issue metadata.
+        /// </summary>
+        public async Task ReconcileGitIssueSyncAsync()
+        {
+            try
+            {
+                var allBugs = await ListAllBugsAsync();
+                foreach (var bug in allBugs)
+                {
+                    if (bug.GitIssueNumber.HasValue && bug.GitIssueNumber.Value > 0)
+                    {
+                        var mirror = await GitHubIssueMirror.TryGetAsync(bug.GitIssueNumber.Value);
+                        if (mirror != null)
+                        {
+                            bool updated = false;
+
+                            // Sync State: If closed on GitHub, set local status to Resolved
+                            if (string.Equals(mirror.State, "closed", StringComparison.OrdinalIgnoreCase) &&
+                                string.Equals(bug.Status, "Open", StringComparison.OrdinalIgnoreCase))
+                            {
+                                bug.Status = "Resolved";
+                                await UpdateEntryStatusAsync(bug.EntryUuid, "Resolved");
+                                updated = true;
+                            }
+
+                            // Sync Title if blank
+                            if (string.IsNullOrWhiteSpace(bug.Title) && !string.IsNullOrWhiteSpace(mirror.Title))
+                            {
+                                bug.Title = mirror.Title;
+                                updated = true;
+                            }
+
+                            // Sync Epic if blank
+                            if (string.IsNullOrWhiteSpace(bug.EpicName) && !string.IsNullOrWhiteSpace(mirror.BoardStatusName))
+                            {
+                                bug.EpicName = mirror.BoardStatusName;
+                                updated = true;
+                            }
+
+                            if (updated)
+                            {
+                                await SaveEntryAsync(bug);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"ReconcileGitIssueSyncAsync error: {ex.Message}");
+            }
+        }
+
         /// <summary>Saves or updates a bug entry to both local JSON and PostgreSQL.</summary>
         public async Task SaveEntryAsync(VisualTestTrackerEntry entry)
         {
