@@ -250,6 +250,57 @@ function startService(svc) {
 // --- CLI Commands & Flags ---
 const args = process.argv.slice(2);
 
+const USAGE = `Usage: node scripts/dev-all.mjs [flag]
+
+With no flag, starts every configured service from scripts/dev-server/services.json
+(killing whatever currently holds each service's port first). This is destructive to
+anything already listening on those ports — see the worktree guard below.
+
+Flags:
+  --help, -h            Show this usage and exit. Touches no running process.
+  --status              Print each service's recorded status as JSON and exit.
+  --start, --only, --service <name>   Start only the named service.
+  --stop <name>          Stop only the named service.
+
+Env:
+  DEV_ALL_ONLY=a,b,c     Start only these services (used by the Build Set coordinator).
+  DEV_ALL_FORCE=1        Required to run the default full-stack start from an agent
+                         worktree (a cwd under C:\\wt\\...) — see the worktree guard.
+`;
+
+const KNOWN_FLAGS = new Set([
+  "--help",
+  "-h",
+  "--status",
+  "--start",
+  "--only",
+  "--service",
+  "--stop",
+]);
+
+function isKnownArg(arg, index) {
+  const bare = arg.split("=")[0];
+  if (KNOWN_FLAGS.has(bare)) return true;
+  // A bare value following --start/--only/--service/--stop (space-separated form).
+  const prev = args[index - 1];
+  if (prev && KNOWN_FLAGS.has(prev) && prev !== "--help" && prev !== "-h" && prev !== "--status") {
+    return true;
+  }
+  return false;
+}
+
+if (args.includes("--help") || args.includes("-h")) {
+  process.stdout.write(USAGE);
+  process.exit(0);
+}
+
+const unrecognized = args.filter((a, i) => !isKnownArg(a, i));
+if (unrecognized.length > 0) {
+  console.error(`Unrecognized argument(s): ${unrecognized.join(" ")}\n`);
+  process.stderr.write(USAGE);
+  process.exit(1);
+}
+
 function getArgValue(flag) {
   const idx = args.indexOf(flag);
   if (idx !== -1 && idx + 1 < args.length) return args[idx + 1];
@@ -301,6 +352,30 @@ if (singleStop) {
   recordServiceMeta(target, null, "stopped");
   logInfo(`Service ${target.name} stopped.`, target.name);
   process.exit(0);
+}
+
+// Git #3797 worktree guard: dev services are meant to run from the main checkout
+// only (CLAUDE.md's "Mandatory worktree isolation" section) — an agent worktree is
+// provisioned at C:\wt\<id> (see scripts/dev-server/provision-worktree.mjs) and is
+// never the right place to kill live ports and restart the full stack from, since
+// the resulting children get rooted in the worktree path instead of the main
+// checkout (Git #3647 incident: services ended up serving worktree-rooted code on
+// shared ports, others left down with nothing restarting them). Only the default
+// full-stack start is gated here — --status/--stop/--start <one service> are not
+// destructive to the whole stack and are left alone.
+const isAgentWorktree = /[\\/]wt[\\/]/i.test(repoRoot);
+if (!singleStart && !singleStop && isAgentWorktree && process.env.DEV_ALL_FORCE !== "1") {
+  console.error(
+    `Refusing to run the default full-stack start from an agent worktree:\n` +
+      `  ${repoRoot}\n\n` +
+      `Dev services run from the main checkout (see CLAUDE.md's "Mandatory worktree\n` +
+      `isolation" section) — this path kills whatever is on each service's port and\n` +
+      `restarts it rooted in this worktree instead, which is exactly the Git #3647\n` +
+      `incident. Run dev-all.mjs from the main checkout, or pass --status / --start\n` +
+      `<service> / --stop <service> for a non-destructive single-service action.\n` +
+      `Set DEV_ALL_FORCE=1 to override if you genuinely mean to do this.\n`
+  );
+  process.exit(1);
 }
 
 if (singleStart) {
