@@ -45,12 +45,10 @@ namespace BuildConsole.Controls
         // Git #2802 — Shane's real, confirmed decision (2026-09-04): Sonnet 5's real native
         // context window is 1,000,000 tokens (not a separate API-only beta tier), and 300k
         // significantly undersold it. 900_000 is the deliberate safety margin below the full 1M,
-        // giving real headroom before the practical degradation zone. NOTE: the color-tier /
-        // "Start New Chat" thresholds in UpdateGauge below (60k/85k/100k) are a DIFFERENT,
-        // deliberately-independent set of raw-token thresholds — ported verbatim from the retired
-        // meterState banner's own absolute per-conversation degradation points (Git #2727), not
-        // computed as a percentage of ContextBudget — so they do NOT scale with this value and are
-        // intentionally left unchanged here.
+        // giving real headroom before the practical degradation zone. Git #3920 — the color-tier /
+        // "Start New Chat" thresholds in UpdateGauge below now live on MessageChurnCap (a real,
+        // accurate message count) instead of this token estimate; ContextBudget still feeds the
+        // token-breakdown tooltip only.
         private const double ContextBudget = 900_000;
         // Git #3724 — the old flat FixedOverhead = 40_000 was one opaque blob with no breakdown of
         // what it represented, so a comfortable-looking total could mask real overhead that grew
@@ -59,6 +57,12 @@ namespace BuildConsole.Controls
         // is and is NOT (both are documented approximations, not measurements of what Anthropic's
         // servers actually send; BuildConsole has no way to measure that from a WebView2 host).
         private const double CharsPerTokenFactor = 0.28;
+        // Git #3920 — Shane's real, confirmed decision: the token estimate above is a documented
+        // approximation that's never accurate. turnCount (already resolved by
+        // ResolveConversationMeter() and already displayed as "Messages: {turnCount}" in
+        // UpdateActiveTime()) is the real, accurate signal, so the bar/color/Start-New-Chat basis
+        // moved to it. 50 is Shane's real cap.
+        private const int MessageChurnCap = 50;
 
         private readonly BoardChat _chat;
         private readonly MainWindow _owner;
@@ -346,32 +350,26 @@ namespace BuildConsole.Controls
             return (estTokens, turnCount, haveData);
         }
 
-        /// <summary>README §2 context maths. used = overhead (system prompt baseline + MCP tool-schema
-        /// estimate) + conversation estimate + draft; the conversation estimate uses the real meter
-        /// store when it has one, else the 0.28/char shape. The gauge fill + "≈Xk / {budget}k" text
-        /// stay on this overhead-inclusive scale (Shane confirmed this half is correct as-is —
-        /// Git #2727; budget was 300k, now 900k — Git #2802).
+        /// <summary>Git #3920 — the bar fill, color tiers and Start New Chat threshold are now driven
+        /// off <c>turnCount</c> (the real, accurate per-tab message count already resolved by
+        /// <see cref="ResolveConversationMeter"/> and already shown as "Messages: {turnCount}" in
+        /// <see cref="UpdateActiveTime"/>), capped at <see cref="MessageChurnCap"/> — not the
+        /// token estimate, which Shane confirmed is never accurate. The token breakdown (README §2
+        /// maths: overhead (system prompt baseline + MCP tool-schema estimate) + conversation
+        /// estimate + draft, against <see cref="ContextBudget"/>) still computes and still shows on
+        /// <see cref="BuildOverheadTooltip"/> hover — it's tooltip-only reference now, no longer what
+        /// drives the bar or the color. See <see cref="ChatContextOverheadEstimator"/> for what each
+        /// overhead component is and its honest documented-approximation-vs-measurement status.
         ///
-        /// Git #3724 — overhead is no longer one opaque flat number. It's split into and DISPLAYED as
-        /// system-prompt baseline + MCP tool-schema estimate + conversation, so a comfortable-looking
-        /// conversation figure can't mask a genuinely tight real total once overhead is counted (the
-        /// concrete case that motivated this: a 16-message, tool-heavy real chat read "42k/900k" —
-        /// comfortable — while claude.ai was actively compacting it; #3724's build-journal has the
-        /// real activity-log evidence). See ChatContextOverheadEstimator for what each overhead
-        /// component is and its honest documented-approximation-vs-measurement status.
-        ///
-        /// Git #2727 — colour + Start-New-Chat now use the RAW conversation token count against the
-        /// retired `meterState` banner's own real absolute-token tiers (60k/85k/100k/130k), ported
-        /// here rather than dropped, per #2727's "don't silently lose real functionality" call. This
-        /// is now the ONE real chat-context indicator — the old separate banner in MainWindow is
-        /// retired.</summary>
+        /// Git #2727 — this is still the ONE real chat-context indicator — the old separate banner in
+        /// MainWindow is retired.</summary>
         private void UpdateGauge()
         {
             // Git #2808 — read through ResolveConversationMeter so Band 1's gauge uses the same
             // persisted-store-then-live-meter fallback (and per-link diagnostic) as "Messages:" above,
             // instead of reading only the persisted store (which the verified #2808 symptom showed was
             // never written, leaving this stuck at 0 → the 40k floor).
-            var (resolvedTokens, _, _) = ResolveConversationMeter();
+            var (resolvedTokens, turnCount, _) = ResolveConversationMeter();
             double conversationTokens = resolvedTokens > 0 ? resolvedTokens : 0;
 
             double draftTokens = (ChatComposer?.Text?.Length ?? 0) * CharsPerTokenFactor;
@@ -384,34 +382,44 @@ namespace BuildConsole.Controls
             double overheadTotal = systemPromptOverhead + mcpOverhead.TotalTokens;
 
             double used = overheadTotal + conversationTokens + draftTokens;
-            double pct = Math.Min(1.0, used / ContextBudget);
 
-            // Git #3724 — was one flat "{used}k / {budget}k" number. Now shows conversation and
-            // overhead as separate figures so overhead growth (this project's own MCP connectors,
-            // concretely) can't hide behind a comfortable-looking conversation number.
-            CtxGauge.Text = $"{FormatK(conversationTokens)} conv + {FormatK(overheadTotal)} ovh / {FormatK(ContextBudget)} ctx";
+            // Git #3920 — the bar/color/Start-New-Chat basis moved from the token estimate (`used /
+            // ContextBudget`) to the real, accurate turnCount (same value already resolved above and
+            // already shown as "Messages: {turnCount}"), capped at MessageChurnCap. The token
+            // breakdown (CtxGauge.Text/ToolTip below) is demoted to tooltip-only reference — it no
+            // longer drives the bar or the color.
+            double pct = Math.Min(1.0, (double)turnCount / MessageChurnCap);
+
+            // Git #3920 — was the token breakdown ("{conv}k conv + {ovh}k ovh / 900k ctx"); the
+            // message count is the real, accurate readout now. The token breakdown moved to the
+            // tooltip below, still available on hover.
+            CtxGauge.Text = $"{turnCount}/{MessageChurnCap} msgs";
             CtxGauge.ToolTip = BuildOverheadTooltip(conversationTokens, systemPromptOverhead, mcpOverhead, draftTokens, used);
 
-            // Ported tiers (were meterState's 60k/85k/100k/130k, MainWindow.xaml.cs — Git #2727).
+            // Git #3920 — tiers rescaled from the old raw-token thresholds (60k/85k/100k against the
+            // retired meterState banner's 100k "Critical" reference point) to the same real ratios
+            // (60%/85%/100%) applied to MessageChurnCap instead of re-deriving new thresholds from
+            // nothing: 30 (60% of 50), 43 (85% of 50, rounded from 42.5), 50 (100% of 50).
             // Hex values match the app's own GreenBrush/YellowBrush/PeachBrush/RedBrush
             // (Themes/DarkTheme.xaml) so this reads as the same real palette, not a new one.
             Color c;
             string tierLabel;
-            if (conversationTokens >= 100_000) { c = (Color)ColorConverter.ConvertFromString("#F38BA8"); tierLabel = "Critical"; }
-            else if (conversationTokens >= 85_000) { c = (Color)ColorConverter.ConvertFromString("#FAB387"); tierLabel = "Very long"; }
-            else if (conversationTokens >= 60_000) { c = (Color)ColorConverter.ConvertFromString("#F9E2AF"); tierLabel = "Getting long"; }
+            if (turnCount >= MessageChurnCap) { c = (Color)ColorConverter.ConvertFromString("#F38BA8"); tierLabel = "Critical"; }
+            else if (turnCount >= 43) { c = (Color)ColorConverter.ConvertFromString("#FAB387"); tierLabel = "Very long"; }
+            else if (turnCount >= 30) { c = (Color)ColorConverter.ConvertFromString("#F9E2AF"); tierLabel = "Getting long"; }
             else { c = (Color)ColorConverter.ConvertFromString("#A6E3A1"); tierLabel = "Normal"; }
             CtxGauge.Foreground = new SolidColorBrush(c);
 
-            // Start New Chat now fires at the same 60k tier the retired banner first offered
-            // "Start handoff chat" at (Git #1885), not System B's old flat 75%-of-300k cutoff.
-            BtnStartNewChat.Visibility = conversationTokens >= 60_000 ? Visibility.Visible : Visibility.Collapsed;
+            // Git #3920 — Start New Chat now fires at the same 60%-of-cap tier it already fired at
+            // (30 messages == the old conversationTokens >= 60_000 tier), just on the new
+            // message-count basis instead of the token estimate.
+            BtnStartNewChat.Visibility = turnCount >= 30 ? Visibility.Visible : Visibility.Collapsed;
 
             double cost = conversationTokens * (3.00 / 1_000_000.0);
-            double remainingToCritical = Math.Max(0, 100_000.0 - conversationTokens);
-            BtnStartNewChat.ToolTip = conversationTokens > 0
-                ? $"{tierLabel} — {conversationTokens:N0} conversation tokens (~${cost:F3} est. cost)\n" +
-                  $"Remaining to critical (100k): {remainingToCritical:N0} tokens\n" +
+            int remainingToCritical = Math.Max(0, MessageChurnCap - turnCount);
+            BtnStartNewChat.ToolTip = turnCount > 0
+                ? $"{tierLabel} — {turnCount}/{MessageChurnCap} messages (~${cost:F3} est. cost)\n" +
+                  $"Remaining to critical ({MessageChurnCap} msgs): {remainingToCritical:N0} messages\n" +
                   "Context is getting full — start a fresh chat on this epic"
                 : "Context is getting full — start a fresh chat on this epic";
 
