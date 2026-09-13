@@ -65,6 +65,7 @@ export const CHILD_GROUPS: Group[] = [
   },
   {
     id: "g.comm", label: "Commercial", icon: "receipt", children: [
+      { id: "status-reports", label: "Status Reports", icon: "file-pen" },
       { id: "contracts", label: "Contracts", icon: "file-text" },
       { id: "hub", label: "Documents", icon: "files" },
       { id: "billing", label: "Billing", icon: "receipt" },

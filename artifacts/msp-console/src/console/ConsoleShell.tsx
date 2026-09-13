@@ -14,6 +14,7 @@ import { Diagnostics } from "./modules/Diagnostics";
 import { Remediation } from "./modules/Remediation";
 import { Webhooks } from "./modules/Webhooks";
 import { DataRights } from "./modules/DataRights";
+import { StatusReports } from "./modules/StatusReports";
 import { Documents } from "./modules/Documents";
 import { Team } from "./modules/Team";
 import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
@@ -256,6 +257,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "page" && sel.page === "dr") {
     return <DataRights customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "status-reports") {
+    return <StatusReports customerId={sel.tenant} />;
   }
   if (sel.kind === "page" && sel.page === "team") {
     const customer = customers.find((c) => c.id === sel.tenant);
