@@ -1,15 +1,27 @@
 # Shane's Survival
 
-A standalone WPF (.NET 8) desktop app, own local Postgres database. **Not part of, and has no
-dependency on, the Shane-McCaw-MSP or Finance-Tracker repos** — no shared code, schema, or
-conventions with either.
+A standalone WPF (.NET 8) desktop app. **Not part of, and has no code dependency on, the
+Shane-McCaw-MSP MSP product or the Finance-Tracker repo** — no shared C#/TypeScript code or
+build conventions with either.
+
+**Correction, Git #3291 (2026-09-13): the "no shared schema" half of that claim is no longer
+true, and hasn't been since #3107.** This app's Postgres database (`finances`) is the *same*
+real database [`web/shanes-life`](../../web/shanes-life/) reads and writes — shanes-life's own
+migrations start at 013 and extend this app's real 001–012 (see shanes-life's README, "One
+database, shared with ShanesSurvival"). The real financial core this app's Dashboard used to own
+(accounts, bills, debts, income, pay-period plans, Plaid items) now lives in that same shared
+database as shanes-life's real, migrated data — confirmed live 2026-09-13: 25 real `accounts`
+rows, 11 `bill_cycle_snapshots`, 2 `debts`, 9 `income_entries`, 1 `pay_period_plans`, 2
+`plaid_items`, one shared `schema_migrations` ledger past 074. What genuinely has no
+dependency on this repo is this app's own *code* — see "Status" below for what was actually
+removed in #3296.
 
 > **Why this lives under `desktop/` in Shane-McCaw-MSP:** this is Shane's personal project, not
 > MSP business code. It started life in its own standalone local repo
 > (`C:\Source\ShanesSurvival`); it was copied in here purely for real, convenient tracking
 > alongside the rest of Shane's work (issue/build-journal history, one place to find it) — not
-> because it's part of the MSP product. The statement above still holds: nothing here shares
-> code, schema, or conventions with the rest of this repo.
+> because it's part of the MSP product. The database is now genuinely shared with
+> `web/shanes-life` (see above); the code still is not.
 
 ## Status — real, narrowed role (#3296, 2026-09-10)
 
