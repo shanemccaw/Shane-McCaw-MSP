@@ -3159,7 +3159,7 @@ namespace BuildConsole
                                 FontSize = 8,
                                 FontFamily = new FontFamily("Consolas"),
                                 TextWrapping = TextWrapping.Wrap,
-                                Foreground = (Brush)FindResource("Overlay1Brush"),
+                                Foreground = (Brush)(TryFindResource("Overlay1Brush") ?? TryFindResource("OverlayBrush") ?? TryFindResource("TextDisabledBrush") ?? Brushes.Gray),
                                 Margin = new Thickness(8, 0, 0, 3)
                             };
                             diagStack.Children.Add(stackText);
@@ -3233,7 +3233,7 @@ namespace BuildConsole
                                 FontSize = 8,
                                 FontFamily = new FontFamily("Consolas"),
                                 TextWrapping = TextWrapping.Wrap,
-                                Foreground = (Brush)FindResource("Overlay1Brush"),
+                                Foreground = (Brush)(TryFindResource("Overlay1Brush") ?? TryFindResource("OverlayBrush") ?? TryFindResource("TextDisabledBrush") ?? Brushes.Gray),
                                 Margin = new Thickness(12, 0, 0, 0)
                             });
                         }

@@ -44,6 +44,9 @@
     <SolidColorBrush x:Key="Surface1Brush" Color="#45475A"/>
     <SolidColorBrush x:Key="Surface2Brush" Color="#585B70"/>
     <SolidColorBrush x:Key="OverlayBrush"  Color="{StaticResource TextDisabledColor}"/>  <!-- was #6C7086 -->
+    <SolidColorBrush x:Key="Overlay0Brush" Color="{StaticResource TextDisabledColor}"/>  <!-- alias #6C7086 -->
+    <SolidColorBrush x:Key="Overlay1Brush" Color="{StaticResource TextSecondaryColor}"/> <!-- alias #7F849C / secondary subtle text for diagnostics -->
+    <SolidColorBrush x:Key="Overlay2Brush" Color="{StaticResource TextSecondaryColor}"/> <!-- alias #9399B2 -->
     <SolidColorBrush x:Key="TextBrush"     Color="{StaticResource TextPrimaryColor}"/>    <!-- was #CDD6F4 -->
     <SolidColorBrush x:Key="Subtext0Brush" Color="{StaticResource TextSecondaryColor}"/>  <!-- was #BAC2DE -->
     <SolidColorBrush x:Key="Subtext1Brush" Color="{StaticResource TextSecondaryColor}"/>  <!-- was #A6ADC8 -->
