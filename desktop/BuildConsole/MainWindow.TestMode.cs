@@ -425,8 +425,17 @@ namespace BuildConsole
 
         private void OpenSessionHistoryForTestMode()
         {
-            var dlg = new SessionHistoryDialog { Owner = this };
+            var dlg = new SessionHistoryDialog(LoadBugsFromHistory) { Owner = this };
             dlg.ShowDialog();
+        }
+
+        private void LoadBugsFromHistory(List<BugCardViewModel> bugs)
+        {
+            if (bugs == null || bugs.Count == 0) return;
+            foreach (var bug in bugs)
+                TestModeComposerPanel.AllBugs.Add(bug);
+            TestModeComposerPanel.RefreshBugDrawer();
+            TestModeComposerPanel.ShowToast($"Loaded {bugs.Count} bug(s) from history.");
         }
 
         private async Task ExecuteEndSessionSyncAsync()
@@ -552,6 +561,9 @@ namespace BuildConsole
                         ToastEngine.Success("Session Synced", $"✓ Saved to /Bugs/{syncRes.ProductName}/{syncRes.SessionId}/ and synced to Git{commitPart}{pushPart}.");
                         TestModeComposerPanel.ShowToast($"Synced to /Bugs/{syncRes.ProductName}/{syncRes.SessionId}/");
 
+                        // Stamp bugs and session record as synced
+                        StampSessionSynced(context, syncRes.SessionId);
+
                         if (TestModeComposerPanel.IsAutoClearChecked)
                         {
                             TestModeComposerPanel.ClearComposer();
@@ -581,6 +593,9 @@ namespace BuildConsole
                     ToastEngine.Success("Session Synced", $"✓ Saved to /Bugs/{syncRes.ProductName}/{syncRes.SessionId}/ and synced to Git{commitPart}{pushPart}.");
                     TestModeComposerPanel.ShowToast($"Synced to /Bugs/{syncRes.ProductName}/{syncRes.SessionId}/");
 
+                    // Stamp bugs and session record as synced
+                    StampSessionSynced(context, syncRes.SessionId);
+
                     if (TestModeComposerPanel.IsAutoClearChecked)
                     {
                         TestModeComposerPanel.ClearComposer();
@@ -592,6 +607,41 @@ namespace BuildConsole
             catch (Exception ex)
             {
                 ToastEngine.Error("Session Sync Error", ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// After a successful sync: stamps every bug that was in the sync payload as IsSynced=true,
+        /// and writes SyncedSessionId back onto the matching VisualTestTrackerSession record so the
+        /// History dialog can display the correct ✓ Synced pill.
+        /// </summary>
+        private void StampSessionSynced(SessionSyncContext context, string syncedSessionId)
+        {
+            if (string.IsNullOrEmpty(syncedSessionId)) return;
+
+            // Stamp the live bug cards
+            var syncedIds = context.Entries.Select(e => e.EntryUuid).ToList();
+            TestModeComposerPanel.MarkBugsSynced(syncedSessionId, syncedIds);
+
+            // Stamp the session record in sessions.json so the pill shows next time History opens
+            try
+            {
+                var sessions = VisualTestTrackerSessionStore.LoadAll();
+                // Match by StartedAt proximity (within 10 minutes) and page path
+                var match = sessions.FirstOrDefault(s =>
+                    string.Equals(s.PagePath, context.PagePath, StringComparison.OrdinalIgnoreCase) &&
+                    Math.Abs((s.StartedAt - context.StartedAt).TotalMinutes) < 10 &&
+                    string.IsNullOrEmpty(s.SyncedSessionId));
+
+                if (match != null)
+                {
+                    match.SyncedSessionId = syncedSessionId;
+                    VisualTestTrackerSessionStore.SaveAll(sessions);
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("visual-test-tracker", $"StampSessionSynced save error: {ex.Message}");
             }
         }
 

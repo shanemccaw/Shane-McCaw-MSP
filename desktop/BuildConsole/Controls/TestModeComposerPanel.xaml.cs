@@ -33,6 +33,10 @@ namespace BuildConsole.Controls
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public bool IsResolved { get; set; }
 
+        // Sync tracking – set to true after a successful End & Sync
+        public bool IsSynced { get; set; }
+        public string SyncedSessionId { get; set; } = "";
+
         public string TimestampDisplay => CreatedAt.ToString("HH:mm:ss");
         public string StatusButtonLabel => IsResolved ? "✓ Resolved" : "● Open";
         public bool HasScreenshot => Screenshots != null && Screenshots.Count > 0;
@@ -514,6 +518,24 @@ namespace BuildConsole.Controls
             // Mark session dot amber
             DotSessionPulse.Fill = new SolidColorBrush(Color.FromRgb(0xD4, 0xA5, 0x6C));
             ChkGood.IsChecked = false;
+        }
+
+        /// <summary>
+        /// Stamps all bug entries whose IDs are in <paramref name="ids"/> as synced.
+        /// Call this after a successful End &amp; Sync so the history panel can show the correct pill.
+        /// </summary>
+        public void MarkBugsSynced(string sessionId, IEnumerable<string> ids)
+        {
+            if (string.IsNullOrEmpty(sessionId)) return;
+            var idSet = new HashSet<string>(ids ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+            foreach (var bug in AllBugs)
+            {
+                if (!bug.IsSynced && idSet.Contains(bug.Id))
+                {
+                    bug.IsSynced = true;
+                    bug.SyncedSessionId = sessionId;
+                }
+            }
         }
 
         /// <summary>

@@ -25,6 +25,13 @@ namespace BuildConsole.Services
         public bool IsActive { get; set; } = true;
         public DateTime LastActiveAt { get; set; } = DateTime.Now;
 
+        /// <summary>
+        /// Set to the formatted SessionId (yyyy-MM-dd-HHmm) after a successful End &amp; Sync so
+        /// the SessionHistoryDialog can locate report.json and display the ✓ Synced pill.
+        /// Empty string means this session has never been synced.
+        /// </summary>
+        public string SyncedSessionId { get; set; } = "";
+
         [System.Text.Json.Serialization.JsonIgnore]
         public TimeSpan TotalElapsed
         {
