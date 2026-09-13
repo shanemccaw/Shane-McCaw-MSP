@@ -53,19 +53,37 @@ function normaliseNeeds(needs) {
 }
 
 const MAX_STEP_INGS = 30;
+const MAX_TIMER_MINUTES = 180;
+
+/** A step's own optional real timer (Git #3255, design turn t2/2a-2b: "Start a 7-minute timer" on
+ *  a step that names a duration, matching the prototype's own seed shape `timer: { label, min }`).
+ *  Undefined/null clears it (no "Start a timer" affordance on that step) -- most steps have none.
+ *  `minutes` backs a real Git #3307 standalone `timers` row when Shane actually starts it, so it
+ *  has to be a genuine positive whole number of minutes, same discipline `normaliseCookMinutes`
+ *  below already applies to the recipe-level number. */
+function normaliseStepTimer(raw, i) {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) throw badRequest(`steps[${i}].timer must be an object with a real minutes`);
+  const minutes = Number(raw.minutes ?? raw.min);
+  if (!Number.isFinite(minutes) || !Number.isInteger(minutes) || minutes <= 0 || minutes > MAX_TIMER_MINUTES) {
+    throw badRequest(`steps[${i}].timer.minutes must be a whole number of minutes between 1 and ${MAX_TIMER_MINUTES}`);
+  }
+  const label = String(raw.label ?? "").trim().slice(0, 100);
+  return { label: label || null, minutes };
+}
 
 /** A step is either a bare string (how #3124 stored them, before anything read `ings`) or a real
- *  `{ text, ings }` object matching the design's own seed shape (contract pack prototype's
- *  `RECIPES` data: `{ text: '...', ings: ['Alfredo sauce, 1 jar', ...] }`). Cook mode (#3125) is
- *  what actually reads `ings` -- the per-step ingredients Shane checks off while cooking that
- *  step, "unchecked ingredients never block Next" per the design's own locked line -- so this is
- *  the first real consumer normalising both shapes into one, rather than a schema change: `steps`
- *  is still the same jsonb column, just carrying its real intended shape now that something reads
- *  the ings half of it.
+ *  `{ text, ings, timer }` object matching the design's own seed shape (contract pack prototype's
+ *  `RECIPES` data: `{ text: '...', ings: ['Alfredo sauce, 1 jar', ...], timer: { label, min } }`).
+ *  Cook mode (#3125) is what actually reads `ings` -- the per-step ingredients Shane checks off
+ *  while cooking that step, "unchecked ingredients never block Next" per the design's own locked
+ *  line -- and Cook mode's in-step timer (#3255) is what reads `timer`. Both are the first real
+ *  consumers normalising the field into the stored shape, rather than a schema change: `steps` is
+ *  still the same jsonb column, just carrying its real intended shape now that something reads it.
  */
 function normaliseSteps(steps) {
   if (steps === undefined || steps === null) return [];
-  if (!Array.isArray(steps)) throw badRequest("steps must be an array of strings or {text, ings} objects");
+  if (!Array.isArray(steps)) throw badRequest("steps must be an array of strings or {text, ings, timer} objects");
   if (steps.length > MAX_STEPS_PER_RECIPE) throw badRequest(`steps must contain at most ${MAX_STEPS_PER_RECIPE} entries`);
   return steps.map((s, i) => {
     const raw = typeof s === "string" ? { text: s } : s && typeof s === "object" ? s : {};
@@ -77,7 +95,7 @@ function normaliseSteps(steps) {
           .map((g) => String(g ?? "").trim())
           .filter(Boolean)
       : [];
-    return { text: text.slice(0, 2000), ings: ings.map((g) => g.slice(0, 200)) };
+    return { text: text.slice(0, 2000), ings: ings.map((g) => g.slice(0, 200)), timer: normaliseStepTimer(raw.timer, i) };
   });
 }
 

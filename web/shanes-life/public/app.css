@@ -1952,6 +1952,43 @@ pre.token {
   justify-content: center;
 }
 
+/* ---------- Cook mode -- in-step timer (Git #3255, design turn t2/2a) ----------
+   The pinned running-timer chip above the current step: solid primary fill, white text and pill
+   actions, matching the design's own inline styling for id 2a exactly (not the blue-tinted
+   .today-act-row look -- that's Today's own chip for the same real underlying timer entity). */
+.cook-timer-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 0.5rem;
+  padding: 10px 12px 10px 14px;
+  border-radius: 14px;
+  background: hsl(var(--primary));
+  color: #fff;
+}
+.cook-timer-sub { font-size: 12px; opacity: 0.85; }
+.cook-timer-big { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.cook-timer-btn {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cook-timer-bell {
+  width: 132px;
+  height: 132px;
+  border-radius: 999px;
+  border: 6px solid rgba(255, 255, 255, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 18px rgba(255, 255, 255, 0.08), 0 0 0 40px rgba(255, 255, 255, 0.04);
+  margin-bottom: 0.5rem;
+}
+
 /* ---------- Tonight -- multi-dish synchronized cooking (Git #3126) ----------
    Per-dish card: a thin progress bar along the top (fills as that dish cooks), the dish's own
    real name/total/live status below it. Colors mark phase, matching the prototype's own dot/glow

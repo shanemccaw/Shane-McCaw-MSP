@@ -934,7 +934,7 @@ export const TOOLS = [
               steps: {
                 type: "array",
                 description:
-                  "Real steps, in order, driving Cook mode (Git #3125): a bare string, or `{text, ings}` where `ings` is that step's own real ingredients (e.g. 'Alfredo sauce, 1 jar') -- Shane checks those off while cooking that step, but an unchecked one never blocks moving to the next step. Prefer the object form when a step genuinely uses specific ingredients.",
+                  "Real steps, in order, driving Cook mode (Git #3125): a bare string, or `{text, ings, timer}` where `ings` is that step's own real ingredients (e.g. 'Alfredo sauce, 1 jar') -- Shane checks those off while cooking that step, but an unchecked one never blocks moving to the next step -- and `timer` (Git #3255) is a real `{label, minutes}` for a step that genuinely names a duration (e.g. 'Brown the beef, 6 to 8 minutes' -> `{label: 'Beef', minutes: 7}`), which shows a real 'Start a N-minute timer' affordance on that step in Cook mode. Prefer the object form when a step genuinely uses specific ingredients or names a real duration.",
                 items: {
                   oneOf: [
                     { type: "string" },
@@ -943,6 +943,15 @@ export const TOOLS = [
                       properties: {
                         text: { type: "string" },
                         ings: { type: "array", items: { type: "string" } },
+                        timer: {
+                          type: "object",
+                          description: "Optional. Only set this when the step genuinely names a duration.",
+                          properties: {
+                            label: { type: "string", description: "Short, e.g. 'Beef' or 'Pasta' -- shown as '<label> is done'." },
+                            minutes: { type: "integer", minimum: 1, maximum: 180 },
+                          },
+                          required: ["minutes"],
+                        },
                       },
                       required: ["text"],
                     },

@@ -88,8 +88,11 @@ let mealAlarm = null;
 let mealSelection = new Set();
 let mealTickTimer = null;
 let mealWakeLock = null;
-let mealAudioCtx = null;
-let mealBeepTimer = null;
+// Shared square-wave beep used by both the Tonight/meal alarm above and Cook mode's own
+// per-step timer alarm (Git #3255) -- one real AudioContext, not a second copy of the same
+// oscillator code, since "ring loud" is the same real requirement in both places.
+let alarmAudioCtx = null;
+let alarmBeepTimer = null;
 
 const MEAL_SNOOZE_MS = 2 * 60 * 1000; // real 2 minutes, matching the design's own snooze shift
 
@@ -233,30 +236,30 @@ function mealDishState(dish, session, now) {
   return dt <= 0 ? { phase: "due", startsInMs: 0 } : { phase: "waiting", startsInMs: dt };
 }
 
-function playMealBeep() {
+function playAlarmBeep() {
   try {
-    if (!mealAudioCtx) mealAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (!alarmAudioCtx) alarmAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const beep = () => {
-      const o = mealAudioCtx.createOscillator();
-      const g = mealAudioCtx.createGain();
+      const o = alarmAudioCtx.createOscillator();
+      const g = alarmAudioCtx.createGain();
       o.type = "square";
       o.frequency.value = 880;
       g.gain.value = 0.15;
       o.connect(g);
-      g.connect(mealAudioCtx.destination);
+      g.connect(alarmAudioCtx.destination);
       o.start();
-      o.stop(mealAudioCtx.currentTime + 0.18);
+      o.stop(alarmAudioCtx.currentTime + 0.18);
     };
     beep();
-    if (!mealBeepTimer) mealBeepTimer = setInterval(beep, 450);
+    if (!alarmBeepTimer) alarmBeepTimer = setInterval(beep, 450);
   } catch {
     // No AudioContext (or blocked before any user gesture) -- the alarm still shows visually.
   }
 }
-function stopMealBeep() {
-  if (mealBeepTimer) {
-    clearInterval(mealBeepTimer);
-    mealBeepTimer = null;
+function stopAlarmBeep() {
+  if (alarmBeepTimer) {
+    clearInterval(alarmBeepTimer);
+    alarmBeepTimer = null;
   }
 }
 
@@ -313,7 +316,7 @@ function onMealTick() {
       label: `${due.name} goes in now`,
       next: `${due.name} · ${due.minutes} min${leadText}`,
     };
-    playMealBeep();
+    playAlarmBeep();
     renderMealAlarmOverlay();
     return;
   }
@@ -322,7 +325,7 @@ function onMealTick() {
   if (allDone) {
     mealSession.done = true;
     mealAlarm = { kind: "done", label: "Everything's done", next: "Plate up. Half for the Rental." };
-    playMealBeep();
+    playAlarmBeep();
     renderMealAlarmOverlay();
     return;
   }
@@ -349,7 +352,7 @@ function stopMeal() {
   mealSession = null;
   mealAlarm = null;
   stopMealTick();
-  stopMealBeep();
+  stopAlarmBeep();
   releaseMealWakeLock();
   renderMealAlarmOverlay();
 }
@@ -371,7 +374,7 @@ function renderMealAlarmOverlay() {
   }
   const a = mealAlarm;
   const stop = () => {
-    stopMealBeep();
+    stopAlarmBeep();
     if (a.kind === "start") {
       mealSession.started[a.dishId] = Date.now();
     }
@@ -380,7 +383,7 @@ function renderMealAlarmOverlay() {
     render();
   };
   const snooze = () => {
-    stopMealBeep();
+    stopAlarmBeep();
     if (a.kind === "start") {
       mealSession.snoozed[a.dishId] = Date.now() + MEAL_SNOOZE_MS;
     }
@@ -397,6 +400,181 @@ function renderMealAlarmOverlay() {
       el("div", { class: "meal-alarm-actions" }, [
         el("button", { class: "meal-alarm-primary", text: a.kind === "start" ? "It's in" : "Plate up", onClick: stop }),
         el("button", { class: "meal-alarm-secondary", text: a.kind === "start" ? "Give me 2 minutes" : "Keep warm 5 minutes", onClick: snooze }),
+      ]),
+    ]),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Cook mode -- in-step timer (Git #3255, design turn t2/2a-2b: a real timer chip pinned above the
+// current step, and a full-screen "Timer done" state that rings until stopped).
+//
+// Backed by the real, server-side standalone `timers` entity (Git #3307, src/core/timers.mjs) --
+// NOT a second client-only countdown -- so "the app itself keeps it alive and fires a critical
+// alert even if the phone is locked" is genuinely true: the same real web-push sweep
+// (server.mjs's runTimerSweep) that already fires for a capture-grammar "8 min timer for pasta"
+// covers a Cook-mode step timer too, and it shows up in Today's own real timerActRow chip the
+// same way. `cookTimer` below is only this client's own live pointer to that real row (id, label,
+// when it fires, what to say once it does) -- used to render the pinned chip and the full-screen
+// ring; the real countdown lives in the `timers` row itself, not here.
+let cookTimer = null; // { id, label, firesAt (epochMs), totalSeconds, nextStepText }
+let cookTimerAlarm = false; // true while the full-screen "Timer done" state (2b) is showing
+let cookTimerSweep = null;
+
+function ensureCookTimerSweep() {
+  if (cookTimerSweep) return;
+  cookTimerSweep = setInterval(() => {
+    if (!cookTimer || cookTimerAlarm) return;
+    if (Date.now() >= cookTimer.firesAt) {
+      cookTimerAlarm = true;
+      playAlarmBeep();
+      renderCookTimerOverlay();
+    }
+  }, 1000);
+}
+function stopCookTimerSweep() {
+  if (cookTimerSweep) {
+    clearInterval(cookTimerSweep);
+    cookTimerSweep = null;
+  }
+}
+
+/** Reload/reopen reconciliation: `cookTimer` is client-only and forgotten on a page reload, but
+ *  the real timer row it pointed at keeps counting down regardless (that's the whole point of
+ *  making it a server row). If exactly one real standalone timer is active and nothing here is
+ *  already tracking one, adopt it -- ambiguous cases (more than one active timer -- e.g. an
+ *  unrelated one set from the general capture box) are left alone rather than guessed at; Cook
+ *  mode's own "Start a timer" affordance still won't show while a step's own timer is genuinely
+ *  running (see viewCook), so the real risk this closes is a reload mid-countdown letting Shane
+ *  start a second, overlapping timer for the same step. */
+async function syncCookTimer() {
+  if (cookTimer) return;
+  try {
+    const { timers: active } = await api("/api/timers");
+    if (active.length !== 1) return;
+    const row = active[0];
+    cookTimer = {
+      id: row.id,
+      label: row.label || "Timer",
+      firesAt: new Date(row.fires_at).getTime(),
+      totalSeconds: row.duration_seconds,
+      nextStepText: "Back to the recipe.",
+    };
+    ensureCookTimerSweep();
+  } catch {
+    // Best-effort only -- Cook mode still works without it, and the real timer keeps counting
+    // down and will still push a real alert regardless of whether this reconciled.
+  }
+}
+
+async function startCookTimer(recipe, steps, stepIndex, timer) {
+  const label = timer.label || recipe.name;
+  try {
+    const row = await api("/api/timers", { method: "POST", body: JSON.stringify({ label, durationSeconds: timer.minutes * 60 }) });
+    const nextStepText = stepIndex + 1 < steps.length ? `Step ${stepIndex + 2} · ${stepText(steps[stepIndex + 1])}` : "Last step done.";
+    cookTimer = { id: row.id, label, firesAt: new Date(row.fires_at).getTime(), totalSeconds: timer.minutes * 60, nextStepText };
+    cookTimerAlarm = false;
+    ensureCookTimerSweep();
+    render();
+  } catch (err) {
+    showQuickToast(err.message);
+  }
+}
+
+/** Real "+1 min" (running chip) and "Give it 1 more minute" (full-screen done state) -- both push
+ *  the real row's `fires_at` out server-side via the same route Today's own timer chip uses. */
+async function extendCookTimer(seconds = 60) {
+  if (!cookTimer) return;
+  try {
+    const row = await api(`/api/timers/${cookTimer.id}/extend`, { method: "POST", body: JSON.stringify({ seconds }) });
+    cookTimer.firesAt = new Date(row.fires_at).getTime();
+    if (cookTimerAlarm) {
+      cookTimerAlarm = false;
+      stopAlarmBeep();
+      renderCookTimerOverlay();
+    }
+    render();
+  } catch (err) {
+    showQuickToast(err.message);
+  }
+}
+
+async function stopCookTimer() {
+  const id = cookTimer ? cookTimer.id : null;
+  stopAlarmBeep();
+  cookTimer = null;
+  cookTimerAlarm = false;
+  stopCookTimerSweep();
+  renderCookTimerOverlay();
+  render();
+  if (id) {
+    try {
+      await api(`/api/timers/${id}`, { method: "DELETE" });
+    } catch {
+      // Already gone (fired or canceled elsewhere) -- nothing more to do client-side.
+    }
+  }
+}
+
+/** The pinned running-timer chip above the current step (design turn t2, 2a). Ticks its own
+ *  countdown text locally via a `row.isConnected` self-tick -- the same real pattern
+ *  `timerActRow` already uses for Today's own timer chip -- rather than forcing a full app
+ *  `render()` every second, which would otherwise refetch `/api/recipes` on a timer (see
+ *  `onMealTick`'s own comment on this exact trap for Cook mode). */
+function cookTimerChip() {
+  const t = cookTimer;
+  const remainingText = () => mmss(Math.max(0, t.firesAt - Date.now()));
+  const countdown = el("div", { class: "cook-timer-big", text: remainingText() });
+  const chip = el("div", { class: "cook-timer-chip" }, [
+    lineIcon('<circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>', { size: 20 }),
+    el("div", { style: "flex:1;min-width:0" }, [
+      el("div", { class: "cook-timer-sub", text: `${t.label} · rings loud when it hits 0` }),
+      countdown,
+    ]),
+    el("span", { class: "cook-timer-btn", text: "+1 min", onClick: () => extendCookTimer(60) }),
+    el("span", { class: "cook-timer-btn", text: "Stop", onClick: stopCookTimer }),
+  ]);
+  const tick = setInterval(() => {
+    if (!chip.isConnected) {
+      clearInterval(tick);
+      return;
+    }
+    countdown.textContent = remainingText();
+  }, 1000);
+  return chip;
+}
+
+/** The full-screen "Timer done" state (design turn t2, 2b) -- takes the whole screen and keeps
+ *  ringing until Stop, names the next step so Shane lands back in the recipe. Appended directly
+ *  to <body> like `renderMealAlarmOverlay`, for the same reason: it has to keep showing across a
+ *  hash navigation made while it's up. */
+function renderCookTimerOverlay() {
+  let overlay = document.getElementById("cook-timer-overlay");
+  if (!overlay) {
+    overlay = el("div", { id: "cook-timer-overlay", class: "meal-alarm-overlay" });
+    document.body.append(overlay);
+  }
+  if (!cookTimer || !cookTimerAlarm) {
+    overlay.hidden = true;
+    overlay.replaceChildren();
+    return;
+  }
+  const t = cookTimer;
+  overlay.hidden = false;
+  overlay.replaceChildren(
+    el("div", { class: "meal-alarm-card" }, [
+      el("div", { class: "cook-timer-bell" }, [
+        lineIcon(
+          '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>',
+          { size: 54, strokeWidth: 2 },
+        ),
+      ]),
+      el("div", { class: "meal-alarm-big", text: "0:00" }),
+      el("div", { class: "meal-alarm-label", text: `${t.label} is done` }),
+      el("div", { class: "meal-alarm-next", text: `${t.nextStepText} Ringing at full volume, even on silent.` }),
+      el("div", { class: "meal-alarm-actions" }, [
+        el("button", { class: "meal-alarm-primary", text: "Stop", onClick: stopCookTimer }),
+        el("button", { class: "meal-alarm-secondary", text: "Give it 1 more minute", onClick: () => extendCookTimer(60) }),
       ]),
     ]),
   );
@@ -3265,13 +3443,16 @@ async function viewRecipes(view) {
   }
 }
 
-/** A step is a bare string (#3124-era pushes) or `{text, ings}` (Git #3125 onward) -- see
- *  recipes.mjs's normaliseSteps for the same real distinction, server-side. */
+/** A step is a bare string (#3124-era pushes) or `{text, ings, timer}` (Git #3125/#3255 onward) --
+ *  see recipes.mjs's normaliseSteps for the same real distinction, server-side. */
 function stepText(step) {
   return typeof step === "string" ? step : step.text;
 }
 function stepIngs(step) {
   return typeof step === "string" ? [] : step.ings || [];
+}
+function stepTimer(step) {
+  return typeof step === "string" ? null : step.timer || null;
 }
 
 // Cook mode -- real step-by-step cooking view (Git #3125), the sibling Feature #3124 explicitly
@@ -3303,11 +3484,13 @@ async function viewCook(view, recipeId) {
   cookSession.stepIndex = Math.min(cookSession.stepIndex, steps.length - 1);
 
   await requestCookWakeLock();
+  await syncCookTimer();
 
   const stepIndex = cookSession.stepIndex;
   const step = steps[stepIndex];
   const isLast = stepIndex + 1 >= steps.length;
   const ings = stepIngs(step);
+  const timer = stepTimer(step);
 
   const cookMeal = !!(mealSession && !mealSession.done && mealSession.dishes.some((d) => d.id === recipeId));
   const exitTarget = cookMeal ? "#/tonight" : "#/recipes";
@@ -3337,6 +3520,9 @@ async function viewCook(view, recipeId) {
   view.append(el("div", { class: "cook-header-bar" }));
 
   if (cookMeal) view.append(mealChipStrip(recipeId));
+  // The running-timer chip (design turn t2, 2a) is pinned above the current step regardless of
+  // which step started it, so Shane can move on to the next step without losing it.
+  if (cookTimer) view.append(el("section", { class: "section" }, [cookTimerChip()]));
 
   const ingList =
     ings.length > 0
@@ -3364,12 +3550,28 @@ async function viewCook(view, recipeId) {
         )
       : null;
 
+  // "Start a N-minute timer" (design turn t2, 2a) only shows when this step names a real
+  // duration AND nothing is already running -- matches the prototype's own `cookHasTimer:
+  // !!(step && step.timer) && !(t && !t.done)` exactly; the chip above already fills that visual
+  // slot while a timer is live.
+  const startTimerBtn =
+    timer && !cookTimer
+      ? el("div", { class: "row", style: "margin-top:.5rem" }, [
+          el("button", {
+            class: "ghost small",
+            text: `Start a ${timer.minutes}-minute timer`,
+            onClick: () => startCookTimer(recipe, steps, stepIndex, timer),
+          }),
+        ])
+      : null;
+
   view.append(
     el("section", { class: "section" }, [
       el("div", { class: "card" }, [
         el("div", { class: "small muted", text: `Step ${stepIndex + 1}`, style: "text-transform:uppercase;letter-spacing:.05em" }),
         el("p", { style: "font-size:1.3rem;font-weight:700;margin:.35rem 0 0", text: stepText(step) }),
         ingList,
+        startTimerBtn,
       ]),
     ]),
   );
@@ -3453,7 +3655,7 @@ function mealDishCard(dish) {
           onClick: () => {
             mealSession.started[dish.id] = Date.now();
             if (mealAlarm && mealAlarm.dishId === dish.id) {
-              stopMealBeep();
+              stopAlarmBeep();
               mealAlarm = null;
               renderMealAlarmOverlay();
             }
@@ -12140,6 +12342,10 @@ async function start() {
   $("#enroll-view").hidden = true;
   $("#app-view").hidden = false;
   await render();
+  // Reconcile a real Cook-mode step timer (Git #3255) that survived this reload -- fire-and-forget,
+  // never blocks the real render above. Otherwise a full-screen "Timer done" reload wouldn't ring
+  // in-app until Shane happened to reopen Cook mode himself (see syncCookTimer's own comment).
+  syncCookTimer();
 }
 
 if ("serviceWorker" in navigator) {
