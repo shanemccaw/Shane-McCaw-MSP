@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -85,6 +86,20 @@ namespace BuildConsole
         /// </summary>
         private readonly List<(int Number, string Title)> _epics;
 
+        // ── Git #3855 — general free-text fallback (last branch in the classification
+        // chain, behind SQL/Dispatch mode and the epic-name match above) ────────────────
+        /// <summary>Real debounce token for the free-text fallback search — cancelled and
+        /// replaced on every keystroke. No existing debounce pattern was found to reuse in
+        /// this file: SQL mode (#3828) and Dispatch mode (#3829) only ever query on a real
+        /// Enter/click, never automatically as text changes, so this is the first
+        /// keystroke-driven query path and needs its own real debounce rather than hitting
+        /// Postgres on every keypress.</summary>
+        private CancellationTokenSource? _searchCts;
+        /// <summary>Real, most-recently-completed <see cref="Services.CommandCenterSearchService"/>
+        /// results for the current query text — empty until a debounced query actually lands.</summary>
+        private List<BuildConsole.Services.CommandCenterSearchService.SearchResult> _searchResults = new();
+        private const int SearchDebounceMs = 250;
+
         private string _categoryKey = "All";
         private List<PaletteCommand> _filtered = new();
         private int _selectedIndex = -1;
@@ -139,6 +154,24 @@ namespace BuildConsole
         /// </summary>
         public event EventHandler<int>? EpicOpenRequested;
 
+        /// <summary>
+        /// Git #3855 — raised when Enter/click fires an Issue or Epic row from the general
+        /// free-text fallback search. Carries the real GitHub issue/epic number; the caller
+        /// (MainWindow) wires this to the existing <c>OpenGitDetailByNumberAsync(int)</c>
+        /// verbatim (it already resolves Epic vs. Issue itself) — this window never opens a
+        /// detail tab directly.
+        /// </summary>
+        public event EventHandler<int>? GitDetailOpenRequested;
+
+        /// <summary>
+        /// Git #3855 — raised when Enter/click fires a Chat row from the general free-text
+        /// fallback search. Carries the real <c>bt_chats.id</c> primary key (chats have no
+        /// GitHub issue number of their own); the caller looks the chat back up in its own
+        /// real, already-loaded chat list and opens it via the existing <c>OpenChatTab</c>
+        /// path (same as #3850's epic-chat open).
+        /// </summary>
+        public event EventHandler<int>? ChatOpenRequested;
+
         public CommandPaletteWindow(
             IEnumerable<PaletteCommand> commands,
             BuildConsole.Services.BuildTrackerApiClient? api = null,
@@ -184,10 +217,126 @@ namespace BuildConsole
         /// fixture rows.</summary>
         private int CategoryCount(string key) => key switch
         {
-            "All" => FilterCommands(PaletteInput.Text).Count + MatchEpics(PaletteInput.Text).Count,
+            "All" => FilterCommands(PaletteInput.Text).Count + MatchEpics(PaletteInput.Text).Count
+                   + BuildGeneralSearchCommands(PaletteInput.Text).Count,
             "GitEpics" => MatchEpics(PaletteInput.Text).Count,
             _ => 0,
         };
+
+        /// <summary>
+        /// Git #3855 — the general free-text fallback: real, already-completed
+        /// <see cref="_searchResults"/> rows (populated by the debounced
+        /// <see cref="Services.CommandCenterSearchService.SearchAsync"/> call below) turned
+        /// into real <see cref="PaletteCommand"/> rows, categorized/tagged by
+        /// <see cref="Services.CommandCenterSearchService.ResultCategory"/>. Excludes any Epic
+        /// hit already surfaced by <see cref="MatchEpics"/> for the same query (both can
+        /// legitimately match the same Epic by title) so the same Epic never shows twice.
+        /// Never fabricates a placeholder row — an empty <see cref="_searchResults"/> (no
+        /// query typed yet, or the debounced query hasn't landed, or the service genuinely
+        /// found nothing) simply contributes no rows.
+        /// </summary>
+        private List<PaletteCommand> BuildGeneralSearchCommands(string query)
+        {
+            if (string.IsNullOrWhiteSpace(query) || _searchResults.Count == 0)
+                return new List<PaletteCommand>();
+
+            string q = query.Trim();
+            // The same real Epic-title substring match MatchEpics itself uses (PaletteCommand
+            // doesn't carry a Number, so re-derive from the real _epics list rather than the
+            // rendered rows) — any Epic already surfaced there is skipped here.
+            var alreadyMatchedEpicNumbers = _epics
+                .Where(e => e.Title.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0)
+                .Select(e => e.Number)
+                .ToHashSet();
+
+            return _searchResults
+                .Where(r => !(r.Category == BuildConsole.Services.CommandCenterSearchService.ResultCategory.Epic
+                              && alreadyMatchedEpicNumbers.Contains(r.Number)))
+                .Select(r =>
+                {
+                    string snippet = StripHeadlineMarkers(r.Snippet);
+                    bool isChat = r.Category == BuildConsole.Services.CommandCenterSearchService.ResultCategory.Chat;
+                    string tag = r.Category switch
+                    {
+                        BuildConsole.Services.CommandCenterSearchService.ResultCategory.Epic => "EPIC",
+                        BuildConsole.Services.CommandCenterSearchService.ResultCategory.Chat => "CHAT",
+                        _ => "ISSUE",
+                    };
+                    string subtitle = isChat
+                        ? (snippet.Length > 0 ? snippet : "Chat")
+                        : $"#{r.Number} — {(snippet.Length > 0 ? snippet : r.Title)}";
+                    int number = r.Number;
+
+                    return new PaletteCommand
+                    {
+                        Glyph = isChat ? "" : "", // "Comment" / "Search" — real Segoe MDL2 glyphs
+                        Title = r.Title,
+                        Subtitle = subtitle,
+                        DetailBody = isChat
+                            ? $"Real search match in this chat's title/category/notes: “{snippet}”. "
+                              + "Opens the real chat tab (same OpenChatTab path #3850 already uses)."
+                            : $"Real search match in Issue/Epic #{number}'s title or body: “{snippet}”. "
+                              + "Opens its real Git detail tab.",
+                        ActionLabel = isChat ? "Open Chat" : "Open in Git Board",
+                        Tag = tag,
+                        DetailTag = "SEARCH RESULT",
+                        Run = () =>
+                        {
+                            if (isChat) ChatOpenRequested?.Invoke(this, number);
+                            else GitDetailOpenRequested?.Invoke(this, number);
+                        },
+                    };
+                })
+                .ToList();
+        }
+
+        /// <summary>Strips Postgres <c>ts_headline</c>'s default &lt;b&gt;/&lt;/b&gt; match
+        /// markers for plain-text display in a <see cref="TextBlock"/> row (no rich-text
+        /// rendering in the results list today).</summary>
+        private static string StripHeadlineMarkers(string snippet) =>
+            (snippet ?? "").Replace("<b>", "").Replace("</b>", "");
+
+        /// <summary>
+        /// Git #3855 — cancels any in-flight debounce/query and, for a real non-empty query
+        /// outside SQL/Dispatch mode, starts a fresh one. Called on every keystroke; the
+        /// actual Postgres round-trip only fires after <see cref="SearchDebounceMs"/> of no
+        /// further typing.
+        /// </summary>
+        private void RestartGeneralSearch()
+        {
+            _searchCts?.Cancel();
+            _searchCts = null;
+
+            string q = PaletteInput.Text?.Trim() ?? "";
+            if (_sqlMode || _dispatchMode || q.Length == 0)
+            {
+                _searchResults = new();
+                return;
+            }
+
+            var cts = new CancellationTokenSource();
+            _searchCts = cts;
+            _ = DebouncedGeneralSearchAsync(q, cts.Token);
+        }
+
+        private async Task DebouncedGeneralSearchAsync(string query, CancellationToken token)
+        {
+            try
+            {
+                await Task.Delay(SearchDebounceMs, token);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+            if (token.IsCancellationRequested) return;
+
+            var results = await BuildConsole.Services.CommandCenterSearchService.SearchAsync(query);
+            if (token.IsCancellationRequested) return;
+
+            _searchResults = results;
+            if (!_sqlMode && !_dispatchMode) RenderResults(preserveSelection: true);
+        }
 
         private List<PaletteCommand> FilterCommands(string query)
         {
@@ -247,6 +396,7 @@ namespace BuildConsole
         {
             if (_closing) return;
             _closing = true;
+            _searchCts?.Cancel();
             Close();
         }
 
@@ -343,6 +493,9 @@ namespace BuildConsole
                 _dispatchHasRun = false;
                 _dispatchStartCandidates = new();
             }
+
+            // Git #3855 — general free-text fallback: re-debounce on every keystroke.
+            RestartGeneralSearch();
 
             RenderTabs();
             RenderResults();
@@ -592,8 +745,13 @@ namespace BuildConsole
             }
             else
             {
-                // "All" — real quick-action commands plus real Epic-name matches (Git #3850).
-                _filtered = FilterCommands(PaletteInput.Text).Concat(MatchEpics(PaletteInput.Text)).ToList();
+                // "All" — real quick-action commands, real Epic-name matches (Git #3850), then
+                // — last in the classification chain, Git #3855 — the general free-text
+                // fallback against CommandCenterSearchService (Issue/Epic/Chat, ranked).
+                _filtered = FilterCommands(PaletteInput.Text)
+                    .Concat(MatchEpics(PaletteInput.Text))
+                    .Concat(BuildGeneralSearchCommands(PaletteInput.Text))
+                    .ToList();
                 if (!preserveSelection)
                     _selectedIndex = _filtered.Count > 0 ? 0 : -1;
 
@@ -602,7 +760,7 @@ namespace BuildConsole
                     string q = PaletteInput.Text.Trim();
                     PaletteResults.Children.Add(EmptyState(
                         $"No matches for “{q}”",
-                        "Category data sources (issues, builds, services…) aren't wired yet — only the quick-action commands and Git Epic titles are searchable in this shell."));
+                        "No quick action, Git Epic title, or real search match (Issues/Epics/Chats) found that text. Still typing? Results land a moment after you stop."));
                     RenderDetail();
                     return;
                 }

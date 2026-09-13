@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -72,6 +73,25 @@ namespace BuildConsole
             // real open-or-create flow (FindChatForIssue's real "latest chat" lookup, falling
             // back to a new epic chat) every other epic chat entry point already uses.
             win.EpicOpenRequested += (_, epicNumber) => OpenOrCreateEpicChat(epicNumber);
+
+            // Git #3855 — the general free-text fallback's Issue/Epic result rows reuse the
+            // exact same real "open by number" entry point tab-to-tab navigation inside a
+            // detail tab already calls (OpenGitDetailByNumberAsync itself resolves Epic vs.
+            // Issue and focuses an existing tab before opening a new one) — never a second
+            // open-by-number mechanism.
+            win.GitDetailOpenRequested += async (_, number) => await OpenGitDetailByNumberAsync(number);
+
+            // Git #3855 — a Chat result row's real bt_chats.id looked up against the
+            // currently-loaded board's own real chat list (no second chat-lookup mechanism),
+            // then opened via the existing OpenChatTab path (same as #3850's epic-chat open).
+            win.ChatOpenRequested += (_, chatId) =>
+            {
+                var chat = LeftSidebar.CurrentBoardChats.FirstOrDefault(c => c.Id == chatId);
+                if (chat != null)
+                    OpenChatTab(chat, chat.IssueGithubNumber);
+                else
+                    ToastEngine.Warning("Command Center", $"Chat #{chatId} isn't in the currently-loaded board — try refreshing the Git panel.");
+            };
 
             // Git #3828 — SQL results panel's "Send to Chat" reuses the exact same shared
             // SendTextToActiveClaudeChatAsync path the SQL Runner floaty's own Send to Chat
