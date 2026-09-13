@@ -1344,8 +1344,8 @@ namespace BuildConsole
             ActivityBar.LinkedInComposerToggleRequested += (s, e) => ToggleLinkedInComposer();
             // Git #980 — floaty 8-slot Build Watch window toggle.
             ActivityBar.BuildWatchToggleRequested += (s, e) => ToggleBuildWatch();
-            // Git #1472 — floaty Visual Test Tracker window toggle.
-            ActivityBar.VisualTestTrackerToggleRequested += (s, e) => ToggleVisualTestTracker();
+            // Git #1472 — Visual Test Tracker docked Test Mode toggle.
+            ActivityBar.VisualTestTrackerToggleRequested += (s, e) => ToggleTestMode();
             // Git #2110 — floaty live Build Queue Map window toggle.
             ActivityBar.BuildChainMapRequested += (s, e) => OpenBuildChainMap();
             // Git #2809 — Git Doctor opens as a full-width Editor tab, not a LeftSidebar
@@ -2309,11 +2309,18 @@ namespace BuildConsole
         {
             if (string.IsNullOrEmpty(url)) return null;
             var bases = BuildConsole.Services.BuildConsoleSettings.Load().VisualTestTrackerBaseUrls;
-            foreach (var b in bases)
+            if (bases != null)
             {
-                if (string.IsNullOrWhiteSpace(b)) continue;
-                int idx = url.IndexOf(b, StringComparison.OrdinalIgnoreCase);
-                if (idx >= 0) return b;
+                foreach (var b in bases)
+                {
+                    if (string.IsNullOrWhiteSpace(b)) continue;
+                    int idx = url.IndexOf(b, StringComparison.OrdinalIgnoreCase);
+                    if (idx >= 0) return b;
+                }
+            }
+            if (url.IndexOf("localhost:5175", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "localhost:5175";
             }
             return null;
         }
@@ -2601,6 +2608,11 @@ namespace BuildConsole
                 && _pendingReopenSwap.TryGetValue(selectedForSwap, out var pendingConversationId))
             {
                 SwapInReopenPreload(selectedForSwap, pendingConversationId);
+            }
+
+            if (_isTestMode)
+            {
+                UpdateTestModeActiveTab();
             }
 
             if (e.Source == EditorTabs)
@@ -6968,6 +6980,10 @@ namespace BuildConsole
             // Git #1472 — filtered to only fire for tabs matching the configured watched base
             // URLs, so it never triggers on e.g. claude.ai chat tabs.
             UpdateVisualTestTrackerForNavigatedTab(sender as Microsoft.Web.WebView2.Wpf.WebView2);
+            if (_isTestMode)
+            {
+                UpdateTestModeActiveTab();
+            }
         }
 
         // ── Menu: File ────────────────────────────────────────────────────────

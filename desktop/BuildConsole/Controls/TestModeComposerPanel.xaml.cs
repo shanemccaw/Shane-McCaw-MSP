@@ -69,6 +69,7 @@ namespace BuildConsole.Controls
     public partial class TestModeComposerPanel : UserControl
     {
         private string _activeRoute = "about:blank";
+        private string _fullUrl = "";
         private bool _isWide;
 
         // Timers
@@ -95,6 +96,8 @@ namespace BuildConsole.Controls
         public event Action? CaptureRegionRequested;
         public event Action? CaptureHudRequested;
         public event Action<string, bool>? PageTestedCleanChanged;
+        public event Action? ExitTestModeRequested;
+        public event Action? HistoryRequested;
 
         public TestModeComposerPanel()
         {
@@ -133,9 +136,15 @@ namespace BuildConsole.Controls
             }
         }
 
-        public void SetActiveRoute(string route)
+        public void SetActiveRoute(string route, string fullUrl = "")
         {
-            if (string.IsNullOrWhiteSpace(route)) route = "about:blank";
+            if (string.IsNullOrWhiteSpace(route)) route = "No tracked tab active — navigate a watched tab";
+            _fullUrl = string.IsNullOrWhiteSpace(fullUrl) ? route : fullUrl;
+
+            bool isTracked = !route.StartsWith("No tracked tab", StringComparison.OrdinalIgnoreCase) && route != "about:blank";
+            DotSessionPulse.Fill = isTracked
+                ? new SolidColorBrush(Color.FromRgb(0x8F, 0xC4, 0x96))
+                : new SolidColorBrush(Color.FromRgb(0xD4, 0xA5, 0x6C));
 
             if (route != _activeRoute)
             {
@@ -145,6 +154,7 @@ namespace BuildConsole.Controls
                 }
                 _activeRoute = route;
                 TxtRouteReadout.Text = route;
+                TxtRouteReadout.ToolTip = _fullUrl;
                 _pageStartTime = DateTime.Now;
                 ChkGood.IsChecked = false;
                 RefreshBugDrawer();
@@ -209,11 +219,17 @@ namespace BuildConsole.Controls
 
         private void BtnCopyUrl_Click(object sender, RoutedEventArgs e)
         {
-            if (!string.IsNullOrEmpty(_activeRoute))
+            string toCopy = !string.IsNullOrEmpty(_fullUrl) ? _fullUrl : _activeRoute;
+            if (!string.IsNullOrEmpty(toCopy) && !toCopy.StartsWith("No tracked tab", StringComparison.OrdinalIgnoreCase))
             {
-                Clipboard.SetText(_activeRoute);
+                Clipboard.SetText(toCopy);
                 ShowToast("URL copied to clipboard!");
             }
+        }
+
+        private void BtnExitTestMode_Click(object sender, RoutedEventArgs e)
+        {
+            ExitTestModeRequested?.Invoke();
         }
 
         private void BtnToggleWidth_Click(object sender, RoutedEventArgs e)
@@ -267,7 +283,7 @@ namespace BuildConsole.Controls
 
         private void BtnHistory_Click(object sender, RoutedEventArgs e)
         {
-            ShowToast($"Total session bugs recorded: {AllBugs.Count}");
+            HistoryRequested?.Invoke();
         }
 
         private void BtnClearSession_Click(object sender, RoutedEventArgs e)

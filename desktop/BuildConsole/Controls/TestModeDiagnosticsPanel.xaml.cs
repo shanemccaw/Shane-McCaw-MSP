@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using BuildConsole.Services;
+using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
 namespace BuildConsole.Controls
@@ -61,14 +62,108 @@ namespace BuildConsole.Controls
 
         public void AttachWebView(WebView2? webView, string baseUrl, string pagePath)
         {
+            if (_activeWebView?.CoreWebView2 != null)
+            {
+                try { _activeWebView.CoreWebView2.WebMessageReceived -= OnActiveWebView_WebMessageReceived; } catch { }
+            }
+            if (_activeWebView != null)
+            {
+                _activeWebView.CoreWebView2InitializationCompleted -= ActiveWebView_CoreWebView2InitializationCompleted;
+            }
+
             _activeWebView = webView;
             _activeBaseUrl = baseUrl;
             _activePagePath = pagePath;
-            UpdateTelemetry();
+
+            if (_activeWebView != null)
+            {
+                if (_activeWebView.CoreWebView2 != null)
+                {
+                    try
+                    {
+                        _activeWebView.CoreWebView2.WebMessageReceived -= OnActiveWebView_WebMessageReceived;
+                        _activeWebView.CoreWebView2.WebMessageReceived += OnActiveWebView_WebMessageReceived;
+                    }
+                    catch { }
+                    _ = VisualTestTrackerTelemetry.InjectObserverAsync(_activeWebView);
+                    UpdateTelemetry();
+                }
+                else
+                {
+                    _activeWebView.CoreWebView2InitializationCompleted += ActiveWebView_CoreWebView2InitializationCompleted;
+                }
+            }
+            else
+            {
+                UpdateTelemetry();
+            }
+        }
+
+        private void ActiveWebView_CoreWebView2InitializationCompleted(object? sender, CoreWebView2InitializationCompletedEventArgs e)
+        {
+            if (_activeWebView?.CoreWebView2 != null)
+            {
+                try
+                {
+                    _activeWebView.CoreWebView2.WebMessageReceived -= OnActiveWebView_WebMessageReceived;
+                    _activeWebView.CoreWebView2.WebMessageReceived += OnActiveWebView_WebMessageReceived;
+                }
+                catch { }
+                _ = VisualTestTrackerTelemetry.InjectObserverAsync(_activeWebView);
+                UpdateTelemetry();
+            }
+        }
+
+        private void OnActiveWebView_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            try
+            {
+                string message = e.TryGetWebMessageAsString();
+                if (!string.IsNullOrEmpty(message))
+                {
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(message);
+                        if (doc.RootElement.TryGetProperty("type", out var typeEl) && typeEl.GetString() == "dom_inspect")
+                        {
+                            var info = new DomElementInfo
+                            {
+                                Tag = doc.RootElement.TryGetProperty("tagName", out var t) ? t.GetString() ?? "" : "",
+                                Classes = doc.RootElement.TryGetProperty("className", out var c) ? c.GetString() ?? "" : "",
+                                Id = doc.RootElement.TryGetProperty("id", out var i) ? i.GetString() ?? "" : "",
+                                Selector = doc.RootElement.TryGetProperty("selector", out var s) ? s.GetString() ?? "" : ""
+                            };
+                            if (doc.RootElement.TryGetProperty("rect", out var rectEl))
+                            {
+                                if (rectEl.TryGetProperty("width", out var w)) info.Width = w.GetDouble();
+                                if (rectEl.TryGetProperty("height", out var h)) info.Height = h.GetDouble();
+                            }
+                            Dispatcher.Invoke(() => HandleDomElementInspected(info));
+                            return;
+                        }
+                    }
+                    catch { }
+
+                    var domInfo = VisualTestTrackerTelemetry.TryParseDomInspectMessage(message);
+                    if (domInfo != null)
+                    {
+                        Dispatcher.Invoke(() => HandleDomElementInspected(domInfo));
+                    }
+                }
+            }
+            catch { }
         }
 
         public void ClearActiveTab()
         {
+            if (_activeWebView?.CoreWebView2 != null)
+            {
+                try { _activeWebView.CoreWebView2.WebMessageReceived -= OnActiveWebView_WebMessageReceived; } catch { }
+            }
+            if (_activeWebView != null)
+            {
+                _activeWebView.CoreWebView2InitializationCompleted -= ActiveWebView_CoreWebView2InitializationCompleted;
+            }
             _activeWebView = null;
             _activeBaseUrl = "";
             _activePagePath = "";

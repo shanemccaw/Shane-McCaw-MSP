@@ -374,7 +374,9 @@ namespace BuildConsole.Services
         /// Defaults to that one entry; add more here (or via Settings, once exposed) for other dev apps.</summary>
         public List<string> VisualTestTrackerBaseUrls { get; set; } = new()
         {
-            "localhost:5175/portal/shane-mccaw-consulting/portal-v2"
+            "localhost:5175/portal/shane-mccaw-consulting/portal-v2",
+            "localhost:5175/portal",
+            "localhost:5175"
         };
 
         /// <summary>Last on-screen X of the Visual Test Tracker window. -1 = never positioned yet (center on first open).</summary>

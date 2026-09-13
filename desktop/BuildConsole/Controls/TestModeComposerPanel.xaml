@@ -25,6 +25,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
                         <!-- Pulse dot -->
@@ -48,6 +49,13 @@
                                 Width="22" Height="22" Padding="0"
                                 ToolTip="Toggle Panel Width (420px / 540px)" Click="BtnToggleWidth_Click">
                             <TextBlock x:Name="IconToggleWidth" Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                        </Button>
+
+                        <!-- Exit Test Mode -->
+                        <Button x:Name="BtnExitTestMode" Grid.Column="4" Style="{StaticResource IconButton}"
+                                Width="22" Height="22" Padding="0" Margin="4,0,0,0"
+                                ToolTip="Exit Test Mode (Ctrl+Shift+T)" Click="BtnExitTestMode_Click">
+                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="{StaticResource StatusErrorBrush}"/>
                         </Button>
                     </Grid>
 
