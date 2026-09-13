@@ -75,7 +75,7 @@ export default defineConfig({
       "src/lib/webhook-delivery.test.ts",
       "src/routes/admin-ps-scripts-modularize.test.ts",
       "src/routes/admin-ps-scripts.test.ts",
-      "src/routes/admin-script-runner.test.ts",
+      "src/routes/admin-m365-run.test.ts",
       "src/routes/auth-account-activation-entitlement.test.ts",
       "src/routes/auth-impersonation.test.ts",
       "src/routes/copilot-assessment-personas.test.ts",
