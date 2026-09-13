@@ -1,5 +1,29 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
+// A handful of tests below do a real `await import("@workspace/db")` to reach
+// its genuine coverageStateFor/transportHasExecutor logic (not mocked — that
+// logic is exactly what's under test there). @workspace/db throws at import
+// time if DATABASE_URL isn't set (lib/db/src/index.ts), so this suite must
+// not depend on an ambient DATABASE_URL just to import a package it never
+// actually queries — set a harmless placeholder the same way other suites
+// set required-but-unused env vars at the top of the file (Git #3895).
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/test";
+}
+
+// azure-rm.ts imports ./logger.ts, which pulls in @workspace/db transitively
+// (see log-stream-writer.ts) — that throws at module load if DATABASE_URL
+// isn't set. This suite never asserts anything about logging, so mock it out
+// the same way monitor-executor.test.ts / graph-consent-revoke.test.ts do,
+// rather than depending on ambient DATABASE_URL just to import the module
+// under test (Git #3895).
+vi.mock("../logger.ts", () => {
+  const child = vi.fn();
+  const base = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child };
+  child.mockReturnValue(base);
+  return { logger: base };
+});
+
 /**
  * #1871 — the azure-rm transport's reach model.
  *

@@ -31,7 +31,18 @@ process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY = "test-anthropic-key";
 // lose the race against ~300 other files' cold transforms and blow the
 // default 5000ms per-test budget, even though it resolves in well under
 // 100ms in isolation. Scoped to this file only — not a global config change.
-vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
+//
+// #3895 — the 20s figure matched vitest.config.ts's own global testTimeout
+// exactly, so it gave this file zero real headroom above the default it was
+// meant to raise: a full-suite run (~354 files, half the CPUs per
+// vitest.config.ts's own #3066 comment) still timed out the first test here
+// at the 20s wall, and the still-in-flight request's mocked db.delete() calls
+// then landed asynchronously during the *next* test, inflating its
+// state.deleteCalls count. Same #2877/#3066 thread-pool contention class
+// documented in vitest.config.ts, not a logic defect — raised to 60s to match
+// the other file in this suite (index.boot-smoke.test.ts) that already needed
+// real headroom above the global default for the same reason.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 const state = vi.hoisted(() => ({
   testbedCustomerRow: {
