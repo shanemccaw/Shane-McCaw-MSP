@@ -13,7 +13,7 @@
  * either be refused (correct) or require weakening the gate (never).
  *
  * ── What this capability is, exhaustively ─────────────────────────────────────
- * A token here authorises exactly one thing: POST /api/public/free-scan/results
+ * A token here authorises exactly one thing: POST /api/public/free-scan/return-link/results
  * returns the scan summary of the one tenants row it was minted for. Structurally:
  *
  *   - Its own table (free_scan_return_links), with a CHECK pinning `purpose` to

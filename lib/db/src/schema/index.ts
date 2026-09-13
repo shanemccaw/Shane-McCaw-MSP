@@ -1013,7 +1013,7 @@ export type AccountSetupToken = typeof accountSetupTokensTable.$inferSelect;
 // entitlement, so this capability must not live anywhere that code path reads.
 //
 // What a row here can do, exhaustively: authorise ONE read-only public route
-// (POST /api/public/free-scan/results) to return the scan summary of the one
+// (POST /api/public/free-scan/return-link/results) to return the scan summary of the one
 // tenant row (customerId) it was minted for. It is never exchanged for a JWT,
 // a refresh token or a cookie, and no /auth/* route queries this table.
 //

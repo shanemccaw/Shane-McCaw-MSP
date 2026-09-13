@@ -1,15 +1,17 @@
 /**
  * public-free-scan-return.ts — Git #1359 (Phase 7 of Feature #1352, Free Scan).
  *
- *   POST /api/public/free-scan/return-link   — email me my results link again
- *   POST /api/public/free-scan/results       — the results a return link unlocks
+ *   POST /api/public/free-scan/return-link           — email me my results link again
+ *   POST /api/public/free-scan/return-link/results   — the results a return link unlocks
  *
  * Both are unauthenticated on purpose. The Free Scan Prospect has no password and
  * no entitlement, and per the #1352 decision must NOT be given a portal session
  * (see lib/free-scan-return-link.ts for why /setup-password is off-limits, #656).
  *
- * The results route is a read of ONE customer's scan summary, authorised by the
- * return-link token alone. It never sets a cookie, never returns a JWT or any
+ * The results route serves the SAME locked/teaser payload as #1358's
+ * GET /api/public/free-scan/results (lib/free-scan-locked-results.ts — no
+ * PillarFinding.recommendation on the wire) for ONE customer, authorised by the
+ * return-link token alone instead of a checkout sessionId. It never sets a cookie, never returns a JWT or any
  * other credential, and never returns the account's email. The token is taken
  * from the JSON body — not the query string, not Authorization — so it is not
  * written to access logs and is never mistaken for a bearer token by any
@@ -22,8 +24,7 @@ import { z } from "zod";
 import { db, usersTable, tenantsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { issueAndEmailFreeScanReturnLink, resolveFreeScanReturnLink } from "../lib/free-scan-return-link.ts";
-import { readCustomerScanTelemetry } from "../lib/customer-scan-telemetry.ts";
-import { ensureProspectFreeScanBackstop } from "../lib/prospect-free-scan-backstop.ts";
+import { buildFreeScanLockedResults } from "../lib/free-scan-locked-results.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 
@@ -100,11 +101,11 @@ router.post("/public/free-scan/return-link", requestLinkLimiter, noStore, (req: 
   })();
 });
 
-// ── POST /api/public/free-scan/results ───────────────────────────────────────
+// ── POST /api/public/free-scan/return-link/results ───────────────────────────
 
 const resultsSchema = z.object({ token: z.string().max(200) });
 
-router.post("/public/free-scan/results", resultsLimiter, noStore, async (req: Request, res: Response) => {
+router.post("/public/free-scan/return-link/results", resultsLimiter, noStore, async (req: Request, res: Response) => {
   const parsed = resultsSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(401).json({ error: "link_invalid" });
@@ -119,21 +120,17 @@ router.post("/public/free-scan/results", resultsLimiter, noStore, async (req: Re
       return;
     }
 
-    // Phase 4's backstop (#3946): if the consent-time scan never landed a run
-    // row, start one now so the page shows a real scan in progress instead of
-    // nothing. Idempotent; the scan itself is fire-and-forget.
-    await ensureProspectFreeScanBackstop(resolved.customerId).catch((err: unknown) =>
-      log.warn({ err, customerId: resolved.customerId }, "free-scan results: backstop check failed (non-fatal)"),
-    );
-
+    // The live flow knows the scanned domain from what the visitor typed; a return
+    // visit does not, so the tenant's own recorded domain is sent alongside.
     const [tenant] = await db
-      .select({ customerName: tenantsTable.customerName })
+      .select({ domain: tenantsTable.domain })
       .from(tenantsTable)
       .where(eq(tenantsTable.id, resolved.customerId))
       .limit(1);
 
-    const telemetry = await readCustomerScanTelemetry(resolved.customerId);
-    res.json({ company: tenant?.customerName ?? null, ...telemetry });
+    // Backstop (#3946) + the locked projection, identical to #1358's session route.
+    const results = await buildFreeScanLockedResults(resolved.customerId);
+    res.json({ ...results, domain: tenant?.domain ?? null });
   } catch (err) {
     log.error({ err }, "free-scan results: read failed");
     res.status(500).json({ error: "results_failed" });

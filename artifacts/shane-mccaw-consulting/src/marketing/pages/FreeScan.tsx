@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Nav } from "../components/Nav";
+import { FreeScanReturnLinkRequest } from "../components/FreeScanReturnLinkRequest";
 import { Footer } from "../components/Footer";
 import { useSignalCheckCount } from "../../hooks/useSignalCheckCount";
 import { logger } from "../../lib/logger";
@@ -429,6 +430,33 @@ function flattenFindings(pillars: RealPillarCard[]): DisplayFinding[] {
   return flattened.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "Urgent" ? -1 : 1));
 }
 
+// ── Git #1359: return visits via the emailed results link ────────────────────
+// /scan/results renders this same page straight into its results phase. Identity comes from the
+// narrowly-scoped return-link token in the URL FRAGMENT (#t=fsr_…) — fragments never reach a server
+// or a Referer — exchanged only for POST /api/public/free-scan/return-link/results, which serves the
+// SAME locked payload as the live flow's GET /api/public/free-scan/results. It is not a login.
+const RETURN_TOKEN_STORAGE_KEY = "freeScanReturnToken";
+type ReturnLinkProblem = "no_token" | "link_invalid" | "link_expired" | "link_not_applicable";
+const RETURN_LINK_PROBLEM_MESSAGE: Record<ReturnLinkProblem, string> = {
+  no_token: "Open the link from the email we sent when you ran your free scan, or we can send you a new one.",
+  link_invalid: "We couldn't open that link — it may have been copied incompletely. We can send you a new one.",
+  link_expired: "That results link has expired. Links last 14 days, and a newer link replaces an older one.",
+  link_not_applicable: "This link only works for free scan results, and your account has moved on from the free scan. Sign in to see your tenant.",
+};
+
+function readReturnToken(): string | null {
+  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
+  const fromHash = new URLSearchParams(hash).get("t");
+  if (fromHash) {
+    // Kept for this tab only, and taken out of the address bar so it is not bookmarked or shared
+    // along with the page.
+    sessionStorage.setItem(RETURN_TOKEN_STORAGE_KEY, fromHash);
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    return fromHash;
+  }
+  return sessionStorage.getItem(RETURN_TOKEN_STORAGE_KEY);
+}
+
 function formatResultDate(iso: string): string {
   try {
     return new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" });
@@ -826,8 +854,24 @@ const sevBorder = (sev: DisplaySeverity) => (sev === "Urgent" ? "rgba(248,113,11
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function FreeScan() {
+  return <FreeScanPage returnMode={false} />;
+}
+
+/** Git #1359 — /scan/results: the same page, opened on its results phase from the emailed return link. */
+export function FreeScanReturn() {
+  return <FreeScanPage returnMode />;
+}
+
+function FreeScanPage({ returnMode }: { returnMode: boolean }) {
   const signals = useSignalCheckCount();
-  const [phase, setPhase] = useState<Phase>("start");
+  // Git #1359: a return visit (/scan/results) has no form to fill and no consent to grant — it opens
+  // on the results phase and reads through the emailed return-link token instead of a sessionId.
+  const [returnToken] = useState<string | null>(() =>
+    returnMode && typeof window !== "undefined" ? readReturnToken() : null,
+  );
+  const [returnDomain, setReturnDomain] = useState<string | null>(null);
+  const [returnLinkProblem, setReturnLinkProblem] = useState<ReturnLinkProblem | null>(null);
+  const [phase, setPhase] = useState<Phase>(returnMode ? "results" : "start");
   // Lead-capture fields. The tenant domain is derived from the work email (email.split('@')[1]),
   // never asked for separately — see the note under the email field.
   const [name, setName] = useState("");
@@ -934,6 +978,10 @@ export default function FreeScan() {
   const RESULTS_POLL_MAX_ATTEMPTS = 30;
 
   const fetchFreeScanResults = () => {
+    if (returnMode) {
+      fetchReturnLinkResults();
+      return;
+    }
     const sessionId = sessionIdRef.current;
     if (!sessionId) {
       setResultsStatus("error");
@@ -971,6 +1019,68 @@ export default function FreeScan() {
       }
     })();
   };
+
+  const fetchReturnLinkResults = () => {
+    if (!returnToken) {
+      setReturnLinkProblem("no_token");
+      setResultsStatus("error");
+      setResultsError(RETURN_LINK_PROBLEM_MESSAGE.no_token);
+      return;
+    }
+    void (async () => {
+      try {
+        const res = await fetch("/api/public/free-scan/return-link/results", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: returnToken }),
+        });
+        const data = (await res.json().catch(() => ({}))) as Partial<FreeScanResultsResponse> & {
+          error?: string;
+          domain?: string | null;
+        };
+        if (unmountedRef.current) return;
+        if (!res.ok) {
+          const problem =
+            data.error === "link_invalid" || data.error === "link_expired" || data.error === "link_not_applicable"
+              ? data.error
+              : null;
+          if (problem) sessionStorage.removeItem(RETURN_TOKEN_STORAGE_KEY);
+          setReturnLinkProblem(problem);
+          setResultsStatus("error");
+          setResultsError(
+            problem ? RETURN_LINK_PROBLEM_MESSAGE[problem] : "We couldn't load your results. Please try again in a moment.",
+          );
+          return;
+        }
+        setReturnDomain(data.domain ?? null);
+        if (data.status === "ready") {
+          setRealResults(data as FreeScanResultsReady);
+          setResultsStatus("ready");
+          return;
+        }
+        setResultsStatus("scanning");
+        resultsPollAttemptsRef.current += 1;
+        if (resultsPollAttemptsRef.current >= RESULTS_POLL_MAX_ATTEMPTS) return;
+        resultsPollRef.current = setTimeout(fetchReturnLinkResults, RESULTS_POLL_MS);
+      } catch {
+        if (unmountedRef.current) return;
+        setResultsStatus("error");
+        setResultsError("We couldn't reach the server to load your results. Please try again.");
+      }
+    })();
+  };
+
+  // A return-link page must never be indexed.
+  useEffect(() => {
+    if (!returnMode) return;
+    const meta = document.createElement("meta");
+    meta.name = "robots";
+    meta.content = "noindex, nofollow";
+    document.head.appendChild(meta);
+    return () => {
+      document.head.removeChild(meta);
+    };
+  }, [returnMode]);
 
   // Fires the first real read the moment the loading animation hands off to
   // the results phase, and re-fires if the visitor leaves and comes back
@@ -1166,7 +1276,7 @@ export default function FreeScan() {
     })();
   };
 
-  const scanDomain = (email.split("@")[1] || "").trim() || "yourcompany.com";
+  const scanDomain = returnDomain || (email.split("@")[1] || "").trim() || "yourcompany.com";
   const scanEmail = email.trim() || "you@yourcompany.com";
   const done = Math.min(step, SCAN_STEPS.length);
   const r = wheelVals(done / SCAN_STEPS.length, vw, vh, rm, paused, signals);
@@ -1877,6 +1987,13 @@ export default function FreeScan() {
               <p style={{ margin: 0, fontSize: 14.5, fontWeight: 500, lineHeight: 1.6, color: "#cbd5e1" }} data-testid="freescan-results-error">
                 {resultsError}
               </p>
+              {returnLinkProblem === "link_not_applicable" ? (
+                <Link href="/login" data-testid="freescan-return-signin" style={{ marginTop: 10, color: "#60a5fa", fontSize: 14, fontWeight: 600 }}>
+                  Sign in
+                </Link>
+              ) : returnLinkProblem ? (
+                <FreeScanReturnLinkRequest />
+              ) : (
               <button
                 type="button"
                 onClick={retryFreeScanResults}
@@ -1896,6 +2013,7 @@ export default function FreeScan() {
               >
                 Try again
               </button>
+              )}
             </div>
           </section>
         )}

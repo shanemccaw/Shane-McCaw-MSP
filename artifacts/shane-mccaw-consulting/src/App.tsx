@@ -10,8 +10,7 @@ import { trackPageview } from "./lib/analytics";
 // in parallel without colliding. The old pages/components still live under src/ but are no longer
 // routed (unbundled), pending a later cleanup pass.
 import Home from "./marketing/pages/Home";
-import FreeScan from "./marketing/pages/FreeScan";
-import FreeScanResults from "./marketing/pages/FreeScanResults";
+import FreeScan, { FreeScanReturn } from "./marketing/pages/FreeScan";
 import SolutionsIndex from "./marketing/pages/SolutionsIndex";
 import Monitoring from "./marketing/pages/Monitoring";
 import QuickStart from "./marketing/pages/QuickStart";
@@ -90,7 +89,7 @@ export default function App() {
         {/* Entry and core */}
         <Route path="/" component={Home} />
         {/* Children form, not component=: keeps this token-bearing return page (#1359) out of the generated sitemap. */}
-        <Route path="/scan/results">{() => <FreeScanResults />}</Route>
+        <Route path="/scan/results" children={() => <FreeScanReturn />} />
         <Route path="/scan" component={FreeScan} />
         <Route path="/solutions" component={SolutionsIndex} />
 

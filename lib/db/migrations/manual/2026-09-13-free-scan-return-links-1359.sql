@@ -4,7 +4,7 @@
 -- Its own table on purpose — NOT a kind of account_setup_tokens. Those tokens are
 -- exchanged by /auth/setup-password for a password + real session and are gated by
 -- hasRealEntitlement() because of #656. This table's tokens only ever authorise the
--- read-only POST /api/public/free-scan/results for the one tenant row they were
+-- read-only POST /api/public/free-scan/return-link/results for the one tenant row they were
 -- minted for. Only a sha256 of the token is stored.
 --
 -- Additive only (new table). Mirrors freeScanReturnLinksTable in lib/db/src/schema/index.ts.
