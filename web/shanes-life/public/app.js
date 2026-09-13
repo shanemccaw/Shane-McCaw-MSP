@@ -3316,19 +3316,27 @@ async function viewCook(view, recipeId) {
     location.hash = exitTarget;
   };
 
-  if (cookMeal) view.append(mealChipStrip(recipeId));
-
+  // Cook's own native chrome (Git #3256, design README "Screens": "Recipes, Cook, Tonight,
+  // Review and Shopping keep their solid card-colored header band") -- same real shape
+  // #3190 already shipped for Recipes/Shopping: back link, title + a live subtitle, spacer
+  // right. Back returns to Tonight instead of Recipes when this step view was opened from a
+  // live Tonight session (same exitTarget/exitToRecipes the old inline bar already used).
   view.append(
-    el("section", { class: "section" }, [
-      el("div", { class: "spread" }, [
-        el("button", { class: "ghost small", text: cookMeal ? "← Tonight" : "← Recipes", onClick: exitToRecipes }),
-        el("div", { style: "text-align:right" }, [
-          el("div", { class: "title", text: recipe.name }),
-          el("div", { class: "meta", text: `Step ${stepIndex + 1} of ${steps.length}` }),
-        ]),
+    el("div", { class: "cook-header" }, [
+      el("a", { href: `#${exitTarget}`, class: "cook-header-back", onClick: (event) => { event.preventDefault(); exitToRecipes(); } }, [
+        el("span", { html: ROOM_HOUSE_ICON }),
+        el("span", { text: cookMeal ? "Tonight" : "Recipes" }),
       ]),
+      el("div", { class: "cook-header-center" }, [
+        el("div", { class: "cook-header-title", text: recipe.name }),
+        el("div", { class: "cook-header-sub", text: `Step ${stepIndex + 1} of ${steps.length}` }),
+      ]),
+      el("div", { class: "cook-header-spacer" }),
     ]),
   );
+  view.append(el("div", { class: "cook-header-bar" }));
+
+  if (cookMeal) view.append(mealChipStrip(recipeId));
 
   const ingList =
     ings.length > 0
@@ -3468,6 +3476,25 @@ function mealDishCard(dish) {
   ]);
 }
 
+// Tonight's own native chrome (Git #3256, design README "Screens": "Recipes, Cook, Tonight,
+// Review and Shopping keep their solid card-colored header band") -- same real shape #3190
+// already shipped for Recipes/Shopping. `subtitle` carries whichever real live state the
+// caller is showing (dish-picking count, or the active meal's own countdown/done text) so the
+// header always reflects the same real state as the section below it, not a static label.
+function tonightHeader(subtitle) {
+  const header = el("div", { class: "tonight-header" }, [
+    el("a", { href: "#/today", class: "tonight-header-back" }, [el("span", { html: ROOM_HOUSE_ICON }), el("span", { text: "Today" })]),
+    el("div", { class: "tonight-header-center" }, [
+      el("div", { class: "tonight-header-title", text: "Tonight" }),
+      el("div", { class: "tonight-header-sub", text: subtitle }),
+    ]),
+    el("div", { class: "tonight-header-spacer" }),
+  ]);
+  const frag = document.createDocumentFragment();
+  frag.append(header, el("div", { class: "tonight-header-bar" }));
+  return frag;
+}
+
 async function viewTonight(view) {
   if (mealSession) {
     renderActiveMeal(view);
@@ -3479,9 +3506,10 @@ async function viewTonight(view) {
   // synchronize against and real steps to actually cook through.
   const eligible = recipes.filter((r) => r.cookMinutes && r.steps.length > 0);
 
+  view.append(tonightHeader(eligible.length === 0 ? "No eligible dishes yet" : "Pick tonight's dishes"));
+
   view.append(
     el("section", { class: "section" }, [
-      el("h2", { text: "Tonight" }),
       el("p", {
         class: "muted small",
         text: "Pick tonight's dishes -- Tonight works out when each one has to start so everything finishes together.",
@@ -3543,6 +3571,7 @@ function renderActiveMeal(view) {
   const session = mealSession;
 
   if (session.done) {
+    view.append(tonightHeader("Everything's done"));
     view.append(
       el("section", { class: "section" }, [
         el("div", { class: "card" }, [
@@ -3561,12 +3590,9 @@ function renderActiveMeal(view) {
 
   const leftMs = Math.max(0, mealFinishTime(session) - Date.now());
 
+  view.append(tonightHeader("everything done together"));
   view.append(
     el("section", { class: "section" }, [
-      el("div", { class: "spread" }, [
-        el("h2", { text: "Tonight" }),
-        el("span", { class: "chip", text: "everything done together" }),
-      ]),
       el("div", { class: "card" }, [
         el("div", { class: "meta", text: "Everything done in" }),
         el("div", { style: "font-size:2rem;font-weight:700;margin-top:.15rem", text: mmss(leftMs) }),
@@ -11907,11 +11933,14 @@ async function render() {
   // Git #3270: Tesla is the fourteenth roomHeader() caller; Git #3272 makes Vault the fifteenth.
   // Git #3274: Settings is the sixteenth -- it now has a real tab bar (House/You/Connected/
   // Activity) that wants a "Settings · the attic" header of its own to sit under, same as
-  // Money's segmented control sits under Money's.
+  // Money's segmented control sits under Money's. Git #3256: Cook and Tonight are the
+  // seventeenth and eighteenth -- the README's own "Screens" line names them alongside
+  // Recipes/Shopping ("keep their solid card-colored header band"), and #3190 only gave that
+  // real header to Recipes/Shopping, leaving these two still falling through to this generic bar.
   // Every real ROOM_DEFS room now has its own header. #app-view.no-header lets .view collapse
   // its top padding to just the native status-bar safe area instead of assuming a header row
   // sits above it (see app.css).
-  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "list" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla" || state.route === "vault" || state.route === "settings" || state.route === "pantry" || state.route === "pzone";
+  const hasOwnHeader = state.route === "today" || state.route === "shopping" || state.route === "recipes" || state.route === "cook" || state.route === "tonight" || state.route === "meds" || state.route === "dates" || state.route === "date" || state.route === "pets" || state.route === "lists" || state.route === "list" || state.route === "things" || state.route === "people" || state.route === "money" || state.route === "wins" || state.route === "inbox" || state.route === "tesla" || state.route === "vault" || state.route === "settings" || state.route === "pantry" || state.route === "pzone";
   $("#app-header").hidden = hasOwnHeader;
   $("#app-view").classList.toggle("no-header", hasOwnHeader);
 

@@ -2666,6 +2666,59 @@ pre.token {
 .recipe-header-spacer { min-width: 76px; height: 40px; }
 .recipe-header-bar { height: 3px; border-radius: var(--radius-full); background: linear-gradient(90deg, #0078d4, #00b4d8); margin: 2px 0 4px; }
 
+/* Cook and Tonight's own native room chrome (Git #3256, same README "Screens" line as above --
+   Recipes/Cook/Tonight/Review/Shopping all keep this same solid card-colored header band). #3190
+   only shipped it for Recipes/Shopping; these two duplicate the same shape with their own
+   cook-/tonight- prefixed classes, matching this file's existing per-room convention rather than
+   sharing recipe-header's classes across unrelated rooms. */
+.cook-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: max(0.9rem, env(safe-area-inset-top));
+}
+.cook-header-back {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 76px;
+  height: 40px;
+  color: #60a5fa;
+  font-size: 15px;
+  text-decoration: none;
+}
+.cook-header-back svg { flex-shrink: 0; }
+.cook-header-center { flex: 1; min-width: 0; text-align: center; }
+.cook-header-title { font-size: 17px; font-weight: var(--weight-bold); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cook-header-sub { font-size: 12px; color: hsl(var(--muted-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cook-header-spacer { min-width: 76px; height: 40px; }
+.cook-header-bar { height: 3px; border-radius: var(--radius-full); background: linear-gradient(90deg, #0078d4, #00b4d8); margin: 2px 0 4px; }
+
+.tonight-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: max(0.9rem, env(safe-area-inset-top));
+}
+.tonight-header-back {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 76px;
+  height: 40px;
+  color: #60a5fa;
+  font-size: 15px;
+  text-decoration: none;
+}
+.tonight-header-back svg { flex-shrink: 0; }
+.tonight-header-center { flex: 1; min-width: 0; text-align: center; }
+.tonight-header-title { font-size: 17px; font-weight: var(--weight-bold); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tonight-header-sub { font-size: 12px; color: hsl(var(--muted-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tonight-header-spacer { min-width: 76px; height: 40px; }
+.tonight-header-bar { height: 3px; border-radius: var(--radius-full); background: linear-gradient(90deg, #0078d4, #00b4d8); margin: 2px 0 4px; }
+
 /* Tesla room's own real "Charging · last 30 days" card (Git #3318, README "Drawn in the same
    pass" item 6): one row per real synced session, a rate chip, cost right -- First Slice
    Prototype.dc.html lines 999-1006. */
