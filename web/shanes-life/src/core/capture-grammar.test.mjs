@@ -243,6 +243,15 @@ check("matchRule: vehicle maintenance log", () => {
   assert.equal(m.groups.amount, 45);
 });
 
+check("matchRule: standalone odometer reading, no cost (Git #3266)", () => {
+  const m = matchRule("Tesla's at 40,900 miles");
+  assert.equal(m.rule, "vehicle_mileage_update");
+  assert.equal(m.groups.vehicle, "Tesla");
+  assert.equal(m.groups.mileage, 40900);
+  // Doesn't steal the cost-bearing rule 22's own territory.
+  assert.equal(matchRule("did an oil change on the Kia, $45, at 32000 miles").rule, "vehicle_maintenance_log");
+});
+
 check("matchRule: medication ordered", () => {
   assert.equal(matchRule("ordered my thyroid refill").rule, "medication_ordered");
 });

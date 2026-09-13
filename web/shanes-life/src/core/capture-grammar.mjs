@@ -846,6 +846,28 @@ const RULES = [
     },
   },
 
+  // 22b. Standalone odometer reading, no cost attached (log_car_maintenance's own MCP
+  //      description's literal example, Cars onboarding card: "Tesla's at 40,900 miles" --
+  //      Git #3266). Distinct from rule 22 above: that one requires a "<what> on <vehicle>, $N"
+  //      cost statement; this is a bare mileage-only update with no maintenance performed.
+  {
+    name: "vehicle_mileage_update",
+    match(text) {
+      const m = text.match(/^([A-Za-z][A-Za-z0-9 ]{1,40}?)(?:'s|\s+is)\s+at\s+([\d,]+)\s*(?:miles|mi)\s*$/i);
+      if (!m) return null;
+      const mileage = Number(m[2].replace(/,/g, ""));
+      if (!Number.isInteger(mileage) || mileage < 0) return null;
+      return { vehicle: m[1].trim(), mileage };
+    },
+    async run(userId, { vehicle, mileage }) {
+      const all = await vehicles.listVehicles(userId);
+      const resolved = tieredMatch(all, vehicle);
+      if (!resolved.ok) return FALLBACK;
+      const row = await vehicles.logMaintenance(userId, resolved.match.id, { mileage });
+      return { message: `${resolved.match.name} odometer logged at ${mileage.toLocaleString()} mi.`, vehicleId: row.id };
+    },
+  },
+
   // 23. Manual-watch refill ordered (mark_medication_ordered's own real "Ordered it" action, said
   //     instead of tapped).
   {

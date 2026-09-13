@@ -1856,21 +1856,21 @@ export const TOOLS = [
 
   {
     name: "log_car_maintenance",
-    title: "Log real maintenance actually done on a vehicle",
+    title: "Log real maintenance actually done on a vehicle, or a standalone odometer reading",
     description:
-      "The capture-grammar entry point for 'did an oil change on the Kia, $45' or 'Tesla tire rotation today, $60, at 32000 miles'. Records real spend (this is what get_cars' maintenance total is built from) and, in the same call, can restate when the NEXT maintenance is expected (nextMaintenanceOn/nextMaintenanceNote) -- omit those to leave the existing next-due date alone. `vehicle` matches by name (case-insensitive, prefix or substring, same resolution as simulate_transfer's account matching) -- call get_cars first if unsure of the exact name.",
+      "The capture-grammar entry point for 'did an oil change on the Kia, $45' or 'Tesla tire rotation today, $60, at 32000 miles' -- and, with `description`/`amount` both omitted, for a bare mileage statement with no cost attached, e.g. 'Tesla's at 40,900 miles' (Git #3266). Records real spend (this is what get_cars' maintenance total is built from) and, in the same call, can restate when the NEXT maintenance is expected (nextMaintenanceOn/nextMaintenanceNote) -- omit those to leave the existing next-due date alone. A mileage-only call writes a real $0 'Odometer reading' entry rather than a fake maintenance description. `vehicle` matches by name (case-insensitive, prefix or substring, same resolution as simulate_transfer's account matching) -- call get_cars first if unsure of the exact name.",
     inputSchema: {
       type: "object",
       properties: {
         vehicle: { type: "string", description: "The vehicle's name, e.g. 'Kia' or 'Tesla Model 3'." },
-        description: { type: "string", description: "What was actually done, e.g. 'Oil change'." },
-        amount: { type: "number", description: "Real dollars it actually cost." },
+        description: { type: "string", description: "What was actually done, e.g. 'Oil change'. Required together with amount; omit both (with mileage set) for a standalone odometer reading." },
+        amount: { type: "number", description: "Real dollars it actually cost. Required together with description; omit both (with mileage set) for a standalone odometer reading." },
         performedOn: { type: "string", description: "YYYY-MM-DD it was actually done. Defaults to today." },
-        mileage: { type: "integer", description: "Real odometer reading at the time, if known." },
+        mileage: { type: "integer", description: "Real odometer reading at the time, if known. Required if description/amount are omitted." },
         nextMaintenanceOn: { type: "string", description: "YYYY-MM-DD the next maintenance is expected, if stated. Omit to leave unchanged." },
         nextMaintenanceNote: { type: "string", description: "What the next maintenance is, e.g. 'Tire rotation'. Omit to leave unchanged." },
       },
-      required: ["vehicle", "description", "amount"],
+      required: ["vehicle"],
       additionalProperties: false,
     },
     async handler(args, ctx) {

@@ -383,6 +383,13 @@ export async function deleteVehicle(userId, vehicleId) {
  * the same call ("oil change done, next one around March" said in one breath) -- additive like
  * money.mjs's setHabit: omitted fields leave the existing next-due date alone rather than
  * clearing it.
+ *
+ * Also the real handler for a bare odometer statement with no cost/description at all
+ * ("Tesla's at 40,900 miles" -- Git #3266): `description`/`amount` are only required together,
+ * as a real spend entry. Omit both and pass `mileage` alone for a standalone reading -- this
+ * writes a real $0 "Odometer reading" row rather than inventing a fake maintenance description
+ * or cost, so entry.mileage (surfaced next to the Recent maintenance list, and fed into
+ * mileageStatus() for Tesla-synced vehicles) still picks it up.
  */
 export async function logMaintenance(
   userId,
@@ -392,10 +399,6 @@ export async function logMaintenance(
   const vehicle = await getOwnedVehicle(userId, vehicleId);
   if (!vehicle) throw notFound("Vehicle not found");
 
-  const trimmedDescription = String(description ?? "").trim();
-  if (!trimmedDescription) throw badRequest("description is required");
-  const amountValue = parseOptionalAmount(amount, "amount");
-  if (amountValue === null) throw badRequest("amount is required");
   if (mileage !== null && mileage !== undefined) {
     const n = Number(mileage);
     if (!Number.isInteger(n) || n < 0) throw badRequest("mileage must be a non-negative integer");
@@ -404,11 +407,27 @@ export async function logMaintenance(
     mileage = null;
   }
 
+  const trimmedDescription = String(description ?? "").trim();
+  const hasCostStatement = trimmedDescription || amount !== undefined && amount !== null;
+
+  let finalDescription;
+  let amountValue;
+  if (!hasCostStatement) {
+    if (mileage === null) throw badRequest("description and amount are required, or mileage alone for a real odometer reading");
+    finalDescription = "Odometer reading";
+    amountValue = 0;
+  } else {
+    if (!trimmedDescription) throw badRequest("description is required");
+    amountValue = parseOptionalAmount(amount, "amount");
+    if (amountValue === null) throw badRequest("amount is required");
+    finalDescription = trimmedDescription;
+  }
+
   await one(
     `INSERT INTO vehicle_maintenance_log (vehicle_id, user_id, performed_on, description, amount, mileage)
      VALUES ($1, $2, COALESCE($3::date, current_date), $4, $5, $6)
      RETURNING id`,
-    [vehicleId, userId, performedOn, trimmedDescription, amountValue, mileage],
+    [vehicleId, userId, performedOn, finalDescription, amountValue, mileage],
   );
 
   if (nextMaintenanceOn !== undefined || nextMaintenanceNote !== undefined) {
