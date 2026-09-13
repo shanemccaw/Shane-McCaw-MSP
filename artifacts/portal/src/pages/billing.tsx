@@ -47,6 +47,13 @@ export default function BillingPage() {
   const live = useBillingLive();
   const { can } = useAuth();
   const canManageBilling = can("customer", "billing.manage");
+  // Git #3843, following #3648's real backend change: `billing.view` is narrowed
+  // (#3629) to Customer Admin, Billing and MSP staff, and `billingScopeUserIds`
+  // (portal-billing-scope.ts) widens every one of them to their whole tenant's
+  // rows, not just their own — so anyone who reaches this page with live data is
+  // reading the org's ledger, not a personal one. Framed on the capability
+  // itself, not a role literal, per this file's own convention (#2459).
+  const seesWholeTenant = can("customer", "billing.view");
   const [ledgerOpen, setLedgerOpen] = useState(true);
   const [askOpen, setAskOpen] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
@@ -60,11 +67,17 @@ export default function BillingPage() {
   const noReceipts = isLive && live.receipts.length === 0;
 
   const stateLine = isLoading
-    ? "Reading your billing history"
+    ? seesWholeTenant
+      ? "Reading the org's billing history"
+      : "Reading your billing history"
     : isFixture
-      ? "Could not read your billing history"
+      ? seesWholeTenant
+        ? "Could not read the org's billing history"
+        : "Could not read your billing history"
       : noReceipts
-        ? "Live — no invoices on your ledger"
+        ? seesWholeTenant
+          ? "Live — no invoices on the org's ledger"
+          : "Live — no invoices on your ledger"
         : `Live — ${live.receipts.length} invoice${live.receipts.length === 1 ? "" : "s"}`;
   const stateDot = isFixture ? RED : isLoading ? "#475569" : GRN;
   const stateInk = isFixture ? RED : "#64748b";
@@ -166,11 +179,13 @@ export default function BillingPage() {
         >
           <AlertCircle className="mt-[2px] size-[15px] shrink-0" color={RED} />
           <div className="flex flex-col gap-1">
-            <span className="text-[13px] font-semibold text-[#f8fafc]">Your billing history could not be read</span>
+            <span className="text-[13px] font-semibold text-[#f8fafc]">
+              {seesWholeTenant ? "The org's billing history could not be read" : "Your billing history could not be read"}
+            </span>
             <span className="max-w-[620px] text-[12px] leading-[1.55] text-[#94a3b8]">
-              This is a failed read, not a clean ledger. You may well have invoices — nothing is listed below because
-              nothing could be fetched, and we would rather show you that than an empty table you would read as
-              "never charged".
+              {seesWholeTenant
+                ? "This is a failed read, not a clean ledger. The org may well have invoices — nothing is listed below because nothing could be fetched, and we would rather show you that than an empty table you would read as \"never charged\"."
+                : "This is a failed read, not a clean ledger. You may well have invoices — nothing is listed below because nothing could be fetched, and we would rather show you that than an empty table you would read as \"never charged\"."}
             </span>
             <button
               type="button"
@@ -190,16 +205,25 @@ export default function BillingPage() {
             <div className="flex flex-wrap items-center gap-3 py-[13px] pb-2">
               <span className="text-[13.5px] font-semibold text-[#f8fafc]">Receipts</span>
               <span className="text-[11px] text-[#64748b]">
-                {noReceipts ? "your ledger, read successfully" : "newest first · every invoice on your ledger"}
+                {noReceipts
+                  ? seesWholeTenant
+                    ? "the org's ledger, read successfully"
+                    : "your ledger, read successfully"
+                  : seesWholeTenant
+                    ? "newest first · every invoice on the org's ledger"
+                    : "newest first · every invoice on your ledger"}
               </span>
             </div>
 
             {noReceipts ? (
               <div className="flex flex-col gap-[6px] border-t py-[22px] pb-2" style={{ borderColor: "rgba(255,255,255,.06)" }}>
-                <span className="text-[13px] font-semibold text-[#f8fafc]">You have never been invoiced</span>
+                <span className="text-[13px] font-semibold text-[#f8fafc]">
+                  {seesWholeTenant ? "The org has never been invoiced" : "You have never been invoiced"}
+                </span>
                 <span className="max-w-[620px] text-[12px] leading-[1.6] text-[#94a3b8]">
-                  This is a real, successful read of your billing ledger: it holds no invoices for you. An empty
-                  ledger and a ledger we could not reach are different answers, and this is the first one.
+                  {seesWholeTenant
+                    ? "This is a real, successful read of the org's billing ledger: it holds no invoices. An empty ledger and a ledger we could not reach are different answers, and this is the first one."
+                    : "This is a real, successful read of your billing ledger: it holds no invoices for you. An empty ledger and a ledger we could not reach are different answers, and this is the first one."}
                 </span>
               </div>
             ) : null}
