@@ -2513,7 +2513,7 @@ namespace BuildConsole.Controls
             // feed, so the filter map isn't overwritten with closed-only issues). Git #2739 —
             // allIssuesForRollups (fetched above, before BuildBoardFromGitHub) is reused here so
             // the milestone progress bar's real closed count comes from the same ALL-states set.
-            BuildConsole.Services.FocusModeService.Instance.UpdateBoardSnapshot(
+            await BuildConsole.Services.FocusModeService.Instance.UpdateBoardSnapshot(
                 issues, milestoneInfos!,
                 allIssuesForCounts: allIssuesForRollups,
                 trigger: forceFresh ? "manual Git refresh" : "board update");

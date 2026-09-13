@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace BuildConsole.Services
 {
@@ -190,7 +191,7 @@ namespace BuildConsole.Services
         // Piece 1 — active milestone declaration
         // ================================================================
 
-        public void Activate(int? milestoneNumber, string milestoneTitle)
+        public async Task Activate(int? milestoneNumber, string milestoneTitle)
         {
             if (!milestoneNumber.HasValue)
             {
@@ -206,7 +207,7 @@ namespace BuildConsole.Services
             // silently (no toast storm) — so a mature milestone's achievements aren't blank.
             var ms = _milestones.FirstOrDefault(m => m.Number == milestoneNumber);
             if (ms != null) MaybeAwardProgressAchievements(ms, silent: true);
-            RecomputeGame($"milestone #{milestoneNumber} activated");
+            await RecomputeGame($"milestone #{milestoneNumber} activated");
             RecomputeSuggestions();
             RaiseFilterChanged();
             RaiseStateChanged();
@@ -417,7 +418,7 @@ namespace BuildConsole.Services
         /// placeholder-filtered counts instead of GitHub's raw native milestone counters — see
         /// <see cref="GitBoardIssueFilters.CountsAsRealWork"/>. Null/empty (fetch unavailable) falls
         /// back to the old native-counter behavior rather than showing a broken zero-closed count.</summary>
-        public void UpdateBoardSnapshot(
+        public async Task UpdateBoardSnapshot(
             IReadOnlyList<GitBoardIssue> issues,
             IReadOnlyList<GitHubApiClient.GitHubMilestoneInfo> milestoneInfos,
             IReadOnlyList<GitBoardIssue>? allIssuesForCounts = null,
@@ -443,7 +444,7 @@ namespace BuildConsole.Services
             _lastAllIssuesForCounts = allIssuesForCounts?.ToList() ?? new();
             _milestones = BuildMilestoneList();
 
-            RecomputeGame(trigger);
+            await RecomputeGame(trigger);
             RecomputeSuggestions();
             RaiseStateChanged();
             if (IsActive) RaiseFilterChanged();
@@ -492,13 +493,13 @@ namespace BuildConsole.Services
         /// MyArchitect/#3454, and old disconnected legacy epics like #1094 that still carry the
         /// milestone tag but no longer connect to the real current tree). Persisted so the choice
         /// survives a restart. Rebuilds off the cached last-real-fetch — no board refresh needed.</summary>
-        public void SetProductionScopeOnly(bool value)
+        public async Task SetProductionScopeOnly(bool value)
         {
             if (_state.ProductionScopeOnly == value) return;
             _state.ProductionScopeOnly = value;
             _milestones = BuildMilestoneList();
             ActivityLog.Log("focus-mode", $"production scope {(value ? "ON" : "OFF")} — milestone tile rescoped");
-            RecomputeGame($"production scope toggled {(value ? "ON" : "OFF")}");
+            await RecomputeGame($"production scope toggled {(value ? "ON" : "OFF")}");
             RaiseStateChanged();
         }
 
@@ -562,8 +563,10 @@ namespace BuildConsole.Services
         /// <paramref name="trigger"/> names what caused this recompute (a manual Git refresh, a board
         /// poll, milestone activation, …) and is logged with the old→new closed/total so a "the progress
         /// bar didn't move after I refreshed" report is answerable straight from the focus-mode feed —
-        /// you can see whether the recalc even ran and whether the underlying counts actually changed.</summary>
-        private void RecomputeGame(string trigger = "recompute")
+        /// you can see whether the recalc even ran and whether the underlying counts actually changed.
+        /// Async (Git #3915) — <see cref="BuildProgressAsync"/> now fits the ETA over a real local-mirror
+        /// query instead of an in-memory sample log.</summary>
+        private async Task RecomputeGame(string trigger = "recompute")
         {
             // Snapshot the prior progress so the log can show the real old→new transition (this is the
             // single point every focus progress-bar surface — the bar AND the immersive header — reads).
@@ -612,12 +615,9 @@ namespace BuildConsole.Services
                     Award($"ms{number}-todozero-{DateTime.Now:yyyyMMdd}", "📭", "Inbox zero",
                           $"No Shane-To-Dos left under '{ms.Title}'", silent: false);
                 _state.TodoBaseline[number] = todoOpen;
-
-                // ---- record a closed-count sample for the ETA fit (while focused) ----
-                if (active) RecordClosedSample(number, closed, total);
             }
 
-            Progress = BuildProgress(ms);
+            Progress = await BuildProgressAsync(ms);
 
             // Log every recompute of the focus progress bar with its trigger and the real old→new
             // numbers, so "manual refresh didn't move the bar" is diagnosable: a CHANGED line proves
@@ -654,18 +654,17 @@ namespace BuildConsole.Services
             RaiseStateChanged();
         }
 
-        private void RecordClosedSample(int milestoneNumber, int closed, int total)
-        {
-            var last = _state.ClosedSamples.Where(s => s.MilestoneNumber == milestoneNumber)
-                                           .OrderBy(s => s.At).LastOrDefault();
-            if (last != null && last.Closed == closed && last.Total == total) return; // no change, no new point
-            _state.ClosedSamples.Add(new FocusClosedSample { MilestoneNumber = milestoneNumber, At = DateTime.Now, Closed = closed, Total = total });
-            // keep the series bounded
-            if (_state.ClosedSamples.Count > 500)
-                _state.ClosedSamples = _state.ClosedSamples.OrderByDescending(s => s.At).Take(500).OrderBy(s => s.At).ToList();
-        }
-
-        private FocusProgress BuildProgress(FocusMilestone ms)
+        /// <summary>Git #3915 — the real, structural fix: source the Focus bar's ETA window from
+        /// the SAME real calendar-based <see cref="GitHubIssueTimeSeriesService.BuildSeries"/> daily
+        /// history <see cref="HomeEtaProjectionService"/> already uses for the Home dashboard's
+        /// per-Milestone/Epic ETA, instead of the old local-only <c>_state.ClosedSamples</c> log
+        /// (retired — see <see cref="FocusModels"/>). That local log could only ever span as long as
+        /// BuildConsole had cumulatively been open AND happened to observe a real change, so it
+        /// almost never cleared <see cref="IssueEtaProjection.MinEtaSpan"/> (1 hour) — the persistent
+        /// "history only spans &lt;60m" the Focus bar showed even on mature milestones with months of
+        /// real GitHub history. A real per-day mirror query instead means a fresh install/restart
+        /// shows a trustworthy ETA immediately, with no local warm-up period.</summary>
+        private async Task<FocusProgress> BuildProgressAsync(FocusMilestone ms)
         {
             var p = new FocusProgress
             {
@@ -679,18 +678,38 @@ namespace BuildConsole.Services
             };
 
             int number = ms.Number ?? -1;
-            var samples = _state.ClosedSamples.Where(s => s.MilestoneNumber == number).OrderBy(s => s.At).ToList();
+            if (number < 0)
+            {
+                p.HasEta = false;
+                p.EtaReason = "no real GitHub milestone number to project against";
+                return p;
+            }
+
+            var series = await GitHubIssueTimeSeriesService.GetMilestoneSeriesAsync(number, ms.Title);
+            if (!series.HasEnoughData)
+            {
+                p.HasEta = false;
+                p.EtaReason = series.Reason ?? "not enough real history yet to project a date";
+                return p;
+            }
 
             // Fit the ETA with the ONE shared honest-projection core (#2714 extracted this from
             // here verbatim so the Home dashboard's per-Epic / Milestone panel reuses the exact
-            // same sampling/gating discipline instead of approximating it). Feed (time, closed-count)
-            // so the fitted slope is "issues closed per hour"; the gates and reason strings are
-            // unchanged from what this method has always produced.
-            var window = samples.Select(s => new UsageSample { At = s.At, Percent = s.Closed }).ToList();
-            // Git #3869 — the same samples already carry the real Total (closed + open) at each
-            // reading, so the parallel creation series the net-rate ETA needs comes for free —
-            // no new sampling/plumbing, just the OTHER field FocusClosedSample already records.
-            var totalWindow = samples.Select(s => new UsageSample { At = s.At, Percent = s.Total }).ToList();
+            // same sampling/gating discipline instead of approximating it). Feed the series' real
+            // daily cumulative-closed curve so the fitted slope is "issues closed per day"; the
+            // gates and reason strings are unchanged from what this method has always produced.
+            var window = series.Points
+                .Select(pt => new UsageSample { At = pt.Date.ToDateTime(TimeOnly.MinValue), Percent = pt.ClosedCumulative })
+                .ToList();
+            // Git #3869 — the same real series already carries the real cumulative-opened curve
+            // (the #2721 burn-up chart's own "Total Scope" line), so the shared core's net-rate ETA
+            // gets its creation series for free — same fix, same core, no second definition of it.
+            var totalWindow = series.Points
+                .Select(pt => new UsageSample { At = pt.Date.ToDateTime(TimeOnly.MinValue), Percent = pt.CumulativeOpened })
+                .ToList();
+            // Real still-open count from the live milestone snapshot (ms), not the series' own
+            // possibly-incomplete-mirror-derived count — same discipline HomeEtaProjectionService's
+            // BuildRow uses via its totalOverride/closedOverride/openOverride parameters (Git #3567).
             int remaining = Math.Max(0, ms.TotalIssues - ms.ClosedIssues);
             var proj = IssueEtaProjection.Project(window, remaining, "milestone", totalWindow);
             p.HasEta = proj.HasEta;
@@ -717,7 +736,6 @@ namespace BuildConsole.Services
                 _state = JsonSerializer.Deserialize<FocusPersistState>(json,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new FocusPersistState();
                 _state.Achievements ??= new();
-                _state.ClosedSamples ??= new();
                 _state.ClosedBaseline ??= new();
                 _state.TodoBaseline ??= new();
                 _state.InProgressChats ??= new();

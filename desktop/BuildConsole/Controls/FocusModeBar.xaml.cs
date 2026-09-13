@@ -205,10 +205,10 @@ namespace BuildConsole.Controls
         // ----------------------------------------------------------------
         // Interactions
         // ----------------------------------------------------------------
-        private void StartFocusBtn_Click(object sender, RoutedEventArgs e)
+        private async void StartFocusBtn_Click(object sender, RoutedEventArgs e)
         {
             if (MilestoneCombo.SelectedItem is ComboBoxItem item && item.Tag is FocusMilestone m && m.Number.HasValue)
-                FocusModeService.Instance.Activate(m.Number, m.Title);
+                await FocusModeService.Instance.Activate(m.Number, m.Title);
         }
 
         private void ExitBtn_Click(object sender, RoutedEventArgs e) => FocusModeService.Instance.Deactivate();
@@ -238,10 +238,10 @@ namespace BuildConsole.Controls
 
         /// <summary>Git #3869 — toggles the milestone tile's production-scope filter. The service
         /// raises StateChanged itself, which drives the actual re-render.</summary>
-        private void ScopeToggle_Click(object sender, MouseButtonEventArgs e)
+        private async void ScopeToggle_Click(object sender, MouseButtonEventArgs e)
         {
             var svc = FocusModeService.Instance;
-            svc.SetProductionScopeOnly(!svc.ProductionScopeOnly);
+            await svc.SetProductionScopeOnly(!svc.ProductionScopeOnly);
         }
 
         private void ActiveTitle_Click(object sender, MouseButtonEventArgs e)

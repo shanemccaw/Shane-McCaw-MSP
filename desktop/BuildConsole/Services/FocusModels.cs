@@ -113,15 +113,16 @@ namespace BuildConsole.Services
     // it, along with FocusPersistState.LastContext. Any snapshot a prior session already
     // wrote to focus-mode.json is left alone on disk — just no longer modeled or read.)
 
-    /// <summary>One (time, closed-count) reading for a milestone — the series the ETA
-    /// is fit over. Persisted so pace/ETA survive a restart.</summary>
-    public class FocusClosedSample
-    {
-        public int MilestoneNumber { get; set; }
-        public DateTime At { get; set; }
-        public int Closed { get; set; }
-        public int Total { get; set; }
-    }
+    // Git #3915 — FocusClosedSample / FocusPersistState.ClosedSamples (a local,
+    // only-while-BuildConsole-was-open snapshot log the Focus bar ETA used to fit its
+    // pace against) were retired. Audited: RecordClosedSample/ClosedSamples had exactly
+    // one reader (FocusModeService.BuildProgress) and one writer (RecordClosedSample) —
+    // both in FocusModeService.cs, no other real consumer anywhere in the app. The Focus
+    // bar ETA now sources its window from the same real, calendar-based
+    // GitHubIssueTimeSeriesService.BuildSeries data HomeEtaProjectionService already used,
+    // so it no longer needs a locally-accumulated log at all. A pre-existing
+    // focus-mode.json with a "ClosedSamples" array round-trips fine — System.Text.Json
+    // silently ignores the now-unmodeled property.
 
     public class PersistedInProgressChat
     {
@@ -140,7 +141,6 @@ namespace BuildConsole.Services
         public bool IsActive { get; set; }
         public int Points { get; set; }
         public List<FocusAchievement> Achievements { get; set; } = new();
-        public List<FocusClosedSample> ClosedSamples { get; set; } = new();
         /// <summary>milestoneNumber -> last-seen closed count, so a close that happens while
         /// the app was shut still isn't mis-counted as "just closed" on next launch.</summary>
         public Dictionary<int, int> ClosedBaseline { get; set; } = new();

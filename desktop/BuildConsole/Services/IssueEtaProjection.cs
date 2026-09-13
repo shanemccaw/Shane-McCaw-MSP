@@ -65,7 +65,7 @@ namespace BuildConsole.Services
         ///
         /// <paramref name="totalWindow"/> — Git #3869. An optional parallel series, same shape as
         /// <paramref name="window"/> but with <c>Percent</c> carrying the real cumulative
-        /// opened/created count in scope at each reading (e.g. <c>FocusClosedSample.Total</c> /
+        /// opened/created count in scope at each reading (e.g.
         /// <see cref="GitHubIssueTimeSeriesService.IssueTimeSeriesPoint.CumulativeOpened"/>). A
         /// milestone's backlog doesn't shrink at the gross close rate alone when new issues keep
         /// landing in scope just as fast — real measured data: 2,476 closed but 2,836 newly created
