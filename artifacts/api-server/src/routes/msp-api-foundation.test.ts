@@ -132,6 +132,13 @@ mock.module("../lib/msp-jobs.ts", {
   },
 });
 
+import { ladderRowsModule } from "../test-setup/rbac-ladder-fixture.ts";
+
+// requireRole (#2458) reads real ladder rows via rbac-ladder-source.ts; every
+// node-runner suite behind the real middleware supplies them the same way
+// (see that module's own header) rather than seeding @workspace/db's mock.
+mock.module("../middlewares/rbac-ladder-source.ts", { namedExports: ladderRowsModule() });
+
 import jwt from "jsonwebtoken";
 import express from "express";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
@@ -148,12 +155,26 @@ let server: http.Server;
 let base: string;
 
 before(async () => {
+  const { runWithRequestContext } = await import("../lib/request-context.ts");
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   const app = express();
   app.set("trust proxy", false);
 
   // Raw body for webhooks
   app.use("/msp/v1/webhooks", express.raw({ type: "application/json" }));
   app.use(express.json());
+
+  // Real app.ts establishes this AsyncLocalStorage context ahead of every
+  // route so mspRequestLog can read traceId from it; mirror that here so this
+  // suite exercises the real forwarded-x-trace-id behavior instead of always
+  // generating a fresh one. Only UUID-shaped forwarded ids are honoured (see
+  // app.ts) — an arbitrary client string is not.
+  app.use((req, _res, next) => {
+    const forwarded = req.headers["x-trace-id"];
+    const traceId = typeof forwarded === "string" && UUID_RE.test(forwarded) ? forwarded : crypto.randomUUID();
+    runWithRequestContext({ traceId, mspId: null, customerId: null, actor: null }, next);
+  });
 
   const { default: mspV1Router } = await import("./msp-v1.ts") as { default: import("express").Router };
   app.use("/msp/v1", mspV1Router);
@@ -226,7 +247,10 @@ describe("MSP v1 health", () => {
   });
 
   it("X-Trace-Id is echoed when provided in request", async () => {
-    const traceId = "test-trace-123";
+    // app.ts's request-context middleware only honours a UUID-shaped forwarded
+    // x-trace-id (the event-bus correlationId schema requires a UUID) — an
+    // arbitrary client string is deliberately replaced with a fresh one, not echoed.
+    const traceId = crypto.randomUUID();
     const { headers } = await request("GET", "/msp/v1/health", { headers: { "x-trace-id": traceId } });
     assert.equal(headers["x-trace-id"], traceId);
   });
