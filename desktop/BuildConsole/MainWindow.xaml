@@ -121,6 +121,7 @@
                                 <MenuItem Header="New Browser Window" InputGestureText="Ctrl+Shift+N" Click="MenuNewBrowserWindow_Click"/>
                                 <Separator/>
                                 <MenuItem Header="Theme Editor…"  Click="MenuThemeEditor_Click"/>
+                                <MenuItem Header="WPF Tester…"    Click="MenuWpfTester_Click"/>
                                 <Separator/>
                                 <MenuItem Header="Settings"       Click="MenuSettings_Click"/>
                                 <Separator/>

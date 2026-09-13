@@ -6898,6 +6898,15 @@ namespace BuildConsole
             themeEditor.Show();
         }
 
+        /// <summary>Git #3914 — File > WPF Tester opens the developer diagnostic window
+        /// that renders any BuildConsole UserControl in isolation for layout / visual-tree
+        /// inspection without needing the full shell running.</summary>
+        private void MenuWpfTester_Click(object sender, RoutedEventArgs e)
+        {
+            var tester = new WpfTesterWindow { Owner = this };
+            tester.Show();
+        }
+
         /// <summary>Git #834 / #954 — File > Settings selects the sidebar's Settings
         /// category nav (via ActivityBar.SelectSettings, which also expands a
         /// collapsed sidebar) AND opens/focuses the native Settings tab directly, so

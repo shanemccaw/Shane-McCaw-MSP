@@ -5869,6 +5869,44 @@ namespace BuildConsole.Controls
             // Git #2538 — surface any release-gating issue in the shown milestone(s).
             RenderGateCards(shownMilestones);
 
+            // Git Board 2.0 — feed the same live milestone/epic/issue data the
+            // legacy TreeView already uses into the new adaptive GitBoardPanel.
+            // Runs after RenderGateCards so the gate info (_lastBoardIssues) is
+            // already current. Picks the first visible gate issue for the banner.
+            var shownMilestoneNumbers2 = shownMilestones
+                .Where(m => m.GithubNumber.HasValue)
+                .Select(m => m.GithubNumber!.Value)
+                .ToHashSet();
+            var firstGate = _lastBoardIssues
+                .FirstOrDefault(i => !i.IsClosed && IsGateTitle(i.Title)
+                    && i.ParentNumber == null
+                    && i.MilestoneNumber.HasValue
+                    && shownMilestoneNumbers2.Contains(i.MilestoneNumber.Value));
+            string? gateTitle = null;
+            string? gateFraction = null;
+            int? gateNumber = null;
+            if (firstGate != null)
+            {
+                var displayTitle = firstGate.Title.TrimStart();
+                if (displayTitle.StartsWith("GATE:", StringComparison.Ordinal))
+                    displayTitle = displayTitle.Substring("GATE:".Length).TrimStart();
+                gateTitle = displayTitle;
+                gateNumber = firstGate.Number;
+                var (gt, gc, _) = ResolveRollup(firstGate);
+                if (gt > 0) gateFraction = $"{gc}/{gt}";
+                else
+                {
+                    var (done, total) = ParseChecklist(firstGate.Body);
+                    if (total > 0) gateFraction = $"{done}/{total}";
+                }
+            }
+            GitBoardPanel.SetLiveMilestones(
+                shownMilestones,
+                activeWorkingEpicNumber: _activeEpicGithubNumber,
+                activeGateTitle: gateTitle,
+                activeGateFraction: gateFraction,
+                activeGateNumber: gateNumber);
+
             foreach (var m in shownMilestones)
             {
                 if (!await YieldIssuesTreeChunkAsync(pacing)) return;
@@ -9695,6 +9733,56 @@ namespace BuildConsole.Controls
                     BodyTemplate = item.BodyTemplate
                 });
             }
+        }
+
+        // ── GIT BOARD 2.0 — EVENT HANDLERS ──────────────────────────────────────
+        // These three handlers bridge the new adaptive GitBoardPanel (which lives
+        // inside IssuesView) back up to MainWindow via LeftSidebar's own events,
+        // keeping GitBoardPanel a reusable UserControl with no direct MainWindow dep.
+
+        /// <summary>
+        /// Git Board 2.0 — user clicked an issue row in the new adaptive panel.
+        /// Re-raises as LeftSidebar.IssueSelected (int overload) so MainWindow
+        /// can open the issue detail tab the same way the legacy tree does.
+        /// </summary>
+        private void GitBoardPanel_IssueSelected(object sender, int issueNumber)
+        {
+            var issue = BuildDetailIssue(issueNumber);
+            if (issue != null)
+                IssueSelected?.Invoke(this, issue);
+            else
+            {
+                // Fallback: synthesise a minimal GitIssue so the detail tab still opens.
+                var synthetic = new GitIssue { IssueNumber = issueNumber };
+                IssueSelected?.Invoke(this, synthetic);
+            }
+        }
+
+        /// <summary>
+        /// Git Board 2.0 — user clicked the LOCATE button on the Working banner.
+        /// Asks MainWindow to open/focus the detail tab for the given epic number.
+        /// </summary>
+        private void GitBoardPanel_EpicLocateRequested(object sender, int epicNumber)
+        {
+            var issue = BuildDetailIssue(epicNumber);
+            if (issue != null)
+                GitDetailTabRequested?.Invoke(this, issue);
+            else
+            {
+                var synthetic = new GitIssue { IssueNumber = epicNumber, IsEpic = true };
+                GitDetailTabRequested?.Invoke(this, synthetic);
+            }
+        }
+
+        /// <summary>
+        /// Git Board 2.0 — user clicked the Gate banner.
+        /// Opens the gate issue's detail tab.
+        /// </summary>
+        private void GitBoardPanel_GateSelected(object sender, int gateNumber)
+        {
+            var issue = BuildDetailIssue(gateNumber);
+            if (issue != null)
+                GitDetailTabRequested?.Invoke(this, issue);
         }
 
         private static string GetStr(Dictionary<string, JsonElement> row, string field)
