@@ -25,7 +25,7 @@
  *     trigger directly (#2764, EPIC #1944 part 5 — *"they should not discover it by
  *     noticing a row reappear"*), via `notifyRetentionRestore()`.
  *   * **No audit table.** #1946 owns the trail; this consumes it through the existing
- *     `createAuditLog`.
+ *     `createAuditLogOrThrow` (Git #3935 — a missing audit trail here must not pass silently).
  *   * **No permission check.** Which principal may recover from which tier is #1704's
  *     `can(principal, action, resource)` — part 1 is explicit that it is a permission
  *     boundary, *"not a role-ladder comparison, and not a flag on the row"*. Callers
@@ -43,7 +43,7 @@ import {
   type RetentionStage,
 } from "@workspace/db";
 import { logger } from "../logger.ts";
-import { createAuditLog } from "../audit.ts";
+import { createAuditLogOrThrow } from "../audit.ts";
 import { notifyRetentionRestore } from "../notification-center.ts";
 import {
   advanceStageClock,
@@ -110,7 +110,7 @@ function clockColumns(clock: RetentionClockState) {
  * #1944: *"A refused delete is an audited action... A customer repeatedly attempting to
  * delete a risk with an open POA&M against it is a signal worth having, and it belongs
  * in the same operator view as the accelerated-delete queue."* The audit trail itself
- * is #1946's; this consumes it through the existing `createAuditLog` rather than
+ * is #1946's; this consumes it through the existing `createAuditLogOrThrow` rather than
  * opening a second one.
  *
  * It lives here rather than in `reference-guard.ts` so that module stays free of the
@@ -129,7 +129,7 @@ export async function assertDeleteAllowed(
   });
   if (result.allowed) return;
 
-  await createAuditLog({
+  await createAuditLogOrThrow({
     actorUserId: actor.userId ?? null,
     actorName: actor.name,
     actorRole: actor.role,
@@ -279,7 +279,7 @@ export async function softDelete(input: SoftDeleteInput): Promise<RecordDeletion
     return inserted;
   });
 
-  await createAuditLog({
+  await createAuditLogOrThrow({
     actorUserId: input.actor.userId ?? null,
     actorName: input.actor.name,
     actorRole: input.actor.role,
@@ -363,7 +363,7 @@ export async function restore(input: {
     return next;
   });
 
-  await createAuditLog({
+  await createAuditLogOrThrow({
     actorUserId: input.actor.userId ?? null,
     actorName: input.actor.name,
     actorRole: input.actor.role,
@@ -446,7 +446,7 @@ export async function requestAcceleration(input: {
     .where(eq(recordDeletionsTable.id, row.id))
     .returning();
 
-  await createAuditLog({
+  await createAuditLogOrThrow({
     actorUserId: input.actor.userId ?? null,
     actorName: input.actor.name,
     actorRole: input.actor.role,
@@ -495,7 +495,7 @@ export async function decideAcceleration(input: {
     })
     .where(eq(recordDeletionsTable.id, row.id));
 
-  await createAuditLog({
+  await createAuditLogOrThrow({
     actorUserId: input.actor.userId ?? null,
     actorName: input.actor.name,
     actorRole: input.actor.role,
@@ -559,7 +559,7 @@ export async function purgeNow(input: {
     return next;
   });
 
-  await createAuditLog({
+  await createAuditLogOrThrow({
     actorUserId: input.actor.userId ?? null,
     actorName: input.actor.name,
     actorRole: input.actor.role,
