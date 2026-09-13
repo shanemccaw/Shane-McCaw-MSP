@@ -1,4 +1,4 @@
-import { DEFAULT_TESTS, type PccTest } from './taxonomy-catalog.ts';
+import { getCatalog, type PccTest } from './taxonomy-catalog.ts';
 import { PccStateManager, type PccRunResult } from './state-manager.ts';
 import { PccStreamingServer } from './streaming-server.ts';
 import { PccGraphValidator } from './graph-validator.ts';
@@ -17,9 +17,10 @@ export class PccTestRunner {
     const env = this.stateManager.getEnvironment();
     this.stateManager.startRun(runId);
 
+    const allTests = await getCatalog();
     const targetTests = tags.length > 0
-      ? DEFAULT_TESTS.filter(t => t.tags.some(tag => tags.includes(tag)))
-      : DEFAULT_TESTS;
+      ? allTests.filter(t => t.tags.some(tag => tags.includes(tag)))
+      : allTests;
 
     // Broadcast run starting
     this.streamingServer.broadcast('run_started', {

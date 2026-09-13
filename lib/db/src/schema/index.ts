@@ -4787,6 +4787,45 @@ export const userEntitlementOverridesTable = pgTable("user_entitlement_overrides
 export type InsertUserEntitlementOverride = typeof userEntitlementOverridesTable.$inferInsert;
 export type UserEntitlementOverride = typeof userEntitlementOverridesTable.$inferSelect;
 
+// ── PCC (Platform Command Center) test catalog (Git #3551) ──────────────────
+//
+// `pcc.ts`'s `GET /catalog` and `PccTestRunner.runSuite` used to read a static
+// in-memory array (`DEFAULT_TESTS` in `artifacts/api-server/src/lib/pcc/taxonomy-catalog.ts`)
+// hardcoded in application code. Flagged by #3499's investigation, resolved by
+// Shane (#3551 comment thread) as "fix it": a real table, seeded from the same
+// entries, read at request time instead of imported as a constant.
+//
+// The taxonomy vocabulary lives here as the enum backing `taxonomy` — it names
+// the same five real taxonomies `PccTaxonomy` already declared in
+// `taxonomy-catalog.ts` (kept there as the TS type re-exported to callers).
+export const PCC_TEST_TAXONOMIES = [
+  "ConfigDrift",
+  "GraphEndpoint",
+  "EventInjection",
+  "JourneyReplay",
+  "UISurface",
+] as const;
+export type PccTestTaxonomy = typeof PCC_TEST_TAXONOMIES[number];
+
+export const pccTestCatalogTable = pgTable("pcc_test_catalog", {
+  /** Stable slug id, e.g. `drift-detect-settings` — matches the old DEFAULT_TESTS ids. */
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  taxonomy: text("taxonomy", { enum: PCC_TEST_TAXONOMIES }).notNull(),
+  description: text("description").notNull(),
+  isProdSafe: boolean("is_prod_safe").notNull().default(false),
+  /** Other catalog `id`s this test depends on. Ordered, so stored as jsonb rather than a set. */
+  dependencies: jsonb("dependencies").notNull().default(sql`'[]'::jsonb`),
+  tags: jsonb("tags").notNull().default(sql`'[]'::jsonb`),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("pcc_test_catalog_taxonomy_idx").on(t.taxonomy),
+]);
+
+export type PccTestCatalogRow = typeof pccTestCatalogTable.$inferSelect;
+export type InsertPccTestCatalogRow = typeof pccTestCatalogTable.$inferInsert;
+
 // ── Build Tracker (removed, Git #3653) ───────────────────────────────────────
 //
 // The bt_* tables, build_dispatch_log and chat_pinned_questions belong to BuildConsole

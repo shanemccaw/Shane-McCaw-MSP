@@ -4,7 +4,7 @@ import { PccStateManager } from '../lib/pcc/state-manager.ts';
 import { PccStreamingServer } from '../lib/pcc/streaming-server.ts';
 import { PccTestRunner } from '../lib/pcc/test-runner.ts';
 import { PccEventInjector } from '../lib/pcc/event-injector.ts';
-import { DEFAULT_TESTS } from '../lib/pcc/taxonomy-catalog.ts';
+import { getCatalog } from '../lib/pcc/taxonomy-catalog.ts';
 import { requireAdmin } from '../middlewares/requireAuth.ts';
 
 const router = Router();
@@ -14,8 +14,13 @@ const testRunner = new PccTestRunner();
 const eventInjector = new PccEventInjector();
 
 // 1. Get taxonomy catalog
-router.get('/catalog', requireAdmin, (req: Request, res: Response) => {
-  res.json({ tests: DEFAULT_TESTS });
+router.get('/catalog', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const tests = await getCatalog();
+    res.json({ tests });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // 2. Get state details

@@ -1,3 +1,5 @@
+import { db, pccTestCatalogTable } from '@workspace/db';
+
 export type PccTaxonomy = 'ConfigDrift' | 'GraphEndpoint' | 'EventInjection' | 'JourneyReplay' | 'UISurface';
 
 export interface PccTest {
@@ -10,77 +12,21 @@ export interface PccTest {
   tags: string[];
 }
 
-export const DEFAULT_TESTS: PccTest[] = [
-  {
-    id: 'drift-detect-settings',
-    name: 'Tenant Settings Drift Check',
-    taxonomy: 'ConfigDrift',
-    description: 'Compares target tenant environment configuration against the reference baseline.',
-    isProdSafe: true,
-    dependencies: [],
-    tags: ['drift', 'configuration', 'smoke']
-  },
-  {
-    id: 'graph-user-read',
-    name: 'Microsoft Graph User Directory Endpoint Test',
-    taxonomy: 'GraphEndpoint',
-    description: 'Queries Graph user endpoint and validates schema compliance.',
-    isProdSafe: true,
-    dependencies: [],
-    tags: ['graph', 'directory', 'smoke']
-  },
-  {
-    id: 'graph-license-check',
-    name: 'Microsoft Graph License Inactivity Check',
-    taxonomy: 'GraphEndpoint',
-    description: 'Validates that licensing signals are accurately mapped from user sign-in details.',
-    isProdSafe: true,
-    dependencies: ['graph-user-read'],
-    tags: ['graph', 'licensing', 'regression']
-  },
-  {
-    id: 'event-stripe-checkout',
-    name: 'Stripe Webhook Event Injection',
-    taxonomy: 'EventInjection',
-    description: 'Simulates a Stripe checkout completion webhook delivery.',
-    isProdSafe: false,
-    dependencies: [],
-    tags: ['stripe', 'billing', 'destructive']
-  },
-  {
-    id: 'event-consent-grant',
-    name: 'Consent Granted Action Injection',
-    taxonomy: 'EventInjection',
-    description: 'Simulates a user accepting policy terms.',
-    isProdSafe: false,
-    dependencies: [],
-    tags: ['consent', 'compliance', 'destructive']
-  },
-  {
-    id: 'ui-banner-check',
-    name: 'System Alert Banner Visibility Test',
-    taxonomy: 'UISurface',
-    description: 'Verifies warning banner positioning and copy drift.',
-    isProdSafe: true,
-    dependencies: [],
-    tags: ['ui', 'banner', 'smoke']
-  },
-  {
-    id: 'ui-onboarding-nudge',
-    name: 'Onboarding User Nudge Bubble Test',
-    taxonomy: 'UISurface',
-    description: 'Validates the presence and styling of client onboarding prompts.',
-    isProdSafe: true,
-    dependencies: ['event-consent-grant'],
-    tags: ['ui', 'nudge', 'regression']
-  },
-  {
-    id: 'journey-90day-replay',
-    name: '90-Day Tenant Journey Lifecycle Replay',
-    taxonomy: 'JourneyReplay',
-    description: 'Replays a sequence of customer lifecycle ticks and asserts state trends.',
-    isProdSafe: false,
-    dependencies: ['event-stripe-checkout'],
-    tags: ['replay', 'temporal', 'destructive']
-  }
-];
+/**
+ * Git #3551 — the catalog used to be the hardcoded `DEFAULT_TESTS` array below.
+ * It is now a real table (`pcc_test_catalog`, seeded from that exact array by
+ * `lib/db/migrations/manual/2026-09-13-pcc-test-catalog-3551.sql`), read here at
+ * request time instead of imported as a constant.
+ */
+export async function getCatalog(): Promise<PccTest[]> {
+  const rows = await db.select().from(pccTestCatalogTable);
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    taxonomy: r.taxonomy as PccTaxonomy,
+    description: r.description,
+    isProdSafe: r.isProdSafe,
+    dependencies: r.dependencies as string[],
+    tags: r.tags as string[],
+  }));
+}
