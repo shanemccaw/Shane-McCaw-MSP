@@ -432,6 +432,33 @@ export const messageCentrePurger: TenantDataPurgerDeclaration = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MSP Console operator tracking (Git #3842, filed by the #2859 coverage sweep) — five
+// tables that shipped since the last such closure (#3063, #3353, #3572, #3098, #3363),
+// all under the same Feature roadmap #3768 (kanban, communications push, training log,
+// automation registry) plus #3762/#3434 phase 1 (status reports). Every one of them
+// carries `customer_id` with no FK, matching the "successor id-space, no FK by design"
+// convention its own schema comments call out (see `msp.ts` next to each table) — same
+// keySpace as `breakGlassPendingSecretsTable` and the rest of this file.
+//
+// `communications_push_checkpoints` and `kanban_cards` need no target of their own: both
+// are children with a real `ON DELETE CASCADE` FK onto the parent row declared here
+// (`push_id` -> communications_pushes.id, `bucket_id` -> kanban_buckets.id), same shape
+// as `msp_poam_milestones` above.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const mspConsoleTrackingPurger: TenantDataPurgerDeclaration = {
+  key: "msp-console-tracking",
+  displayName: "MSP Console operator tracking (status reports, kanban, comms push, training, automations)",
+  targets: [
+    { table: "msp_status_reports", column: "customer_id", keySpace: "customerId" },
+    { table: "kanban_buckets", column: "customer_id", keySpace: "customerId" },
+    { table: "communications_pushes", column: "customer_id", keySpace: "customerId" },
+    { table: "training_sessions", column: "customer_id", keySpace: "customerId" },
+    { table: "automation_registry", column: "customer_id", keySpace: "customerId" },
+  ],
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Platform operations — queues, event/DLQ stores, log stream and exception occurrences
 // carrying this customer's id. Operational rather than customer-authored, and purged for
 // the same reason the scoring snapshots are: it is all derived from, and identifies, a
@@ -606,6 +633,7 @@ export const ALL_TENANT_DATA_PURGER_DECLARATIONS: TenantDataPurgerDeclaration[] 
   commercialPurger,
   integrationsPurger,
   messageCentrePurger,
+  mspConsoleTrackingPurger,
   platformOpsPurger,
   directoryPurger,
   rbacPurger,
