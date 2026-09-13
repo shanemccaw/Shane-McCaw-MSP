@@ -992,7 +992,12 @@ export type InsertMspAuditLog = typeof mspAuditLogsTable.$inferInsert;
 export const FULFILLMENT_DELIVERY_STATUSES = ["not_started", "in_progress", "delivered", "blocked"] as const;
 export type FulfillmentDeliveryStatus = typeof FULFILLMENT_DELIVERY_STATUSES[number];
 
-export const FULFILLMENT_SOURCE_TYPES = ["offer", "sow", "bundle"] as const;
+// Git #3803: "sow" is the legacy Copilot-Readiness quickWinPresentations sync
+// (admin-fulfillment.ts), keyed to that table's integer id. "msp_sow" is the
+// separate, modern MSP-catalog SOW pipeline (msp-sow.ts / mspSowsTable), keyed
+// to mspSowsTable.sowId (a uuid). The two "SOW" concepts collide if given the
+// same sourceType string, since they live in disjoint id spaces.
+export const FULFILLMENT_SOURCE_TYPES = ["offer", "sow", "msp_sow", "bundle"] as const;
 export type FulfillmentSourceType = typeof FULFILLMENT_SOURCE_TYPES[number];
 
 export const fulfillmentQueueTable = pgTable("fulfillment_queue", {

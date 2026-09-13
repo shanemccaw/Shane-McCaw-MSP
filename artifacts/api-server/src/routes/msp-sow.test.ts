@@ -34,6 +34,7 @@ function makeChain(rows: unknown[]) {
   chain.values    = vi.fn().mockReturnValue(chain);
   chain.returning = vi.fn().mockReturnValue(chain);
   chain.onConflictDoNothing = vi.fn().mockReturnValue(chain);
+  chain.onConflictDoUpdate  = vi.fn().mockReturnValue(chain);
   // Make the chain itself awaitable at any point
   chain.then    = p.then.bind(p);
   chain.catch   = p.catch.bind(p);
@@ -102,7 +103,7 @@ vi.mock("@workspace/db", () => ({
   tenantsTable:               { id: "id", mspId: "msp_id", tenantId: "tenant_id" },
   salesOffersTable:           { id: "id", state: "state", mspId: "msp_id", serviceId: "service_id", tenantId: "tenant_id", title: "title", adjustedPriceCents: "adjusted_price_cents" },
   servicesTable:              { id: "id", name: "name", description: "description", serviceClass: "service_class", billingType: "billing_type", allowFreeCheckout: "allow_free_checkout", trialPeriodDays: "trial_period_days", fulfillmentTypeKey: "fulfillment_type_key" },
-  usersTable:                 { id: "id", email: "email" },
+  usersTable:                 { id: "id", email: "email", name: "name" },
   mspEventStoreTable:         { eventType: "event_type" },
   fulfillmentQueueTable:      { id: "id", sourceType: "source_type", sourceId: "source_id", deliveryStatus: "delivery_status" },
 }));
@@ -203,7 +204,7 @@ vi.mock("../lib/project-sow-fulfillment.ts", () => ({
 
 // ── Import router AFTER all mocks ─────────────────────────────────────────────
 
-import router from "./msp-sow.ts";
+import router, { triggerMspCharge } from "./msp-sow.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 // ── App builder ────────────────────────────────────────────────────────────────
@@ -896,5 +897,71 @@ describe("GET + POST /msp/customers/:customerId/clickwrap", () => {
     expect(res.status).toBe(403);
     // Must not have reached the insert — no unauthorized clickwrap acceptance recorded.
     expect(mockDb.insert).not.toHaveBeenCalled();
+  });
+});
+
+// Git #3803 — unlockFulfillment() used to UPDATE fulfillment_queue WHERE
+// sourceType = "sow" AND sourceId = sowId, but sourceType "sow" is exclusively
+// written by admin-fulfillment.ts's legacy quickWinPresentations sync, keyed
+// to that table's integer id — a completely different id space from
+// mspSowsTable's uuid sowId. That WHERE could never match a real row, so no
+// msp_sows-sourced charge ever actually unlocked fulfillment. Fixed by
+// upserting a "msp_sow"-typed row (its own dedicated sourceType/id space)
+// instead of only updating a row nothing ever inserted.
+describe("triggerMspCharge → unlockFulfillment (Git #3803)", () => {
+  it("upserts a fulfillment_queue row keyed to sourceType \"msp_sow\" + the real sowId, not the legacy \"sow\" type", async () => {
+    queueSelect(
+      // unlockFulfillment: mspSowsTable lookup
+      [{ title: "M365 Assessment SOW", amountCents: 0, customerId: 99, customerUserId: 5, signerName: "Jane Doe" }],
+      // unlockFulfillment: usersTable lookup for the customerUserId
+      [{ name: "Jane Doe", email: "jane@customer.test" }],
+    );
+    queueInsert(
+      [], // emitSowEvent → mspSowEventsTable
+      [], // emitMspEvent → mspEventStoreTable
+      [], // unlockFulfillment → fulfillmentQueueTable
+    );
+
+    const result = await triggerMspCharge("sow-uuid-123", 42, 0, 7);
+
+    expect(result).toEqual({ success: true, status: "paid" });
+    expect(mockDb.insert).toHaveBeenCalledTimes(3);
+
+    const fulfillmentInsertTable = mockDb.insert.mock.calls[2]![0];
+    expect(fulfillmentInsertTable).toBe((await import("@workspace/db")).fulfillmentQueueTable);
+
+    const fulfillmentChain = mockDb.insert.mock.results[2]!.value;
+    expect(fulfillmentChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceType: "msp_sow",
+        sourceId: "sow-uuid-123",
+        mspId: 42,
+        customerId: 99,
+        clientUserId: 5,
+        clientName: "Jane Doe",
+        clientEmail: "jane@customer.test",
+        itemTitle: "M365 Assessment SOW",
+        deliveryStatus: "not_started",
+      }),
+    );
+    expect(fulfillmentChain.onConflictDoUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: [(await import("@workspace/db")).fulfillmentQueueTable.sourceType, (await import("@workspace/db")).fulfillmentQueueTable.sourceId],
+      }),
+    );
+  });
+
+  it("never queries fulfillment_queue with the legacy sourceType \"sow\" (the id-space collision Git #3803 fixed)", async () => {
+    queueSelect(
+      [{ title: "SOW", amountCents: 0, customerId: null, customerUserId: null, signerName: null }],
+    );
+    queueInsert([], [], []);
+
+    await triggerMspCharge("sow-uuid-456", 42, 0, null);
+
+    const fulfillmentChain = mockDb.insert.mock.results[2]!.value;
+    const insertedValues = fulfillmentChain.values.mock.calls[0][0];
+    expect(insertedValues.sourceType).not.toBe("sow");
+    expect(insertedValues.sourceType).toBe("msp_sow");
   });
 });

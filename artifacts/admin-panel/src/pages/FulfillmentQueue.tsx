@@ -8,7 +8,10 @@ import {
 } from "lucide-react";
 
 type DeliveryStatus = "not_started" | "in_progress" | "delivered" | "blocked";
-type SourceType = "offer" | "sow" | "bundle";
+// Git #3803: "sow" is the legacy Copilot-Readiness quickWinPresentations sync;
+// "msp_sow" is the separate modern MSP-catalog SOW pipeline (mspSowsTable) —
+// see the same comment on FULFILLMENT_SOURCE_TYPES in lib/db/src/schema/msp.ts.
+type SourceType = "offer" | "sow" | "msp_sow" | "bundle";
 
 interface FulfillmentItem {
   id: number;
@@ -86,7 +89,12 @@ const SOURCE_CONFIG: Record<SourceType, { label: string; icon: React.ReactNode; 
     color: "text-[#00B4D8]",
   },
   sow: {
-    label: "SOW",
+    label: "SOW (Quick Win)",
+    icon: <FileText className="w-3 h-3" />,
+    color: "text-primary",
+  },
+  msp_sow: {
+    label: "SOW (MSP Catalog)",
     icon: <FileText className="w-3 h-3" />,
     color: "text-primary",
   },
@@ -360,7 +368,7 @@ export default function FulfillmentQueuePage() {
             className="bg-transparent outline-none text-foreground cursor-pointer"
           >
             <option value="">All types</option>
-            {(["offer", "sow", "bundle"] as SourceType[]).map(s => (
+            {(["offer", "sow", "msp_sow", "bundle"] as SourceType[]).map(s => (
               <option key={s} value={s}>{SOURCE_CONFIG[s].label}</option>
             ))}
           </select>

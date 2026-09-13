@@ -1308,20 +1308,74 @@ function triggerProjectFulfillmentFromSignedSow(
   })();
 }
 
-/** Unlock fulfillment queue entry for this SOW */
+/**
+ * Unlock (or create) the fulfillment queue entry for this SOW.
+ *
+ * Git #3803: this used to `UPDATE ... WHERE sourceType = "sow" AND sourceId =
+ * sowId`, but `sourceType: "sow"` in fulfillment_queue is exclusively written
+ * by admin-fulfillment.ts's legacy Copilot-Readiness sync — keyed to
+ * quickWinPresentationsTable's integer id, a completely different entity from
+ * mspSowsTable's uuid `sowId`. That WHERE could never match a real row, so
+ * fulfillment was never unlocked for an msp_sows-sourced charge. Nothing else
+ * ever creates a fulfillment_queue row for an msp_sows SOW either — so this
+ * upserts one (sourceType: "msp_sow", the dedicated, disjoint id space) rather
+ * than only updating a row that was never inserted.
+ */
 async function unlockFulfillment(sowId: string, mspId: number): Promise<void> {
   try {
     const { fulfillmentQueueTable } = await import("@workspace/db");
-    await db.update(fulfillmentQueueTable).set({
-      deliveryStatus: "not_started",
-      statusUpdatedAt: new Date(),
-      statusNote: "Payment confirmed — fulfillment unlocked",
-      updatedAt: new Date(),
-    })
-      .where(and(
-        eq(fulfillmentQueueTable.sourceType, "sow"),
-        eq(fulfillmentQueueTable.sourceId, sowId),
-      ));
+
+    const [sow] = await db
+      .select({
+        title: mspSowsTable.title,
+        amountCents: mspSowsTable.amountCents,
+        customerId: mspSowsTable.customerId,
+        customerUserId: mspSowsTable.customerUserId,
+        signerName: mspSowsTable.signerName,
+      })
+      .from(mspSowsTable)
+      .where(eq(mspSowsTable.sowId, sowId))
+      .limit(1);
+
+    let clientName: string | null = sow?.signerName ?? null;
+    let clientEmail: string | null = null;
+    if (sow?.customerUserId != null) {
+      const [client] = await db
+        .select({ name: usersTable.name, email: usersTable.email })
+        .from(usersTable)
+        .where(eq(usersTable.id, sow.customerUserId))
+        .limit(1);
+      clientName = clientName ?? client?.name ?? null;
+      clientEmail = client?.email ?? null;
+    }
+
+    const now = new Date();
+    await db
+      .insert(fulfillmentQueueTable)
+      .values({
+        sourceType: "msp_sow",
+        sourceId: sowId,
+        clientUserId: sow?.customerUserId ?? null,
+        clientName,
+        clientEmail,
+        mspId,
+        customerId: sow?.customerId ?? null,
+        itemTitle: sow?.title ?? `SOW ${sowId}`,
+        purchasedAt: now,
+        purchaseAmountCents: sow?.amountCents ?? null,
+        deliveryStatus: "not_started",
+        statusUpdatedAt: now,
+        statusNote: "Payment confirmed — fulfillment unlocked",
+      })
+      .onConflictDoUpdate({
+        target: [fulfillmentQueueTable.sourceType, fulfillmentQueueTable.sourceId],
+        set: {
+          deliveryStatus: "not_started",
+          statusUpdatedAt: now,
+          statusNote: "Payment confirmed — fulfillment unlocked",
+          updatedAt: now,
+        },
+      });
   } catch (err) {
     log.warn({ err, sowId, mspId }, "msp-sow: failed to unlock fulfillment queue (non-fatal)");
   }

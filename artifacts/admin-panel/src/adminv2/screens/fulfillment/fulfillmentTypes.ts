@@ -18,7 +18,10 @@
 export const DELIVERY_STATUSES = ["not_started", "in_progress", "delivered", "blocked"] as const;
 export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
 
-export const SOURCE_TYPES = ["offer", "sow", "bundle"] as const;
+// Git #3803: "sow" is the legacy Copilot-Readiness quickWinPresentations sync;
+// "msp_sow" is the separate modern MSP-catalog SOW pipeline (mspSowsTable) —
+// see the same comment on FULFILLMENT_SOURCE_TYPES in lib/db/src/schema/msp.ts.
+export const SOURCE_TYPES = ["offer", "sow", "msp_sow", "bundle"] as const;
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
 export const FIRED_WHEN_VALUES = ["purchase", "signal", "manual"] as const;
@@ -111,7 +114,8 @@ export const STATUS_LABEL: Record<DeliveryStatus, string> = {
 
 export const SOURCE_LABEL: Record<SourceType, string> = {
   offer: "Micro-offer",
-  sow: "SOW",
+  sow: "SOW (Quick Win)",
+  msp_sow: "SOW (MSP Catalog)",
   bundle: "Bundle",
 };
 
