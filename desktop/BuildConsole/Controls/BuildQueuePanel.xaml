@@ -138,6 +138,9 @@
                                 <Border x:Name="RollupFilterChipAll" Style="{StaticResource RollupFilterChipStyle}" Tag="all" MouseLeftButtonDown="RollupActivityFilterChip_Click">
                                     <TextBlock Text="All" Style="{StaticResource RollupFilterChipTextStyle}"/>
                                 </Border>
+                                <Border x:Name="RollupFilterChipQueued" Style="{StaticResource RollupFilterChipStyle}" Tag="queued" MouseLeftButtonDown="RollupActivityFilterChip_Click">
+                                    <TextBlock Text="Queued" Style="{StaticResource RollupFilterChipTextStyle}"/>
+                                </Border>
                                 <Border x:Name="RollupFilterChipRunning" Style="{StaticResource RollupFilterChipStyle}" Tag="running" MouseLeftButtonDown="RollupActivityFilterChip_Click">
                                     <TextBlock Text="Running" Style="{StaticResource RollupFilterChipTextStyle}"/>
                                 </Border>

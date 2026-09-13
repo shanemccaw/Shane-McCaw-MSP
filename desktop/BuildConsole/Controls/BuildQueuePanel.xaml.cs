@@ -4273,6 +4273,7 @@ namespace BuildConsole.Controls
                 // a real verifying item. "all" (default) leaves the any-activity filter as-is.
                 .Where(k => _rollupActivityFilter switch
                 {
+                    "queued" => buckets[k].upNext.Count > 0,
                     "running" => buckets[k].running.Count > 0,
                     "verifying" => buckets[k].verifying.Count > 0,
                     _ => true,
@@ -4303,6 +4304,7 @@ namespace BuildConsole.Controls
                 // selected filter chip. Say so instead of leaving an unexplained blank list.
                 string filterLabel = _rollupActivityFilter switch
                 {
+                    "queued" => "queued",
                     "running" => "running",
                     "verifying" => "verifying",
                     _ => "matching",
@@ -4418,7 +4420,7 @@ namespace BuildConsole.Controls
         /// BuildRollupRow above.</summary>
         private void UpdateRollupActivityFilterChipsVisual()
         {
-            if (RollupFilterChipAll == null || RollupFilterChipRunning == null || RollupFilterChipVerifying == null) return;
+            if (RollupFilterChipAll == null || RollupFilterChipQueued == null || RollupFilterChipRunning == null || RollupFilterChipVerifying == null) return;
 
             var blueBrush = (Brush)Application.Current.FindResource("BlueBrush");
             var restBackground = (Brush)Application.Current.FindResource("Surface0Brush");
@@ -4427,7 +4429,7 @@ namespace BuildConsole.Controls
             var blueColor = blueBrush is SolidColorBrush bcb ? bcb.Color : Color.FromRgb(0x3B, 0x82, 0xF6);
             var selectedBackground = new SolidColorBrush(Color.FromArgb(0x33, blueColor.R, blueColor.G, blueColor.B));
 
-            foreach (var chip in new[] { RollupFilterChipAll, RollupFilterChipRunning, RollupFilterChipVerifying })
+            foreach (var chip in new[] { RollupFilterChipAll, RollupFilterChipQueued, RollupFilterChipRunning, RollupFilterChipVerifying })
             {
                 bool isSelected = string.Equals((string)chip.Tag, _rollupActivityFilter, StringComparison.OrdinalIgnoreCase);
                 chip.Background = isSelected ? selectedBackground : restBackground;
