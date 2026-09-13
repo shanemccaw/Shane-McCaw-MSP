@@ -1031,6 +1031,42 @@ $("#sign-out").addEventListener("click", async () => {
   showLogin();
 });
 
+// Recovery-code redemption (Git #3246) -- the fallback sign-in path when the sole passkey is
+// gone. Collapsed behind "Recover access with a code" by default so the design's own two-button
+// sign-in screen is unchanged for the normal case.
+const recoveryToggle = $("#recovery-toggle");
+const recoveryForm = $("#recovery-form");
+const recoveryInput = $("#recovery-code-input");
+
+recoveryToggle.addEventListener("click", () => {
+  recoveryForm.hidden = !recoveryForm.hidden;
+  if (!recoveryForm.hidden) recoveryInput.focus();
+});
+
+recoveryForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submit = $("#recovery-submit");
+  submit.disabled = true;
+  try {
+    const result = await api("/api/auth/recovery/redeem", {
+      method: "POST",
+      body: JSON.stringify({ code: recoveryInput.value }),
+    });
+    recoveryInput.value = "";
+    // A fresh set was just minted server-side to replace the one that got used -- shown once,
+    // right here, same discipline as Settings -> Recovery codes' own "shown once" display.
+    alert(
+      `Signed in. Your recovery codes were regenerated -- write down this new set now, ` +
+        `the old ones no longer work:\n\n${result.codes.join("\n")}`,
+    );
+    await start();
+  } catch (err) {
+    authError("#recovery-error", err);
+  } finally {
+    submit.disabled = false;
+  }
+});
+
 /** The enrolment token rides in the fragment, so it never reaches the server in a request line. */
 function enrollmentTokenFromUrl() {
   const match = /(?:^#|[#&])enroll=([^&]+)/.exec(location.hash || "");
@@ -9521,7 +9557,14 @@ function itemRow(entityId, item) {
  * there is no password to fall back on, so that would be a lockout, and the server refuses it.
  */
 async function renderPasskeys(view) {
-  const { passkeys } = await api("/api/passkeys");
+  const [{ passkeys }, recoveryStatus] = await Promise.all([
+    api("/api/passkeys"),
+    api("/api/recovery-codes/status"),
+  ]);
+  // Removing the last passkey is allowed once real recovery codes are on file (Git #3246) -- the
+  // hard block now only applies to the account that genuinely has neither.
+  const hasRecoveryFallback = recoveryStatus.unused > 0;
+
   const section = el("section", { class: "section" }, [
     el("h2", { text: "Passkeys" }),
     el("p", {
@@ -9531,6 +9574,7 @@ async function renderPasskeys(view) {
   ]);
 
   for (const key of passkeys) {
+    const canRemove = passkeys.length > 1 || hasRecoveryFallback;
     section.append(
       el("div", { class: "card" }, [
         el("div", { class: "title", text: key.label }),
@@ -9541,7 +9585,7 @@ async function renderPasskeys(view) {
             (key.last_used_at ? `last used ${when(key.last_used_at)}` : "never used") +
             (key.backed_up ? " · synced" : " · this device only"),
         }),
-        passkeys.length > 1
+        canRemove
           ? el("div", { class: "row", style: "margin-top:.75rem" }, [
               el("button", {
                 class: "small danger",
@@ -9558,7 +9602,10 @@ async function renderPasskeys(view) {
                 },
               }),
             ])
-          : el("div", { class: "meta", text: "The only passkey on this account — add another before removing it." }),
+          : el("div", {
+              class: "meta",
+              text: "The only passkey on this account, and there are no recovery codes on file — add another passkey or generate recovery codes below before removing it.",
+            }),
       ]),
     );
   }
@@ -9584,6 +9631,67 @@ async function renderPasskeys(view) {
   );
 
   view.append(section);
+  view.append(renderRecoveryCodesCard(recoveryStatus));
+}
+
+// Real one-time account-recovery codes (Git #3246) -- the fallback if the device holding the
+// sole passkey is ever lost. Generating a new set replaces the whole existing one, same as
+// redeeming one does server-side (src/core/recovery-codes.mjs).
+function renderRecoveryCodesCard(status) {
+  const section = el("section", { class: "section" }, [
+    el("h2", { text: "Recovery codes" }),
+    el("p", {
+      class: "muted small",
+      text:
+        "Ten one-time codes, emailed to this account, that sign you back in if you ever lose " +
+        "the device holding your passkey. Using any one of them invalidates the whole set and " +
+        "mails a fresh one.",
+    }),
+    el("div", {
+      class: "card",
+      text:
+        status.unused > 0
+          ? `${status.unused} unused code${status.unused === 1 ? "" : "s"} on file` +
+            (status.generatedAt ? ` · generated ${when(status.generatedAt)}` : "")
+          : "No recovery codes on file yet.",
+    }),
+  ]);
+
+  const codesOut = el("div", { class: "card", style: "display:none" });
+  section.append(codesOut);
+
+  section.append(
+    el("div", { class: "row", style: "margin-top:.75rem" }, [
+      el("button", {
+        class: "small",
+        text: status.unused > 0 ? "Generate new codes" : "Generate recovery codes",
+        onClick: async (event) => {
+          const button = event.currentTarget;
+          button.disabled = true;
+          try {
+            const generated = await api("/api/recovery-codes/generate", { method: "POST" });
+            codesOut.style.display = "";
+            codesOut.replaceChildren(
+              el("div", { class: "title", text: "Write these down now — shown once" }),
+              ...generated.codes.map((code) => el("div", { class: "mono", text: code })),
+              el("p", {
+                class: "small muted",
+                text: generated.emailSent
+                  ? "Also emailed to your account's address."
+                  : "Not emailed — mail delivery is not configured on this server.",
+              }),
+            );
+          } catch (err) {
+            alert(err.message);
+          } finally {
+            button.disabled = false;
+          }
+        },
+      }),
+    ]),
+  );
+
+  return section;
 }
 
 // Real Web Push subscribe/unsubscribe (Git #3160). base64url -> Uint8Array for

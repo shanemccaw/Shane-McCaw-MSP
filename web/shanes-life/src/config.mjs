@@ -96,5 +96,16 @@ export const config = {
   // itself, which stays unread here exactly as migration 055's header already documents.
   // e.g. http://localhost:4443 once the proxy is running with the enrolled key.
   teslaCommandProxyUrl: (process.env.TESLA_COMMAND_PROXY_URL || "").replace(/\/+$/, "") || null,
+  // Real Microsoft Graph mail delivery for account-recovery codes (Git #3246, src/core/mailer.mjs).
+  // App-only client-credentials auth against Shane's own tenant -- CLAUDE.md's platform-wide rule
+  // ("never Resend ... exclusively through Exchange Online / Microsoft Graph") applies here same
+  // as everywhere else. Absent credentials are a real, reportable state, not a crash: recovery
+  // codes still generate and are returned to the caller, they just are not mailed.
+  graphTenantId: process.env.SL_GRAPH_TENANT_ID || null,
+  graphClientId: process.env.SL_GRAPH_CLIENT_ID || null,
+  graphClientSecret: process.env.SL_GRAPH_CLIENT_SECRET || null,
+  // The real Exchange Online mailbox recovery codes are sent FROM -- the app-only Graph
+  // credential needs Mail.Send application permission, admin-consented, against this mailbox.
+  graphSenderUserId: process.env.SL_GRAPH_SENDER_USER_ID || null,
   root: ROOT,
 };

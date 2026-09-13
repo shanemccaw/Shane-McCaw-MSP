@@ -112,6 +112,16 @@ a { color: inherit; }
 .auth-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .auth-footnote { text-align: center; font-size: 13px; line-height: 1.5; color: hsl(var(--muted-foreground)); margin: 1rem 0 0; }
 .auth-card .error { text-align: center; margin: 0.75rem 0 0; }
+/* Recovery-code redemption (Git #3246) -- collapsed by default under its own toggle, so the
+   design's own two-button sign-in screen is visually unchanged for the normal case. */
+#recovery-form { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
+.auth-recovery-input {
+  min-height: 44px;
+  text-align: center;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
 
 /* ---------- shell ---------- */
 

@@ -105,6 +105,7 @@ const email = `check+${stamp}@shanes.life`;
 // A slug no code anywhere in this repo has ever heard of -- the point of the extensibility test.
 const noveltyCategory = `check_novelty_${stamp}`;
 let userId = null;
+let recoveryUserId = null;
 
 // ShanesSurvival's own tables. This check now runs against the same real database the WPF app
 // reads, holding Shane's real Plaid-synced accounts and transactions, so "it leaves no residue"
@@ -202,6 +203,11 @@ async function main() {
   });
   check("a real passkey registers", registered.status === 201 && Boolean(registered.json?.passkey?.id), JSON.stringify(registered.json).slice(0, 200));
   check("enrolling from a link signs you straight in", registered.json?.user?.email === email);
+  check(
+    "recovery codes are minted automatically at real account setup (Git #3246)",
+    Array.isArray(registered.json?.recoveryCodes) && registered.json.recoveryCodes.length === 10,
+    JSON.stringify(registered.json?.recoveryCodes?.length),
+  );
 
   const replayed = await http("/api/auth/enroll/options", { method: "POST", body: { token: enrollment.token }, auth: false });
   check("a spent enrolment token cannot be reused", replayed.status === 401, `status ${replayed.status}`);
@@ -254,9 +260,102 @@ async function main() {
   check("the session identifies the right account", me.json?.user?.email === email);
   check("the account has exactly one registered passkey", me.json?.passkeyCount === 1, String(me.json?.passkeyCount));
 
-  const onlyKey = await http("/api/passkeys");
-  const removeLast = await http(`/api/passkeys/${onlyKey.json.passkeys[0].id}`, { method: "DELETE" });
-  check("removing the only passkey is refused, because there is no password to fall back on", removeLast.status === 400, `status ${removeLast.status}`);
+  // -- account recovery: codes + the relaxed last-passkey guard (Git #3246) --
+  //
+  // On its own disposable account so this never touches the main account's own passkey, which
+  // the rest of this script keeps signing real assertions with below.
+  const recoveryEmail = `check-recovery+${stamp}@shanes.life`;
+  const recoveryUser = await createUser({ email: recoveryEmail, name: "Check Recovery Account" });
+  recoveryUserId = recoveryUser.id;
+  const mainCookie = cookie;
+  cookie = null;
+
+  const recoveryAuthenticator = new SoftAuthenticator({ rpId: relyingPartyId(), origin: BASE });
+  const recoveryEnrollment = await mintEnrollment(recoveryUserId, "Recovery check passkey");
+  const recoveryRegOptions = await http("/api/auth/enroll/options", {
+    method: "POST",
+    body: { token: recoveryEnrollment.token },
+    auth: false,
+  });
+  const recoveryRegistered = await http("/api/auth/enroll/verify", {
+    method: "POST",
+    body: {
+      token: recoveryEnrollment.token,
+      challenge: recoveryRegOptions.json.challenge,
+      ...recoveryAuthenticator.register(recoveryRegOptions.json.challenge),
+    },
+    auth: false,
+  });
+  check(
+    "recovery codes are minted automatically at a real account's first-ever passkey enrolment",
+    Array.isArray(recoveryRegistered.json?.recoveryCodes) && recoveryRegistered.json.recoveryCodes.length === 10,
+    JSON.stringify(recoveryRegistered.json?.recoveryCodes?.length),
+  );
+  const firstCodes = recoveryRegistered.json.recoveryCodes;
+
+  const recoveryOnlyKey = await http("/api/passkeys");
+  const removeWithCodes = await http(`/api/passkeys/${recoveryOnlyKey.json.passkeys[0].id}`, { method: "DELETE" });
+  check(
+    "removing the only passkey is now ALLOWED once real recovery codes are on file",
+    removeWithCodes.status === 200,
+    `status ${removeWithCodes.status}`,
+  );
+
+  cookie = null;
+  const badRedeem = await http("/api/auth/recovery/redeem", { method: "POST", body: { code: "not-a-real-code" }, auth: false });
+  check("an unknown recovery code is refused", badRedeem.status === 401, `status ${badRedeem.status}`);
+
+  const redeemed = await http("/api/auth/recovery/redeem", { method: "POST", body: { code: firstCodes[0] }, auth: false });
+  check(
+    "a real recovery code signs in with zero passkeys on the account",
+    redeemed.status === 200 && redeemed.json?.user?.email === recoveryEmail,
+    JSON.stringify(redeemed.json).slice(0, 200),
+  );
+  check(
+    "redeeming a code invalidates and regenerates the whole set, not just the one used",
+    Array.isArray(redeemed.json?.codes) && redeemed.json.codes.length === 10 && !redeemed.json.codes.includes(firstCodes[0]),
+    String(redeemed.json?.codes?.length),
+  );
+
+  const reusedRedeem = await http("/api/auth/recovery/redeem", { method: "POST", body: { code: firstCodes[0] }, auth: false });
+  check("a spent recovery code cannot be redeemed twice", reusedRedeem.status === 401, `status ${reusedRedeem.status}`);
+
+  // Re-enrol a passkey now that recovery signed us back in with none on file. The freshly
+  // regenerated codes already exist, so this must NOT mint a second set on top of them.
+  const recoveryAuthenticator2 = new SoftAuthenticator({ rpId: relyingPartyId(), origin: BASE });
+  const reRegOptions = await http("/api/auth/enroll/options", { method: "POST", body: {} });
+  const reRegistered = await http("/api/auth/enroll/verify", {
+    method: "POST",
+    body: {
+      challenge: reRegOptions.json.challenge,
+      label: "Recovery check passkey 2",
+      ...recoveryAuthenticator2.register(reRegOptions.json.challenge),
+    },
+  });
+  check(
+    "re-enrolling after recovery does not mint a second set of codes on top of the regenerated one",
+    reRegistered.status === 201 && reRegistered.json?.recoveryCodes === undefined,
+    JSON.stringify(reRegistered.json?.recoveryCodes),
+  );
+
+  // Burn the real fallback entirely, then prove the ORIGINAL hard block still holds once there
+  // truly is no way back in -- this is the one shape the guard must still refuse.
+  await query("DELETE FROM recovery_codes WHERE user_id = $1", [recoveryUserId]);
+  const recoveryLastKey = await http("/api/passkeys");
+  const removeWithNoFallback = await http(`/api/passkeys/${recoveryLastKey.json.passkeys[0].id}`, { method: "DELETE" });
+  check(
+    "removing the only passkey with zero recovery codes on file is still refused",
+    removeWithNoFallback.status === 400,
+    `status ${removeWithNoFallback.status}`,
+  );
+
+  cookie = mainCookie;
+  // Deliberately not exercising DELETE /api/passkeys on the main account here: it also got
+  // recovery codes minted at its own first-ever enrolment above (same auto-mint path, asserted
+  // there), so removing its only passkey would now genuinely succeed -- and the rest of this
+  // script needs that real passkey to keep signing real assertions with below. The guard's full
+  // behaviour (allowed with codes, still refused with none) is already proven end-to-end on the
+  // isolated recovery account above without that risk.
 
   // 2. the universal capture box
   const capture = await http("/api/captures", { method: "POST", body: { text: "picking mom up from the airport on the 14th" } });
@@ -1937,6 +2036,9 @@ try {
   if (userId) {
     await query("DELETE FROM users WHERE id = $1", [userId]).catch(() => {});
     await query("DELETE FROM categories WHERE slug = $1", [noveltyCategory]).catch(() => {});
+  }
+  if (recoveryUserId) {
+    await query("DELETE FROM users WHERE id = $1", [recoveryUserId]).catch(() => {});
   }
   await assertSurvivalUntouched().catch((err) => {
     failures++;

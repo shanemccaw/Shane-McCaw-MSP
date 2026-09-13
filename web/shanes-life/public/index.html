@@ -78,6 +78,26 @@
           Use a passkey from another device
         </button>
         <p id="login-error" class="error" role="alert" hidden></p>
+        <!-- The real fallback if the device holding the sole passkey is lost (Git #3246) -- a
+             one-time recovery code, typed in, not an email field: code_hash alone identifies the
+             account, the same way an enrolment token alone identifies its subject. -->
+        <button type="button" class="ghost auth-secondary" id="recovery-toggle">
+          Recover access with a code
+        </button>
+        <form id="recovery-form" hidden>
+          <input
+            type="text"
+            id="recovery-code-input"
+            class="auth-recovery-input"
+            placeholder="XXXXX-XXXXX"
+            autocomplete="off"
+            autocapitalize="characters"
+            autocorrect="off"
+            spellcheck="false"
+          />
+          <button type="submit" class="primary auth-primary" id="recovery-submit">Recover access</button>
+          <p id="recovery-error" class="error" role="alert" hidden></p>
+        </form>
         <p class="auth-footnote">No passwords. Shared list links never need this screen.</p>
       </section>
     </main>

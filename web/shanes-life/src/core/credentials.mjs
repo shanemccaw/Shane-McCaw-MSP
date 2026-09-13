@@ -10,6 +10,7 @@
 import { many, one, query } from "../db.mjs";
 import { badRequest } from "../http.mjs";
 import { fingerprint, mintToken } from "../auth/tokens.mjs";
+import * as recoveryCodes from "./recovery-codes.mjs";
 
 export const ENROLLMENT_TTL_MINUTES = 30;
 
@@ -71,15 +72,22 @@ export async function touchCredential(credentialId, signCount, backedUp) {
 }
 
 /**
- * Revoking the last passkey would lock the account out of an app that has no other way in, so it
- * is refused. Adding the replacement first is the real answer, and the error says so.
+ * Revoking the last passkey used to be refused outright, full stop -- this app had no other way
+ * in. Git #3246 gave it one: real one-time recovery codes. A user with unused codes on file has
+ * a genuine fallback, so the hard block now applies only when there truly is none -- zero
+ * passkeys AND zero unused recovery codes is the one shape that is still an unrecoverable
+ * lockout, and that is the only shape this still refuses.
  */
 export async function revokeCredential(userId, id) {
   const remaining = await countCredentials(userId);
   if (remaining <= 1) {
-    throw badRequest(
-      "That is the only passkey on this account. Add another one first — there is no password to fall back on.",
-    );
+    const unusedCodes = await recoveryCodes.countUnusedRecoveryCodes(userId);
+    if (unusedCodes === 0) {
+      throw badRequest(
+        "That is the only passkey on this account, and there are no recovery codes on file either. " +
+          "Add another passkey or generate recovery codes first — there is no other way back in.",
+      );
+    }
   }
   const row = await one(
     `UPDATE webauthn_credentials SET revoked_at = now()

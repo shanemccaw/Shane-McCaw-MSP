@@ -15,6 +15,7 @@
     "reconcile-ledger": "node bin/reconcile-ledger.mjs",
     "create-user": "node bin/create-user.mjs",
     "enroll-passkey": "node bin/enroll-passkey.mjs",
+    "generate-recovery-codes": "node bin/generate-recovery-codes.mjs",
     "issue-mcp-token": "node bin/issue-mcp-token.mjs",
     "issue-widget-token": "node bin/issue-widget-token.mjs",
     "make-icons": "node bin/make-icons.mjs",

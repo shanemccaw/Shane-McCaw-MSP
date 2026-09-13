@@ -20,8 +20,9 @@ import {
 import * as ratelimit from "../auth/ratelimit.mjs";
 import { SESSION_COOKIE, createSession, markSessionVerified, revokeAllSessions, revokeSession } from "../auth/sessions.mjs";
 import { mintToken } from "../auth/tokens.mjs";
-import { markSignedIn, recordAuthEvent } from "../core/users.mjs";
+import { findUserById, markSignedIn, recordAuthEvent } from "../core/users.mjs";
 import * as credentials from "../core/credentials.mjs";
+import * as recoveryCodes from "../core/recovery-codes.mjs";
 import * as webauthn from "../auth/webauthn.mjs";
 import * as audit from "../core/audit.mjs";
 import * as teslaCore from "../core/tesla.mjs";
@@ -73,6 +74,9 @@ import * as vehicles from "../core/vehicles.mjs";
 const LOGIN_LIMIT_PER_IP = { limit: 20, windowMs: 15 * 60 * 1000 };
 // Enrolment is the one path that creates a credential, so it is limited harder than sign-in.
 const ENROLL_LIMIT_PER_IP = { limit: 10, windowMs: 60 * 60 * 1000 };
+// Recovery-code redemption is a credential-guessing surface reachable with no session at all --
+// tighter than sign-in's own limit (Git #3246).
+const RECOVERY_LIMIT_PER_IP = { limit: 10, windowMs: 15 * 60 * 1000 };
 
 function requireUser(ctx) {
   if (!ctx.session) throw unauthorized();
@@ -622,6 +626,11 @@ export function buildApiRouter() {
       if (!used) throw unauthorized("That enrolment link has already been used.");
     }
 
+    // Whether this is the account's first-ever passkey, BEFORE storing the new one -- that is
+    // "real account setup" (Git #3246's own wording), the moment recovery codes get minted
+    // automatically so there is never a real window where a one-passkey account has none.
+    const isFirstPasskey = (await credentials.countCredentials(subject.userId)) === 0;
+
     const stored = await credentials.storeCredential(subject.userId, registration, label);
     await recordAuthEvent({
       email: subject.email,
@@ -630,6 +639,19 @@ export function buildApiRouter() {
       ip: ctx.ip,
       userAgent: ctx.userAgent,
     });
+
+    let mintedRecoveryCodes = null;
+    if (isFirstPasskey && (await recoveryCodes.countUnusedRecoveryCodes(subject.userId)) === 0) {
+      const generated = await recoveryCodes.generateRecoveryCodes(subject.userId, subject.email);
+      mintedRecoveryCodes = generated.codes;
+      await recordAuthEvent({
+        email: subject.email,
+        userId: subject.userId,
+        event: "recovery_codes_generated",
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      });
+    }
 
     // Enrolling from a link signs you straight in -- there is nothing else to prove.
     if (body.token) {
@@ -644,10 +666,16 @@ export function buildApiRouter() {
         passkey: stored,
         user: { id: subject.userId, email: subject.email, name: subject.name },
         expiresAt: session.expiresAt,
+        // Shown exactly once, here -- the same discipline mintEnrollment already uses for its
+        // own token. Present only the one time a first passkey actually mints a fresh set.
+        ...(mintedRecoveryCodes ? { recoveryCodes: mintedRecoveryCodes } : {}),
       });
     }
 
-    return sendJson(res, 201, { passkey: stored });
+    return sendJson(res, 201, {
+      passkey: stored,
+      ...(mintedRecoveryCodes ? { recoveryCodes: mintedRecoveryCodes } : {}),
+    });
   });
 
   router.get("/api/passkeys", async (_req, res, _params, ctx) => {
@@ -666,6 +694,98 @@ export function buildApiRouter() {
       userAgent: ctx.userAgent,
     });
     return sendJson(res, 200, { ok: true, removed });
+  });
+
+  // -- account recovery: one-time codes (Git #3246) --------------------
+
+  router.get("/api/recovery-codes/status", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const status = await recoveryCodes.recoveryCodeStatus(user.id);
+    return sendJson(res, 200, status);
+  });
+
+  // Mints a fresh set on demand -- from Settings, or right after enrolling a first passkey (see
+  // /api/auth/enroll/verify above, which calls the same core function automatically). Replaces
+  // the whole existing set, same as a redemption does.
+  router.post("/api/recovery-codes/generate", async (_req, res, _params, ctx) => {
+    const user = requireUser(ctx);
+    const generated = await recoveryCodes.generateRecoveryCodes(user.id, user.email);
+    await recordAuthEvent({
+      email: user.email,
+      userId: user.id,
+      event: "recovery_codes_generated",
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+    return sendJson(res, 201, {
+      codes: generated.codes,
+      emailSent: generated.emailSent,
+      emailError: generated.emailError,
+    });
+  });
+
+  // The actual recovery path: no session, no passkey, just a code typed in. Deliberately no
+  // email field alongside it (webauthn.mjs's header explains why this app has none anywhere
+  // else) -- code_hash is globally unique, so the code alone identifies the account, the same
+  // way an enrolment token alone identifies its subject.
+  router.post("/api/auth/recovery/redeem", async (req, res, _params, ctx) => {
+    const body = await readJson(req);
+    const gate = ratelimit.hit(`recovery:ip:${ctx.ip}`, RECOVERY_LIMIT_PER_IP.limit, RECOVERY_LIMIT_PER_IP.windowMs);
+    if (!gate.allowed) {
+      await recordAuthEvent({ event: "recovery_throttled", ip: ctx.ip, userAgent: ctx.userAgent });
+      res.setHeader("Retry-After", String(Math.ceil(gate.retryAfterMs / 1000)));
+      throw tooMany("Too many recovery attempts. Try again later.", {
+        retryAfterSeconds: Math.ceil(gate.retryAfterMs / 1000),
+      });
+    }
+
+    const refuse = "That recovery code did not work.";
+    const consumed = await recoveryCodes.consumeRecoveryCode(body.code);
+    if (!consumed) {
+      await recordAuthEvent({ event: "recovery_code_bad", ip: ctx.ip, userAgent: ctx.userAgent });
+      throw unauthorized(refuse);
+    }
+
+    const user = await findUserById(consumed.user_id);
+    if (!user || !user.is_active) {
+      await recordAuthEvent({
+        email: user?.email ?? null,
+        userId: consumed.user_id,
+        event: "recovery_code_inactive_account",
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      });
+      throw unauthorized(refuse);
+    }
+
+    await markSignedIn(user.id);
+    const session = await createSession(user.id, { userAgent: ctx.userAgent, ip: ctx.ip });
+    await recordAuthEvent({
+      email: user.email,
+      userId: user.id,
+      event: "recovery_code_used",
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+
+    // Standard recovery-code hygiene: a used code invalidates and regenerates the WHOLE set, not
+    // just itself, so the rest of the batch that sat in the same inbox stops being usable too.
+    const regenerated = await recoveryCodes.generateRecoveryCodes(user.id, user.email);
+    await recordAuthEvent({
+      email: user.email,
+      userId: user.id,
+      event: "recovery_codes_generated",
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+
+    ctx.setSessionCookie(session.token, session.ttlSeconds);
+    return sendJson(res, 200, {
+      user: { id: user.id, email: user.email, name: user.name },
+      expiresAt: session.expiresAt,
+      codes: regenerated.codes,
+      emailSent: regenerated.emailSent,
+    });
   });
 
   // A fresh assertion inside a live session. The vault's reveal is the caller the design names
@@ -746,6 +866,7 @@ export function buildApiRouter() {
       pendingCaptures: await captures.pendingCount(user.id),
       publicOrigin: config.publicOrigin,
       passkeyCount: await credentials.countCredentials(user.id),
+      recoveryCodesRemaining: await recoveryCodes.countUnusedRecoveryCodes(user.id),
       lastVerifiedAt: ctx.session.lastVerifiedAt,
       // The critter daily-roll seed (Git #3119) -- see serverDateKey() above.
       serverDate: serverDateKey(),

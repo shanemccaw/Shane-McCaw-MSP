@@ -38,6 +38,10 @@ export async function findUserByEmail(email) {
   );
 }
 
+export async function findUserById(userId) {
+  return one("SELECT id, email, name, is_active, created_at FROM users WHERE id = $1", [userId]);
+}
+
 export async function markSignedIn(userId) {
   await query("UPDATE users SET last_login_at = now() WHERE id = $1", [userId]);
 }
