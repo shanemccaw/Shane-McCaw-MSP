@@ -1,7 +1,7 @@
 {
-  "feature": "Marketing Free Scan page (/scan) — the real consent gate (Git #1361) AND the real locked/teaser results view (Git #1358): the start form captures name/company/work email and its POST /api/public/free-scan/start fires the real lead + returns the read app's real scopes; 'Review access and continue' advances to the consent-disclosure screen; once the loading animation hands off, the page polls GET /api/public/free-scan/results (the SAME buildPillarSummary computation /api/portal/pillars reads) for the Prospect's real pillar scores and findings.",
+  "feature": "Marketing Free Scan page (/scan) — the real consent gate (Git #1361) AND the real locked/teaser results view (Git #1358): the start form captures name/company/work email and its POST /api/public/free-scan/start fires the real lead + returns the read app's real scopes; 'Review access and continue' advances to the consent-disclosure screen; once the loading animation hands off, the page polls GET /api/public/free-scan/results (the SAME buildPillarSummary computation /api/portal/pillars reads) for the Prospect's real pillar scores and findings. Git #1359 adds the emailed return link: /scan/results opens this same page on its results phase, reading POST /api/public/free-scan/return-link/results with a narrowly-scoped fsr_ token instead of a sessionId.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "1b652cae6",
+  "lastVerifiedAgainstCommit": "15932bbe9",
   "notes": [
     "Git #1361 replaced the single-checkbox Free Scan → Scan flow with a real consent gate:",
     "start → consent → granting → scanning → results. Git #1358 then replaced the results phase's",
@@ -43,7 +43,19 @@
     "api-server are redeployed. Until then, /api/public/free-scan/start 404s and /scan may resolve to",
     "the old flow — failures on that ground are deployment lag, not a page defect. The consent-screen",
     "UI steps are robust to the endpoint being absent: if the scopes fetch fails, the card falls back",
-    "to the curated (manifest-verified) scope list, so Directory.Read.All still renders."
+    "to the curated (manifest-verified) scope list, so Directory.Read.All still renders.",
+    "",
+    "Git #1359 (sessionTag 1359-return-link) — the Free Scan return link:",
+    "  - apiTests: POST /api/public/free-scan/return-link/results refuses a non-fsr token and a well-formed",
+    "    but unknown fsr_ token 401 link_invalid; POST /api/public/free-scan/return-link rejects a malformed",
+    "    email 400 and answers an unknown address 202 {ok:true} (identical to a real one, so no enumeration;",
+    "    no mail is sent because no account exists); an fsr_ token presented to POST /api/auth/setup-password",
+    "    is refused 400 (a return token is not a setup token and yields no password or session).",
+    "  - uiSteps: /scan/results with no token renders the results-phase error state with the re-request form.",
+    "  - NOT asserted here: the valid-token path (needs a live minted token, which only ever reaches a real",
+    "    inbox) and the full replay matrix against every /auth/* exchange and Bearer route. Both were run",
+    "    live against a running api-server in the #1359 build session (build-journal/1359.md) and the token",
+    "    scope is locked in artifacts/api-server/src/lib/free-scan-return-link.test.ts (real Postgres)."
   ],
   "apiTests": [
     {
@@ -87,6 +99,51 @@
       "method": "GET",
       "path": "/api/public/free-scan/results?sessionId=00000000-0000-4000-8000-000000000000",
       "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
+    },
+    {
+      "name": "RETURN LINK (Git #1359) — a non-fsr token is refused 401 link_invalid",
+      "sessionTag": "1359-return-link",
+      "method": "POST",
+      "path": "/api/public/free-scan/return-link/results",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" },
+      "expect": { "status": 401, "jsonPath": "$.error", "value": "link_invalid" }
+    },
+    {
+      "name": "RETURN LINK (Git #1359) — a well-formed but unknown fsr_ token is refused 401 link_invalid",
+      "sessionTag": "1359-return-link",
+      "method": "POST",
+      "path": "/api/public/free-scan/return-link/results",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "token": "fsr_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+      "expect": { "status": 401, "jsonPath": "$.error", "value": "link_invalid" }
+    },
+    {
+      "name": "RETURN LINK (Git #1359) — re-send rejects a malformed email 400",
+      "sessionTag": "1359-return-link",
+      "method": "POST",
+      "path": "/api/public/free-scan/return-link",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "not-an-email" },
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "email_invalid" }
+    },
+    {
+      "name": "RETURN LINK (Git #1359) — re-send answers an unknown address 202 ok (no account enumeration)",
+      "sessionTag": "1359-return-link",
+      "method": "POST",
+      "path": "/api/public/free-scan/return-link",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "nobody-1359@free-scan-return-link-test.invalid" },
+      "expect": { "status": 202, "jsonPath": "$.ok", "value": true }
+    },
+    {
+      "name": "RETURN LINK REPLAY (Git #1359) — an fsr_ token is refused by POST /api/auth/setup-password",
+      "sessionTag": "1359-return-link",
+      "method": "POST",
+      "path": "/api/auth/setup-password",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "token": "fsr_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "password": "Str0ng!Passw0rd-1359x" },
+      "expect": { "status": 400 }
     }
   ],
   "uiSteps": [
@@ -106,6 +163,10 @@
     { "action": "expect", "selector": "[data-testid='freescan-consent-heading']", "state": "visible", "textContains": "This scan needs read access" },
     { "action": "expect", "selector": "[data-testid='freescan-consent-screen']", "state": "visible", "textContains": "Directory.Read.All" },
     { "action": "expect", "selector": "[data-testid='freescan-consent-screen']", "state": "visible", "textContains": "Not requested" },
-    { "action": "expect", "selector": "[data-testid='freescan-grant']", "state": "visible", "textContains": "Grant read-only access" }
+    { "action": "expect", "selector": "[data-testid='freescan-grant']", "state": "visible", "textContains": "Grant read-only access" },
+    { "action": "goto", "target": "/scan/results", "sessionTag": "1359-return-link" },
+    { "action": "expect", "selector": "[data-testid='freescan-page']", "state": "visible", "sessionTag": "1359-return-link" },
+    { "action": "expect", "selector": "[data-testid='freescan-results-error']", "state": "visible", "textContains": "Open the link from the email", "sessionTag": "1359-return-link" },
+    { "action": "expect", "selector": "[data-testid='freescan-return-email']", "state": "visible", "sessionTag": "1359-return-link" }
   ]
 }
