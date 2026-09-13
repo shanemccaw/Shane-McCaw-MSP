@@ -325,11 +325,11 @@
                                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="3" Padding="6,4" Margin="0,6,0,0">
                                                     <TextBlock FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap">
                                                         <Run Text="Flow: " FontWeight="SemiBold"/>
-                                                        <Run Text="{Binding ColorKey, TargetNullValue='Literal Hex'}" Foreground="{StaticResource BlueBrush}"/>
+                                                        <Run Text="{Binding ColorKey, TargetNullValue='Literal Hex', Mode=OneWay}" Foreground="{StaticResource BlueBrush}"/>
                                                         <Run Text=" ➔ "/>
-                                                        <Run Text="{Binding Key}" Foreground="{StaticResource AccentBrush}"/>
+                                                        <Run Text="{Binding Key, Mode=OneWay}" Foreground="{StaticResource AccentBrush}"/>
                                                         <Run Text=" ➔ "/>
-                                                        <Run Text="{Binding ReferencedByStyles.Count, StringFormat='{}{0} Controls'}" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                                        <Run Text="{Binding ReferencedByStyles.Count, StringFormat='{}{0} Controls', Mode=OneWay}" Foreground="{StaticResource StatusSuccessBrush}"/>
                                                     </TextBlock>
                                                 </Border>
                                             </StackPanel>
@@ -380,9 +380,9 @@
                                                            Margin="0,6,0,6" TextWrapping="Wrap"/>
 
                                                 <TextBlock FontSize="10" Foreground="{StaticResource TextDisabledBrush}">
-                                                    <Run Text="Family: "/><Run Text="{Binding FontFamily}"/>
-                                                    <Run Text=" • Size: "/><Run Text="{Binding FontSize}"/><Run Text="px"/>
-                                                    <Run Text=" • Weight: "/><Run Text="{Binding FontWeight}"/>
+                                                    <Run Text="Family: "/><Run Text="{Binding FontFamily, Mode=OneWay}"/>
+                                                    <Run Text=" • Size: "/><Run Text="{Binding FontSize, Mode=OneWay}"/><Run Text="px"/>
+                                                    <Run Text=" • Weight: "/><Run Text="{Binding FontWeight, Mode=OneWay}"/>
                                                 </TextBlock>
                                             </StackPanel>
                                         </Border>

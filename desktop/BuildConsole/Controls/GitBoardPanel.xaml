@@ -253,9 +253,9 @@
                                         <!-- Number + Title (Wrapped naturally, no truncation) -->
                                         <TextBlock Grid.Column="2" Margin="4,0,6,0" VerticalAlignment="Center"
                                                    TextWrapping="Wrap" TextTrimming="None" HorizontalAlignment="Stretch">
-                                            <Run Text="{Binding NumberDisplay}" FontWeight="Bold" Foreground="#FAB387"/>
+                                            <Run Text="{Binding NumberDisplay, Mode=OneWay}" FontWeight="Bold" Foreground="#FAB387"/>
                                             <Run Text=" "/>
-                                            <Run Text="{Binding Title}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
                                         </TextBlock>
 
                                         <!-- Progress Pill -->

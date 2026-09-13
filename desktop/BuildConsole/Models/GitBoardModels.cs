@@ -103,7 +103,11 @@ namespace BuildConsole.Models
     {
         public int Number { get; set; }
         public string Title { get; set; } = "";
-        public string DisplayText => $"WORKING: #{Number} — {Title}";
+        public string DisplayText
+        {
+            get => $"WORKING: #{Number} — {Title}";
+            set { }
+        }
     }
 
     public class MilestoneSummaryModel : ObservableModelBase
@@ -112,7 +116,11 @@ namespace BuildConsole.Models
         public string Title { get; set; } = "v1.1 - Monitoring & Launch";
         public double ProgressPercent { get; set; } = 60.0;
         public string RatioText { get; set; } = "96/158";
-        public string ProgressDisplay => $"{ProgressPercent:F0}% ({RatioText})";
+        public string ProgressDisplay
+        {
+            get => $"{ProgressPercent:F0}% ({RatioText})";
+            set { }
+        }
     }
 
     public class GateBannerModel : ObservableModelBase
@@ -130,7 +138,11 @@ namespace BuildConsole.Models
 
         public int Number { get; set; }
         public string Title { get; set; } = "";
-        public string NumberDisplay => $"#{Number}";
+        public string NumberDisplay
+        {
+            get => $"#{Number}";
+            set { }
+        }
         public double ProgressPercent { get; set; }
         public string ProgressText { get; set; } = "0% (0/0)";
         public string ColorHex { get; set; } = "#FAB387";
@@ -150,7 +162,11 @@ namespace BuildConsole.Models
             }
         }
 
-        public string ChevronIcon => IsExpanded ? "▾" : "▸";
+        public string ChevronIcon
+        {
+            get => IsExpanded ? "▾" : "▸";
+            set { }
+        }
 
         public bool IsWorking
         {
@@ -213,7 +229,11 @@ namespace BuildConsole.Models
         public int Number { get; set; }
         public string Title { get; set; } = "";
         public string? BlockerBadge { get; set; } // e.g. "1b"
-        public bool HasBlocker => !string.IsNullOrEmpty(BlockerBadge);
+        public bool HasBlocker
+        {
+            get => !string.IsNullOrEmpty(BlockerBadge);
+            set { }
+        }
         public double ProgressPercent { get; set; }
         public string ProgressText { get; set; } = ""; // e.g. "89% (8/9)"
         public string Status { get; set; } = "ACTIVE"; // ACTIVE, FOCUS, UNASSIGNED
@@ -234,8 +254,16 @@ namespace BuildConsole.Models
             }
         }
 
-        public string ChevronIcon => IsExpanded ? "▾" : "▸";
-        public bool HasIssues => Issues.Count > 0;
+        public string ChevronIcon
+        {
+            get => IsExpanded ? "▾" : "▸";
+            set { }
+        }
+        public bool HasIssues
+        {
+            get => Issues.Count > 0;
+            set { }
+        }
 
         public ObservableCollection<GitBoardIssueModel> Issues { get; } = new();
         public ObservableCollection<GitBoardIssueModel> FilteredIssues { get; } = new();
@@ -277,7 +305,11 @@ namespace BuildConsole.Models
     {
         public int Number { get; set; }
         public string Title { get; set; } = "";
-        public string DisplayText => $"#{Number} {Title}";
+        public string DisplayText
+        {
+            get => $"#{Number} {Title}";
+            set { }
+        }
         public Brush StatusDotColor { get; set; } = new SolidColorBrush(Color.FromRgb(0x7C, 0x8C, 0xF0));
         public object? RawData { get; set; }
     }
