@@ -75,7 +75,13 @@
                 <StackPanel x:Name="MiddlePanel" Grid.Column="2" Orientation="Horizontal"
                             HorizontalAlignment="Left" VerticalAlignment="Center" Margin="16,0">
                     <TextBlock x:Name="EtaText" FontSize="10.5" Foreground="{StaticResource BlueBrush}"
-                               VerticalAlignment="Center"/>
+                               VerticalAlignment="Center" MaxWidth="360" TextTrimming="CharacterEllipsis"/>
+                    <!-- Git #3906 — manual re-trigger of the real underlying ETA recompute (the same
+                         board fetch a manual Git refresh runs), not just a redraw of stale data. -->
+                    <Button x:Name="EtaRefreshBtn" Content="⟳" Style="{StaticResource IconButton}"
+                            FontSize="11" Padding="4,0" Margin="6,0,0,0" Cursor="Hand"
+                            ToolTip="Recompute the ETA now"
+                            Click="EtaRefreshBtn_Click"/>
                     <!-- Git #2708 — swaps IN for PointsChip/AchvChip (not stacked alongside them) whenever
                          there's a real unrestored last-session tab set waiting; swaps back out once those
                          tabs are reopened (or the user starts using the app normally — see OpenChatTab). -->

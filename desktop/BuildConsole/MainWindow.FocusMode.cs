@@ -37,6 +37,11 @@ namespace BuildConsole
                 // (Home_ReopenAllRequested → Home_ResumeChatRequested per tab → OpenChatTab), fed
                 // the same _chatTabsAtLaunch list #2707's Home "Reopen All" button consumes.
                 _focusBar.OpenLastTabsRequested += OnFocusOpenLastTabsRequested;
+                // Git #3906 — the bar's manual ETA-refresh icon re-triggers the SAME real recompute
+                // a manual Git refresh already runs (LeftSidebar.PopulateGitTrackerBoardAsync(forceFresh:
+                // true) → FocusModeService.UpdateBoardSnapshot → RecomputeGame/BuildProgress), not a
+                // second fetch path. Awaited so the bar's "Calculating…" state covers the real duration.
+                _focusBar.EtaRefreshRequested += () => LeftSidebar.PopulateGitTrackerBoardAsync(forceFresh: true);
                 InsertFocusBar(_focusBar);
 
                 // Seed the bar with the real unrestored-tab count from launch (only entries with

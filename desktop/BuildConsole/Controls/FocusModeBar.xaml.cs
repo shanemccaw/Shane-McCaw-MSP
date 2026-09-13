@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Threading.Tasks;
 using BuildConsole.Services;
 
 namespace BuildConsole.Controls
@@ -20,6 +21,11 @@ namespace BuildConsole.Controls
     {
         private const double TrackWidth = 120;
         private string _pickerSignature = "";
+        /// <summary>Git #3906 — true while a manual ETA refresh (triggered by <see cref="EtaRefreshBtn_Click"/>)
+        /// has asked the shell to re-run the real underlying board fetch/recompute and is still waiting on
+        /// it. Distinct from <see cref="FocusProgress.HasRealCounts"/> (the "never computed yet this
+        /// session" cold-board case) — this covers "computed before, recomputing now on demand."</summary>
+        private bool _etaRefreshInProgress;
 
         /// <summary>The active-milestone chip was clicked — open its detail tab.</summary>
         public event Action<int>? MilestoneOpenRequested;
@@ -33,6 +39,13 @@ namespace BuildConsole.Controls
         /// <summary>Git #2708 — the "Open Last Tabs" chip was clicked: MainWindow owns the real
         /// remembered-tab list (_chatTabsAtLaunch) and the reopen logic, so this bar only raises intent.</summary>
         public event Action? OpenLastTabsRequested;
+
+        /// <summary>Git #3906 — the manual ETA-refresh icon was clicked: MainWindow owns the real
+        /// recompute (<c>LeftSidebar.PopulateGitTrackerBoardAsync(forceFresh: true)</c>, the same
+        /// method a manual Git refresh already runs, which feeds
+        /// <see cref="FocusModeService.UpdateBoardSnapshot"/> → the real ETA recompute). Awaited so
+        /// this bar can show "Calculating…" for the actual duration of the real fetch, not just a redraw.</summary>
+        public event Func<Task>? EtaRefreshRequested;
 
         /// <summary>Git #2708 — how many remembered tabs from last session are still unrestored.
         /// Pushed in by MainWindow (see <see cref="SetUnrestoredTabCount"/>); &gt; 0 swaps the
@@ -110,16 +123,37 @@ namespace BuildConsole.Controls
                     ProgressText.Text = "no issues yet";
                 }
 
-                // ETA — only when the projection cleared its gates (honest, or nothing).
-                if (p.HasEta && p.Eta.HasValue)
+                // ETA — Git #3906: a real, visible "Calculating…" state comes first, both for the
+                // genuinely-cold-this-session case (!p.HasRealCounts — no ALL-states fetch has landed
+                // yet, same signal the progress bar above already uses) and for a manual refresh
+                // actually in flight (_etaRefreshInProgress). Only once real data exists do we render
+                // a confident ETA, "done", or — Git #3906 part 1 — the honest reason VISIBLY instead of
+                // withholding it to a tooltip on blank text nobody sees.
+                if (_etaRefreshInProgress || !p.HasRealCounts)
+                {
+                    EtaText.Text = "Calculating…";
+                    EtaText.ToolTip = "Recomputing the real 30-day net-rate ETA from GitHub…";
+                }
+                else if (p.HasEta && p.Eta.HasValue)
+                {
                     EtaText.Text = $"~{FormatEta(p.Eta.Value)} left · {p.IssuesPerDay:0.#}/day net";
+                    // Git #3869 — "net" here means closed-minus-created, not gross close rate (the old
+                    // wording), so the tooltip stays honest about what the number actually reflects.
+                    EtaText.ToolTip = "Estimated at the current net rate (issues closed minus new issues filed)";
+                }
                 else if (p.Percent >= 100)
+                {
                     EtaText.Text = "done 🎉";
+                    EtaText.ToolTip = null;
+                }
                 else
-                    EtaText.Text = ""; // withheld; tooltip carries the reason
-                // Git #3869 — "net" here means closed-minus-created, not gross close rate (the old
-                // wording), so the tooltip stays honest about what the number actually reflects.
-                EtaText.ToolTip = p.HasEta ? "Estimated at the current net rate (issues closed minus new issues filed)" : p.EtaReason;
+                {
+                    // Git #3906 — was: EtaText.Text = ""; the honest reason was withheld to a tooltip
+                    // on blank text nobody sees. It must be visible as the primary text now.
+                    EtaText.Text = p.EtaReason;
+                    EtaText.ToolTip = p.EtaReason;
+                }
+                EtaRefreshBtn.IsEnabled = !_etaRefreshInProgress;
 
                 // Git #3869 — production-scope toggle: default real count vs. stricter
                 // reachable-from-shipping-epics scope.
@@ -178,6 +212,29 @@ namespace BuildConsole.Controls
         }
 
         private void ExitBtn_Click(object sender, RoutedEventArgs e) => FocusModeService.Instance.Deactivate();
+
+        /// <summary>Git #3906 — manual ETA refresh. Raises <see cref="EtaRefreshRequested"/> and awaits
+        /// it so "Calculating…" (see <see cref="Refresh"/>) is shown for the real duration of the
+        /// underlying recompute MainWindow triggers, not just re-rendering stale cached data.</summary>
+        private async void EtaRefreshBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_etaRefreshInProgress) return;
+            _etaRefreshInProgress = true;
+            Refresh();
+            try
+            {
+                if (EtaRefreshRequested != null) await EtaRefreshRequested.Invoke();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("focus-mode", $"manual ETA refresh failed: {ex.Message}");
+            }
+            finally
+            {
+                _etaRefreshInProgress = false;
+                Refresh();
+            }
+        }
 
         /// <summary>Git #3869 — toggles the milestone tile's production-scope filter. The service
         /// raises StateChanged itself, which drives the actual re-render.</summary>
