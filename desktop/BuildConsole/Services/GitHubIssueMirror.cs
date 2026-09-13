@@ -133,6 +133,17 @@ namespace BuildConsole.Services
         /// a single chunk occupies the sync single-flight guard.</summary>
         private static readonly TimeSpan ClosedBackfillPageDelay = TimeSpan.FromSeconds(4);
 
+        /// <summary>Git #3941 — the shape of the CLOSED rows a completed walk wrote, persisted as
+        /// <c>bt_issue_mirror_sync_state.closed_backfill_schema_version</c> on completion. Bump this
+        /// whenever <see cref="UpsertClosedIssuesAsync"/> starts populating a column older rows don't
+        /// have. The steady-state path's count probe can't see that kind of gap — the closed ROW count
+        /// is unchanged, only a column is empty — so without this a walk that completed before the
+        /// column existed is trusted forever. That is exactly what happened: the walk completed
+        /// 2026-09-12 19:24 EDT, #3712 added <c>own_milestone_number</c> at 21:19 EDT, and 3,427 of
+        /// 3,460 closed rows kept it NULL, pinning milestone #5's completeness gate at "322 of 2237".
+        /// 1 = rows carry <c>own_milestone_number</c> (#3712).</summary>
+        private const int ClosedBackfillRowSchemaVersion = 1;
+
         /// <summary>Runaway guard on the <c>blocked_by</c> population during a sync. As of Git #3477
         /// this fetch is BATCHED (a handful of aliased GraphQL reads via
         /// <c>GitHubApiClient.BatchGetBlockedByAsync</c>), not one REST call per issue — but the cap
@@ -1712,6 +1723,8 @@ namespace BuildConsole.Services
             public bool Complete { get; init; }
             public int Pages { get; init; }
             public int Rows { get; init; }
+            /// <summary>Git #3941 — <see cref="ClosedBackfillRowSchemaVersion"/> as of the last completed walk.</summary>
+            public int SchemaVersion { get; init; }
         }
 
         /// <summary>
@@ -1776,7 +1789,16 @@ namespace BuildConsole.Services
                 }
 
                 bool restarting = false;
-                if (state.Complete)
+                if (state.Complete && state.SchemaVersion < ClosedBackfillRowSchemaVersion)
+                {
+                    // Git #3941 — the rows the last walk wrote predate a column the walk now fills.
+                    // Neither the interval nor the count probe can see that, so re-walk once now.
+                    ActivityLog.Log("issue-mirror",
+                        $"closed-issue backfill: last completed walk wrote row schema v{state.SchemaVersion}, current is v{ClosedBackfillRowSchemaVersion} — " +
+                        "restarting the chunked walk so existing closed rows get the newer columns (Git #3941).");
+                    restarting = true;
+                }
+                else if (state.Complete)
                 {
                     // Steady state. Only re-check on the long interval, and re-check CHEAPLY.
                     if (state.LastCompletedAt != null &&
@@ -1795,7 +1817,18 @@ namespace BuildConsole.Services
                         return;
                     }
                     int mirroredClosed = await CountMirroredClosedAsync();
-                    if (realClosed > 0 && mirroredClosed >= realClosed)
+                    // Git #3941 — the row count alone can't see a closed row whose OWN milestone is
+                    // missing, which is the exact number #3577's milestone gate compares. Checked
+                    // against bt_milestone_mirror (already refreshed by the full sync, no API cost),
+                    // and only on this once-per-interval path, so a gap that a walk can't close
+                    // re-walks at most daily rather than looping.
+                    var milestoneGap = await FindClosedOwnMilestoneGapAsync();
+                    if (milestoneGap != null)
+                    {
+                        ActivityLog.Log("issue-mirror",
+                            $"closed-issue backfill: {milestoneGap} — restarting the chunked walk from the beginning (Git #3941).");
+                    }
+                    else if (realClosed > 0 && mirroredClosed >= realClosed)
                     {
                         // Genuinely still complete — refresh the timestamp and skip the whole walk.
                         await RecordClosedBackfillAsync(
@@ -1804,9 +1837,11 @@ namespace BuildConsole.Services
                             $"closed-issue backfill: still complete ({mirroredClosed} mirrored closed ≥ {realClosed} real) — skipped the page walk entirely (Git #3704).");
                         return;
                     }
-
-                    ActivityLog.Log("issue-mirror",
-                        $"closed-issue backfill: mirror holds {mirroredClosed} closed issue(s) but GitHub reports {realClosed} — restarting the chunked walk from the beginning (Git #3704).");
+                    else
+                    {
+                        ActivityLog.Log("issue-mirror",
+                            $"closed-issue backfill: mirror holds {mirroredClosed} closed issue(s) but GitHub reports {realClosed} — restarting the chunked walk from the beginning (Git #3704).");
+                    }
                     restarting = true;
                 }
                 else if (state.LastChunkAt != null &&
@@ -1866,7 +1901,8 @@ namespace BuildConsole.Services
                     int mirroredClosed = await CountMirroredClosedAsync();
                     await RecordClosedBackfillAsync(
                         $"walk complete: {pagesSoFar + pagesThisChunk} page(s), {rowsSoFar + rowsThisChunk} closed row(s) upserted, " +
-                        $"{parents} parent link(s) + {milestones} milestone(s) reconciled, {mirroredClosed} closed rows mirrored",
+                        $"{parents} parent link(s) + {milestones} milestone(s) reconciled, {mirroredClosed} closed rows mirrored " +
+                        $"(row schema v{ClosedBackfillRowSchemaVersion})",
                         markComplete: true);
                     ActivityLog.Log("issue-mirror",
                         $"closed-issue backfill COMPLETE — {pagesSoFar + pagesThisChunk} page(s) walked, {rowsSoFar + rowsThisChunk} closed issue(s) upserted, " +
@@ -1928,7 +1964,10 @@ namespace BuildConsole.Services
                     milestone_title  = COALESCE(EXCLUDED.milestone_title,  bt_issue_mirror.milestone_title),
                     milestone_number = COALESCE(EXCLUDED.milestone_number, bt_issue_mirror.milestone_number),
                     -- Git #3712 — this issue's OWN milestone field, straight from GraphQL, no inheritance.
-                    own_milestone_number = COALESCE(EXCLUDED.own_milestone_number, bt_issue_mirror.own_milestone_number),
+                    -- Git #3941 — written as-is, not COALESCEd: unlike milestone_number there is no
+                    -- inherited value to preserve, and a closed issue whose milestone was removed must
+                    -- stop counting toward it rather than keep a stale number forever.
+                    own_milestone_number = EXCLUDED.own_milestone_number,
                     parent_number = COALESCE(EXCLUDED.parent_number, bt_issue_mirror.parent_number),
                     parent_milestone_number = COALESCE(EXCLUDED.parent_milestone_number, bt_issue_mirror.parent_milestone_number),
                     sub_issue_count = EXCLUDED.sub_issue_count,
@@ -2107,6 +2146,42 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>Git #3941 — per milestone, compares GitHub's own real CLOSED count
+        /// (<c>bt_milestone_mirror.closed_issues</c>) against the mirror's closed rows whose OWN
+        /// milestone is that number — the closed half of exactly what #3577/#3712's
+        /// <c>CheckMilestoneCompletenessAsync</c> gates on. Returns a description of the worst short
+        /// milestone, or null when every milestone is covered (or nothing can be read — fail toward
+        /// the existing count-probe decision rather than forcing a walk on a DB error).</summary>
+        private static async Task<string?> FindClosedOwnMilestoneGapAsync()
+        {
+            try
+            {
+                await using var conn = await TryOpenAsync();
+                if (conn == null) return null;
+                await using var cmd = new NpgsqlCommand(@"
+                    SELECT m.number, m.closed_issues, count(i.issue_number) AS mirrored
+                      FROM bt_milestone_mirror m
+                      LEFT JOIN bt_issue_mirror i
+                        ON i.repo_owner = m.repo_owner AND i.repo_name = m.repo_name
+                       AND i.state = 'closed' AND i.own_milestone_number = m.number
+                     WHERE m.repo_owner = @owner AND m.repo_name = @repo
+                     GROUP BY m.number, m.closed_issues
+                    HAVING count(i.issue_number) < m.closed_issues
+                     ORDER BY m.closed_issues - count(i.issue_number) DESC
+                     LIMIT 1", conn);
+                cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
+                cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
+                await using var r = await cmd.ExecuteReaderAsync();
+                if (!await r.ReadAsync()) return null;
+                return $"milestone #{r.GetInt32(0)} has {r.GetInt64(2)} closed row(s) with that own milestone mirrored vs {r.GetInt32(1)} real";
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("issue-mirror", $"FindClosedOwnMilestoneGapAsync failed ({ex.Message}) — milestone coverage not checked this pass (Git #3941).");
+                return null;
+            }
+        }
+
         /// <summary>Git #3704 — reads the whole persisted backfill-walk state in one round trip.
         /// Returns null when the DB is unreachable (the caller then does nothing this tick).</summary>
         private static async Task<ClosedBackfillState?> GetClosedBackfillStateAsync()
@@ -2117,7 +2192,8 @@ namespace BuildConsole.Services
                 if (conn == null) return null;
                 await using var cmd = new NpgsqlCommand(@"
                     SELECT last_closed_backfill_at, closed_backfill_chunk_at, closed_backfill_cursor,
-                           closed_backfill_complete, closed_backfill_pages, closed_backfill_rows
+                           closed_backfill_complete, closed_backfill_pages, closed_backfill_rows,
+                           closed_backfill_schema_version
                       FROM bt_issue_mirror_sync_state WHERE repo_owner = @owner AND repo_name = @repo", conn);
                 cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
                 cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
@@ -2131,6 +2207,7 @@ namespace BuildConsole.Services
                     Complete = !r.IsDBNull(3) && r.GetBoolean(3),
                     Pages = r.IsDBNull(4) ? 0 : r.GetInt32(4),
                     Rows = r.IsDBNull(5) ? 0 : r.GetInt32(5),
+                    SchemaVersion = r.IsDBNull(6) ? 0 : r.GetInt32(6),
                 };
             }
             catch (Exception ex)
@@ -2218,9 +2295,11 @@ namespace BuildConsole.Services
                        SET last_closed_backfill_at = NOW(),
                            closed_backfill_chunk_at = NOW(),
                            closed_backfill_complete = CASE WHEN @markComplete THEN true ELSE closed_backfill_complete END,
+                           closed_backfill_schema_version = CASE WHEN @markComplete THEN @schemaVersion ELSE closed_backfill_schema_version END,
                            closed_backfill_note = @note
                      WHERE repo_owner = @owner AND repo_name = @repo", conn);
                 cmd.Parameters.AddWithValue("@markComplete", markComplete);
+                cmd.Parameters.AddWithValue("@schemaVersion", ClosedBackfillRowSchemaVersion);
                 cmd.Parameters.AddWithValue("@note", note);
                 cmd.Parameters.AddWithValue("@owner", RepoIdentity.DefaultOwner);
                 cmd.Parameters.AddWithValue("@repo", RepoIdentity.DefaultName);
