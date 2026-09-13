@@ -7,7 +7,11 @@
     <Border Background="{StaticResource CrustBrush}"
             BorderBrush="{StaticResource Surface0Brush}"
             BorderThickness="0,0,1,0">
-        <DockPanel LastChildFill="False">
+        <Grid>
+            <DockPanel x:Name="IconsPanel" LastChildFill="False">
+                <DockPanel.RenderTransform>
+                    <TranslateTransform x:Name="IconsSlideTransform" X="0"/>
+                </DockPanel.RenderTransform>
 
             <!-- ── Top icons: Chats, Explorer, Search, Git ── -->
             <StackPanel DockPanel.Dock="Top">
@@ -311,6 +315,23 @@
                 </RadioButton>
             </StackPanel>
 
-        </DockPanel>
+            </DockPanel>
+
+            <!-- Blank icon panel for Test Mode -->
+            <Border x:Name="BlankIconPanel"
+                    Background="{StaticResource CrustBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,0,1,0"
+                    Visibility="Collapsed">
+                <Grid>
+                    <!-- Subtle minimal indicator for blank panel -->
+                    <Border Width="4" Height="24" CornerRadius="2"
+                            Background="{StaticResource Surface1Brush}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Opacity="0.4"
+                            ToolTip="Test Mode — Blank Icon Panel"/>
+                </Grid>
+            </Border>
+        </Grid>
     </Border>
 </UserControl>

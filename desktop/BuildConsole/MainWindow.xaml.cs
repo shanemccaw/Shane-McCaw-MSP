@@ -1701,6 +1701,14 @@ namespace BuildConsole
                 return;
             }
 
+            // Ctrl+Shift+T: Quick keyboard command to toggle Test Mode (enter or exit test mode)
+            if (e.Key == Key.T && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            {
+                e.Handled = true;
+                ToggleTestMode();
+                return;
+            }
+
             // Git #3829 (supersedes #3553's own Ctrl+D binding — confirmed via direct code read
             // before claiming the key, per this issue's own explicit instruction) — Ctrl+D (no
             // Shift, distinct from the Ctrl+Shift+D mascot chord above) opens the real Command

@@ -197,6 +197,24 @@ namespace BuildConsole
                 ActionLabel = "Run deploy-shanesbuild.cmd",
                 Run = () => RunDeployScript(),
             },
+            new CommandPaletteWindow.PaletteCommand
+            {
+                Glyph = "\uE7BE", // Test / Beaker
+                Title = "Enter Test Mode",
+                Subtitle = "Slide out left icons to blank panel and activate 540px right panel (Ctrl+Shift+T)",
+                DetailBody = "Converts the app into Test Mode: left icons slide out and are replaced with a blank icon panel, and the right panel is replaced with an empty panel 540px wide.",
+                ActionLabel = "Enter Test Mode",
+                Run = () => EnterTestMode(),
+            },
+            new CommandPaletteWindow.PaletteCommand
+            {
+                Glyph = "\uE73E", // Checkmark
+                Title = "I'm done",
+                Subtitle = "Exit Test Mode and restore workspace layout (Ctrl+Shift+T)",
+                DetailBody = "Restores the workspace from Test Mode back to your previous layout (restores left icons, left sidebar, and the Build Queue).",
+                ActionLabel = "Exit Test Mode",
+                Run = () => ExitTestMode(),
+            },
         };
 
         /// <summary>Git #3826 — runs the sidebar's real git pull and returns its real,

@@ -362,5 +362,57 @@ namespace BuildConsole.Controls
             }
             WebToolsPopup.IsOpen = false;
         }
+
+        // ── Test Mode: Slide out icons & show blank icon panel ───────────────
+        private bool _isTestMode;
+        public bool IsTestMode => _isTestMode;
+
+        public void EnterTestMode(bool animate = true)
+        {
+            if (_isTestMode) return;
+            _isTestMode = true;
+
+            BlankIconPanel.Visibility = Visibility.Visible;
+            if (animate)
+            {
+                var anim = new System.Windows.Media.Animation.DoubleAnimation(0, -48, TimeSpan.FromMilliseconds(220))
+                {
+                    EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+                };
+                anim.Completed += (_, _) =>
+                {
+                    if (_isTestMode)
+                        IconsPanel.Visibility = Visibility.Collapsed;
+                };
+                IconsSlideTransform.BeginAnimation(TranslateTransform.XProperty, anim);
+            }
+            else
+            {
+                IconsSlideTransform.X = -48;
+                IconsPanel.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        public void ExitTestMode(bool animate = true)
+        {
+            if (!_isTestMode) return;
+            _isTestMode = false;
+
+            IconsPanel.Visibility = Visibility.Visible;
+            BlankIconPanel.Visibility = Visibility.Collapsed;
+
+            if (animate)
+            {
+                var anim = new System.Windows.Media.Animation.DoubleAnimation(-48, 0, TimeSpan.FromMilliseconds(220))
+                {
+                    EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+                };
+                IconsSlideTransform.BeginAnimation(TranslateTransform.XProperty, anim);
+            }
+            else
+            {
+                IconsSlideTransform.X = 0;
+            }
+        }
     }
 }
