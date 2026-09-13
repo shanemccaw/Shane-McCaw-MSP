@@ -9,12 +9,12 @@ cross-checked live against local Postgres (`shanemccawmsp`, `DATABASE_URL`) and 
 real, passing test suite (`npx vitest run src/routes/msp-active-directory.test.ts` — 27/27
 pass, run this session).
 
-**Real, confirmed backend, no pack existed for it yet.** `msp-active-directory.ts` is 526
-lines, 6 real routes, all fully implemented — no `TODO`/`FIXME`/stub markers anywhere in the
-file (grepped this session), no half-built route. Confirming the issue body's own instruction
-to check completeness rather than assume it from line count: every route below has a
-passing test in `msp-active-directory.test.ts` covering its auth floor, its ownership/staff
-scoping, its validation, and its success path.
+**Real, confirmed backend.** `msp-active-directory.ts` now has **7 real routes** (re-verified
+live this session, Git #3917, via `grep -n "router\.\(get\|post\|patch\|delete\)("`) — the 6
+documented at filing time plus `GET /msp/active-directory/ous?customerId=` (§1h below), added
+for #2591 after this pack was first written. No `TODO`/`FIXME`/stub markers anywhere in the
+file, no half-built route. Every route has a passing test in `msp-active-directory.test.ts`
+covering its auth floor, its ownership/staff scoping, its validation, and its success path.
 
 Sources this pack is built against, and nothing else:
 
@@ -52,7 +52,7 @@ Sources this pack is built against, and nothing else:
 
 ## 1. Wire contracts
 
-### 1a. Auth floor and scoping, common to all 6 routes
+### 1a. Auth floor and scoping, common to all 7 routes
 
 `requireRole("MSPOperator")` (MSPAdmin and PlatformAdmin clear that floor too,
 `ROLE_ORDER`, `requireAuth.ts:115-123`). As of #2458 (merged the commit immediately before
@@ -68,7 +68,7 @@ never silently read as an allow or a deny.
 `mspId` comes from `resolveMspIdStrict(req)` (`resolve-msp-id.ts:63-77`) — the caller's own
 session JWT claim only, **no `?mspId=` override, not even for PlatformAdmin** (matching
 `msp-customer-timeline.ts`'s equivalent route, per the sibling pack). A `null` mspId 403s
-`{ error: "MSP context required" }` on every one of the 6 routes below — including a real
+`{ error: "MSP context required" }` on every one of the 7 routes below — including a real
 PlatformAdmin session, if that session's own JWT happens to carry no `mspId` claim. This
 surface is also never behind the subscription/retention wall: `gatedTenantIdFor` returns
 `null` for any operator-role principal (`subscription-gate.ts:154-160`), so `subscriptionGate`
@@ -80,7 +80,8 @@ the target `tenants.id` belongs to their own `mspId` AND (if the staff member is
 `msp_staff_customer_scopes`) is in their assigned set; CustomerUser/Free/Assessment can never
 pass this route's floor at all. A target outside the caller's book **404s** — "OU not found"
 or "Assignment not found" — never a distinguishable 403, so its existence is never disclosed.
-27/27 tests in `msp-active-directory.test.ts` confirm this for every one of the 6 routes.
+27/27 tests in `msp-active-directory.test.ts` confirm this for every one of the original 6
+routes; §1h (added after this pack was first written) follows the identical pattern.
 
 ### 1b. `GET /api/msp/active-directory/ou/:id/assignments` (`:90-128`)
 
@@ -161,19 +162,29 @@ itself a Graph write. Audits `active_directory.ou_assignment.clear` with the del
 `objectId`/`customerId` (`:350-356`, captured from the `.returning()` result, so the audit
 log still has the real values even though the row is gone). Responds `204 No Content`.
 
-### 1f. `GET /api/msp/active-directory/ou-assignment-requests` (`:372-402`)
+### 1f. `GET /api/msp/active-directory/ou-assignment-requests` (`:423-467`)
 
 Every real customer-raised request against the caller's MSP book (Git #2524's
 `active_directory_ou_assignment_requests` table), most recent first
-(`desc(createdAt)`). This is the one route of the 6 that uses
-`resolveStaffScopedCustomerIds` directly (`:386`) rather than `assertCustomerAccess` per-row
+(`desc(createdAt)`). This is the one route of the 7 that uses
+`resolveStaffScopedCustomerIds` directly (`:450`) rather than `assertCustomerAccess` per-row
 — a **list** route, scoped by folding an `inArray(customerId, scopedCustomerIds)` condition
 in when the caller is a scoped staff member (`null` = unrestricted, full MSP book, per
 `requireAuth.ts:409-444`). Optional `?status=` narrows to one real status
 (`ACTIVE_DIRECTORY_OU_ASSIGNMENT_REQUEST_STATUSES` — all 4, including `"pending"`) — an
-**unrecognised value is silently ignored** (`:383`, `.find` returns `undefined`, the
+**unrecognised value is silently ignored** (`:434`, `.find` returns `undefined`, the
 condition is never pushed), not a `400` — this is a display filter, not a write, so a typo'd
 query param just returns the unfiltered list rather than erroring.
+
+**Optional `?customerId=`** (`:436-447`, added for #3916, same pattern as §1h's
+`?customerId=` on the sibling `/ous` route, itself added for #2591) scopes the list to one
+customer: a non-integer or non-positive value is `400` ("customerId must be a positive
+integer"); a value that fails `assertCustomerAccess` is `404` ("Customer not found"), the
+same non-disclosing shape as every other route in this file. This folds in as an additional
+`eq(customerId, ...)` condition **alongside**, not instead of, the staff-scoping condition
+above — a per-tenant caller (e.g. the MSP Console AD OU Assignment page, viewing one
+customer at a time) no longer has to pull the whole book and filter client-side. Omitting the
+param preserves the original whole-book behavior exactly.
 
 Response: a raw `ActiveDirectoryOuAssignmentRequest[]` (`:396`, no wrapper). Real row shape
 (`index.ts:4598-4640`):
@@ -234,12 +245,30 @@ OU creation/assignment through the §1c/§1d routes first, in that case (confirm
 `:499-516`).
 
 Response: `200` with `{ request: ActiveDirectoryOuAssignmentRequest, appliedAssignment:
-ActiveDirectoryOuAssignment | null }` (`:518`) — the one route of the 6 whose response is a
+ActiveDirectoryOuAssignment | null }` (`:518`) — the one route of the 7 whose response is a
 wrapper object rather than a raw row/array. `appliedAssignment` is non-null **only** on the
 approved/fulfilled-with-real-OU path; `null` for rejections and for name-only approvals.
 Audits both `active_directory.ou_assignment.set` (when applied) and
 `active_directory.ou_assignment_request.resolved` (always) — two real audit rows for one
 approve-with-a-real-OU request, confirmed by test (`:476-477`).
+
+### 1h. `GET /api/msp/active-directory/ous?customerId=` (`:96-130`)
+
+Not part of the original 6-route pack — added after this pack was first written, for #2591
+(previously undocumented). Lists the real OUs for one customer, `asc(name)`. `mspId` session
+check first, then a **required** `?customerId=` (`400` "customerId is required" if missing,
+non-integer, or non-positive — unlike §1f's optional customerId, this route has no
+whole-book mode), then `assertCustomerAccess` ownership (`404` "Customer not found",
+non-disclosing, same as every other route here).
+
+Response: `{ ous: Array<{ id: number, name: string }> }` (`:124`) — the one list route in this
+file that wraps its array in an object key rather than returning a raw array; also the only
+route that projects a narrow column subset (`id`/`name` only) rather than the full row. Real
+column source: `activeDirectoryOusTable.id` / `.name` (`lib/db/src/schema/index.ts:4484+`).
+Header comment at `:82-95` explains the real motivation: `msp-standing-policies.ts` takes a
+bare `ouId` on the wire with no OU name/label joined on (contract pack §4 of that route's own
+pack: "no OU name/label joined onto WireStandingPolicy... needs a separate OU lookup") — this
+route is that lookup, for the MSP console to resolve an `ouId` to a display name.
 
 ---
 
@@ -293,7 +322,7 @@ approve-with-a-real-OU request, confirmed by test (`:476-477`).
 - **MSP role floor for this whole file** — `ROLE_ORDER`
   (`requireAuth.ts:115-123`): `Assessment < Free < CustomerUser < ServiceAccount <
   MSPOperator < MSPAdmin < PlatformAdmin`. `requireRole("MSPOperator")` admits the top 3 —
-  same floor on all 6 routes, no route in this file requires more than `MSPOperator`.
+  same floor on all 7 routes, no route in this file requires more than `MSPOperator`.
 - **Audit `actorRole`** — `AuditEvent.actorRole: "admin" | "client"` (`audit.ts:8`) — this
   file's `auditActor()` helper (`:82-85`) passes `req.user!.role` straight through
   unconverted; every MSP-staff principal in this codebase carries `role: "client"` (the
@@ -381,7 +410,7 @@ frontend today.
 ## Not covered by this pack
 
 Per the #1642 pattern, no page/UI-shape decisions are made here. This pack extracts what
-exists on the 6 `/api/msp/active-directory/*` routes as built; it does not decide what an
+exists on the 7 `/api/msp/active-directory/*` routes as built; it does not decide what an
 MSP-console OU Assignment page should look like or how it should be laid out. The
 department-match Graph-read machinery itself (`policy-compliance-graph.ts`'s
 `resolveOuMembers`/mailbox-size/group-membership observation functions) is out of scope
