@@ -940,7 +940,10 @@ namespace BuildConsole.Services
             bool fileExists;
             try { fileExists = File.Exists(SettingsPath); }
             catch { fileExists = false; }
-            if (!fileExists) return new BuildConsoleSettings();
+            // Git #3902 — remembered so Save() can refuse to write this defaults-only instance
+            // over a settings.json that exists by the time it saves (a transient File.Exists miss,
+            // or another writer creating it in between) instead of replacing it wholesale.
+            if (!fileExists) return new BuildConsoleSettings { _origin = LoadOrigin.MissingFile };
 
             const int maxAttempts = 4;
             Exception? lastError = null;
@@ -950,7 +953,9 @@ namespace BuildConsole.Services
                 {
                     return LoadCore();
                 }
-                catch (Exception ex) when (attempt < maxAttempts && (ex is IOException || ex is JsonException))
+                // Git #3902 — UnauthorizedAccessException is transient here too (a read landing on the
+                // delete-pending instant of Save()'s replace); it used to skip straight to defaults.
+                catch (Exception ex) when (attempt < maxAttempts && (ex is IOException || ex is JsonException || ex is UnauthorizedAccessException))
                 {
                     // A concurrent Save() (sharing violation) or a torn read of a half-written
                     // file — both transient and clear within milliseconds. Back off briefly and
@@ -972,8 +977,17 @@ namespace BuildConsole.Services
                 $"({lastError?.GetType().Name}: {lastError?.Message}). Returning DEFAULT settings for this call " +
                 $"— GitHub/credential-backed features will behave as if unconfigured until the next successful read. " +
                 $"If a GitHub 401 or a spurious 'no PAT configured' appears right now, this is why (see #2770).");
-            return new BuildConsoleSettings();
+            // Git #3902 — this instance is NOT the user's settings, it is blank defaults standing in
+            // for an unreadable file. Every `Load(); mutate; Save();` caller in the app would
+            // otherwise write those defaults (blank GitHubPat included) straight over the real file
+            // — the confirmed PAT wipe. Save() refuses to persist a Degraded instance, full stop.
+            return new BuildConsoleSettings { _origin = LoadOrigin.Degraded };
         }
+
+        // Git #3902 — where this instance came from, so Save() can tell a real, successfully-read
+        // settings object apart from a defaults stand-in. Not serialized.
+        private enum LoadOrigin { Constructed, FromFile, MissingFile, Degraded }
+        private LoadOrigin _origin = LoadOrigin.Constructed;
 
         /// <summary>Git #2770 — the real read/deserialize/backfill body, factored out of <see cref="Load"/>
         /// so the retry loop above can re-invoke it. Throws on a transient IO/parse failure (the retry
@@ -981,18 +995,31 @@ namespace BuildConsole.Services
         private static BuildConsoleSettings LoadCore()
         {
             {
-                var json = File.ReadAllText(SettingsPath);
+                // Git #3902 — read under the same gate Save() holds across its replace: NTFS refuses
+                // a rename-over while ANY handle is open on settings.json (even one sharing Delete),
+                // so an unserialized reader made concurrent Save()s throw. Held only for the read.
+                string json;
+                using (SaveGate.Acquire(SettingsPath)) json = ReadSettingsText();
                 var settings = JsonSerializer.Deserialize<BuildConsoleSettings>(
                     json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                settings ??= new BuildConsoleSettings();
+                // A file that deserializes to JSON `null` is not a real settings object — treat it
+                // like any other unparseable read so the retry/Degraded path handles it.
+                if (settings == null) throw new JsonException("settings.json deserialized to null");
+                settings._origin = LoadOrigin.FromFile;
                 settings.PausedBuildIds ??= new List<int>();
+
+                // Git #3902 — the three backfills below are IN-MEMORY ONLY. They used to each call
+                // settings.Save() from inside this read path, so every Load() anywhere in the app
+                // (hundreds, from many threads and the shaneapp:// courier process) could fire a
+                // hidden write. A read never writes. Each backfill is idempotent and re-applied on
+                // every Load(), and is persisted by the next ordinary explicit Save() — which goes
+                // through Save()'s credential/degraded-instance guards like every other write.
 
                 // Web Tools popout: add Git repo as a default entry — the WebTools field
                 // initializer above only seeds the Git entry for a settings.json with no
                 // "webTools" key at all. An existing install (Shane already has the original
                 // three #864 defaults saved) deserializes its own explicit list here, which
-                // has no Git entry and never will on its own. Backfill it once, in place, so
-                // it shows up without Shane needing to add it by hand.
+                // has no Git entry and never will on its own.
                 if (settings.WebTools != null &&
                     settings.WebTools.Count > 0 &&
                     !settings.WebTools.Any(t => string.Equals(t.Url, $"https://github.com/{settings.GitHubOwner}/{settings.GitHubRepoName}", StringComparison.OrdinalIgnoreCase)))
@@ -1003,7 +1030,6 @@ namespace BuildConsole.Services
                         Url = $"https://github.com/{settings.GitHubOwner}/{settings.GitHubRepoName}",
                         Icon = ""
                     });
-                    settings.Save();
                 }
 
                 // Git #3581 — seed the repo registry's default Main entry for an existing
@@ -1021,7 +1047,6 @@ namespace BuildConsole.Services
                             Tier = RepoRegistryEntry.Tiers.Main
                         }
                     };
-                    settings.Save();
                 }
 
                 // Seed user accounts if missing
@@ -1033,16 +1058,111 @@ namespace BuildConsole.Services
                         new UserAccountEntry { Username = "enterprise_test_user", Password = "EnterprisePassword123!", AccountTier = "Enterprise", Notes = "Enterprise tier gating test account" }
                     };
                     settings.ActiveUserAccountId = settings.UserAccounts[0].Id;
-                    settings.Save();
                 }
 
                 return settings;
             }
         }
 
-        public void Save()
+        // Git #3902 — credential fields a Save() may never blank on disk as a side effect. A stale or
+        // defaults-derived instance carrying "" here while settings.json holds a real value is the
+        // PAT-wipe shape; the real value is carried forward instead. The only way to genuinely clear
+        // one is the explicit SaveClearingCredential(name) path the Settings tab's Save buttons use.
+        private static readonly string[] ProtectedCredentialFields = { nameof(GitHubPat), nameof(ZohoApiToken) };
+
+        private static string GetCredential(BuildConsoleSettings s, string field) => field switch
         {
+            nameof(GitHubPat) => s.GitHubPat ?? "",
+            nameof(ZohoApiToken) => s.ZohoApiToken ?? "",
+            _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Not a protected credential field"),
+        };
+
+        private static void SetCredential(BuildConsoleSettings s, string field, string value)
+        {
+            switch (field)
+            {
+                case nameof(GitHubPat): s.GitHubPat = value; break;
+                case nameof(ZohoApiToken): s.ZohoApiToken = value; break;
+                default: throw new ArgumentOutOfRangeException(nameof(field), field, "Not a protected credential field");
+            }
+        }
+
+        public void Save() => SaveGuarded(explicitlyClearedCredential: null);
+
+        /// <summary>Git #3902 — the ONE sanctioned way to persist a blank value for a protected
+        /// credential (<see cref="GitHubPat"/> / <see cref="ZohoApiToken"/>): the user deliberately
+        /// emptied that field and pressed its Save button. Every other credential stays protected by
+        /// the normal <see cref="Save"/> guard during this write.</summary>
+        public void SaveClearingCredential(string credentialField)
+        {
+            if (Array.IndexOf(ProtectedCredentialFields, credentialField) < 0)
+                throw new ArgumentOutOfRangeException(nameof(credentialField), credentialField, "Not a protected credential field");
+            SaveGuarded(credentialField);
+        }
+
+        private void SaveGuarded(string? explicitlyClearedCredential)
+        {
+            // Guard 1 — a Degraded instance is blank defaults standing in for an unreadable file.
+            // Writing it would replace every real setting (PAT included). Never.
+            if (_origin == LoadOrigin.Degraded)
+            {
+                ActivityLog.Log("settings.save",
+                    "REFUSED: Save() called on a settings instance that Load() returned as DEFAULTS because settings.json " +
+                    "could not be read. Writing it would overwrite real settings (including the GitHub PAT) with blanks. " +
+                    "Nothing was written; the change on this instance is dropped (#3902).");
+                return;
+            }
+
             Directory.CreateDirectory(SettingsDir);
+
+            // Serialize the read-compare-write below across threads AND processes (the shaneapp://
+            // courier process loads/saves the same file) so two saves can't interleave around it.
+            using var gate = SaveGate.Acquire(SettingsPath);
+
+            bool diskExists;
+            try { diskExists = File.Exists(SettingsPath); }
+            catch { diskExists = true; } // unknown → assume a real file is there and stay conservative
+
+            // Guard 2 — an instance built because the file was missing at Load() time must not
+            // replace a file that exists now (a transient File.Exists miss, or another writer created
+            // it in between): that would be a wholesale defaults-over-real overwrite.
+            if (_origin == LoadOrigin.MissingFile && diskExists)
+            {
+                ActivityLog.Log("settings.save",
+                    "REFUSED: Save() called on a settings instance created while settings.json appeared absent, but the file " +
+                    "exists now. Overwriting it would replace real settings with defaults. Nothing was written (#3902).");
+                return;
+            }
+
+            // Guard 3 — never persist a blank protected credential over a real one on disk.
+            if (diskExists)
+            {
+                var onDisk = TryReadDiskForGuard();
+                foreach (var field in ProtectedCredentialFields)
+                {
+                    if (field == explicitlyClearedCredential) continue;
+                    if (!string.IsNullOrWhiteSpace(GetCredential(this, field))) continue;
+
+                    if (onDisk == null)
+                    {
+                        // Can't prove the file's value is blank, and this write would blank it.
+                        ActivityLog.Log("settings.save",
+                            $"REFUSED: settings.json exists but could not be read to verify {field}, and this write carries a " +
+                            $"blank {field}. Writing blind could wipe a real credential. Nothing was written (#3902).");
+                        return;
+                    }
+
+                    var diskValue = GetCredential(onDisk, field);
+                    if (!string.IsNullOrWhiteSpace(diskValue))
+                    {
+                        SetCredential(this, field, diskValue);
+                        ActivityLog.Log("settings.save",
+                            $"PROTECTED: this Save() carried a blank {field} while settings.json holds a real one — kept the " +
+                            $"on-disk value instead of wiping it (#3902). Clear it deliberately via the Settings tab if intended.");
+                    }
+                }
+            }
+
             var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
 
             // Git #2770 — atomic write. The old File.WriteAllText truncated settings.json to zero
@@ -1052,9 +1172,96 @@ namespace BuildConsole.Services
             // then File.Move(overwrite) means a reader ever only sees the OLD complete file or the
             // NEW complete file, never a half-written one. Temp lives in the same directory (same
             // volume) so the move is a real atomic replace on NTFS, not a copy.
-            var tmpPath = SettingsPath + ".tmp";
-            File.WriteAllText(tmpPath, json);
-            File.Move(tmpPath, SettingsPath, overwrite: true);
+            // Git #3902 — the temp name is unique per write. A single shared "settings.json.tmp"
+            // let two concurrent saves write into the same temp file, so one could move the other's
+            // half-written temp over settings.json — a torn file on disk, which every later Load()
+            // then fails to parse.
+            var tmpPath = $"{SettingsPath}.{Guid.NewGuid():N}.tmp";
+            try
+            {
+                File.WriteAllText(tmpPath, json);
+                // The replace can still be refused for a moment by a handle opened without
+                // FILE_SHARE_DELETE (another tool, AV, an older reader) — retry briefly instead of
+                // throwing into a caller that may treat the failure as "settings unavailable".
+                for (int attempt = 1; ; attempt++)
+                {
+                    try { File.Move(tmpPath, SettingsPath, overwrite: true); break; }
+                    catch (Exception ex) when (attempt < 10 && (ex is IOException || ex is UnauthorizedAccessException))
+                    {
+                        System.Threading.Thread.Sleep(10 * attempt);
+                    }
+                }
+            }
+            finally
+            {
+                try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { /* best-effort temp cleanup */ }
+            }
+            _origin = LoadOrigin.FromFile;
+        }
+
+        /// <summary>Git #3902 — reads settings.json sharing Read/Write/DELETE. File.ReadAllText shares
+        /// only Read, so while any Load() held the file open, Save()'s atomic File.Move replace failed
+        /// with UnauthorizedAccessException. The old hidden Save() inside LoadCore() hit exactly that,
+        /// and Load()'s retry loop doesn't retry UnauthorizedAccessException — it returned blank
+        /// defaults, which the calling `Load(); mutate; Save();` then wrote over the real file.
+        /// Sharing Delete lets the replace proceed; this reader keeps its complete old copy.</summary>
+        private static string ReadSettingsText()
+        {
+            using var fs = new FileStream(SettingsPath, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(fs);
+            return reader.ReadToEnd();
+        }
+
+        /// <summary>Git #3902 — reads the current settings.json for Save()'s credential guard, with the
+        /// same short transient-failure retry as <see cref="Load"/>. Null means it could not be read.</summary>
+        private static BuildConsoleSettings? TryReadDiskForGuard()
+        {
+            for (int attempt = 1; attempt <= 4; attempt++)
+            {
+                try
+                {
+                    var json = ReadSettingsText();
+                    return JsonSerializer.Deserialize<BuildConsoleSettings>(
+                        json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                }
+                catch (Exception ex) when (ex is IOException || ex is JsonException || ex is UnauthorizedAccessException)
+                {
+                    if (attempt < 4) System.Threading.Thread.Sleep(25 * attempt);
+                }
+            }
+            return null;
+        }
+
+        /// <summary>Git #3902 — cross-thread + cross-process lock around Save()'s read-compare-write,
+        /// keyed on the settings path (so --instance folders don't contend). If the lock can't be had
+        /// within a few seconds the save proceeds anyway — the unique-temp atomic replace still keeps
+        /// the file whole, and a stuck lock must not silently drop the user's settings changes.</summary>
+        private sealed class SaveGate : IDisposable
+        {
+            private readonly System.Threading.Mutex _mutex;
+            private readonly bool _owned;
+
+            private SaveGate(System.Threading.Mutex mutex, bool owned) { _mutex = mutex; _owned = owned; }
+
+            public static SaveGate Acquire(string settingsPath)
+            {
+                var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(settingsPath.ToLowerInvariant())))[..16];
+                var mutex = new System.Threading.Mutex(false, $@"Local\BuildConsoleSettingsSave-{hash}");
+                bool owned;
+                try { owned = mutex.WaitOne(TimeSpan.FromSeconds(5)); }
+                catch (System.Threading.AbandonedMutexException) { owned = true; }
+                if (!owned)
+                    ActivityLog.Log("settings.save", "WARNING: settings save lock not acquired within 5s — saving without it (#3902).");
+                return new SaveGate(mutex, owned);
+            }
+
+            public void Dispose()
+            {
+                if (_owned) { try { _mutex.ReleaseMutex(); } catch { } }
+                _mutex.Dispose();
+            }
         }
     }
 }

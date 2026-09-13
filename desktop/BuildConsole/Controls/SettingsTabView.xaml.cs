@@ -969,7 +969,10 @@ namespace BuildConsole.Controls
         {
             var settings = BuildConsoleSettings.Load();
             settings.GitHubPat = GitHubPatBox.Password.Trim();
-            settings.Save();
+            // Git #3902 — an ordinary Save() refuses to blank a stored PAT; an empty box here is the
+            // user deliberately clearing it, so use the one explicit clearing path.
+            if (string.IsNullOrEmpty(settings.GitHubPat)) settings.SaveClearingCredential(nameof(BuildConsoleSettings.GitHubPat));
+            else settings.Save();
             GitHubPatSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
             GitHubPatSavedText.Text = "GitHub PAT saved successfully.";
             UpdateHealthDashboard();
@@ -1036,7 +1039,8 @@ namespace BuildConsole.Controls
         {
             var settings = BuildConsoleSettings.Load();
             settings.ZohoApiToken = ZohoApiTokenBox.Password.Trim();
-            settings.Save();
+            if (string.IsNullOrEmpty(settings.ZohoApiToken)) settings.SaveClearingCredential(nameof(BuildConsoleSettings.ZohoApiToken));
+            else settings.Save();
             ZohoApiTokenSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
             ZohoApiTokenSavedText.Text = "Zoho API token saved successfully.";
             UpdateHealthDashboard();
