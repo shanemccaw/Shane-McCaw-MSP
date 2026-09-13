@@ -513,7 +513,8 @@ namespace BuildConsole.Services
                 string sql = @"
                     SELECT issue_number, title, state, labels, html_url, body, created_at, closed_at,
                            milestone_title, milestone_number, parent_number, parent_milestone_number,
-                           sub_issue_count, sub_issue_completed, sub_issue_percent, child_issue_numbers, database_id
+                           sub_issue_count, sub_issue_completed, sub_issue_percent, child_issue_numbers, database_id,
+                           own_milestone_number
                       FROM bt_issue_mirror
                      WHERE repo_owner = @owner AND repo_name = @repo";
                 if (openOnly) sql += " AND state = 'open'";
@@ -561,6 +562,9 @@ namespace BuildConsole.Services
                 SubIssuePercent = r.IsDBNull(14) ? 0 : r.GetInt32(14),
                 ChildIssueNumbers = r.IsDBNull(15) ? new List<int>() : r.GetFieldValue<int[]>(15).ToList(),
                 DatabaseId = r.IsDBNull(16) ? 0 : r.GetInt64(16),
+                // Git #3712 — this issue's OWN GitHub milestone field, distinct from the inherited
+                // MilestoneNumber above; null until re-synced for rows written before this column existed.
+                OwnMilestoneNumber = r.IsDBNull(17) ? (int?)null : r.GetInt32(17),
             };
         }
 
@@ -1103,13 +1107,13 @@ namespace BuildConsole.Services
                          labels, blocked_by_numbers, blocking_numbers, html_url, created_at, closed_at,
                          milestone_title, milestone_number, parent_number, parent_milestone_number,
                          sub_issue_count, sub_issue_completed, sub_issue_percent,
-                         last_synced_at, updated_at, repo_owner, repo_name)
+                         last_synced_at, updated_at, repo_owner, repo_name, own_milestone_number)
                     VALUES
                         (@n, @title, @state, @boardOpt, @boardName,
                          @labels, @blockedBy, '{}', @url, @createdAt, @closedAt,
                          @milestoneTitle, @milestoneNumber, @parentNumber, @parentMilestoneNumber,
                          @subIssueCount, @subIssueCompleted, @subIssuePercent,
-                         NOW(), NOW(), @repoOwner, @repoName)
+                         NOW(), NOW(), @repoOwner, @repoName, @ownMilestoneNumber)
                     ON CONFLICT (repo_owner, repo_name, issue_number) DO UPDATE SET
                         title  = EXCLUDED.title,
                         state  = EXCLUDED.state,
@@ -1140,6 +1144,9 @@ namespace BuildConsole.Services
                         -- transient fetch gap can never blank a real Epic chain the mirror already had.
                         milestone_title = CASE WHEN @haveParentInfo THEN EXCLUDED.milestone_title ELSE bt_issue_mirror.milestone_title END,
                         milestone_number = CASE WHEN @haveParentInfo THEN EXCLUDED.milestone_number ELSE bt_issue_mirror.milestone_number END,
+                        -- Git #3712 — this issue's OWN milestone field (no inheritance applied by this
+                        -- targeted fetch), same preserve-on-miss discipline as milestone_number above.
+                        own_milestone_number = CASE WHEN @haveParentInfo THEN EXCLUDED.own_milestone_number ELSE bt_issue_mirror.own_milestone_number END,
                         parent_number = CASE WHEN @haveParentInfo THEN EXCLUDED.parent_number ELSE bt_issue_mirror.parent_number END,
                         parent_milestone_number = CASE WHEN @haveParentInfo THEN EXCLUDED.parent_milestone_number ELSE bt_issue_mirror.parent_milestone_number END,
                         sub_issue_count = CASE WHEN @haveParentInfo THEN EXCLUDED.sub_issue_count ELSE bt_issue_mirror.sub_issue_count END,
@@ -1160,6 +1167,7 @@ namespace BuildConsole.Services
                     var pClosed = cmd.Parameters.Add(new NpgsqlParameter("@closedAt", NpgsqlDbType.TimestampTz));
                     var pMilestoneTitle = cmd.Parameters.Add(new NpgsqlParameter("@milestoneTitle", NpgsqlDbType.Text));
                     var pMilestoneNumber = cmd.Parameters.Add(new NpgsqlParameter("@milestoneNumber", NpgsqlDbType.Integer));
+                    var pOwnMilestoneNumber = cmd.Parameters.Add(new NpgsqlParameter("@ownMilestoneNumber", NpgsqlDbType.Integer));
                     var pParentNumber = cmd.Parameters.Add(new NpgsqlParameter("@parentNumber", NpgsqlDbType.Integer));
                     var pParentMilestoneNumber = cmd.Parameters.Add(new NpgsqlParameter("@parentMilestoneNumber", NpgsqlDbType.Integer));
                     var pSubIssueCount = cmd.Parameters.Add(new NpgsqlParameter("@subIssueCount", NpgsqlDbType.Integer));
@@ -1198,6 +1206,7 @@ namespace BuildConsole.Services
                         bool haveParentInfo = parentInfoByNumber.TryGetValue(issue.Number, out var pi);
                         pMilestoneTitle.Value = haveParentInfo ? (object?)pi!.MilestoneTitle ?? DBNull.Value : DBNull.Value;
                         pMilestoneNumber.Value = haveParentInfo ? (object?)pi!.MilestoneNumber ?? DBNull.Value : DBNull.Value;
+                        pOwnMilestoneNumber.Value = haveParentInfo ? (object?)pi!.OwnMilestoneNumber ?? DBNull.Value : DBNull.Value;
                         pParentNumber.Value = haveParentInfo ? (object?)pi!.ParentNumber ?? DBNull.Value : DBNull.Value;
                         pParentMilestoneNumber.Value = haveParentInfo ? (object?)pi!.ParentMilestoneNumber ?? DBNull.Value : DBNull.Value;
                         pSubIssueCount.Value = haveParentInfo ? pi!.SubIssueCount : 0;
@@ -1428,13 +1437,13 @@ namespace BuildConsole.Services
                          labels, blocked_by_numbers, blocking_numbers, html_url, created_at, closed_at,
                          body, milestone_title, milestone_number, parent_number, parent_milestone_number,
                          sub_issue_count, sub_issue_completed, sub_issue_percent, child_issue_numbers, database_id,
-                         last_synced_at, updated_at, repo_owner, repo_name)
+                         last_synced_at, updated_at, repo_owner, repo_name, own_milestone_number)
                     VALUES
                         (@n, @title, 'open', @boardOpt, @boardName,
                          @labels, @blockedBy, @blocking, @url, @createdAt, NULL,
                          @body, @mTitle, @mNumber, @pNumber, @pmNumber,
                          @subCount, @subCompleted, @subPercent, @children, @dbId,
-                         NOW(), NOW(), @repoOwner, @repoName)
+                         NOW(), NOW(), @repoOwner, @repoName, @ownMNumber)
                     ON CONFLICT (repo_owner, repo_name, issue_number) DO UPDATE SET
                         title  = EXCLUDED.title,
                         state  = 'open',
@@ -1454,6 +1463,7 @@ namespace BuildConsole.Services
                         body = EXCLUDED.body,
                         milestone_title = EXCLUDED.milestone_title,
                         milestone_number = EXCLUDED.milestone_number,
+                        own_milestone_number = EXCLUDED.own_milestone_number,
                         parent_number = EXCLUDED.parent_number,
                         parent_milestone_number = EXCLUDED.parent_milestone_number,
                         sub_issue_count = EXCLUDED.sub_issue_count,
@@ -1478,6 +1488,7 @@ namespace BuildConsole.Services
                     var pBody = cmd.Parameters.Add(new NpgsqlParameter("@body", NpgsqlDbType.Text));
                     var pMTitle = cmd.Parameters.Add(new NpgsqlParameter("@mTitle", NpgsqlDbType.Text));
                     var pMNumber = cmd.Parameters.Add(new NpgsqlParameter("@mNumber", NpgsqlDbType.Integer));
+                    var pOwnMNumber = cmd.Parameters.Add(new NpgsqlParameter("@ownMNumber", NpgsqlDbType.Integer));
                     var pPNumber = cmd.Parameters.Add(new NpgsqlParameter("@pNumber", NpgsqlDbType.Integer));
                     var pPMNumber = cmd.Parameters.Add(new NpgsqlParameter("@pmNumber", NpgsqlDbType.Integer));
                     var pSubCount = cmd.Parameters.Add(new NpgsqlParameter("@subCount", NpgsqlDbType.Integer));
@@ -1518,6 +1529,7 @@ namespace BuildConsole.Services
                         pBody.Value = issue.Body ?? "";
                         pMTitle.Value = (object?)issue.MilestoneTitle ?? DBNull.Value;
                         pMNumber.Value = (object?)issue.MilestoneNumber ?? DBNull.Value;
+                        pOwnMNumber.Value = (object?)issue.OwnMilestoneNumber ?? DBNull.Value;
                         pPNumber.Value = (object?)issue.ParentNumber ?? DBNull.Value;
                         pPMNumber.Value = (object?)issue.ParentMilestoneNumber ?? DBNull.Value;
                         pSubCount.Value = issue.SubIssueCount;
@@ -1899,12 +1911,12 @@ namespace BuildConsole.Services
                     (issue_number, title, state, labels, html_url, created_at, closed_at,
                      body, milestone_title, milestone_number, parent_number, parent_milestone_number,
                      sub_issue_count, sub_issue_completed, sub_issue_percent, child_issue_numbers, database_id,
-                     last_synced_at, updated_at, repo_owner, repo_name)
+                     last_synced_at, updated_at, repo_owner, repo_name, own_milestone_number)
                 VALUES
                     (@n, @title, 'closed', @labels, @url, @createdAt, @closedAt,
                      @body, @mTitle, @mNumber, @pNumber, @pmNumber,
                      @subCount, @subCompleted, @subPercent, @children, @dbId,
-                     NOW(), NOW(), @repoOwner, @repoName)
+                     NOW(), NOW(), @repoOwner, @repoName, @ownMNumber)
                 ON CONFLICT (repo_owner, repo_name, issue_number) DO UPDATE SET
                     title = EXCLUDED.title,
                     state = 'closed',
@@ -1915,6 +1927,8 @@ namespace BuildConsole.Services
                     body = EXCLUDED.body,
                     milestone_title  = COALESCE(EXCLUDED.milestone_title,  bt_issue_mirror.milestone_title),
                     milestone_number = COALESCE(EXCLUDED.milestone_number, bt_issue_mirror.milestone_number),
+                    -- Git #3712 — this issue's OWN milestone field, straight from GraphQL, no inheritance.
+                    own_milestone_number = COALESCE(EXCLUDED.own_milestone_number, bt_issue_mirror.own_milestone_number),
                     parent_number = COALESCE(EXCLUDED.parent_number, bt_issue_mirror.parent_number),
                     parent_milestone_number = COALESCE(EXCLUDED.parent_milestone_number, bt_issue_mirror.parent_milestone_number),
                     sub_issue_count = EXCLUDED.sub_issue_count,
@@ -1934,6 +1948,7 @@ namespace BuildConsole.Services
                 var pBody = cmd.Parameters.Add(new NpgsqlParameter("@body", NpgsqlDbType.Text));
                 var pMTitle = cmd.Parameters.Add(new NpgsqlParameter("@mTitle", NpgsqlDbType.Text));
                 var pMNumber = cmd.Parameters.Add(new NpgsqlParameter("@mNumber", NpgsqlDbType.Integer));
+                var pOwnMNumber = cmd.Parameters.Add(new NpgsqlParameter("@ownMNumber", NpgsqlDbType.Integer));
                 var pPNumber = cmd.Parameters.Add(new NpgsqlParameter("@pNumber", NpgsqlDbType.Integer));
                 var pPMNumber = cmd.Parameters.Add(new NpgsqlParameter("@pmNumber", NpgsqlDbType.Integer));
                 var pSubCount = cmd.Parameters.Add(new NpgsqlParameter("@subCount", NpgsqlDbType.Integer));
@@ -1955,6 +1970,7 @@ namespace BuildConsole.Services
                     pBody.Value = issue.Body ?? "";
                     pMTitle.Value = (object?)issue.MilestoneTitle ?? DBNull.Value;
                     pMNumber.Value = (object?)issue.MilestoneNumber ?? DBNull.Value;
+                    pOwnMNumber.Value = (object?)issue.OwnMilestoneNumber ?? DBNull.Value;
                     pPNumber.Value = (object?)issue.ParentNumber ?? DBNull.Value;
                     pPMNumber.Value = (object?)issue.ParentMilestoneNumber ?? DBNull.Value;
                     pSubCount.Value = issue.SubIssueCount;

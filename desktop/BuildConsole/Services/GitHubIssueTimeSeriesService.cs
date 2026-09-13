@@ -474,14 +474,20 @@ namespace BuildConsole.Services
         private static Task<List<GitBoardIssue>?> TryGetAllIssuesLocalOnlyAsync()
             => GitHubIssueMirror.TryGetBoardIssuesAsync(openOnly: false);
 
-        /// <summary>Git #3577 — the real completeness cross-check for a MILESTONE scope: the count of
-        /// <paramref name="mirrored"/> rows genuinely tagged to <paramref name="milestoneNumber"/>
-        /// against <c>bt_milestone_mirror</c>'s own real open+closed aggregate for that same number —
-        /// GitHub's own authoritative milestone-level count, independent of whatever
-        /// <c>bt_issue_mirror</c>'s own open-issues-walk + incremental mark-closed + closed-backfill
-        /// have captured so far. A real, live cross-check confirmed milestone #5 currently reads 663
-        /// mirrored vs 2065 real (357+1708) — genuinely incomplete right now; that's the honest state
-        /// this returns, not a bug in the check.</summary>
+        /// <summary>Git #3577 (comparison fixed under Git #3712) — the real completeness cross-check
+        /// for a MILESTONE scope: the count of <paramref name="mirrored"/> rows whose OWN GitHub
+        /// milestone field is <paramref name="milestoneNumber"/> against <c>bt_milestone_mirror</c>'s
+        /// own real open+closed aggregate for that same number — GitHub's own authoritative
+        /// milestone-level count, independent of whatever <c>bt_issue_mirror</c>'s own open-issues-walk
+        /// + incremental mark-closed + closed-backfill have captured so far.
+        ///
+        /// Git #3712 — this MUST compare <see cref="GitBoardIssue.OwnMilestoneNumber"/>, not
+        /// <see cref="GitBoardIssue.MilestoneNumber"/>. <c>bt_milestone_mirror.open_issues/closed_issues</c>
+        /// counts only issues whose OWN milestone field is set; <c>MilestoneNumber</c> is the EFFECTIVE
+        /// (Git #2543 transitively-inherited) value, a strict superset for any milestone with sub-issues
+        /// that inherit it. Comparing inherited-vs-own let the gate pass while genuinely missing rows —
+        /// measured live: +139 on milestone #5, +132 on #16, +124 on #11 (mirrored count read HIGHER
+        /// than real even with the mirror fully synced). Comparing own-vs-own here is the fix.</summary>
         private static async Task<MirrorCompleteness> CheckMilestoneCompletenessAsync(int milestoneNumber, IReadOnlyList<GitBoardIssue> mirrored)
         {
             var infos = await GitHubIssueMirror.TryGetMilestoneInfosAsync();
@@ -491,7 +497,7 @@ namespace BuildConsole.Services
                     $"no real bt_milestone_mirror aggregate for milestone #{milestoneNumber} yet — can't confirm the local mirror is complete enough to chart.");
 
             int realTotal = real.OpenIssues + real.ClosedIssues;
-            int mirroredTotal = mirrored.Count(i => i.MilestoneNumber == milestoneNumber);
+            int mirroredTotal = mirrored.Count(i => i.OwnMilestoneNumber == milestoneNumber);
             if (mirroredTotal < realTotal)
                 return MirrorCompleteness.Incomplete(
                     $"historical data not yet fully synced for this milestone — {mirroredTotal} of {realTotal} real issue(s) mirrored locally (Git #3577's own backfill-completion follow-up covers closing this gap).");

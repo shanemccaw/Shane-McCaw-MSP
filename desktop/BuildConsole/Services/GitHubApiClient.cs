@@ -213,7 +213,20 @@ namespace BuildConsole.Services
         public DateTimeOffset? ClosedAt { get; set; }
         /// <summary>The issue's real GitHub Milestone title, or null when it belongs to no milestone.</summary>
         public string? MilestoneTitle { get; set; }
+        /// <summary>The issue's EFFECTIVE milestone number — GraphQL's own <c>milestone.number</c> when
+        /// this issue has one, otherwise the nearest ancestor's (Git #2543's transitive inheritance walk
+        /// below mutates this in place). This is the field the board and queue filters resolve against —
+        /// NOT what a milestone-completeness check should compare against GitHub's own per-milestone
+        /// count, which counts only issues whose OWN field is set (Git #3712). Use <see cref="OwnMilestoneNumber"/>
+        /// for that comparison.</summary>
         public int? MilestoneNumber { get; set; }
+        /// <summary>Git #3712 — this issue's real GitHub milestone field EXACTLY as GraphQL returned it
+        /// (<c>milestone.number</c>), captured before any inheritance is applied and never mutated by the
+        /// #2543 transitive-inheritance walk below. <see cref="MilestoneNumber"/> is the effective
+        /// (possibly-inherited) value the rest of the app resolves against; this is the "own field" GitHub's
+        /// milestones API (<c>bt_milestone_mirror.open_issues/closed_issues</c>) actually counts, so it's the
+        /// one side of a like-for-like completeness comparison needs.</summary>
+        public int? OwnMilestoneNumber { get; set; }
         /// <summary>The number of this issue's real GitHub parent (the epic it's a sub-issue of), or null
         /// when it has no parent. Straight from GraphQL's <c>parent</c> field on the sub-issues graph —
         /// the same graph "Assign to Epic…" writes to. Focus Mode needs this because Shane assigns a
@@ -1179,6 +1192,7 @@ namespace BuildConsole.Services
                             Labels = n.Labels?.Nodes?.Select(l => new GitHubLabel { Name = l.Name }).ToList() ?? new List<GitHubLabel>(),
                             MilestoneTitle = n.Milestone?.Title,
                             MilestoneNumber = n.Milestone?.Number,
+                            OwnMilestoneNumber = n.Milestone?.Number,
                             ParentNumber = n.Parent?.Number,
                             ParentMilestoneNumber = n.Parent?.Milestone?.Number,
                             SubIssueCount = Math.Max(n.SubIssuesSummary?.Total ?? 0, childNums.Count),
@@ -1369,6 +1383,7 @@ namespace BuildConsole.Services
                     Labels = n.Labels?.Nodes?.Select(l => new GitHubLabel { Name = l.Name }).ToList() ?? new List<GitHubLabel>(),
                     MilestoneTitle = n.Milestone?.Title,
                     MilestoneNumber = n.Milestone?.Number,
+                    OwnMilestoneNumber = n.Milestone?.Number,
                     ParentNumber = n.Parent?.Number,
                     ParentMilestoneNumber = n.Parent?.Milestone?.Number,
                     SubIssueCount = Math.Max(n.SubIssuesSummary?.Total ?? 0, childNums.Count),
@@ -2250,6 +2265,12 @@ namespace BuildConsole.Services
             public int? ParentMilestoneNumber { get; set; }
             public string? MilestoneTitle { get; set; }
             public int? MilestoneNumber { get; set; }
+            /// <summary>Git #3712 — same value as <see cref="MilestoneNumber"/>: this targeted per-issue
+            /// fetch reads GraphQL's <c>milestone.number</c> directly and never applies the #2543
+            /// inheritance climb <see cref="ListBoardIssuesInternalAsync"/> does, so there is no
+            /// distinct "effective" value here. Carried as its own field purely so the mirror's
+            /// upsert can write <c>own_milestone_number</c> the same way every other code path does.</summary>
+            public int? OwnMilestoneNumber { get; set; }
             public int SubIssueCount { get; set; }
             public int SubIssueCompleted { get; set; }
             public int SubIssuePercent { get; set; }
@@ -2343,7 +2364,10 @@ namespace BuildConsole.Services
                         if (msEl.TryGetProperty("title", out var mt) && mt.ValueKind == JsonValueKind.String)
                             info.MilestoneTitle = mt.GetString();
                         if (msEl.TryGetProperty("number", out var mn) && mn.ValueKind == JsonValueKind.Number)
+                        {
                             info.MilestoneNumber = mn.GetInt32();
+                            info.OwnMilestoneNumber = info.MilestoneNumber;
+                        }
                     }
 
                     if (issueEl.TryGetProperty("subIssuesSummary", out var sisEl) && sisEl.ValueKind == JsonValueKind.Object)
