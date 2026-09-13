@@ -275,6 +275,18 @@ namespace BuildConsole.Services
         /// the only piece that genuinely needs to be thread-safe.
         /// </summary>
         private int _ticking;
+        /// <summary>
+        /// Git #3849 — set (Interlocked) by a caller that hit the single-flight guard above while a
+        /// tick was already running, instead of just silently dropping that trigger. Without this,
+        /// <see cref="ArmCompletionTrigger"/>'s real build-exit callback landing mid-tick (a slow
+        /// claim, <see cref="RetryPendingCompletionsAsync"/>, a blocker resync, a worktree sweep) was
+        /// dropped outright — the reap/MarkComplete for that exit then waited out the full
+        /// <see cref="QueueTickInterval"/> (30s) periodic backstop instead of firing immediately. The
+        /// in-flight tick now checks this flag just before releasing <see cref="_ticking"/> and loops
+        /// once more (coalesced — multiple re-run requests during one tick still only cause one
+        /// extra pass) rather than dropping the signal.
+        /// </summary>
+        private int _tickRerunRequested;
         /// <summary>Git #1371 — throttles the background worktree cleanup sweep run from TickAsync.</summary>
         private DateTime _lastWorktreeSweepUtc = DateTime.MinValue;
         /// <summary>Git #2796 — throttles the periodic git-maintenance sweep (merged agent/* branch
@@ -1899,453 +1911,473 @@ namespace BuildConsole.Services
             // rather than letting them stack. Interlocked (see the Git #3774 note on the field
             // itself) since this can now be entered from a thread-pool exit callback concurrently
             // with a UI-thread manual refresh, not just a single serialized timer anymore.
-            if (Interlocked.CompareExchange(ref _ticking, 1, 0) != 0) return;
+            if (Interlocked.CompareExchange(ref _ticking, 1, 0) != 0)
+            {
+                // Git #3849 — a tick is already in flight. Don't just drop this trigger: record
+                // that whoever is running should loop once more before it releases _ticking, so
+                // (e.g.) a build-exit callback landing mid-tick still gets reaped promptly instead
+                // of waiting out the full 30s periodic backstop.
+                Interlocked.Exchange(ref _tickRerunRequested, 1);
+                return;
+            }
             try
             {
-                await RetryPendingCompletionsAsync();
-
-                // ── 1. Reap processes that have exited ────────────────────────
-                foreach (var id in _running.Keys.ToList())
+                // Git #3849 — run at least once, then re-run in place (still single-flight; the
+                // guard above stays held) if a trigger landed while this pass was in progress,
+                // instead of dropping it and making that caller wait out the periodic backstop.
+                do
                 {
-                    var entry = _running[id];
-                    if (!entry.Process.HasExited) continue;
-                    int exitCode = entry.Process.ExitCode;
-                    ActivityLog.Log("watcher", $"Finished: {entry.Title} (exit {exitCode})");
-
-                    // Session-limit auto-restart: a build whose output hit the CLI's
-                    // session/usage-limit message is parked limit-paused (resume
-                    // session preserved) instead of marked failed, and the restart
-                    // timer is armed for its parsed reset + delay. Everything a
-                    // normal completion fires (BuildFinished → post-build deploy,
-                    // build-set close, worktree merge-back) is skipped — the build
-                    // isn't done, it's coming back.
-                    bool limitParked = false;
-                    bool limitHit;
-                    string? limitResetLabel;
-                    lock (_gate)
-                    {
-                        limitHit = entry.SessionLimitHit;
-                        limitResetLabel = entry.SessionLimitResetLabel;
-                    }
-                    if (limitHit)
-                    {
-                        if (_db != null)
-                        {
-                            try
-                            {
-                                await _db.MarkLimitPausedAsync(id, entry.SessionId);
-                                limitParked = true;
-                                ActivityLog.Log("session-limit", $"Parked queue #{id} ({entry.Title}) limit-paused (exit {exitCode}); it will be re-queued automatically after the session-limit reset.");
-                                SessionLimitAutoRestart?.RegisterLimitHit(id, limitResetLabel);
-                            }
-                            catch (Exception ex)
-                            {
-                                ActivityLog.Log("session-limit", $"Couldn't park queue #{id} limit-paused: {ex.Message} — falling back to the normal failed path.");
-                            }
-                        }
-                        else
-                        {
-                            ActivityLog.Log("session-limit", $"Queue #{id} hit the session limit but there is no direct DB connection (HTTP-fallback mode doesn't support limit-paused) — marking it via the normal completion path instead.");
-                        }
-                    }
-
-                    // Git #1990 — a queue build has no human at the keyboard to decline a permission
-                    // prompt, so a session whose tool calls came back REJECTED ("The user doesn't want
-                    // to proceed with this tool use.") was having its tools refused — a Stop/interrupt
-                    // abort, or a tool the launch could not satisfy. #1988 only landed `failed` because
-                    // its Stop escalation made the CLI exit 1; the SAME situation with a clean
-                    // idle-finalize exits 0 and the mapping below would record it done/Verifying —
-                    // indistinguishable from real completed work, the exact "reports done, nothing
-                    // landed" danger. Record a clean-exit-with-rejections build under a distinct sentinel
-                    // exit code so it lands failed/Crashed (never done), with the refused command named.
-                    // Skipped for a limit-parked build (it's coming back, not finished).
-                    if (!limitParked)
-                    {
-                        int rejectedCount; string? lastRejected;
-                        lock (_gate) { rejectedCount = entry.RejectedToolCount; lastRejected = entry.LastRejectedCommand; }
-                        if (rejectedCount > 0)
-                        {
-                            if (exitCode == 0)
-                            {
-                                ActivityLog.Log("interactive-build",
-                                    $"queue #{id} ({entry.Title}) exited 0 but had {rejectedCount} rejected tool call(s) — recording as failed ({RejectedToolsExitCode}, rejected-tools) so it is NOT mistaken for a real completion. Last refused: {lastRejected ?? "(command not captured)"}.");
-                                exitCode = RejectedToolsExitCode;
-                            }
-                            else
-                            {
-                                ActivityLog.Log("interactive-build",
-                                    $"queue #{id} ({entry.Title}) had {rejectedCount} rejected tool call(s) and already exited {exitCode} (non-zero → failed). Last refused: {lastRejected ?? "(command not captured)"}.");
-                            }
-                        }
-                    }
-
-                    // Report completion — direct Postgres when available (always-on local
-                    // Postgres, no nap/sleep issue), HTTP fallback otherwise. The fallback path
-                    // is kept for environments where BUILD_DATABASE_URL isn't configured.
-                    // It MUST NOT gate the local BuildFinished fan-out below:
-                    // that fan-out drives PostBuildDeployPipeline (Epic #803/#911).
-                    if (!limitParked)
-                    {
-                        try
-                        {
-                            if (_db != null)
-                            {
-                                var outcome = await _db.MarkCompleteAsync(id, exitCode, entry.SessionId);
-                                ActivityLog.Log("watcher", $"Reported completion of queue item {id} to Postgres.");
-
-                                // Git #2136 — mirror the resulting DURABLE decision onto the real
-                                // project board (Git IS the database): exit 0 on a real issue lands
-                                // Verifying, a genuine failure lands Crashed. Fire-and-forget — it
-                                // must never block or throw in the reap loop. A local-only build
-                                // (status 'done', no github_number) has nothing to move.
-                                if (outcome.Status == BuildQueuePostgresClient.VerifyingStatus)
-                                    BoardStatusSync.Mirror(outcome.GithubNumber, GitHubApiClient.VerifyingOptionId, "Verifying", "watcher");
-                                else if (outcome.Status == "failed")
-                                    BoardStatusSync.Mirror(outcome.GithubNumber, GitHubApiClient.CrashedOptionId, "Crashed", "watcher");
-                            }
-                            else
-                            {
-                                await _api.MarkQueueItemCompleteAsync(id, exitCode, entry.SessionId);
-                                ActivityLog.Log("watcher", $"Reported completion of queue item {id} to the dev server.");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _pendingCompletions.Add((id, exitCode, entry.SessionId));
-                            ActivityLog.Log("watcher", $"Couldn't report completion for queue item {id}: {ex.Message} — queued for retry.");
-                        }
-
-                        // Fire the local completion listeners REGARDLESS of the remote report
-                        // outcome above. Wrapped separately so a subscriber throwing can't take
-                        // down the reap loop, and so it always runs.
-                        try
-                        {
-                            BuildFinished?.Invoke(id, entry.Title, exitCode);
-                        }
-                        catch (Exception ex)
-                        {
-                            ActivityLog.Log("watcher", $"A BuildFinished handler threw for queue item {id}: {ex.Message}");
-                        }
-
-                        // Git #3844 — event-driven idle-stop enforcement: a build finishing is the
-                        // one real moment a dev service's need may have just gone away. Fire-and-
-                        // forget (StopIdleDevServicesAsync never throws) so it never delays the reap
-                        // loop; queue #{id} finishing is real evidence worth re-checking against
-                        // regardless of whether it exited 0 or failed.
-                        _ = StopIdleDevServicesAsync($"build #{id} ({entry.Title}) just finished");
-                    }
-
-                    // Git #3628 — self-block push/board fix. MarkCompleteAsync above has already
-                    // landed this row on 'verifying'/'done' and mirrored the board to Verifying,
-                    // purely because the process exited 0 — indistinguishable, so far, from real
-                    // completed work. But a session that hit the CLAUDE.md "blocked" self-check flow
-                    // exits 0 too, after writing a real 🛑 BLOCKED bookend that the worktree merge-back
-                    // below never pushes anywhere but the LOCAL dev-server checkout. Confirmed live for
-                    // #3584/#3585: the bookend commit sat only on agent/<n>-<id> and the row read
-                    // Verifying. Checked here, right after reap and before the cleanup sweep can
-                    // reclaim the worktree, from the worktree's OWN HEAD (not origin/main — that's
-                    // exactly the ref a stranded bookend hasn't reached yet). On a genuine BLOCKED
-                    // effective status this pushes that HEAD to origin/main and then reuses the EXACT
-                    // Shape-A correction FalseDoneReconciler already applies on a manual refresh
-                    // (canceled + board -> Backlog) — just fired immediately instead of waiting for the
-                    // next manual refresh to notice a bookend that, before this fix, could never even
-                    // be seen from origin/main in the first place.
-                    if (!limitParked && _db != null && entry.IsMainRepo
-                        && entry.GithubNumber is int ghNumber3628 && ghNumber3628 > 0
-                        && !string.IsNullOrWhiteSpace(entry.WorktreePath) && Directory.Exists(entry.WorktreePath)
-                        && exitCode == 0)
-                    {
-                        try
-                        {
-                            var selfBlock = await WorktreeProvisionService.PushBlockedBookendIfAnyAsync(entry.WorktreePath!, ghNumber3628);
-                            if (selfBlock.Blocked)
-                            {
-                                int corrected = await _db.MarkFalseDoneReconciledAsync(id);
-                                string pushNote = selfBlock.Pushed
-                                    ? "bookend pushed to origin/main"
-                                    : $"bookend push FAILED ({selfBlock.Detail}) — still stranded off origin/main, needs a manual push";
-                                if (corrected > 0)
-                                {
-                                    BoardStatusSync.Mirror(ghNumber3628, GitHubApiClient.BacklogOptionId, "Backlog", "watcher (self-block, Git #3628)");
-                                    ActivityLog.Log("watcher", $"Git #3628: queue #{id} (#{ghNumber3628}) exited 0 but its worktree bookend reads BLOCKED — {pushNote}; row corrected to 'canceled' and board moved to Backlog instead of sitting as Verifying/Done.");
-                                }
-                                else
-                                {
-                                    ActivityLog.Log("watcher", $"Git #3628: queue #{id} (#{ghNumber3628}) worktree bookend reads BLOCKED ({pushNote}) but the row was already moved on by something else — no correction applied.");
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            ActivityLog.Log("watcher", $"Git #3628 self-block push/board fix threw for queue #{id} (#{ghNumber3628}): {ex.Message}");
-                        }
-                    }
-
-                    // Build Sets — backstop: once this build's wave has fully drained (no
-                    // more queued/running members), tell the dev-server coordinator to
-                    // `close` the set so it completes — and fires its ONE deferred restart —
-                    // even if a member failed without ever reporting to request-restart. On
-                    // the happy path the set already auto-completed via the expected-count,
-                    // so this close is a harmless single-shot no-op. Best-effort.
-                    if (!limitParked && !string.IsNullOrWhiteSpace(entry.BuildSet))
-                    {
-                        try { await MaybeCloseDrainedBuildSetAsync(entry.BuildSet!, id); }
-                        catch (Exception ex) { ActivityLog.Log("watcher", $"Build-set close backstop for '{entry.BuildSet}' failed: {ex.Message}"); }
-                    }
-
-                    // Git #1371 — worktree completion. On success, merge the build's committed
-                    // changes into the local dev-server checkout (best-effort + idempotent — a no-op
-                    // if the session already published its commit or committed nothing). On failure,
-                    // mark the worktree stale so it's kept for debugging rather than reclaimed. The
-                    // cleanup sweep (MaybeSweepWorktrees, below) reclaims a successful build's worktree
-                    // once its process is gone and a short grace window has passed (so a quick Reply
-                    // /resume can still reuse it). Merge-back is left to the session for ungrouped
-                    // non-BuildConsole runs; here it is automatic.
-                    if (!string.IsNullOrWhiteSpace(entry.WorktreeName))
-                    {
-                        var wtName = entry.WorktreeName!;
-                        var wtPath = entry.WorktreePath;
-                        if (limitParked)
-                        {
-                            // Git #1965/#1971 — a session-limit-parked build's process has just exited,
-                            // but its worktree STILL holds uncommitted work and its session will be
-                            // RESUMED in place (--resume) after the limit reset. Previously this whole
-                            // block was skipped for a limit-parked build (`!limitParked && ...`), which
-                            // left the worktree record `active` with a now-dead owner pid and NO
-                            // keep-for-debug flag — so the 5-minute cleanup sweep reclaimed it (and
-                            // force-deleted its `agent/*` branch) in the gap before auto-restart,
-                            // wiping in-flight work and orphaning committed bookends (build-journal/
-                            // 1882.md, 1548.md). Retain it explicitly so the sweep leaves it alone
-                            // until the resume re-activates it (provision-worktree's reuse path clears
-                            // this keep-for-debug flag when it re-owns the worktree).
-                            _ = WorktreeCleanupService.MarkWorktreeStaleAsync(wtName, "session-limit paused — resume pending");
-                        }
-                        else if (exitCode == 0 && !string.IsNullOrWhiteSpace(wtPath))
-                        {
-                            // Git #3584 — merge-back publishes into THIS repo's own local dev-server
-                            // checkout; a secondary (Tinker) repo has no such shared dev server to
-                            // merge into — its commits, already pushed to its OWN real remote by the
-                            // build itself, are the whole deliverable. Skipping here is not a shortcut:
-                            // there is genuinely nothing to merge back for a different repo.
-                            if (entry.IsMainRepo)
-                            {
-                                var setEnv = BuildSetEnvFor(entry);
-                                _ = WorktreeProvisionService.MergeBackAsync(wtPath!, wtName, setEnv);
-                            }
-                            else
-                            {
-                                ActivityLog.Log("watcher", $"Queue #{id} ({entry.Title}) targeted repo \"{entry.OwnerRepo}\" — no dev-server merge-back (that mechanism is Main-repo only). The build's own commits/push to its real repo are the deliverable.");
-                            }
-                        }
-                        else if (exitCode != 0)
-                        {
-                            _ = WorktreeCleanupService.MarkWorktreeStaleAsync(wtName, $"build failed (exit {exitCode})");
-                        }
-                    }
-
-                    // Keep an interactive build's output around for the Build
-                    // Watch window to finish draining and to hold its slot in
-                    // interactive-render mode (never double-rendering via a
-                    // file-tail). The window evicts it via ReleaseInteractive.
-                    if (entry.Interactive)
-                    {
-                        lock (_gate)
-                        {
-                            CancelAutoFinalize(entry);
-                            _retained[id] = entry;
-                            TrimRetained();
-                        }
-                    }
-                    // Git #1792 — the build process has exited (HasExited gated entry above); reap its
-                    // Job Object so any node.exe grandchild it left orphaned dies with it. This is the
-                    // cleanup the natural-completion path never did before, and it also covers entries
-                    // HardKill deliberately left in _running (TerminateAndClose is idempotent).
-                    CloseBuildJob(entry);
-                    _running.Remove(id);
-
-                    // Git #2106 — a session-limit-parked build's process has just exited, so it's
-                    // leaving _running like any other exit — but SessionLimitAutoRestart is going to
-                    // RESUME this exact build (a fresh _running entry) after the reset, with nothing
-                    // ever subtracted for the gap. Reserve its slot for the whole pause so freeSlots
-                    // (and Start Now) don't hand this soon-to-resume capacity to a NEW launch and
-                    // overcommit past _maxConcurrent. Released when the build reoccupies a slot (top of
-                    // LaunchItem) or when its row is no longer 'limit-paused' in the DB (reconciled just
-                    // before freeSlots below — covers resume, cancel and delete alike).
-                    if (limitParked)
-                    {
-                        _reservedSlots.Add(id);
-                        ActivityLog.Log("session-limit", $"Reserved queue #{id}'s slot while limit-paused ({_running.Count + _reservedSlots.Count}/{_maxConcurrent} occupied incl. reserved) — its capacity is held until it resumes, so freeSlots can't overcommit.");
-                    }
-                }
-
-                // Git #1371 — periodically reclaim orphaned/finished agent worktrees in the
-                // background (throttled). Non-force + ownership-gated, so it never touches a live
-                // build's worktree, an unrelated/harness worktree, or one still inside its grace
-                // window; it only sweeps up agent/* worktrees whose build process is gone.
-                MaybeSweepWorktrees();
-
-                // Git #2796 — real, ongoing repo housekeeping (merged agent/* branch prune,
-                // loose-object gc, stray C:\wt\* dir reconcile); throttled to at most once per 6h.
-                MaybeRunGitMaintenance();
-
-                // Git #2891 — periodic phantom-running liveness sweep. The reap loop above only
-                // reaps builds tracked in this instance's in-memory _running dict (authoritative
-                // HasExited on a real handle). A DB row left `running` that this instance is NOT
-                // tracking — a LaunchItem that threw after the claim but before registering in
-                // _running, or any other launch-path desync — was only ever reconciled by the
-                // startup adoption sweep (RecoverOrphanedRunningItemsAsync), never during normal
-                // operation, so it sat `running` forever (the #2888 incident). This runs the same
-                // #1839 build_pid + creation-time liveness check on an interval so such a row is
-                // detected and failed automatically instead of needing a manual DB UPDATE. Placed
-                // before the _appReady/_paused gates so a phantom is cleared even while paused.
-                await MaybeSweepStuckRunningRowsAsync();
-
-                // Git #3084 — always-on api-server supervisor. dev-all has no restart-on-exit and the
-                // health service only probes, so a crashed/killed api-server was revived ONLY as a
-                // side effect of a build-completion restart cycle (refreshMainServer). With stacked
-                // build sets deferring that restart, a dead api-server stayed dead until Shane started
-                // it by hand — turning every shaneapp://runTest red in the meantime. This makes the
-                // always-on tick the supervisor for the one always-on service. Best-effort, throttled,
-                // and self-gated (see the method) — placed before the _appReady/_paused gates for the
-                // same reason as the sweeps above (background self-repair, not a claim), though it
-                // additionally no-ops until _appReady so it never adds a heavy rebuild to startup.
-                await MaybeEnsureApiServerUpAsync();
-
-                // Git #3900 — narrow, event-driven check: does any row genuinely sitting in Verifying
-                // right now have a real GitHub issue that's actually closed? Piggybacked on this same
-                // tick rather than a new timer; see the method's own doc comment. Background,
-                // throttled, single-flight inside — most ticks it costs one cheap local Postgres read
-                // and nothing else.
-                _ = System.Threading.Tasks.Task.Run(MaybeCheckVerifyingIssuesClosedAsync);
-
-                // Git #3113 — refresh the local GitHub-issue mirror on its own interval. This is the
-                // periodic BATCHED sync that lets routine reads (issue-title warm-up, chat-dock
-                // enrichment, the background Verifying reconcile) serve from local Postgres instead of
-                // firing a per-issue `gh issue view` / board-status call every refresh — the real root
-                // fix for the recurring rate-limit cycle. Fired on a background thread (never blocks the
-                // tick or the claim loop below) and self-gated hard (5-min persisted interval +
-                // failed-attempt backoff + single-flight), so most ticks it no-ops instantly.
-                _ = System.Threading.Tasks.Task.Run(MaybeSyncIssueMirrorAsync);
-
-                // Git #3011 — demand-driven, throttled self-recovery probe for the shared #2815
-                // rate-limit circuit. The claim path below (GetNextAsync via freeSlots) is the
-                // ONLY automatic thing that can close a tripped circuit from this side, and it only
-                // fires a live `gh` call when there's a free slot AND at least one candidate that
-                // actually needs blocker/own-issue verification (see
-                // BuildQueuePostgresClient.SelectClaimCandidatesAsync). A full queue (no free
-                // slots — the early `return` below) or a drained/all-unblocked queue (no candidate
-                // needs a live check) never reaches that call, and the Git Board's own fetch is
-                // manual-only (Shane, 2026-08-14 — LeftSidebar.xaml.cs), so nothing probes a
-                // half-open circuit until Shane clicks Refresh — confirmed ~31 real minutes stuck
-                // on 2026-09-05. Placed before the _appReady/_paused gates, same reasoning as the
-                // phantom-running sweep just above: this is background self-repair, not a claim, so
-                // it should recover the circuit even while paused or still starting up.
-                //
-                // Demand-driven: MaybeSelfRecoveryProbeAsync no-ops instantly unless
-                // GitHubRateLimitCircuit.IsTripped, so a healthy circuit costs nothing extra here —
-                // the exact redundant-traffic concern #3009 exists to avoid. Throttled by the
-                // circuit's own half-open lease (ShouldShortCircuit inside SubprocessRunner.RunAsync):
-                // every tick while still OPEN short-circuits instantly with no process spawn; only
-                // the single probe per half-open window actually reaches GitHub.
-                await MaybeSelfRecoveryProbeAsync();
-
-                // Git #1883 — hard gate: never claim/launch a NEW queued item until the app
-                // itself has signaled genuine full readiness (see MarkAppReady). Checked
-                // BEFORE and independent of the pause toggle below — this must hold "no
-                // matter whether the queue is running or paused" (Shane's own words), since
-                // it's heavy build processes competing with the app's own startup work for
-                // resources that's the actual problem, not the pause state. Reaping (above)
-                // still runs regardless — a fresh cold start has nothing to reap anyway.
-                if (!_appReady) return;
-
-                // Git #3623 — keep every tracked row's blocked_by_numbers in step with GitHub's real
-                // dependency graph (an edge wired after queueing never reached the row before). After
-                // the readiness gate so it never joins the cold-start GitHub burst; before the pause
-                // and free-slot gates because Verifying/held rows need it for display too. Background,
-                // throttled and single-flight inside, so most ticks it no-ops instantly.
-                _ = System.Threading.Tasks.Task.Run(MaybeResyncLiveBlockersAsync);
-
-                // Global pause: reaping (above) still runs so already-running
-                // builds complete and free their slots, but the claim/launch of
-                // any NEW queued item is skipped entirely while paused — no
-                // server-side claim happens, so items stay queued until resumed.
-                if (_paused) return;
-
-                // Git #2106 — reconcile reserved slots against DB truth before computing capacity.
-                // A slot is reserved ONLY while its build is genuinely 'limit-paused' and awaiting
-                // auto-restart; the moment SessionLimitAutoRestart flips it back to 'queued' (or the
-                // user cancels/deletes it) the row leaves that status and its slot must free. Keeping
-                // _reservedSlots ⊆ {ids currently limit-paused} via IntersectWith drops
-                // resume/cancel/delete/complete in one step and keeps a still-paused build reserved,
-                // so there is no way to leak a reservation permanently. Best-effort: on a transient DB
-                // error we KEEP the existing reservations (the safe, never-overcommit direction) and
-                // reconcile next tick. Guarded on Count>0 so the common (no paused builds) case adds
-                // no DB call. _db is always non-null when any reservation exists (parking requires it).
-                if (_reservedSlots.Count > 0 && _db != null)
-                {
-                    try
-                    {
-                        var paused = await _db.GetLimitPausedAsync();
-                        var pausedIds = new HashSet<int>();
-                        foreach (var p in paused) pausedIds.Add(p.Id);
-                        int before = _reservedSlots.Count;
-                        _reservedSlots.IntersectWith(pausedIds);
-                        if (_reservedSlots.Count != before)
-                            ActivityLog.Log("session-limit", $"Released {before - _reservedSlots.Count} reserved slot(s) whose build(s) are no longer limit-paused (resumed/canceled/deleted) — {_reservedSlots.Count} still reserved.");
-                    }
-                    catch (Exception ex)
-                    {
-                        ActivityLog.Log("session-limit", $"Couldn't reconcile reserved slots against the DB ({ex.Message}) — keeping {_reservedSlots.Count} reservation(s) this tick (safe: never overcommits).");
-                    }
-                }
-
-                int freeSlots = _maxConcurrent - _running.Count - _reservedSlots.Count;
-                if (freeSlots <= 0) return;
-
-                List<QueueItem> next;
-                try
-                {
-                    next = _db != null
-                        ? await _db.GetNextAsync(freeSlots, BuildLiveOpenIssuesFetcher())
-                        : await _api.GetNextQueueItemsAsync(freeSlots, BuildConsoleSettings.Load().PausedBuildIds);
-                }
-                catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't poll/claim next queue item(s): {ex.Message}"); return; }
-
-                // Git #2792 — overlap the expensive `git worktree add` across every claimed build
-                // BEFORE the sequential launch loop below, so a 6-slot batch no longer starts one
-                // build every couple of minutes (the "builds hang / start one-at-a-time" symptom).
-                // Idempotent: LaunchItem's own provisioning call then hits the fast reused=True path.
-                await PrewarmWorktreesAsync(next);
-
-                foreach (var item in next)
-                {
-                    // Build Sets — resolve the set's expected member count (the wave size)
-                    // so the dev-server coordinator knows how many members to wait for
-                    // before firing the ONE deferred restart. Best-effort; a null just
-                    // means the set relies on the drain-close backstop instead.
-                    int? buildSetExpected = null;
-                    if (!string.IsNullOrWhiteSpace(item.BuildSet) && _db != null)
-                    {
-                        try { buildSetExpected = await _db.CountBuildSetMembersAsync(item.BuildSet); }
-                        catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't count build-set members for '{item.BuildSet}': {ex.Message}"); }
-                    }
-                    // Git #2096 — TickAsync fires on the UI thread — via the periodic DispatcherTimer.Tick
-                    // (Git #3824), the manual-refresh/resume call sites, and the Git #3774 exit-callback
-                    // trigger (marshaled onto the UI thread with Application.Current.Dispatcher.BeginInvoke
-                    // to preserve this invariant) — same as the
-                    // Click handlers #1881 fixed via SafeLaunch's Task.Run wrap. LaunchItem's tail
-                    // (RedirectedProcessLauncher.Launch, a synchronous Win32 CreateProcess call) and any
-                    // synchronous prefix before its first await ran directly on that UI thread here too —
-                    // unnoticed only because nobody is usually clicking when a background timer fires.
-                    // Wrapping in Task.Run hands the whole LaunchItem body to a thread-pool thread so a
-                    // real multi-item pickup can't sequentially stutter the UI thread once per item.
-                    try { await Task.Run(() => LaunchItem(item, buildSetExpected)); }
-                    catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't launch queue item {item.Id} ({item.Title}): {ex.Message}"); }
-                }
+                    Interlocked.Exchange(ref _tickRerunRequested, 0);
+                    await TickOnceAsync();
+                } while (Interlocked.CompareExchange(ref _tickRerunRequested, 0, 1) == 1);
             }
             finally
             {
                 Interlocked.Exchange(ref _ticking, 0);
+            }
+        }
+
+        private async Task TickOnceAsync()
+        {
+            await RetryPendingCompletionsAsync();
+
+            // ── 1. Reap processes that have exited ────────────────────────
+            foreach (var id in _running.Keys.ToList())
+            {
+                var entry = _running[id];
+                if (!entry.Process.HasExited) continue;
+                int exitCode = entry.Process.ExitCode;
+                ActivityLog.Log("watcher", $"Finished: {entry.Title} (exit {exitCode})");
+
+                // Session-limit auto-restart: a build whose output hit the CLI's
+                // session/usage-limit message is parked limit-paused (resume
+                // session preserved) instead of marked failed, and the restart
+                // timer is armed for its parsed reset + delay. Everything a
+                // normal completion fires (BuildFinished → post-build deploy,
+                // build-set close, worktree merge-back) is skipped — the build
+                // isn't done, it's coming back.
+                bool limitParked = false;
+                bool limitHit;
+                string? limitResetLabel;
+                lock (_gate)
+                {
+                    limitHit = entry.SessionLimitHit;
+                    limitResetLabel = entry.SessionLimitResetLabel;
+                }
+                if (limitHit)
+                {
+                    if (_db != null)
+                    {
+                        try
+                        {
+                            await _db.MarkLimitPausedAsync(id, entry.SessionId);
+                            limitParked = true;
+                            ActivityLog.Log("session-limit", $"Parked queue #{id} ({entry.Title}) limit-paused (exit {exitCode}); it will be re-queued automatically after the session-limit reset.");
+                            SessionLimitAutoRestart?.RegisterLimitHit(id, limitResetLabel);
+                        }
+                        catch (Exception ex)
+                        {
+                            ActivityLog.Log("session-limit", $"Couldn't park queue #{id} limit-paused: {ex.Message} — falling back to the normal failed path.");
+                        }
+                    }
+                    else
+                    {
+                        ActivityLog.Log("session-limit", $"Queue #{id} hit the session limit but there is no direct DB connection (HTTP-fallback mode doesn't support limit-paused) — marking it via the normal completion path instead.");
+                    }
+                }
+
+                // Git #1990 — a queue build has no human at the keyboard to decline a permission
+                // prompt, so a session whose tool calls came back REJECTED ("The user doesn't want
+                // to proceed with this tool use.") was having its tools refused — a Stop/interrupt
+                // abort, or a tool the launch could not satisfy. #1988 only landed `failed` because
+                // its Stop escalation made the CLI exit 1; the SAME situation with a clean
+                // idle-finalize exits 0 and the mapping below would record it done/Verifying —
+                // indistinguishable from real completed work, the exact "reports done, nothing
+                // landed" danger. Record a clean-exit-with-rejections build under a distinct sentinel
+                // exit code so it lands failed/Crashed (never done), with the refused command named.
+                // Skipped for a limit-parked build (it's coming back, not finished).
+                if (!limitParked)
+                {
+                    int rejectedCount; string? lastRejected;
+                    lock (_gate) { rejectedCount = entry.RejectedToolCount; lastRejected = entry.LastRejectedCommand; }
+                    if (rejectedCount > 0)
+                    {
+                        if (exitCode == 0)
+                        {
+                            ActivityLog.Log("interactive-build",
+                                $"queue #{id} ({entry.Title}) exited 0 but had {rejectedCount} rejected tool call(s) — recording as failed ({RejectedToolsExitCode}, rejected-tools) so it is NOT mistaken for a real completion. Last refused: {lastRejected ?? "(command not captured)"}.");
+                            exitCode = RejectedToolsExitCode;
+                        }
+                        else
+                        {
+                            ActivityLog.Log("interactive-build",
+                                $"queue #{id} ({entry.Title}) had {rejectedCount} rejected tool call(s) and already exited {exitCode} (non-zero → failed). Last refused: {lastRejected ?? "(command not captured)"}.");
+                        }
+                    }
+                }
+
+                // Report completion — direct Postgres when available (always-on local
+                // Postgres, no nap/sleep issue), HTTP fallback otherwise. The fallback path
+                // is kept for environments where BUILD_DATABASE_URL isn't configured.
+                // It MUST NOT gate the local BuildFinished fan-out below:
+                // that fan-out drives PostBuildDeployPipeline (Epic #803/#911).
+                if (!limitParked)
+                {
+                    try
+                    {
+                        if (_db != null)
+                        {
+                            var outcome = await _db.MarkCompleteAsync(id, exitCode, entry.SessionId);
+                            ActivityLog.Log("watcher", $"Reported completion of queue item {id} to Postgres.");
+
+                            // Git #2136 — mirror the resulting DURABLE decision onto the real
+                            // project board (Git IS the database): exit 0 on a real issue lands
+                            // Verifying, a genuine failure lands Crashed. Fire-and-forget — it
+                            // must never block or throw in the reap loop. A local-only build
+                            // (status 'done', no github_number) has nothing to move.
+                            if (outcome.Status == BuildQueuePostgresClient.VerifyingStatus)
+                                BoardStatusSync.Mirror(outcome.GithubNumber, GitHubApiClient.VerifyingOptionId, "Verifying", "watcher");
+                            else if (outcome.Status == "failed")
+                                BoardStatusSync.Mirror(outcome.GithubNumber, GitHubApiClient.CrashedOptionId, "Crashed", "watcher");
+                        }
+                        else
+                        {
+                            await _api.MarkQueueItemCompleteAsync(id, exitCode, entry.SessionId);
+                            ActivityLog.Log("watcher", $"Reported completion of queue item {id} to the dev server.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _pendingCompletions.Add((id, exitCode, entry.SessionId));
+                        ActivityLog.Log("watcher", $"Couldn't report completion for queue item {id}: {ex.Message} — queued for retry.");
+                    }
+
+                    // Fire the local completion listeners REGARDLESS of the remote report
+                    // outcome above. Wrapped separately so a subscriber throwing can't take
+                    // down the reap loop, and so it always runs.
+                    try
+                    {
+                        BuildFinished?.Invoke(id, entry.Title, exitCode);
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("watcher", $"A BuildFinished handler threw for queue item {id}: {ex.Message}");
+                    }
+
+                    // Git #3844 — event-driven idle-stop enforcement: a build finishing is the
+                    // one real moment a dev service's need may have just gone away. Fire-and-
+                    // forget (StopIdleDevServicesAsync never throws) so it never delays the reap
+                    // loop; queue #{id} finishing is real evidence worth re-checking against
+                    // regardless of whether it exited 0 or failed.
+                    _ = StopIdleDevServicesAsync($"build #{id} ({entry.Title}) just finished");
+                }
+
+                // Git #3628 — self-block push/board fix. MarkCompleteAsync above has already
+                // landed this row on 'verifying'/'done' and mirrored the board to Verifying,
+                // purely because the process exited 0 — indistinguishable, so far, from real
+                // completed work. But a session that hit the CLAUDE.md "blocked" self-check flow
+                // exits 0 too, after writing a real 🛑 BLOCKED bookend that the worktree merge-back
+                // below never pushes anywhere but the LOCAL dev-server checkout. Confirmed live for
+                // #3584/#3585: the bookend commit sat only on agent/<n>-<id> and the row read
+                // Verifying. Checked here, right after reap and before the cleanup sweep can
+                // reclaim the worktree, from the worktree's OWN HEAD (not origin/main — that's
+                // exactly the ref a stranded bookend hasn't reached yet). On a genuine BLOCKED
+                // effective status this pushes that HEAD to origin/main and then reuses the EXACT
+                // Shape-A correction FalseDoneReconciler already applies on a manual refresh
+                // (canceled + board -> Backlog) — just fired immediately instead of waiting for the
+                // next manual refresh to notice a bookend that, before this fix, could never even
+                // be seen from origin/main in the first place.
+                if (!limitParked && _db != null && entry.IsMainRepo
+                    && entry.GithubNumber is int ghNumber3628 && ghNumber3628 > 0
+                    && !string.IsNullOrWhiteSpace(entry.WorktreePath) && Directory.Exists(entry.WorktreePath)
+                    && exitCode == 0)
+                {
+                    try
+                    {
+                        var selfBlock = await WorktreeProvisionService.PushBlockedBookendIfAnyAsync(entry.WorktreePath!, ghNumber3628);
+                        if (selfBlock.Blocked)
+                        {
+                            int corrected = await _db.MarkFalseDoneReconciledAsync(id);
+                            string pushNote = selfBlock.Pushed
+                                ? "bookend pushed to origin/main"
+                                : $"bookend push FAILED ({selfBlock.Detail}) — still stranded off origin/main, needs a manual push";
+                            if (corrected > 0)
+                            {
+                                BoardStatusSync.Mirror(ghNumber3628, GitHubApiClient.BacklogOptionId, "Backlog", "watcher (self-block, Git #3628)");
+                                ActivityLog.Log("watcher", $"Git #3628: queue #{id} (#{ghNumber3628}) exited 0 but its worktree bookend reads BLOCKED — {pushNote}; row corrected to 'canceled' and board moved to Backlog instead of sitting as Verifying/Done.");
+                            }
+                            else
+                            {
+                                ActivityLog.Log("watcher", $"Git #3628: queue #{id} (#{ghNumber3628}) worktree bookend reads BLOCKED ({pushNote}) but the row was already moved on by something else — no correction applied.");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("watcher", $"Git #3628 self-block push/board fix threw for queue #{id} (#{ghNumber3628}): {ex.Message}");
+                    }
+                }
+
+                // Build Sets — backstop: once this build's wave has fully drained (no
+                // more queued/running members), tell the dev-server coordinator to
+                // `close` the set so it completes — and fires its ONE deferred restart —
+                // even if a member failed without ever reporting to request-restart. On
+                // the happy path the set already auto-completed via the expected-count,
+                // so this close is a harmless single-shot no-op. Best-effort.
+                if (!limitParked && !string.IsNullOrWhiteSpace(entry.BuildSet))
+                {
+                    try { await MaybeCloseDrainedBuildSetAsync(entry.BuildSet!, id); }
+                    catch (Exception ex) { ActivityLog.Log("watcher", $"Build-set close backstop for '{entry.BuildSet}' failed: {ex.Message}"); }
+                }
+
+                // Git #1371 — worktree completion. On success, merge the build's committed
+                // changes into the local dev-server checkout (best-effort + idempotent — a no-op
+                // if the session already published its commit or committed nothing). On failure,
+                // mark the worktree stale so it's kept for debugging rather than reclaimed. The
+                // cleanup sweep (MaybeSweepWorktrees, below) reclaims a successful build's worktree
+                // once its process is gone and a short grace window has passed (so a quick Reply
+                // /resume can still reuse it). Merge-back is left to the session for ungrouped
+                // non-BuildConsole runs; here it is automatic.
+                if (!string.IsNullOrWhiteSpace(entry.WorktreeName))
+                {
+                    var wtName = entry.WorktreeName!;
+                    var wtPath = entry.WorktreePath;
+                    if (limitParked)
+                    {
+                        // Git #1965/#1971 — a session-limit-parked build's process has just exited,
+                        // but its worktree STILL holds uncommitted work and its session will be
+                        // RESUMED in place (--resume) after the limit reset. Previously this whole
+                        // block was skipped for a limit-parked build (`!limitParked && ...`), which
+                        // left the worktree record `active` with a now-dead owner pid and NO
+                        // keep-for-debug flag — so the 5-minute cleanup sweep reclaimed it (and
+                        // force-deleted its `agent/*` branch) in the gap before auto-restart,
+                        // wiping in-flight work and orphaning committed bookends (build-journal/
+                        // 1882.md, 1548.md). Retain it explicitly so the sweep leaves it alone
+                        // until the resume re-activates it (provision-worktree's reuse path clears
+                        // this keep-for-debug flag when it re-owns the worktree).
+                        _ = WorktreeCleanupService.MarkWorktreeStaleAsync(wtName, "session-limit paused — resume pending");
+                    }
+                    else if (exitCode == 0 && !string.IsNullOrWhiteSpace(wtPath))
+                    {
+                        // Git #3584 — merge-back publishes into THIS repo's own local dev-server
+                        // checkout; a secondary (Tinker) repo has no such shared dev server to
+                        // merge into — its commits, already pushed to its OWN real remote by the
+                        // build itself, are the whole deliverable. Skipping here is not a shortcut:
+                        // there is genuinely nothing to merge back for a different repo.
+                        if (entry.IsMainRepo)
+                        {
+                            var setEnv = BuildSetEnvFor(entry);
+                            _ = WorktreeProvisionService.MergeBackAsync(wtPath!, wtName, setEnv);
+                        }
+                        else
+                        {
+                            ActivityLog.Log("watcher", $"Queue #{id} ({entry.Title}) targeted repo \"{entry.OwnerRepo}\" — no dev-server merge-back (that mechanism is Main-repo only). The build's own commits/push to its real repo are the deliverable.");
+                        }
+                    }
+                    else if (exitCode != 0)
+                    {
+                        _ = WorktreeCleanupService.MarkWorktreeStaleAsync(wtName, $"build failed (exit {exitCode})");
+                    }
+                }
+
+                // Keep an interactive build's output around for the Build
+                // Watch window to finish draining and to hold its slot in
+                // interactive-render mode (never double-rendering via a
+                // file-tail). The window evicts it via ReleaseInteractive.
+                if (entry.Interactive)
+                {
+                    lock (_gate)
+                    {
+                        CancelAutoFinalize(entry);
+                        _retained[id] = entry;
+                        TrimRetained();
+                    }
+                }
+                // Git #1792 — the build process has exited (HasExited gated entry above); reap its
+                // Job Object so any node.exe grandchild it left orphaned dies with it. This is the
+                // cleanup the natural-completion path never did before, and it also covers entries
+                // HardKill deliberately left in _running (TerminateAndClose is idempotent).
+                CloseBuildJob(entry);
+                _running.Remove(id);
+
+                // Git #2106 — a session-limit-parked build's process has just exited, so it's
+                // leaving _running like any other exit — but SessionLimitAutoRestart is going to
+                // RESUME this exact build (a fresh _running entry) after the reset, with nothing
+                // ever subtracted for the gap. Reserve its slot for the whole pause so freeSlots
+                // (and Start Now) don't hand this soon-to-resume capacity to a NEW launch and
+                // overcommit past _maxConcurrent. Released when the build reoccupies a slot (top of
+                // LaunchItem) or when its row is no longer 'limit-paused' in the DB (reconciled just
+                // before freeSlots below — covers resume, cancel and delete alike).
+                if (limitParked)
+                {
+                    _reservedSlots.Add(id);
+                    ActivityLog.Log("session-limit", $"Reserved queue #{id}'s slot while limit-paused ({_running.Count + _reservedSlots.Count}/{_maxConcurrent} occupied incl. reserved) — its capacity is held until it resumes, so freeSlots can't overcommit.");
+                }
+            }
+
+            // Git #1371 — periodically reclaim orphaned/finished agent worktrees in the
+            // background (throttled). Non-force + ownership-gated, so it never touches a live
+            // build's worktree, an unrelated/harness worktree, or one still inside its grace
+            // window; it only sweeps up agent/* worktrees whose build process is gone.
+            MaybeSweepWorktrees();
+
+            // Git #2796 — real, ongoing repo housekeeping (merged agent/* branch prune,
+            // loose-object gc, stray C:\wt\* dir reconcile); throttled to at most once per 6h.
+            MaybeRunGitMaintenance();
+
+            // Git #2891 — periodic phantom-running liveness sweep. The reap loop above only
+            // reaps builds tracked in this instance's in-memory _running dict (authoritative
+            // HasExited on a real handle). A DB row left `running` that this instance is NOT
+            // tracking — a LaunchItem that threw after the claim but before registering in
+            // _running, or any other launch-path desync — was only ever reconciled by the
+            // startup adoption sweep (RecoverOrphanedRunningItemsAsync), never during normal
+            // operation, so it sat `running` forever (the #2888 incident). This runs the same
+            // #1839 build_pid + creation-time liveness check on an interval so such a row is
+            // detected and failed automatically instead of needing a manual DB UPDATE. Placed
+            // before the _appReady/_paused gates so a phantom is cleared even while paused.
+            await MaybeSweepStuckRunningRowsAsync();
+
+            // Git #3084 — always-on api-server supervisor. dev-all has no restart-on-exit and the
+            // health service only probes, so a crashed/killed api-server was revived ONLY as a
+            // side effect of a build-completion restart cycle (refreshMainServer). With stacked
+            // build sets deferring that restart, a dead api-server stayed dead until Shane started
+            // it by hand — turning every shaneapp://runTest red in the meantime. This makes the
+            // always-on tick the supervisor for the one always-on service. Best-effort, throttled,
+            // and self-gated (see the method) — placed before the _appReady/_paused gates for the
+            // same reason as the sweeps above (background self-repair, not a claim), though it
+            // additionally no-ops until _appReady so it never adds a heavy rebuild to startup.
+            await MaybeEnsureApiServerUpAsync();
+
+            // Git #3900 — narrow, event-driven check: does any row genuinely sitting in Verifying
+            // right now have a real GitHub issue that's actually closed? Piggybacked on this same
+            // tick rather than a new timer; see the method's own doc comment. Background,
+            // throttled, single-flight inside — most ticks it costs one cheap local Postgres read
+            // and nothing else.
+            _ = System.Threading.Tasks.Task.Run(MaybeCheckVerifyingIssuesClosedAsync);
+
+            // Git #3113 — refresh the local GitHub-issue mirror on its own interval. This is the
+            // periodic BATCHED sync that lets routine reads (issue-title warm-up, chat-dock
+            // enrichment, the background Verifying reconcile) serve from local Postgres instead of
+            // firing a per-issue `gh issue view` / board-status call every refresh — the real root
+            // fix for the recurring rate-limit cycle. Fired on a background thread (never blocks the
+            // tick or the claim loop below) and self-gated hard (5-min persisted interval +
+            // failed-attempt backoff + single-flight), so most ticks it no-ops instantly.
+            _ = System.Threading.Tasks.Task.Run(MaybeSyncIssueMirrorAsync);
+
+            // Git #3011 — demand-driven, throttled self-recovery probe for the shared #2815
+            // rate-limit circuit. The claim path below (GetNextAsync via freeSlots) is the
+            // ONLY automatic thing that can close a tripped circuit from this side, and it only
+            // fires a live `gh` call when there's a free slot AND at least one candidate that
+            // actually needs blocker/own-issue verification (see
+            // BuildQueuePostgresClient.SelectClaimCandidatesAsync). A full queue (no free
+            // slots — the early `return` below) or a drained/all-unblocked queue (no candidate
+            // needs a live check) never reaches that call, and the Git Board's own fetch is
+            // manual-only (Shane, 2026-08-14 — LeftSidebar.xaml.cs), so nothing probes a
+            // half-open circuit until Shane clicks Refresh — confirmed ~31 real minutes stuck
+            // on 2026-09-05. Placed before the _appReady/_paused gates, same reasoning as the
+            // phantom-running sweep just above: this is background self-repair, not a claim, so
+            // it should recover the circuit even while paused or still starting up.
+            //
+            // Demand-driven: MaybeSelfRecoveryProbeAsync no-ops instantly unless
+            // GitHubRateLimitCircuit.IsTripped, so a healthy circuit costs nothing extra here —
+            // the exact redundant-traffic concern #3009 exists to avoid. Throttled by the
+            // circuit's own half-open lease (ShouldShortCircuit inside SubprocessRunner.RunAsync):
+            // every tick while still OPEN short-circuits instantly with no process spawn; only
+            // the single probe per half-open window actually reaches GitHub.
+            await MaybeSelfRecoveryProbeAsync();
+
+            // Git #1883 — hard gate: never claim/launch a NEW queued item until the app
+            // itself has signaled genuine full readiness (see MarkAppReady). Checked
+            // BEFORE and independent of the pause toggle below — this must hold "no
+            // matter whether the queue is running or paused" (Shane's own words), since
+            // it's heavy build processes competing with the app's own startup work for
+            // resources that's the actual problem, not the pause state. Reaping (above)
+            // still runs regardless — a fresh cold start has nothing to reap anyway.
+            if (!_appReady) return;
+
+            // Git #3623 — keep every tracked row's blocked_by_numbers in step with GitHub's real
+            // dependency graph (an edge wired after queueing never reached the row before). After
+            // the readiness gate so it never joins the cold-start GitHub burst; before the pause
+            // and free-slot gates because Verifying/held rows need it for display too. Background,
+            // throttled and single-flight inside, so most ticks it no-ops instantly.
+            _ = System.Threading.Tasks.Task.Run(MaybeResyncLiveBlockersAsync);
+
+            // Global pause: reaping (above) still runs so already-running
+            // builds complete and free their slots, but the claim/launch of
+            // any NEW queued item is skipped entirely while paused — no
+            // server-side claim happens, so items stay queued until resumed.
+            if (_paused) return;
+
+            // Git #2106 — reconcile reserved slots against DB truth before computing capacity.
+            // A slot is reserved ONLY while its build is genuinely 'limit-paused' and awaiting
+            // auto-restart; the moment SessionLimitAutoRestart flips it back to 'queued' (or the
+            // user cancels/deletes it) the row leaves that status and its slot must free. Keeping
+            // _reservedSlots ⊆ {ids currently limit-paused} via IntersectWith drops
+            // resume/cancel/delete/complete in one step and keeps a still-paused build reserved,
+            // so there is no way to leak a reservation permanently. Best-effort: on a transient DB
+            // error we KEEP the existing reservations (the safe, never-overcommit direction) and
+            // reconcile next tick. Guarded on Count>0 so the common (no paused builds) case adds
+            // no DB call. _db is always non-null when any reservation exists (parking requires it).
+            if (_reservedSlots.Count > 0 && _db != null)
+            {
+                try
+                {
+                    var paused = await _db.GetLimitPausedAsync();
+                    var pausedIds = new HashSet<int>();
+                    foreach (var p in paused) pausedIds.Add(p.Id);
+                    int before = _reservedSlots.Count;
+                    _reservedSlots.IntersectWith(pausedIds);
+                    if (_reservedSlots.Count != before)
+                        ActivityLog.Log("session-limit", $"Released {before - _reservedSlots.Count} reserved slot(s) whose build(s) are no longer limit-paused (resumed/canceled/deleted) — {_reservedSlots.Count} still reserved.");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("session-limit", $"Couldn't reconcile reserved slots against the DB ({ex.Message}) — keeping {_reservedSlots.Count} reservation(s) this tick (safe: never overcommits).");
+                }
+            }
+
+            int freeSlots = _maxConcurrent - _running.Count - _reservedSlots.Count;
+            if (freeSlots <= 0) return;
+
+            List<QueueItem> next;
+            try
+            {
+                next = _db != null
+                    ? await _db.GetNextAsync(freeSlots, BuildLiveOpenIssuesFetcher())
+                    : await _api.GetNextQueueItemsAsync(freeSlots, BuildConsoleSettings.Load().PausedBuildIds);
+            }
+            catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't poll/claim next queue item(s): {ex.Message}"); return; }
+
+            // Git #2792 — overlap the expensive `git worktree add` across every claimed build
+            // BEFORE the sequential launch loop below, so a 6-slot batch no longer starts one
+            // build every couple of minutes (the "builds hang / start one-at-a-time" symptom).
+            // Idempotent: LaunchItem's own provisioning call then hits the fast reused=True path.
+            await PrewarmWorktreesAsync(next);
+
+            foreach (var item in next)
+            {
+                // Build Sets — resolve the set's expected member count (the wave size)
+                // so the dev-server coordinator knows how many members to wait for
+                // before firing the ONE deferred restart. Best-effort; a null just
+                // means the set relies on the drain-close backstop instead.
+                int? buildSetExpected = null;
+                if (!string.IsNullOrWhiteSpace(item.BuildSet) && _db != null)
+                {
+                    try { buildSetExpected = await _db.CountBuildSetMembersAsync(item.BuildSet); }
+                    catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't count build-set members for '{item.BuildSet}': {ex.Message}"); }
+                }
+                // Git #2096 — TickAsync fires on the UI thread — via the periodic DispatcherTimer.Tick
+                // (Git #3824), the manual-refresh/resume call sites, and the Git #3774 exit-callback
+                // trigger (marshaled onto the UI thread with Application.Current.Dispatcher.BeginInvoke
+                // to preserve this invariant) — same as the
+                // Click handlers #1881 fixed via SafeLaunch's Task.Run wrap. LaunchItem's tail
+                // (RedirectedProcessLauncher.Launch, a synchronous Win32 CreateProcess call) and any
+                // synchronous prefix before its first await ran directly on that UI thread here too —
+                // unnoticed only because nobody is usually clicking when a background timer fires.
+                // Wrapping in Task.Run hands the whole LaunchItem body to a thread-pool thread so a
+                // real multi-item pickup can't sequentially stutter the UI thread once per item.
+                try { await Task.Run(() => LaunchItem(item, buildSetExpected)); }
+                catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't launch queue item {item.Id} ({item.Title}): {ex.Message}"); }
             }
         }
 
