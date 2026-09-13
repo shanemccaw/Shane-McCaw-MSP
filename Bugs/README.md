@@ -7,6 +7,7 @@ This directory contains structured JSON bug reports exported directly from the *
 - `Portal/` - Bug reports and telemetry for the Client & Reseller Portals.
 - `Admin-Panel/` - Bug reports and telemetry for the Admin Control Panel.
 - `Marketing/` - Bug reports for the public website and marketing funnels.
+- `MSP_Marketing/` - Bug reports and telemetry for the MSP Marketing site and public web assets.
 
 Each area folder contains bug report JSON files and an `attachments/` subfolder with bundled screenshots.
 

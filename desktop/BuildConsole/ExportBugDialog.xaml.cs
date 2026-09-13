@@ -65,13 +65,17 @@ namespace BuildConsole
 
         private void SetAreaSelection(string area)
         {
+            var normTarget = VisualTestTrackerExportService.NormalizeAreaKey(area);
             for (int i = 0; i < CmbTargetArea.Items.Count; i++)
             {
-                if (CmbTargetArea.Items[i] is ComboBoxItem cbi &&
-                    string.Equals(cbi.Content as string, area, StringComparison.OrdinalIgnoreCase))
+                if (CmbTargetArea.Items[i] is ComboBoxItem cbi && cbi.Content is string text)
                 {
-                    CmbTargetArea.SelectedIndex = i;
-                    return;
+                    if (string.Equals(text, area, StringComparison.OrdinalIgnoreCase) ||
+                        VisualTestTrackerExportService.NormalizeAreaKey(text) == normTarget)
+                    {
+                        CmbTargetArea.SelectedIndex = i;
+                        return;
+                    }
                 }
             }
             CmbTargetArea.Text = area;

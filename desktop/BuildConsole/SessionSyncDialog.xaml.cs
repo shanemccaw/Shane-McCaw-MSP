@@ -64,13 +64,17 @@ namespace BuildConsole
 
         private void SetProductNameSelection(string name)
         {
+            var normTarget = VisualTestTrackerExportService.NormalizeAreaKey(name);
             for (int i = 0; i < CmbProductName.Items.Count; i++)
             {
-                if (CmbProductName.Items[i] is ComboBoxItem cbi &&
-                    string.Equals(cbi.Content as string, name, StringComparison.OrdinalIgnoreCase))
+                if (CmbProductName.Items[i] is ComboBoxItem cbi && cbi.Content is string text)
                 {
-                    CmbProductName.SelectedIndex = i;
-                    return;
+                    if (string.Equals(text, name, StringComparison.OrdinalIgnoreCase) ||
+                        VisualTestTrackerExportService.NormalizeAreaKey(text) == normTarget)
+                    {
+                        CmbProductName.SelectedIndex = i;
+                        return;
+                    }
                 }
             }
             CmbProductName.Text = name;

@@ -93,6 +93,7 @@
                     <ComboBoxItem Content="Portal"/>
                     <ComboBoxItem Content="Admin-Panel"/>
                     <ComboBoxItem Content="Marketing"/>
+                    <ComboBoxItem Content="MSP_Marketing"/>
                     <ComboBoxItem Content="Website"/>
                     <ComboBoxItem Content="General"/>
                 </ComboBox>

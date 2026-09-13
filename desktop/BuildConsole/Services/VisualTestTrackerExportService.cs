@@ -42,28 +42,126 @@ namespace BuildConsole.Services
             "Portal",
             "Admin-Panel",
             "Marketing",
+            "MSP_Marketing",
             "Website",
             "General"
         };
 
-        /// <summary>Auto-detects recommended destination area based on route, domain, or port.</summary>
+        /// <summary>
+        /// Auto-detects recommended destination area based on route, domain, or port.
+        /// Priority port mappings for local development:
+        ///   - localhost:5175/portal/ -> Portal
+        ///   - localhost:5173/        -> Marketing
+        ///   - localhost:5174/        -> Admin-Panel (Admin Panel)
+        ///   - localhost:5177/        -> MSP_Console (MSP Console)
+        ///   - localhost:5176/        -> MSP_Marketing (MSP Marketing)
+        /// </summary>
         public static string DetectArea(string? url, string? pagePath)
         {
+            // 1. Port auto-detection has highest precedence for local development
+            int port = ExtractPort(url);
+            if (port == 5175) return "Portal";
+            if (port == 5173) return "Marketing";
+            if (port == 5174) return "Admin-Panel";
+            if (port == 5177) return "MSP_Console";
+            if (port == 5176) return "MSP_Marketing";
+
             var combined = $"{url ?? ""} {pagePath ?? ""}".ToLowerInvariant();
 
-            if (combined.Contains("admin"))
-                return "Admin-Panel";
+            // Also check port substring in combined string if port was provided without scheme
+            if (Regex.IsMatch(combined, @"(?::|\b)5175(?::|/|\b)")) return "Portal";
+            if (Regex.IsMatch(combined, @"(?::|\b)5173(?::|/|\b)")) return "Marketing";
+            if (Regex.IsMatch(combined, @"(?::|\b)5174(?::|/|\b)")) return "Admin-Panel";
+            if (Regex.IsMatch(combined, @"(?::|\b)5177(?::|/|\b)")) return "MSP_Console";
+            if (Regex.IsMatch(combined, @"(?::|\b)5176(?::|/|\b)")) return "MSP_Marketing";
 
-            if (combined.Contains("portal") || combined.Contains("client") || combined.Contains("customer"))
+            // 2. Keyword & route detection
+            // MSP Marketing (check before generic marketing or console)
+            if (combined.Contains("msp-marketing") || combined.Contains("msp_marketing") ||
+                combined.Contains("msp marketing") || combined.Contains("msp-website") ||
+                combined.Contains("mspwebsite"))
+            {
+                return "MSP_Marketing";
+            }
+
+            // Portal routes & keywords
+            if (combined.Contains("portal") || combined.Contains("client") || combined.Contains("customer") || combined.Contains("billing"))
+            {
                 return "Portal";
+            }
 
-            if (combined.Contains("marketing") || combined.Contains("landing") || combined.Contains("shane-mccaw.com") || combined.Contains("sales"))
+            // Admin routes & keywords
+            if (combined.Contains("admin") || combined.Contains("control-panel"))
+            {
+                return "Admin-Panel";
+            }
+
+            // Marketing / landing routes & keywords
+            if (combined.Contains("marketing") || combined.Contains("landing") ||
+                combined.Contains("shane-mccaw.com") || combined.Contains("shane-mccaw-consulting") ||
+                combined.Contains("sales") || combined.Contains("pricing") ||
+                combined.Contains("quick-start") || combined.Contains("scan"))
+            {
                 return "Marketing";
+            }
 
-            if (combined.Contains("console") || combined.Contains("msp") || combined.Contains("5173") || combined.Contains("localhost:3000"))
+            // MSP Console routes & keywords
+            if (combined.Contains("console") || combined.Contains("msp-console") ||
+                combined.Contains("msp_console") || combined.Contains("localhost:3000") ||
+                combined.Contains("msp"))
+            {
                 return "MSP_Console";
+            }
 
             return "MSP_Console";
+        }
+
+        /// <summary>Extracts TCP port number from a URL string, handling scheme-less hostnames.</summary>
+        private static int ExtractPort(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return -1;
+            var trimmed = url.Trim();
+            if (!trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                trimmed = "http://" + trimmed;
+            }
+
+            if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) && uri.Port > 0)
+            {
+                return uri.Port;
+            }
+
+            var match = Regex.Match(url, @":(\d{4,5})");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int p))
+            {
+                return p;
+            }
+
+            return -1;
+        }
+
+        /// <summary>Normalizes area or product name for comparison across spaces, hyphens, and underscores.</summary>
+        public static string NormalizeAreaKey(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "";
+            return name.Replace(" ", "").Replace("-", "").Replace("_", "").ToLowerInvariant();
+        }
+
+        /// <summary>Returns the human-friendly display name corresponding to an area or folder.</summary>
+        public static string FormatDisplayName(string? area)
+        {
+            var norm = NormalizeAreaKey(area);
+            return norm switch
+            {
+                "adminpanel" => "Admin Panel",
+                "mspconsole" => "MSP Console",
+                "mspmarketing" => "MSP Marketing",
+                "portal" => "Portal",
+                "marketing" => "Marketing",
+                "website" => "MSP Marketing",
+                _ => string.IsNullOrWhiteSpace(area) ? "General" : area.Trim()
+            };
         }
 
         /// <summary>Resolves the root path of the local git repository.</summary>
@@ -80,16 +178,37 @@ namespace BuildConsole.Services
             return Path.Combine(repoRoot, "Bugs", sanitizedArea);
         }
 
-        /// <summary>Sanitizes area name to be a valid, clean folder name.</summary>
+        /// <summary>Sanitizes area name to be a valid, clean folder name matching the repo /Bugs/<Area> structure.</summary>
         public static string SanitizeDirectoryName(string? area)
         {
             if (string.IsNullOrWhiteSpace(area)) return "General";
-            var clean = area.Trim().Replace('/', '_').Replace('\\', '_').Replace(' ', '_');
-            foreach (var c in Path.GetInvalidFileNameChars())
+            var trimmed = area.Trim();
+            var norm = NormalizeAreaKey(trimmed);
+
+            switch (norm)
             {
-                clean = clean.Replace(c, '_');
+                case "adminpanel":
+                    return "Admin-Panel";
+                case "mspconsole":
+                    return "MSP_Console";
+                case "mspmarketing":
+                case "mspwebsite":
+                case "website":
+                    return "MSP_Marketing";
+                case "marketing":
+                    return "Marketing";
+                case "portal":
+                    return "Portal";
+                case "general":
+                    return "General";
+                default:
+                    var clean = trimmed.Replace('/', '_').Replace('\\', '_').Replace(' ', '_');
+                    foreach (var c in Path.GetInvalidFileNameChars())
+                    {
+                        clean = clean.Replace(c, '_');
+                    }
+                    return clean;
             }
-            return clean;
         }
 
         /// <summary>Generates a filesystem-safe slug from a title string.</summary>
