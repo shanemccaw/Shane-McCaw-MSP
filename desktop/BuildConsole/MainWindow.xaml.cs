@@ -669,14 +669,18 @@ namespace BuildConsole
                         try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
                     });
 
-                    // Git #3661 — periodic sweep that live-checks every self-blocked "⏳ WAITING"
-                    // row's real declared blockers and auto-requeues once all are confirmed closed.
-                    // Mirrors #3573's cadence/logging pattern; see WaitingRowAutoRequeueService.
+                    // Git #3661 — sweep that live-checks every self-blocked "⏳ WAITING" row's real
+                    // declared blockers and auto-requeues once all are confirmed closed.
+                    // Git #3777 — no periodic timer (see WaitingRowAutoRequeueService); triggered
+                    // only by a tracked build actually finishing (QueueWatcherService.BuildFinished)
+                    // and the manual refresh path (LeftSidebar.BoardRefreshCompleted), wired below.
                     _waitingRowAutoRequeue = new BuildConsole.Services.WaitingRowAutoRequeueService(_queueDb);
                     _waitingRowAutoRequeue.AutoRequeued += count => Dispatcher.BeginInvoke(() =>
                     {
                         try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
                     });
+                    _queueWatcher.BuildFinished += (id, title, exitCode) => _waitingRowAutoRequeue?.TriggerSweep();
+                    LeftSidebar.BoardRefreshCompleted += (s, e) => _waitingRowAutoRequeue?.TriggerSweep();
 
                     if (!BuildConsole.Services.AppMode.IsAgent)
                     {
