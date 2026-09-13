@@ -3,7 +3,13 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"]
+    "types": ["node"],
+    // Git #3945 — scripts imports @workspace/db, whose src/rbac/*.ts and
+    // schema/index.ts use explicit .ts extensions (see lib/db/tsconfig.json's own
+    // #2458 comment) so they resolve under Node's ESM loader. Without this flag
+    // tsc rejects those imports with TS5097, matching the same fix already applied
+    // in artifacts/api-server/tsconfig.json for the same reason.
+    "allowImportingTsExtensions": true
   },
   "include": ["src"]
 }
