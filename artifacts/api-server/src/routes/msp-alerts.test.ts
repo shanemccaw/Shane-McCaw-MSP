@@ -63,6 +63,10 @@ vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => ({ and: args }),
   desc: (c: unknown) => ({ desc: c }),
   inArray: (c: unknown, v: unknown) => ({ inArray: [c, v] }),
+  // #3399 added a real isNull() call to GET /msp/alerts' findings query
+  // (acknowledgedAt filter) — missing here left it undefined, so every test
+  // that reaches that query 500'd on "isNull is not a function" (#3943).
+  isNull: (c: unknown) => ({ isNull: c }),
 }));
 
 vi.mock("../lib/logger.ts", () => {
@@ -385,14 +389,34 @@ describe("POST /msp/alerts/:alertId/acknowledge", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it("400s a diagnostic-finding alert id — genuinely no resolution mechanism exists to drive, not invented here", async () => {
+  it("400s a finding-prefixed id that isn't a real finding UUID — same 'unrecognized' path as any malformed id (#3943: #3399 built a real per-finding mechanism after this test was written against the pre-#3399 no-mechanism behavior; 'finding-abc123' was never a valid finding id shape either way)", async () => {
     const res = await request(makeApp())
       .post("/msp/alerts/finding-abc123/acknowledge")
       .set("Authorization", `Bearer ${mspToken(MSP_ID)}`);
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toMatch(/no per-item acknowledge mechanism/i);
+    expect(res.body.error.message).toMatch(/unrecognized alert id/i);
     expect(mockSelect).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges a real diagnostic finding by its full UUID — the per-item mechanism #3399 actually built", async () => {
+    const findingUuid = "11111111-1111-1111-1111-111111111111";
+    mockSelect.mockReturnValueOnce(
+      buildChain([
+        { id: 42, findingId: findingUuid, mspId: MSP_ID, customerId: 1, checkKey: "mfa-enforcement", acknowledgedAt: null },
+      ]),
+    ); // finding lookup
+    mockSelect.mockReturnValueOnce(buildChain([])); // staff scope: unrestricted
+    mockUpdate.mockReturnValueOnce(
+      buildChain([{ findingId: findingUuid, acknowledgedAt: new Date("2026-09-13T00:00:00Z") }]),
+    );
+
+    const res = await request(makeApp())
+      .post(`/msp/alerts/finding-${findingUuid}/acknowledge`)
+      .set("Authorization", `Bearer ${mspToken(MSP_ID)}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: `finding-${findingUuid}`, status: "acknowledged" });
   });
 
   it("400s an unrecognized alert id", async () => {

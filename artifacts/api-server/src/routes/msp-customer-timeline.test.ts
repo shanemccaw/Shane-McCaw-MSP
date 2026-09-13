@@ -168,7 +168,15 @@ const deliveredDocument = {
 
 const sentOffer = {
   id: 1,
-  customerId: 102, // users.id, bridged to msp_customers.id=2
+  // sales_offers.customerId is already a tenants.id (#2730), NOT a users.id —
+  // unlike insightsGeneratedDocumentsTable above, it is never run through the
+  // users.id -> tenants.id bridge (see msp-customer-timeline.ts's own header
+  // comment + its `offers` query, which filters/reads customerId directly).
+  // This fixture previously used 102 (a users.id) as if it needed bridging
+  // like documents do, so the route correctly passed it through unbridged and
+  // the assertion below failed expecting a translation that was never real
+  // behavior (#3943).
+  customerId: 2,
   title: "MFA Rollout",
   state: "sent",
   sentAt: new Date("2026-07-15T10:00:00Z"),

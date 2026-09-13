@@ -77,6 +77,12 @@ export default defineConfig({
       "src/routes/admin-ps-scripts.test.ts",
       "src/routes/admin-m365-run.test.ts",
       "src/routes/auth-account-activation-entitlement.test.ts",
+      // #3910 added this file as a node:test-native suite (mock.module —
+      // requires --experimental-test-module-mocks) but never added it here,
+      // so `vitest run` picked it up too and 500'd on "mock.module is not a
+      // function" before package.json's own node --test invocation ever ran
+      // it for real (#3943).
+      "src/routes/auth-forgot-password-surface.test.ts",
       "src/routes/auth-impersonation.test.ts",
       "src/routes/copilot-assessment-personas.test.ts",
       "src/routes/fulfillment-queue.test.ts",

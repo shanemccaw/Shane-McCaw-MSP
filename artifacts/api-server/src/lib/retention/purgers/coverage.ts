@@ -100,6 +100,15 @@ export const TENANT_SCOPE_PURGE_EXEMPTIONS: Record<string, string> = {
     "Retired by #2829 and superseded by msp_security_plan_versions. Its DROP is written and " +
     "waiting for Shane to run (lib/db/migrations/manual/2026-09-04-drop-legacy-portal-security-plans.sql); " +
     "confirmed 0 rows. A purge target against a table on its way out would outlive the table.",
+
+  // ── An orphaned table with no owning code, awaiting a real decision ───────
+  "customer_testimonials.customer_id":
+    "Discovered live in local Postgres (#3943) with NO owning Drizzle schema, NO migration " +
+    "file anywhere in the repo, and NO application code (route/lib) that reads or writes it — " +
+    "confirmed 0 rows. Filed as its own finding (see #1096's sub-issues) for Shane to decide: " +
+    "build the real testimonials feature (schema + migration + purger) or drop the orphaned " +
+    "table. Temporarily exempted here rather than silently claimed by a purger module that " +
+    "does not actually own this data.",
 };
 
 /**
