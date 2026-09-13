@@ -823,6 +823,48 @@ export function appRegExpiryAlertEmail(opts: {
   `;
 }
 
+// ─── Azure Tenant Credential expiry alert (admin only, Git #3861) ─────────────
+// Reinstates the dead appRegExpiryAlertEmail template above on the new
+// azure_tenant_credentials surface (admin-azure-credentials.ts). clientName is
+// optional here because not every credential is linked to a client — an
+// org-level/tenant credential has no clientUserId, and the template degrades
+// to identifying the row by its own displayName instead.
+
+export function azureCredentialExpiryAlertEmail(opts: {
+  displayName: string;
+  clientName?: string | null;
+  clientEmail?: string | null;
+  tenantId: string;
+  azureClientId: string;
+  expiresOn: Date;
+  daysLeft: number;
+  adminPanelUrl: string;
+}): string {
+  const dateStr = opts.expiresOn.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const urgency = opts.daysLeft <= 0
+    ? `<strong style="color:#dc2626;">EXPIRED</strong>`
+    : opts.daysLeft <= 14
+      ? `<strong style="color:#dc2626;">expires in ${opts.daysLeft} day${opts.daysLeft !== 1 ? "s" : ""}</strong>`
+      : `<strong style="color:#d97706;">expires in ${opts.daysLeft} day${opts.daysLeft !== 1 ? "s" : ""}</strong>`;
+  const clientRow = opts.clientName || opts.clientEmail
+    ? `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Linked client</td><td style="padding:4px 0;font-weight:600;">${opts.clientName || opts.clientEmail}</td></tr>`
+    : "";
+  return `
+    <p>Hi Shane,</p>
+    <p>The Azure App Registration credential <strong>${opts.displayName}</strong> ${urgency} on <strong>${dateStr}</strong>.</p>
+    <p>Once it expires, anything depending on this credential (Script Runner, monitoring, or automation for the linked tenant) will fail silently. Rotate the secret in Azure AD and update the credential in the Admin Panel before the deadline.</p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Credential</td><td style="padding:4px 0;font-weight:600;">${opts.displayName}</td></tr>
+      ${clientRow}
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Tenant ID</td><td style="padding:4px 0;font-family:monospace;font-size:12px;">${opts.tenantId}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Client ID (App Reg)</td><td style="padding:4px 0;font-family:monospace;font-size:12px;">${opts.azureClientId}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Secret expiry</td><td style="padding:4px 0;font-weight:600;">${dateStr}</td></tr>
+    </table>
+    ${emailButton("Open Azure Credentials in Admin Panel", opts.adminPanelUrl)}
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated alert)</p>
+  `;
+}
+
 // ─── Database-backed template helpers ─────────────────────────────────────────
 
 function substituteVars(template: string, vars: Record<string, string>): string {

@@ -110,6 +110,7 @@ import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-no
 import { handleMspScoreSnapshot } from "./msp-engine.ts";
 import { handleM365HealthSample } from "./m365-health-sample.ts";
 import { handlePolicyEvaluateDue } from "./policy-engine-nodes.ts";
+import { handleAzureCredentialExpiryAlert } from "./azure-credential-expiry-alert.ts";
 import { handleM365RoadmapSync } from "./m365-roadmap-sync.ts";
 import { handleM365RouteChanges } from "./m365-change-router.ts";
 import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes.ts";
@@ -7377,6 +7378,16 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         // msp-standing-policies.ts's fireWorkflowsForEvent call, scope = one
         // tenant). Same node, same handler, both real Workflow Engine runs.
         output = await handlePolicyEvaluateDue(node.data as Record<string, unknown>, payload) as unknown as Record<string, unknown>;
+        break;
+      }
+
+      case "azure_credential_expiry_check": {
+        // Promoted node type (Git #3861): sweeps azure_tenant_credentials for
+        // secrets expiring within EXPIRY_WARN_DAYS and emails the admin (via
+        // Exchange Online) once per credential per resend window. Reinstates
+        // the alerting the old admin-clients.ts route (#3424, dead per #3674)
+        // used to do, wired to the new azure-credentials surface's own data.
+        output = await handleAzureCredentialExpiryAlert(payload) as unknown as Record<string, unknown>;
         break;
       }
 

@@ -1227,6 +1227,35 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     },
   },
   {
+    name: "__system__: Azure Credential Expiry Alerts",
+    description:
+      "Daily check (08:00 UTC, Git #3861) for azure_tenant_credentials rows whose Key Vault " +
+      "secret expires within EXPIRY_WARN_DAYS (60) days — reinstates the alerting the old, now-dead " +
+      "admin-clients.ts route used to do (deleted by #3424), wired to the new azure-credentials " +
+      "surface's own expiring-summary data (azure-credential-expiry.ts) instead. Emails " +
+      "ADMIN_EMAIL/CRM_ADMIN_EMAIL via Exchange Online per credential, de-duped to once per 24h " +
+      "via azure_tenant_credentials.last_expiry_alert_sent_at.",
+    triggerType: "schedule",
+    cron: "0 8 * * *",
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron 08:00" } },
+        {
+          id: "check",
+          type: "azure_credential_expiry_check",
+          position: { x: 100, y: 230 },
+          data: { nodeType: "azure_credential_expiry_check", label: "Check + Alert Expiring Azure Credentials" },
+        },
+        { id: "end", type: "end", position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "check" },
+        { id: "e2", source: "check", target: "end" },
+      ],
+    },
+  },
+  {
     name: "__system__: Monthly Insights",
     description: "Monthly insights automation runner (cron 0 9 1 * *) — claims all enabled insights automations whose next_run_at has arrived and advances their schedule by 30 days.",
     triggerType: "schedule",

@@ -10,26 +10,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, azureTenantCredentialsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
-import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
-
-const EXPIRY_WARN_DAYS = 60;
-
-/**
- * Safely fetch expiry metadata for a single Key Vault secret.
- * Returns null (no warning) if Azure is not configured or the call fails.
- */
-async function safeGetExpiry(
-  secretName: string,
-  log: { warn: (obj: object, msg: string) => void },
-): Promise<string | null> {
-  try {
-    const meta = await getSecretMetadata(secretName);
-    return meta.expiresOn ? meta.expiresOn.toISOString() : null;
-  } catch (err) {
-    log.warn({ err, secretName }, "admin-azure-credentials: could not fetch KV expiry");
-    return null;
-  }
-}
+import { setSecretValue } from "../lib/azure-keyvault.ts";
+import { safeGetExpiry, getExpiringAzureCredentials } from "../lib/azure-credential-expiry.ts";
 
 const router: IRouter = Router();
 
@@ -195,21 +177,7 @@ router.get("/admin/clients/:id/azure-credential", requireAdmin, async (req: Requ
  */
 router.get("/admin/azure-credentials/expiring-summary", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const rows = await db
-      .select()
-      .from(azureTenantCredentialsTable)
-      .orderBy(azureTenantCredentialsTable.displayName);
-
-    const warnCutoff = new Date(Date.now() + EXPIRY_WARN_DAYS * 24 * 60 * 60 * 1000);
-
-    const enriched = await Promise.all(
-      rows.map(async row => ({
-        ...row,
-        expiresOn: await safeGetExpiry(row.keyVaultSecretName, req.log),
-      })),
-    );
-
-    const expiring = enriched.filter(r => r.expiresOn && new Date(r.expiresOn) <= warnCutoff);
+    const expiring = await getExpiringAzureCredentials(req.log);
 
     res.json({
       count: expiring.length,

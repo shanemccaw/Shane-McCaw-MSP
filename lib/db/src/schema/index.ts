@@ -1853,6 +1853,9 @@ export const azureTenantCredentialsTable = pgTable("azure_tenant_credentials", {
   clientId: text("client_id").notNull(),
   credentialType: text("credential_type", { enum: ["secret", "certificate"] }).notNull().default("secret"),
   keyVaultSecretName: text("key_vault_secret_name").notNull(),
+  // Git #3861 — de-dupes the expiry alert email to once per EXPIRY_ALERT_RESEND_HOURS
+  // window (azure-credential-expiry.ts) instead of re-firing every evaluation pass.
+  lastExpiryAlertSentAt: timestamp("last_expiry_alert_sent_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
@@ -3205,6 +3208,8 @@ export interface WfNode {
     | "graph_write_operation" | "graph_read_operation" | "execute_baseline_template" | "execute_monitor_check"
     // Remediation Tracker — on-demand pointed verification (#1540)
     | "remediation_pointed_verify"
+    // Azure App Registration / Azure Tenant Credential expiry alerting (Git #3861)
+    | "azure_credential_expiry_check"
     // Utilities
     | "comment";
   position: { x: number; y: number };
