@@ -241,6 +241,57 @@ describe("GET /msp/active-directory/ou/:id/assignments", () => {
   });
 });
 
+describe("GET /msp/active-directory/ous", () => {
+  it("rejects unauthenticated requests", async () => {
+    const res = await request(makeApp()).get("/msp/active-directory/ous?customerId=42");
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects roles below MSPOperator", async () => {
+    const res = await request(makeApp())
+      .get("/msp/active-directory/ous?customerId=42")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID, mspRole: LEGACY_ROLE.customer })}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("403s when the session carries no mspId", async () => {
+    const res = await request(makeApp())
+      .get("/msp/active-directory/ous?customerId=42")
+      .set("Authorization", `Bearer ${mspToken({ mspRole: LEGACY_ROLE.mspOperator })}`);
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: { code: "FORBIDDEN", message: "MSP context required" } });
+  });
+
+  it("400s when customerId is missing or not a positive integer", async () => {
+    const res = await request(makeApp())
+      .get("/msp/active-directory/ous")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("404s a customer outside the caller's book, without disclosing it exists", async () => {
+    mockSelect.mockReturnValueOnce(selectChain([])); // tenant ownership check -> no match
+    const res = await request(makeApp())
+      .get("/msp/active-directory/ous?customerId=42")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`);
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { code: "NOT_FOUND", message: "Customer not found" } });
+  });
+
+  it("returns real OUs for a customer the caller can access", async () => {
+    const ous = [{ id: 9, name: "Corporate / Finance" }, { id: 14, name: "Corporate / Managers" }];
+    mockSelect
+      .mockReturnValueOnce(selectChain([{ id: 42 }])) // tenant ownership
+      .mockReturnValueOnce(selectChain([])) // unrestricted staff scope
+      .mockReturnValueOnce(selectChain(ous)); // OUs for this customer
+    const res = await request(makeApp())
+      .get("/msp/active-directory/ous?customerId=42")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ous });
+  });
+});
+
 describe("POST /msp/active-directory/ou/:id/assignments", () => {
   it("400s when objectUpn is missing", async () => {
     const res = await request(makeApp())

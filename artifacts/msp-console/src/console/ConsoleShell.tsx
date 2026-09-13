@@ -21,6 +21,7 @@ import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
 import { ScopeSla } from "./modules/ScopeSla";
 import { Ownership } from "./modules/Ownership";
 import { Sales } from "./modules/Sales";
+import { PolicyEngine } from "./modules/PolicyEngine";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
@@ -320,6 +321,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     // create/edit/delete a bundle or assign/revoke a customer on one.
     const isAdmin = profile.role === "admin" || profile.mspRole === "PlatformAdmin" || profile.mspRole === "MSPAdmin";
     return <Sales mspId={profile.mspId ?? null} isAdmin={isAdmin} />;
+  }
+  if (sel.kind === "msp" && sel.page === "policy") {
+    return <PolicyEngine />;
   }
   if (sel.kind === "page" && (CHANGE_CONTROL_TABS as readonly string[]).includes(sel.page)) {
     // Change Control (#2579) needs the full customer row too — its Register,

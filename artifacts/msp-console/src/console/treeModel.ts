@@ -375,6 +375,13 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "This is the whole MSP, and it only runs one way — forward, with no undo.",
       };
     }
+    if (sel.page === "policy") {
+      return {
+        eyebrow: "POLICY DECISIONS + POLICY ENGINE",
+        title: "Policy",
+        note: "Customer-signed policy decisions and this MSP's own standing policies — two different real things that can produce the same route outcome.",
+      };
+    }
     return { eyebrow: "OPERATIONS · MSP-WIDE", title: mp?.label ?? "", note: "" };
   }
   const c = find(sel.tenant);

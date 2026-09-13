@@ -84,6 +84,51 @@ function auditActor(req: Request): { actorUserId: number; actorName: string; act
   return { actorUserId: user.id, actorName: user.name ?? user.email, actorRole: user.role };
 }
 
+// ── GET /msp/active-directory/ous?customerId= ─────────────────────────────────
+// Added for #2591 (MSP Console Policy Engine): the standing-policy author/edit
+// form needs a real OU picker for one customer, and nothing under `/api/msp/*`
+// listed OUs at all before this — `msp-standing-policies.ts` only ever takes a
+// bare `ouId` number on the wire (contract pack §4: "no OU name/label joined
+// onto WireStandingPolicy... needs a separate OU lookup"). This is that lookup.
+// Same ownership discipline as every other route in this file: `customerId`
+// must resolve through `assertCustomerAccess`, and only that customer's own
+// tenant-scoped OUs are ever returned — never the platform-wide null-tenant case.
+router.get(
+  "/msp/active-directory/ous",
+  requireAuth,
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response) => {
+    const mspId = resolveMspIdStrict(req);
+    if (mspId === null) {
+      apiError(res, 403, ApiErrorCode.FORBIDDEN, "MSP context required");
+      return;
+    }
+
+    const customerId = Number(req.query.customerId);
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+      apiError(res, 400, ApiErrorCode.VALIDATION, "customerId is required");
+      return;
+    }
+
+    if (!(await assertCustomerAccess(req.user!, customerId))) {
+      apiError(res, 404, ApiErrorCode.NOT_FOUND, "Customer not found");
+      return;
+    }
+
+    try {
+      const rows = await db
+        .select({ id: activeDirectoryOusTable.id, name: activeDirectoryOusTable.name })
+        .from(activeDirectoryOusTable)
+        .where(eq(activeDirectoryOusTable.tenantId, customerId))
+        .orderBy(asc(activeDirectoryOusTable.name));
+      res.json({ ous: rows });
+    } catch (err) {
+      log.error({ err, customerId, mspId }, "Failed to load OUs for customer");
+      apiError(res, 500, ApiErrorCode.INTERNAL, "Failed to load OUs for customer");
+    }
+  },
+);
+
 // ── GET /msp/active-directory/ou/:id/assignments ──────────────────────────────
 // List every real manual assignment currently pointed at this OU, scoped to
 // the caller's own MSP book.

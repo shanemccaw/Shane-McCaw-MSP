@@ -86,6 +86,7 @@ export const MSP_PAGES: LeafPage[] = [
   { id: "docs", label: "Documents", icon: "files" },
   { id: "connectors", label: "SharePoint connectors", icon: "plug" },
   { id: "offboarding", label: "Offboarding", icon: "log-out" },
+  { id: "policy", label: "Policy engine", icon: "shield-check" },
 ];
 
 /** Flattened tenant pages (leaf groups + every group child). */
