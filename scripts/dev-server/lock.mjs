@@ -11,9 +11,22 @@
 // breaks the lock and recovers -- so a crashed agent can never wedge the whole
 // fleet forever.
 
-import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+
+// Git #3020: the winner of the atomic `mkdirSync(lockDir)` race writes owner.json
+// as a SEPARATE, non-atomic follow-up syscall (see tryAcquire's `write()`). Between
+// those two syscalls there is a real window -- wider than it sounds under real
+// cross-process contention plus Windows filesystem/AV latency -- where lockDir
+// exists but owner.json does not yet. A second process's tryAcquire landing in that
+// window read `owner === null` and (before this fix) treated that as unconditionally
+// stale, breaking the winner's brand-new lock and creating its own -- leaving TWO
+// processes believing they hold the mutex, which is exactly the concurrent
+// index.lock / update_ref races selftest.mjs Scenarios 3 and 9 hit. This grace
+// window is what closes it: a missing owner.json is only "stale" once the lock DIR
+// itself is older than the grace period, not the instant it's observed empty.
+const NEW_LOCK_GRACE_MS = 2000;
 
 function ownerPath(lockDir) {
   return path.join(lockDir, "owner.json");
@@ -42,8 +55,29 @@ export function pidAlive(pid) {
   }
 }
 
-function isStale(owner, staleLockMs) {
-  if (!owner) return true; // lock dir exists but no/garbage owner.json => stale
+function isStale(owner, staleLockMs, lockDir) {
+  if (!owner) {
+    // lock dir exists but no/garbage owner.json. This is either a genuinely
+    // orphaned lock (a holder that crashed between mkdirSync and its owner.json
+    // write) or -- far more commonly under real contention -- we're simply
+    // observing another live process a few milliseconds into that same window,
+    // still on its way to writing owner.json. Use the lock DIRECTORY's own age
+    // (not the missing file's) to tell them apart: only treat it as stale once
+    // the dir has existed longer than a short grace period. Within the grace
+    // period, report "held" so the caller backs off and retries instead of
+    // breaking a lock someone else just won (Git #3020).
+    let dirAgeMs = Infinity;
+    try {
+      dirAgeMs = Date.now() - statSync(lockDir).birthtimeMs;
+      // Some filesystems don't populate birthtime; fall back to mtime.
+      if (!Number.isFinite(dirAgeMs) || dirAgeMs < 0) {
+        dirAgeMs = Date.now() - statSync(lockDir).mtimeMs;
+      }
+    } catch {
+      return true; // lockDir itself vanished mid-check -> nothing to protect
+    }
+    return dirAgeMs > NEW_LOCK_GRACE_MS;
+  }
   // Different machine? We can't check its pid; fall back to heartbeat age only.
   const sameHost = owner.host === os.hostname();
   if (sameHost && owner.pid && !pidAlive(owner.pid)) return true;
@@ -79,7 +113,7 @@ export function tryAcquire(config, { cycleId = null, onBreak } = {}) {
     if (e.code !== "EEXIST") throw e;
     // Held -- decide if it's stale.
     const owner = readOwnerRaw(lockDir);
-    if (!isStale(owner, staleLockMs)) return null; // genuinely held
+    if (!isStale(owner, staleLockMs, lockDir)) return null; // genuinely held
     // Break the stale lock and take it over.
     try {
       if (typeof onBreak === "function") onBreak(owner);
@@ -154,5 +188,5 @@ export function tryAcquire(config, { cycleId = null, onBreak } = {}) {
 /** Is the lock currently held by a live, non-stale holder? */
 export function isHeld(config) {
   if (!existsSync(config.lockDir)) return false;
-  return !isStale(readOwnerRaw(config.lockDir), config.staleLockMs);
+  return !isStale(readOwnerRaw(config.lockDir), config.staleLockMs, config.lockDir);
 }
