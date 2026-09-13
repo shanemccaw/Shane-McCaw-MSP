@@ -233,6 +233,15 @@ router.post(
         res.status(409).json({ error: "This action isn't wired to a real executable template yet" });
         return;
       }
+      // Git #3936 — templateId alone is not enough: a row can be demoted back
+      // off execution_ready (e.g. its linked template's endpoint turned out to
+      // be a made-up pseudo-scheme with no real executor) while templateId
+      // stays set on the row. Re-check the real gate the catalog itself uses
+      // to mean "ready," not just presence of a link.
+      if (catalogRow.status !== "execution_ready") {
+        res.status(409).json({ error: "This action is not currently execution-ready", status: catalogRow.status });
+        return;
+      }
       const templateId = catalogRow.templateId;
 
       const [tier, customerTier] = await Promise.all([
