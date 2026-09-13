@@ -775,7 +775,7 @@
                             </Border>
 
                             <!-- Modal Dialog Mockup -->
-                            <Border Grid.Column="1" Background="{StaticResource PanelBackgroundColor}" BorderBrush="{StaticResource BlueBrush}"
+                            <Border Grid.Column="1" Background="{StaticResource PanelBackgroundBrush}" BorderBrush="{StaticResource BlueBrush}"
                                     BorderThickness="1" CornerRadius="6" Padding="12" Margin="8,0,0,0">
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
