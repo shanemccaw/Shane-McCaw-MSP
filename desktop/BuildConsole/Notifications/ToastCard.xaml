@@ -23,6 +23,7 @@
                 <ColumnDefinition Width="Auto"/>  <!-- left accent bar -->
                 <ColumnDefinition Width="Auto"/>  <!-- kind icon -->
                 <ColumnDefinition Width="*"/>     <!-- title + message -->
+                <ColumnDefinition Width="Auto"/>  <!-- bookmark -->
                 <ColumnDefinition Width="Auto"/>  <!-- close -->
             </Grid.ColumnDefinitions>
 
@@ -54,8 +55,21 @@
                            Foreground="{StaticResource Subtext0Brush}"/>
             </StackPanel>
 
+            <!-- Bookmark (Git #3878) — toggles this toast's persisted history entry's bookmark
+                 state; glyph/colour set in code-behind. Does not affect this floating card's own
+                 auto-dismiss/close lifecycle. -->
+            <Button x:Name="BtnBookmark" Grid.Column="3"
+                    Content="&#x2606;"
+                    Style="{StaticResource IconButton}"
+                    FontSize="11"
+                    Padding="6,4"
+                    VerticalAlignment="Top"
+                    Margin="0,6,0,0"
+                    ToolTip="Bookmark"
+                    Click="BtnBookmark_Click"/>
+
             <!-- Dismiss (the toast also auto-dismisses on its own) -->
-            <Button x:Name="BtnClose" Grid.Column="3"
+            <Button x:Name="BtnClose" Grid.Column="4"
                     Content="&#x2715;"
                     Style="{StaticResource IconButton}"
                     FontSize="10"

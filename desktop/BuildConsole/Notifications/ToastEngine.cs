@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using BuildConsole.Services;
 
 namespace BuildConsole
 {
@@ -96,7 +97,12 @@ namespace BuildConsole
                     _host = host;
                 }
 
-                host.AddToast(title ?? "", message ?? "", kind, duration ?? DefaultDuration(kind), onClick, persistent);
+                // Git #3878 — every real toast shown gets recorded into #3877's persisted history
+                // (right alongside the AddToast() call below), and the returned Id is threaded
+                // through to the card itself so its bookmark button can reference the same entry.
+                var historyId = NotificationHistoryStore.Add(title ?? "", message ?? "", kind.ToString());
+
+                host.AddToast(title ?? "", message ?? "", kind, duration ?? DefaultDuration(kind), onClick, persistent, historyId);
             }
             catch
             {

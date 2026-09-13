@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using BuildConsole.Services;
 
 namespace BuildConsole
 {
@@ -25,6 +26,8 @@ namespace BuildConsole
         private readonly TimeSpan _duration;
         private readonly Action? _onClick;
         private readonly bool _persistent;
+        private readonly Guid? _historyId;
+        private bool _bookmarked;
         private bool _closing;
 
         /// <param name="persistent">Git #1636 — when true, this card never auto-dismisses: the
@@ -32,13 +35,18 @@ namespace BuildConsole
         /// the only way it closes is the ✕ button (or an <paramref name="onClick"/> that dismisses
         /// itself). Used by the Priority Build Set completion toast, which must stay on screen
         /// until Shane actively closes it.</param>
-        public ToastCard(string title, string message, ToastKind kind, TimeSpan duration, Action? onClick = null, bool persistent = false)
+        /// <param name="historyId">Git #3878 — this toast's own <see cref="NotificationHistoryStore"/>
+        /// entry Id, if one was recorded, so the bookmark button below can reference it. Bookmarking
+        /// affects only that persisted history entry's survival in the tray — it never keeps this
+        /// floating card itself on screen, and is unrelated to <paramref name="persistent"/>.</param>
+        public ToastCard(string title, string message, ToastKind kind, TimeSpan duration, Action? onClick = null, bool persistent = false, Guid? historyId = null)
         {
             InitializeComponent();
 
             _duration = duration;
             _onClick = onClick;
             _persistent = persistent;
+            _historyId = historyId;
 
             // A card with a click action becomes a click target: hand cursor + a body-click handler
             // (the ✕ close button keeps its own handler; a click on it is excluded below).
@@ -58,6 +66,12 @@ namespace BuildConsole
             TitleText.Visibility = hasTitle ? Visibility.Visible : Visibility.Collapsed;
             MessageText.Text = message ?? "";
             MessageText.Visibility = string.IsNullOrWhiteSpace(message) ? Visibility.Collapsed : Visibility.Visible;
+
+            // The bookmark button only makes sense for a toast that actually has a history entry
+            // to reference; a card with no historyId (shouldn't normally happen — ShowCore always
+            // records one — but defensive nonetheless) hides it rather than toggling nothing.
+            BtnBookmark.Visibility = _historyId.HasValue ? Visibility.Visible : Visibility.Collapsed;
+            UpdateBookmarkGlyph();
 
             _timer = new DispatcherTimer { Interval = duration };
             _timer.Tick += (_, _) => BeginClose();
@@ -117,24 +131,45 @@ namespace BuildConsole
 
         private void BtnClose_Click(object sender, RoutedEventArgs e) => BeginClose();
 
+        // Git #3878 — toggles this toast's persisted history entry's bookmark state. Does NOT call
+        // BeginClose(): bookmarking a toast from the floating card must not keep the card itself on
+        // screen, nor cut it short — the card still auto-dismisses/closes exactly as it would have.
+        private void BtnBookmark_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_historyId.HasValue) return;
+
+            _bookmarked = !_bookmarked;
+            try { NotificationHistoryStore.SetBookmarked(_historyId.Value, _bookmarked); }
+            catch { /* a bookmark toggle must never crash the toast */ }
+            UpdateBookmarkGlyph();
+        }
+
+        private void UpdateBookmarkGlyph()
+        {
+            BtnBookmark.Content = _bookmarked ? "★" : "☆";
+            BtnBookmark.Foreground = _bookmarked ? Res("YellowBrush") : Res("Subtext0Brush");
+            BtnBookmark.ToolTip = _bookmarked ? "Bookmarked" : "Bookmark";
+        }
+
         // Body click (only wired when an onClick was supplied). Ignore clicks that originate on the ✕
-        // close button (it has its own handler) so a dismiss-click doesn't also fire the action; then
-        // invoke the action and animate the toast out.
+        // close button or the ★/☆ bookmark button (each has its own handler) so a dismiss-click
+        // doesn't also fire the action; then invoke the action and animate the toast out.
         private void CardRoot_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
             if (_closing || _onClick == null) return;
-            if (IsWithinCloseButton(e.OriginalSource as DependencyObject)) return;
+            if (IsWithinButton(e.OriginalSource as DependencyObject, BtnClose)) return;
+            if (IsWithinButton(e.OriginalSource as DependencyObject, BtnBookmark)) return;
 
             try { _onClick(); }
             catch { /* a click handler must never crash the toast */ }
             BeginClose();
         }
 
-        private bool IsWithinCloseButton(DependencyObject? source)
+        private bool IsWithinButton(DependencyObject? source, DependencyObject target)
         {
             while (source != null)
             {
-                if (ReferenceEquals(source, BtnClose)) return true;
+                if (ReferenceEquals(source, target)) return true;
                 source = source is Visual || source is System.Windows.Media.Media3D.Visual3D
                     ? VisualTreeHelper.GetParent(source)
                     : LogicalTreeHelper.GetParent(source);
