@@ -8481,11 +8481,25 @@ namespace BuildConsole
                     string href = Str("href") ?? "";
                     string convId = Str("conversationId") ?? "";
                     bool matched = Bool("matched");
+                    // Git #3725 — a null convId here is NOT automatically a frozen real chat tab.
+                    // ClaudeWebView (the persistent Home-screen/new-chat composer, a parked 1x1 tab —
+                    // see the "Git #874 Home screen" / "parked 1x1 tab" comments on its declaration
+                    // and around line 959) sits on '/new' or '/' for its whole lifetime and is never
+                    // attached to any ChatDocumentContainer/Band-1 gauge, so its null reading is
+                    // functionally inert. Confirmed via a live 3-day log grep (#3725): every null-convId
+                    // [link 1] line across that window came from exactly this wv, and no real chat tab
+                    // ever logged pathname='/new'. Generalize past this one named field to any wv with
+                    // no live _contextMeters registration — that's the same "not backing a real gauge"
+                    // condition for any future similarly-parked view.
+                    bool isBenignUnattachedComposer = !matched && diagWv != null &&
+                        (ReferenceEquals(diagWv, ClaudeWebView) || !_contextMeters.ContainsKey(diagWv));
                     BuildConsole.Services.ActivityLog.Log("system.core.chat-context",
                         $"[link 1] ChatContextMeterScript alive on wv={ContextMeterWvId(diagWv)} — pathname='{path}' " +
                         (matched
                             ? $"convId={convId} (real /chat/<uuid> — the write chain HAS a key to persist under; any frozen gauge is downstream of here)"
-                            : "convId=<NULL> (this pathname is NOT /chat/<uuid>, so ChatContextMeterStore.Merge has no key and persists NOTHING — this is the frozen-gauge root cause when it fires)") +
+                            : isBenignUnattachedComposer
+                                ? "convId=<NULL> (BENIGN — this wv has no live ChatDocumentContainer/Band-1 gauge attached, so a null reading here is expected composer-cycling, not a frozen chat; see #3725)"
+                                : "convId=<NULL> (this pathname is NOT /chat/<uuid>, so ChatContextMeterStore.Merge has no key and persists NOTHING — this is the frozen-gauge root cause when it fires)") +
                         $" href='{href}'");
                 }
                 else if (type == "BT_EDIT_BUILD")
