@@ -33,28 +33,23 @@
   <sc-if value="{{ isLive }}" hint-placeholder-val="{{ true }}">
     <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:24px;display:flex;flex-direction:column;gap:16px;min-width:0">
       <div style="display:flex;flex-direction:column;gap:8px;max-width:640px">
-        <span style="font-size:16px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Nothing can reach this queue yet</span>
-        <span style="font-size:12.5px;color:#cbd5e1;line-height:1.65;text-wrap:pretty">The queue answers with an empty list and a count of zero, and it will keep doing that for every MSP on every deployment of this code. That is not a quiet period — the machinery that would put a row here has no callers. No module has registered a record class for retention, and nothing anywhere calls the soft-delete or request-acceleration functions, so the ledger this reads cannot gain a row outside a manual database insert.</span>
+        <span style="font-size:16px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Queue clear — zero pending accelerated-delete requests</span>
+        <span style="font-size:12.5px;color:#cbd5e1;line-height:1.65;text-wrap:pretty">The queue answers with an empty list and a count of zero right now, confirmed against this MSP's own live data. That is not the same claim as "nothing can ever reach this queue" — POA&amp;M soft delete (Git #3451) registers a real record class and calls the soft-delete / request-acceleration functions this queue reads, so a pending row can genuinely appear here once a customer asks to accelerate a deleted POA&amp;M's purge. It just hasn't happened yet in this environment.</span>
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
         <sc-for list="{{ blockers }}" as="b" hint-placeholder-count="3">
           <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:13px;display:flex;flex-direction:column;gap:5px;min-width:0">
-            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#f87171">{{ b.label }}</span>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#60a5fa">{{ b.label }}</span>
             <span style="font-size:12px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ b.value }}</span>
             <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ b.note }}</span>
           </div>
         </sc-for>
       </div>
 
-      <div style="border:1px solid rgba(248,113,113,.25);border-radius:10px;background:rgba(248,113,113,.07);padding:13px;display:flex;flex-direction:column;gap:6px">
-        <span style="font-size:11.5px;font-weight:700;color:#f87171">What the two actions do against a hand-inserted row</span>
-        <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">Approving destroys the record inside the same request — there is no separate purge step to think again at. But the purge first looks up the record class, finds nothing registered, and throws a plain error that the route cannot map, so the operator gets an unexplained server failure. Restoring fails at exactly the same lookup. Both actions are unusable even where a row exists.</span>
-      </div>
-
       <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(148,163,184,.12);padding-top:14px">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">WHAT THIS SCREEN IS FOR, ONCE SOMETHING WIRES IN</span>
-        <span style="font-size:12px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">A customer deletes a record and it enters a holding period rather than disappearing. If they ask for it gone sooner, that request lands here for an operator to approve, decline, or talk about and restore instead. The queue is the operator's half of that loop; the customer's half is what has never been built.</span>
+        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">WHAT THIS SCREEN IS FOR</span>
+        <span style="font-size:12px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">A customer deletes a record and it enters a holding period rather than disappearing. If they ask for it gone sooner, that request lands here for an operator to approve, decline, or talk about and restore instead. The queue is the operator's half of that loop.</span>
         <button onClick="{{ toggleShape }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;align-self:flex-start;height:32px;padding:0 13px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:6px">See the queue as it would look</button>
       </div>
     </div>
@@ -64,7 +59,7 @@
   <sc-if value="{{ isShape }}" hint-placeholder-val="{{ false }}">
     <div style="border:1px solid rgba(251,191,36,.3);border-radius:12px;background:rgba(251,191,36,.07);padding:13px;display:flex;flex-direction:column;gap:5px;min-width:0">
       <span style="font-size:11.5px;font-weight:700;color:#fbbf24">Not live data</span>
-      <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">Every row below is drawn from the shape the routes return, with a record class borrowed from the test fixture. No deployment can produce these rows today — this view exists so the page is ready when a module finally wires its deletes through retention.</span>
+      <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">Every row below is drawn from the shape the routes return, with a record class borrowed from the test fixture. This view exists so the page is ready when more of the queue's real traffic starts flowing.</span>
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:14px;align-items:start;min-width:0">
@@ -298,9 +293,9 @@ class Component extends DCLogic {
       shapeBtnLabel: live ? "Show the queue shape" : "Back to the real state",
 
       blockers: [
-        { label: "RECORD CLASSES REGISTERED", value: "None", note: "The registry ships empty and every module was left to plug itself in. None has." },
-        { label: "CALLERS OF SOFT DELETE", value: "None", note: "Nothing puts a record into a holding period, so no ledger row is ever written." },
-        { label: "CALLERS OF THE REQUEST", value: "None", note: "Even with rows, nothing can move one into the pending state this queue filters on." }
+        { label: "RECORD CLASSES REGISTERED", value: "msp_poams", note: "Registered by Git #3451's retention wiring. Other modules have not yet plugged in." },
+        { label: "CALLERS OF SOFT DELETE", value: "msp-poams.ts · portal-poams.ts", note: "Both the MSP-console and customer-portal POA&M delete routes call it." },
+        { label: "CALLERS OF THE REQUEST", value: "portal-poams.ts", note: "The customer-portal 'request early purge' route is the real producer for this queue." }
       ],
 
       listCaption: pending.length + " pending of " + st.rows.length + " shown",
@@ -342,9 +337,8 @@ class Component extends DCLogic {
       resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
 
       notes: [
-        { dot: "#f87171", text: "No row can reach this queue on any deployment of the current code. No record class is registered and nothing calls the soft-delete or acceleration functions, so the ledger stays empty outside a manual insert — the empty state is the whole truth of this surface today, not a quiet week." },
         { dot: "#f87171", text: "Approving purges inside the same request. There is no staged approval, no undo and no confirmation step in the route, so whatever guard exists has to be in the screen." },
-        { dot: "#f87171", text: "Even against a hand-inserted row, both approve and restore fail at the record-class lookup with a plain error the route cannot map, so the operator sees an unexplained server failure rather than the real reason." },
+        { dot: "#f87171", text: "For a record class other than msp_poams — the one registered so far — approve and restore still fail at the record-class lookup with a plain error the route cannot map, so the operator sees an unexplained server failure rather than the real reason." },
         { dot: "#fbbf24", text: "The approval field is read strictly: anything other than the exact boolean true is treated as a decline, with no validation error. A malformed approval silently becomes the opposite decision." },
         { dot: "#fbbf24", text: "Restore requires a reason, but a missing one arrives as an empty string and is only caught deeper in, so the refusal surfaces as a late error rather than a form validation." },
         { dot: "#fbbf24", text: "Restoring attaches a fixed, hardcoded note to the record rather than the operator's own words. The reason typed here goes to the restore, not to the declined request." },

@@ -12,9 +12,9 @@ session; every field below is cross-checked live against local Postgres (`shanem
 (189 counting the trailing newline), 3 routes: `GET /api/msp/retention/queue`, `POST
 /api/msp/retention/queue/:deletionId/decide`, `POST /api/msp/retention/queue/:deletionId/discuss`.
 No genuine incompleteness marker (`TODO`/`FIXME`/stub) exists in the file. **But completeness is
-not the same question as reachability** — §4 below is a real, confirmed finding that the queue
-this route reads can never hold a row in the live system today, for a reason that has nothing to
-do with this file.
+not the same question as adoption** — §4 below documents that the queue this route reads is now
+genuinely reachable (Git #3451 registered a real record class and wired real callers), but is
+still empty in this environment today because no customer has exercised that path here yet.
 
 Sources this pack is built against, and nothing else:
 
@@ -221,71 +221,65 @@ already recorded for this same shared helper. Not filed again here — already t
 
 ---
 
-## 4. Finding — the queue is structurally unreachable: nothing in the live codebase can ever produce a row for it to show
+## 4. Finding — the queue is genuinely reachable now; it's just empty in this environment today
 
-This is a materially different claim than "the queue is empty in this environment today." It is:
-**no path exists anywhere in the current tree for `record_deletions` to ever gain a row with
-`acceleration_state = 'pending'`, so `GET /api/msp/retention/queue` cannot return a non-empty
-result against any real deployment of this code as it stands, and the two write routes can never
-successfully act on a real record.**
+**Superseded 2026-09-13 (#3909).** This section originally claimed the queue was *structurally*
+unreachable — "no path exists anywhere in the current tree for `record_deletions` to ever gain a
+row." That premise went stale when Git #3451 (POA&M soft delete) landed: a real record class is
+now registered and real callers exist. The corrected claim is narrower: **the queue is empty in
+this environment right now, but the code path that would populate it is real and reachable.**
 
-Evidence, each independently verifiable:
+Evidence, each independently verified live against the current tree (2026-09-13):
 
-1. **`registry.ts` ships empty by design** (`registry.ts:14` — *"This registry ships empty — #1947
-   is the mechanism, and per-module wiring is each consuming module's own issue"*), and
-   `requireRetainedRecordType()` (`registry.ts:109-117`) throws `retention: no retained-record
-   type registered for "<type>"` for anything not registered.
-2. **Zero modules call `registerRetainedRecordType()`.** A repo-wide grep for the call (excluding
-   its own definition in `registry.ts`) returns nothing:
+1. **A record class is now registered.** `artifacts/api-server/src/lib/retention/wiring/msp-poams.ts:47`
+   calls `registerRetainedRecordType({ recordType: "msp_poams", ... })`. Confirmed live:
    ```
    grep -rln "registerRetainedRecordType" --include=*.ts .
-   ./artifacts/api-server/src/lib/retention/registry.ts
+   ./artifacts/api-server/src/lib/retention/registry.ts        (definition)
+   ./artifacts/api-server/src/lib/retention/wiring/msp-poams.ts (a real caller)
    ```
-3. **Zero routes call `softDelete()` or `requestAcceleration()`** — the only two functions in
-   `lifecycle.ts` that can create a `record_deletions` row or move one into
-   `accelerationState: "pending"`:
+   `registerPoamRetention()` is imported for its registration side effect from both
+   `routes/msp-poams.ts` and `routes/portal-poams.ts` (either import alone is sufficient; the
+   registries are process-wide singletons).
+2. **Real routes call `softDelete()` and `requestAcceleration()`.** Confirmed live at the exact
+   call sites:
    ```
-   grep -rln "softDelete(\|requestAcceleration(" artifacts/api-server/src/routes --include=*.ts
+   artifacts/api-server/src/routes/msp-poams.ts:695      softDelete({ ... })
+   artifacts/api-server/src/routes/portal-poams.ts:644   softDelete({ ... })
+   artifacts/api-server/src/routes/portal-poams.ts:721   requestAcceleration({ ... })
    ```
-   returns nothing outside test files. This is consistent with the file's own header
-   (`msp-retention-queue.ts:6-8`): the state machine *"had zero callers anywhere in the codebase
-   before this file"* — but this file itself only ever calls the **read** (`getDeletionById`,
-   `listAccelerationQueue`) and **decide/restore** functions, never `softDelete`/
-   `requestAcceleration`. Nothing upstream of the queue was ever wired.
-4. **The one epic that names the expected first real caller is still open.** #1944's own body
-   names *"POA&M soft delete (#1935) — the trigger"* as the consumer that would call in here;
-   #1935 (`Feature: POA&Ms (Portal)`) is confirmed **OPEN**, not closed, and a grep of
-   `msp-poams.ts`/`portal-poams.ts` finds no `softDelete`/`registerRetainedRecordType` call
-   either.
-5. **Confirmed live**: local Postgres `record_deletions` has **0 rows**, queried directly
-   (`SELECT count(*) FROM record_deletions` → `0`). Consistent with the above — not merely
-   "nobody has deleted anything in this test environment," but "nothing in the current code path
-   is capable of writing this table outside a manual `INSERT`."
+   The customer-portal "request early purge" route (`portal-poams.ts:721`) is the real producer
+   for this queue: a customer soft-deletes a POA&M, then asks for it purged early, and that
+   request is what would land as a `record_deletions` row with `acceleration_state: "pending"`.
+3. **Confirmed live**: local Postgres `record_deletions` still has **0 rows**, queried directly
+   (`SELECT count(*) FROM record_deletions` → `0`, re-confirmed 2026-09-13). This is now an
+   honest "hasn't happened yet in this environment" empty state, not a structural impossibility —
+   no customer has actually run a POA&M through soft-delete + accelerated-purge-request locally.
 
-**Concrete, currently-inescapable consequences for this route's own three endpoints:**
+**Concrete, current consequences for this route's own three endpoints:**
 
-- `GET /api/msp/retention/queue` will return `{ queue: [], total: 0 }` against any real MSP today,
-  always — a real, honest empty state (§5), but one that can *never* become non-empty until some
-  other module actually calls `requestAcceleration()`, which itself requires that module to have
-  first called `softDelete()` and registered its record type.
-- `POST .../decide` and `POST .../discuss` will **404** for every real `deletionId`, because
-  `getDeletionById` can never find a row.
-- Even in a test/manual-SQL environment where a `record_deletions` row is inserted directly with
-  `acceleration_state = 'pending'` for some `recordType` string: approving it
-  (`decideAcceleration({ approve: true })`) calls `purgeNow()` (`lifecycle.ts:514`), which calls
-  `requireRetainedRecordType(row.recordType)` (`lifecycle.ts:541`) and **throws** for any
-  unregistered type — caught only as a generic, uninformative `500` `{ error: "Failed to record
-  the acceleration decision" }` by the route (`:140-141`), because the thrown error is a plain
-  `Error`, not a `RetentionError`, so it does not map to a diagnosable status. `restore()`
-  (called by `discuss`) hits the identical `requireRetainedRecordType` call at `lifecycle.ts:341`
-  and fails the same way.
+- `GET /api/msp/retention/queue` returns `{ queue: [], total: 0 }` against local dev today — a
+  real, honest empty state (§6) that *can* become non-empty the moment a customer soft-deletes a
+  POA&M and requests early purge through `portal-poams.ts`.
+- `POST .../decide` and `POST .../discuss` will **404** for any `deletionId` today, simply because
+  no row exists yet — not because the record-class lookup would fail. For a pending row whose
+  `recordType` is `"msp_poams"`, approving it (`decideAcceleration({ approve: true })` →
+  `purgeNow()` → `requireRetainedRecordType("msp_poams")`) and restoring it (`discuss` → `restore()`
+  → the same lookup) both now **succeed**, because `"msp_poams"` is a registered type.
+- The failure mode described in the prior version of this section — `requireRetainedRecordType()`
+  throwing for *any* `recordType`, surfaced only as a generic uninformative `500` — is now real
+  only for a `recordType` other than `"msp_poams"` (e.g. a hand-inserted test row using
+  `"msp_risk_decisions"`, which remains unregistered). That is no longer "the only possible
+  outcome" — it's "the outcome for an unregistered type," a materially different and much
+  narrower claim.
 
-This is not a defect in `msp-retention-queue.ts` — the route correctly implements the contract
-`lifecycle.ts` exposes. It is a real, live gap in the platform's retention *adoption*: the
-mechanism (#1947/#2764/#2765, all closed) is fully built and reachable, but no product module has
-yet actually plugged into it, so this operator surface has nothing to operate on. Filed as its own
-issue, parented per this pack's own header (§ above — no Feature-tier parent for #3372, so #1571),
-listed in this build's DONE bookend.
+This was never a defect in `msp-retention-queue.ts` — the route correctly implements the contract
+`lifecycle.ts` exposes. What changed is platform *adoption*: one product module (POA&Ms, Git
+#3451) has now actually plugged a record type and real callers into the retention mechanism, so
+this operator surface has something it can genuinely operate on — it just hasn't yet, in this
+environment. Other record classes (e.g. `msp_risk_decisions`) remain unregistered and would still
+hit the original failure mode if a row for one were ever manually inserted. Tracked as #3909
+(sibling under #1571, no Feature-tier parent), listed in this build's DONE bookend.
 
 ---
 
@@ -303,10 +297,13 @@ listed in this build's DONE bookend.
   "no_longer_needed"` (`RETENTION_ACCELERATION_REASONS`, `retention.ts:136`).
 - **Record type** — `record_deletions.record_type` is free `text`, no DB-level enum, "conventionally
   its real table name" (`retention.ts:287`). Real, current vocabulary is whatever
-  `registerRetainedRecordType()` has been called with — **currently empty** (§4). So there is, as
-  of this pack, no live example of a real `recordType` value flowing through this route in
-  production use; the test file's own fixture (`"msp_risk_decisions"`, `msp-retention-queue.test.ts:118`)
-  is illustrative of the intended shape, not a confirmed live value.
+  `registerRetainedRecordType()` has been called with — as of #3451, that's **`"msp_poams"`** (§4),
+  the one real registered type. There is, as of this pack, still no live example of a real
+  `recordType` value actually flowing through this route's DB rows (`record_deletions` remains 0
+  rows, §4/§6), but the value it would carry if one appeared today is a confirmed live constant
+  (`msp-poams.ts:26`), not merely illustrative; the test file's own fixture
+  (`"msp_risk_decisions"`, `msp-retention-queue.test.ts:118`) remains unregistered and would still
+  fail record-class lookup.
 - **MSP role floor for these 3 routes** — `requireRole("MSPOperator")` admits MSPOperator,
   MSPAdmin, PlatformAdmin, via the #2458 RBAC ladder evaluator (§1) rather than a raw array-index
   comparison, though the allow set is unchanged.
@@ -318,8 +315,8 @@ listed in this build's DONE bookend.
 - **`queue`**: a genuinely empty result is a real `[]` — no fixture branch exists in this router.
   Confirmed against local Postgres: `record_deletions` is **0 rows** in the local dev DB right
   now, so a real call against local dev returns a real, honestly-empty queue — not a fixture. See
-  §4 for why this is not merely a today-there's-no-data state but a structurally-guaranteed one
-  until some module wires in.
+  §4: this is a today-there's-no-data state, not a structural impossibility — the `msp_poams`
+  record class and its callers are real and reachable, no customer has just exercised them here.
 - **`total`**: always exactly `queue.length` — there is no separate "how many total exist across
   every stage/state" count; a `total: 0` here says only "zero pending accelerations," not "zero
   deletions of any kind" for the MSP.
@@ -336,10 +333,11 @@ listed in this build's DONE bookend.
 
 - **vs. `lifecycle.ts`'s other write paths (`softDelete`, `requestAcceleration`)**: this route
   touches only the **read** and **decide/restore** ends of the lifecycle — it is the operator's
-  half of a loop whose customer/system half (delete, request acceleration) has no caller anywhere
-  yet (§4). When some future module does wire `softDelete`/`requestAcceleration`, this route
-  requires no change to start actually serving real rows — it was built ahead of its own inputs
-  existing, which is explicit in the file's own header comment.
+  half of a loop whose customer/system half (delete, request acceleration) now has a real caller,
+  `portal-poams.ts` (§4, Git #3451). This route required no change to start actually serving real
+  rows once that landed — it was built ahead of its own inputs existing, which is explicit in the
+  file's own header comment. It just hasn't served a non-empty result yet in this environment,
+  because no customer has exercised the POA&M soft-delete + accelerated-purge-request path here.
 - **vs. `msp-alerts.ts` / `msp-customer-timeline.ts`** (sibling cross-tenant MSP-operator
   surfaces): same `requireRole("MSPOperator")` + `resolveMspIdStrict` +
   `resolveStaffScopedCustomerIds` shape (this file's own header names `msp-alerts.ts` as the
@@ -366,12 +364,13 @@ listed in this build's DONE bookend.
 grep -rn "retention/queue\|msp-retention-queue" artifacts/ --include=*.ts --include=*.tsx | grep -v '\.test\.ts'
 ```
 
-returns only the route file's own definition/header/log-line text and its mount in
-`routes/index.ts:226,560` — no frontend caller anywhere in the current tree. Expected, current
-state, not a gap this pack invents: the file's own header names why (`msp-retention-queue.ts:8-11`
-— #1949, the MSP-console queue UI, was closed `NOT_PLANNED` and reset pending a real Feature
-build). The endpoint is real, live, and mounted (`app.ts:127` → `routes/index.ts:560`) but
-exercised by nothing today — and, per §4, would have nothing real to show even if a UI called it.
+**Superseded 2026-09-13 (#3909).** This section originally reported no frontend caller anywhere in
+the tree. That's now stale: `artifacts/msp-console/src/api/retention-api.ts` calls all three
+routes, and `artifacts/msp-console/src/modules/retention/RetentionQueue.tsx` (Git #3817, mounted
+by `ConsoleShell` at `/ops/retention`) is a real, shipped MSP-console page that renders them. The
+endpoint is real, live, mounted (`app.ts:127` → `routes/index.ts:560`), and now genuinely
+exercised by a real UI — it just has nothing to show yet in this environment, per §4, because
+`record_deletions` is still 0 rows locally.
 
 ---
 
