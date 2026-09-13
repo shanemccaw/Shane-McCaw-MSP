@@ -398,6 +398,13 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "Parked items from every writer that gives up on a job — replay what the workflow engine can rebuild, close out the rest by hand.",
       };
     }
+    if (sel.page === "retention") {
+      return {
+        eyebrow: "RETENTION QUEUE",
+        title: "Requests to delete something early",
+        note: "A customer deletes a record and it enters a holding period rather than disappearing. If they ask for it gone sooner, that request lands here for an operator to approve, decline, or talk about and restore instead.",
+      };
+    }
     if (sel.page === "plan") {
       return {
         eyebrow: "PLATFORM SUBSCRIPTION — SELF-SERVICE",

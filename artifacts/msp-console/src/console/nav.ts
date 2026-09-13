@@ -99,6 +99,7 @@ export const MSP_PAGES: LeafPage[] = [
   { id: "dlq", label: "Dead Letter Queue", icon: "trash-2" },
   { id: "plan", label: "Plan & billing", icon: "credit-card" },
   { id: "reports", label: "Reports", icon: "file-bar-chart-2" },
+  { id: "retention", label: "Retention Queue", icon: "hourglass" },
 ];
 
 /** Flattened tenant pages (leaf groups + every group child). */

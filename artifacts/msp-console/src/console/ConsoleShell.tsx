@@ -42,6 +42,7 @@ import {
   groupForPage, parseLocation, selectionToPath, type Selection,
 } from "./nav";
 import { RiskRegister } from "@/modules/risk-register/RiskRegister";
+import { RetentionQueue } from "@/modules/retention/RetentionQueue";
 
 function roleLabelFor(p: MspUserProfile): string {
   if (p.mspRole === "PlatformAdmin") return "PlatformAdmin — full access";
@@ -344,6 +345,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     // MSPOperator can read/create/trigger/pause everything but not delete a definition.
     const isAdmin = profile.role === "admin" || profile.mspRole === "PlatformAdmin" || profile.mspRole === "MSPAdmin";
     return <Reports isAdmin={isAdmin} />;
+  }
+  if (sel.kind === "msp" && sel.page === "retention") {
+    return <RetentionQueue />;
   }
   if (sel.kind === "page" && (CHANGE_CONTROL_TABS as readonly string[]).includes(sel.page)) {
     // Change Control (#2579) needs the full customer row too — its Register,
