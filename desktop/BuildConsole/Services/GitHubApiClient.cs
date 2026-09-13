@@ -2250,6 +2250,77 @@ namespace BuildConsole.Services
             return result;
         }
 
+        /// <summary>Git #3900 — chunk size for <see cref="BatchGetIssueStatesAsync"/>. This is called
+        /// with the tiny real set of issue numbers currently sitting in `verifying` (almost always 0,
+        /// rarely more than a handful), so a generous chunk size costs nothing in practice — matches
+        /// the other aliased batch reads' sizing.</summary>
+        private const int IssueStateLookupChunkSize = 25;
+
+        /// <summary>
+        /// Git #3900 — the narrow, event-driven counterpart to the full open-issue snapshot
+        /// <see cref="BuildQueuePostgresClient.PromoteVerifyingToDoneAsync"/> normally consumes:
+        /// resolves ONLY the caller-supplied issue numbers' real current <c>state</c> ("OPEN"/"CLOSED")
+        /// via a small number of aliased <c>issue(number:)</c> GraphQL reads
+        /// (<see cref="IssueStateLookupChunkSize"/> per call), instead of a whole-board walk. Exists so
+        /// <see cref="QueueWatcherService"/>'s existing tick can check "did this handful of Verifying
+        /// issues actually close?" on every pass without waiting for a manual Git Board refresh — the
+        /// real #3900 fix. Only numbers GraphQL actually returned a node for appear in the result; a
+        /// missing number is left to the caller to treat as "couldn't determine" (same convention as
+        /// every other batched read here). A rate-limited/short-circuited chunk throws so the caller can
+        /// stop rather than guess at the un-fetched issues' state.
+        /// </summary>
+        public async Task<Dictionary<int, string>> BatchGetIssueStatesAsync(IReadOnlyList<int> issueNumbers)
+        {
+            var result = new Dictionary<int, string>();
+            if (issueNumbers == null || issueNumbers.Count == 0) return result;
+
+            var distinct = issueNumbers.Where(n => n > 0).Distinct().ToList();
+
+            for (int offset = 0; offset < distinct.Count; offset += IssueStateLookupChunkSize)
+            {
+                var chunk = distinct.Skip(offset).Take(IssueStateLookupChunkSize).ToList();
+                var sb = new StringBuilder();
+                sb.Append("query { ");
+                sb.Append($"repository(owner: \"{Owner}\", name: \"{Repo}\") {{ ");
+                for (int i = 0; i < chunk.Count; i++)
+                    sb.Append($"a{i}: issue(number: {chunk[i]}) {{ state }} ");
+                sb.Append("} }");
+
+                using var req = new HttpRequestMessage(HttpMethod.Post, "graphql")
+                {
+                    Content = JsonContent.Create(new { query = sb.ToString() }),
+                };
+                var res = await _http.SendAsync(req);
+                LogIfUnauthorized(res, "graphql (verifying→done narrow issue-state check)");
+                res.EnsureSuccessStatusCode();
+
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("errors", out var errs) && errs.ValueKind == JsonValueKind.Array && errs.GetArrayLength() > 0)
+                {
+                    var msg = string.Join("; ", errs.EnumerateArray()
+                        .Select(e => e.TryGetProperty("message", out var m) ? m.GetString() : null)
+                        .Where(s => !string.IsNullOrEmpty(s)));
+                    if (GitHubRateLimitCircuit.LooksLikeRateLimit(msg) || GitHubRateLimitCircuit.IsCircuitOpenMessage(msg))
+                        throw new Exception("GitHub GraphQL: " + msg);
+                    ActivityLog.Log("watcher", $"Git #3900: verifying-close check — partial GraphQL error(s), continuing with returned data: {msg}");
+                }
+
+                if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object) continue;
+                if (!data.TryGetProperty("repository", out var repo) || repo.ValueKind != JsonValueKind.Object) continue;
+
+                for (int i = 0; i < chunk.Count; i++)
+                {
+                    if (!repo.TryGetProperty($"a{i}", out var issueEl) || issueEl.ValueKind != JsonValueKind.Object) continue;
+                    if (issueEl.TryGetProperty("state", out var stateEl) && stateEl.ValueKind == JsonValueKind.String)
+                        result[chunk[i]] = stateEl.GetString() ?? "";
+                }
+            }
+
+            return result;
+        }
+
         /// <summary>Git #3871 — one issue's real <c>parent</c>/<c>milestone</c>/<c>subIssuesSummary</c>
         /// fields, straight off GraphQL, no reconciliation applied. Deliberately a thin subset of what
         /// <see cref="GitBoardIssue"/> carries: <see cref="ChildIssueNumbers"/> and <see cref="GitBoardIssue.DatabaseId"/>

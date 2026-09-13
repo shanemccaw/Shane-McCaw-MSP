@@ -532,6 +532,68 @@ namespace BuildConsole.Services
             }
         }
 
+        // ── Git #3900 — event-driven Verifying→Done promotion ───────────────────────
+        // PromoteVerifyingToDoneAsync (#1469) already checks the real GitHub closed-state, but until
+        // now it only ever ran from the three manual-Git-Board-refresh call sites (MainWindow/
+        // BuildWatchWindow/LeftSidebar) — a Verifying row sat there until Shane happened to trigger
+        // one. This piggybacks on the existing tick instead of adding a new blanket timer: every tick
+        // reads the tiny (almost always empty) set of issue numbers actually sitting in `verifying`
+        // right now (BuildQueuePostgresClient.GetVerifyingGithubNumbersAsync — a cheap local Postgres
+        // read, no GitHub call), and only when that's non-empty does it spend one small batched
+        // GraphQL read (GitHubApiClient.BatchGetIssueStatesAsync) checking JUST those numbers' real
+        // state — never a full board walk. Confirmed real call volume: zero on every tick with nothing
+        // in Verifying (the steady-state case), one small GraphQL request only while something
+        // genuinely is.
+        private int _verifyingCloseCheckInFlight;
+        private DateTime _lastVerifyingCloseCheckUtc = DateTime.MinValue;
+        private static readonly TimeSpan VerifyingCloseCheckMinGap = TimeSpan.FromSeconds(20);
+
+        /// <summary>Git #3900 — see the section comment above. Best-effort, single-flight, rate-limit-
+        /// circuit-aware; never throws into the tick. A row it promotes is also mirrored straight to the
+        /// real board's Done column (Git #2136 — Git IS the database), same as every other watcher-driven
+        /// status transition.</summary>
+        private async Task MaybeCheckVerifyingIssuesClosedAsync()
+        {
+            if (_db == null) return;
+            if (DateTime.UtcNow - _lastVerifyingCloseCheckUtc < VerifyingCloseCheckMinGap) return;
+            if (GitHubRateLimitCircuit.IsOpen) return;
+            if (Interlocked.Exchange(ref _verifyingCloseCheckInFlight, 1) == 1) return;
+            _lastVerifyingCloseCheckUtc = DateTime.UtcNow;
+            try
+            {
+                var candidates = await _db.GetVerifyingGithubNumbersAsync();
+                if (candidates.Count == 0) return; // the common case — nothing sitting in Verifying, zero GitHub cost
+
+                var settings = BuildConsoleSettings.Load();
+                if (!settings.HasGitHubPat) return; // no PAT → nothing to check with; the next manual refresh still covers it
+
+                var gh = new GitHubApiClient(settings.GitHubPat);
+                var states = await gh.BatchGetIssueStatesAsync(candidates.Select(c => c.GithubNumber).ToList());
+
+                var closed = candidates
+                    .Where(c => states.TryGetValue(c.GithubNumber, out var state) && string.Equals(state, "CLOSED", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (closed.Count == 0) return;
+
+                var promoted = await _db.PromoteSpecificToDoneAsync(closed);
+                foreach (var p in promoted)
+                    BoardStatusSync.Mirror(p.GithubNumber, GitHubApiClient.DoneOptionId, "Done", "watcher");
+
+                if (promoted.Count > 0)
+                    ActivityLog.Log("watcher",
+                        $"Git #3900: Verifying → Done, event-driven (no manual refresh needed): {promoted.Count} queue item(s) — " +
+                        string.Join(", ", promoted.Select(p => $"#{p.Id} (GH #{p.GithubNumber})")));
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("watcher", $"Git #3900: verifying-close check failed (non-fatal, retried next tick): {ex.Message}");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _verifyingCloseCheckInFlight, 0);
+            }
+        }
+
         /// <summary>
         /// Git #3009 — the same live open-issue snapshot LeftSidebar's board refresh already
         /// fetched (<c>GitBoardOpenIssuesRefreshed</c>), forwarded here by MainWindow off the exact
@@ -2148,6 +2210,13 @@ namespace BuildConsole.Services
                 // same reason as the sweeps above (background self-repair, not a claim), though it
                 // additionally no-ops until _appReady so it never adds a heavy rebuild to startup.
                 await MaybeEnsureApiServerUpAsync();
+
+                // Git #3900 — narrow, event-driven check: does any row genuinely sitting in Verifying
+                // right now have a real GitHub issue that's actually closed? Piggybacked on this same
+                // tick rather than a new timer; see the method's own doc comment. Background,
+                // throttled, single-flight inside — most ticks it costs one cheap local Postgres read
+                // and nothing else.
+                _ = System.Threading.Tasks.Task.Run(MaybeCheckVerifyingIssuesClosedAsync);
 
                 // Git #3113 — refresh the local GitHub-issue mirror on its own interval. This is the
                 // periodic BATCHED sync that lets routine reads (issue-title warm-up, chat-dock

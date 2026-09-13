@@ -2070,16 +2070,7 @@ namespace BuildConsole.Services
             }
 
             await using var conn = await OpenAsync();
-            await using var fetchCmd = new NpgsqlCommand(@"
-                SELECT id, github_number FROM bt_build_queue
-                WHERE status = @verifyingStatus AND github_number IS NOT NULL", conn);
-            fetchCmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
-            var candidates = new List<(int Id, int GithubNumber)>();
-            await using (var reader = await fetchCmd.ExecuteReaderAsync())
-            {
-                while (await reader.ReadAsync())
-                    candidates.Add((reader.GetInt32(0), reader.GetInt32(1)));
-            }
+            var candidates = await GetVerifyingCandidatesAsync(conn);
 
             foreach (var (id, num) in candidates)
             {
@@ -2095,6 +2086,69 @@ namespace BuildConsole.Services
                 {
                     promoted.Add((id, num));
                     ActivityLog.Log("github", $"Queue #{id}: GH #{num} confirmed closed → Verifying promoted to Done.");
+                }
+            }
+            return promoted;
+        }
+
+        /// <summary>Shared candidate query for both <see cref="PromoteVerifyingToDoneAsync"/> (fed a full
+        /// open-issue snapshot) and <see cref="GetVerifyingGithubNumbersAsync"/> (Git #3900 — the narrow,
+        /// event-driven caller that checks only these specific numbers' live state).</summary>
+        private static async Task<List<(int Id, int GithubNumber)>> GetVerifyingCandidatesAsync(NpgsqlConnection conn)
+        {
+            await using var fetchCmd = new NpgsqlCommand(@"
+                SELECT id, github_number FROM bt_build_queue
+                WHERE status = @verifyingStatus AND github_number IS NOT NULL", conn);
+            fetchCmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+            var candidates = new List<(int Id, int GithubNumber)>();
+            await using (var reader = await fetchCmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                    candidates.Add((reader.GetInt32(0), reader.GetInt32(1)));
+            }
+            return candidates;
+        }
+
+        /// <summary>
+        /// Git #3900 — the narrow read half of the event-driven Verifying→Done trigger:
+        /// every row currently sitting in <see cref="VerifyingStatus"/> with a real GitHub issue
+        /// number, with NO dependency on a full open-issue snapshot (unlike
+        /// <see cref="PromoteVerifyingToDoneAsync"/>). Almost always empty — this is the cheap local
+        /// Postgres read <see cref="QueueWatcherService"/>'s tick can afford to run every pass so it
+        /// only ever reaches out to GitHub for the tiny handful of numbers actually worth checking.
+        /// </summary>
+        public async Task<List<(int Id, int GithubNumber)>> GetVerifyingGithubNumbersAsync()
+        {
+            await using var conn = await OpenAsync();
+            return await GetVerifyingCandidatesAsync(conn);
+        }
+
+        /// <summary>
+        /// Git #3900 — the narrow write half: promotes exactly the caller-supplied row ids from
+        /// Verifying to Done, no open-issue-set gate involved (the caller — <see cref="QueueWatcherService"/>'s
+        /// narrow live issue-state check — already confirmed each one's real GitHub issue is CLOSED via
+        /// a direct per-issue GraphQL read, not an open/absent-from-set inference). A row is only
+        /// updated if it is still genuinely 'verifying' at the moment this runs (the WHERE guards a
+        /// race against a concurrent manual-refresh promotion or reconcile touching the same row).
+        /// </summary>
+        public async Task<List<(int Id, int GithubNumber)>> PromoteSpecificToDoneAsync(IReadOnlyList<(int Id, int GithubNumber)> rows)
+        {
+            var promoted = new List<(int, int)>();
+            if (rows == null || rows.Count == 0) return promoted;
+
+            await using var conn = await OpenAsync();
+            foreach (var (id, num) in rows)
+            {
+                await using var updateCmd = new NpgsqlCommand(@"
+                    UPDATE bt_build_queue
+                       SET status = 'done', updated_at = NOW()
+                     WHERE id = @id AND status = @verifyingStatus", conn);
+                updateCmd.Parameters.AddWithValue("@id", id);
+                updateCmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+                if (await updateCmd.ExecuteNonQueryAsync() > 0)
+                {
+                    promoted.Add((id, num));
+                    ActivityLog.Log("github", $"Git #3900: Queue #{id}: GH #{num} confirmed closed (event-driven check) → Verifying promoted to Done.");
                 }
             }
             return promoted;
