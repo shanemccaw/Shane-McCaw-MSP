@@ -1,0 +1,18 @@
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#64748b">Obligations We Check Against</span>
+              <span style="font-size:11px;color:#475569">Scope set by you at onboarding. Change it and every check re-evaluates.</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0;border:1px solid rgba(226,232,240,.13);border-radius:12px;background:rgba(15,23,42,.4);overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)">
+              <sc-for list="{{ cmpObligations }}" as="o" hint-placeholder-count="7">
+                <div style="display:grid;grid-template-columns:minmax(190px,1fr) minmax(0,1.5fr) minmax(0,1.3fr);gap:16px;padding:12px 18px;border-top:1px solid rgba(30,41,59,.85);align-items:start">
+                  <div style="display:flex;flex-direction:column;gap:5px;min-width:0">
+                    <span style="font-size:11.5px;font-weight:700;color:#f1f5f9;line-height:1.4;font-family:'SF Mono',Menlo,Consolas,monospace">{{ o.framework }}</span>
+                    <span style="{{ o.scopeCss }}">{{ o.scope }}</span>
+                  </div>
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;text-wrap:pretty">{{ o.requires }}</span>
+                  <span style="{{ o.stateCss }}">{{ o.state }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>

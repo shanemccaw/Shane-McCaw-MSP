@@ -1,0 +1,36 @@
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#64748b">Documented Policy Decisions · {{ cmpAcceptedCount }}</span>
+              <span style="font-size:11px;color:#475569">Deliberate positions, not gaps. Shown in full so an auditor sees the reasoning, not just the outcome.</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px">
+              <sc-for list="{{ cmpAcceptedRows }}" as="a" hint-placeholder-count="2">
+                <div style="display:flex;flex-direction:column;gap:11px;padding:16px 18px;border:1px solid rgba(226,232,240,.16);border-radius:12px;background:linear-gradient(160deg, rgba(226,232,240,.05), rgba(15,23,42,.5));box-shadow:inset 0 1px 0 rgba(255,255,255,.06)">
+                  <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                    <span style="font-size:10.5px;font-weight:700;color:#64748b;letter-spacing:.06em;font-family:'SF Mono',Menlo,Consolas,monospace">{{ a.id }}</span>
+                    <span style="padding:2px 8px;border-radius:4px;border:1px solid rgba(226,232,240,.3);background:rgba(226,232,240,.08);font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#e2e8f0;white-space:nowrap">{{ a.decision }}</span>
+                  </div>
+                  <span style="font-size:13px;font-weight:700;color:#f1f5f9;line-height:1.45;text-wrap:pretty">{{ a.title }}</span>
+                  <span style="font-size:11px;font-weight:600;color:#cbd5e1;font-family:'SF Mono',Menlo,Consolas,monospace">{{ a.obligation }}</span>
+                  <div style="display:flex;flex-direction:column;gap:3px">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#64748b">Rationale</span>
+                    <span style="font-size:12px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">{{ a.rationale }}</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:3px">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#64748b">Compensating control</span>
+                    <span style="font-size:12px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">{{ a.compensating }}</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding-top:10px;border-top:1px solid rgba(226,232,240,.12)">
+                    <sc-for list="{{ a.meta }}" as="m" hint-placeholder-count="4">
+                      <div style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b">{{ m.k }}</span>
+                        <span style="font-size:11.5px;font-weight:600;color:#e2e8f0;font-family:'SF Mono',Menlo,Consolas,monospace">{{ m.v }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <span style="font-size:11px;color:#64748b;line-height:1.55;text-wrap:pretty">{{ a.note }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+

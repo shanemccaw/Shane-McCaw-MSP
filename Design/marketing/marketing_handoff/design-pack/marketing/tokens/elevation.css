@@ -1,0 +1,5 @@
+:root {
+  --shadow-card: 0 16px 40px rgba(2, 6, 23, 0.6);
+  --glow-blue: 0 0 60px rgba(59, 130, 246, 0.13);
+  --glow-cta: 0 8px 22px rgba(59, 130, 246, 0.35);
+}

@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>*{box-sizing:border-box}body{margin:0}a{color:inherit;text-decoration:none}</style>
+</helmet>
+<div style="background:#020617;color:#f8fafc;font-family:Inter,system-ui,sans-serif;min-height:100vh" data-screen-label="Marketing Solutions">
+  <dc-import name="Marketing Nav" current="solutions" hint-size="100%,58px"></dc-import>
+
+  <section style="padding:48px 32px 26px">
+    <div style="max-width:900px;margin:0 auto">
+      <span style="display:inline-flex;padding:6px 12px;border-radius:999px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);color:#60a5fa;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px">Reference &#183; 33 remediation projects</span>
+      <h1 style="font-size:34px;font-weight:800;letter-spacing:-.025em;line-height:1.14;color:#f8fafc;margin:0 0 14px;text-wrap:pretty">Every Microsoft 365 remediation project, by name. You don&#8217;t pick one from this page.</h1>
+      <p style="font-size:14.5px;color:#94a3b8;line-height:1.7;margin:0 0 14px;max-width:740px">This is the full catalogue of work Shane delivers &#8212; identity, data protection, migration, governance and Copilot. It exists so you can read exactly what each project involves and recognise your own problem in it. It is not a shop: nothing here is bought from a list.</p>
+      <p style="font-size:13px;color:#64748b;line-height:1.7;margin:0 0 22px;max-width:740px">The free scan reads your actual tenant and tells you which of these apply to you, if any. Whatever it finds comes back as one scoped statement of work, priced phase by phase, with the phases you defer left out. No prices on this page on purpose &#8212; a fixed number before a scan is a guess.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <a href="Marketing Free Scan.dc.html" style="display:inline-flex;align-items:center;gap:7px;padding:11px 20px;border-radius:10px;font-weight:700;font-size:13.5px;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6)">Scan My Tenant &#183; Free {{ iconArrow }}</a>
+        <a href="#how" style="padding:11px 20px;border-radius:10px;font-weight:600;font-size:13.5px;color:#cbd5e1;border:1px solid rgba(148,163,184,.2)">How work gets scoped</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="how" style="padding:0 32px 30px;scroll-margin-top:20px">
+    <div style="max-width:900px;margin:0 auto">
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+        <sc-for list="{{ funnel }}" as="fn" hint-placeholder-count="4">
+          <div style="border-radius:13px;border:1px solid rgba(30,41,59,.9);background:#0b1524;padding:15px 16px;display:flex;flex-direction:column;gap:7px">
+            <span style="display:flex;align-items:center;gap:9px">
+              <span style="flex-shrink:0;width:23px;height:23px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center;color:#60a5fa;font-size:11px;font-weight:700">{{ fn.n }}</span>
+              <span style="font-size:12.5px;font-weight:700;color:#f8fafc">{{ fn.title }}</span>
+            </span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.6">{{ fn.body }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <p style="font-size:12px;color:#64748b;line-height:1.7;margin:14px 0 0;max-width:740px">Nothing below is proposed to you unless the scan found the specific problem it fixes. That is the whole point of doing it in this order.</p>
+    </div>
+  </section>
+
+  <section style="padding:0 32px 32px">
+    <div style="max-width:900px;margin:0 auto;padding:16px 18px;border-radius:14px;border:1px solid rgba(30,41,59,.9);background:#0b1524">
+      <div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:11px">What the scan can surface &#183; jump to</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <sc-for list="{{ categories }}" as="c" hint-placeholder-count="5">
+          <a href="{{ c.anchor }}" style="padding:7px 13px;border-radius:999px;border:1px solid rgba(30,41,59,.95);background:#020617;font-size:12px;font-weight:600;color:#cbd5e1">{{ c.name }} <span style="color:#64748b">{{ c.count }}</span></a>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <sc-for list="{{ categories }}" as="cat" hint-placeholder-count="5">
+    <section id="{{ cat.id }}" style="padding:0 32px 40px;scroll-margin-top:20px">
+      <div style="max-width:900px;margin:0 auto">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <span style="flex-shrink:0;width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center;color:#60a5fa">{{ cat.iconEl }}</span>
+          <h2 style="margin:0;font-size:20px;font-weight:800;color:#f8fafc;letter-spacing:-.02em">{{ cat.name }}</h2>
+        </div>
+        <p style="font-size:13px;color:#94a3b8;line-height:1.7;margin:0 0 20px;max-width:700px">{{ cat.blurb }}</p>
+
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <sc-for list="{{ cat.services }}" as="sv" hint-placeholder-count="6">
+            <div id="{{ sv.id }}" style="border-radius:14px;border:1px solid rgba(30,41,59,.9);background:#0b1524;padding:20px;scroll-margin-top:20px">
+              <h3 style="margin:0 0 4px;font-size:16px;font-weight:700;color:#f8fafc;line-height:1.35">{{ sv.name }}</h3>
+              <p style="margin:0 0 12px;font-size:11.5px;color:#60a5fa;font-weight:600">{{ sv.searchLine }}</p>
+              <p style="margin:0 0 10px;font-size:13px;color:#cbd5e1;line-height:1.7"><b style="color:#f8fafc">What the problem looks like:</b> {{ sv.problem }}</p>
+              <p style="margin:0 0 10px;font-size:12.5px;color:#94a3b8;line-height:1.7"><b style="color:#cbd5e1">Who needs this:</b> {{ sv.who }}</p>
+              <p style="margin:0 0 16px;font-size:12.5px;color:#94a3b8;line-height:1.7"><b style="color:#cbd5e1">Why it matters:</b> {{ sv.why }}</p>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-top:14px;border-top:1px solid rgba(255,255,255,.06)">
+                <span style="font-size:11.5px;color:#64748b;line-height:1.6;max-width:420px">Proposed only if the scan finds this in your tenant &#8212; then priced as one phase of your statement of work.</span>
+                <a href="Marketing Free Scan.dc.html" style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:9px;font-size:12.5px;font-weight:700;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6)">Check my tenant &#183; free {{ iconArrowXs }}</a>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+  </sc-for>
+
+  <section id="talk" style="padding:12px 32px 60px;scroll-margin-top:20px">
+    <div style="max-width:900px;margin:0 auto;padding:28px;border-radius:18px;background:linear-gradient(165deg,rgba(59,130,246,.09),rgba(139,92,246,.05) 45%,#0b1524 100%);border:1px solid rgba(59,130,246,.18)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap">
+        <div style="max-width:520px">
+          <h2 style="font-size:22px;font-weight:800;color:#f8fafc;margin:0 0 10px;letter-spacing:-.02em">Don&#8217;t choose from this page. Let the scan choose.</h2>
+          <p style="font-size:13.5px;color:#94a3b8;line-height:1.7;margin:0 0 14px">Most people arrive here knowing something is wrong without knowing which project fixes it. The free scan answers that from your real tenant in about two minutes, and the answer is often two or three of these rather than ten. You get the findings whether you buy anything or not.</p>
+          <p style="font-size:12px;color:#64748b;line-height:1.65;margin:0">Whatever the scan surfaces is scoped into one fixed-price statement of work before any work starts, and you enable or defer each phase yourself. No hourly billing, no open-ended engagements, no cart.</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;min-width:240px">
+          <a href="Marketing Free Scan.dc.html" style="display:block;text-align:center;padding:12px 20px;border-radius:10px;font-size:13.5px;font-weight:700;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6)">Scan My Tenant &#183; Free</a>
+          <button onClick="{{ askShane }}" style="display:block;width:100%;text-align:center;padding:12px 20px;border-radius:10px;font-family:inherit;font-size:13.5px;font-weight:600;color:#cbd5e1;background:transparent;border:1px solid rgba(148,163,184,.2);cursor:pointer">Talk to Shane</button>
+          <span style="font-size:11px;color:#475569;text-align:center;line-height:1.6">Read-only scan. No card, no call scheduled.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <dc-import name="Marketing Footer" hint-size="100%,300px"></dc-import>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100}}">
+function ic(children, size) {
+  return React.createElement('svg', { viewBox: '0 0 24 24', width: size || 16, height: size || 16, fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }, children);
+}
+const E = (d, k) => React.createElement('path', { d, key: k });
+const P = (points, k) => React.createElement('polyline', { points, key: k });
+const CI = (cx, cy, r, k) => React.createElement('circle', { cx, cy, r, key: k });
+const LN = (x1, y1, x2, y2, k) => React.createElement('line', { x1, y1, x2, y2, key: k });
+
+const ICONS = {
+  key: () => ic([CI(7.5, 15.5, 4.5, 1), E('M10.9 12.1L20 3', 2), E('M17 6l3 3', 3)], 17),
+  shield: () => ic([E('M12 3l7 3v6c0 5-3 8-7 9-4-1-7-4-7-9V6z', 1), P('9 12 11 14 15 10', 2)], 17),
+  truck: () => ic([E('M3 7a2 2 0 012-2h9v11H3z', 1), E('M14 9h4l3 3v3h-7z', 2), CI(7, 18, 1.8, 3), CI(17.5, 18, 1.8, 4)], 17),
+  broom: () => ic([E('M3 21l7-7', 1), E('M12.5 11.5l5-5a2.5 2.5 0 013.5 3.5l-5 5z', 2), E('M9 14l4 4', 3)], 17),
+  brain: () => ic([E('M9 4a3 3 0 00-3 3 3 3 0 00-1.5 5.6A3.5 3.5 0 007 18.5a3 3 0 002.8 2H12', 1), E('M15 4a3 3 0 013 3 3 3 0 011.5 5.6A3.5 3.5 0 0117 18.5a3 3 0 01-2.8 2H12', 2), LN(12, 4, 12, 20.5, 3)], 17),
+  arrow: (s) => ic([LN(4, 12, 20, 12, 1), P('14 6 20 12 14 18', 2)], s),
+};
+
+const FUNNEL = [
+  { n: 1, title: 'Free scan', body: 'A read-only Graph connection reads your real configuration. No agent, no card, about two minutes.' },
+  { n: 2, title: 'Real findings', body: 'Every problem it finds, in plain English, with the actual accounts, files and settings behind it.' },
+  { n: 3, title: 'One scoped SOW', body: 'The pricing engine turns those findings into named phases from the catalogue below, priced individually.' },
+  { n: 4, title: 'You choose', body: 'Enable the phases you want, defer the rest. Deferred work keeps its price; nothing starts unsigned.' },
+];
+
+const CATEGORIES = [
+  {
+    id: 'identity', name: 'Identity & Access', icon: 'key',
+    blurb: 'Who can sign in, what they can reach once they are in, and whether an attacker with a stolen password gets anywhere. This is the work that closes the gaps behind almost every real Microsoft 365 breach.',
+    services: [
+      {
+        name: 'Identity Modernization & Conditional Access Build-Out',
+        searchLine: 'conditional access implementation \u00b7 Entra ID modernization',
+        problem: 'Conditional Access policies were added one at a time, by different people, over several years. Some overlap, some contradict each other, several have exclusion groups nobody remembers creating, and at least one leaves a bypass path wide open.',
+        who: 'Organizations running Microsoft 365 with more than a handful of Conditional Access policies and no written record of why each one exists.',
+        why: 'Conditional Access is the actual front door of your tenant. An unreviewed policy set does not fail loudly \u2014 it silently permits the one sign-in scenario you assumed was blocked.',
+      },
+      {
+        name: 'Zero Trust Architecture Implementation',
+        searchLine: 'zero trust architecture consulting \u00b7 Microsoft Zero Trust rollout',
+        problem: 'Access still assumes the corporate network is trustworthy: unmanaged devices reach company data, service accounts hold standing privilege, and lateral movement inside the tenant is unmonitored.',
+        who: 'Organizations under contractual or insurance pressure to demonstrate a Zero Trust posture, or moving away from a VPN-and-firewall model.',
+        why: 'Zero Trust done properly is an architecture, not a product purchase. Sequenced badly it locks out your own staff; sequenced properly it removes whole categories of attack without users noticing.',
+      },
+      {
+        name: 'MFA / Passwordless Rollout',
+        searchLine: 'MFA rollout Microsoft 365 \u00b7 passwordless authentication deployment',
+        problem: 'MFA covers most people but not all \u2014 usually the admins, the service accounts and the executives who asked to be excluded. Legacy authentication protocols are often still enabled, quietly bypassing MFA entirely.',
+        who: 'Any tenant where MFA coverage is under 100% of privileged accounts, or where legacy auth has never been formally disabled.',
+        why: 'Partial MFA is the same as no MFA to an attacker: they only need the one account that was left out. Passwordless removes the password as a target altogether.',
+      },
+      {
+        name: 'Privileged Identity Management (PIM) Rollout',
+        searchLine: 'Entra PIM implementation \u00b7 just-in-time admin access',
+        problem: 'Administrator roles are assigned permanently. Ten people hold Global Administrator, several no longer need it, and nobody has to justify or record why they used it.',
+        who: 'Organizations with more than two or three standing privileged accounts, or facing an audit that asks who had admin rights on a given date.',
+        why: 'Standing admin rights are the difference between a compromised account and a compromised tenant. Just-in-time elevation with approval and expiry turns admin access into an auditable event.',
+      },
+      {
+        name: 'Identity & Access Hardening',
+        searchLine: 'Entra ID hardening \u00b7 Microsoft 365 identity security review',
+        problem: 'Stale accounts still enabled, guests from ended projects, over-permissioned OAuth app consents granted by users years ago, and no review cycle for any of it.',
+        who: 'Tenants that have grown, reorganised or acquired, and never went back to clean up identity afterwards.',
+        why: 'Identity sprawl accumulates silently and is invisible in day-to-day operations. Every dormant account and forgotten app consent is a working credential somebody still holds.',
+      },
+    ],
+  },
+  {
+    id: 'data', name: 'Data & Compliance', icon: 'shield',
+    blurb: 'Where sensitive data lives, who can reach it, what leaves the tenant, and whether you could prove any of it later. This is the work auditors, insurers and regulators actually ask about.',
+    services: [
+      {
+        name: 'Data Classification & Sensitivity Label Rollout',
+        searchLine: 'sensitivity label rollout \u00b7 Microsoft Purview data classification',
+        problem: 'No labels published, or labels published and never applied. Confidential material is indistinguishable from a lunch menu, so no protection policy can be targeted at it.',
+        who: 'Organizations handling regulated, contractual or client-confidential data, and anyone preparing a tenant for Copilot.',
+        why: 'Classification is the foundation everything else stands on \u2014 DLP, retention, encryption and Copilot governance all depend on knowing what the data is. Rolled out badly it becomes shelfware nobody uses.',
+      },
+      {
+        name: 'DLP Policy Implementation',
+        searchLine: 'DLP policy implementation Microsoft 365 \u00b7 data loss prevention rollout',
+        problem: 'DLP either does not exist, or sits in test mode with policy tips disabled \u2014 generating thousands of matches nobody sees and blocking nothing.',
+        who: 'Organizations that need to demonstrate control over data leaving the tenant, particularly through email, Teams chat and endpoints.',
+        why: 'DLP switched on carelessly blocks legitimate work and destroys trust in the control. Measured first, then enforced in stages, it stops the real leaks without a revolt.',
+      },
+      {
+        name: 'Compliance Framework Implementation',
+        searchLine: 'Microsoft 365 compliance implementation \u00b7 security control mapping',
+        problem: 'A framework has been adopted on paper, but the tenant configuration behind each control was never actually implemented or evidenced.',
+        who: 'Organizations working to a named security framework, responding to client security questionnaires, or preparing for a first audit.',
+        why: 'Auditors ask for evidence, not intentions. Controls implemented in the tenant and documented as you go make an audit routine instead of a fire drill.',
+      },
+      {
+        name: 'Retention & Records Management Implementation',
+        searchLine: 'Microsoft 365 retention policy implementation \u00b7 records management rollout',
+        problem: 'Retention is at defaults, so either everything is kept forever or nothing is kept long enough. Legal holds cover nobody, and the records schedule exists only in a document.',
+        who: 'Organizations with a records schedule, a legal hold obligation, or regulatory retention requirements they cannot currently prove.',
+        why: 'Keeping everything is a liability and keeping nothing is a different liability. Retention aligned to a real schedule is the only defensible position in a dispute.',
+      },
+      {
+        name: 'Email Security Hardening',
+        searchLine: 'Exchange Online email security hardening \u00b7 anti-phishing configuration',
+        problem: 'Anti-phishing and anti-spoofing policies are at defaults, SPF, DKIM and DMARC are incomplete, and external auto-forwarding rules quietly send mail out of the organization.',
+        who: 'Every organization using Exchange Online, and particularly anyone who has already had a business email compromise attempt.',
+        why: 'Email remains the primary way attackers get in and the primary way data walks out. Default protection stops the obvious attacks and not the targeted ones.',
+      },
+      {
+        name: 'Security & Compliance Hardening for M365',
+        searchLine: 'Microsoft 365 security hardening services \u00b7 tenant baseline configuration',
+        problem: 'The tenant is running largely as it shipped. Secure Score is middling, hardening was never done as a deliberate project, and nobody can say which settings were changed on purpose.',
+        who: 'Tenants that were stood up quickly, inherited from another provider, or never formally hardened after go-live.',
+        why: 'A baseline is what makes drift detectable later. Without one there is no such thing as an unauthorised change, because there is nothing to compare against.',
+      },
+      {
+        name: 'Data Protection Baseline',
+        searchLine: 'Microsoft 365 data protection baseline \u00b7 information protection setup',
+        problem: 'Encryption, external sharing rules, guest access defaults and device access rules were each set independently, and together they do not add up to a coherent position on how company data may be handled.',
+        who: 'Organizations that need one clear, documented answer to "how is our data protected" rather than a list of features they own.',
+        why: 'Protection controls interact. Set individually they leave gaps at the seams \u2014 exactly where data tends to escape.',
+      },
+      {
+        name: 'BCDR Implementation',
+        searchLine: 'Microsoft 365 backup and disaster recovery \u00b7 BCDR implementation',
+        problem: 'Recovery is assumed rather than tested. Retention settings are treated as backup, restore has never been rehearsed, and nobody has stated an acceptable recovery time.',
+        who: 'Organizations with a real dependency on Microsoft 365 availability, or a contractual recovery obligation to a client.',
+        why: 'Microsoft protects the platform, not your content decisions. Deleted, encrypted or maliciously altered data is your problem, and the first honest test of recovery should not be a real incident.',
+      },
+    ],
+  },
+  {
+    id: 'migration', name: 'Migration & Deployment', icon: 'truck',
+    blurb: 'Moving into Microsoft 365, between tenants, or onto a workload you have licences for but never rolled out properly. Discovery first, locked design, rehearsed cutover.',
+    services: [
+      {
+        name: 'Microsoft 365 Migration Execution',
+        searchLine: 'Microsoft 365 migration services \u00b7 M365 migration execution',
+        problem: 'The real scope only surfaces once the migration is underway \u2014 mailbox sizes, file shares nobody documented, legacy directory objects, applications that authenticate in ways nobody remembered.',
+        who: 'Organizations moving to Microsoft 365 from on-premises, hosted Exchange, or another cloud platform.',
+        why: 'Migrations rarely fail technically. They fail on scope discovered late and a cutover with no way back, which is why discovery and a rehearsed rollback come before anything moves.',
+      },
+      {
+        name: 'Tenant-to-Tenant Migration',
+        searchLine: 'tenant to tenant migration Microsoft 365 \u00b7 M&A tenant consolidation',
+        problem: 'Two tenants, overlapping domains, duplicate identities, and a business expecting mail, Teams and files to keep working through the whole thing.',
+        who: 'Organizations merging, divesting, rebranding, or separating from a parent company.',
+        why: 'Tenant-to-tenant work touches identity, mail flow, sharing links and Teams membership at once. Identity collisions and broken links are the visible failure, and they are entirely avoidable with sequencing.',
+      },
+      {
+        name: 'SharePoint Migration',
+        searchLine: 'SharePoint migration services \u00b7 file share to SharePoint migration',
+        problem: 'File shares or an old SharePoint estate need to move, complete with permissions nobody has audited, folder depth that breaks path limits, and fifteen years of content with no owner.',
+        who: 'Organizations retiring file servers, moving off SharePoint on-premises, or consolidating site collections.',
+        why: 'A lift-and-shift migration faithfully reproduces every permission mistake at cloud scale. Migration is the one natural moment to fix structure and access instead of carrying it forward.',
+      },
+      {
+        name: 'Exchange Online Hygiene & Modernization',
+        searchLine: 'Exchange Online modernization \u00b7 mailbox hygiene cleanup',
+        problem: 'Shared mailboxes with sign-in enabled, forwarding rules to personal addresses, mail-enabled objects nobody claims, and distribution lists that have not been accurate in years.',
+        who: 'Tenants that migrated from on-premises Exchange and never revisited the mail estate afterwards.',
+        why: 'Mail hygiene is both a security problem and an operational one \u2014 shared mailboxes with sign-in are a favourite persistence route, and stale forwarding is a data exfiltration path in plain sight.',
+      },
+      {
+        name: 'Intune Deployment & Device Compliance Build-Out',
+        searchLine: 'Intune deployment services \u00b7 device compliance policy build-out',
+        problem: 'Intune is licensed but barely configured. Devices are enrolled inconsistently, compliance policies do not gate access to anything, and personal devices reach company data unmanaged.',
+        who: 'Organizations with Microsoft 365 Business Premium or E3 and above who are paying for device management they are not using.',
+        why: 'Device compliance is what makes Conditional Access meaningful \u2014 without it, access decisions are made on identity alone, regardless of what the device is doing.',
+      },
+      {
+        name: 'Teams Phone License & Calling Policy Configuration',
+        searchLine: 'Teams Phone deployment \u00b7 Teams calling policy configuration',
+        problem: 'Teams Phone licences are assigned but calling policies, emergency addresses, call queues and auto attendants were configured ad hoc or not at all.',
+        who: 'Organizations replacing a phone system with Teams Phone, or already paying for licences that are only partly in use.',
+        why: 'Calling configuration has real-world consequences: emergency calling that routes to the wrong address, or a call queue that drops customers, are not settings you discover gradually.',
+      },
+      {
+        name: 'Teams Rooms License & Policy Configuration',
+        searchLine: 'Microsoft Teams Rooms deployment \u00b7 Teams Rooms licensing setup',
+        problem: 'Meeting room devices are licensed inconsistently, resource accounts are misconfigured, and room booking behaves differently in every room.',
+        who: 'Organizations with Teams Rooms hardware, hybrid meeting requirements, or rooms that staff have quietly stopped booking.',
+        why: 'Rooms are the most visible technology in the building. When booking or joining is unreliable, confidence in the whole platform drops with it.',
+      },
+    ],
+  },
+  {
+    id: 'governance', name: 'Governance & Cleanup', icon: 'broom',
+    blurb: 'Ownership, structure, sprawl and cost. The work that stops a tenant quietly becoming unmanageable, and turns licence waste back into budget.',
+    services: [
+      {
+        name: 'Governance Remediation & Architecture Hardening',
+        searchLine: 'Microsoft 365 governance remediation \u00b7 M365 governance framework implementation',
+        problem: 'No lifecycle policy, no naming standard, no ownership requirement. Teams, groups and sites are created freely and never reviewed, and the tenant has no approved baseline to compare against.',
+        who: 'Organizations whose tenant has grown faster than the rules around it, or who cannot answer who owns a given Team.',
+        why: 'Governance debt is always paid eventually, usually as a cleanup project priced in consultant-weeks. Fixing the rules costs less than fixing the consequences repeatedly.',
+      },
+      {
+        name: 'External Sharing & Guest Access Governance',
+        searchLine: 'external sharing governance Microsoft 365 \u00b7 guest access review',
+        problem: 'Anonymous links with no expiry, guests from finished projects still holding access, and sharing defaults that are more permissive than anyone realises.',
+        who: 'Any organization that collaborates with clients, vendors or contractors through Microsoft 365.',
+        why: 'This is the most common way company files end up outside the company without any breach occurring. Links keep working long after the relationship ends.',
+      },
+      {
+        name: 'Sharing Exposure Remediation',
+        searchLine: 'SharePoint oversharing remediation \u00b7 fix anonymous sharing links',
+        problem: 'A scan or audit has already identified overshared sites, broken permission inheritance and open links \u2014 and now somebody has to safely close them without breaking live work.',
+        who: 'Organizations that know they have an oversharing problem, often discovered while preparing for Copilot or an audit.',
+        why: 'Remediation is riskier than detection. Closing access carelessly breaks legitimate collaboration, so exposure is retired in a sequence with the business, not overnight.',
+      },
+      {
+        name: 'Teams Sprawl & Lifecycle Automation',
+        searchLine: 'Teams sprawl cleanup \u00b7 Teams lifecycle management automation',
+        problem: 'Hundreds of Teams, many dormant, several with no owner, some still holding guests and meeting recordings. Nothing archives automatically, so ended projects look live forever.',
+        who: 'Organizations past roughly fifty Teams, or anyone whose users can no longer find the right Team without asking.',
+        why: 'Sprawl makes both governance and everyday work harder. Automated lifecycle rules keep the estate honest without an annual manual purge.',
+      },
+      {
+        name: 'SharePoint & Teams IA Rebuild',
+        searchLine: 'SharePoint information architecture consulting \u00b7 SharePoint IA rebuild',
+        problem: 'Sites were created on demand with no hub structure, permissions were customised per site, and search returns either nothing useful or far too much.',
+        who: 'Organizations where the intranet exists but staff route around it, or where content lives wherever the last project left it.',
+        why: 'Information architecture decides whether people find things or give up. It also decides what Copilot can surface, and to whom.',
+      },
+      {
+        name: 'Intranet / Hub Site Build-Out',
+        searchLine: 'SharePoint intranet build \u00b7 hub site implementation',
+        problem: 'There is no single place staff go for news, policies and tools \u2014 or there is, and nobody opens it because it was never structured or maintained.',
+        who: 'Organizations that want internal communications and documents in one governed place rather than scattered across Teams chats.',
+        why: 'An intranet nobody uses still carries its licence and maintenance cost. Structure, ownership and a publishing rhythm are what separate the two outcomes.',
+      },
+      {
+        name: 'License Waste Optimization & Cost Recovery',
+        searchLine: 'Microsoft 365 license optimization \u00b7 M365 cost recovery audit',
+        problem: 'Assigned seats that nobody has signed into for months, users holding two overlapping plans, and premium add-ons bought for a project that ended.',
+        who: 'Any organization over about fifty seats, particularly approaching a renewal date.',
+        why: 'This is the rare project that pays for itself immediately and keeps paying. Waste renews quietly unless somebody acts before the renewal.',
+      },
+      {
+        name: 'Licence Rationalisation',
+        searchLine: 'Microsoft 365 licence rationalisation \u00b7 M365 SKU consolidation',
+        problem: 'A mix of SKUs accumulated through growth and acquisition, with people on plans that do not match what they do, and features paid for twice through overlapping products.',
+        who: 'Organizations with several Microsoft plans in play, or third-party tools duplicating something Microsoft 365 already includes.',
+        why: 'Rationalisation is not just cutting seats \u2014 it is matching plans to real usage, which usually reduces spend and improves capability at the same time.',
+      },
+      {
+        name: 'Drift Baseline & Handover',
+        searchLine: 'Microsoft 365 configuration baseline \u00b7 tenant drift documentation',
+        problem: 'Nobody can say what the tenant is supposed to look like, so no change can be identified as unauthorised, and a handover between providers or staff loses everything unwritten.',
+        who: 'Organizations changing IT provider, onboarding a new administrator, or starting continuous monitoring.',
+        why: 'A documented baseline turns future changes into detectable events. Without it, drift is only ever discovered by accident or by incident.',
+      },
+    ],
+  },
+  {
+    id: 'copilot', name: 'Copilot', icon: 'brain',
+    blurb: 'Getting Copilot to a state where it returns something useful without surfacing content people should never have seen \u2014 and getting your staff past the first prompt.',
+    services: [
+      {
+        name: 'Copilot for Microsoft 365 Deployment Project',
+        searchLine: 'Copilot for Microsoft 365 deployment \u00b7 Copilot rollout project',
+        problem: 'Licences have been bought and a pilot group is waiting, but the permission model, labelling and licensing plan behind a safe rollout have not been prepared.',
+        who: 'Organizations that have committed to Copilot seats and want the rollout to be defensible rather than fast.',
+        why: 'Copilot answers from whatever your permission model already exposes. Deployment order decides whether that is an advantage or the first bad headline inside your own company.',
+      },
+      {
+        name: 'Copilot Data Exposure Remediation',
+        searchLine: 'Copilot oversharing remediation \u00b7 Copilot data exposure fix',
+        problem: 'A readiness scan found oversharing, unlabelled sensitive content, orphaned permissions and stale sites \u2014 all of it reachable by Copilot\u2019s index today.',
+        who: 'Organizations that have run a Copilot readiness scan, or paused a rollout over oversharing concerns.',
+        why: 'This is the work that turns a blocked rollout into an approved one. Remediating exposure before Copilot is enabled is far cheaper than explaining an answer it should never have given.',
+      },
+      {
+        name: 'Copilot Adoption & Governance Program',
+        searchLine: 'Copilot adoption program \u00b7 Copilot governance framework',
+        problem: 'Copilot is live, usage spiked in week one and collapsed by week four, and there is no policy on acceptable use, prompt handling or where generated content may be stored.',
+        who: 'Organizations already paying for Copilot seats who need renewal to be justifiable.',
+        why: 'Adoption decides whether the licences survive the next budget review. Governance decides whether anyone regrets the rollout. Both are separate disciplines from switching it on.',
+      },
+      {
+        name: 'Adoption Enablement',
+        searchLine: 'Microsoft 365 adoption program \u00b7 M365 user enablement',
+        problem: 'The platform is capable and correctly configured, and staff still work the way they did before it \u2014 email attachments instead of sharing, no channel discipline, features nobody knew existed.',
+        who: 'Organizations paying for capability their people are not using, regardless of which workload.',
+        why: 'Configuration without adoption is licence spend with no return. Enablement is what converts a well-built tenant into changed working habits.',
+      },
+    ],
+  },
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      funnel: FUNNEL,
+      // hands off to the footer's Ask Shane panel, which owns the chat state site-wide
+      askShane: () => window.dispatchEvent(new Event('sm-ask-shane')),
+      iconArrow: ICONS.arrow(15), iconArrowXs: ICONS.arrow(13),
+      categories: CATEGORIES.map(c => ({
+        id: c.id, anchor: '#' + c.id, name: c.name, blurb: c.blurb,
+        count: c.services.length,
+        iconEl: ICONS[c.icon](),
+        services: c.services.map(s => ({
+          ...s,
+          id: s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+        })),
+      })),
+    };
+  }
+}
+
+</script>
+</body>
+</html>

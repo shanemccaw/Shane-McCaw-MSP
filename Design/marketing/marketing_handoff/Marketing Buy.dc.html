@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <title>Checkout | Shane McCaw Consulting</title>
+  <meta name="description" content="Buy Monitoring, a Retainer or a Quick-Start Pack.">
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;background:#020617}
+    a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
+    input{font-family:inherit}input::placeholder{color:#475569}
+    @keyframes buySpin{to{transform:rotate(360deg)}}
+    @keyframes buyRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  </style>
+</helmet>
+<div style="background:#020617;color:#f8fafc;font-family:Inter,system-ui,sans-serif;min-height:100vh" data-screen-label="Buy">
+
+  <div style="border-bottom:1px solid rgba(30,41,59,.9);background:rgba(2,6,23,.92);padding:12px 32px;display:flex;align-items:center;gap:26px;flex-wrap:wrap">
+    <a href="Marketing Home.dc.html" style="display:flex;align-items:center;gap:10px;flex-shrink:0;color:inherit">
+      <span style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800;color:#fff">SM</span>
+      <span style="font-size:14px;font-weight:700;color:#f8fafc;white-space:nowrap">Shane McCaw</span>
+    </a>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0">
+      <sc-for list="{{ steps }}" as="st" hint-placeholder-count="4">
+        <span style="display:flex;align-items:center;gap:8px">
+          <span style="{{ st.dotCss }}">{{ st.n }}</span>
+          <span style="{{ st.labelCss }}">{{ st.label }}</span>
+          <span style="{{ st.arrowCss }}">&#8594;</span>
+        </span>
+      </sc-for>
+    </div>
+  </div>
+
+  <sc-if value="{{ show.buying }}" hint-placeholder-val="{{ true }}">
+    <div style="max-width:1140px;margin:0 auto;padding:34px 32px 80px;display:flex;flex-wrap:wrap;gap:30px 34px;align-items:flex-start">
+
+      <div style="flex:3 1 440px;min-width:0;display:flex;flex-direction:column;gap:20px">
+
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#60a5fa">{{ head.eyebrow }}</span>
+          <h1 style="margin:0;font-size:clamp(23px,2.7vw,30px);font-weight:800;letter-spacing:-.03em;line-height:1.16;color:#f8fafc;text-wrap:pretty">{{ head.title }}</h1>
+          <p style="margin:0;max-width:62ch;font-size:14px;line-height:1.68;color:#94a3b8;text-wrap:pretty">{{ head.body }}</p>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:11px">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#64748b">{{ pick.label }}</span>
+          <sc-for list="{{ options }}" as="op" hint-placeholder-count="3">
+            <div onClick="{{ op.pick }}" style="{{ op.cardCss }}">
+              <span style="{{ op.ringCss }}">{{ op.mark }}<span style="{{ op.dotCss }}"></span></span>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:14px;font-weight:700;color:#f8fafc">{{ op.name }}</span>
+                <span style="display:block;font-size:12px;color:#94a3b8;line-height:1.6;margin-top:3px">{{ op.desc }}</span>
+              </span>
+              <span style="flex:none;text-align:right">
+                <span style="display:block;font-size:14.5px;font-weight:800;color:#f8fafc;font-variant-numeric:tabular-nums">{{ op.price }}</span>
+                <span style="display:block;font-size:10.5px;color:#64748b;margin-top:2px">{{ op.unit }}</span>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ show.connect }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(59,130,246,.3);border-radius:16px;background:rgba(59,130,246,.05);padding:20px;display:flex;flex-direction:column;gap:13px">
+            <span style="display:flex;align-items:center;gap:10px">
+              <span style="width:32px;height:32px;border-radius:9px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);display:flex;align-items:center;justify-content:center;color:#60a5fa">{{ iconLock }}</span>
+              <span style="font-size:14.5px;font-weight:700;color:#f8fafc">{{ connect.title }}</span>
+            </span>
+            <p style="margin:0;font-size:12.5px;color:#94a3b8;line-height:1.65">{{ connect.body }}</p>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ readScopes }}" as="rs" hint-placeholder-count="3">
+                <span style="display:flex;gap:8px;align-items:flex-start;font-size:12px;color:#cbd5e1;line-height:1.5"><span style="color:#34d399;flex:none;display:flex;margin-top:1px">{{ iconCheck }}</span><span>{{ rs }}</span></span>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:11px;flex-wrap:wrap;align-items:center;padding-top:4px">
+              <button onClick="{{ doConnect }}" style="padding:10px 18px;border:0;border-radius:10px;font-family:inherit;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6);cursor:pointer">Grant read-only access</button>
+              <sc-if value="{{ connect.optional }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ skipConnect }}" style="padding:10px 18px;border-radius:10px;font-family:inherit;font-size:13px;font-weight:600;color:#cbd5e1;background:transparent;border:1px solid rgba(148,163,184,.25);cursor:pointer">Skip &#8212; buy without a scan</button>
+              </sc-if>
+            </div>
+            <span style="font-size:11px;color:#475569">{{ connect.foot }}</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ show.estimate }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(30,41,59,.95);border-radius:16px;background:#0b1524;padding:18px 20px;display:flex;flex-direction:column;gap:11px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:{{ est.eyebrowFg }}">{{ est.eyebrow }}</span>
+            <div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap">
+              <label style="display:flex;flex-direction:column;gap:6px;flex:1 1 190px;min-width:0">
+                <span style="font-size:11px;color:#94a3b8">{{ est.label }}</span>
+                <input value="{{ seatInput }}" onInput="{{ onSeats }}" inputmode="numeric" placeholder="e.g. 250" style="width:100%;background:rgba(2,6,23,.7);border:1px solid rgba(51,65,85,.9);border-radius:8px;padding:10px 12px;font-size:14px;color:#f1f5f9;outline:none" style-focus="border-color:#3b82f6">
+              </label>
+              <span style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:25px;font-weight:800;color:#f8fafc;letter-spacing:-.03em;font-variant-numeric:tabular-nums">{{ est.price }}</span>
+                <span style="font-size:11px;color:#64748b">{{ est.basis }}</span>
+              </span>
+            </div>
+            <p style="margin:0;font-size:11.5px;color:#475569;line-height:1.6">{{ est.foot }}</p>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ show.connected }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(52,211,153,.3);border-radius:14px;background:rgba(52,211,153,.06);padding:15px 17px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+            <span style="color:#34d399;flex:none;display:flex;margin-top:2px">{{ iconCheck }}</span>
+            <span style="flex:1;min-width:0">
+              <span style="display:block;font-size:13.5px;font-weight:700;color:#f8fafc">{{ connected.title }}</span>
+              <span style="display:block;font-size:12.5px;color:#94a3b8;line-height:1.6;margin-top:3px">{{ connected.body }}</span>
+            </span>
+            <button onClick="{{ reconnect }}" style="flex:none;padding:7px 13px;border-radius:8px;font-family:inherit;font-size:11.5px;font-weight:600;color:#94a3b8;background:transparent;border:1px solid rgba(71,85,105,.5);cursor:pointer">Change</button>
+          </div>
+        </sc-if>
+
+      </div>
+
+      <div style="flex:1 1 300px;min-width:0;position:sticky;top:20px;align-self:flex-start;max-height:calc(100vh - 40px);overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;padding-right:2px">
+        <div style="border:1px solid rgba(59,130,246,.32);border-radius:16px;background:linear-gradient(160deg,rgba(59,130,246,.1),#0b1524 70%);padding:20px;display:flex;flex-direction:column;gap:15px">
+          <span style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#64748b">{{ summary.label }}</span>
+            <span style="font-size:31px;font-weight:800;letter-spacing:-.035em;line-height:1;color:#f8fafc;font-variant-numeric:tabular-nums">{{ summary.total }}</span>
+            <span style="font-size:12px;color:#94a3b8;line-height:1.5">{{ summary.sub }}</span>
+          </span>
+          <div style="display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid rgba(30,41,59,.9)">
+            <sc-for list="{{ summary.lines }}" as="ln" hint-placeholder-count="3">
+              <span style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                <span style="font-size:12px;color:#94a3b8">{{ ln.k }}</span>
+                <span style="font-size:12.5px;font-weight:700;color:{{ ln.fg }};font-variant-numeric:tabular-nums;text-align:right">{{ ln.v }}</span>
+              </span>
+            </sc-for>
+          </div>
+            <sc-if value="{{ show.pay }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#64748b">Payment details</span>
+                  <span style="display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:#64748b">{{ iconLock }} Processed by Stripe</span>
+                </div>
+                <div style="border:1px solid rgba(30,41,59,.95);border-radius:14px;background:#0b1524;padding:18px;display:flex;flex-direction:column;gap:11px">
+                  <input type="text" value="{{ email }}" onInput="{{ onEmail }}" placeholder="billing@yourcompany.com" style="{{ inputCss }}" style-focus="border-color:#3b82f6">
+                  <input type="text" placeholder="Card number" style="{{ inputCss }}" style-focus="border-color:#3b82f6">
+                  <span style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                    <input type="text" placeholder="MM / YY" style="{{ inputCss }}" style-focus="border-color:#3b82f6">
+                    <input type="text" placeholder="CVC" style="{{ inputCss }}" style-focus="border-color:#3b82f6">
+                  </span>
+                  <input type="text" placeholder="Name on card" style="{{ inputCss }}" style-focus="border-color:#3b82f6">
+                </div>
+              </div>
+            </sc-if>
+          <div onClick="{{ toggleAgree }}" style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;padding-top:12px;border-top:1px solid rgba(30,41,59,.9)">
+            <span style="{{ agreeBoxCss }}">{{ agreeMark }}</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">I agree to the <span style="color:#60a5fa;font-weight:600">Terms of Service</span> and the <span style="color:#60a5fa;font-weight:600">Privacy Policy</span>.</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:9px;padding-top:14px;border-top:1px solid rgba(30,41,59,.9)">
+            <button onClick="{{ submit }}" style="{{ payBtnCss }}">{{ summary.cta }}</button>
+            <span style="font-size:11px;line-height:1.5;color:#64748b;text-align:center">{{ summary.foot }}</span>
+          </div>
+        </div>
+        <div style="border:1px solid rgba(30,41,59,.95);border-radius:14px;background:rgba(11,21,36,.7);padding:15px 16px;display:flex;flex-direction:column;gap:9px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#64748b">What happens next</span>
+          <sc-for list="{{ nextUp }}" as="nu" hint-placeholder-count="3">
+            <span style="display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:#94a3b8;line-height:1.55"><span style="color:#22d3ee;flex:none;display:flex;margin-top:1px">{{ iconCheck }}</span><span>{{ nu }}</span></span>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ show.account }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:520px;margin:0 auto;padding:48px 32px 90px;display:flex;flex-direction:column;gap:20px;animation:buyRise 460ms ease both">
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#34d399">{{ acct.step }}</span>
+        <h1 style="margin:0;font-size:clamp(22px,2.6vw,28px);font-weight:800;letter-spacing:-.03em;line-height:1.18;color:#f8fafc;text-wrap:pretty">{{ acct.title }}</h1>
+        <p style="margin:0;font-size:14px;line-height:1.65;color:#94a3b8;text-wrap:pretty">{{ acct.body }}</p>
+      </div>
+
+      <div style="border:1px solid rgba(30,41,59,.95);border-radius:16px;background:#0b1524;padding:22px;display:flex;flex-direction:column;gap:14px">
+
+        <sc-if value="{{ acct.isCode }}" hint-placeholder-val="{{ true }}">
+          <input value="{{ codeInput }}" onInput="{{ onCode }}" inputmode="numeric" placeholder="000000" style="width:100%;background:rgba(2,6,23,.7);border:1px solid rgba(51,65,85,.9);border-radius:10px;padding:14px;font-size:26px;font-weight:700;letter-spacing:.42em;text-align:center;color:#f1f5f9;outline:none;font-family:Menlo,Consolas,monospace" style-focus="border-color:#3b82f6">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <span style="font-size:11.5px;color:#64748b">Sent to {{ acct.email }}</span>
+            <button onClick="{{ resend }}" style="padding:0;border:0;background:none;font-family:inherit;font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer">Resend code</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ acct.isPassword }}" hint-placeholder-val="{{ false }}">
+          <input type="password" value="{{ pw1 }}" onInput="{{ onPw1 }}" placeholder="Choose a password" style="{{ inputCss }}" style-focus="border-color:#3b82f6">
+          <input type="password" value="{{ pw2 }}" onInput="{{ onPw2 }}" placeholder="Confirm password" style="{{ inputCss }}" style-focus="border-color:#3b82f6">
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <sc-for list="{{ pwRules }}" as="pr" hint-placeholder-count="3">
+              <span style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:{{ pr.fg }}"><span style="display:flex;flex:none">{{ pr.mark }}</span><span>{{ pr.text }}</span></span>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ acct.isMfa }}" hint-placeholder-val="{{ false }}">
+          <sc-for list="{{ mfaOptions }}" as="mo" hint-placeholder-count="2">
+            <div onClick="{{ mo.pick }}" style="{{ mo.css }}">
+              <span style="{{ mo.ringCss }}"><span style="{{ mo.dotCss }}"></span></span>
+              <span style="min-width:0">
+                <span style="display:block;font-size:13.5px;font-weight:700;color:#f8fafc">{{ mo.name }}</span>
+                <span style="display:block;font-size:11.5px;color:#94a3b8;line-height:1.55;margin-top:2px">{{ mo.desc }}</span>
+              </span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ mfa.showSecret }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(59,130,246,.28);border-radius:11px;background:rgba(59,130,246,.06);padding:13px 15px;display:flex;flex-direction:column;gap:7px">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#64748b">Setup key</span>
+              <span style="font-size:14px;font-weight:700;letter-spacing:.16em;color:#f1f5f9;font-family:Menlo,Consolas,monospace">{{ mfa.secret }}</span>
+              <span style="font-size:11px;color:#64748b;line-height:1.5">Scan or paste this into your authenticator, then enter the code it shows.</span>
+            </div>
+            <input value="{{ mfaCode }}" onInput="{{ onMfaCode }}" inputmode="numeric" placeholder="Code from your app" style="{{ inputCss }}" style-focus="border-color:#3b82f6">
+          </sc-if>
+          <sc-if value="{{ mfa.showPhone }}" hint-placeholder-val="{{ false }}">
+            <input value="{{ phone }}" onInput="{{ onPhone }}" placeholder="Token serial number" style="{{ inputCss }}" style-focus="border-color:#3b82f6">
+            <input value="{{ mfaCode }}" onInput="{{ onMfaCode }}" inputmode="numeric" placeholder="Current token code" style="{{ inputCss }}" style-focus="border-color:#3b82f6">
+          </sc-if>
+        </sc-if>
+
+        <button onClick="{{ acct.advance }}" style="{{ acct.btnCss }}">{{ acct.cta }}</button>
+        <span style="font-size:11px;color:#475569;line-height:1.5;text-align:center">{{ acct.foot }}</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ show.writeConsent }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:720px;margin:0 auto;padding:48px 32px 90px;display:flex;flex-direction:column;gap:22px;animation:buyRise 480ms ease both">
+      <span style="width:44px;height:44px;border-radius:12px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.32);display:flex;align-items:center;justify-content:center;color:#fbbf24">{{ iconKey }}</span>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#fbbf24">{{ write.eyebrow }}</span>
+        <h1 style="margin:0;font-size:clamp(24px,3vw,32px);font-weight:800;letter-spacing:-.03em;line-height:1.16;color:#f8fafc;text-wrap:pretty">{{ write.title }}</h1>
+        <p style="margin:0;font-size:14.5px;line-height:1.68;color:#94a3b8;max-width:60ch">{{ write.body }}</p>
+      </div>
+      <div style="border:1px solid rgba(30,41,59,.95);border-radius:16px;background:#0b1524;padding:20px;display:flex;flex-direction:column;gap:12px">
+        <span style="font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#64748b">The write app registration asks for</span>
+        <sc-for list="{{ writeScopes }}" as="ws" hint-placeholder-count="3">
+          <span style="display:flex;gap:10px;align-items:flex-start">
+            <span style="color:#fbbf24;flex:none;display:flex;margin-top:2px">{{ iconKeySm }}</span>
+            <span style="min-width:0">
+              <span style="display:block;font-size:12.5px;font-weight:700;color:#f8fafc;font-family:Menlo,Consolas,monospace">{{ ws.scope }}</span>
+              <span style="display:block;font-size:11.5px;color:#94a3b8;line-height:1.55;margin-top:3px">{{ ws.why }}</span>
+            </span>
+          </span>
+        </sc-for>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <button onClick="{{ grantWrite }}" style="padding:12px 24px;border:0;border-radius:11px;font-family:inherit;font-size:14px;font-weight:700;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6);cursor:pointer">Grant write access</button>
+        <sc-if value="{{ write.optional }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ declineWrite }}" style="padding:12px 22px;border-radius:11px;font-family:inherit;font-size:13.5px;font-weight:600;color:#cbd5e1;background:transparent;border:1px solid rgba(148,163,184,.25);cursor:pointer">Not now &#8212; stay read-only</button>
+        </sc-if>
+        <span style="font-size:11.5px;color:#64748b;max-width:38ch;line-height:1.55">{{ write.foot }}</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ show.preScan }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:560px;margin:0 auto;padding:84px 32px 120px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#60a5fa">Step 1 of 2 &#183; reading your tenant</span>
+        <h1 style="margin:0;font-size:clamp(21px,2.5vw,27px);font-weight:800;letter-spacing:-.03em;line-height:1.2;color:#f8fafc;text-wrap:pretty">Scanning before anything is written.</h1>
+        <p style="margin:0;font-size:13.5px;line-height:1.68;color:#94a3b8;text-wrap:pretty">The dry run is built from your tenant as it is right now, not from the read taken at checkout. Changes that are already true are dropped before you see the list.</p>
+      </div>
+      <span style="width:100%;height:6px;border-radius:999px;background:rgba(30,41,59,.9);overflow:hidden;display:block"><span style="{{ preScan.pctCss }}"></span></span>
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <sc-for list="{{ preScan.lines }}" as="ln" hint-placeholder-count="5">
+          <span style="{{ ln.css }}"><span style="{{ ln.markCss }}">{{ ln.mark }}</span>{{ ln.text }}</span>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ show.dryRun }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:1080px;margin:0 auto;padding:40px 32px 130px;display:flex;flex-direction:column;gap:20px;animation:buyRise 460ms ease both">
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#fbbf24">Dry run &#183; nothing has changed yet</span>
+        <h1 style="margin:0;font-size:clamp(23px,2.7vw,30px);font-weight:800;letter-spacing:-.03em;line-height:1.16;color:#f8fafc;text-wrap:pretty">Every change these packs will make, before any of them run.</h1>
+        <p style="margin:0;max-width:70ch;font-size:14px;line-height:1.68;color:#94a3b8;text-wrap:pretty">Write access is granted but unused. Below is each write the packs perform, what it touches, the value in your tenant now and the value after. Deselect anything you do not want and it is never sent.</p>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 16px;border-radius:13px;border:1px solid rgba(59,130,246,.28);background:rgba(59,130,246,.05)">
+        <span style="flex:1 1 320px;min-width:0;font-size:12px;color:#cbd5e1;line-height:1.6">{{ dry.scanState }}</span>
+        <button onClick="{{ dry.rescan }}" style="flex:none;padding:8px 14px;border-radius:9px;border:1px solid rgba(59,130,246,.45);background:rgba(59,130,246,.1);color:#93c5fd;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">{{ dry.scanLabel }}</button>
+      </div>
+
+      <sc-if value="{{ dry.hasDisruptive }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:13px 16px;border-radius:13px;border:1px solid rgba(248,113,113,.32);background:rgba(248,113,113,.06)">
+          <span style="flex:none;font-size:19px;font-weight:800;color:#f87171;font-variant-numeric:tabular-nums">{{ dry.disruptiveCount }}</span>
+          <span style="flex:1 1 300px;min-width:0;font-size:12px;color:#e2e8f0;line-height:1.6">{{ dry.disruptiveLabel }}. Each one names what it breaks in its own row, and the report-only period where there is one.</span>
+        </div>
+      </sc-if>
+
+      <div style="display:flex;flex-direction:column;gap:22px">
+        <sc-for list="{{ dry.groups }}" as="g" hint-placeholder-count="2">
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1px solid rgba(30,41,59,.9)">
+              <span style="font-size:13.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{ g.name }}</span>
+              <span style="font-size:11.5px;color:#64748b">{{ g.count }}</span>
+              <span style="margin-left:auto;font-size:13px;font-weight:800;color:#94a3b8;font-variant-numeric:tabular-nums">{{ g.price }}</span>
+            </div>
+            <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="4">
+              <div style="{{ it.rowCss }}">
+                <span onClick="{{ it.toggle }}" style="{{ it.boxCss }}">{{ it.boxMark }}</span>
+                <span style="min-width:0;display:flex;flex-direction:column;gap:5px">
+                  <span style="{{ it.titleCss }}">{{ it.title }}</span>
+                  <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;line-height:1.5">
+                    <span style="color:#64748b">{{ it.touches }}</span>
+                    <span style="color:#475569">&#183;</span>
+                    <span style="color:#94a3b8">{{ it.from }}</span>
+                    <span style="color:#475569">&#8594;</span>
+                    <span style="color:#7dd3fc">{{ it.to }}</span>
+                  </span>
+                  <sc-if value="{{ it.hasNote }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:11.5px;color:#fbbf24;line-height:1.55">{{ it.note }}</span>
+                  </sc-if>
+                  <span style="{{ it.revCss }}">{{ it.rev }}</span>
+                </span>
+                <span style="{{ it.chipCss }}">{{ it.chip }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:9px;padding-top:6px">
+        <span style="font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#64748b">When should this run</span>
+        <div style="display:flex;gap:9px;flex-wrap:wrap">
+          <sc-for list="{{ dry.windows }}" as="w" hint-placeholder-count="3">
+            <button onClick="{{ w.go }}" style="{{ w.css }}">
+              <span style="{{ w.labelCss }}">{{ w.label }}</span>
+              <span style="font-size:11px;color:#64748b">{{ w.sub }}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="position:sticky;bottom:16px;z-index:20;display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 18px;border-radius:14px;border:1px solid rgba(59,130,246,.4);background:rgba(8,16,32,.94);backdrop-filter:blur(8px);box-shadow:0 18px 50px rgba(2,6,23,.6)">
+        <span style="display:flex;flex-direction:column;gap:2px">
+          <span style="font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#64748b">Approved</span>
+          <span style="font-size:20px;font-weight:800;color:#f8fafc;letter-spacing:-.02em;font-variant-numeric:tabular-nums">{{ dry.approvedLabel }}</span>
+        </span>
+        <span style="flex:1;min-width:150px;font-size:11.5px;color:#64748b;line-height:1.5">Deselected changes are never sent to Graph. Everything approved is logged in the Portal with a rollback point.</span>
+        <button onClick="{{ dry.execute }}" style="{{ dry.runCss }}">{{ dry.runLabel }}</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ show.executing }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:560px;margin:0 auto;padding:90px 32px 120px;display:flex;flex-direction:column;gap:18px;align-items:center;text-align:center">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#60a5fa">Applying your approved changes</span>
+      <span style="font-size:38px;font-weight:800;color:#f8fafc;letter-spacing:-.04em;font-variant-numeric:tabular-nums">{{ dry.execDone }} / {{ dry.execTotal }}</span>
+      <span style="width:100%;height:6px;border-radius:999px;background:rgba(30,41,59,.9);overflow:hidden;display:block"><span style="{{ dry.execPctCss }}"></span></span>
+      <span style="font-size:13px;color:#94a3b8;line-height:1.6">{{ dry.execNow }}</span>
+      <span style="font-size:11.5px;color:#475569;line-height:1.6">Each write is executed in dependency order. If one fails, the run stops and everything before it is left in place with a rollback point.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ show.executed }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:1040px;margin:0 auto;padding:44px 32px 110px;display:flex;flex-direction:column;gap:20px;animation:buyRise 460ms ease both">
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#34d399">Change record &#183; CR-QS-2026-0184</span>
+        <h1 style="margin:0;font-size:clamp(22px,2.6vw,28px);font-weight:800;letter-spacing:-.03em;line-height:1.18;color:#f8fafc">{{ dry.execTotal }} changes applied. Here is every before and after.</h1>
+        <p style="margin:0;font-size:14px;line-height:1.68;color:#94a3b8;text-wrap:pretty">This is your record. Every change below carries the value your tenant held before and the value it holds now, alongside the ones you declined, which were never sent. Download it as a PDF or CSV for your auditor — each applied change keeps its prior value for rollback until 20 September 2026.</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px">
+        <div style="padding:13px 14px;border-radius:12px;border:1px solid rgba(30,41,59,.95);background:rgba(11,21,36,.6)">
+          <div style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#64748b;margin-bottom:5px">Applied</div>
+          <div style="font-size:20px;font-weight:800;color:#34d399;font-variant-numeric:tabular-nums">{{ dry.appliedCount }}</div>
+        </div>
+        <div style="padding:13px 14px;border-radius:12px;border:1px solid rgba(30,41,59,.95);background:rgba(11,21,36,.6)">
+          <div style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#64748b;margin-bottom:5px">Declined by you</div>
+          <div style="font-size:20px;font-weight:800;color:#fbbf24;font-variant-numeric:tabular-nums">{{ dry.declinedCount }}</div>
+        </div>
+        <div style="padding:13px 14px;border-radius:12px;border:1px solid rgba(30,41,59,.95);background:rgba(11,21,36,.6)">
+          <div style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#64748b;margin-bottom:5px">Already correct</div>
+          <div style="font-size:20px;font-weight:800;color:#94a3b8;font-variant-numeric:tabular-nums">{{ dry.satisfiedCount }}</div>
+        </div>
+        <div style="padding:13px 14px;border-radius:12px;border:1px solid rgba(30,41,59,.95);background:rgba(11,21,36,.6)">
+          <div style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#64748b;margin-bottom:5px">Rollback until</div>
+          <div style="font-size:13px;font-weight:700;color:#e2e8f0;line-height:1.4;margin-top:3px">20 Sep 2026</div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <sc-for list="{{ dry.recordGroups }}" as="g" hint-placeholder-count="2">
+          <div style="display:flex;flex-direction:column;gap:0">
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding-bottom:9px;border-bottom:1px solid rgba(30,41,59,.9)">
+              <span style="font-size:13px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{ g.name }}</span>
+              <span style="margin-left:auto;font-size:12px;font-weight:800;color:#94a3b8;font-variant-numeric:tabular-nums">{{ g.price }}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1.2fr) 104px;gap:12px;padding:8px 0 7px;border-bottom:1px solid rgba(30,41,59,.7)">
+              <span style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#475569">Setting</span>
+              <span style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#475569">Before</span>
+              <span style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#475569">After</span>
+              <span style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#475569;text-align:right">Result</span>
+            </div>
+            <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1.2fr) 104px;gap:12px;align-items:start;padding:11px 0;border-bottom:1px solid rgba(30,41,59,.55)">
+                <span style="font-size:12px;font-weight:600;color:#e2e8f0;line-height:1.45">{{ r.setting }}</span>
+                <span style="font-size:11.5px;color:#94a3b8;line-height:1.5">{{ r.before }}</span>
+                <span style="{{ r.afterCss }}">{{ r.after }}</span>
+                <span style="{{ r.resultCss }}">{{ r.result }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;border-radius:13px;border:1px solid rgba(52,211,153,.25);background:rgba(52,211,153,.05)">
+        <span style="flex:1 1 320px;min-width:0;font-size:12px;color:#cbd5e1;line-height:1.6">A read-only scan confirmed every applied value 20 minutes after the run. Two changes sit in a report-only period and are re-verified when they enforce.</span>
+        <a href="Quick-Start Change Record.dc.html" style="flex:none;padding:10px 16px;border-radius:9px;font-size:12px;font-weight:700;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6);white-space:nowrap">Download as PDF</a>
+      </div>
+      <div style="display:flex;gap:11px;flex-wrap:wrap;align-items:center">
+        <a href="Quick-Start Change Record.dc.html" style="padding:12px 20px;border-radius:10px;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6)">Open your change record</a>
+        <a href="Customer Portal Shell.dc.html" style="padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:#cbd5e1;border:1px solid rgba(148,163,184,.22)">Or tour the Portal</a>
+      </div>
+      <span style="font-size:11.5px;color:#64748b;line-height:1.6">The change record is a document, not a dashboard: every before and after value, the accounts affected, what you declined, and the rollback window. Print it or save it as PDF for your auditor.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ show.done }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:660px;margin:0 auto;padding:64px 32px 96px;display:flex;flex-direction:column;gap:26px;animation:buyRise 520ms ease both">
+      <span style="width:44px;height:44px;border-radius:12px;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.3);display:flex;align-items:center;justify-content:center;color:#34d399">{{ iconCheckLg }}</span>
+      <div style="display:flex;flex-direction:column;gap:13px">
+        <h1 style="margin:0;font-size:clamp(25px,3.2vw,34px);font-weight:800;letter-spacing:-.03em;line-height:1.15;color:#f8fafc;text-wrap:pretty">{{ done.title }}</h1>
+        <p style="margin:0;max-width:58ch;font-size:15px;line-height:1.65;color:#94a3b8;text-wrap:pretty">{{ done.body }}</p>
+      </div>
+      <div style="border:1px solid rgba(30,41,59,.95);border-radius:14px;background:#0b1524;padding:19px 21px;display:flex;flex-direction:column;gap:14px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#64748b">In your Portal</span>
+        <sc-for list="{{ done.next }}" as="dn" hint-placeholder-count="3">
+          <span style="display:flex;gap:13px;align-items:baseline">
+            <span style="font-size:11px;font-weight:700;letter-spacing:.1em;color:#22d3ee;flex:none;width:66px">{{ dn.when }}</span>
+            <span style="font-size:13px;line-height:1.6;color:#94a3b8">{{ dn.text }}</span>
+          </span>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <a href="Customer Portal Shell.dc.html" style="display:inline-flex;align-items:center;gap:8px;padding:13px 24px;border-radius:11px;font-size:14px;font-weight:700;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6)">Open your Portal {{ iconArrow }}</a>
+        <a href="Marketing Home.dc.html" style="font-size:13px;font-weight:600">Back to the site</a>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ show.processing }}">
+    <div style="position:fixed;inset:0;z-index:40;background:rgba(2,6,23,.86);display:flex;align-items:center;justify-content:center">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:18px">
+        <div style="width:42px;height:42px;border-radius:50%;border:2px solid rgba(51,65,85,.9);border-top-color:#3b82f6;animation:{{ spinAnim }}"></div>
+        <span style="font-size:14px;font-weight:600;color:#94a3b8">{{ processingLabel }}</span>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900},&quot;product&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;monitoring&quot;,&quot;retainer&quot;,&quot;pack&quot;],&quot;default&quot;:&quot;pack&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Checkout&quot;},&quot;priorScan&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Checkout&quot;}}">
+function ic(children, size) {
+  return React.createElement('svg', { viewBox: '0 0 24 24', width: size, height: size, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }, children);
+}
+const money = n => '$' + Math.round(n).toLocaleString('en-US');
+
+// Monitoring rates carried from Marketing Monitoring.dc.html (per seat/month by bracket, with floors).
+const BRACKETS = [
+  { key: 'micro', max: 25 }, { key: 'smb', max: 100 }, { key: 'mid', max: 499 }, { key: 'ent', max: Infinity },
+];
+const MON_TIERS = [
+  { key: 'foundation', name: 'Foundation', desc: '30 checks across all six pillars, risk register, documented decisions.',
+    rates: { micro: 12, smb: 9, mid: 7, ent: 5 }, floors: { micro: 180, smb: 300, mid: 900, ent: 3000 } },
+  { key: 'growth', name: 'Growth', desc: '129 checks, one-click runbooks, the SOP library, remediation tracking.',
+    rates: { micro: 18, smb: 14, mid: 11, ent: 8 }, floors: { micro: 270, smb: 500, mid: 1500, ent: 5000 } },
+  { key: 'premier', name: 'Premier', desc: 'Everything in Growth, plus change control, RACI, security plan, PII governance.',
+    rates: { micro: 22.5, smb: 17.5, mid: 13.75, ent: 10 }, floors: { micro: 497.5, smb: 625, mid: 1875, ent: 6250 }, flat: 160 },
+];
+const RET_TIERS = [
+  { key: 'advisory', name: 'Advisory', price: 900, desc: '5 hours a month. A name to call before something goes wrong.' },
+  { key: 'essentials', name: 'Essentials', price: 1500, desc: '8 hours a month. Real architectural guidance, not a help desk.' },
+  { key: 'growth', name: 'Growth', price: 3000, desc: '16 hours a month. An architect who owns initiatives.' },
+  { key: 'enterprise', name: 'Enterprise', price: 5500, desc: '30 hours a month. FTE-level architecture, without the hire.' },
+];
+// Every write a pack performs, as the dry run states it: what it touches, the value now,
+// the value after, and whether it can be reversed from the Portal.
+const A = (id, title, touches, from, to, impact, reversible, extra) => Object.assign({ id, title, touches, from, to, impact, reversible }, extra || {});
+const DRY_ACTIONS = {
+  entra: [
+    A('en1', 'Create the break-glass account', '1 new cloud-only account', 'None exists', 'bg-admin@tenant.onmicrosoft.com, excluded from CA', 'safe', true),
+    A('en2', 'Block legacy authentication', 'Tenant-wide CA policy', 'Allowed on 4 protocols', 'Blocked, report-only for 7 days first', 'disruptive', true, { note: '3 accounts signed in with legacy auth in the last 30 days. They are named in the report-only result before enforcement.' }),
+    A('en3', 'Restrict guest invitations', 'External collaboration settings', 'Anyone in the tenant can invite', 'Admins and the guest-inviter role only', 'notice', true),
+    A('en4', 'Enforce a group naming policy', 'M365 group creation', 'No policy', 'Prefix by department, blocked-word list applied', 'safe', true, { mayBeSatisfied: true }),
+    A('en5', 'Set self-service password reset scope', 'SSPR configuration', 'Disabled', 'Enabled for all users, 2 methods required', 'notice', true),
+  ],
+  breakglass: [
+    A('bg1', 'Create two break-glass accounts', '2 new cloud-only accounts', 'None exists', 'Excluded from all CA policies, 64-character passphrase', 'safe', true),
+    A('bg2', 'Store credentials in the sealed record', 'Portal credential vault', 'Nothing stored', 'Split-knowledge release, 3 named verifiers', 'safe', true),
+    A('bg3', 'Alert on any use of the accounts', 'Sign-in alert rule', 'No rule', 'Immediate alert to 3 recipients on any sign-in', 'safe', true),
+  ],
+  ca: [
+    A('ca1', 'Require MFA for administrators', 'CA policy, 8 directory roles', 'Not enforced', 'Enforced, no exclusions beyond break-glass', 'disruptive', true),
+    A('ca2', 'Require compliant or hybrid-joined devices', 'CA policy, all users', 'Not enforced', 'Report-only for 7 days, then enforced', 'disruptive', true, { note: 'Report-only first. 41 unmanaged devices would be blocked today, listed for you before enforcement.' }),
+    A('ca3', 'Block sign-in from unsupported countries', 'Named location policy', 'No location policy', 'Allow-list of 3 countries', 'notice', true),
+    A('ca4', 'Require MFA for risky sign-ins', 'CA policy, all users', 'Not enforced', 'Enforced at medium risk and above', 'notice', true, { mayBeSatisfied: true }),
+    A('ca5', 'Block legacy authentication', 'Tenant-wide CA policy', 'Allowed', 'Blocked', 'disruptive', true),
+  ],
+  pim: [
+    A('pm1', 'Convert standing admins to eligible', '12 role assignments', 'Permanent active', 'Eligible, activation required', 'disruptive', true, { note: '12 accounts lose standing privilege. Each keeps the role and activates it on demand with justification.' }),
+    A('pm2', 'Require approval to activate Global Administrator', 'PIM role setting', 'No approval', '2 named approvers, 8-hour maximum', 'notice', true),
+    A('pm3', 'Require justification and MFA on activation', 'All privileged roles', 'Not required', 'Required on every activation', 'safe', true),
+    A('pm4', 'Set an access review on privileged roles', 'Quarterly review', 'No review', 'Quarterly, owner-attested', 'safe', true),
+  ],
+  mfa: [
+    A('mf1', 'Enrol the 380 users outside the policy', 'User authentication methods', '380 users unenrolled', 'Registration campaign, 14-day grace', 'disruptive', true),
+    A('mf2', 'Move privileged accounts to phishing-resistant methods', '12 privileged accounts', 'Authenticator push', 'FIDO2 or Windows Hello required', 'disruptive', true),
+    A('mf3', 'Disable SMS as a method', 'Authentication methods policy', 'Enabled for all', 'Disabled, except 4 named exceptions', 'notice', true),
+    A('mf4', 'Turn off legacy per-user MFA', 'Per-user MFA state', 'Mixed with CA', 'CA only, per-user cleared', 'safe', true, { mayBeSatisfied: true }),
+  ],
+  hygiene: [
+    A('hy1', 'Disable accounts dormant over 90 days', '23 accounts', 'Enabled, unused', 'Disabled, licences reclaimed after 30 days', 'notice', true),
+    A('hy2', 'Remove stale guest accounts', '61 guests', 'Active, no sign-in in 180 days', 'Removed from all groups, then deleted', 'notice', true),
+    A('hy3', 'Revoke unused OAuth app consents', '7 applications', 'Consented, no use in 90 days', 'Consent revoked', 'notice', true),
+    A('hy4', 'Remove empty security groups', '14 groups', 'Empty', 'Deleted', 'safe', true),
+  ],
+  onboard: [
+    A('on1', 'Publish the joiner runbook', 'Portal runbook library', 'No runbook', '11 steps, Graph-executable', 'safe', true),
+    A('on2', 'Create role-based licence groups', '6 dynamic groups', 'Manual assignment', 'Group-based licensing by job title', 'notice', true),
+    A('on3', 'Set the default access template', 'New-user defaults', 'No template', 'Teams, SharePoint and mailbox defaults per role', 'safe', true),
+  ],
+  offboard: [
+    A('of1', 'Publish the leaver runbook', 'Portal runbook library', 'No runbook', '14 steps, Graph-executable', 'safe', true),
+    A('of2', 'Configure mailbox and OneDrive retention on exit', 'Retention policy', '30 days, default', '1 year, manager delegated access', 'notice', true),
+    A('of3', 'Revoke sessions and tokens on disable', 'Sign-in revocation', 'Not automated', 'Immediate revocation in the runbook', 'safe', true),
+  ],
+  incident: [
+    A('in1', 'Publish the containment runbook', 'Portal runbook library', 'No runbook', 'Account isolation, token revocation, mailbox rule sweep', 'safe', true),
+    A('in2', 'Enable mailbox auditing everywhere', '1,240 mailboxes', 'Default auditing', 'Full audit set, 1-year retention', 'safe', true, { mayBeSatisfied: true }),
+    A('in3', 'Create the high-risk sign-in alert', 'Alert rule', 'No rule', 'Alert plus automatic session revocation', 'notice', true),
+  ],
+  recovery: [
+    A('rc1', 'Publish the recovery runbook', 'Portal runbook library', 'No runbook', 'Restore order, owner sign-off gates', 'safe', true),
+    A('rc2', 'Extend deleted-item retention', 'SharePoint and Exchange', '14 and 30 days', '93 and 30 days', 'safe', true),
+    A('rc3', 'Verify restore points for 96 teams', 'Backup verification', 'Never verified', 'Weekly verification job', 'safe', true),
+  ],
+  device: [
+    A('dv1', 'Publish compliance policies', 'Intune, 3 platforms', 'No policy', 'Encryption, patch level and PIN required', 'disruptive', true, { note: '41 devices are non-compliant today. They keep access for the 14-day grace period.' }),
+    A('dv2', 'Require app protection on mobile', 'Intune app policies', 'Not configured', 'No copy-out, PIN, wipe on jailbreak', 'notice', true),
+    A('dv3', 'Enable BitLocker reporting', 'Windows estate', 'Not reported', 'Key escrow verified in Entra', 'safe', true),
+  ],
+  email: [
+    A('em1', 'Disable SMTP AUTH tenant-wide', 'Exchange Online', 'Enabled', 'Disabled, 2 named exceptions', 'disruptive', true),
+    A('em2', 'Publish anti-phishing policy', 'Defender for Office', 'Default only', 'Impersonation protection on 14 executives', 'notice', true),
+    A('em3', 'Turn on Safe Links and Safe Attachments', 'All mailboxes', 'Partial coverage', 'Full coverage, dynamic delivery', 'notice', true, { mayBeSatisfied: true }),
+    A('em4', 'Block auto-forwarding to external domains', 'Outbound spam policy', 'Allowed', 'Blocked, 3 existing rules removed', 'disruptive', true),
+  ],
+  oversharing: [
+    A('ov1', 'Expire existing anonymous links', '212 sites, 1,847 links', 'No expiry', '30-day expiry applied', 'disruptive', true, { note: 'Links older than 30 days stop working at the next scan. The list is exportable before you approve.' }),
+    A('ov2', 'Change the default sharing link type', 'Tenant sharing settings', 'Anyone with the link', 'Specific people', 'notice', true),
+    A('ov3', 'Restrict site-level external sharing', '4 sensitive sites', 'Org-wide', 'Existing guests only', 'notice', true),
+    A('ov4', 'Publish sensitivity labels', '4 labels', 'None published', 'Published to all, no default', 'safe', true),
+  ],
+  licensing: [
+    A('lc1', 'Reclaim licences from dormant accounts', '38 licences', 'Assigned, unused 90 days', 'Unassigned at the next renewal date', 'notice', true),
+    A('lc2', 'Remove duplicate service plans', '14 users', 'E3 plus overlapping add-ons', 'Add-ons removed, E3 retained', 'safe', true),
+    A('lc3', 'Move to group-based licensing', '6 groups', 'Direct assignment', 'Group-based, by department', 'notice', true),
+  ],
+  copilot: [
+    A('cp1', 'Restrict Copilot to the pilot cohort', 'Copilot licence assignment', 'Unassigned', '6 named users in a pilot group', 'safe', true),
+    A('cp2', 'Apply the sensitivity label baseline', '3,412 documents', 'Unlabelled', 'Auto-labelled by content type', 'notice', true),
+    A('cp3', 'Close org-wide sharing on 4 sensitive sites', 'SharePoint permissions', 'Shared org-wide', 'Named groups only', 'disruptive', true),
+    A('cp4', 'Restrict Copilot web grounding', 'Copilot settings', 'Enabled', 'Disabled until the pilot review', 'notice', true, { mayBeSatisfied: true }),
+    A('cp5', 'Turn on Copilot usage telemetry', 'Usage reporting', 'Not collected', 'Per-user weekly active reporting', 'safe', true),
+  ],
+};
+const PRE_SCAN = [
+  'Reading tenant configuration with the new write scopes',
+  'Comparing each pack action against the live value',
+  'Checking which changes are already true',
+  'Resolving dependencies between the approved packs',
+  'Building the dry run',
+];
+const PACKS = [
+  { key: 'entra', name: 'Entra ID Quick-Start Pack', price: 799, desc: 'A new or half-configured tenant taken to a real identity baseline in one pass.' },
+  { key: 'breakglass', name: 'Break-Glass Access Pack', price: 249, desc: 'A verified emergency admin credential, released only after multi-recipient verification and logged end to end.' },
+  { key: 'ca', name: 'Conditional Access Baseline Pack', price: 199, desc: 'Conditional Access policies configured and enforced, not just named in a report.' },
+  { key: 'pim', name: 'Privileged Access Pack', price: 299, desc: 'Admin roles under PIM: eligible instead of standing, with approval before elevation.' },
+  { key: 'mfa', name: 'MFA Enforcement Pack', price: 299, desc: 'Every user enrolled and enforced, including the accounts sitting outside policy today.' },
+  { key: 'hygiene', name: 'Identity Hygiene Pack', price: 249, desc: 'Stale access, unverified security info and accounts nobody closed, cleared out.' },
+  { key: 'onboard', name: 'New Employee Onboarding Pack', price: 149, desc: 'Account, licences, groups and access for a new hire in one run.' },
+  { key: 'offboard', name: 'Employee Offboarding Pack', price: 199, desc: 'Access disabled, sessions and licences reclaimed, data retained to your policy.' },
+  { key: 'incident', name: 'Security Incident Response Pack', price: 299, desc: 'Containment steps for an incident in progress, executed rather than recommended.' },
+  { key: 'recovery', name: 'Compromised Account Recovery Pack', price: 149, desc: 'Sessions revoked, credentials reset, access locked down on one account.' },
+  { key: 'device', name: 'Device Compliance Pack', price: 249, desc: 'Intune devices brought into line with the policies they were meant to enforce.' },
+  { key: 'email', name: 'Email Security Pack', price: 249, desc: 'Forwarding rules, delegate access and transport rules reviewed and closed.' },
+  { key: 'oversharing', name: 'SharePoint & OneDrive Oversharing Pack', price: 349, desc: 'Links reviewed, exposure removed, sharing policy enforced tenant-wide.' },
+  { key: 'licensing', name: 'Baseline Licensing Pack', price: 199, desc: 'Unused licences reclaimed and reassigned so spend matches headcount.' },
+  { key: 'copilot', name: 'Copilot Readiness Pack', price: 499, desc: 'The tenant configured before Copilot reaches anyone.' },
+];
+const READ_SCOPES = [
+  'Read-only, through Microsoft\u2019s own consent screen',
+  'No agent installed, no password ever requested',
+  'Revocable from your tenant at any time',
+];
+const SOP_WRITE_SCOPES = [
+  { scope: 'Policy.ReadWrite.ConditionalAccess', why: 'Lets a runbook fix a policy gap instead of describing it.' },
+  { scope: 'Directory.ReadWrite.All', why: 'Removes stale guests and role assignments the engines flag.' },
+  { scope: 'Sites.FullControl.All', why: 'Closes oversharing on the specific sites a finding names.' },
+];
+const WRITE_SCOPES = [
+  { scope: 'Policy.ReadWrite.ConditionalAccess', why: 'Creates the policies the pack ships, in report-only first.' },
+  { scope: 'Directory.ReadWrite.All', why: 'Creates the groups and role assignments the pack depends on.' },
+  { scope: 'Application.ReadWrite.OwnedBy', why: 'Manages only the app registrations this pack creates \u2014 nothing pre-existing.' },
+];
+
+function qs(k) { try { return new URLSearchParams(window.location.search).get(k); } catch (e) { return null; } }
+
+class Component extends DCLogic {
+  state = {
+    product: qs('product') || this.props.product || 'monitoring',
+    choice: qs('tier'),
+    packSel: (() => {
+      const list = (qs('packs') || qs('tier') || '').split(',').filter(Boolean);
+      const o = {}; list.forEach(k => { o[k] = true; }); return o;
+    })(),
+    seatsFromCatalog: (() => { const n = parseInt(qs('seats'), 10); return isNaN(n) ? null : Math.max(1, n); })(),
+    // a visitor arriving from the free scan already granted read-only access
+    connected: !!this.props.priorScan || qs('scanned') === '1',
+    scanSkipped: false,
+    agreed: false,
+    dryOff: {},
+    dryScan: 'idle',
+    dryScanAt: '4 minutes ago',
+    dryWindow: 'now',
+    execStep: 0,
+    preScanStep: 0,
+    seatInput: qs('seats') || '',
+    seatEdited: false,
+    stage: 'buy',
+    email: '',
+    codeInput: '',
+    pw1: '', pw2: '',
+    mfaMethod: 'app', mfaCode: '', phone: '',
+  };
+
+  productList() {
+    const p = this.state.product;
+    return p === 'retainer' ? RET_TIERS : p === 'pack' ? PACKS : MON_TIERS;
+  }
+  selected() {
+    const list = this.productList();
+    return list.find(x => x.key === this.state.choice) || list[this.state.product === 'monitoring' ? 1 : 0];
+  }
+  seats() {
+    const typed = parseInt(String(this.state.seatInput).replace(/\D/g, ''), 10);
+    if (!isNaN(typed) && typed > 0) return typed;
+    return this.state.seatsFromCatalog || 250;
+  }
+  bracketFor(n) { return BRACKETS.find(b => n <= b.max) || BRACKETS[3]; }
+  monthly(tier, seats) {
+    if (!tier || !tier.rates) return tier && tier.price ? tier.price : 0;
+    const b = this.bracketFor(seats).key;
+    return Math.max(seats * tier.rates[b], tier.floors[b]) + (tier.flat || 0);
+  }
+
+  // Monitoring must be connected before it can be priced or sold. A retainer needs no tenant
+  // access at all, so its scan connection is offered and skippable.
+  connectRequired() { return this.state.product === 'monitoring'; }
+  connectOffered() { return this.state.product === 'retainer' && !this.state.connected && !this.state.scanSkipped; }
+
+  packKeys() {
+    const ks = Object.keys(this.state.packSel).filter(k => PACKS.some(p => p.key === k));
+    return ks.length ? ks : [PACKS[0].key];
+  }
+  packTotal() { return this.packKeys().reduce((a, k) => a + PACKS.find(p => p.key === k).price, 0); }
+  toggleAgree = () => this.setState(s => ({ agreed: !s.agreed }));
+  pick = (key) => {
+    if (this.state.product !== 'pack') { this.setState({ choice: key }); return; }
+    this.setState(s => {
+      const sel = { ...s.packSel };
+      if (sel[key]) { if (Object.keys(sel).length === 1) return {}; delete sel[key]; } else sel[key] = true;
+      return { packSel: sel };
+    });
+  };
+  onSeats = (e) => this.setState({ seatInput: e.target.value, seatEdited: true });
+  doConnect = () => {
+    this.setState({ stage: 'connecting' });
+    this.t1 = setTimeout(() => this.setState({ connected: true, scanSkipped: false, stage: 'buy' }), 1400);
+  };
+  skipConnect = () => this.setState({ scanSkipped: true });
+  reconnect = () => this.setState({ connected: false, scanSkipped: false });
+  submit = () => {
+    if (this.connectRequired() && !this.state.connected) return;
+    if (!this.state.agreed) return;
+    this.setState({ stage: 'paying' });
+    // payment succeeds, then the account gets created off the billing email
+    this.t2 = setTimeout(() => this.setState({ stage: 'code' }), 1600);
+  };
+  onEmail = (e) => this.setState({ email: e.target.value });
+  onCode = (e) => this.setState({ codeInput: e.target.value.replace(/\D/g, '').slice(0, 6) });
+  resend = () => this.setState({ codeInput: '' });
+  verifyCode = () => {
+    if (this.state.codeInput.length !== 6) return;
+    this.setState({ stage: 'verifying' });
+    this.t4 = setTimeout(() => this.setState({ stage: 'password' }), 1100);
+  };
+  onPw1 = (e) => this.setState({ pw1: e.target.value });
+  onPw2 = (e) => this.setState({ pw2: e.target.value });
+  pwOk() { const p = this.state.pw1; return p.length >= 12 && /[A-Z]/.test(p) && /[0-9]/.test(p) && p === this.state.pw2; }
+  savePw = () => { if (this.pwOk()) this.setState({ stage: 'mfa' }); };
+  onMfaCode = (e) => this.setState({ mfaCode: e.target.value.replace(/\D/g, '').slice(0, 6) });
+  onPhone = (e) => this.setState({ phone: e.target.value.toUpperCase() });
+  pickMfa = (m) => this.setState({ mfaMethod: m });
+  mfaOk() { return this.state.mfaMethod === 'app' ? this.state.mfaCode.length === 6 : this.state.phone.replace(/\s/g, '').length >= 6; }
+  finishAccount = () => {
+    if (!this.mfaOk()) return;
+    this.setState({ stage: 'logging' });
+    // account is live, so the buyer is signed in and dropped at the next real step
+    this.t5 = setTimeout(() => this.setState({ stage: 'write' }), 1500);
+  };
+  declineWrite = () => this.setState({ writeDeclined: true, stage: 'done' });
+  grantWrite = () => {
+    this.setState({ stage: 'granting' });
+    this.t3 = setTimeout(() => this.setState({
+      writeGranted: true,
+      stage: this.state.product === 'pack' ? 'prescan' : 'done',
+    }), 1400);
+    if (this.state.product === 'pack') this.t6 = setTimeout(this.runPreScan, 1500);
+  };
+  runPreScan = () => {
+    this.setState({ preScanStep: 0 });
+    const step = () => {
+      this.t7 = setTimeout(() => {
+        const n = this.state.preScanStep + 1;
+        if (n >= PRE_SCAN.length) this.setState({ stage: 'dryrun', dryScan: 'done', dryScanAt: 'just now', preScanStep: PRE_SCAN.length });
+        else { this.setState({ preScanStep: n }); step(); }
+      }, 480);
+    };
+    step();
+  };
+  toggleAction = (id) => this.setState(s => {
+    const off = { ...s.dryOff };
+    if (off[id]) delete off[id]; else off[id] = true;
+    return { dryOff: off };
+  });
+  rescan = () => {
+    this.setState({ dryScan: 'scanning' });
+    this.t4 = setTimeout(() => this.setState({ dryScan: 'done', dryScanAt: 'just now' }), 1800);
+  };
+  setWindow = (w) => this.setState({ dryWindow: w });
+  execute = () => {
+    this.setState({ stage: 'executing', execStep: 0 });
+    const tick = () => {
+      this.t5 = setTimeout(() => {
+        const total = this.liveActions().filter(a => !this.state.dryOff[a.id] && !a.satisfied).length;
+        const n = this.state.execStep + 1;
+        if (n >= total) this.setState({ stage: 'executed', execStep: total });
+        else { this.setState({ execStep: n }); tick(); }
+      }, 420);
+    };
+    tick();
+  };
+  liveActions() {
+    const scanned = this.state.dryScan === 'done';
+    return this.packKeys().reduce((acc, k) => acc.concat((DRY_ACTIONS[k] || []).map(a => ({
+      ...a, pack: k, packName: (PACKS.find(p => p.key === k) || {}).name,
+      satisfied: scanned && !!a.mayBeSatisfied,
+    }))), []);
+  }
+  componentWillUnmount() { [this.t1, this.t2, this.t3, this.t4, this.t5, this.t6, this.t7].forEach(clearTimeout); }
+
+  renderVals() {
+    const s = this.state;
+    const p = s.product;
+    const sel = this.selected();
+    const realSeats = 1240;               // what the tenant reports once connected
+    const seats = s.connected ? realSeats : this.seats();
+    const isMon = p === 'monitoring', isRet = p === 'retainer', isPack = p === 'pack';
+    const price = isMon ? this.monthly(sel, seats) : isPack ? this.packTotal() : (sel.price || 0);
+    const packKeys = isPack ? this.packKeys() : [];
+    const connectBlocked = this.connectRequired() && !s.connected;
+    const blocked = connectBlocked || !s.agreed;
+
+    const stepLabels = isMon ? ['Connect', 'Tier', 'Pay', 'Create account', 'Portal']
+      : isPack ? ['Pack', 'Pay', 'Create account', 'Write access', 'Scan', 'Approve', 'Record']
+      : ['Tier', 'Pay', 'Create account', 'Portal'];
+    const acctIdx = isMon ? 3 : isPack ? 2 : 2;
+    const at = isPack
+      ? ({ buy: 0, connecting: 0, paying: 1, code: 2, verifying: 2, password: 2, mfa: 2, logging: 2,
+           write: 3, granting: 3, prescan: 4, dryrun: 5, executing: 5, executed: 6, done: 6 }[s.stage] || 0)
+      : s.stage === 'done' ? stepLabels.length - 1
+      : (s.stage === 'write' || s.stage === 'granting') ? acctIdx + 1
+      : ['code', 'verifying', 'password', 'mfa', 'logging'].indexOf(s.stage) >= 0 ? acctIdx
+      : isMon ? (s.connected ? 2 : 0) : 1;
+
+    const v = {
+      steps: stepLabels.map((label, i) => {
+        const st = i < at ? 'done' : i === at ? 'now' : 'next';
+        return {
+          n: i < at ? '\u2713' : i + 1, label,
+          dotCss: 'width:19px;height:19px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;flex:none;' +
+            (st === 'done' ? 'color:#34d399;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.3);'
+             : st === 'now' ? 'color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6);'
+             : 'color:#64748b;background:rgba(255,255,255,.05);border:1px solid rgba(71,85,105,.35);'),
+          labelCss: 'font-size:11px;font-weight:600;white-space:nowrap;color:' + (st === 'next' ? '#475569' : st === 'now' ? '#f8fafc' : '#94a3b8'),
+          arrowCss: 'font-size:11px;color:#334155;margin:0 2px;display:' + (i === stepLabels.length - 1 ? 'none' : 'inline'),
+        };
+      }),
+      show: {
+        buying: s.stage === 'buy' || s.stage === 'connecting' || s.stage === 'paying',
+        account: ['code', 'verifying', 'password', 'mfa', 'logging'].indexOf(s.stage) >= 0,
+        writeConsent: s.stage === 'write' || s.stage === 'granting',
+        done: s.stage === 'done',
+        processing: ['connecting', 'paying', 'granting', 'verifying', 'logging'].indexOf(s.stage) >= 0,
+        connect: (this.connectRequired() && !s.connected) || this.connectOffered(),
+        connected: s.connected,
+        preScan: s.stage === 'prescan',
+        dryRun: s.stage === 'dryrun',
+        executing: s.stage === 'executing',
+        executed: s.stage === 'executed',
+        estimate: isMon && !s.connected,
+        tiers: true,
+        pay: !connectBlocked,
+      },
+      spinAnim: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'none' : 'buySpin 900ms linear infinite',
+      processingLabel: s.stage === 'connecting' ? 'Waiting for Microsoft consent'
+        : s.stage === 'granting' ? 'Registering write access'
+        : s.stage === 'verifying' ? 'Checking your code'
+        : s.stage === 'logging' ? 'Signing you in' : 'Confirming with Stripe',
+      head: isMon
+        ? { eyebrow: 'Tenant monitoring', title: 'Connect first, then buy the tier that fits.', body: 'Monitoring is priced per seat from your real tenant, so the connection comes before the card. Nothing is charged until you see the actual number.' }
+        : isRet ? { eyebrow: 'Architect retainer', title: 'Pick your hours. Start this month.', body: 'A retainer needs no access to your tenant to begin \u2014 pay and your architect is booked. You can connect a read-only scan as well, so the first conversation starts from what is actually in there.' }
+        : { eyebrow: 'Quick-Start Pack', title: 'Buy the pack. Approve the changes before any of them run.', body: 'One fixed-price set of configuration changes, applied through the Graph write-back engine. After payment you grant write access, preview every change, and deselect anything you don\u2019t want.' },
+      pick: { label: isPack ? 'Choose your packs' : 'Choose your tier' },
+      options: this.productList().map(o => {
+        const on = isPack ? !!this.state.packSel[o.key] : o.key === sel.key;
+        return {
+          name: o.name, desc: o.desc,
+          price: isMon ? money(this.monthly(o, seats)) : money(o.price),
+          unit: isMon ? '/mo' : isRet ? '/mo' : 'one-time',
+          pick: () => this.pick(o.key),
+          cardCss: 'display:flex;align-items:flex-start;gap:12px;padding:15px 16px;border-radius:13px;cursor:pointer;transition:border-color 200ms,background 200ms;border:1px solid ' +
+            (on ? 'rgba(59,130,246,.5)' : 'rgba(30,41,59,.9)') + ';background:' + (on ? 'rgba(59,130,246,.07)' : '#0b1524'),
+          ringCss: 'width:17px;height:17px;border-radius:' + (isPack ? '5px' : '50%') + ';flex:none;margin-top:2px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;border:1px solid ' + (on ? '#3b82f6' : 'rgba(71,85,105,.9)') + ';background:' + (isPack && on ? '#3b82f6' : 'transparent'),
+          ringFill: isPack ? (on ? '#3b82f6' : 'transparent') : 'transparent',
+          mark: isPack && on ? '\u2713' : '',
+          dotCss: 'width:7px;height:7px;border-radius:50%;background:' + (isPack ? 'transparent' : (on ? '#3b82f6' : 'transparent')),
+        };
+      }),
+      connect: this.connectOffered()
+        ? { title: 'Connect your tenant for a scan (optional)', optional: true,
+            body: 'Your architect can start from real findings instead of a discovery call. It changes nothing about the price, and you can skip it and connect later from the Portal.',
+            foot: 'Skipping is fine \u2014 the retainer runs either way.' }
+        : { title: s.seatsFromCatalog ? 'One thing left: confirm the seat count from your tenant' : 'Connect your tenant, read-only', optional: false,
+            body: (s.seatsFromCatalog ? 'You have already picked ' + sel.name + ' at ' + s.seatsFromCatalog.toLocaleString('en-US') + ' seats. Billing runs on the seat count your tenant reports, not the one you typed, so the connection is what turns your estimate into the real figure. ' : 'Monitoring is priced per seat, so the real number comes from your tenant rather than a form. ') + 'You approve a scoped, read-only connection in Microsoft\u2019s own consent screen \u2014 nothing is charged at this step.',
+            foot: 'Revocable from your tenant at any time.' },
+      agreed: s.agreed,
+      toggleAgree: this.toggleAgree,
+      agreeBoxCss: 'flex:none;margin-top:1px;width:17px;height:17px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;cursor:pointer;border:1px solid ' + (s.agreed ? '#3b82f6' : 'rgba(100,116,139,.75)') + ';background:' + (s.agreed ? '#3b82f6' : 'transparent'),
+      agreeMark: s.agreed ? '\u2713' : '',
+      dry: (() => {
+        if (!isPack) return null;
+        const all = this.liveActions();
+        const off = s.dryOff;
+        const chosen = all.filter(a => !off[a.id] && !a.satisfied);
+        const disruptive = chosen.filter(a => a.impact === 'disruptive');
+        const tone = { safe: ['#34d399', 'No user impact'], notice: ['#fbbf24', 'Users will notice'], disruptive: ['#f87171', 'Blocks something today'] };
+        const groups = this.packKeys().map(k => {
+          const items = all.filter(a => a.pack === k);
+          const on = items.filter(a => !off[a.id] && !a.satisfied).length;
+          return {
+            name: (PACKS.find(p => p.key === k) || {}).name,
+            count: on + ' of ' + items.length + ' changes approved',
+            price: money((PACKS.find(p => p.key === k) || {}).price),
+            items: items.map(a => {
+              const skipped = a.satisfied, dropped = !!off[a.id], live = !skipped && !dropped;
+              const t = tone[a.impact];
+              return {
+                title: a.title, touches: a.touches, from: a.from, to: a.to,
+                note: a.note || '', hasNote: !!a.note && live,
+                toggle: () => this.toggleAction(a.id),
+                rowCss: 'display:grid;grid-template-columns:20px minmax(0,1fr) 118px;gap:14px;align-items:start;padding:13px 15px;border-radius:12px;transition:border-color 180ms,background 180ms;border:1px solid ' + (skipped ? 'rgba(30,41,59,.7)' : live ? 'rgba(30,41,59,.95)' : 'rgba(30,41,59,.6)') + ';background:' + (live ? 'rgba(11,21,36,.66)' : 'rgba(2,6,23,.34)') + ';opacity:' + (live ? '1' : '.62'),
+                boxCss: 'flex:none;margin-top:1px;width:18px;height:18px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;cursor:' + (skipped ? 'default' : 'pointer') + ';border:1px solid ' + (live ? '#3b82f6' : 'rgba(100,116,139,.6)') + ';background:' + (live ? '#3b82f6' : 'transparent'),
+                boxMark: live ? '\u2713' : '',
+                titleCss: 'font-size:13px;font-weight:700;line-height:1.35;color:' + (live ? '#f8fafc' : '#94a3b8') + (dropped ? ';text-decoration:line-through' : ''),
+                chip: skipped ? 'Already true' : dropped ? 'Deselected' : t[1],
+                chipCss: 'justify-self:end;text-align:center;white-space:nowrap;padding:3px 9px;border-radius:999px;font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;border:1px solid ' + (skipped ? 'rgba(52,211,153,.4);color:#34d399' : dropped ? 'rgba(100,116,139,.4);color:#64748b' : t[0] + '66;color:' + t[0]),
+                revCss: 'font-size:10.5px;color:#475569',
+                rev: a.reversible ? 'Reversible from the Portal' : 'Not reversible',
+              };
+            }),
+          };
+        });
+        const wins = [
+          { k: 'now', label: 'Run now', sub: 'Starts the moment you approve' },
+          { k: 'tonight', label: 'Tonight, 22:00', sub: 'Outside working hours' },
+          { k: 'window', label: 'Next change window', sub: 'Saturday 06:00, from your calendar' },
+        ].map(w => ({
+          label: w.label, sub: w.sub, go: () => this.setWindow(w.k),
+          css: 'flex:1 1 170px;text-align:left;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;gap:3px;padding:11px 13px;border-radius:11px;border:1px solid ' + (s.dryWindow === w.k ? 'rgba(59,130,246,.5)' : 'rgba(30,41,59,.9)') + ';background:' + (s.dryWindow === w.k ? 'rgba(59,130,246,.09)' : 'rgba(11,21,36,.5)'),
+          labelCss: 'font-size:12.5px;font-weight:700;color:' + (s.dryWindow === w.k ? '#f8fafc' : '#cbd5e1'),
+        }));
+        const scanning = s.dryScan === 'scanning';
+        const satisfied = all.filter(a => a.satisfied).length;
+        return {
+          packCount: this.packKeys().length,
+          totalActions: String(all.length),
+          approvedCount: String(chosen.length),
+          approvedLabel: chosen.length + ' of ' + all.length + ' changes approved',
+          disruptiveCount: String(disruptive.length),
+          hasDisruptive: disruptive.length > 0,
+          disruptiveLabel: disruptive.length === 1 ? '1 approved change blocks something that works today' : disruptive.length + ' approved changes block something that works today',
+          groups: groups,
+          windows: wins,
+          scanning: scanning,
+          scanLabel: scanning ? 'Reading your tenant\u2026' : 'Re-read the tenant',
+          scanState: s.dryScan === 'done'
+            ? 'Read ' + s.dryScanAt + ' \u00b7 ' + satisfied + (satisfied === 1 ? ' change was already true and has been dropped' : ' changes were already true and have been dropped')
+            : 'Configuration read ' + s.dryScanAt + '. Re-read it if anything changed since.',
+          rescan: this.rescan,
+          execute: this.execute,
+          runLabel: 'Run ' + chosen.length + (chosen.length === 1 ? ' approved change' : ' approved changes'),
+          canRun: chosen.length > 0,
+          runCss: 'flex:none;padding:12px 20px;border:0;border-radius:10px;font-family:inherit;font-size:13px;font-weight:700;color:#fff;cursor:' + (chosen.length ? 'pointer' : 'not-allowed') + ';background:' + (chosen.length ? 'linear-gradient(90deg,#3b82f6,#8b5cf6)' : 'rgba(71,85,105,.45)'),
+          execDone: String(Math.min(s.execStep, chosen.length)),
+          execTotal: String(chosen.length),
+          execPctCss: 'height:100%;border-radius:999px;background:linear-gradient(90deg,#3b82f6,#22d3ee);transition:width 380ms;width:' + (chosen.length ? Math.round((Math.min(s.execStep, chosen.length) / chosen.length) * 100) : 0) + '%',
+          execNow: chosen[Math.min(s.execStep, chosen.length - 1)] ? chosen[Math.min(s.execStep, chosen.length - 1)].title : 'Finishing up',
+          ranList: chosen.map(a => ({ title: a.title, pack: a.packName, to: a.to })),
+          appliedCount: String(chosen.length),
+          declinedCount: String(all.filter(a => off[a.id] && !a.satisfied).length),
+          satisfiedCount: String(all.filter(a => a.satisfied).length),
+          recordGroups: this.packKeys().map(k => ({
+            name: (PACKS.find(p => p.key === k) || {}).name,
+            price: money((PACKS.find(p => p.key === k) || {}).price),
+            rows: all.filter(a => a.pack === k).map(a => {
+              const skipped = a.satisfied, dropped = !!off[a.id];
+              const c = skipped ? '#64748b' : dropped ? '#fbbf24' : '#34d399';
+              return {
+                setting: a.title, before: a.from, after: dropped || skipped ? a.from : a.to,
+                result: skipped ? 'Already correct' : dropped ? 'Declined by you' : 'Applied',
+                resultCss: 'font-size:11px;font-weight:700;text-align:right;color:' + c + ';white-space:nowrap',
+                afterCss: 'font-size:11.5px;line-height:1.5;color:' + (skipped || dropped ? '#64748b' : '#7dd3fc'),
+              };
+            }),
+          })),
+        };
+      })(),
+      preScan: {
+        lines: PRE_SCAN.map((t, i) => ({
+          text: t,
+          css: 'display:flex;align-items:center;gap:10px;font-size:12.5px;line-height:1.6;color:' + (i < s.preScanStep ? '#cbd5e1' : i === s.preScanStep ? '#f8fafc' : '#475569'),
+          mark: i < s.preScanStep ? '\u2713' : i === s.preScanStep ? '\u2022' : '',
+          markCss: 'flex:none;width:16px;text-align:center;font-weight:800;color:' + (i < s.preScanStep ? '#34d399' : '#60a5fa'),
+        })),
+        pctCss: 'height:100%;border-radius:999px;background:linear-gradient(90deg,#3b82f6,#22d3ee);transition:width 420ms;width:' + Math.round((s.preScanStep / PRE_SCAN.length) * 100) + '%',
+      },
+      readScopes: READ_SCOPES,
+      seatInput: s.seatInput,
+      est: isMon ? (() => {
+        const n = this.seats();
+        const carried = !!s.seatsFromCatalog && !s.seatEdited;
+        return {
+          price: money(this.monthly(sel, n)) + '/mo',
+          basis: (carried ? 'your ' : 'estimate for ') + n.toLocaleString('en-US') + ' seats on ' + sel.name,
+          eyebrow: carried ? 'Carried over from the pricing catalogue' : 'Indicative price, while you decide',
+          eyebrowFg: carried ? '#60a5fa' : '#64748b',
+          label: carried ? 'Licensed users, as you set them' : 'Roughly how many licensed users?',
+          foot: carried
+            ? 'This is the seat count and tier you picked on the pricing page. Change it here if it was a guess \u2014 either way you are billed on what your tenant reports, and you see that figure before you pay.'
+            : 'An estimate from the number you typed. You are billed on whatever your tenant actually reports, and you see that figure before you pay.',
+        };
+      })() : null,
+      connected: (this.props.priorScan || qs('scanned') === '1') && !s.scanSkipped
+        ? { title: 'Reusing the connection from your free scan', body: 'You granted read-only access on 12 August. ' + (isMon ? 'Your tenant reports ' + realSeats.toLocaleString('en-US') + ' licensed seats, and that is what you will be billed on.' : 'Your architect will have your findings on day one.') }
+        : { title: 'Tenant connected, read-only', body: isMon ? 'Your tenant reports ' + realSeats.toLocaleString('en-US') + ' licensed seats, and that is what you will be billed on.' : 'A read-only scan will run before your first session.' },
+      doConnect: this.doConnect, skipConnect: this.skipConnect, reconnect: this.reconnect, submit: this.submit,
+      grantWrite: this.grantWrite, declineWrite: this.declineWrite,
+      inputCss: 'width:100%;background:rgba(2,6,23,.7);border:1px solid rgba(51,65,85,.9);border-radius:8px;padding:10px 12px;font-size:13px;color:#f1f5f9;outline:none',
+      payBtnCss: 'width:100%;padding:12px;border:0;border-radius:11px;font-family:inherit;font-size:13.5px;font-weight:700;color:#fff;cursor:' + (blocked ? 'not-allowed' : 'pointer') +
+        ';background:' + (blocked ? 'rgba(71,85,105,.4)' : 'linear-gradient(90deg,#3b82f6,#8b5cf6)'),
+      summary: {
+        label: isPack ? (packKeys.length > 1 ? 'Charged once \u00b7 ' + packKeys.length + ' packs' : 'Charged once') : 'Charged monthly',
+        total: money(price) + (isPack ? '' : '/mo'),
+        sub: isMon ? sel.name + ' \u00b7 ' + seats.toLocaleString('en-US') + (s.connected ? ' seats, read from your tenant' : ' seats, your estimate') : isPack ? (packKeys.length > 1 ? packKeys.length + ' packs, one dry run' : PACKS.find(p => p.key === packKeys[0]).name) : sel.name,
+        lines: isMon
+          ? [{ k: 'Tier', v: sel.name, fg: '#f8fafc' }, { k: 'Seats', v: seats.toLocaleString('en-US'), fg: s.connected ? '#34d399' : '#fbbf24' }, { k: 'Billing', v: 'Monthly, cancel with 30 days', fg: '#94a3b8' }]
+          : isRet
+            ? [{ k: 'Tier', v: sel.name, fg: '#f8fafc' }, { k: 'Tenant scan', v: s.connected ? 'Included' : 'Skipped', fg: s.connected ? '#34d399' : '#94a3b8' }, { k: 'Billing', v: 'Monthly, no minimum term', fg: '#94a3b8' }]
+            : packKeys.map(k => ({ k: PACKS.find(p => p.key === k).name, v: money(PACKS.find(p => p.key === k).price), fg: '#f8fafc' })).concat([{ k: 'Write access', v: 'Granted after payment', fg: '#fbbf24' }, { k: 'Billing', v: 'One-time', fg: '#94a3b8' }]),
+        cta: connectBlocked ? 'Connect your tenant to continue' : !s.agreed ? 'Accept the terms to continue' : 'Pay ' + money(price) + (isPack ? ' and continue' : ' and start'),
+        foot: connectBlocked ? 'Monitoring cannot be priced before the tenant reports its seat count.' : isPack ? 'Nothing changes in your tenant until you approve the preview.' : 'Cancel any month.',
+      },
+      nextUp: isMon
+        ? ['The engines start their first full pass within the hour', 'Findings land in your Portal as they are confirmed', 'Runbooks and SOPs unlock at Growth and above']
+        : isRet
+          ? ['Your architect is booked from this month', 'Hours consumed against hours retained, visible in the Portal', 'A written status report you can actually read']
+          : ['You grant write access, scoped to this pack', 'The Portal previews every change before it runs', 'You deselect anything you don\u2019t want, then schedule the window'],
+      write: isPack
+        ? { eyebrow: 'Paid \u00b7 one step before anything changes', optional: false,
+            title: 'This pack needs write access. Until now we\u2019ve only had read.',
+            body: 'Everything up to this point ran through the read-only app registration. Applying a Quick-Start Pack means changing configuration, which is a second, separate consent \u2014 granted by you, scoped to what the pack actually touches, and revocable the moment it\u2019s done.',
+            foot: 'You\u2019ll preview every change in the Portal and can deselect any of them before the pack runs.' }
+        : { eyebrow: 'Paid \u00b7 optional, and you can do it later', optional: true,
+            title: 'Want the fixes applied for you, not just found?',
+            body: 'Everything so far runs on the read-only app registration, and it stays that way unless you say otherwise. Granting write access is what lets ' + (isMon ? 'the one-click runbooks and SOP remediation' : 'your architect\u2019s SOP remediation') + ' actually change something instead of handing you a checklist. Nothing runs without your approval on each change.',
+            foot: 'Decline and nothing is lost \u2014 you can grant it from the Portal whenever you want.' },
+      writeScopes: isPack ? WRITE_SCOPES : SOP_WRITE_SCOPES,
+      email: s.email, codeInput: s.codeInput, pw1: s.pw1, pw2: s.pw2, mfaCode: s.mfaCode, phone: s.phone,
+      onEmail: this.onEmail, onCode: this.onCode, resend: this.resend, onPw1: this.onPw1, onPw2: this.onPw2,
+      onMfaCode: this.onMfaCode, onPhone: this.onPhone,
+      acct: (() => {
+        const isCode = s.stage === 'code' || s.stage === 'verifying';
+        const isPassword = s.stage === 'password';
+        const isMfa = s.stage === 'mfa' || s.stage === 'logging';
+        const ready = isCode ? s.codeInput.length === 6 : isPassword ? this.pwOk() : this.mfaOk();
+        return {
+          isCode, isPassword, isMfa,
+          step: 'Paid \u00b7 ' + (isCode ? 'step 1 of 3' : isPassword ? 'step 2 of 3' : 'step 3 of 3'),
+          email: s.email.trim() || 'your billing address',
+          title: isCode ? 'Check your email for a six-digit code'
+            : isPassword ? 'Set a password' : 'Add a second factor',
+          body: isCode ? 'Payment went through. We sent a code to ' + (s.email.trim() || 'your billing address') + ' \u2014 entering it proves the address is yours and creates your Portal account.'
+            : isPassword ? 'This is the password you will use at portal.shanemccaw.com. Twelve characters minimum, one capital, one number.'
+            : 'Your tenant\u2019s data sits behind this account, so a second factor is required rather than offered.',
+          cta: isCode ? 'Verify and continue' : isPassword ? 'Set password' : 'Finish and sign in',
+          advance: isCode ? this.verifyCode : isPassword ? this.savePw : this.finishAccount,
+          btnCss: 'width:100%;padding:12px;border:0;border-radius:10px;font-family:inherit;font-size:13.5px;font-weight:700;color:#fff;cursor:' + (ready ? 'pointer' : 'not-allowed') +
+            ';background:' + (ready ? 'linear-gradient(90deg,#3b82f6,#8b5cf6)' : 'rgba(71,85,105,.4)'),
+          foot: isCode ? 'The code expires in ten minutes.' : isPassword ? 'Stored hashed. Shane cannot read it.' : 'You will be signed in automatically \u2014 no second login.',
+        };
+      })(),
+      pwRules: [
+        { text: 'At least 12 characters', ok: s.pw1.length >= 12 },
+        { text: 'One capital letter and one number', ok: /[A-Z]/.test(s.pw1) && /[0-9]/.test(s.pw1) },
+        { text: 'Both fields match', ok: s.pw1.length > 0 && s.pw1 === s.pw2 },
+      ].map(r => ({ text: r.text, fg: r.ok ? '#34d399' : '#64748b', mark: r.ok ? ic([React.createElement('path', { d: 'M5 13l4 4L19 7', key: 1 })], 12) : ic([React.createElement('circle', { cx: 12, cy: 12, r: 8, key: 1 })], 12) })),
+      mfaOptions: [
+        { key: 'app', name: 'Authenticator app', desc: 'Microsoft Authenticator, 1Password, or anything TOTP.' },
+        { key: 'rsa', name: 'RSA SecurID', desc: 'A hardware or software token, if that is what your organization already issues.' },
+      ].map(m => {
+        const on = s.mfaMethod === m.key;
+        return { name: m.name, desc: m.desc, pick: () => this.pickMfa(m.key),
+          css: 'display:flex;align-items:flex-start;gap:11px;padding:13px 14px;border-radius:11px;cursor:pointer;border:1px solid ' + (on ? 'rgba(59,130,246,.5)' : 'rgba(30,41,59,.9)') + ';background:' + (on ? 'rgba(59,130,246,.07)' : 'rgba(2,6,23,.4)'),
+          ringCss: 'width:16px;height:16px;border-radius:50%;flex:none;margin-top:2px;display:flex;align-items:center;justify-content:center;border:1px solid ' + (on ? '#3b82f6' : 'rgba(71,85,105,.9)'),
+          dotCss: 'width:6px;height:6px;border-radius:50%;background:' + (on ? '#3b82f6' : 'transparent') };
+      }),
+      mfa: { showSecret: s.mfaMethod === 'app', showPhone: s.mfaMethod === 'rsa', secret: 'JBSW Y3DP EHPK 3PXP' },
+      done: {
+        title: isPack ? 'Write access granted. Your pack is ready to preview.' : isMon ? 'Monitoring is live on your tenant.' : 'Your retainer starts this month.',
+        body: isPack
+          ? 'Nothing has changed in your tenant yet. The Portal now holds a dry run of every change this pack makes, with each one individually deselectable before you schedule it.'
+          : s.writeGranted
+            ? money(price) + '/mo on ' + sel.name + '. Write access is granted, so remediation can be applied for you \u2014 each change still needs your approval.'
+          : isMon
+            ? money(price) + '/mo on ' + sel.name + ' for ' + realSeats.toLocaleString('en-US') + ' seats. The first full pass is running now.'
+            : money(price) + '/mo on ' + sel.name + '. ' + (s.connected ? 'Your read-only scan runs before the first session, so the conversation starts from real findings.' : 'You can connect a read-only scan any time from the Portal.'),
+        next: isPack
+          ? [{ when: 'NOW', text: 'Review the dry run: every change, in plain English, with what it touches.' }, { when: 'YOU PICK', text: 'Deselect anything you don\u2019t want and choose the change window.' }, { when: 'ON RUN', text: 'The people you nominated are notified, and every change is logged.' }]
+          : isMon
+            ? [{ when: 'WITHIN 1H', text: 'First full pass across all six engines completes.' }, { when: 'DAY 1', text: 'Findings appear ranked by what closes the biggest exposure first.' }, { when: 'ONGOING', text: 'Re-checks run on your cadence, and regressions get caught.' }]
+            : [{ when: 'TODAY', text: 'Shane confirms your first session directly \u2014 an email within one business day.' }, { when: 'MONTH 1', text: 'Hours are logged against real work as they are used.' }, { when: 'ONGOING', text: 'Anything that becomes delivery work is scoped as a separate fixed-price SOW.' }],
+      },
+      iconLock: ic([React.createElement('rect', { x: 4, y: 11, width: 16, height: 10, rx: 2, key: 1 }), React.createElement('path', { d: 'M8 11V8a4 4 0 018 0v3', key: 2 })], 14),
+      iconKey: ic([React.createElement('circle', { cx: 7.5, cy: 15.5, r: 4.5, key: 1 }), React.createElement('path', { d: 'M10.9 12.1L20 3', key: 2 }), React.createElement('path', { d: 'M17 6l3 3', key: 3 })], 20),
+      iconKeySm: ic([React.createElement('circle', { cx: 7.5, cy: 15.5, r: 4.5, key: 1 }), React.createElement('path', { d: 'M10.9 12.1L20 3', key: 2 }), React.createElement('path', { d: 'M17 6l3 3', key: 3 })], 13),
+      iconCheck: ic([React.createElement('path', { d: 'M5 13l4 4L19 7', key: 1 })], 13),
+      iconCheckLg: ic([React.createElement('path', { d: 'M5 13l4 4L19 7', key: 1 })], 20),
+      iconArrow: ic([React.createElement('line', { x1: 4, y1: 12, x2: 20, y2: 12, key: 1 }), React.createElement('polyline', { points: '14 6 20 12 14 18', key: 2 })], 15),
+    };
+    return v;
+  }
+}
+</script>
+</body>
+</html>

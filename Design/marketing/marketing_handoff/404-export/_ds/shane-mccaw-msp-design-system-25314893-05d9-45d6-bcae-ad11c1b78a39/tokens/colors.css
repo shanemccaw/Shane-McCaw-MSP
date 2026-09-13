@@ -1,0 +1,142 @@
+/* ============================================================
+   COLOR TOKENS — Shane McCaw MSP
+   Brand core → HSL/HEX pairs, then the shadcn-style semantic
+   aliases used by the portal + apps (light default, dark scope),
+   plus the slate/blue palette the marketing site paints with.
+   ============================================================ */
+:root {
+  /* ---- Brand core ---- */
+  --brand-navy: #0A2540;        /* Deep Navy — chrome, sidebar, headings   hsl(213 74% 15%) */
+  --brand-navy-900: #061a2e;    /* darker navy for deep backgrounds */
+  --brand-blue: #0078D4;        /* Electric Blue — primary / Microsoft blue hsl(210 100% 42%) */
+  --brand-blue-strong: #005A9E; /* Electric Blue hover / pressed */
+  --brand-teal: #00B4D8;        /* Bright Teal — accent / highlights        hsl(194 100% 42%) */
+  --brand-offwhite: #F7F9FC;    /* Off-White — page background              hsl(216 38% 98%) */
+  --brand-white: #FFFFFF;
+
+  /* ---- Slate scale (marketing site + dark dashboards) ---- */
+  --slate-950: #020617;
+  --slate-900: #0f172a;
+  --slate-850: #172033;   /* midpoint used for card borders on marketing */
+  --slate-800: #1e293b;
+  --slate-700: #334155;
+  --slate-500: #64748b;
+  --slate-400: #94a3b8;
+  --slate-300: #cbd5e1;
+  --slate-100: #f1f5f9;
+
+  /* ---- Semantic accents (diagnostic / signal categories) ---- */
+  --accent-violet: #a78bfa;   --accent-violet-strong: #8b5cf6;
+  --accent-red: #f87171;      --accent-red-strong: #ef4444;
+  --accent-emerald: #34d399;  --accent-emerald-strong: #10b981;
+  --accent-amber: #fbbf24;    --accent-amber-strong: #f59e0b;
+  --accent-yellow: #facc15;   --accent-yellow-strong: #eab308;
+  --accent-teal: #2dd4bf;     --accent-teal-strong: #14b8a6;
+  --accent-indigo: #818cf8;   --accent-indigo-strong: #6366f1;
+  --accent-blue: #60a5fa;     --accent-blue-strong: #3b82f6;
+
+  /* ============================================================
+     SEMANTIC ALIASES — canonical LIGHT theme (portal + apps).
+     HSL triplets kept raw so they compose with hsl() and /alpha.
+     ============================================================ */
+  --background: 216 38% 98%; /* @kind color */
+  --foreground: 213 74% 15%; /* @kind color */
+  --card: 0 0% 100%; /* @kind color */
+  --card-foreground: 213 74% 15%; /* @kind color */
+  --card-border: 216 20% 92%; /* @kind color */
+  --popover: 0 0% 100%; /* @kind color */
+  --popover-foreground: 213 74% 15%; /* @kind color */
+  --popover-border: 216 20% 90%; /* @kind color */
+
+  --primary: 210 100% 42%; /* @kind color */
+  --primary-foreground: 0 0% 100%; /* @kind color */
+  --secondary: 213 30% 92%; /* @kind color */
+  --secondary-foreground: 213 74% 15%; /* @kind color */
+  --muted: 213 20% 94%; /* @kind color */
+  --muted-foreground: 213 30% 45%; /* @kind color */
+  --accent: 194 100% 42%; /* @kind color */
+  --accent-foreground: 0 0% 100%; /* @kind color */
+  --destructive: 4 86% 58%; /* @kind color */
+  --destructive-foreground: 0 0% 100%; /* @kind color */
+  --success: 152 69% 40%; /* @kind color */
+  --warning: 38 92% 50%; /* @kind color */
+
+  --border: 216 20% 88%; /* @kind color */
+  --input: 216 20% 88%; /* @kind color */
+  --ring: 210 100% 42%; /* @kind color */
+
+  /* Sidebar / navy chrome */
+  --sidebar: 213 74% 15%; /* @kind color */
+  --sidebar-foreground: 0 0% 96%; /* @kind color */
+  --sidebar-border: 213 40% 22%; /* @kind color */
+  --sidebar-primary: 210 100% 52%; /* @kind color */
+  --sidebar-primary-foreground: 0 0% 100%; /* @kind color */
+  --sidebar-accent: 213 40% 22%; /* @kind color */
+  --sidebar-accent-foreground: 0 0% 92%; /* @kind color */
+  --sidebar-ring: 210 100% 52%; /* @kind color */
+
+  /* Data-viz series */
+  --chart-1: 210 100% 42%; /* @kind color */
+  --chart-2: 194 100% 42%; /* @kind color */
+  --chart-3: 213 74% 25%; /* @kind color */
+  --chart-4: 38 92% 50%; /* @kind color */
+  --chart-5: 4 86% 58%; /* @kind color */
+
+  /* Interaction overlays (hover/active elevate) */
+  --elevate-1: rgba(0,0,0,.03);
+  --elevate-2: rgba(0,0,0,.08);
+  --button-outline: rgba(0,0,0,.10);
+  --badge-outline: rgba(0,0,0,.05);
+}
+
+/* ============================================================
+   DARK theme — apply `.dark` on any ancestor.
+   Deep-navy surfaces (portal dark mode + dashboards).
+   ============================================================ */
+.dark {
+  --background: 213 74% 10%; /* @kind color */
+  --foreground: 216 38% 95%; /* @kind color */
+  --card: 213 60% 13%; /* @kind color */
+  --card-foreground: 216 38% 95%; /* @kind color */
+  --card-border: 213 40% 22%; /* @kind color */
+  --popover: 213 60% 13%; /* @kind color */
+  --popover-foreground: 216 38% 95%; /* @kind color */
+  --popover-border: 213 40% 22%; /* @kind color */
+
+  --primary: 210 100% 55%; /* @kind color */
+  --primary-foreground: 0 0% 100%; /* @kind color */
+  --secondary: 213 40% 22%; /* @kind color */
+  --secondary-foreground: 216 30% 85%; /* @kind color */
+  --muted: 213 40% 18%; /* @kind color */
+  --muted-foreground: 213 20% 60%; /* @kind color */
+  --accent: 194 100% 48%; /* @kind color */
+  --accent-foreground: 213 74% 10%; /* @kind color */
+  --destructive: 4 86% 60%; /* @kind color */
+  --destructive-foreground: 0 0% 100%; /* @kind color */
+  --success: 152 60% 45%; /* @kind color */
+  --warning: 38 92% 55%; /* @kind color */
+
+  --border: 213 40% 22%; /* @kind color */
+  --input: 213 40% 22%; /* @kind color */
+  --ring: 210 100% 55%; /* @kind color */
+
+  --sidebar: 213 74% 8%; /* @kind color */
+  --sidebar-foreground: 0 0% 92%; /* @kind color */
+  --sidebar-border: 213 40% 18%; /* @kind color */
+  --sidebar-primary: 210 100% 55%; /* @kind color */
+  --sidebar-primary-foreground: 0 0% 100%; /* @kind color */
+  --sidebar-accent: 213 40% 18%; /* @kind color */
+  --sidebar-accent-foreground: 0 0% 88%; /* @kind color */
+  --sidebar-ring: 210 100% 55%; /* @kind color */
+
+  --chart-1: 210 100% 55%; /* @kind color */
+  --chart-2: 194 100% 48%; /* @kind color */
+  --chart-3: 213 40% 50%; /* @kind color */
+  --chart-4: 38 92% 55%; /* @kind color */
+  --chart-5: 4 86% 60%; /* @kind color */
+
+  --elevate-1: rgba(255,255,255,.04);
+  --elevate-2: rgba(255,255,255,.09);
+  --button-outline: rgba(255,255,255,.10);
+  --badge-outline: rgba(255,255,255,.05);
+}

@@ -1,0 +1,58 @@
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#64748b">Open Gaps · {{ cmpOpenCount }}</span>
+              <span style="font-size:11px;color:#475569">Each one cites the obligation it touches. Expand for the evidence behind it.</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0;border:1px solid rgba(226,232,240,.13);border-radius:12px;background:rgba(15,23,42,.4);overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)">
+              <sc-for list="{{ cmpFindingRows }}" as="f" hint-placeholder-count="6">
+                <div style="{{ f.rowCss }}">
+                  <div style="{{ f.accentCss }}"></div>
+                  <button onClick="{{ f.toggle }}" style="display:flex;align-items:flex-start;gap:12px;padding:14px 18px;border:none;background:none;cursor:pointer;font-family:inherit;text-align:left;width:100%">
+                    <span dangerouslySetInnerHTML="{{ f.chevronHtml }}" style="flex:0 0 auto;display:flex;margin-top:2px;transform:rotate({{ f.chevronDeg }}deg);transition:transform 180ms"></span>
+                    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
+                      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                        <span style="{{ f.idCss }}">{{ f.id }}</span>
+                        <span style="{{ f.sevCss }}">{{ f.sevLabel }}</span>
+                      </div>
+                      <span style="font-size:13.5px;font-weight:700;color:#f1f5f9;line-height:1.4;text-wrap:pretty">{{ f.title }}</span>
+                      <span style="font-size:11px;font-weight:600;color:#cbd5e1;letter-spacing:.01em;font-family:'SF Mono',Menlo,Consolas,monospace">{{ f.obligation }}</span>
+                    </div>
+                  </button>
+                  <sc-if value="{{ f.isExpanded }}" hint-placeholder-val="{{ false }}">
+                    <div style="padding:0 18px 18px 44px;display:flex;flex-direction:column;gap:14px">
+                      <div style="display:flex;flex-direction:column;gap:4px;padding:12px 14px;border:1px solid rgba(226,232,240,.14);border-radius:8px;background:rgba(226,232,240,.04)">
+                        <span style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#64748b">The obligation</span>
+                        <span style="font-size:12px;color:#e2e8f0;line-height:1.6;text-wrap:pretty">{{ f.obligationText }}</span>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:4px">
+                        <span style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#64748b">Why it matters here</span>
+                        <span style="font-size:12.5px;color:#cbd5e1;line-height:1.65;text-wrap:pretty">{{ f.why }}</span>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:0;border-top:1px solid rgba(30,41,59,.9)">
+                        <sc-for list="{{ f.evidence }}" as="e" hint-placeholder-count="4">
+                          <div style="display:grid;grid-template-columns:minmax(130px,.85fr) minmax(0,2.15fr);gap:14px;padding:8px 0;border-bottom:1px solid rgba(30,41,59,.75);align-items:baseline">
+                            <span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#64748b;line-height:1.4">{{ e.k }}</span>
+                            <span style="font-size:12px;color:#e2e8f0;line-height:1.55;text-wrap:pretty">{{ e.v }}</span>
+                          </div>
+                        </sc-for>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:8px;padding-top:4px">
+                        <button onClick="{{ f.fixGo }}" style="display:flex;align-items:center;gap:11px;text-align:left;padding:11px 13px;border-radius:9px;border:1px solid rgba(0,120,212,.4);background:linear-gradient(160deg, rgba(0,120,212,.1), rgba(15,23,42,.3));cursor:pointer;font-family:inherit" style-hover="border-color:rgba(0,120,212,.75)">
+                          <span style="flex:0 0 28px;width:28px;height:28px;border-radius:7px;border:1px solid rgba(0,120,212,.4);background:rgba(0,120,212,.14);display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ f.wrenchHtml }}" style="display:flex"></span></span>
+                          <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                            <span style="font-size:12.5px;font-weight:700;color:#60a5fa;line-height:1.4">{{ f.fixLabel }}</span>
+                            <span style="font-size:11.5px;color:#94a3b8;line-height:1.45">{{ f.fixSub }}</span>
+                          </span>
+                        </button>
+                        <button onClick="{{ f.acceptGo }}" style="align-self:flex-start;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:1px solid rgba(226,232,240,.22);background:rgba(226,232,240,.05);cursor:pointer;font-family:inherit" style-hover="border-color:rgba(226,232,240,.4)">
+                          <span style="font-size:11.5px;font-weight:700;color:#e2e8f0">Record a policy decision instead</span>
+                          <span style="font-size:11px;color:#64748b">Owner, rationale, review date</span>
+                        </button>
+                      </div>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+

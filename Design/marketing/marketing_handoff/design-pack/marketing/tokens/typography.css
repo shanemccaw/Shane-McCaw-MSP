@@ -1,0 +1,18 @@
+:root {
+  --font-sans: 'Inter', system-ui, sans-serif;
+
+  --text-h1-size: clamp(30px, 3.4vw, 40px);
+  --text-h1-weight: 800;
+  --text-h1-tracking: -0.03em;
+
+  --text-h2-size: 24px;
+  --text-h2-weight: 800;
+  --text-h2-tracking: -0.025em;
+
+  --text-body-size: 13.5px;
+  --text-body-line: 1.7;
+
+  --text-eyebrow-size: 10px;
+  --text-eyebrow-weight: 700;
+  --text-eyebrow-tracking: 0.2em;
+}

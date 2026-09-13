@@ -1,0 +1,21 @@
+<!-- @dsCard group="Components" viewport="700x140" name="Pillar Identity" subtitle="Tinted icon tile and chip variants" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>body{margin:0;background:#020617;padding:20px;display:flex;gap:10px;flex-wrap:wrap}</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel">
+const { PillarIdentity, PILLAR_GLYPHS, PILLAR_COLORS } = window.MarketingDesignPack || {};
+ReactDOM.createRoot(document.getElementById('root')).render(
+  PillarIdentity ? <>
+    <PillarIdentity color={PILLAR_COLORS.Governance} icon={PILLAR_GLYPHS.Governance} />
+    <PillarIdentity color={PILLAR_COLORS.Security} icon={PILLAR_GLYPHS.Security} label="Security" variant="chip" active />
+    <PillarIdentity color={PILLAR_COLORS.Health} icon={PILLAR_GLYPHS.Health} label="Health" variant="chip" />
+  </> : <div style={{color:'#94a3b8',fontFamily:'Inter'}}>PillarIdentity (compiled once this pack is its own Design System project)</div>
+);
+</script>
+</body></html>

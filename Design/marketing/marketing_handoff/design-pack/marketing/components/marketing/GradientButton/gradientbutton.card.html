@@ -1,0 +1,20 @@
+<!-- @dsCard group="Components" viewport="700x100" name="Gradient Button" subtitle="Primary gradient CTA + secondary outline" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>body{margin:0;background:#020617;padding:24px;display:flex;gap:12px}</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel">
+const { GradientButton, OutlineButton } = window.MarketingDesignPack || {};
+ReactDOM.createRoot(document.getElementById('root')).render(
+  GradientButton ? <>
+    <GradientButton withArrow>Primary action</GradientButton>
+    <OutlineButton>Secondary action</OutlineButton>
+  </> : <div style={{color:'#94a3b8',fontFamily:'Inter'}}>GradientButton (compiled once this pack is its own Design System project)</div>
+);
+</script>
+</body></html>

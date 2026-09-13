@@ -1,0 +1,41 @@
+:root {
+  /* brand */
+  --deep-navy: #0A2540;
+  --electric-blue: #0078D4;
+  --electric-blue-hover: #005A9E;
+  --bright-teal: #00B4D8;
+  --off-white: #F7F9FC;
+
+  /* dark canvas (marketing site is always dark) */
+  --canvas-page: #020617;
+  --canvas-raised: #050d1e;
+  --canvas-card: #0b1524;
+  --border-hairline: rgba(30, 41, 59, 0.9);
+  --border-hairline-strong: rgba(30, 41, 59, 0.95);
+
+  /* text */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-body: #94a3b8;
+  --text-meta: #64748b;
+  --text-faint: #475569;
+
+  /* semantic signals */
+  --signal-good: #34d399;
+  --signal-attention: #fbbf24;
+  --signal-urgent: #f87171;
+  --signal-link: #60a5fa;
+  --signal-copilot: #22d3ee;
+  --signal-portal: #a78bfa;
+
+  /* the six pillars — each pillar's identity color, used only for that pillar */
+  --pillar-governance: #3b82f6;
+  --pillar-security: #8b5cf6;
+  --pillar-compliance: #e2e8f0;
+  --pillar-licensing: #14b8a6;
+  --pillar-adoption: #f97316;
+  --pillar-health: #22c55e;
+
+  --gradient-cta: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  --gradient-logo: linear-gradient(135deg, #3b82f6, #8b5cf6);
+}

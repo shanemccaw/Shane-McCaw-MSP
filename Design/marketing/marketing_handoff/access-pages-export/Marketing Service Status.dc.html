@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+html,body{margin:0;padding:0;background:#020617;color:#f8fafc;font-family:Inter,system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
+button{font-family:inherit}
+@keyframes slowPulse{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes riseIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.st-row:hover{border-color:rgba(34,197,94,.4)!important}
+.st-prim:hover{background:#005A9E!important}
+.st-in::placeholder{color:#475569}
+.st-in:focus{outline:none;border-color:#0078D4;box-shadow:0 0 0 3px rgba(0,120,212,.18)}
+.st-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(258px,1fr);gap:20px;align-items:start}
+.st-main,.st-side{display:flex;flex-direction:column;gap:22px;min-width:0}
+.st-side{position:sticky;top:78px}
+@media (max-width:820px){.st-grid{grid-template-columns:1fr}.st-side{position:static}}
+</style>
+</helmet>
+
+<div style="background:#020617" data-screen-label="Service Status">
+  <dc-import name="Marketing Nav" current="none" hint-size="100%,58px"></dc-import>
+  <div style="position:relative;overflow:hidden;padding:40px 32px 56px">
+  <div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle 840px at 22% -10%, rgba(34,197,94,.12), rgba(2,6,23,0) 60%), radial-gradient(circle 640px at 88% 14%, rgba(0,180,216,.10), rgba(2,6,23,0) 58%)"></div>
+  <span style="position:absolute;right:-80px;top:28%;opacity:.06;pointer-events:none;line-height:0;filter:drop-shadow(0 0 40px rgba(34,197,94,.5))"><svg width="500" height="500" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg></span>
+
+  <div style="position:relative;max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:26px">
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <span style="display:inline-flex;align-items:center;gap:7px;font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#22c55e">
+        <span style="width:6px;height:6px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.18);animation:slowPulse 2.4s ease-in-out infinite"></span> Service status
+      </span>
+      <h1 style="font-size:31px;font-weight:800;letter-spacing:-.03em;line-height:1.12;color:#f8fafc;margin:0">All systems operational</h1>
+      <p style="margin:0;font-size:14px;color:#94a3b8;line-height:1.65;max-width:66ch;text-wrap:pretty">We monitor our own platform on the same cadence we monitor your tenant, and we publish Microsoft’s numbers next to ours. This page refreshes every 60 seconds and is hosted away from the portal, so it stays up when the portal does not.</p>
+      <span style="font-size:11.5px;color:#475569;font-family:Menlo,'SF Mono',Consolas,monospace">Last checked {{ checkedAt }} &#183; all times UTC</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+      <sc-for list="{{ summary }}" as="k" hint-placeholder-count="4">
+        <div style="padding:14px 16px;border-radius:12px;background:#0b1524;border:1px solid rgba(30,41,59,.9);display:flex;flex-direction:column;gap:3px">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#64748b">{{ k.label }}</span>
+          <span style="{{ k.valueCss }}">{{ k.value }}</span>
+          <span style="font-size:10.5px;color:#64748b">{{ k.note }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div class="st-grid">
+      <div class="st-main">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap">
+          <h2 style="font-size:17px;font-weight:800;letter-spacing:-.02em;color:#f8fafc;margin:0">Our components</h2>
+          <span style="font-size:11.5px;color:#64748b">Bars show the last 90 days, newest on the right</span>
+        </div>
+
+        <sc-for list="{{ components }}" as="c" hint-placeholder-count="6">
+          <div class="st-row" style="padding:15px 17px;border-radius:12px;background:#0b1524;border:1px solid rgba(30,41,59,.9);display:flex;flex-direction:column;gap:11px;transition:border-color .18s">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <span style="{{ c.tileCss }}" dangerouslySetInnerHTML="{{ c.iconHtml }}"></span>
+              <span style="flex:1 1 200px;min-width:0;display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:13.5px;font-weight:700;color:#f8fafc">{{ c.name }}</span>
+                <span style="font-size:11.5px;color:#64748b;line-height:1.5">{{ c.desc }}</span>
+              </span>
+              <span style="flex:0 0 auto;font-size:11px;color:#64748b;font-family:Menlo,'SF Mono',Consolas,monospace">{{ c.uptime }} / 90d</span>
+              <span style="{{ c.pillCss }}">{{ c.state }}</span>
+            </div>
+            <div onMouseLeave="{{ c.clearHover }}" style="position:relative;display:flex;gap:2px;align-items:stretch;height:24px">
+              <sc-for list="{{ c.bars }}" as="b" hint-placeholder-count="90">
+                <span onMouseEnter="{{ b.hover }}" style="{{ b.css }}"></span>
+              </sc-for>
+              <sc-if value="{{ c.tip }}" hint-placeholder-val="{{ false }}">
+                <div style="{{ c.tipWrapCss }}">
+                  <div style="min-width:196px;max-width:260px;padding:10px 12px;border-radius:8px;background:#04101d;border:1px solid rgba(148,163,184,.22);box-shadow:0 14px 34px rgba(2,6,23,.75);display:flex;flex-direction:column;gap:5px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <span style="{{ c.tip.dotCss }}"></span>
+                      <span style="flex:1;min-width:0;font-size:11px;font-weight:700;color:#f8fafc;font-family:Menlo,'SF Mono',Consolas,monospace">{{ c.tip.date }}</span>
+                      <span style="{{ c.tip.pillCss }}">{{ c.tip.state }}</span>
+                    </div>
+                    <span style="font-size:11.5px;font-weight:700;color:#cbd5e1">{{ c.name }}</span>
+                    <span style="font-size:11px;color:#94a3b8;line-height:1.55">{{ c.tip.note }}</span>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap">
+          <h2 style="font-size:17px;font-weight:800;letter-spacing:-.02em;color:#f8fafc;margin:0">Our SLA, measured</h2>
+          <span style="font-size:11.5px;color:#64748b">Rolling 90 days &#183; commitment against actual</span>
+        </div>
+
+        <div style="border-radius:12px;background:#0b1524;border:1px solid rgba(30,41,59,.9);overflow:hidden">
+          <div style="display:grid;grid-template-columns:minmax(0,1.5fr) .62fr .62fr .58fr;gap:10px;padding:11px 15px;background:rgba(148,163,184,.04);border-bottom:1px solid rgba(30,41,59,.9)">
+            <span style="font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748b">Commitment</span>
+            <span style="font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748b">Target</span>
+            <span style="font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748b">Actual</span>
+            <span style="font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748b;text-align:right">Status</span>
+          </div>
+          <sc-for list="{{ slaRows }}" as="r" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:minmax(0,1.5fr) .62fr .62fr .58fr;gap:10px;align-items:center;padding:13px 15px;border-bottom:1px solid rgba(30,41,59,.6)">
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:12.5px;font-weight:700;color:#f8fafc">{{ r.name }}</span>
+                <span style="font-size:11px;color:#64748b;line-height:1.5">{{ r.detail }}</span>
+              </span>
+              <span style="font-size:12px;color:#94a3b8;font-family:Menlo,'SF Mono',Consolas,monospace">{{ r.target }}</span>
+              <span style="{{ r.actualCss }}">{{ r.actual }}</span>
+              <span style="display:flex;justify-content:flex-end"><span style="{{ r.pillCss }}">{{ r.status }}</span></span>
+            </div>
+          </sc-for>
+          <div style="padding:12px 17px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:11.5px;color:#64748b;line-height:1.6">Miss an availability target in a calendar month and retainer clients receive a 10% service credit automatically. You do not have to ask for it.</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap">
+          <h2 style="font-size:17px;font-weight:800;letter-spacing:-.02em;color:#f8fafc;margin:0">Incident history</h2>
+          <span style="font-size:11.5px;color:#64748b">Last 90 days &#183; three incidents, all resolved</span>
+        </div>
+
+        <sc-for list="{{ incidents }}" as="i" hint-placeholder-count="3">
+          <div style="border-radius:12px;background:#0b1524;border:1px solid rgba(30,41,59,.9);overflow:hidden">
+            <button onClick="{{ i.toggle }}" style="width:100%;display:flex;align-items:center;gap:12px;padding:14px 16px;background:none;border:none;cursor:pointer;text-align:left;flex-wrap:wrap">
+              <span style="{{ i.sevCss }}">{{ i.severity }}</span>
+              <span style="flex:1 1 220px;min-width:0;display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:13.5px;font-weight:700;color:#f8fafc">{{ i.title }}</span>
+                <span style="font-size:11.5px;color:#64748b">{{ i.date }} &#183; {{ i.duration }} &#183; {{ i.scope }}</span>
+              </span>
+              <span style="flex:0 0 auto;padding:3px 9px;border-radius:999px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.32);color:#4ade80;font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase">Resolved</span>
+              <span style="{{ i.chevCss }}" dangerouslySetInnerHTML="{{ i.chevHtml }}"></span>
+            </button>
+            <sc-if value="{{ i.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:0 16px 16px 16px;display:flex;flex-direction:column;gap:12px;animation:riseIn .18s ease">
+                <p style="margin:0;font-size:12.5px;color:#cbd5e1;line-height:1.7;max-width:76ch">{{ i.summary }}</p>
+                <div style="display:flex;flex-direction:column;gap:0">
+                  <sc-for list="{{ i.timeline }}" as="t" hint-placeholder-count="4">
+                    <div style="display:flex;gap:12px;padding:8px 0;border-top:1px solid rgba(30,41,59,.7)">
+                      <span style="flex:0 0 74px;font-size:11px;color:#64748b;font-family:Menlo,'SF Mono',Consolas,monospace">{{ t.at }}</span>
+                      <span style="flex:1;min-width:0;font-size:12.5px;color:#94a3b8;line-height:1.6">{{ t.text }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="padding:12px 14px;border-radius:8px;background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.22)">
+                  <span style="font-size:9.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#a78bfa">What changed afterwards</span>
+                  <p style="margin:6px 0 0;font-size:12.5px;color:#cbd5e1;line-height:1.65">{{ i.followUp }}</p>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      </div>
+
+      <aside class="st-side">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap">
+          <h2 style="font-size:17px;font-weight:800;letter-spacing:-.02em;color:#f8fafc;margin:0">Microsoft 365 uptime</h2>
+          <span style="font-size:11.5px;color:#64748b">Read from the Service Health API for your tenant&#8217;s region</span>
+        </div>
+        <p style="margin:0;font-size:12.5px;color:#94a3b8;line-height:1.65;max-width:76ch">We depend on Microsoft, so we publish their numbers next to ours. A Microsoft incident slows scans and delays alerts; it never puts your tenant at risk, and queued scans drain on their own once the workload recovers.</p>
+
+        <div style="display:grid;grid-template-columns:1fr;gap:8px">
+          <sc-for list="{{ msWorkloads }}" as="w" hint-placeholder-count="6">
+            <div style="padding:13px 15px;border-radius:12px;background:#0b1524;border:1px solid rgba(30,41,59,.9);display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span style="{{ w.dotCss }}"></span>
+                <span style="flex:1;min-width:0;font-size:12.5px;font-weight:700;color:#f8fafc">{{ w.name }}</span>
+                <span style="flex:0 0 auto;font-size:11px;font-weight:700;color:#94a3b8;font-family:Menlo,'SF Mono',Consolas,monospace">{{ w.uptime }}</span>
+              </div>
+              <span style="font-size:11px;color:#64748b;line-height:1.5">{{ w.note }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-radius:8px;background:rgba(0,120,212,.07);border:1px solid rgba(0,120,212,.26);flex-wrap:wrap">
+          <span style="flex:1 1 260px;min-width:0;font-size:12px;color:#cbd5e1;line-height:1.55">Microsoft publishes a <span style="font-weight:700;color:#f8fafc">99.9% financially backed SLA</span> for Microsoft 365. Rolling 90-day measured availability across the workloads we read: <span style="font-weight:700;color:#4ade80;font-family:Menlo,'SF Mono',Consolas,monospace">99.96%</span>.</span>
+          <span style="flex:0 0 auto;font-size:11px;color:#475569;font-family:Menlo,'SF Mono',Consolas,monospace;white-space:nowrap">Read hourly &#183; EU West</span>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <h2 style="font-size:17px;font-weight:800;letter-spacing:-.02em;color:#f8fafc;margin:0">Scheduled maintenance</h2>
+        <div style="padding:16px 18px;border-radius:12px;background:linear-gradient(160deg,rgba(0,120,212,.09),rgba(11,21,36,.6));border:1px solid rgba(0,120,212,.28);display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="padding:3px 9px;border-radius:999px;background:rgba(0,120,212,.16);border:1px solid rgba(0,120,212,.45);color:#93c5fd;font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase">Planned</span>
+            <span style="font-size:13px;font-weight:700;color:#f8fafc">Scan pipeline upgrade &#183; Graph request batching</span>
+            <span style="font-size:11px;color:#94a3b8;font-family:Menlo,'SF Mono',Consolas,monospace">Sat 5 Sep, 22:00&#8211;01:00 UTC</span>
+          </div>
+          <p style="margin:0;font-size:12.5px;color:#94a3b8;line-height:1.65">Scans queue instead of running during the window and drain automatically afterwards. Sign-in, the portal and alerting are unaffected. Nothing is required from you.</p>
+        </div>
+      </div>
+
+      <div style="padding:18px 20px;border-radius:12px;background:linear-gradient(160deg,rgba(34,197,94,.09),rgba(11,21,36,.6));border:1px solid rgba(34,197,94,.26);display:flex;flex-direction:column;gap:10px;max-width:none">
+        <span style="font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#22c55e">Get told first</span>
+        <p style="margin:0;font-size:12.5px;color:#cbd5e1;line-height:1.65">One email when an incident opens, one when it closes, and one before planned maintenance. Nothing else, ever.</p>
+        <sc-if value="{{ subscribed }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:9px;padding:11px 13px;border-radius:6px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.34)">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 14px"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span style="font-size:12px;font-weight:600;color:#bbf7d0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ subEmail }} is on the list</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ notSubscribed }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input class="st-in" value="{{ subEmail }}" onInput="{{ onSubEmail }}" onKeyDown="{{ onSubKey }}" placeholder="you@company.com" style="flex:1 1 150px;min-width:0;padding:10px 12px;border-radius:6px;background:#071324;border:1px solid rgba(148,163,184,.18);color:#f8fafc;font-family:inherit;font-size:12.5px;transition:border-color .16s,box-shadow .16s" />
+            <button onClick="{{ subGo }}" class="st-prim" style="flex:0 0 auto;padding:10px 16px;border-radius:6px;border:none;background:#0078D4;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;transition:background .16s">Subscribe</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ subErr }}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:11px;color:#fb7185;font-weight:600">{{ subErr }}</span>
+        </sc-if>
+      </div>
+
+      </aside>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-top:6px;font-size:11.5px">
+      <span style="color:#64748b">Signing in?</span>
+      <a href="Customer Portal Login.dc.html" style="color:#94a3b8;font-weight:600">Customer portal</a>
+      <span style="width:1px;height:11px;background:rgba(148,163,184,.22)"></span>
+      <a href="Customer Portal Sign-in Help.dc.html" style="color:#94a3b8;font-weight:600">Trouble signing in</a>
+    </div>
+  </div>
+  </div>
+  <dc-import name="Marketing Footer" hint-size="100%,300px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+const ICONS = {
+  portal: '<rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line>',
+  lock: '<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
+  scan: '<circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>',
+  bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path>',
+  mail: '<rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-10 6L2 7"></path>',
+  write: '<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>',
+};
+// Day offsets (0 = today) that were not clean. Fixed, so history is stable.
+const EVENTS = {
+  portal: {
+    34: { state: 'down', note: 'Outage, 1h 12m. Failed database migration left the cluster read-only.' },
+    61: { state: 'degraded', note: 'Elevated response times for 40 minutes during a cache rebuild.' },
+  },
+  auth: { 61: { state: 'degraded', note: 'Sign-in slower than usual for 18 minutes. No failed authentications.' } },
+  scan: {
+    12: { state: 'degraded', note: 'Scans queued behind Microsoft Graph throttling. Findings correct, delivered late.' },
+    13: { state: 'degraded', note: 'Backlog from the previous day still draining. Cycles completed 40 minutes late.' },
+    34: { state: 'down', note: 'Engines could not write results during the portal outage. No scans lost.' },
+    78: { state: 'degraded', note: 'Two of six engines ran late while Exchange Online was degraded upstream.' },
+  },
+  alerts: { 34: { state: 'degraded', note: 'Alert delivery delayed by 26 minutes during the portal outage.' } },
+  mail: { 78: { state: 'degraded', note: 'Outbound queue rate-limited for 2h 05m. Reset codes arrived late.' } },
+  writes: {},
+};
+const OK_NOTES = {
+  portal: 'Portal fully available. No errors above baseline.',
+  auth: 'Sign-in, MFA and password reset all healthy.',
+  scan: 'All six engines completed every hourly cycle on time.',
+  alerts: 'Every alert delivered inside the 15-minute target.',
+  mail: 'All transactional email delivered on first attempt.',
+  writes: 'Approved writes executed and logged with no rollbacks.',
+};
+const COMPONENTS = [
+  { key: 'portal', name: 'Customer portal', desc: 'Dashboards, findings, runbooks, change records', icon: 'portal', color: '#60a5fa', uptime: '99.94%' },
+  { key: 'auth', name: 'Sign-in and MFA', desc: 'Username, password, two-factor, password reset', icon: 'lock', color: '#a78bfa', uptime: '99.99%' },
+  { key: 'scan', name: 'Scan engines', desc: 'All six engines, 158 checks per cycle, hourly', icon: 'scan', color: '#22d3ee', uptime: '99.82%' },
+  { key: 'alerts', name: 'Smart alerting', desc: 'Threshold breaches and drift notifications', icon: 'bell', color: '#fbbf24', uptime: '99.97%' },
+  { key: 'mail', name: 'Outbound email', desc: 'Reset codes, alert digests, monthly reports', icon: 'mail', color: '#2dd4bf', uptime: '99.96%' },
+  { key: 'writes', name: 'Approved writes', desc: 'Quick-Start Packs and remediation actions', icon: 'write', color: '#f472b6', uptime: '100.00%' },
+];
+const MS_WORKLOADS = [
+  { name: 'Microsoft Graph API', uptime: '99.98%', state: 'ok', note: 'Every scan reads through Graph. No throttling events in 30 days.' },
+  { name: 'Entra ID', uptime: '99.99%', state: 'ok', note: 'Identity, Conditional Access and sign-in log reads.' },
+  { name: 'Exchange Online', uptime: '99.97%', state: 'ok', note: 'Mailbox, transport rule and forwarding checks.' },
+  { name: 'SharePoint and OneDrive', uptime: '99.92%', state: 'degraded', note: 'Microsoft reporting elevated latency in EU West. Sharing-link checks are slower than usual.' },
+  { name: 'Microsoft Teams', uptime: '99.95%', state: 'ok', note: 'Policy, guest access and lifecycle reads.' },
+  { name: 'Power Platform', uptime: '99.90%', state: 'ok', note: 'Environment, DLP and connector inventory.' },
+];
+const SLA_ROWS = [
+  { name: 'Portal availability', detail: 'Monthly, excluding announced maintenance', target: '99.9%', actual: '99.94%', ok: true },
+  { name: 'Sign-in availability', detail: 'Authentication and MFA', target: '99.9%', actual: '99.99%', ok: true },
+  { name: 'Scan cycle completion', detail: 'Hourly cycle finishes inside the hour', target: '99.5%', actual: '99.82%', ok: true },
+  { name: 'Critical alert delivery', detail: 'From detection to your inbox', target: '15 min', actual: '4 min', ok: true },
+  { name: 'P1 response', detail: 'Tenant-wide impact, retainer clients', target: '1 hour', actual: '22 min', ok: true },
+  { name: 'P2 and P3 response', detail: 'Business hours, all clients', target: '4 hours', actual: '3h 10m', ok: true },
+];
+const INCIDENTS = [
+  {
+    severity: 'Major', sev: 'major',
+    title: 'Portal and scan engines unavailable',
+    date: '23 July 2026', duration: '1h 12m', scope: 'All tenants',
+    summary: 'A failed database migration left the primary cluster read-only. The portal returned errors and hourly scans could not write results. No customer data was lost and no writes to any tenant were attempted during the incident.',
+    timeline: [
+      { at: '09:14', text: 'Migration deployed. Write errors begin appearing in the scan pipeline.' },
+      { at: '09:21', text: 'Automated alert fires. Incident opened, status page updated.' },
+      { at: '09:48', text: 'Migration rolled back. Cluster returns to read-write.' },
+      { at: '10:26', text: 'Queued scans drained. All engines caught up and verified.' },
+    ],
+    followUp: 'Migrations now run against a shadow cluster first and require a green scan cycle before promotion. Rollback is automatic if write errors exceed 1% for 60 seconds.',
+  },
+  {
+    severity: 'Minor', sev: 'minor',
+    title: 'Scans delayed by Microsoft Graph throttling',
+    date: '26 June 2026', duration: '3h 40m', scope: 'Tenants above 2,000 seats',
+    summary: 'Microsoft applied tenant-level throttling to our Graph requests during a regional incident. Scans for larger tenants queued and completed late. Findings were correct, only slower.',
+    timeline: [
+      { at: '13:02', text: 'Graph returns 429 responses at volume. Scan durations climb.' },
+      { at: '13:20', text: 'Incident opened. Request rate reduced automatically by the pipeline.' },
+      { at: '16:42', text: 'Throttling lifted upstream. Queue cleared, all cycles complete.' },
+    ],
+    followUp: 'Graph requests are now batched and prioritised by pillar, so security checks complete first when capacity is constrained.',
+  },
+  {
+    severity: 'Minor', sev: 'minor',
+    title: 'Reset and alert emails delayed',
+    date: '9 June 2026', duration: '2h 05m', scope: 'Outbound email only',
+    summary: 'Our sending domain was rate-limited by a provider after a spike in monthly report delivery. Password reset codes and alert digests arrived late. Sign-in itself was unaffected.',
+    timeline: [
+      { at: '07:40', text: 'Delivery latency alert fires on the outbound queue.' },
+      { at: '07:55', text: 'Incident opened. Monthly report sending paused.' },
+      { at: '09:45', text: 'Queue cleared. Reset codes delivering normally again.' },
+    ],
+    followUp: 'Transactional email now sends on a separate stream from bulk reports, so a report run can no longer delay a reset code.',
+  },
+];
+class Component extends DCLogic {
+  state = { open: -1, subEmail: '', subscribed: false, subErr: '', hoverKey: null, hoverIdx: -1 };
+  renderVals() {
+    const s = this.state;
+    const tone = { ok: '#22c55e', degraded: '#fbbf24', down: '#f87171' };
+    const pill = (text, color) => 'flex:0 0 auto;padding:3px 9px;border-radius:999px;font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:' + color + '1F;border:1px solid ' + color + '55;color:' + color;
+    const dayLabel = off => {
+      const d = new Date(Date.now() - off * 86400000);
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    };
+    const subscribe = () => {
+      if (!/.+@.+\..+/.test(s.subEmail)) return this.setState({ subErr: 'Enter a valid email address.' });
+      this.setState({ subscribed: true, subErr: '' });
+    };
+    return {
+      checkedAt: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      summary: [
+        { label: 'Current state', value: 'Operational', note: 'all six components', tone: '#4ade80' },
+        { label: 'Portal uptime', value: '99.94%', note: 'rolling 90 days', tone: '#f8fafc' },
+        { label: 'Scans completed', value: '2,148', note: 'last 90 days, 4 late', tone: '#f8fafc' },
+        { label: 'Open incidents', value: 'None', note: 'last closed 23 Jul', tone: '#4ade80' },
+      ].map(k => ({ ...k, valueCss: 'font-size:19px;font-weight:800;letter-spacing:-.02em;color:' + k.tone })),
+      components: COMPONENTS.map(c => {
+        const dayState = idx => {
+          const ev = EVENTS[c.key][89 - idx];
+          return ev ? ev.state : 'ok';
+        };
+        const hovering = s.hoverKey === c.key && s.hoverIdx >= 0;
+        const hIdx = s.hoverIdx;
+        const hState = hovering ? dayState(hIdx) : 'ok';
+        const hColor = tone[hState];
+        return {
+          ...c,
+          state: 'Operational',
+          pillCss: pill('Operational', '#22c55e'),
+          tileCss: 'flex:0 0 30px;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:' + c.color + '1A;border:1px solid ' + c.color + '33',
+          iconHtml: { __html: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="' + c.color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ICONS[c.icon] + '</svg>' },
+          clearHover: () => this.setState({ hoverKey: null, hoverIdx: -1 }),
+          tipWrapCss: 'position:absolute;bottom:32px;left:' + Math.min(88, Math.max(12, ((hIdx + 0.5) / 90) * 100)) + '%;transform:translateX(-50%);z-index:30;pointer-events:none',
+          tip: hovering ? {
+            date: new Date(Date.now() - (89 - hIdx) * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+            state: hState === 'ok' ? 'Operational' : hState === 'degraded' ? 'Degraded' : 'Outage',
+            note: (EVENTS[c.key][89 - hIdx] || {}).note || OK_NOTES[c.key],
+            dotCss: 'flex:0 0 7px;width:7px;height:7px;border-radius:50%;background:' + hColor + ';box-shadow:0 0 0 3px ' + hColor + '2E',
+            pillCss: pill('x', hColor),
+          } : null,
+          bars: Array.from({ length: 90 }, (_, idx) => {
+            const st = dayState(idx);
+            const base = st === 'ok' ? 'rgba(34,197,94,.55)' : tone[st];
+            const isHot = hovering && hIdx === idx;
+            return {
+              hover: () => this.setState({ hoverKey: c.key, hoverIdx: idx }),
+              css: 'flex:1 1 0;min-width:2px;border-radius:2px;cursor:default;transition:background .12s,transform .12s;background:' + (isHot ? (st === 'ok' ? '#4ade80' : base) : base) + (isHot ? ';transform:scaleY(1.14)' : ''),
+            };
+          }),
+        };
+      }),
+      msWorkloads: MS_WORKLOADS.map(w => ({
+        ...w,
+        dotCss: 'flex:0 0 7px;width:7px;height:7px;border-radius:50%;background:' + tone[w.state] + ';box-shadow:0 0 0 3px ' + tone[w.state] + '2E',
+      })),
+      slaRows: SLA_ROWS.map(r => ({
+        ...r,
+        status: r.ok ? 'Met' : 'Missed',
+        actualCss: 'font-size:12.5px;font-weight:700;font-family:Menlo,\'SF Mono\',Consolas,monospace;color:' + (r.ok ? '#4ade80' : '#fb7185'),
+        pillCss: pill(r.ok ? 'Met' : 'Missed', r.ok ? '#22c55e' : '#f87171'),
+      })),
+      incidents: INCIDENTS.map((it, i) => ({
+        ...it,
+        open: s.open === i,
+        toggle: () => this.setState({ open: s.open === i ? -1 : i }),
+        sevCss: pill(it.severity, it.sev === 'major' ? '#f87171' : '#fbbf24'),
+        chevCss: 'flex:0 0 auto;display:flex;color:#475569;transition:transform .18s;transform:rotate(' + (s.open === i ? '180deg' : '0deg') + ')',
+        chevHtml: { __html: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>' },
+      })),
+      subEmail: s.subEmail, subscribed: s.subscribed, notSubscribed: !s.subscribed, subErr: s.subErr,
+      onSubEmail: e => this.setState({ subEmail: e.target.value, subErr: '' }),
+      onSubKey: e => { if (e.key === 'Enter') subscribe(); },
+      subGo: subscribe,
+    };
+  }
+}
+</script>
+</body>
+</html>
