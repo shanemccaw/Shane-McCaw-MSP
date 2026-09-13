@@ -1669,6 +1669,16 @@ namespace BuildConsole
         {
             SailorDuckLayer?.NotifyUserActivity();
 
+            // Ctrl+Shift+N: New Browser Window (Git #3913) — checked before the plain
+            // Ctrl+N case below, since that case's own modifier check doesn't exclude
+            // Shift also being held.
+            if (e.Key == Key.N && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            {
+                e.Handled = true;
+                MenuNewBrowserWindow_Click(sender, null!);
+                return;
+            }
+
             // Ctrl+N: New Chat
             if (e.Key == Key.N && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
@@ -6850,6 +6860,16 @@ namespace BuildConsole
                 BuildConsole.Services.ActivityLog.Log("git-board.chat", $"new chat for Epic #{targetIssue} -> {baseUrl} (prefill '{label}', PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
                 OpenWebTab(fullUrl, $"#{targetIssue} New Chat", "", injectPrefillPoll: true, associateIssueNumber: targetIssue, associateIssueType: "Epic", associateDefaultTitle: $"[#{targetIssue}] New Chat");
             }
+        }
+
+        /// <summary>Git #3913 — File > New Browser Window: a real, standalone, generic
+        /// browser window (address bar + Back/Forward/Refresh), not another chat tab.
+        /// Opening the menu item again just opens another independent window — no
+        /// in-window tabs, per the issue's explicit scope.</summary>
+        private void MenuNewBrowserWindow_Click(object sender, RoutedEventArgs e)
+        {
+            var browserWindow = new BrowserWindow { Owner = this };
+            browserWindow.Show();
         }
 
         /// <summary>Git #834 / #954 — File > Settings selects the sidebar's Settings

@@ -1,0 +1,115 @@
+<Window x:Class="BuildConsole.BrowserWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="Browser"
+        Icon="app.ico"
+        Height="800" Width="1100"
+        MinWidth="480" MinHeight="360"
+        Background="{StaticResource BaseBrush}"
+        Foreground="{StaticResource TextBrush}"
+        WindowStyle="None"
+        WindowStartupLocation="CenterOwner"
+        StateChanged="Window_StateChanged">
+
+    <!-- Git #3913 — File > New Browser Window: a real, standalone, generic browser
+         window (address bar + Back/Forward/Refresh), explicitly NOT another chat tab.
+         Custom dark title bar, same treatment as ManifestViewerWindow/TestHistoryWindow
+         (Git #1006). The WebView2 itself is a Controls.ChatSafeWebView2 constructed in
+         code-behind (same pattern FloatingChatWindow uses for its per-tab bridge) and
+         initialized through MainWindow.EnsureWebViewInitializedAsync — the one real
+         WebView2 startup path every host in this app already goes through. -->
+    <WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36"
+                             ResizeBorderThickness="6"
+                             GlassFrameThickness="-1"
+                             CornerRadius="0"
+                             UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ── Title bar ── -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource CrustBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,0,1"
+                Height="36">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TitleBarText" Grid.Column="0" Text="Browser" Margin="12,0,0,0"
+                           VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{StaticResource Subtext1Brush}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
+                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
+                    <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
+                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
+                    <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
+                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ── Nav bar: Back / Forward / Refresh + address bar + Go ── -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource CrustBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,6"
+                WindowChrome.IsHitTestVisibleInChrome="True">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Button x:Name="BtnBack" Grid.Column="0"
+                        Content="&#xE72B;" FontFamily="Segoe MDL2 Assets"
+                        Style="{StaticResource IconButton}" FontSize="12"
+                        Padding="6,4,6,4" Margin="0,0,4,0"
+                        ToolTip="Back" Click="BtnBack_Click" IsEnabled="False"/>
+                <Button x:Name="BtnForward" Grid.Column="1"
+                        Content="&#xE72A;" FontFamily="Segoe MDL2 Assets"
+                        Style="{StaticResource IconButton}" FontSize="12"
+                        Padding="6,4,6,4" Margin="0,0,4,0"
+                        ToolTip="Forward" Click="BtnForward_Click" IsEnabled="False"/>
+                <Button x:Name="BtnRefresh" Grid.Column="2"
+                        Content="&#xE72C;" FontFamily="Segoe MDL2 Assets"
+                        Style="{StaticResource IconButton}" FontSize="12"
+                        Padding="6,4,6,4" Margin="0,0,8,0"
+                        ToolTip="Refresh" Click="BtnRefresh_Click"/>
+                <TextBox x:Name="AddressBar" Grid.Column="3"
+                         Background="{StaticResource BaseBrush}"
+                         Foreground="{StaticResource TextBrush}"
+                         BorderBrush="{StaticResource Surface0Brush}"
+                         BorderThickness="1"
+                         FontSize="13"
+                         Padding="8,5"
+                         VerticalContentAlignment="Center"
+                         KeyDown="AddressBar_KeyDown"/>
+                <Button x:Name="BtnGo" Grid.Column="4"
+                        Content="Go"
+                        Style="{StaticResource PrimaryButton}"
+                        Margin="8,0,0,0"
+                        Padding="14,5,14,5"
+                        ToolTip="Navigate (Enter)"
+                        Click="BtnGo_Click"/>
+            </Grid>
+        </Border>
+
+        <!-- ── The real WebView2 (constructed in code-behind, same pattern as
+             FloatingChatWindow's per-tab bridge host) fills the remaining space. ── -->
+        <Grid x:Name="BrowserHost" Background="{StaticResource BaseBrush}"/>
+
+    </DockPanel>
+</Window>
