@@ -2968,6 +2968,11 @@ namespace BuildConsole
         /// </summary>
         private async System.Threading.Tasks.Task AssociateChatWithIssueAsync(string conversationId, int issueNumber, string issueType, string defaultTitle)
         {
+            // Git #3885 — [link 5] the real, final outcome of the pipeline: entry is logged
+            // unconditionally so a call that throws before reaching any branch below (e.g.
+            // _queueDb itself throwing before LinkChatToIssueAsync returns) still leaves a
+            // trace that this stage was reached at all.
+            BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 5] AssociateChatWithIssueAsync entered for {issueType} #{issueNumber}, conversation {conversationId} (direct-Postgres path: {_queueDb != null})");
             try
             {
                 if (_queueDb != null)
@@ -2977,46 +2982,71 @@ namespace BuildConsole
                     // not-yet-synced epic/issue self-heals instead of silently leaving
                     // bt_chats.epic_id/issue_id unset.
                     bool resolved = await _queueDb.LinkChatToIssueAsync(conversationId, issueNumber, defaultTitle, resolveLive: LeftSidebar.ResolveLiveBoardIssue);
-                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"associated chat {conversationId} -> {issueType} #{issueNumber} — BoardChat upserted (direct Postgres, epic/issue FK resolved: {resolved}); refreshing Chats panel");
+                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 5] associated chat {conversationId} -> {issueType} #{issueNumber} — BoardChat upserted (direct Postgres, epic/issue FK resolved: {resolved}); refreshing Chats panel");
                     try { LeftSidebar.PopulateChatsTree(); } catch { /* refresh is best-effort */ }
                     return;
                 }
 
                 if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
                 {
-                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"cannot associate chat {conversationId} to {issueType} #{issueNumber}: Build Tracker API not configured");
+                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 5] cannot associate chat {conversationId} to {issueType} #{issueNumber}: Build Tracker API not configured");
                     return;
                 }
 
                 var resp = await _buildTrackerApi.LinkChatToIssueAsync(conversationId, issueNumber, defaultTitle, isEpicOrIssue: true);
                 if (resp.IsSuccessStatusCode)
                 {
-                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"associated chat {conversationId} -> {issueType} #{issueNumber} — BoardChat upserted (HTTP {(int)resp.StatusCode}); refreshing Chats panel");
+                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 5] associated chat {conversationId} -> {issueType} #{issueNumber} — BoardChat upserted (HTTP {(int)resp.StatusCode}); refreshing Chats panel");
                     try { LeftSidebar.PopulateChatsTree(); } catch { /* refresh is best-effort */ }
                 }
                 else
                 {
                     string body;
                     try { body = await resp.Content.ReadAsStringAsync(); } catch { body = ""; }
-                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"association POST for chat {conversationId} -> {issueType} #{issueNumber} returned HTTP {(int)resp.StatusCode}: {body}");
+                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 5] association POST for chat {conversationId} -> {issueType} #{issueNumber} returned HTTP {(int)resp.StatusCode}: {body}");
                 }
             }
             catch (Exception ex)
             {
-                BuildConsole.Services.ActivityLog.Log("git-board.chat", $"association failed for chat {conversationId} -> {issueType} #{issueNumber}: {ex.Message}");
+                BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 5] association failed for chat {conversationId} -> {issueType} #{issueNumber}: {ex.Message}");
             }
         }
 
         public void OpenWebTab(string url, string title, string glyph, bool offerKeepAlive = false, bool injectPrefillPoll = false, int? associateIssueNumber = null, string? associateIssueType = null, string? associateDefaultTitle = null)
         {
-            // Deduplicate if already open
-            foreach (TabItem item in EditorTabs.Items)
+            // Git #3885 — Deduplicate if already open, UNLESS this is a "New Chat" open
+            // (injectPrefillPoll is true for every real call site: MenuNewChat_Click, Hand
+            // Off Now, OpenOrCreateEpicChat, LeftSidebar's epic/issue/milestone "New Chat"
+            // menu items — see EpicChatUrlBuilder.BuildEpicChatUrl / the InjectPrefill=true
+            // EpicChatRequested sites; the InjectPrefill=false sites are the *reopen an
+            // existing linked chat* callers, which legitimately want this dedup).
+            // EpicChatUrlBuilder.BuildEpicChatUrl produces a fully deterministic URL for a
+            // given epic number (same McpInstructionLine + label every time, no nonce) — a
+            // second "Start New Chat" against the SAME epic in the same app session built the
+            // byte-identical URL and matched this loop, silently reselecting the FIRST chat's
+            // tab instead of opening a genuinely new conversation. No new WebView2 tab, no new
+            // navigation, no new watcher install, no new bt_chats row — indistinguishable from
+            // "New Chat" doing nothing, which is exactly Shane's "transition doesn't work
+            // right, the saving doesn't work right" (the earlier tab from a prior click either
+            // already saved fine, making a second attempt at the SAME epic look like it did
+            // nothing, or was itself a stale never-associated tab, making the reused tab never
+            // save either). Silent before this fix — the loop returned with zero logging on
+            // ANY match, not only new-chat ones.
+            if (!injectPrefillPoll)
             {
-                if (item.Tag is string tagUrl && string.Equals(tagUrl, url, StringComparison.OrdinalIgnoreCase))
+                foreach (TabItem item in EditorTabs.Items)
                 {
-                    EditorTabs.SelectedItem = item;
-                    return;
+                    if (item.Tag is string tagUrl && string.Equals(tagUrl, url, StringComparison.OrdinalIgnoreCase))
+                    {
+                        BuildConsole.Services.ActivityLog.Log("git-board.chat", $"OpenWebTab: reusing already-open tab for {url} instead of opening a new one");
+                        EditorTabs.SelectedItem = item;
+                        return;
+                    }
                 }
+            }
+            else
+            {
+                BuildConsole.Services.ActivityLog.Log("git-board.chat", $"OpenWebTab: new-chat open (injectPrefillPoll) — skipping URL dedup so a repeat click against the same epic/issue always opens a genuinely new tab: {url}");
             }
 
             // Tab header panel
@@ -3520,23 +3550,53 @@ namespace BuildConsole
                     string defaultTitle = associateDefaultTitle ?? $"[#{issueNumber}] Chat";
                     wv.CoreWebView2.WebMessageReceived += async (ws, we) =>
                     {
-                        if (epicAssociated) return;
+                        // Git #3885 — [link 2] log EVERY WebMessageReceived this handler sees,
+                        // not only ones that end up matching BT_EPIC_CHAT_CONVERSATION, so a
+                        // silently-never-fires bridge (risk point #2 in the issue body) is
+                        // distinguishable from "fires, but the payload doesn't match."
                         string raw;
                         try { raw = we.TryGetWebMessageAsString(); }
-                        catch { return; }
+                        catch (Exception wmEx)
+                        {
+                            BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 2] WebMessageReceived for #{issueNumber} New Chat — TryGetWebMessageAsString threw: {wmEx.Message}");
+                            return;
+                        }
+                        BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 2] WebMessageReceived for #{issueNumber} New Chat — raw='{(raw?.Length > 200 ? raw.Substring(0, 200) + "…" : raw)}' epicAssociated={epicAssociated}");
+                        if (epicAssociated) return;
                         if (string.IsNullOrEmpty(raw) ||
                             raw.IndexOf("BT_EPIC_CHAT_CONVERSATION", StringComparison.Ordinal) < 0) return;
                         var m = System.Text.RegularExpressions.Regex.Match(
                             raw, @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
-                        if (!m.Success) return;
+                        if (!m.Success)
+                        {
+                            BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 3] BT_EPIC_CHAT_CONVERSATION for #{issueNumber} matched the type tag but the UUID regex found nothing in the payload — Claude.ai's conversation-id shape may have changed. raw='{raw}'");
+                            return;
+                        }
                         var conversationId = m.Value;
                         if (!string.IsNullOrEmpty(initialConversationId) &&
-                            string.Equals(conversationId, initialConversationId, StringComparison.OrdinalIgnoreCase)) return;
+                            string.Equals(conversationId, initialConversationId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 3] conversationId {conversationId} for #{issueNumber} matches this tab's OWN initial conversation id — ignoring (not a genuinely new conversation)");
+                            return;
+                        }
                         epicAssociated = true;
+                        BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 4] real conversation id {conversationId} captured for {issueType} #{issueNumber} — calling AssociateChatWithIssueAsync");
                         await AssociateChatWithIssueAsync(conversationId, issueNumber, issueType, defaultTitle);
                     };
-                    try { await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(EpicChatAssociationWatcherScript); }
-                    catch { }
+                    // Git #3885 — [link 1] log the actual return value, not just swallow the
+                    // exception — this is the one call whose SUCCESS was previously invisible:
+                    // a non-null/non-"watching" result (or a thrown exception) means the watcher
+                    // script never actually got installed for this document, so the association
+                    // can never fire no matter how the rest of the pipeline behaves (risk point #1).
+                    try
+                    {
+                        string scriptResult = await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(EpicChatAssociationWatcherScript);
+                        BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 1] EpicChatAssociationWatcherScript injected for {issueType} #{issueNumber} — AddScriptToExecuteOnDocumentCreatedAsync returned scriptId='{scriptResult}'");
+                    }
+                    catch (Exception injectEx)
+                    {
+                        BuildConsole.Services.ActivityLog.Log("git-board.chat", $"[link 1] EpicChatAssociationWatcherScript injection FAILED for {issueType} #{issueNumber}: {injectEx.Message}");
+                    }
                 }
 
                 if (ready)
