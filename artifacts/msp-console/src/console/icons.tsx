@@ -61,6 +61,8 @@ import {
   ShieldX, FileJson,
   // POA&Ms (#3897) — ListTodo.
   ListTodo,
+  // Configuration State diff view (#3836) — CircleHelp for the "unattributed" verdict.
+  CircleHelp,
   type LucideIcon,
 } from "lucide-react";
 
@@ -234,6 +236,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   "file-json": FileJson,
   // POA&Ms (#3897)
   "list-todo": ListTodo,
+  // Configuration State diff view (#3836)
+  "circle-help": CircleHelp,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

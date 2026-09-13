@@ -36,6 +36,7 @@ import { RunbooksPage } from "@/pages/runbooks/RunbooksPage";
 import { BreakGlassPage } from "@/pages/break-glass/BreakGlassPage";
 import { AdOuAssignmentPage } from "@/pages/ad-ou-assignment/AdOuAssignmentPage";
 import { PoamsPage } from "@/pages/poams/PoamsPage";
+import { ConfigState } from "@/pages/config-state/ConfigState";
 import {
   buildCommands, buildCrumbs, buildRailNodes, buildTreeNodes,
   contextPath, pageMeta, statusLeft, statusRight,
@@ -343,6 +344,13 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "offboarding") {
     return <OffboardingPage profile={profile} />;
+  }
+  if (sel.kind === "msp" && sel.page === "config") {
+    // Configuration State diff view (#3836) — attribution + lifecycle read and the
+    // attribution re-run trigger, over `GET/POST /api/msp/config-state/diffs*`. See
+    // `pages/config-state/ConfigState.tsx`'s own header for what is deliberately out
+    // of scope (snapshots/baselines/registry, each their own separate module).
+    return <ConfigState />;
   }
   if (sel.kind === "msp" && sel.page === "exec") {
     return <ExecutiveView onOpenTenant={(customerId) => navigate({ kind: "tenant", tenant: customerId })} />;

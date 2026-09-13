@@ -392,6 +392,13 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "Password reset, temporary password, MFA and session actions against a real account — every one audited, and every one held to a real server-side role ceiling.",
       };
     }
+    if (sel.page === "config") {
+      return {
+        eyebrow: "CONFIGURATION STATE",
+        title: "Comparisons",
+        note: "Every real, sealed comparison in your book — what changed, and which of it a real Change Request or accepted risk already explains (Git #3836/#2759).",
+      };
+    }
     if (sel.page === "dlq") {
       return {
         eyebrow: "DEAD LETTER QUEUE",
