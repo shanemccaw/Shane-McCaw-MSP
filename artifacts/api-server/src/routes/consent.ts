@@ -860,17 +860,20 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       // else gets `Customer` directly (a passwordless account can't log in until
       // setup, so this grants no premature access).
       let serviceType: string | null = null;
+      let isFreeOffering = false;
       if (productSlug) {
         const [svcRow] = await db
           .select({
             pk: sql<string>`type_attributes->>'packageKey'`,
             serviceType: servicesTable.serviceType,
+            isFreeOffering: servicesTable.isFreeOffering,
           })
           .from(servicesTable)
           .where(eq(servicesTable.slug, productSlug))
           .limit(1);
         packageKey = svcRow?.pk ?? null;
         serviceType = svcRow?.serviceType ?? null;
+        isFreeOffering = svcRow?.isFreeOffering ?? false;
       }
 
       // Create the real Prospect account NOW (the users row, carrying its
@@ -919,6 +922,24 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
               { tenant, sessionId: state, userId: prospect.userId },
               "consent callback: Prospect user was created WITHOUT a tenant link (users.tenant_id) — customer provisioning failed; payment webhook will retry and alert",
             );
+          }
+          // Free Scan return link (Git #1359, Phase 7 of #1352): a free
+          // assessment Prospect gets an emailed "view your results" link — its
+          // own narrowly-scoped token (lib/free-scan-return-link.ts), NOT a
+          // /setup-password token and NOT a session. That helper re-checks the
+          // account is an unentitled Free Prospect before minting anything, so
+          // a returning Customer reaching this branch is sent nothing.
+          // Fire-and-forget: mail must never delay the consent redirect.
+          if (serviceType === "assessment" && isFreeOffering && prospect.customerId != null) {
+            const prospectUserId = prospect.userId;
+            void (async () => {
+              try {
+                const { issueAndEmailFreeScanReturnLink } = await import("../lib/free-scan-return-link.ts");
+                await issueAndEmailFreeScanReturnLink(prospectUserId);
+              } catch (err) {
+                log.error({ err, userId: prospectUserId }, "consent callback: Free Scan return-link email FAILED (non-fatal) — Prospect can request a new one from /scan/results");
+              }
+            })();
           }
         }
       } else {

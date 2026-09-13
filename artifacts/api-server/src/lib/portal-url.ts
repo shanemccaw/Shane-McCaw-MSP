@@ -118,6 +118,18 @@ export function buildAccountSetupUrl(token: string): string {
 }
 
 /**
+ * Git #1359 — the Free Scan "view your results" return link, on the MARKETING
+ * site (served at the domain root, not /portal or /crm). The token travels in
+ * the URL fragment, which browsers never send to a server or put in a Referer,
+ * so it stays out of access logs and third-party requests. MARKETING_BASE_URL
+ * overrides the domain for local dev, where the marketing site runs on its own port.
+ */
+export function buildFreeScanResultsUrl(token: string): string {
+  const base = (process.env.MARKETING_BASE_URL ?? getDomainBase()).replace(/\/+$/, "");
+  return `${base}/scan/results#t=${encodeURIComponent(token)}`;
+}
+
+/**
  * Git #415 — the live, authenticated Document Viewer URL headless Chromium
  * navigates for the real PDF export pipeline (see html-pdf.ts's
  * `renderLiveDocumentToPdf`). `printToken` is single-use and consumed by

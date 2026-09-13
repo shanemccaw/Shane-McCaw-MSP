@@ -507,6 +507,8 @@ export const directoryPurger: TenantDataPurgerDeclaration = {
     { table: "script_run_results", column: "customer_id", keySpace: "userId" },
     // client_user_id orColumn dropped (Git #3079) — dead column, never written by any real path.
     { table: "script_download_tokens", column: "customer_id", keySpace: "userId" },
+    // #1359: Free Scan return links — `customer_id` is a real tenants.id (FK, cascade).
+    { table: "free_scan_return_links", column: "customer_id", keySpace: "customerId" },
   ],
 };
 

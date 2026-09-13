@@ -1005,6 +1005,43 @@ export const accountSetupTokensTable = pgTable("account_setup_tokens", {
 export type InsertAccountSetupToken = typeof accountSetupTokensTable.$inferInsert;
 export type AccountSetupToken = typeof accountSetupTokensTable.$inferSelect;
 
+// Git #1359 (Phase 7 of #1352, Free Scan). The emailed "view your free scan
+// results" return link for a passwordless Free Scan Prospect. Deliberately its
+// OWN table, not a row kind in accountSetupTokensTable: that table's tokens are
+// exchanged by /auth/setup-password for a password + a real session and are
+// gated by hasRealEntitlement() because of #656. A Free Scan Prospect has no
+// entitlement, so this capability must not live anywhere that code path reads.
+//
+// What a row here can do, exhaustively: authorise ONE read-only public route
+// (POST /api/public/free-scan/results) to return the scan summary of the one
+// tenant row (customerId) it was minted for. It is never exchanged for a JWT,
+// a refresh token or a cookie, and no /auth/* route queries this table.
+//
+//   - tokenHash: sha256 of the raw token. The raw `fsr_…` value exists only in
+//     the email; a DB read cannot replay it.
+//   - purpose: pinned by a CHECK to the single value 'free_scan_results', so a
+//     later "reuse this table for X" change has to drop a constraint first.
+//   - multi-use until expiresAt (a results link is clicked more than once);
+//     minting a new link revokes the user's earlier ones.
+export const freeScanReturnLinksTable = pgTable("free_scan_return_links", {
+  id: serial("id").primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  purpose: text("purpose").notNull().default("free_scan_results"),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  useCount: integer("use_count").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("free_scan_return_links_user_id_idx").on(t.userId),
+  check("free_scan_return_links_purpose_check", sql`${t.purpose} = 'free_scan_results'`),
+]);
+
+export type InsertFreeScanReturnLink = typeof freeScanReturnLinksTable.$inferInsert;
+export type FreeScanReturnLink = typeof freeScanReturnLinksTable.$inferSelect;
+
 // Git #415. Same shape as impersonationTokensTable/accountSetupTokensTable —
 // a short-lived, single-use bearer token headless Chromium exchanges (via
 // POST /auth/print-exchange) for a real short-lived JWT for the SAME user who

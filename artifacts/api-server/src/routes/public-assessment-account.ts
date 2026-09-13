@@ -80,8 +80,6 @@ import {
   checkoutEmailVerificationsTable,
   tenantsTable,
   usersTable,
-  mspDiagnosticRunsTable,
-  mspDiagnosticFindingsTable,
   signupExchangeTokensTable,
 } from "@workspace/db";
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
@@ -89,6 +87,7 @@ import { z } from "zod";
 import { createAuditLog } from "../lib/audit.ts";
 import { getEmailTemplateOrFallback, sendEmailOrThrow } from "../lib/mailer.ts";
 import { getMspPortalLandingUrl } from "../lib/portal-url.ts";
+import { readCustomerScanTelemetry } from "../lib/customer-scan-telemetry.ts";
 import { logger } from "../lib/logger.ts";
 
 // Account creation, email-proof-of-control and credential storage are all `auth`
@@ -106,7 +105,6 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const CODE_TTL_MS = 15 * 60 * 1000;
 /** Six digits is a 1-in-a-million guess — only safe with a hard cap on tries. */
 const MAX_CODE_ATTEMPTS = 5;
-const ACTIVE_RUN_STATUSES = ["pending", "running"] as const;
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -227,86 +225,7 @@ router.get("/public/flow/scan-telemetry", async (req: Request, res: Response) =>
       return;
     }
 
-    const [latestRun] = await db
-      .select({
-        runId: mspDiagnosticRunsTable.runId,
-        status: mspDiagnosticRunsTable.status,
-        packageKey: mspDiagnosticRunsTable.packageKey,
-        checksTotal: mspDiagnosticRunsTable.checksTotal,
-        checksOk: mspDiagnosticRunsTable.checksOk,
-        checksError: mspDiagnosticRunsTable.checksError,
-        checksLicenseGap: mspDiagnosticRunsTable.checksLicenseGap,
-        startedAt: mspDiagnosticRunsTable.startedAt,
-        completedAt: mspDiagnosticRunsTable.completedAt,
-        createdAt: mspDiagnosticRunsTable.createdAt,
-      })
-      .from(mspDiagnosticRunsTable)
-      .where(eq(mspDiagnosticRunsTable.customerId, tenant.id))
-      .orderBy(desc(mspDiagnosticRunsTable.createdAt))
-      .limit(1);
-
-    if (!latestRun) {
-      res.json({ everScanned: false, tenantConnected: true, run: null, severityCounts: null, topFindings: [] });
-      return;
-    }
-
-    // Severity mix of the findings THIS run produced. Grouped in the database
-    // rather than counted in JS so a large run does not stream every row back
-    // just to be tallied.
-    const severityRows = await db
-      .select({
-        severity: mspDiagnosticFindingsTable.severity,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(mspDiagnosticFindingsTable)
-      .where(eq(mspDiagnosticFindingsTable.runId, latestRun.runId))
-      .groupBy(mspDiagnosticFindingsTable.severity);
-
-    const severityCounts = { critical: 0, warning: 0, info: 0, ok: 0 };
-    for (const row of severityRows) {
-      if (row.severity in severityCounts) {
-        severityCounts[row.severity as keyof typeof severityCounts] = row.count;
-      }
-    }
-
-    // A short, real sample — the actual finding titles, worst first. `title` is
-    // the severity_rules label the pipeline resolved (#408), not a generic
-    // placeholder, so these are the same words the report will use.
-    const topFindings = await db
-      .select({
-        checkLabel: mspDiagnosticFindingsTable.checkLabel,
-        severity: mspDiagnosticFindingsTable.severity,
-        title: mspDiagnosticFindingsTable.title,
-      })
-      .from(mspDiagnosticFindingsTable)
-      .where(
-        and(
-          eq(mspDiagnosticFindingsTable.runId, latestRun.runId),
-          sql`${mspDiagnosticFindingsTable.severity} IN ('critical','warning')`,
-        ),
-      )
-      .orderBy(sql`CASE ${mspDiagnosticFindingsTable.severity} WHEN 'critical' THEN 0 ELSE 1 END`, desc(mspDiagnosticFindingsTable.id))
-      .limit(5);
-
-    const active = (ACTIVE_RUN_STATUSES as readonly string[]).includes(latestRun.status);
-
-    res.json({
-      everScanned: true,
-      tenantConnected: true,
-      run: {
-        status: latestRun.status,
-        active,
-        packageKey: latestRun.packageKey,
-        checksTotal: latestRun.checksTotal ?? 0,
-        checksOk: latestRun.checksOk ?? 0,
-        checksError: latestRun.checksError ?? 0,
-        checksLicenseGap: latestRun.checksLicenseGap ?? 0,
-        startedAt: latestRun.startedAt ?? latestRun.createdAt,
-        completedAt: latestRun.completedAt ?? null,
-      },
-      severityCounts,
-      topFindings,
-    });
+    res.json(await readCustomerScanTelemetry(tenant.id));
   } catch (err) {
     scanLog.error({ err, sessionId: session.id }, "flow scan-telemetry: read failed");
     res.status(500).json({ error: "scan_telemetry_failed" });
