@@ -67,7 +67,9 @@ namespace BuildConsole
 
         // Kind → (accent brush, glyph). Glyphs are plain Unicode already used elsewhere in the app
         // (DeviceCodeWindow uses ✓ / ⚠ / ✕), so they render reliably in Segoe UI Symbol.
-        private static (Brush accent, string glyph) StyleFor(ToastKind kind) => kind switch
+        // Git #3879 — internal (not private) so the Notification Tray popout panel can reuse the
+        // exact same kind→icon/color mapping for its history rows, per that issue's own ask.
+        internal static (Brush accent, string glyph) StyleFor(ToastKind kind) => kind switch
         {
             ToastKind.Success => (Res("StatusSuccessBrush"), "✓"), // ✓
             ToastKind.Warning => (Res("StatusWarningBrush"), "⚠"), // ⚠
