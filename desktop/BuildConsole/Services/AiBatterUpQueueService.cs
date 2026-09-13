@@ -98,8 +98,12 @@ namespace BuildConsole.Services
             // Git #3336 — resolve each item's real top-level Epic ancestor from the local mirror's
             // parent_number chain (a cheap local Postgres read, no live GitHub cost).
             var parentByNumber = await GitHubIssueMirror.GetManyAsync(boardItems.Select(b => b.Number).ToList());
+            // Git #3871 — pass `gh` so a node that dead-ends purely because its own mirrored
+            // parent_number is null (the sync-gap case, not a genuine top-level Epic) gets one
+            // narrow, capped live fallback fetch instead of silently resolving to nothing.
             var resolvedEpics = await EpicResolver.ResolveTopEpicsAsync(
-                boardItems.Select(b => (b.Number, parentByNumber.TryGetValue(b.Number, out var m) ? m.ParentNumber : (int?)null)));
+                boardItems.Select(b => (b.Number, parentByNumber.TryGetValue(b.Number, out var m) ? m.ParentNumber : (int?)null)),
+                gh);
 
             foreach (var item in boardItems)
             {

@@ -1898,6 +1898,12 @@ namespace BuildConsole.Services
         /// <see cref="GetBlockedByAsync"/>, which returns the full list).</summary>
         private const int BlockedByEdgesPerIssue = 50;
 
+        /// <summary>Git #3871 — aliased <c>issue(number:)</c> lookups per GraphQL READ in
+        /// <see cref="BatchGetParentInfoAsync"/>. Each alias pulls only scalar fields (no nested
+        /// connections beyond the two-deep <c>parent.milestone</c>), so this can match the other
+        /// batched issue-shape reads' chunk size without approaching GraphQL's node/complexity budget.</summary>
+        private const int ParentInfoLookupChunkSize = 25;
+
         /// <summary>
         /// Git #3347 — the batched, by-issue-NUMBER equivalent of <see cref="GetIssueBoardStatusAsync"/>:
         /// resolves MANY issue numbers to their current ProjectV2Item node id + LIVE Status option id
@@ -2223,6 +2229,134 @@ namespace BuildConsole.Services
                             }
 
                     result[chunk[i]] = blockers;
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>Git #3871 — one issue's real <c>parent</c>/<c>milestone</c>/<c>subIssuesSummary</c>
+        /// fields, straight off GraphQL, no reconciliation applied. Deliberately a thin subset of what
+        /// <see cref="GitBoardIssue"/> carries: <see cref="ChildIssueNumbers"/> and <see cref="GitBoardIssue.DatabaseId"/>
+        /// need the bidirectional parent/child reconciliation <see cref="ListBoardIssuesInternalAsync"/>
+        /// applies across the WHOLE open-issue set, which a small per-issue batch can't safely do — those
+        /// two stay full-walk-only, unchanged. The fields here (parent number, the parent's own milestone,
+        /// this issue's own milestone, and its own sub-issue rollup) are all resolved directly on the
+        /// issue's own GraphQL node, so a small aliased batch is genuinely complete for them with no
+        /// further processing.</summary>
+        public class IssueParentInfo
+        {
+            public int? ParentNumber { get; set; }
+            public int? ParentMilestoneNumber { get; set; }
+            public string? MilestoneTitle { get; set; }
+            public int? MilestoneNumber { get; set; }
+            public int SubIssueCount { get; set; }
+            public int SubIssueCompleted { get; set; }
+            public int SubIssuePercent { get; set; }
+        }
+
+        /// <summary>
+        /// Git #3871 — the batched, targeted-per-issue equivalent of the <c>parent</c> /
+        /// <c>milestone</c> / <c>subIssuesSummary</c> fields <see cref="ListBoardIssuesInternalAsync"/>
+        /// already pulls for every OPEN issue on its full walk, scoped here to a small caller-supplied
+        /// batch (<see cref="GitHubIssueMirror.IncrementalSyncAsync"/>'s tiny <c>since=</c> changed-set)
+        /// instead of a whole-board walk. This is the real primary fix for the Build Sets rollup's
+        /// "(mixed Epics)"/"No Epic" regression: the REST <c>GET /issues?since=</c> shape the incremental
+        /// pass already fetches (<see cref="GitHubIssueSinceUpdate"/>) carries no parent/milestone/sub-issue
+        /// fields at all (confirmed — that REST list endpoint's schema has no <c>parent</c> field), so
+        /// without this targeted GraphQL follow-up a brand-new or just-closed issue's mirror row would
+        /// have <c>parent_number = NULL</c> from its very first sync, and — since the FULL walk only ever
+        /// walks OPEN issues — an issue that is created AND closed between full syncs could carry that
+        /// NULL indefinitely (until the much slower ~24h closed-issue backfill eventually reaches it),
+        /// not just for the ~30 minutes until the next full sync. Confirmed live for #3864/#3865: both
+        /// closed between full syncs, both still NULL at the time this was written.
+        ///
+        /// Same rate-limit posture as <see cref="BatchGetProjectItemStatusesAsync"/>/<see cref="BatchGetBlockedByAsync"/>:
+        /// a handful of aliased <c>issue(number:)</c> reads (<see cref="ParentInfoLookupChunkSize"/> per
+        /// call), genuinely bounded by the tiny changed-set size, never a new per-issue live call. Only
+        /// issue numbers GraphQL actually returned a node for appear in the result; a rate-limited or
+        /// circuit-open chunk throws so the caller can stop and PRESERVE the mirror's existing values for
+        /// the un-fetched issues rather than blanking them (the same CASE-guarded preserve-on-miss the
+        /// incremental upsert already applies to board status and blocked_by).
+        /// </summary>
+        public async Task<Dictionary<int, IssueParentInfo>> BatchGetParentInfoAsync(IReadOnlyList<int> issueNumbers)
+        {
+            var result = new Dictionary<int, IssueParentInfo>();
+            if (issueNumbers == null || issueNumbers.Count == 0) return result;
+
+            var distinct = issueNumbers.Where(n => n > 0).Distinct().ToList();
+
+            for (int offset = 0; offset < distinct.Count; offset += ParentInfoLookupChunkSize)
+            {
+                var chunk = distinct.Skip(offset).Take(ParentInfoLookupChunkSize).ToList();
+                var sb = new StringBuilder();
+                sb.Append("query { ");
+                sb.Append($"repository(owner: \"{Owner}\", name: \"{Repo}\") {{ ");
+                for (int i = 0; i < chunk.Count; i++)
+                    sb.Append($"a{i}: issue(number: {chunk[i]}) {{ parent {{ number milestone {{ number }} }} milestone {{ title number }} subIssuesSummary {{ total completed percentCompleted }} }} ");
+                sb.Append("} }");
+
+                using var req = new HttpRequestMessage(HttpMethod.Post, "graphql")
+                {
+                    Content = JsonContent.Create(new { query = sb.ToString() }),
+                };
+                var res = await _http.SendAsync(req);
+                LogIfUnauthorized(res, "graphql (mirror parent-info batch population)");
+                res.EnsureSuccessStatusCode();
+
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("errors", out var errs) && errs.ValueKind == JsonValueKind.Array && errs.GetArrayLength() > 0)
+                {
+                    var msg = string.Join("; ", errs.EnumerateArray()
+                        .Select(e => e.TryGetProperty("message", out var m) ? m.GetString() : null)
+                        .Where(s => !string.IsNullOrEmpty(s)));
+                    // A rate-limit error stops the whole population pass (don't fire the rest of the
+                    // chunks); any other field-level error is logged but we still parse partial data.
+                    if (GitHubRateLimitCircuit.LooksLikeRateLimit(msg) || GitHubRateLimitCircuit.IsCircuitOpenMessage(msg))
+                        throw new Exception("GitHub GraphQL: " + msg);
+                    ActivityLog.Log("issue-mirror",
+                        $"mirror parent-info batch population — partial GraphQL error(s), continuing with returned data: {msg}");
+                }
+
+                if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object) continue;
+                if (!data.TryGetProperty("repository", out var repo) || repo.ValueKind != JsonValueKind.Object) continue;
+
+                for (int i = 0; i < chunk.Count; i++)
+                {
+                    if (!repo.TryGetProperty($"a{i}", out var issueEl) || issueEl.ValueKind != JsonValueKind.Object) continue;
+
+                    var info = new IssueParentInfo();
+
+                    if (issueEl.TryGetProperty("parent", out var parentEl) && parentEl.ValueKind == JsonValueKind.Object)
+                    {
+                        if (parentEl.TryGetProperty("number", out var pn) && pn.ValueKind == JsonValueKind.Number)
+                            info.ParentNumber = pn.GetInt32();
+                        if (parentEl.TryGetProperty("milestone", out var pm) && pm.ValueKind == JsonValueKind.Object
+                            && pm.TryGetProperty("number", out var pmn) && pmn.ValueKind == JsonValueKind.Number)
+                            info.ParentMilestoneNumber = pmn.GetInt32();
+                    }
+
+                    if (issueEl.TryGetProperty("milestone", out var msEl) && msEl.ValueKind == JsonValueKind.Object)
+                    {
+                        if (msEl.TryGetProperty("title", out var mt) && mt.ValueKind == JsonValueKind.String)
+                            info.MilestoneTitle = mt.GetString();
+                        if (msEl.TryGetProperty("number", out var mn) && mn.ValueKind == JsonValueKind.Number)
+                            info.MilestoneNumber = mn.GetInt32();
+                    }
+
+                    if (issueEl.TryGetProperty("subIssuesSummary", out var sisEl) && sisEl.ValueKind == JsonValueKind.Object)
+                    {
+                        if (sisEl.TryGetProperty("total", out var tot) && tot.ValueKind == JsonValueKind.Number)
+                            info.SubIssueCount = tot.GetInt32();
+                        if (sisEl.TryGetProperty("completed", out var comp) && comp.ValueKind == JsonValueKind.Number)
+                            info.SubIssueCompleted = comp.GetInt32();
+                        if (sisEl.TryGetProperty("percentCompleted", out var pct) && pct.ValueKind == JsonValueKind.Number)
+                            info.SubIssuePercent = pct.GetInt32();
+                    }
+
+                    result[chunk[i]] = info;
                 }
             }
 

@@ -3837,12 +3837,22 @@ namespace BuildConsole.Controls
             var needsInference = byKey.SelectMany(g => g.Where(i => !i.EpicNumber.HasValue))
                 .Select(i => i.GithubNumber!.Value).Distinct().ToList();
 
+            // Git #3871 — pass a real GitHubApiClient (when a PAT is configured) so a node that dead-ends
+            // purely because its own mirrored parent_number is null (the sync-gap case confirmed live for
+            // #3864/#3865 — a brand-new or just-closed issue the incremental sync hadn't yet been able to
+            // write a parent for) gets one narrow, capped live fallback fetch instead of silently
+            // resolving to "No Epic"/"(mixed Epics)". No PAT configured degrades to the original
+            // mirror-only behaviour exactly (same as every other GitHub-calling read in this panel).
+            var settings = BuildConsoleSettings.Load();
+            GitHubApiClient? liveFallbackClient = settings.HasGitHubPat ? new GitHubApiClient(settings.GitHubPat) : null;
+
             var resolved = new Dictionary<int, EpicResolver.ResolvedEpic>();
             if (needsInference.Count > 0)
             {
                 var mirrorRows = await GitHubIssueMirror.GetManyAsync(needsInference);
                 resolved = await EpicResolver.ResolveTopEpicsAsync(
-                    needsInference.Select(n => (n, mirrorRows.TryGetValue(n, out var m) ? m.ParentNumber : (int?)null)));
+                    needsInference.Select(n => (n, mirrorRows.TryGetValue(n, out var m) ? m.ParentNumber : (int?)null)),
+                    liveFallbackClient);
             }
 
             // An explicit override still needs a real title for display — a local mirror lookup
@@ -3878,9 +3888,10 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>Git #3336 — the real Epic-header sort/group key for one build-set's rollup row:
-        /// rank 0 = a single resolved Epic (sorted by its number), rank 1 = "(mixed Epics)" (the
-        /// set's real members resolved to more than one distinct Epic), rank 2 = "No Epic" (zero
-        /// resolvable Epics). Never silently collapsed into rank 0.</summary>
+        /// rank 0 = a single resolved Epic (sorted by its number), rank 1 = "(mixed: #N, #N, …)" (Git
+        /// #3871 — the set's real members resolved to more than one distinct Epic, named explicitly
+        /// rather than a bare "(mixed Epics)"), rank 2 = "No Epic" (zero resolvable Epics). Never
+        /// silently collapsed into rank 0.</summary>
         private readonly struct BuildSetEpicGroupKey : IEquatable<BuildSetEpicGroupKey>
         {
             public int SortRank { get; init; }
@@ -3898,7 +3909,13 @@ namespace BuildConsole.Controls
             {
                 if (epics.Count == 1)
                     return new BuildSetEpicGroupKey { SortRank = 0, EpicNumber = epics[0].Number, Label = $"#{epics[0].Number} — {epics[0].Title}" };
-                return new BuildSetEpicGroupKey { SortRank = 1, EpicNumber = null, Label = "(mixed Epics)" };
+                // Git #3871 — name which real Epics, instead of a bare, unlabeled "(mixed Epics)" that
+                // gave no way to tell a genuine cross-Epic build set from the sync-gap regression this
+                // fix closes (both used to render identically). Sorted by number so the same real
+                // combination always renders the same label (and therefore groups together) regardless
+                // of which order EpicResolver happened to resolve its members in.
+                var nums = string.Join(", ", epics.Select(e => e.Number).Distinct().OrderBy(n => n).Select(n => $"#{n}"));
+                return new BuildSetEpicGroupKey { SortRank = 1, EpicNumber = null, Label = $"(mixed: {nums})" };
             }
             return new BuildSetEpicGroupKey { SortRank = 2, EpicNumber = null, Label = "No Epic" };
         }

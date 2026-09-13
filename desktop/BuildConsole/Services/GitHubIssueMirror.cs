@@ -747,6 +747,11 @@ namespace BuildConsole.Services
             public int OpenIssues { get; set; }
             public int BoardStatuses { get; set; }
             public int BlockedByFetched { get; set; }
+            /// <summary>Git #3871 — count of changed issues this incremental pass targeted-fetched real
+            /// parent/milestone/sub-issue data for (the fix for the Build Sets rollup epic-resolution
+            /// gap). Always 0 on a full sync summary — that path already gets these fields for free from
+            /// its own GraphQL walk.</summary>
+            public int ParentInfoFetched { get; set; }
             public int MarkedClosed { get; set; }
             public long ElapsedMs { get; set; }
             public string? Error { get; set; }
@@ -999,6 +1004,41 @@ namespace BuildConsole.Services
                 }
             }
 
+            // Git #3871 — targeted parent/milestone/sub-issue fetch, scoped to this same small changed
+            // batch. This is the real primary fix for the Build Sets rollup's "(mixed Epics)"/"No Epic"
+            // regression: before this, the incremental path's INSERT/UPDATE never wrote parent_number at
+            // all (confirmed by direct grep — zero mentions), so EVERY issue this pass INSERTs — i.e.
+            // every issue created or changed since the last full sync — landed with parent_number = NULL,
+            // and EpicResolver's walk starts from that column, so a NULL start resolves to nothing, not
+            // "wrong parent". Worse: a CLOSED issue never gets corrected by the next full walk either,
+            // because the full walk only ever re-walks OPEN issues — only the much slower (~24h) closed
+            // backfill would eventually reach it. Confirmed live for #3864/#3865 (Git #3871): both closed
+            // between full syncs, both still parent_number = NULL. Exactly the same fail-safe shape as the
+            // board-status fetch above: any failure (rate-limit circuit open / throw) leaves
+            // parentInfoByNumber empty, which the CASE-guarded upsert below preserves existing rows'
+            // parent/milestone/sub-issue columns and leaves a brand-new insert NULL — never worse than the
+            // pre-#3871 behaviour, and corrected by the next full walk (or, for an issue whose chain still
+            // dead-ends locally, EpicResolver's own narrow live fallback).
+            var parentInfoByNumber = new Dictionary<int, GitHubApiClient.IssueParentInfo>();
+            if (GitHubRateLimitCircuit.IsOpen)
+            {
+                ActivityLog.Log("issue-mirror",
+                    $"incremental sync: skipping targeted parent-info fetch — GitHub rate-limit circuit open " +
+                    $"({GitHubRateLimitCircuit.RemainingOpenSeconds()}s left); {changed.Count} changed issue(s) keep their existing parent/milestone/sub-issue data this pass (new ones stay NULL until the next full walk) (Git #3871).");
+            }
+            else
+            {
+                try
+                {
+                    parentInfoByNumber = await gh.BatchGetParentInfoAsync(changed.Select(i => i.Number).Distinct().ToList());
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("issue-mirror",
+                        $"incremental sync: targeted parent-info fetch failed ({ex.Message}) — changed issues keep their existing parent/milestone/sub-issue data this pass, corrected by the next full walk (Git #3871).");
+                }
+            }
+
             // blocked_by refresh, scoped to this small changed batch only. Git #3627 — fetch real
             // blocked_by for EVERY changed issue, NOT just ones already carrying the `blocked` label. The
             // changed set here is the tiny since= delta (adding/removing a dependency edge bumps the
@@ -1061,10 +1101,14 @@ namespace BuildConsole.Services
                     INSERT INTO bt_issue_mirror
                         (issue_number, title, state, board_status_option_id, board_status_name,
                          labels, blocked_by_numbers, blocking_numbers, html_url, created_at, closed_at,
+                         milestone_title, milestone_number, parent_number, parent_milestone_number,
+                         sub_issue_count, sub_issue_completed, sub_issue_percent,
                          last_synced_at, updated_at, repo_owner, repo_name)
                     VALUES
                         (@n, @title, @state, @boardOpt, @boardName,
                          @labels, @blockedBy, '{}', @url, @createdAt, @closedAt,
+                         @milestoneTitle, @milestoneNumber, @parentNumber, @parentMilestoneNumber,
+                         @subIssueCount, @subIssueCompleted, @subIssuePercent,
                          NOW(), NOW(), @repoOwner, @repoName)
                     ON CONFLICT (repo_owner, repo_name, issue_number) DO UPDATE SET
                         title  = EXCLUDED.title,
@@ -1087,6 +1131,20 @@ namespace BuildConsole.Services
                         html_url = EXCLUDED.html_url,
                         created_at = COALESCE(bt_issue_mirror.created_at, EXCLUDED.created_at),
                         closed_at = EXCLUDED.closed_at,
+                        -- Git #3871 — the real primary fix: parent/milestone/sub-issue data is now
+                        -- filled from the targeted per-issue fetch above, but ONLY when that issue was
+                        -- actually returned this pass (@haveParentInfo). A miss (fetch skipped/failed,
+                        -- rate-limit circuit open, or GraphQL simply returned nothing for that number)
+                        -- PRESERVES the existing row's values rather than wiping them — the same
+                        -- CASE-guarded preserve-on-miss discipline @haveBoard already uses — so a
+                        -- transient fetch gap can never blank a real Epic chain the mirror already had.
+                        milestone_title = CASE WHEN @haveParentInfo THEN EXCLUDED.milestone_title ELSE bt_issue_mirror.milestone_title END,
+                        milestone_number = CASE WHEN @haveParentInfo THEN EXCLUDED.milestone_number ELSE bt_issue_mirror.milestone_number END,
+                        parent_number = CASE WHEN @haveParentInfo THEN EXCLUDED.parent_number ELSE bt_issue_mirror.parent_number END,
+                        parent_milestone_number = CASE WHEN @haveParentInfo THEN EXCLUDED.parent_milestone_number ELSE bt_issue_mirror.parent_milestone_number END,
+                        sub_issue_count = CASE WHEN @haveParentInfo THEN EXCLUDED.sub_issue_count ELSE bt_issue_mirror.sub_issue_count END,
+                        sub_issue_completed = CASE WHEN @haveParentInfo THEN EXCLUDED.sub_issue_completed ELSE bt_issue_mirror.sub_issue_completed END,
+                        sub_issue_percent = CASE WHEN @haveParentInfo THEN EXCLUDED.sub_issue_percent ELSE bt_issue_mirror.sub_issue_percent END,
                         last_synced_at = NOW(),
                         updated_at = NOW()", conn, tx))
                 {
@@ -1100,8 +1158,16 @@ namespace BuildConsole.Services
                     var pUrl = cmd.Parameters.Add(new NpgsqlParameter("@url", NpgsqlDbType.Text));
                     var pCreated = cmd.Parameters.Add(new NpgsqlParameter("@createdAt", NpgsqlDbType.TimestampTz));
                     var pClosed = cmd.Parameters.Add(new NpgsqlParameter("@closedAt", NpgsqlDbType.TimestampTz));
+                    var pMilestoneTitle = cmd.Parameters.Add(new NpgsqlParameter("@milestoneTitle", NpgsqlDbType.Text));
+                    var pMilestoneNumber = cmd.Parameters.Add(new NpgsqlParameter("@milestoneNumber", NpgsqlDbType.Integer));
+                    var pParentNumber = cmd.Parameters.Add(new NpgsqlParameter("@parentNumber", NpgsqlDbType.Integer));
+                    var pParentMilestoneNumber = cmd.Parameters.Add(new NpgsqlParameter("@parentMilestoneNumber", NpgsqlDbType.Integer));
+                    var pSubIssueCount = cmd.Parameters.Add(new NpgsqlParameter("@subIssueCount", NpgsqlDbType.Integer));
+                    var pSubIssueCompleted = cmd.Parameters.Add(new NpgsqlParameter("@subIssueCompleted", NpgsqlDbType.Integer));
+                    var pSubIssuePercent = cmd.Parameters.Add(new NpgsqlParameter("@subIssuePercent", NpgsqlDbType.Integer));
                     var pHaveBlockedBy = cmd.Parameters.Add(new NpgsqlParameter("@haveBlockedBy", NpgsqlDbType.Boolean));
                     var pHaveBoard = cmd.Parameters.Add(new NpgsqlParameter("@haveBoard", NpgsqlDbType.Boolean));
+                    var pHaveParentInfo = cmd.Parameters.Add(new NpgsqlParameter("@haveParentInfo", NpgsqlDbType.Boolean));
                     cmd.Parameters.AddWithValue("@repoOwner", RepoIdentity.DefaultOwner);
                     cmd.Parameters.AddWithValue("@repoName", RepoIdentity.DefaultName);
 
@@ -1124,6 +1190,20 @@ namespace BuildConsole.Services
                         pUrl.Value = issue.HtmlUrl ?? "";
                         pCreated.Value = (object?)issue.CreatedAt?.UtcDateTime ?? DBNull.Value;
                         pClosed.Value = (object?)issue.ClosedAt?.UtcDateTime ?? DBNull.Value;
+                        // Git #3871 — @haveParentInfo is true only when the targeted fetch actually
+                        // returned this issue's node this pass; a miss leaves parent/milestone/sub-issue
+                        // data untouched via the CASE guard above (preserve on UPDATE, NULL/0 on a fresh
+                        // INSERT — the real fix's whole point being that this is no longer ALWAYS the
+                        // fresh-INSERT case).
+                        bool haveParentInfo = parentInfoByNumber.TryGetValue(issue.Number, out var pi);
+                        pMilestoneTitle.Value = haveParentInfo ? (object?)pi!.MilestoneTitle ?? DBNull.Value : DBNull.Value;
+                        pMilestoneNumber.Value = haveParentInfo ? (object?)pi!.MilestoneNumber ?? DBNull.Value : DBNull.Value;
+                        pParentNumber.Value = haveParentInfo ? (object?)pi!.ParentNumber ?? DBNull.Value : DBNull.Value;
+                        pParentMilestoneNumber.Value = haveParentInfo ? (object?)pi!.ParentMilestoneNumber ?? DBNull.Value : DBNull.Value;
+                        pSubIssueCount.Value = haveParentInfo ? pi!.SubIssueCount : 0;
+                        pSubIssueCompleted.Value = haveParentInfo ? pi!.SubIssueCompleted : 0;
+                        pSubIssuePercent.Value = haveParentInfo ? pi!.SubIssuePercent : 0;
+                        pHaveParentInfo.Value = haveParentInfo;
                         await cmd.ExecuteNonQueryAsync();
                     }
                 }
@@ -1138,15 +1218,16 @@ namespace BuildConsole.Services
             }
 
             summary.BoardStatuses = boardByNumber.Count;
+            summary.ParentInfoFetched = parentInfoByNumber.Count;
             summary.ElapsedMs = sw.ElapsedMilliseconds;
             await RecordIncrementalSyncStateAsync(summary.Ok,
                 summary.Ok
-                    ? $"ok: {changed.Count} issue(s) changed since {sinceUtc:o}, {summary.BoardStatuses} board status(es) targeted-fetched, {summary.BlockedByFetched} blocked_by refreshed, {summary.ElapsedMs}ms"
+                    ? $"ok: {changed.Count} issue(s) changed since {sinceUtc:o}, {summary.BoardStatuses} board status(es) targeted-fetched, {summary.ParentInfoFetched} parent-info targeted-fetched, {summary.BlockedByFetched} blocked_by refreshed, {summary.ElapsedMs}ms"
                     : summary.Error);
 
             ActivityLog.Log("issue-mirror",
                 summary.Ok
-                    ? $"incremental sync ok — {changed.Count} issue(s) changed since {sinceUtc:o} ({summary.BoardStatuses} board status(es) targeted-fetched, {summary.BlockedByFetched} blocked_by refreshed), in {summary.ElapsedMs}ms. New/changed items now get their real board status this pass (Git #3343); the full walk stays the reconciliation for off-board moves."
+                    ? $"incremental sync ok — {changed.Count} issue(s) changed since {sinceUtc:o} ({summary.BoardStatuses} board status(es) targeted-fetched, {summary.ParentInfoFetched} parent-info targeted-fetched (Git #3871), {summary.BlockedByFetched} blocked_by refreshed), in {summary.ElapsedMs}ms. New/changed items now get their real board status AND parent/Epic chain this pass; the full walk stays the reconciliation for off-board moves and child_issue_numbers/database_id."
                     : $"incremental sync FAILED — {summary.Error} ({summary.ElapsedMs}ms).");
 
             if (summary.Ok)

@@ -498,8 +498,12 @@ namespace BuildConsole.Services
                 ? mirrorRows.ToDictionary(m => m.Number, m => m.ParentNumber)
                 : (await GitHubIssueMirror.GetManyAsync(boardItems.Select(b => b.Number).ToList()))
                     .ToDictionary(kv => kv.Key, kv => kv.Value.ParentNumber);
+            // Git #3871 — pass `gh` so a node that dead-ends purely because its own mirrored
+            // parent_number is null (the sync-gap case, not a genuine top-level Epic) gets one
+            // narrow, capped live fallback fetch instead of silently resolving to nothing.
             var resolvedEpics = await EpicResolver.ResolveTopEpicsAsync(
-                boardItems.Select(b => (b.Number, parentByNumber.TryGetValue(b.Number, out var pn) ? pn : (int?)null)));
+                boardItems.Select(b => (b.Number, parentByNumber.TryGetValue(b.Number, out var pn) ? pn : (int?)null)),
+                gh);
             // Git #1997 — count of items genuinely hidden this pass because they hold a LIVE (or
             // already-landed) queue row. Surfaced in the panel header so "nothing in this lane" and
             // "everything in this lane is hidden" are distinguishable at a glance.
