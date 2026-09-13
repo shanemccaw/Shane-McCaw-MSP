@@ -546,7 +546,7 @@ describe("POST /api/portal/offers/:id/checkout", () => {
       .mockReturnValueOnce(selectChain([]))             // platform agreements
       .mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // msp subscription
     const { getMspDefaultPaymentMethod } = await import("../lib/stripe.ts");
-    vi.mocked(getMspDefaultPaymentMethod).mockResolvedValueOnce(null);
+    vi.mocked(getMspDefaultPaymentMethod).mockResolvedValueOnce(undefined);
 
     const app = await makeApp();
     const res = await request(app)
