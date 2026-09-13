@@ -191,6 +191,7 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
         userInitials={initialsFor(userName)}
         roleLabel={roleLabel}
         onNavigateSettings={() => navigate({ kind: "msp", page: "settings" })}
+        onNavigateSecurity={() => { setLocation("/account/mfa"); closeOverlays(); }}
         onLogout={() => void logout()}
       />
 

@@ -11,6 +11,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\""
   },
+  "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0"
+  },
   "devDependencies": {
     "@replit/vite-plugin-cartographer": "catalog:",
     "@replit/vite-plugin-dev-banner": "catalog:",

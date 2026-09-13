@@ -27,6 +27,7 @@ export interface HeaderProps {
   userInitials: string;
   roleLabel: string;
   onNavigateSettings: () => void;
+  onNavigateSecurity: () => void;
   onLogout: () => void;
 }
 
@@ -168,6 +169,7 @@ export function Header(props: HeaderProps) {
                 <div style={{ fontSize: 11, color: text.label }}>{props.roleLabel}</div>
               </div>
               <MenuItem icon="user" label="My profile" onClick={() => toast("Profile isn't available from the console yet.")} />
+              <MenuItem icon="fingerprint" label="Security & sessions" onClick={props.onNavigateSecurity} />
               <MenuItem icon="settings" label="MSP settings" onClick={props.onNavigateSettings} />
               <MenuItem icon="life-buoy" label="Support" onClick={() => toast("Support isn't wired up in the shell yet.")} />
               <MenuItem icon="log-out" label="Sign out" onClick={props.onLogout} />
@@ -205,7 +207,7 @@ function GhostButton({ children, onClick, title }: { children: React.ReactNode; 
   );
 }
 
-function MenuItem({ icon, label, onClick }: { icon: "user" | "settings" | "life-buoy" | "log-out"; label: string; onClick: () => void }) {
+function MenuItem({ icon, label, onClick }: { icon: "user" | "settings" | "life-buoy" | "log-out" | "fingerprint"; label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}

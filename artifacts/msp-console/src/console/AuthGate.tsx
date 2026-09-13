@@ -1,8 +1,12 @@
+import { useEffect } from "react";
 import { getMspAuthMeQueryKey, useMspAuthMe, type MspUserProfile } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Icon, type IconName } from "./icons";
 import { ConsoleShell } from "./ConsoleShell";
 import { border, shadow, signal, surface, text } from "./tokens";
+
+/** Where SignInPage sends a caller back to once they're signed in again. */
+const RETURN_TO_KEY = "smcReturnTo";
 
 /** MSP roles that clear the console's operator gate — the front-of-house mirror
  * of the backend's `requireCapability("ladder.msp-operator")` (operator+). */
@@ -91,6 +95,17 @@ function LoadingScreen() {
 
 function SignInRequired() {
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  // Remember where the caller actually was so SignInPage can send them back
+  // instead of always dropping them at /tenants — a session expiring three
+  // levels deep in a tenant page should not cost the operator their place.
+  useEffect(() => {
+    const rel = window.location.pathname.replace(base, "") + window.location.search;
+    if (rel && rel !== "/" && !rel.startsWith("/login")) {
+      sessionStorage.setItem(RETURN_TO_KEY, rel);
+    }
+  }, [base]);
+
   return (
     <GatePanel
       icon="key-round"

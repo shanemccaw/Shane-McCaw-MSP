@@ -28,6 +28,14 @@ interface AuthContextValue extends AuthState {
   refresh: () => Promise<string | null>;
   fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   logout: () => Promise<void>;
+  /**
+   * Adopt an access token issued outside the refresh cycle — the real login,
+   * MFA-verify, and bypass routes (screen 38) all mint one directly in their
+   * JSON response and set the refresh cookie themselves via `Set-Cookie`; this
+   * just makes that token live for `fetchWithAuth`/the generated client
+   * without a redundant round-trip through `/api/auth/refresh`.
+   */
+  setSession: (accessToken: string) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -122,6 +130,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [refresh],
   );
 
+  const setSession = useCallback((accessToken: string) => {
+    sessionExpiredRef.current = false;
+    accessTokenRef.current = accessToken;
+    setState({ accessToken, isLoading: false });
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
@@ -132,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, refresh, fetchWithAuth, logout }}>
+    <AuthContext.Provider value={{ ...state, refresh, fetchWithAuth, logout, setSession }}>
       {children}
     </AuthContext.Provider>
   );

@@ -4,6 +4,11 @@ import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AuthGate } from "@/console/AuthGate";
 import NotFound from "@/pages/not-found";
+import SignInPage from "@/auth/SignInPage";
+import TwoFactorPage from "@/auth/TwoFactorPage";
+import ForgotPasswordPage from "@/auth/ForgotPasswordPage";
+import ChangeMfaPage from "@/auth/ChangeMfaPage";
+import SessionsPage from "@/auth/SessionsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -18,6 +23,15 @@ const ROUTER_BASE = (import.meta.env.BASE_URL || "/msp-console/").replace(/\/$/,
 function AppRoutes() {
   return (
     <Switch>
+      {/* Pre-login / self-service auth routes (screen 38, Git #3814) —
+          standalone, outside AuthGate/ConsoleShell: sign-in happens before
+          the shell exists (README, "Where they sit in the tree"). */}
+      <Route path="/login" component={SignInPage} />
+      <Route path="/mfa" component={TwoFactorPage} />
+      <Route path="/forgot-password" component={ForgotPasswordPage} />
+      <Route path="/account/mfa" component={ChangeMfaPage} />
+      <Route path="/account/sessions" component={SessionsPage} />
+
       <Route path="/">{() => <Redirect to="/tenants" />}</Route>
       <Route path="/tenants" component={AuthGate} />
       <Route path="/tenants/:id" component={AuthGate} />
