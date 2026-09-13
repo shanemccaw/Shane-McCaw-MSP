@@ -355,6 +355,13 @@ namespace BuildConsole.Controls
 
         private void TxtDomComment_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                CancelDomNote();
+                return;
+            }
+
             if (e.Key == Key.Enter)
             {
                 if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
@@ -384,6 +391,29 @@ namespace BuildConsole.Controls
         private void BtnDomSendBug_Click(object sender, RoutedEventArgs e)
         {
             SubmitDomBug();
+        }
+
+        private void BtnDomCancelNote_Click(object sender, RoutedEventArgs e)
+        {
+            CancelDomNote();
+        }
+
+        public async void CancelDomNote()
+        {
+            TxtDomComment.Clear();
+            _lastInspectedElement = null;
+            DomPickedContainer.Visibility = Visibility.Collapsed;
+            TxtDomEmpty.Visibility = Visibility.Visible;
+            TxtPickElementLabel.Text = "Pick Element";
+
+            if (_isPickingElement)
+            {
+                _isPickingElement = false;
+                if (_activeWebView?.CoreWebView2 != null)
+                {
+                    await VisualTestTrackerTelemetry.DisableDomInspectorAsync(_activeWebView);
+                }
+            }
         }
 
         private void SubmitDomBug()

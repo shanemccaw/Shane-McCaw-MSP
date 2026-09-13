@@ -97,16 +97,15 @@
                              search bar); the "Shane McCaw MSP" name stays clearly visible here. -->
                         <Border Width="24" Height="24"
                                 Margin="8,0,6,0"
-                                Background="{DynamicResource AccentWashLightBrush}"
+                                Background="Transparent"
                                 CornerRadius="4"
                                 VerticalAlignment="Center"
                                 ToolTip="Shane McCaw MSP">
-                            <TextBlock Text="▲"
-                                       FontSize="12"
-                                       FontWeight="Bold"
-                                       Foreground="{StaticResource BlueBrush}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"/>
+                            <Image Source="app.png"
+                                   Width="20" Height="20"
+                                   RenderOptions.BitmapScalingMode="HighQuality"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
                         </Border>
                         <TextBlock Text="Shane McCaw MSP"
                                    FontSize="12"

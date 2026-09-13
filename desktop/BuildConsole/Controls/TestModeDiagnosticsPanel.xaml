@@ -180,11 +180,14 @@
                                             <!-- Element Details Card -->
                                             <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="0,0,0,6">
                                                 <StackPanel Orientation="Vertical">
-                                                    <WrapPanel Margin="0,0,0,3">
-                                                        <TextBlock x:Name="TxtDomTag" Text="div.card" FontFamily="Consolas" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,6,0"/>
-                                                        <TextBlock x:Name="TxtDomDims" Text="320×180px" FontSize="9.5" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                                        <TextBlock x:Name="TxtDomA11y" Text="a11y verified" FontSize="9" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}" VerticalAlignment="Center"/>
-                                                    </WrapPanel>
+                                                    <Grid Margin="0,0,0,3">
+                                                        <WrapPanel VerticalAlignment="Center">
+                                                            <TextBlock x:Name="TxtDomTag" Text="div.card" FontFamily="Consolas" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,6,0"/>
+                                                            <TextBlock x:Name="TxtDomDims" Text="320×180px" FontSize="9.5" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                            <TextBlock x:Name="TxtDomA11y" Text="a11y verified" FontSize="9" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}" VerticalAlignment="Center"/>
+                                                        </WrapPanel>
+                                                        <Button x:Name="BtnDomDismissCard" HorizontalAlignment="Right" VerticalAlignment="Top" Style="{StaticResource SecondaryButton}" Padding="4,0" Content="✕" ToolTip="Cancel note and dismiss element (Esc)" Click="BtnDomCancelNote_Click" FontSize="9"/>
+                                                    </Grid>
                                                     <TextBlock x:Name="TxtDomSelector" Text="#root > main > div:nth-child(2)" FontFamily="Consolas" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,2"/>
                                                     <TextBlock x:Name="TxtDomInnerText" Text="&quot;Button text&quot;" FontFamily="Segoe UI" FontStyle="Italic" FontSize="9" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap" Visibility="Collapsed"/>
                                                 </StackPanel>
@@ -195,7 +198,7 @@
                                                 <StackPanel Orientation="Vertical">
                                                     <Grid Margin="0,0,0,4">
                                                         <TextBlock Text="Add Comment" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
-                                                        <TextBlock Text="Shift+Enter = ↵ line  ·  Enter = Send" FontSize="8.5" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="Shift+Enter = ↵ line  ·  Enter = Send  ·  Esc = Cancel" FontSize="8.5" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                                     </Grid>
                                                     <Border Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,6">
                                                         <Grid>
@@ -224,12 +227,13 @@
                                                         </Grid>
                                                     </Border>
                                                     <DockPanel LastChildFill="False">
-                                                        <Button x:Name="BtnDomSendBug" DockPanel.Dock="Left" Style="{StaticResource PrimaryButton}" FontSize="10" Padding="8,4" Click="BtnDomSendBug_Click">
+                                                        <Button x:Name="BtnDomSendBug" DockPanel.Dock="Left" Style="{StaticResource PrimaryButton}" FontSize="10" Padding="8,4" Margin="0,0,6,0" Click="BtnDomSendBug_Click">
                                                             <StackPanel Orientation="Horizontal">
                                                                 <TextBlock Text="&#xE725;" FontFamily="Segoe MDL2 Assets" FontSize="10" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                                                 <TextBlock Text="Send to Bug List (Enter)" FontWeight="Bold" VerticalAlignment="Center"/>
                                                             </StackPanel>
                                                         </Button>
+                                                        <Button x:Name="BtnDomCancel" DockPanel.Dock="Left" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="8,4" Content="Cancel (Esc)" ToolTip="Cancel and discard this note (Esc)" Click="BtnDomCancelNote_Click"/>
                                                         <TextBlock x:Name="TxtDomBugSuccess" DockPanel.Dock="Left" Text="✓ Sent to bug list!" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}" VerticalAlignment="Center" Margin="8,0,0,0" Visibility="Collapsed"/>
                                                     </DockPanel>
                                                 </StackPanel>

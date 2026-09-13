@@ -448,6 +448,13 @@ namespace BuildConsole
         {
             InitializeComponent();
 
+            try
+            {
+                var iconUri = new Uri("pack://application:,,,/app.png", UriKind.RelativeOrAbsolute);
+                this.Icon = System.Windows.Media.Imaging.BitmapFrame.Create(iconUri);
+            }
+            catch { }
+
             // Git #1864 — Shane: "make the search box not so tall... it fits properly."
             // Sized against the window's REAL WindowChrome.CaptionHeight (not a guessed
             // pixel value) so it fits the 36px caption bar cleanly and adapts if that
