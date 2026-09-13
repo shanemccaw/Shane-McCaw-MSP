@@ -2030,7 +2030,7 @@ namespace BuildConsole
         }
 
         /// <summary>Git #937 — the WebView2 (and its TabItem) of the currently active pane's selected tab, across all four #893 panes. Falls back to the primary pane if the tracked one was collapsed by a layout change.</summary>
-        private (Microsoft.Web.WebView2.Wpf.WebView2? Wv, TabItem? Tab) GetActiveEditorTabWebView()
+        public (Microsoft.Web.WebView2.Wpf.WebView2? Wv, TabItem? Tab) GetActiveEditorTabWebView()
         {
             var pane = _activeEditorPane;
             if (pane == null || pane.Visibility != Visibility.Visible)

@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -192,6 +193,31 @@ namespace BuildConsole.Controls
                 _pageStartTime = DateTime.Now;
                 ChkGood.IsChecked = false;
                 RefreshBugDrawer();
+                _ = CheckDomVerificationStatusAsync(_fullUrl, _activeRoute);
+            }
+        }
+
+        private async Task CheckDomVerificationStatusAsync(string fullUrl, string route)
+        {
+            var connStr = VisualTestTrackerStore.ResolveConnectionString();
+            if (string.IsNullOrWhiteSpace(connStr)) return;
+
+            var store = new VisualTestTrackerStore(connStr);
+            string baseUrl = "";
+            if (Uri.TryCreate(fullUrl, UriKind.Absolute, out var uri))
+            {
+                baseUrl = $"{uri.Scheme}://{uri.Authority}";
+            }
+
+            var baseline = await store.GetDomBaselineAsync(baseUrl, route);
+            if (baseline != null && baseline.IsVerificationDue)
+            {
+                BdrDomVerificationBanner.Visibility = Visibility.Visible;
+                TxtDomBannerMessage.Text = $"⚡ DOM Mutation baseline last verified {baseline.AgeInDays} day(s) ago ({baseline.LastVerifiedAt:yyyy-MM-dd}).";
+            }
+            else
+            {
+                BdrDomVerificationBanner.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -658,6 +684,78 @@ namespace BuildConsole.Controls
         private void CmbSeverity_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             // Optional telemetry or styling hook
+        }
+
+        private async void BtnVerifyDomCheck_Click(object sender, RoutedEventArgs e)
+        {
+            var connStr = VisualTestTrackerStore.ResolveConnectionString();
+            VisualTestTrackerStore? store = !string.IsNullOrWhiteSpace(connStr) ? new VisualTestTrackerStore(connStr) : null;
+
+            string baseUrl = "";
+            if (Uri.TryCreate(_fullUrl, UriKind.Absolute, out var uri))
+            {
+                baseUrl = $"{uri.Scheme}://{uri.Authority}";
+            }
+
+            VisualTestTrackerDomBaseline? baseline = null;
+            if (store != null)
+            {
+                baseline = await store.GetDomBaselineAsync(baseUrl, _activeRoute);
+            }
+
+            var liveMutations = new List<DomMutationRecord>();
+            if (Window.GetWindow(this) is MainWindow mw)
+            {
+                var (wv, _) = mw.GetActiveEditorTabWebView();
+                if (wv != null)
+                {
+                    liveMutations = await VisualTestTrackerTelemetry.DiffDomSnapshotAsync(wv);
+                }
+            }
+
+            var win = new DomDriftDiffWindow(baseUrl, _activeRoute, baseline, liveMutations, store, mutations =>
+            {
+                if (mutations != null && mutations.Count > 0)
+                {
+                    var sb = new StringBuilder();
+                    sb.AppendLine($"DOM Drift detected ({mutations.Count} changes):");
+                    foreach (var m in mutations)
+                    {
+                        sb.AppendLine($"- [{m.Action}] <{m.Tag}> `{m.Selector}`: {m.OldValue} -> {m.NewValue}");
+                    }
+                    AppendNote(sb.ToString().TrimEnd());
+                    ShowToast("DOM drift attached to bug notes!");
+                }
+            })
+            {
+                Owner = Window.GetWindow(this)
+            };
+
+            win.ShowDialog();
+            BdrDomVerificationBanner.Visibility = Visibility.Collapsed;
+        }
+
+        private async void BtnUpdateDomBaseline_Click(object sender, RoutedEventArgs e)
+        {
+            var connStr = VisualTestTrackerStore.ResolveConnectionString();
+            if (!string.IsNullOrWhiteSpace(connStr))
+            {
+                var store = new VisualTestTrackerStore(connStr);
+                string baseUrl = "";
+                if (Uri.TryCreate(_fullUrl, UriKind.Absolute, out var uri))
+                {
+                    baseUrl = $"{uri.Scheme}://{uri.Authority}";
+                }
+
+                await store.UpdateDomBaselineVerificationDateAsync(baseUrl, _activeRoute);
+                BdrDomVerificationBanner.Visibility = Visibility.Collapsed;
+                ShowToast($"DOM baseline verified for {_activeRoute}.");
+            }
+        }
+
+        private void BtnDismissDomBanner_Click(object sender, RoutedEventArgs e)
+        {
+            BdrDomVerificationBanner.Visibility = Visibility.Collapsed;
         }
     }
 }

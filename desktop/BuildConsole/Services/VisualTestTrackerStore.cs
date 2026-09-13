@@ -28,6 +28,22 @@ namespace BuildConsole.Services
         public DateTime CreatedAt;
     }
 
+    /// <summary>Persistent DOM mutation baseline recorded for a watched page.</summary>
+    public sealed class VisualTestTrackerDomBaseline
+    {
+        public int Id { get; set; }
+        public int PageId { get; set; }
+        public string BaseUrl { get; set; } = "";
+        public string PagePath { get; set; } = "";
+        public List<DomMutationRecord> Mutations { get; set; } = new();
+        public DateTime LastVerifiedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime UpdatedAt { get; set; } = DateTime.Now;
+
+        public int AgeInDays => (int)(DateTime.Now - LastVerifiedAt).TotalDays;
+        public bool IsVerificationDue => AgeInDays >= 7;
+    }
+
     /// <summary>
     /// Git #1472 — direct Npgsql store for the Visual Test Tracker floaty's persistent
     /// state: per-page Good/Bad + notes, and every screenshot ever captured for that
@@ -576,6 +592,106 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 ActivityLog.Log(Channel, $"DB entry delete skipped: {ex.Message}");
+            }
+        }
+
+        /// <summary>Retrieves the saved DOM baseline for a given page path, or null if none exists.</summary>
+        public async Task<VisualTestTrackerDomBaseline?> GetDomBaselineAsync(string baseUrl, string pagePath)
+        {
+            if (string.IsNullOrWhiteSpace(baseUrl) && string.IsNullOrWhiteSpace(pagePath)) return null;
+            try
+            {
+                await using var conn = await OpenAsync();
+                await using var cmd = new NpgsqlCommand(
+                    "SELECT id, page_id, base_url, page_path, baseline_mutations, last_verified_at, created_at, updated_at " +
+                    "FROM visual_test_tracker_dom_mutations WHERE base_url = @b AND page_path = @p", conn);
+                cmd.Parameters.AddWithValue("@b", baseUrl ?? "");
+                cmd.Parameters.AddWithValue("@p", pagePath ?? "");
+
+                await using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    var baseline = new VisualTestTrackerDomBaseline
+                    {
+                        Id = reader.GetInt32(0),
+                        PageId = reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
+                        BaseUrl = reader.GetString(2),
+                        PagePath = reader.GetString(3),
+                        LastVerifiedAt = reader.GetFieldValue<DateTime>(5),
+                        CreatedAt = reader.GetFieldValue<DateTime>(6),
+                        UpdatedAt = reader.GetFieldValue<DateTime>(7),
+                    };
+
+                    if (!reader.IsDBNull(4))
+                    {
+                        string json = reader.GetString(4);
+                        try
+                        {
+                            var muts = System.Text.Json.JsonSerializer.Deserialize<List<DomMutationRecord>>(json);
+                            if (muts != null) baseline.Mutations = muts;
+                        }
+                        catch { }
+                    }
+
+                    return baseline;
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"GetDomBaselineAsync error: {ex.Message}");
+            }
+            return null;
+        }
+
+        /// <summary>Saves or updates a DOM baseline for a page.</summary>
+        public async Task SaveDomBaselineAsync(VisualTestTrackerDomBaseline baseline)
+        {
+            if (baseline == null) return;
+            baseline.UpdatedAt = DateTime.Now;
+
+            try
+            {
+                await using var conn = await OpenAsync();
+                string jsonMutations = System.Text.Json.JsonSerializer.Serialize(baseline.Mutations ?? new List<DomMutationRecord>());
+
+                await using var cmd = new NpgsqlCommand(
+                    "INSERT INTO visual_test_tracker_dom_mutations (page_id, base_url, page_path, baseline_mutations, last_verified_at, created_at, updated_at) " +
+                    "VALUES (@pid, @b, @p, @mut::jsonb, @v, @c, @up) " +
+                    "ON CONFLICT (base_url, page_path) DO UPDATE SET " +
+                    "baseline_mutations = EXCLUDED.baseline_mutations, last_verified_at = EXCLUDED.last_verified_at, updated_at = EXCLUDED.updated_at " +
+                    "RETURNING id", conn);
+                cmd.Parameters.AddWithValue("@pid", baseline.PageId > 0 ? (object)baseline.PageId : DBNull.Value);
+                cmd.Parameters.AddWithValue("@b", baseline.BaseUrl ?? "");
+                cmd.Parameters.AddWithValue("@p", baseline.PagePath ?? "");
+                cmd.Parameters.AddWithValue("@mut", jsonMutations);
+                cmd.Parameters.AddWithValue("@v", baseline.LastVerifiedAt);
+                cmd.Parameters.AddWithValue("@c", baseline.CreatedAt);
+                cmd.Parameters.AddWithValue("@up", baseline.UpdatedAt);
+
+                var idObj = await cmd.ExecuteScalarAsync();
+                if (idObj is int idVal) baseline.Id = idVal;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"SaveDomBaselineAsync error: {ex.Message}");
+            }
+        }
+
+        /// <summary>Updates last_verified_at timestamp to now() for a page baseline.</summary>
+        public async Task UpdateDomBaselineVerificationDateAsync(string baseUrl, string pagePath)
+        {
+            try
+            {
+                await using var conn = await OpenAsync();
+                await using var cmd = new NpgsqlCommand(
+                    "UPDATE visual_test_tracker_dom_mutations SET last_verified_at = now(), updated_at = now() WHERE base_url = @b AND page_path = @p", conn);
+                cmd.Parameters.AddWithValue("@b", baseUrl ?? "");
+                cmd.Parameters.AddWithValue("@p", pagePath ?? "");
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"UpdateDomBaselineVerificationDateAsync error: {ex.Message}");
             }
         }
 
