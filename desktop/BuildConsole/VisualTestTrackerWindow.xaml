@@ -197,6 +197,16 @@
                             </Button>
 
                             <!-- Start New Test Session Button -->
+                            <!-- End Session & Sync to Git Button -->
+                            <Button x:Name="BtnEndSessionSync"
+                                    Content="🚀 End Session &amp; Sync"
+                                    Style="{StaticResource IconButton}"
+                                    FontSize="9" FontWeight="Bold"
+                                    Padding="5,2,5,2" Margin="0,0,3,0"
+                                    Foreground="{StaticResource AccentBrush}"
+                                    ToolTip="Finalize session, save all artifacts under /Bugs/&lt;ProductName&gt;/&lt;SessionId&gt;/, and commit &amp; push to Git for Claude integration"
+                                    Click="BtnEndSessionSync_Click"/>
+
                             <Button x:Name="BtnNewSession"
                                     Content="▶ New Session"
                                     Style="{StaticResource IconButton}"

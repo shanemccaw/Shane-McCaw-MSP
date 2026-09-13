@@ -91,6 +91,11 @@ namespace BuildConsole
         private DevToolsRunnerService.ConsoleExecutionResult? _lastConsoleResult;
         private DevToolsRunnerService.ApiResponseResult? _lastApiResult;
 
+        // Phase 13: Session Finalization & Repo Sync state
+        private readonly List<DevToolsRunnerService.ApiResponseResult> _sessionApiResults = new();
+        private readonly List<DevToolsRunnerService.ConsoleExecutionResult> _sessionConsoleRuns = new();
+        private readonly HashSet<string> _sessionUrlsVisited = new();
+
         private ApiHelperWindow? _apiHelperWindow;
 
         public VisualTestTrackerWindow()
@@ -257,6 +262,10 @@ namespace BuildConsole
             _activeWebView = webView;
             _activeBaseUrl = baseUrl;
             _activePagePath = pagePath;
+            if (!string.IsNullOrEmpty(baseUrl))
+            {
+                _sessionUrlsVisited.Add($"{baseUrl}{pagePath}");
+            }
             _sessionStartTime = DateTime.Now;
 
             // Phase 8: Activate or resume target page session
@@ -2017,6 +2026,7 @@ namespace BuildConsole
 
             var res = await DevToolsRunnerService.ExecuteConsoleAsync(_activeWebView, cmd);
             _lastConsoleResult = res;
+            _sessionConsoleRuns.Add(res);
 
             SelectRunnerResultTab("Console");
 
@@ -2108,6 +2118,7 @@ namespace BuildConsole
 
             var res = await DevToolsRunnerService.ExecuteApiAsync(_activeWebView, input, payload, methodOverride);
             _lastApiResult = res;
+            _sessionApiResults.Add(res);
 
             if (res.IsSuccess)
             {
@@ -3412,7 +3423,90 @@ namespace BuildConsole
             dlg.ShowDialog();
         }
 
-        // ── Phase 8: Session Management Handlers ─────────────────────────────────
+        // ── Phase 8 & 13: Session Management & Git Sync Handlers ─────────────────
+
+        private async void BtnEndSessionSync_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                ShowMessage("Gathering session artifacts for Git sync...", isError: false);
+
+                // Collect latest live telemetry snapshot from active webview
+                var telemetrySnapshot = await VisualTestTrackerTelemetry.CollectSnapshotAsync(_activeWebView);
+
+                var context = new SessionSyncContext
+                {
+                    ProductName = VisualTestTrackerExportService.DetectArea(_activeBaseUrl, _activePagePath),
+                    BaseUrl = _activeBaseUrl,
+                    PagePath = _activePagePath,
+                    StartedAt = _sessionStartTime,
+                    EndedAt = DateTime.Now,
+                    Duration = _activeSession != null ? _activeSession.TotalElapsed : (DateTime.Now - _sessionStartTime),
+                    Entries = new List<VisualTestTrackerEntry>(_currentEntries),
+                    CurrentNotes = NotesBox.Text.Trim(),
+                    GlobalNotes = _globalNotes,
+                    StepsToReproduce = StepsBox.Text.Trim(),
+                    ExpectedBehavior = ExpectedBox.Text.Trim(),
+                    ActualBehavior = ActualBox.Text.Trim(),
+                    ScreenshotPaths = new List<string>(_stagedScreenshots),
+                    ConsoleLogs = new List<ConsoleLogItem>(telemetrySnapshot.ConsoleLogs),
+                    NetworkFailures = new List<NetworkFailureItem>(telemetrySnapshot.NetworkLogs.Where(n => n.Failed)),
+                    ApiResults = new List<DevToolsRunnerService.ApiResponseResult>(_sessionApiResults),
+                    ConsoleCommandRuns = new List<DevToolsRunnerService.ConsoleExecutionResult>(_sessionConsoleRuns),
+                    ExecutedCommands = new List<string>(_consoleCommandHistory),
+                    ReproEvents = new List<ReproductionEventItem>(telemetrySnapshot.ReproductionEvents),
+                    IsCleanConfirmed = GoodCheckBox.IsChecked == true
+                };
+
+                // Ensure current URL is in visited list
+                if (!string.IsNullOrEmpty(_activeBaseUrl))
+                {
+                    _sessionUrlsVisited.Add($"{_activeBaseUrl}{_activePagePath}");
+                }
+                context.UrlsTested = _sessionUrlsVisited.ToList();
+
+                var dialog = new SessionSyncDialog(context)
+                {
+                    Owner = this
+                };
+
+                bool? result = dialog.ShowDialog();
+                if (result == true && dialog.IsSynced && dialog.Result != null)
+                {
+                    var syncRes = dialog.Result;
+                    ShowMessage($"✓ Session {syncRes.SessionId} saved to /Bugs/{syncRes.ProductName}/ and synced to Git ({syncRes.CommitHash}).", isError: false);
+
+                    // Archive session and start fresh session if configured
+                    if (_activeSession != null)
+                    {
+                        _activeSession = VisualTestTrackerSessionStore.StartNewSession(_activeBaseUrl, _activePagePath, _activeSession);
+                    }
+                    _sessionStartTime = DateTime.Now;
+                    _sessionApiResults.Clear();
+                    _sessionConsoleRuns.Clear();
+
+                    if (ChkAutoClear.IsChecked == true)
+                    {
+                        VisualTestTrackerDraftStore.ClearDraft(_activeBaseUrl, _activePagePath);
+                        if (_notesMode == "page")
+                        {
+                            NotesBox.Text = "";
+                        }
+                        StepsBox.Text = "";
+                        ExpectedBox.Text = "";
+                        ActualBox.Text = "";
+                        TagsBox.Text = "";
+                        DetailsExpander.IsExpanded = false;
+                        _stagedScreenshots.Clear();
+                        RenderStagedThumbnails();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowMessage($"Session sync error: {ex.Message}", isError: true);
+            }
+        }
 
         private void BtnNewSession_Click(object sender, RoutedEventArgs e)
         {
