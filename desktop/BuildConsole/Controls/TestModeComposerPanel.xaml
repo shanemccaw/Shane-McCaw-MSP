@@ -382,6 +382,7 @@
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="🐛" FontSize="10" Margin="0,0,5,0"/>
                                 <TextBlock x:Name="TxtBugDrawerTitle" Text="Bugs on this page (0)" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                                <Button x:Name="BtnOpenBugDocument" Content="📄 View in Document" Style="{StaticResource IconButton}" FontSize="9.5" Foreground="{StaticResource MauveBrush}" Padding="4,1" Margin="8,0,0,0" Click="BtnOpenBugDocument_Click" ToolTip="Open Bug Tracker Document View in middle pane"/>
                             </StackPanel>
 
                             <TextBlock x:Name="IconBugDrawerChevron" Grid.Column="1" Text="&#xE70E;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>

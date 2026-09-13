@@ -647,6 +647,14 @@ namespace BuildConsole.Controls
             }
         }
 
+        private void BtnOpenBugDocument_Click(object sender, RoutedEventArgs e)
+        {
+            if (Window.GetWindow(this) is MainWindow mw)
+            {
+                mw.OpenBugsDocumentTab();
+            }
+        }
+
         private void CmbSeverity_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             // Optional telemetry or styling hook

@@ -6119,6 +6119,63 @@ namespace BuildConsole
             EditorTabs.SelectedItem = newTab;
         }
 
+        public Controls.BugsDocumentView OpenBugsDocumentTab()
+        {
+            foreach (TabItem item in EditorTabs.Items)
+            {
+                if (item.Tag is string tagPath && tagPath == "bugs_document")
+                {
+                    EditorTabs.SelectedItem = item;
+                    var existing = (Controls.BugsDocumentView)item.Content;
+                    _ = existing.RefreshBugsAsync();
+                    return existing;
+                }
+            }
+
+            var headerPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var iconBlock = new TextBlock { Text = "🐞", FontSize = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+            var titleBlock = new TextBlock { Text = "Bug Tracker", FontSize = 13, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush") };
+            var closeBtn = new Button { Content = "✕", Style = (Style)FindResource("IconButton"), FontSize = 10, Padding = new Thickness(3, 1, 3, 1), Margin = new Thickness(4, 0, 0, 0), ToolTip = "Close Tab", VerticalAlignment = VerticalAlignment.Center };
+
+            headerPanel.Children.Add(iconBlock);
+            headerPanel.Children.Add(titleBlock);
+            headerPanel.Children.Add(closeBtn);
+
+            var bugsViewer = new Controls.BugsDocumentView();
+            var connStr = VisualTestTrackerStore.ResolveConnectionString();
+            VisualTestTrackerStore? store = !string.IsNullOrWhiteSpace(connStr) ? new VisualTestTrackerStore(connStr) : null;
+
+            bugsViewer.Initialize(store!, url =>
+            {
+                var (activeWv, _) = GetActiveEditorTabWebView();
+                if (activeWv?.CoreWebView2 != null && !string.IsNullOrWhiteSpace(url))
+                {
+                    activeWv.CoreWebView2.Navigate(url);
+                }
+            });
+
+            var newTab = new TabItem
+            {
+                Header = headerPanel,
+                Content = bugsViewer,
+                Tag = "bugs_document"
+            };
+
+            AttachTabContextMenu(newTab, EditorTabs);
+            AttachTabDragHandlers(newTab);
+
+            closeBtn.Click += (s, e) => CloseTab(newTab);
+
+            EditorTabs.Items.Add(newTab);
+            EditorTabs.SelectedItem = newTab;
+
+            return bugsViewer;
+        }
+
         public void OpenGraphApiTab(Controls.GraphApiSelectionArgs args)
         {
             TabItem? targetTab = null;

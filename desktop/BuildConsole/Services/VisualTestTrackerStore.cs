@@ -281,27 +281,16 @@ namespace BuildConsole.Services
             {
                 await using var conn = await OpenAsync();
                 await using var cmd = new NpgsqlCommand(
-                    "SELECT id, entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at " +
-                    "FROM visual_test_tracker_entries WHERE page_id = @pid ORDER BY created_at DESC", conn);
+                    "SELECT id, entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at, " +
+                    "COALESCE(bug_number, id) as bug_num, git_issue_number, site_name, epic_name, closing_build_id, " +
+                    "steps_to_reproduce, expected_behavior, actual_behavior " +
+                    "FROM visual_test_tracker_entries WHERE page_id = @pid ORDER BY bug_num DESC, created_at DESC", conn);
                 cmd.Parameters.AddWithValue("@pid", pageId);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 var dbList = new List<VisualTestTrackerEntry>();
                 while (await reader.ReadAsync())
                 {
-                    dbList.Add(new VisualTestTrackerEntry
-                    {
-                        Id = reader.GetInt32(0),
-                        EntryUuid = reader.GetString(1),
-                        PageId = reader.GetInt32(2),
-                        BaseUrl = reader.GetString(3),
-                        PagePath = reader.GetString(4),
-                        Title = reader.GetString(5),
-                        Notes = reader.GetString(6),
-                        Severity = reader.GetString(7),
-                        Status = reader.GetString(8),
-                        CreatedAt = reader.GetFieldValue<DateTime>(9),
-                        UpdatedAt = reader.GetFieldValue<DateTime>(10)
-                    });
+                    dbList.Add(ReadEntryFromReader(reader));
                 }
 
                 // Merge with local screenshot paths
@@ -316,6 +305,9 @@ namespace BuildConsole.Services
                     if (localMap.TryGetValue(d.EntryUuid, out var locMatch))
                     {
                         d.ScreenshotPaths = locMatch.ScreenshotPaths;
+                        d.ConsoleLogs = locMatch.ConsoleLogs;
+                        d.NetworkFailures = locMatch.NetworkFailures;
+                        d.ReproductionEvents = locMatch.ReproductionEvents;
                     }
                 }
 
@@ -338,6 +330,59 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>Lists ALL bugs across all pages for the Bug Tracker Document View.</summary>
+        public async Task<List<VisualTestTrackerEntry>> ListAllBugsAsync()
+        {
+            var local = LoadLocalEntries();
+
+            try
+            {
+                await using var conn = await OpenAsync();
+                await using var cmd = new NpgsqlCommand(
+                    "SELECT id, entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at, " +
+                    "COALESCE(bug_number, id) as bug_num, git_issue_number, site_name, epic_name, closing_build_id, " +
+                    "steps_to_reproduce, expected_behavior, actual_behavior " +
+                    "FROM visual_test_tracker_entries ORDER BY site_name ASC, epic_name ASC, bug_num DESC, created_at DESC", conn);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                var dbList = new List<VisualTestTrackerEntry>();
+                while (await reader.ReadAsync())
+                {
+                    dbList.Add(ReadEntryFromReader(reader));
+                }
+
+                var localMap = new Dictionary<string, VisualTestTrackerEntry>(StringComparer.OrdinalIgnoreCase);
+                foreach (var loc in local)
+                {
+                    localMap[loc.EntryUuid] = loc;
+                }
+
+                foreach (var d in dbList)
+                {
+                    if (localMap.TryGetValue(d.EntryUuid, out var locMatch))
+                    {
+                        d.ScreenshotPaths = locMatch.ScreenshotPaths;
+                        d.ConsoleLogs = locMatch.ConsoleLogs;
+                        d.NetworkFailures = locMatch.NetworkFailures;
+                        d.ReproductionEvents = locMatch.ReproductionEvents;
+                    }
+                }
+
+                var dbUuids = new HashSet<string>(dbList.ConvertAll(d => d.EntryUuid), StringComparer.OrdinalIgnoreCase);
+                foreach (var loc in local)
+                {
+                    if (!dbUuids.Contains(loc.EntryUuid))
+                        dbList.Add(loc);
+                }
+
+                return dbList;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"DB ListAllBugsAsync fallback to local: {ex.Message}");
+                return local;
+            }
+        }
+
         /// <summary>Saves or updates a bug entry to both local JSON and PostgreSQL.</summary>
         public async Task SaveEntryAsync(VisualTestTrackerEntry entry)
         {
@@ -356,12 +401,16 @@ namespace BuildConsole.Services
             {
                 await using var conn = await OpenAsync();
                 await using var cmd = new NpgsqlCommand(
-                    "INSERT INTO visual_test_tracker_entries (entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at) " +
-                    "VALUES (@u, @pid, @b, @p, @t, @n, @sev, @st, @c, @up) " +
+                    "INSERT INTO visual_test_tracker_entries (entry_uuid, page_id, base_url, page_path, title, notes, severity, status, " +
+                    "git_issue_number, site_name, epic_name, closing_build_id, steps_to_reproduce, expected_behavior, actual_behavior, created_at, updated_at) " +
+                    "VALUES (@u, @pid, @b, @p, @t, @n, @sev, @st, @git, @site, @epic, @close, @steps, @exp, @act, @c, @up) " +
                     "ON CONFLICT (entry_uuid) DO UPDATE SET " +
                     "title = EXCLUDED.title, notes = EXCLUDED.notes, severity = EXCLUDED.severity, " +
-                    "status = EXCLUDED.status, updated_at = EXCLUDED.updated_at " +
-                    "RETURNING id", conn);
+                    "status = EXCLUDED.status, git_issue_number = EXCLUDED.git_issue_number, site_name = EXCLUDED.site_name, " +
+                    "epic_name = EXCLUDED.epic_name, closing_build_id = EXCLUDED.closing_build_id, " +
+                    "steps_to_reproduce = EXCLUDED.steps_to_reproduce, expected_behavior = EXCLUDED.expected_behavior, " +
+                    "actual_behavior = EXCLUDED.actual_behavior, updated_at = EXCLUDED.updated_at " +
+                    "RETURNING id, COALESCE(bug_number, id)", conn);
                 cmd.Parameters.AddWithValue("@u", entry.EntryUuid);
                 cmd.Parameters.AddWithValue("@pid", entry.PageId);
                 cmd.Parameters.AddWithValue("@b", entry.BaseUrl ?? "");
@@ -370,14 +419,55 @@ namespace BuildConsole.Services
                 cmd.Parameters.AddWithValue("@n", entry.Notes ?? "");
                 cmd.Parameters.AddWithValue("@sev", entry.Severity ?? "Bug");
                 cmd.Parameters.AddWithValue("@st", entry.Status ?? "Open");
+                cmd.Parameters.AddWithValue("@git", (object?)entry.GitIssueNumber ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@site", entry.SiteName ?? "");
+                cmd.Parameters.AddWithValue("@epic", entry.EpicName ?? "");
+                cmd.Parameters.AddWithValue("@close", (object?)entry.ClosingBuildId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@steps", entry.StepsToReproduce ?? "");
+                cmd.Parameters.AddWithValue("@exp", entry.ExpectedBehavior ?? "");
+                cmd.Parameters.AddWithValue("@act", entry.ActualBehavior ?? "");
                 cmd.Parameters.AddWithValue("@c", entry.CreatedAt);
                 cmd.Parameters.AddWithValue("@up", entry.UpdatedAt);
-                var idObj = await cmd.ExecuteScalarAsync();
-                if (idObj is int idVal) entry.Id = idVal;
+
+                await using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    entry.Id = reader.GetInt32(0);
+                    entry.BugNumber = reader.GetInt32(1);
+                }
             }
             catch (Exception ex)
             {
                 ActivityLog.Log(Channel, $"DB save entry skipped: {ex.Message}");
+            }
+        }
+
+        /// <summary>Updates an entry's Git Issue Number.</summary>
+        public async Task UpdateGitIssueNumberAsync(string entryUuid, int? gitIssueNumber)
+        {
+            if (string.IsNullOrWhiteSpace(entryUuid)) return;
+
+            var all = LoadLocalEntries();
+            var target = all.Find(e => string.Equals(e.EntryUuid, entryUuid, StringComparison.OrdinalIgnoreCase));
+            if (target != null)
+            {
+                target.GitIssueNumber = gitIssueNumber;
+                target.UpdatedAt = DateTime.Now;
+                PersistLocalEntries(all);
+            }
+
+            try
+            {
+                await using var conn = await OpenAsync();
+                await using var cmd = new NpgsqlCommand(
+                    "UPDATE visual_test_tracker_entries SET git_issue_number = @git, updated_at = now() WHERE entry_uuid = @u", conn);
+                cmd.Parameters.AddWithValue("@git", (object?)gitIssueNumber ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@u", entryUuid);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"DB git issue update skipped: {ex.Message}");
             }
         }
 
@@ -431,6 +521,38 @@ namespace BuildConsole.Services
             {
                 ActivityLog.Log(Channel, $"DB entry delete skipped: {ex.Message}");
             }
+        }
+
+        private static VisualTestTrackerEntry ReadEntryFromReader(NpgsqlDataReader reader)
+        {
+            var entry = new VisualTestTrackerEntry
+            {
+                Id = reader.GetInt32(0),
+                EntryUuid = reader.GetString(1),
+                PageId = reader.GetInt32(2),
+                BaseUrl = reader.GetString(3),
+                PagePath = reader.GetString(4),
+                Title = reader.GetString(5),
+                Notes = reader.GetString(6),
+                Severity = reader.GetString(7),
+                Status = reader.GetString(8),
+                CreatedAt = reader.GetFieldValue<DateTime>(9),
+                UpdatedAt = reader.GetFieldValue<DateTime>(10),
+                BugNumber = reader.IsDBNull(11) ? reader.GetInt32(0) : reader.GetInt32(11),
+                GitIssueNumber = reader.IsDBNull(12) ? null : reader.GetInt32(12),
+                SiteName = reader.IsDBNull(13) ? "" : reader.GetString(13),
+                EpicName = reader.IsDBNull(14) ? "" : reader.GetString(14),
+                ClosingBuildId = reader.IsDBNull(15) ? null : reader.GetString(15),
+            };
+
+            if (reader.FieldCount > 16)
+            {
+                entry.StepsToReproduce = reader.IsDBNull(16) ? "" : reader.GetString(16);
+                entry.ExpectedBehavior = reader.IsDBNull(17) ? "" : reader.GetString(17);
+                entry.ActualBehavior = reader.IsDBNull(18) ? "" : reader.GetString(18);
+            }
+
+            return entry;
         }
 
         private static VisualTestTrackerPage ReadPage(NpgsqlDataReader reader) => new VisualTestTrackerPage

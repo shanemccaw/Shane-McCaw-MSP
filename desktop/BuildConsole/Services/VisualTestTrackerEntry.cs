@@ -76,6 +76,11 @@ namespace BuildConsole.Services
         public int Id { get; set; }
         public string EntryUuid { get; set; } = Guid.NewGuid().ToString("N");
         public int PageId { get; set; }
+        public int BugNumber { get; set; }
+        public int? GitIssueNumber { get; set; }
+        public string SiteName { get; set; } = "";
+        public string EpicName { get; set; } = "";
+        public string? ClosingBuildId { get; set; }
         public string BaseUrl { get; set; } = "";
         public string PagePath { get; set; } = "";
         public string Title { get; set; } = "";
@@ -118,8 +123,17 @@ namespace BuildConsole.Services
                 ? Title
                 : (!string.IsNullOrWhiteSpace(Notes) ? Notes.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)[0].Trim() : "Visual Observation");
 
-            sb.AppendLine($"### [{Severity.ToUpperInvariant()}] {displayTitle}");
+            string bugHeader = BugNumber > 0 ? $"[BUG-{BugNumber}] " : "";
+            sb.AppendLine($"### {bugHeader}[{Severity.ToUpperInvariant()}] {displayTitle}");
             sb.AppendLine($"- **Status**: {Status}");
+            if (GitIssueNumber.HasValue)
+            {
+                sb.AppendLine($"- **Git Issue**: #{GitIssueNumber.Value}");
+            }
+            if (!string.IsNullOrWhiteSpace(SiteName) || !string.IsNullOrWhiteSpace(EpicName))
+            {
+                sb.AppendLine($"- **Site / Epic**: {SiteName} / {EpicName}");
+            }
             if (Tags != null && Tags.Count > 0)
             {
                 sb.AppendLine($"- **Tags / Categories**: {string.Join(", ", Tags.ConvertAll(t => $"`{t.Trim('#')}`"))}");
