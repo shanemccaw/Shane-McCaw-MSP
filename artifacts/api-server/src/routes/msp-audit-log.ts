@@ -3,9 +3,18 @@
  *
  * GET /api/msp/audit
  *   Query params:
- *     page, limit, search, actionType, mspId (PlatformAdmin), customerId, outcome, from, to
+ *     page, limit, search, actionType, mspId (PlatformAdmin), customerId, outcome, from, to,
+ *     entityType, entityId
  *
  * PlatformAdmin sees all entries. MSP users see only their own MSP's entries.
+ *
+ * `entityType`/`entityId` (Git #2624) — added so a caller can ask for one
+ * specific record's real history (e.g. "every audit row this one msp_user
+ * was the target of"), rather than only the free-text `search` match against
+ * actionType/entityType/entityLabel/actorRole. `writeAuditLog()`'s callers in
+ * `msp-settings.ts` never set `entityLabel`, so `search` alone cannot isolate
+ * one user's rows from another's — this is the first caller (the Account
+ * Security module) that needs an exact match on the real `entityId` column.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -52,6 +61,14 @@ router.get("/msp/audit", requireCapability("ladder.msp-admin"), async (req: Requ
   if (req.query["actionType"]) {
     const at = p(req.query["actionType"] as string | undefined);
     conditions.push(ilike(mspAuditLogsTable.actionType, `%${at}%`));
+  }
+
+  if (req.query["entityType"]) {
+    conditions.push(eq(mspAuditLogsTable.entityType, p(req.query["entityType"] as string | undefined)));
+  }
+
+  if (req.query["entityId"]) {
+    conditions.push(eq(mspAuditLogsTable.entityId, p(req.query["entityId"] as string | undefined)));
   }
 
   if (req.query["outcome"] && ["success", "failure", "partial"].includes(p(req.query["outcome"] as string | undefined))) {

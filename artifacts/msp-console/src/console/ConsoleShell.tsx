@@ -22,6 +22,7 @@ import { ScopeSla } from "./modules/ScopeSla";
 import { Ownership } from "./modules/Ownership";
 import { Sales } from "./modules/Sales";
 import { PolicyEngine } from "./modules/PolicyEngine";
+import { AccountSecurity } from "./modules/AccountSecurity";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
@@ -314,6 +315,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
         onOpenTenant={(customerId) => navigate({ kind: "tenant", tenant: customerId })}
       />
     );
+  }
+  if (sel.kind === "msp" && sel.page === "acctsec") {
+    return <AccountSecurity />;
   }
   if (sel.kind === "msp" && sel.page === "sales") {
     // Bundle write actions require ladder.msp-admin server-side

@@ -1,26 +1,29 @@
 /**
- * Live-Postgres regression test for the Git #3032 privilege-escalation fix.
+ * Live-Postgres regression test for the Git #3032 privilege-escalation fix, and
+ * its Git #3896 follow-up.
  *
- * `msp-settings.ts`'s five credential/security-action routes gated the CALLER at
+ * `msp-settings.ts`'s six credential/security-action routes gated the CALLER at
  * `requireCapability("ladder.msp-admin")` (a minimum-tier floor) but applied NO check comparing the
  * caller's role to the TARGET user's role — only an `mspId` ownership filter. Since
  * `PlatformAdmin` carries `mspId` the same as any other role at that MSP, a real
  * MSPAdmin JWT could reset a PlatformAdmin's password, mint a temp password (returned
- * as plaintext), clear their MFA, or suspend their account — full privilege escalation,
- * no interaction with the target needed:
+ * as plaintext), clear their MFA, suspend their account, or revoke their sessions —
+ * full privilege escalation, no interaction with the target needed:
  *
- *   - POST  /msp/settings/users/:userId/reset-password
- *   - POST  /msp/settings/users/:userId/temp-password
- *   - POST  /msp/settings/users/:userId/reset-mfa
- *   - PATCH /msp/settings/users/:userId/mfa-enforcement
- *   - PATCH /msp/settings/users/:userId/status
+ *   - POST   /msp/settings/users/:userId/reset-password
+ *   - POST   /msp/settings/users/:userId/temp-password
+ *   - POST   /msp/settings/users/:userId/reset-mfa
+ *   - PATCH  /msp/settings/users/:userId/mfa-enforcement
+ *   - PATCH  /msp/settings/users/:userId/status
+ *   - DELETE /msp/settings/users/:userId/sessions      (#3896 — missed by #3032's own fix)
  *
  * This file runs the real router against a real local Postgres connection and proves,
- * for every one of the five routes:
+ * for every one of the six routes:
  *   1. An MSPAdmin JWT attempting the route against a PlatformAdmin target at the SAME
  *      MSP now gets a real 403 — not a silent 200 with the escalation applied.
  *   2. The target row's real state is provably UNCHANGED by the rejected call (password
- *      hash, MFA enrollment row, mfaEnforced flag, isActive flag all untouched).
+ *      hash, MFA enrollment row, mfaEnforced flag, isActive flag, live session all
+ *      untouched).
  *   3. The exact same route against a legitimate lower-tier target (MSPOperator) still
  *      returns 200 and really applies the action — the fix doesn't just fail closed on
  *      everything.
@@ -45,9 +48,12 @@ import {
   mfaEnrollmentsTable,
   mspAuditLogsTable,
   passwordResetTokensTable,
+  mspRefreshTokensTable,
+  userSessionsTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { randomBytes } from "node:crypto";
 
 vi.mock("../lib/mailer.ts", () => ({
   sendEmailForMsp: vi.fn().mockResolvedValue(undefined),
@@ -61,7 +67,7 @@ const JWT_SECRET = "test-msp-settings-target-role-ceiling-live-secret";
 process.env.JWT_SECRET = JWT_SECRET;
 
 describe.skipIf(!process.env.DATABASE_URL)(
-  "msp-settings.ts target-role ceiling on the 5 credential/security-action routes — live Postgres (#3032)",
+  "msp-settings.ts target-role ceiling on the 6 credential/security-action routes — live Postgres (#3032, #3896)",
   () => {
     const suffix = `vitest-3032-${Math.floor(Math.random() * 1e9)}`;
     let mspId: number;
@@ -141,6 +147,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await db.delete(mspAuditLogsTable).where(eq(mspAuditLogsTable.mspId, mspId));
       await db.delete(passwordResetTokensTable).where(eq(passwordResetTokensTable.userId, platformAdminUserId));
       await db.delete(mfaEnrollmentsTable).where(eq(mfaEnrollmentsTable.userId, platformAdminUserId));
+      await db.delete(mspRefreshTokensTable).where(eq(mspRefreshTokensTable.userId, platformAdminUserId));
+      await db.delete(mspRefreshTokensTable).where(eq(mspRefreshTokensTable.userId, mspOperatorUserId));
+      await db.delete(userSessionsTable).where(eq(userSessionsTable.userId, mspOperatorUserId));
       await db.delete(usersTable).where(eq(usersTable.id, mspOperatorUserId));
       await db.delete(usersTable).where(eq(usersTable.id, platformAdminUserId));
       await db.delete(usersTable).where(eq(usersTable.id, mspAdminUserId));
@@ -242,6 +251,29 @@ describe.skipIf(!process.env.DATABASE_URL)(
         const row = await getUserRow(platformAdminUserId);
         expect(row?.isActive).toBe(true);
       });
+
+      it("DELETE sessions → 403, the PlatformAdmin's live session survives (Git #3896)", async () => {
+        const app = await buildApp();
+
+        const tokenHash = randomBytes(24).toString("hex");
+        await db.insert(mspRefreshTokensTable).values({
+          userId: platformAdminUserId,
+          tokenHash,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        });
+
+        const res = await request(app)
+          .delete(`/api/msp/settings/users/${platformAdminUserId}/sessions`)
+          .set("Authorization", `Bearer ${mspAdminToken}`);
+
+        expect(res.status).toBe(403);
+
+        const [row] = await db
+          .select({ revokedAt: mspRefreshTokensTable.revokedAt })
+          .from(mspRefreshTokensTable)
+          .where(and(eq(mspRefreshTokensTable.userId, platformAdminUserId), eq(mspRefreshTokensTable.tokenHash, tokenHash)));
+        expect(row?.revokedAt).toBeNull();
+      });
     });
 
     describe("still allowed: MSPAdmin caller against a genuinely lower-tier MSPOperator target", () => {
@@ -294,6 +326,31 @@ describe.skipIf(!process.env.DATABASE_URL)(
         const row = await getUserRow(mspOperatorUserId);
         const matchesReturnedTemp = await bcrypt.compare(res.body.tempPassword, row!.passwordHash!);
         expect(matchesReturnedTemp).toBe(true);
+      });
+
+      it("DELETE sessions → 200, really revokes a legitimate target's live session (Git #3896)", async () => {
+        const app = await buildApp();
+
+        const tokenHash = randomBytes(24).toString("hex");
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await db.insert(mspRefreshTokensTable).values({ userId: mspOperatorUserId, tokenHash, expiresAt });
+        await db.insert(userSessionsTable).values({
+          userId: mspOperatorUserId, sessionType: "standard", loginMethod: "password",
+          currentTokenHash: tokenHash, expiresAt,
+        });
+
+        const res = await request(app)
+          .delete(`/api/msp/settings/users/${mspOperatorUserId}/sessions`)
+          .set("Authorization", `Bearer ${mspAdminToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ ok: true, revokedCount: 1 });
+
+        const [row] = await db
+          .select({ revokedAt: mspRefreshTokensTable.revokedAt })
+          .from(mspRefreshTokensTable)
+          .where(and(eq(mspRefreshTokensTable.userId, mspOperatorUserId), eq(mspRefreshTokensTable.tokenHash, tokenHash)));
+        expect(row?.revokedAt).not.toBeNull();
       });
     });
   },

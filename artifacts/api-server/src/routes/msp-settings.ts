@@ -642,6 +642,15 @@ router.get("/msp/settings/users", requireCapability("ladder.msp-admin"), async (
       createdAt: usersTable.createdAt,
       email: usersTable.email,
       name: usersTable.name,
+      // Git #2624 — Account Security's roster needs both of these to render
+      // honestly: `mfaEnforced` is the real column the enforcement-toggle
+      // action writes (there was no reader of it on this route before), and
+      // `tenantId` is what tells a legacy `CustomerUser` row (§0 of the
+      // account-security contract pack) apart from real MSP staff — a row
+      // carrying this MSP's id AND a real tenantId is a customer caught by
+      // the pre-merge `mspId` leftover, not a staff account.
+      mfaEnforced: usersTable.mfaEnforced,
+      tenantId: usersTable.tenantId,
       // Read only to decide `approvePurchasesGrantable` below; not part of the payload.
       legacyRole: usersTable.role,
     })
@@ -1156,11 +1165,17 @@ router.delete("/msp/settings/users/:userId/sessions", requireCapability("ladder.
 
   // Ownership check: the target user must belong to the caller's MSP.
   const [target] = await db
-    .select({ id: usersTable.id })
+    .select({ id: usersTable.id, mspRole: usersTable.mspRole })
     .from(usersTable)
     .where(and(eq(usersTable.id, userId), eq(usersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+  // Git #3896 — this route was the one member of the credential/security-action
+  // family #3032 missed: its target lookup was mspId-ownership only, same
+  // privilege-escalation shape #3032 fixed on its 5 siblings (reset-password,
+  // temp-password, reset-mfa, mfa-enforcement, status). Closed here rather than
+  // left as a UI-only guard on the Account Security screen this route backs.
+  if (await rejectIfTargetOutranksCaller(req, res, target.mspRole)) return;
 
   const revokedCount = await revokeAllOtherSessions(userId, null);
 

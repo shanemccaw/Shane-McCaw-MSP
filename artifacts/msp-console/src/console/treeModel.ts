@@ -382,6 +382,15 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "Customer-signed policy decisions and this MSP's own standing policies — two different real things that can produce the same route outcome.",
       };
     }
+    // #2624 — Account Security's eyebrow/title are the design's own exact
+    // copy (`Account Security.dc.html`'s header, screen 39).
+    if (sel.page === "acctsec") {
+      return {
+        eyebrow: "ACCOUNT SECURITY",
+        title: "Act on another account's credentials",
+        note: "Password reset, temporary password, MFA and session actions against a real account — every one audited, and every one held to a real server-side role ceiling.",
+      };
+    }
     return { eyebrow: "OPERATIONS · MSP-WIDE", title: mp?.label ?? "", note: "" };
   }
   const c = find(sel.tenant);

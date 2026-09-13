@@ -74,7 +74,15 @@ export const CHILD_GROUPS: Group[] = [
   { id: "audit", label: "Audit log", icon: "history", leaf: true },
 ];
 
-/** The nine MSP-wide Operations pages, in tree order. */
+/**
+ * The MSP-wide Operations pages, in tree order. The original nine are the
+ * "Operations (9 MSP-wide pages)" README calls its own cross-tenant group;
+ * `offboarding`, `policy` and `acctsec` are three of the thirteen
+ * contract-pack screens (README screens 38-50) to land here — Account
+ * Security sits under Operations rather than per-tenant on purpose, because
+ * its routes resolve their target by MSP id, never by tenant (README "Where
+ * they sit in the tree").
+ */
 export const MSP_PAGES: LeafPage[] = [
   { id: "settings", label: "MSP settings", icon: "settings" },
   { id: "exec", label: "Executive view", icon: "chart-line" },
@@ -87,6 +95,7 @@ export const MSP_PAGES: LeafPage[] = [
   { id: "connectors", label: "SharePoint connectors", icon: "plug" },
   { id: "offboarding", label: "Offboarding", icon: "log-out" },
   { id: "policy", label: "Policy engine", icon: "shield-check" },
+  { id: "acctsec", label: "Account Security", icon: "key-round" },
 ];
 
 /** Flattened tenant pages (leaf groups + every group child). */
