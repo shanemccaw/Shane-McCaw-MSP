@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Web.WebView2.Core;
@@ -133,6 +134,9 @@ namespace BuildConsole.Services
         /// failure detail), empty when the run was not aborted. Also folded into <see cref="StatusText"/>.</summary>
         public string AbortReason { get; set; } = string.Empty;
         public List<UiStepResult> Steps { get; } = new();
+
+        /// <summary>QA HUD automation session context containing rich telemetry, console errors, API failures, and DOM diffs.</summary>
+        public AutomationQaSessionContext? QaSessionContext { get; set; }
 
         /// <summary>Git #966 — every WebView2 screenshot captured during this run, in capture order — fed straight into TestRunnerWindow's click-through review gallery. Git #977 — one per uiStep by default now (always-on, not failure-only/opt-in), so #975's baseline/diff can catch UI drift on passing runs too. Empty only when no screenshot directory was provided (capture disabled).</summary>
         public List<UiScreenshotCapture> Screenshots { get; } = new();
@@ -295,6 +299,9 @@ namespace BuildConsole.Services
         /// (fed to TestRunnerWindow's gallery) from inside ExecuteStepAsync without threading it through.</summary>
         private UiTestRunResult? _run;
 
+        private UiAutomationTelemetryObserver? _qaObserver;
+        private AutomationQaSessionContext? _qaContext;
+
         public event EventHandler<UiTelemetryEvent>? Telemetry;
 
         /// <summary>Epic #803 — raised after each uiStep (goto/click/input/expect, …) completes, mirroring the
@@ -354,6 +361,37 @@ namespace BuildConsole.Services
                 await MainWindow.EnsureWebViewInitializedAsync(_webView);
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
 
+                var settings = BuildConsoleSettings.Load();
+                if (settings.AutomationQaArtifactsEnabled)
+                {
+                    try
+                    {
+                        _qaObserver = new UiAutomationTelemetryObserver(_webView, settings.AutomationSlowApiThresholdMs);
+                        await _qaObserver.AttachAsync();
+                        _qaObserver.TrackUrl(initialUrl);
+
+                        string testName = (_vars.Values.TryGetValue("manifest_name", out var mn) && !string.IsNullOrWhiteSpace(mn))
+                            ? mn
+                            : $"UI-Test-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
+
+                        string inferredArea = VisualTestTrackerExportService.DetectArea(initialUrl, testName);
+
+                        _qaContext = new AutomationQaSessionContext
+                        {
+                            TestName = testName,
+                            ProductName = inferredArea,
+                            SessionId = UiAutomationQaSessionService.GenerateSessionId(),
+                            StartedAt = DateTime.Now,
+                            TargetUrl = initialUrl,
+                            ExpectedOutcome = "All UI automation steps pass without console errors or API failures."
+                        };
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log(Channel, $"Failed to attach QA automation telemetry: {ex.Message}");
+                    }
+                }
+
                 if (hasLoginProfile)
                 {
                     // Git #3923 — a real, non-anonymous loginAs profile: log in BEFORE the manifest's own
@@ -372,6 +410,7 @@ namespace BuildConsole.Services
                         result.AbortReason = $"loginAs '{loginProfile.Label}' failed: {loginDetail}";
                         result.StatusText = $"❌ TEST ABORTED — loginAs '{loginProfile.Label}' failed: {loginDetail}";
                         ActivityLog.Log(Channel, $"RUN ABORTED for {targetUrl} — {result.AbortReason}. Halting before any manifest step ran.");
+                        await FinalizeQaContextAsync(result);
                         return result;
                     }
                 }
@@ -391,6 +430,7 @@ namespace BuildConsole.Services
                     await CaptureScreenshotAsync(0, "navigation-failed", $"navigate {initialUrl}");
                     result.Success = false;
                     result.StatusText = "❌ TEST FAILED (Navigation Error)";
+                    await FinalizeQaContextAsync(result);
                     return result;
                 }
 
@@ -441,6 +481,7 @@ namespace BuildConsole.Services
                         // for one more ordinary failing step in the live telemetry stream.
                         Emit("RUN ABORTED", $"Halting run — {reason}. {skipped} subsequent step(s) skipped (they could only pass if this step had).", "ERROR", "#F38BA8");
                         ActivityLog.Log(Channel, $"RUN ABORTED for {targetUrl} — {reason}. Halting immediately; {skipped} of {steps.Count} subsequent step(s) skipped rather than cascading downstream failures from this one root cause.");
+                        await FinalizeQaContextAsync(result);
                         return result;
                     }
 
@@ -453,6 +494,7 @@ namespace BuildConsole.Services
                     ? $"✔ TEST PASSED ({passed}/{steps.Count} Steps)"
                     : $"⚠ TEST INCOMPLETE ({passed}/{steps.Count} Steps)";
                 ActivityLog.Log(Channel, $"Run complete for {targetUrl}: {passed}/{steps.Count} steps passed.");
+                await FinalizeQaContextAsync(result);
                 return result;
             }
             catch (Exception ex)
@@ -461,6 +503,7 @@ namespace BuildConsole.Services
                 ActivityLog.Log(Channel, $"CRASH running {targetUrl}: {ex.Message}");
                 result.Success = false;
                 result.StatusText = "❌ TEST FAILED (Exception)";
+                await FinalizeQaContextAsync(result);
                 return result;
             }
             finally
@@ -479,10 +522,52 @@ namespace BuildConsole.Services
                 }
                 _registeredScriptIds.Clear();
 
+                if (_qaObserver != null)
+                {
+                    _qaObserver.Dispose();
+                    _qaObserver = null;
+                }
+                _qaContext = null;
+
                 // Git #970 — leave the control back at its default desktop size no matter how the run
                 // ended (pass, incomplete, nav failure, or crash), so a later run or the manual "Play"
                 // path sharing this same WebView2 never inherits a stale resize.
                 ApplyViewport(null);
+            }
+        }
+
+        private async Task FinalizeQaContextAsync(UiTestRunResult result)
+        {
+            if (_qaObserver == null || _qaContext == null) return;
+            try
+            {
+                await _qaObserver.PullInPageConsoleErrorsAsync();
+                _qaContext.EndedAt = DateTime.Now;
+                _qaContext.Duration = _qaContext.EndedAt - _qaContext.StartedAt;
+                _qaContext.Success = result.Success;
+                _qaContext.ShortSummary = result.StatusText;
+                _qaContext.UrlsVisited = _qaObserver.VisitedUrls.ToList();
+                _qaContext.ConsoleErrors = _qaObserver.ConsoleErrors.ToList();
+                _qaContext.ApiFailures = _qaObserver.ApiFailures.ToList();
+                _qaContext.DomDiffs = _qaObserver.DomDiffs.ToList();
+                _qaContext.ScreenshotPaths = result.Screenshots.Select(s => s.FilePath).Where(p => !string.IsNullOrEmpty(p)).ToList();
+
+                if (!result.Success)
+                {
+                    _qaContext.Recommendations = string.IsNullOrEmpty(result.AbortReason)
+                        ? $"Investigate failing step(s) and review captured screenshots and console/API logs under /Bugs/{_qaContext.ProductName}/{_qaContext.SessionId}/automation/."
+                        : $"Run aborted: {result.AbortReason}. Check prerequisite selectors, authentication, or network connectivity.";
+                }
+                else
+                {
+                    _qaContext.Recommendations = "All automated UI steps passed. Review baseline screenshots for visual drift.";
+                }
+
+                result.QaSessionContext = _qaContext;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"Error compiling QA session context: {ex.Message}");
             }
         }
 
@@ -652,6 +737,56 @@ namespace BuildConsole.Services
                 if (prefixCandidates.Count > 0)
                     actionExpected += $"; textPrefixOfAny one of {prefixCandidates.Count} real entrie(s)";
             }
+            else if (actionType == "js" || actionType == "javascript" || actionType == "eval" || actionType == "devtools_command")
+            {
+                string jsToRun = !string.IsNullOrEmpty(selector) ? selector : val;
+                if (_qaObserver != null)
+                {
+                    var cmdRes = await _qaObserver.ExecuteJsCommandAsync(jsToRun);
+                    _qaContext?.ExecutedCommands.Add(cmdRes);
+                    actionPassed = !cmdRes.IsError;
+                    actionDetail = !cmdRes.IsError ? cmdRes.ReturnValue : (cmdRes.ErrorMessage ?? "JS command failed");
+                    actionExpected = "DevTools JS command executes successfully";
+                    actionActual = actionDetail;
+                }
+                else
+                {
+                    try
+                    {
+                        var rawRes = await _webView.ExecuteScriptAsync(jsToRun);
+                        actionPassed = true;
+                        actionDetail = rawRes ?? "ok";
+                        actionExpected = "DevTools JS command executes";
+                        actionActual = actionDetail;
+                    }
+                    catch (Exception ex)
+                    {
+                        actionPassed = false;
+                        actionDetail = ex.Message;
+                        actionExpected = "DevTools JS command executes";
+                        actionActual = ex.Message;
+                    }
+                }
+            }
+            else if (actionType == "fetch" || actionType == "devtools_fetch")
+            {
+                if (_qaObserver != null)
+                {
+                    var apiRes = await _qaObserver.ExecuteApiCallAsync(selector, "GET", val);
+                    _qaContext?.ExecutedApiCalls.Add(apiRes);
+                    actionPassed = apiRes.IsSuccess;
+                    actionDetail = apiRes.IsSuccess ? $"HTTP {apiRes.StatusCode} ({apiRes.DurationMs}ms)" : (apiRes.ErrorMessage ?? "fetch failed");
+                    actionExpected = "fetch API call succeeds";
+                    actionActual = actionDetail;
+                }
+                else
+                {
+                    actionPassed = false;
+                    actionDetail = "QA Observer not attached";
+                    actionExpected = "fetch API call succeeds";
+                    actionActual = "Failed: observer not attached";
+                }
+            }
             else
             {
                 int clickInputTimeoutMs = step.TimeoutMs is > 0 ? (int)step.TimeoutMs.Value : ExpectPollTimeoutMs;
@@ -765,6 +900,35 @@ namespace BuildConsole.Services
             ActivityLog.Log(Channel, $"Step {stepNumber}: capturing post-step screenshot (reason={reason})…");
             string screenshotPath = await CaptureScreenshotAsync(stepNumber, reason, $"{actionType} {selector}");
             ActivityLog.Log(Channel, $"Step {stepNumber}: complete — returning result (passed={overallPassed}, screenshot={(string.IsNullOrEmpty(screenshotPath) ? "none" : "captured")}).");
+
+            string? domSnapshotPath = null;
+            if (_qaObserver != null)
+            {
+                try
+                {
+                    var domDiff = await _qaObserver.CaptureDomSnapshotAsync(stepNumber, selector, $"{actionType} {selector}");
+                    domSnapshotPath = domDiff?.SnapshotPath;
+                }
+                catch { }
+            }
+
+            if (_qaContext != null)
+            {
+                _qaContext.Steps.Add(new AutomationStepItem
+                {
+                    Index = stepNumber,
+                    Action = actionType,
+                    Selector = selector,
+                    TargetUrl = _webView.Source?.ToString() ?? _targetUrl,
+                    Expected = actionExpected,
+                    Actual = actionActual,
+                    Passed = overallPassed,
+                    DurationMs = sw.ElapsedMilliseconds,
+                    Detail = stepDetail,
+                    ScreenshotPath = screenshotPath,
+                    DomSnapshotPath = domSnapshotPath
+                });
+            }
 
             return new UiStepResult
             {

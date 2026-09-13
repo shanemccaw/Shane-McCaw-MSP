@@ -59,6 +59,8 @@ namespace BuildConsole.Services
         public int Diffs { get; init; }
         /// <summary>How many shots were compared in total.</summary>
         public int ItemCount { get; init; }
+        /// <summary>The evaluated screenshot comparison items.</summary>
+        public IReadOnlyList<ScreenshotReviewItem> Items { get; init; } = Array.Empty<ScreenshotReviewItem>();
         /// <summary>Non-null ONLY for an interactive run that needs review: invoking it (on the UI thread)
         /// pops the modal <see cref="ScreenshotReviewWindow"/> with the full Approve flow intact (promote
         /// baselines → landed-and-verified chat note → close the linked issue). Null for a clean run, or a
@@ -189,7 +191,7 @@ namespace BuildConsole.Services
             if (!needsReview)
                 return Task.FromResult(new ScreenshotReviewResult
                 {
-                    NeedsReview = false, NoBaseline = noBaseline, Diffs = diffs, ItemCount = items.Count,
+                    NeedsReview = false, NoBaseline = noBaseline, Diffs = diffs, ItemCount = items.Count, Items = items,
                 });
 
             if (!interactive)
@@ -198,7 +200,7 @@ namespace BuildConsole.Services
                     $"{subject.DisplayName}: review needed ({noBaseline} new, {diffs} changed) but this run is non-interactive (scheduled/remote) — dialog suppressed; re-run interactively to review/approve.");
                 return Task.FromResult(new ScreenshotReviewResult
                 {
-                    NeedsReview = true, NoBaseline = noBaseline, Diffs = diffs, ItemCount = items.Count,
+                    NeedsReview = true, NoBaseline = noBaseline, Diffs = diffs, ItemCount = items.Count, Items = items,
                 });
             }
 
@@ -229,7 +231,7 @@ namespace BuildConsole.Services
 
             return Task.FromResult(new ScreenshotReviewResult
             {
-                NeedsReview = true, NoBaseline = noBaseline, Diffs = diffs, ItemCount = items.Count,
+                NeedsReview = true, NoBaseline = noBaseline, Diffs = diffs, ItemCount = items.Count, Items = items,
                 ShowReviewDialog = showReviewDialog,
             });
         }

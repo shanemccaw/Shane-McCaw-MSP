@@ -9990,6 +9990,7 @@ namespace BuildConsole
             }
 
             var capturedShots = new List<BuildConsole.Services.UiScreenshotCapture>();
+            BuildConsole.Services.UiTestRunResult? uiResult = null;
             try
             {
                 BuildConsole.Services.TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
@@ -10044,6 +10045,7 @@ namespace BuildConsole
 
                 BuildConsole.Services.TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
                 capturedShots = new List<BuildConsole.Services.UiScreenshotCapture>();
+                uiResult = null;
 
                 if (manifest.UiSteps.Count > 0)
                 {
@@ -10142,7 +10144,6 @@ namespace BuildConsole
                         if (!readiness.Ready) uiReadinessFailures.Add(readiness);
                     }
 
-                    BuildConsole.Services.UiTestRunResult uiResult;
                     if (uiReadinessFailures.Count > 0)
                     {
                         string reason = string.Join(" ", uiReadinessFailures.Select(f => f.Message));
@@ -10290,6 +10291,66 @@ namespace BuildConsole
                     {
                         BuildConsole.Services.ActivityLog.Log("testing.screenshot-review", $"Screenshot review failed: {ex.Message}");
                     }
+                }
+            }
+
+            // UI Automation Tool – QA HUD Feature Integration:
+            // Finalize automated test run into /Bugs/<ProductName>/<SessionId>/automation/ with report.json, summary.md,
+            // console.json, api/*.json, screenshots/, and dom/ diffs, committing and pushing to Git if enabled.
+            if (uiResult?.QaSessionContext != null)
+            {
+                try
+                {
+                    var qaContext = uiResult.QaSessionContext;
+                    if (!string.IsNullOrWhiteSpace(manifest.Feature))
+                    {
+                        qaContext.TestName = $"Issue #{manifest.Issue} - {manifest.Feature}";
+                        string detected = BuildConsole.Services.VisualTestTrackerExportService.DetectArea(qaContext.TargetUrl, manifest.Feature);
+                        if (!string.IsNullOrWhiteSpace(detected)) qaContext.ProductName = detected;
+                    }
+
+                    if (reviewResult?.Items != null)
+                    {
+                        foreach (var item in reviewResult.Items)
+                        {
+                            qaContext.ScreenshotDiffs.Add(new BuildConsole.Services.AutomationScreenshotDiffItem
+                            {
+                                StepIndex = item.StepIndex,
+                                StepLabel = item.What,
+                                CurrentImagePath = item.CurrentPath,
+                                BaselineImagePath = item.BaselinePath ?? string.Empty,
+                                DiffImagePath = string.Empty,
+                                DifferencePercent = Math.Round(item.Comparison.DiffRatio * 100.0, 2),
+                                HasDiff = item.NeedsReview
+                            });
+                        }
+                    }
+
+                    var qaSettings = BuildConsole.Services.BuildConsoleSettings.Load();
+                    string? syncRepoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                    var syncResult = await BuildConsole.Services.UiAutomationQaSessionService.FinalizeAutomationSessionAsync(
+                        qaContext,
+                        commitToGit: qaSettings.AutomationQaAutoCommitEnabled,
+                        pushToRemote: qaSettings.AutomationQaAutoPushEnabled,
+                        repoRoot: syncRepoRoot);
+
+                    if (syncResult.Success)
+                    {
+                        runner.SetQaArtifactsDirectory(syncResult.AutomationDirectory);
+                        BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                            $"QA HUD Automation Session finalized under {syncResult.AutomationDirectory}" +
+                            (string.IsNullOrEmpty(syncResult.CommitHash) ? "" : $" (git commit: {syncResult.CommitHash})"));
+                    }
+                    else
+                    {
+                        BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                            $"QA HUD Automation Session warning: {syncResult.Error}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                        $"Failed to finalize QA HUD automation session: {ex.Message}");
                 }
             }
 

@@ -633,6 +633,8 @@ namespace BuildConsole
                 _galleryShots.Clear();
                 BtnScreenshots.IsEnabled = false;
                 BtnScreenshots.Content = "📷 Screenshots";
+                _lastQaArtifactsDirectory = null;
+                BtnQaArtifacts.Visibility = Visibility.Collapsed;
                 BtnCancel.Visibility = Visibility.Collapsed;
                 _elapsedTimer.Stop();
                 _stepSw.Stop();
@@ -677,6 +679,36 @@ namespace BuildConsole
             // above the center WebView2 that the old overlay Grid was stuck behind.
             var gallery = new ScreenshotGalleryWindow(_galleryShots) { Owner = this };
             gallery.Show();
+        }
+
+        private string? _lastQaArtifactsDirectory;
+
+        /// <summary>Surfaces the QA HUD automation artifacts button linking to /Bugs/&lt;ProductName&gt;/&lt;SessionId&gt;/automation/.</summary>
+        public void SetQaArtifactsDirectory(string? dir)
+        {
+            RunOnUi(() =>
+            {
+                _lastQaArtifactsDirectory = dir;
+                bool hasDir = !string.IsNullOrEmpty(dir) && System.IO.Directory.Exists(dir);
+                BtnQaArtifacts.Visibility = hasDir ? Visibility.Visible : Visibility.Collapsed;
+            });
+        }
+
+        private void BtnQaArtifacts_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(_lastQaArtifactsDirectory) || !System.IO.Directory.Exists(_lastQaArtifactsDirectory)) return;
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = _lastQaArtifactsDirectory,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                Services.ActivityLog.Log(Channel, $"Failed to open QA artifacts folder: {ex.Message}");
+            }
         }
 
         /// <summary>Git #869 — copies the full accumulated console text in one click, for pasting into a Claude Code prompt to diagnose a failure.</summary>

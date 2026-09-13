@@ -817,6 +817,19 @@ namespace BuildConsole.Services
         /// <summary>Interval (ms) between DOM re-checks inside the uiStep poll loop. Default 250 — responsive enough to pass within a poll of the condition becoming true without hammering ExecuteScriptAsync. Non-positive falls back to the default in UiTestExecutor.</summary>
         public int UiStepPollIntervalMs { get; set; } = 250;
 
+        // ── Automated QA HUD Artifacts ───────────────────────────────────────────
+        /// <summary>Enables saving rich QA HUD artifacts (/bugs/<ProductName>/<SessionId>/automation/) on automated test suite completion.</summary>
+        public bool AutomationQaArtifactsEnabled { get; set; } = true;
+
+        /// <summary>Enables auto-committing automated QA session artifacts to Git with "Automated QA Session <SessionId>: <Summary>".</summary>
+        public bool AutomationQaAutoCommitEnabled { get; set; } = true;
+
+        /// <summary>Enables auto-pushing committed automated QA artifacts to the remote branch.</summary>
+        public bool AutomationQaAutoPushEnabled { get; set; } = false;
+
+        /// <summary>Threshold in milliseconds above which an API response is logged as slow in the automation report. Default 1500ms.</summary>
+        public int AutomationSlowApiThresholdMs { get; set; } = 1500;
+
         // ── Git #1866 — desktop screen-clipping tool ──────────────────────────────
         // Shane: "a screenshot clipping tool ... auto put it in my system clipboard,
         // as well as save in C:\Users\Ronnie\Pictures\Screenshots\BuildConsole." The
