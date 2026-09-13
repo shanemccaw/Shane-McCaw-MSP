@@ -345,7 +345,7 @@ namespace BuildConsole.Services
         /// Git #2739 — <paramref name="scopedIssues"/> is filtered down to real work
         /// (<see cref="GitBoardIssueFilters.CountsAsRealWork"/>) BEFORE reducing into the daily
         /// series: Epic/Feature placeholder issues and anything owned by an internal-tooling Epic
-        /// (#1202/#1095) never contribute an opened/closed day, so they can't skew the burndown,
+        /// (#1202) never contribute an opened/closed day, so they can't skew the burndown,
         /// open/close-rate, or ETA panels that consume this series' output. <paramref name="allIssuesForAncestry"/>
         /// is the caller's full (ideally ALL-states) issue set used only to resolve the
         /// internal-tooling-Epic ancestor climb for issues whose parent chain reaches outside
@@ -356,9 +356,9 @@ namespace BuildConsole.Services
         /// hatch <see cref="GitBoardIssueFilters.IsUnderInternalToolingEpic"/> already defines: pass
         /// the Epic number a per-Epic scope is itself rooted under (e.g. #1202) so THAT Epic's own
         /// real descendants aren't excluded from its own burndown — a per-Epic view must show that
-        /// Epic's own real work, same principle #2773 established for #1202/#1095's own numbers.
+        /// Epic's own real work, same principle #2773 established for #1202's own numbers.
         /// Null (default) is the original cross-scope aggregation behavior (whole-milestone charts):
-        /// #1202/#1095 and everything under them stay excluded, unchanged.
+        /// #1202 and everything under them stay excluded, unchanged.
         /// </summary>
         public static IssueTimeSeries BuildSeries(IReadOnlyList<GitBoardIssue> scopedIssues, string scopeLabel, DateTime nowUtc,
             IReadOnlyList<GitBoardIssue>? allIssuesForAncestry = null, int? selfRootEpicNumber = null)
@@ -613,7 +613,7 @@ namespace BuildConsole.Services
         /// <summary>Git #2776 — every real OPEN Epic in the repo (Git #839 definition: top-level
         /// issue with ≥1 sub-issue), for the Home dashboard's per-Epic burndown picker, read ONLY
         /// from the local mirror (Git #3577). Deliberately does NOT exclude the internal-tooling
-        /// Epics (#1202/#1095) the way <see cref="GetOpenEpicsInMilestoneAsync"/> does — Shane
+        /// Epics (#1202) the way <see cref="GetOpenEpicsInMilestoneAsync"/> does — Shane
         /// explicitly wants #1202 selectable here so its own real burndown can be viewed (see
         /// <see cref="GetEpicSeriesAsync"/>'s self-rollup). <see cref="EpicOption.OpenRealWork"/> is
         /// each Epic's own real open descendant-work count (self-rollup applied) so the caller can
@@ -644,7 +644,7 @@ namespace BuildConsole.Services
         /// belong to <paramref name="milestoneNumber"/>, so #2714 can produce one real ETA per Epic,
         /// read ONLY from the local mirror (Git #3577). Empty when the mirror has no usable data yet
         /// (fail-closed — the caller sees no epics rather than a wrong set).
-        /// Git #2739 — excludes the internal-tooling Epics themselves (#1202/#1095): they're not
+        /// Git #2739 — excludes the internal-tooling Epics themselves (#1202): they're not
         /// customer-facing product work, so Home dashboard shouldn't project an ETA card for them
         /// (their own real descendant series is already filtered to empty by <see cref="BuildSeries"/>
         /// anyway; excluding the row itself avoids rendering an empty/misleading card for it).</summary>

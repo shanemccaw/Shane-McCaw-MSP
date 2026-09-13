@@ -16,8 +16,8 @@ namespace BuildConsole.Services
     ///   1. <see cref="IsPlaceholder"/> — the issue itself is a tier-level organizational holder
     ///      (a real Epic or a real Feature), not real work.
     ///   2. <see cref="IsUnderInternalToolingEpic"/> — the issue's real top-level Epic ancestor is
-    ///      internal tooling (#1202 Build Console / #1095 Admin Panel), not customer-facing product
-    ///      work, regardless of the issue's own tier.
+    ///      internal tooling (#1202 Build Console), not customer-facing product work, regardless
+    ///      of the issue's own tier.
     /// </summary>
     public static class GitBoardIssueFilters
     {
@@ -25,9 +25,15 @@ namespace BuildConsole.Services
         /// Git #2739 scope amendment #1 — real top-level Epic numbers whose entire real descendant
         /// tree is internal tooling, not customer-facing product work, and is excluded from every
         /// real progress/report count regardless of each descendant's own tier.
-        /// #1202 = EPIC: Build Console. #1095 = EPIC: Admin Panel.
+        /// #1202 = EPIC: Build Console.
+        /// Git #3873 — #1095 (EPIC: Admin Panel) removed from this set per Shane's confirmed
+        /// decision: Admin Panel is real production work (CLAUDE.md's own area-epic table already
+        /// lists it as such, alongside #1096/#1093/#1281/#1485/#1571), not internal tooling — it
+        /// was undercounting the Home dashboard burndown/rate/ETA panels and the Git Board tree's
+        /// per-Epic rollup pills. #1095 remains in <see cref="ProductionRootEpicNumbers"/> below,
+        /// unchanged.
         /// </summary>
-        public static readonly IReadOnlySet<int> InternalToolingEpicNumbers = new HashSet<int> { 1202, 1095 };
+        public static readonly IReadOnlySet<int> InternalToolingEpicNumbers = new HashSet<int> { 1202 };
 
         /// <summary>
         /// Git #3869 — the real top-level Epic numbers whose descendant trees are what actually
@@ -76,7 +82,7 @@ namespace BuildConsole.Services
         /// count. A DIFFERENT internal-tooling ancestor (there is currently no such nested case, but
         /// the check is exact-match, not "any") still excludes normally. Null (every existing
         /// cross-epic caller — milestone bar, Home dashboard) preserves the original behavior
-        /// unchanged: #1202/#1095 and everything under them stay excluded from those aggregates.
+        /// unchanged: #1202 and everything under them stay excluded from those aggregates.
         /// </summary>
         public static bool IsUnderInternalToolingEpic(GitBoardIssue issue, IReadOnlyDictionary<int, GitBoardIssue> byNumber, int? selfRootEpicNumber = null)
         {
@@ -219,7 +225,7 @@ namespace BuildConsole.Services
         /// ITS OWN Features, so a per-Feature rollup nested under #1202 doesn't also get wrongly
         /// excluded) so its own descendants count normally. Null (default, every existing
         /// milestone-bar/Home-dashboard cross-epic aggregation call site) is the original
-        /// behavior — #1202/#1095 and their descendants stay excluded — unchanged.
+        /// behavior — #1202 and their descendants stay excluded — unchanged.
         /// </summary>
         public static (int Total, int Closed) ComputeTransitiveLeafRollup(GitBoardIssue root, IReadOnlyList<GitBoardIssue> allIssues, int? selfRootEpicNumber = null)
         {
@@ -237,7 +243,7 @@ namespace BuildConsole.Services
         /// fraction). Instead: count of <paramref name="epicRoot"/>'s DIRECT real Feature-titled
         /// children (<see cref="IsPlaceholder"/> + "Feature:" prefix) whose OWN transitive leaf
         /// rollup is NOT 100% complete (0 real leaves counts as "not complete", not "done"). A
-        /// Feature nested under an internal-tooling Epic (#1202/#1095) has its own descendants
+        /// Feature nested under an internal-tooling Epic (#1202) has its own descendants
         /// rolled up with the same #2773 self-rollup escape hatch — <paramref name="epicRoot"/>'s own
         /// number threaded through as the internal-tooling ancestor to NOT exclude — so a Feature
         /// under #1202 gets its real completion, not zero.
