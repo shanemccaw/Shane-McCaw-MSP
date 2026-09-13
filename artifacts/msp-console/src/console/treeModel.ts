@@ -391,6 +391,13 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "Password reset, temporary password, MFA and session actions against a real account — every one audited, and every one held to a real server-side role ceiling.",
       };
     }
+    if (sel.page === "dlq") {
+      return {
+        eyebrow: "DEAD LETTER QUEUE",
+        title: "Work that gave up",
+        note: "Parked items from every writer that gives up on a job — replay what the workflow engine can rebuild, close out the rest by hand.",
+      };
+    }
     if (sel.page === "plan") {
       return {
         eyebrow: "PLATFORM SUBSCRIPTION — SELF-SERVICE",

@@ -23,6 +23,7 @@ import { Ownership } from "./modules/Ownership";
 import { Sales } from "./modules/Sales";
 import { PolicyEngine } from "./modules/PolicyEngine";
 import { AccountSecurity } from "./modules/AccountSecurity";
+import { Dlq } from "./modules/Dlq";
 import { PlanSelfService } from "./modules/PlanSelfService";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
@@ -319,6 +320,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "acctsec") {
     return <AccountSecurity />;
+  }
+  if (sel.kind === "msp" && sel.page === "dlq") {
+    return <Dlq />;
   }
   if (sel.kind === "msp" && sel.page === "sales") {
     // Bundle write actions require ladder.msp-admin server-side

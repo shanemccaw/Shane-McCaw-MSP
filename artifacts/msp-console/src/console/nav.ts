@@ -96,6 +96,7 @@ export const MSP_PAGES: LeafPage[] = [
   { id: "offboarding", label: "Offboarding", icon: "log-out" },
   { id: "policy", label: "Policy engine", icon: "shield-check" },
   { id: "acctsec", label: "Account Security", icon: "key-round" },
+  { id: "dlq", label: "Dead Letter Queue", icon: "trash-2" },
   { id: "plan", label: "Plan & billing", icon: "credit-card" },
 ];
 
