@@ -1244,7 +1244,13 @@ export function isGraphWriteTokenReadNotFound(err: unknown): boolean {
 
 export async function graphReadForTenantWithWriteToken(tenantId: string, path: string): Promise<any> {
   const token = await getWriteAccessTokenForTenant(tenantId);
-  const res = await fetch(`${GRAPH_BASE}${path}`, {
+  // #3800 — pass an absolute graph.microsoft.com URL through verbatim (beta-only
+  // resources like /beta/deviceManagement/groupPolicyDefinitions have no v1.0
+  // equivalent and can never be reached by concatenating onto GRAPH_BASE, which is
+  // v1.0-only). Same host-gated passthrough graphWriteForTenant already does; a
+  // relative "/path" is still prefixed with GRAPH_BASE as before.
+  const url = path.startsWith(GRAPH_HOST_PREFIX) ? path : `${GRAPH_BASE}${path}`;
+  const res = await fetch(url, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",

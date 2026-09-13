@@ -131,9 +131,21 @@ import { getPrompt, getDocumentStylePrefix } from "./prompt-loader.ts";
 import { evaluateDocGateCoverage, type CoverageDecision } from "./doc-gate-coverage.ts";
 import { persistSowPricing } from "./sow-pricing-persist.ts";
 import { seedKanbanCardsForPhase } from "./kanban-phase-advance.ts";
+import { interp, interpOrNull } from "./interp.ts";
+// #3800 — resolve-then-write pure core (no db/Graph imports); re-exported below so
+// existing importers of these symbols from workflow-executor keep working.
+import {
+  runTemplateResolveSteps,
+  resolveProvidedVariablesOf,
+  type BaselineTemplateResolveStep,
+  type ResolveStepOutcome,
+} from "./resolve-then-write.ts";
 // Type-only: the store itself is imported dynamically so the Azure SDK stays out
 // of the executor's static module graph (#1911).
 import type { GeneratedSecretRef } from "./generated-secret-store.ts";
+
+export { runTemplateResolveSteps, resolveProvidedVariablesOf };
+export type { BaselineTemplateResolveStep, ResolveStepOutcome };
 
 // ── Sensitive payload redaction for persisted run rows ───────────────────────
 // `wf_run_node_outputs` snapshots the run payload as `input` and the node's own
@@ -604,57 +616,9 @@ const ASPECT_RATIO_SIZE: Record<string, "1024x1024" | "1536x1024" | "1024x1536">
 const BOOT_TIME = new Date();
 
 // ── Payload interpolation ────────────────────────────────────────────────────
-// Replaces {{key}} and {{payload.key}} tokens with values from payload.
-function interp(template: string | undefined, payload: Record<string, unknown>): string | undefined {
-  if (!template) return undefined;
-  // [\w.\-\[\]]+ — word chars, dots, hyphens, and bracket chars so bracket-notation
-  // like phases[0] or phases[myCounter] resolves correctly alongside node IDs like "node-106"
-  return template.replace(/\{\{([\w.\-\[\]]+)\}\}/g, (_match, path: string) => {
-    const key = path.startsWith("payload.") ? path.slice(8) : path;
-    const parts = key.split(".");
-    let cur: unknown = payload;
-    for (const part of parts) {
-      if (cur == null || typeof cur !== "object") return "";
-      const bracketIdx = part.indexOf("[");
-      if (bracketIdx !== -1) {
-        // Bracket-notation segment, e.g. "phases[0]" or "phases[myCounter]"
-        const propName = part.slice(0, bracketIdx);
-        // Strip trailing "]"
-        const rawIndex = part.slice(bracketIdx + 1, part.endsWith("]") ? part.length - 1 : part.length);
-        // Navigate into the named property first (if any)
-        if (propName) {
-          cur = (cur as Record<string, unknown>)[propName];
-          if (cur == null || !Array.isArray(cur)) return "";
-        }
-        // Resolve the index: plain integer string → direct; otherwise look up in payload
-        let idx: number;
-        if (/^\d+$/.test(rawIndex)) {
-          idx = parseInt(rawIndex, 10);
-        } else {
-          const lookedUp = (payload as Record<string, unknown>)[rawIndex];
-          const asStr = String(lookedUp ?? "");
-          if (!/^\d+$/.test(asStr)) return "";
-          idx = parseInt(asStr, 10);
-        }
-        cur = (cur as unknown[])[idx];
-      } else {
-        cur = (cur as Record<string, unknown>)[part];
-      }
-    }
-    if (cur == null) return "";
-    if (typeof cur === "object") {
-      // Arrays and objects: emit compact JSON so downstream templates see
-      // valid data instead of the useless "[object Object]" coercion
-      try { return JSON.stringify(cur); } catch { return String(cur); }
-    }
-    return String(cur);
-  });
-}
-
-function interpOrNull(template: string | undefined, payload: Record<string, unknown>): string | null {
-  const result = interp(template, payload);
-  return result?.trim() ? result : null;
-}
+// {{key}} / {{payload.key}} substitution moved to ./interp.ts (#3800) so the
+// dependency-free resolve-then-write core shares the exact same implementation
+// instead of a second one that could drift. Imported at the top of this file.
 
 export interface BaselineTemplateExecutionResult {
   success: boolean;
@@ -697,6 +661,21 @@ export interface ResolvedBaselineRequest {
   requiredVariables: string[];
   /** requiredVariables that did NOT resolve to a non-empty value — a Graph call would be refused. */
   missingVariables: string[];
+  /**
+   * #3800 — the template's ordered resolve-then-write lookups (empty for every
+   * single-call template). A preview surface can show that these values are
+   * resolved LIVE against the tenant at execution time; this pure preview does not
+   * fire them (it has no tenantId), so any {{var}} an assign target feeds stays
+   * unsubstituted in `endpoint`/`body` here — that is expected, not a missing var.
+   */
+  resolveSteps: BaselineTemplateResolveStep[];
+  /**
+   * Variable names the resolveSteps assign at runtime. Deliberately EXCLUDED from
+   * `missingVariables` (they are resolved live, exactly like parameter_mapping's
+   * mid-run-provided keys), so a resolve-then-write template is never rejected
+   * up-front for lacking a value it produces itself.
+   */
+  resolveProvidedVariables: string[];
 }
 
 /**
@@ -729,9 +708,15 @@ export async function resolveBaselineTemplateRequest(
   const bodyResolved = interp(bodyTemplateStr, payload) ?? "{}";
   const body = JSON.parse(bodyResolved) as Record<string, unknown>;
 
+  // #3800 — vars the resolveSteps produce at runtime are never demanded up-front.
+  const resolveSteps = (template.resolveSteps ?? []) as BaselineTemplateResolveStep[];
+  const resolveProvidedVariables = resolveProvidedVariablesOf(resolveSteps);
+  const resolveProvided = new Set(resolveProvidedVariables);
+
   // Validate all requiredVariables are present and non-empty after resolution
   const requiredVars = template.requiredVariables ?? [];
   const missingVariables = requiredVars.filter(varName => {
+    if (resolveProvided.has(varName)) return false;
     const resolved = interp(`{{${varName}}}`, payload);
     return !resolved || resolved.trim() === "";
   });
@@ -750,7 +735,32 @@ export async function resolveBaselineTemplateRequest(
     rawBodyTemplate,
     requiredVariables: requiredVars,
     missingVariables,
+    resolveSteps,
+    resolveProvidedVariables,
   };
+}
+
+// ── #3800 — resolve-then-write lookup execution ──────────────────────────────
+// The pure, dependency-injected core (runTemplateResolveSteps, itemMatchesSelect,
+// the BaselineTemplateResolveStep/ResolveStepOutcome types) lives in
+// ./resolve-then-write.ts so it is unit-testable with no db/Graph module graph
+// (same discipline as mfa-reregistration.ts). This is the thin tenant-bound wrapper
+// that supplies the real write-token Graph reader.
+
+/**
+ * Tenant-bound wrapper: runs a template's resolveSteps against the real tenant via
+ * the write-token Graph reader, so the write that follows sees the resolved vars.
+ */
+export async function resolveTemplateLookups(
+  steps: BaselineTemplateResolveStep[],
+  tenantId: string,
+  payload: Record<string, unknown>,
+): Promise<ResolveStepOutcome> {
+  if (!steps || steps.length === 0) return { resolvedVars: {}, failed: false };
+  const { graphReadForTenantWithWriteToken } = await import("./graph.ts");
+  return runTemplateResolveSteps(steps, payload, (endpoint) =>
+    graphReadForTenantWithWriteToken(tenantId, endpoint),
+  );
 }
 
 /**
@@ -1191,9 +1201,54 @@ export async function runBaselineTemplateAgainstTenant(
     };
   }
 
-  const endpoint = resolved.endpoint;
-  const method = resolved.method;
-  const body = resolved.body;
+  // #3800 — resolve-then-write. Run the template's filtered-GET lookups against the
+  // tenant FIRST, merge their extracted values into the payload, then RE-RESOLVE the
+  // endpoint/body so {{var}} placeholders that only a lookup can fill (e.g. an ADMX
+  // definitionId) are substituted before the write. Fail closed on a required lookup
+  // that resolves nothing — firing a write with an empty {{definitionId}} would be
+  // exactly the "a fix that does not fix the finding" failure #1925/#3800 warn against.
+  let effectivePayload = payload;
+  let writeResolved = resolved;
+  if (resolved.resolveSteps.length > 0) {
+    const lookup = await resolveTemplateLookups(resolved.resolveSteps, tenantId, payload);
+    if (lookup.failed) {
+      try {
+        await db.insert(baselineActionTemplateAuditLogTable).values({
+          action: "failed",
+          templateId,
+          requestVariables: { ...payload, ...lookup.resolvedVars },
+          afterSnapshot: {
+            success: false, status: 424, errorType: "bad_request",
+            endpoint: lookup.failedEndpoint ?? resolved.rawEndpoint, method: resolved.method,
+            customerId, tenantId, executedAt: new Date().toISOString(),
+            resolveFailure: lookup.reason ?? "resolve lookup failed",
+            ...(source !== undefined ? { source } : {}),
+          },
+        });
+      } catch (auditErr) {
+        log.warn({ auditErr, templateId }, "runBaselineTemplateAgainstTenant: resolve-failure audit insert failed (non-fatal)");
+      }
+      log.warn({ templateId, tenantId, reason: lookup.reason }, "runBaselineTemplateAgainstTenant: resolve-then-write lookup failed — write NOT fired");
+      return {
+        // 424 Failed Dependency: the write's precondition (a resolved lookup) was not met.
+        success: false, status: 424, errorType: "bad_request", data: lookup.reason ?? null,
+        endpoint: lookup.failedEndpoint ?? resolved.rawEndpoint, method: resolved.method, label: resolved.label,
+      };
+    }
+    effectivePayload = { ...payload, ...lookup.resolvedVars };
+    writeResolved = await resolveBaselineTemplateRequest(templateId, effectivePayload);
+    if (writeResolved.missingVariables.length > 0) {
+      return {
+        success: false, status: 400, errorType: "bad_request", data: null,
+        endpoint: writeResolved.rawEndpoint, method: writeResolved.method, label: writeResolved.label,
+        missingVariables: writeResolved.missingVariables,
+      };
+    }
+  }
+
+  const endpoint = writeResolved.endpoint;
+  const method = writeResolved.method;
+  const body = writeResolved.body;
 
   const { graphWriteForTenant } = await import("./graph.ts");
   const result = await graphWriteForTenant(tenantId, customerId, endpoint, method, body, [200, 201, 204]);
@@ -1206,8 +1261,10 @@ export async function runBaselineTemplateAgainstTenant(
       // Raw variables passed into this function — required for Launch Control
       // rollback (body-only variables like accountEnabled/skuId are otherwise
       // unrecoverable once execution completes; the endpoint string only
-      // preserves path-based variables like groupId/memberId).
-      requestVariables: payload,
+      // preserves path-based variables like groupId/memberId). #3800: includes any
+      // values the resolve-then-write lookups produced, so the trail shows what the
+      // write actually used, not just the operator-supplied inputs.
+      requestVariables: effectivePayload,
       afterSnapshot: {
         success: result.success,
         status: result.status,

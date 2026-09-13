@@ -4240,6 +4240,18 @@ export const baselineActionTemplatesTable = pgTable("baseline_action_templates",
   method: text("method", { enum: ["POST", "PATCH", "PUT", "DELETE"] }).notNull(),
   bodyTemplate: jsonb("body_template").$type<Record<string, unknown>>().notNull().default({}),
   requiredVariables: jsonb("required_variables").$type<string[]>().notNull().default([]),
+  // #3800 — resolve-then-write: ordered filtered Graph GETs run BEFORE the write,
+  // each selecting an item from the response and assigning extracted field(s) into
+  // the payload so the endpoint/body can reference them via {{var}}. This is the
+  // "a read informs the next write" half of the same chaining parameter_mapping does
+  // for a create step's OWN output. Empty [] for every existing single-call template.
+  // Shape: BaselineTemplateResolveStep[] (artifacts/api-server workflow-executor.ts).
+  resolveSteps: jsonb("resolve_steps").$type<Array<{
+    endpoint: string;
+    selectMatch?: Record<string, string>;
+    assign: Record<string, string>;
+    optional?: boolean;
+  }>>().notNull().default([]),
   successCriteria: jsonb("success_criteria").$type<Record<string, unknown>>().notNull().default({}),
   dependsOn: jsonb("depends_on").$type<string[]>().notNull().default([]),
   requiresVerificationGate: boolean("requires_verification_gate").notNull().default(false),
