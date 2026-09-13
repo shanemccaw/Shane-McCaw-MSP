@@ -21,6 +21,7 @@ import { ScopeSla } from "./modules/ScopeSla";
 import { Ownership } from "./modules/Ownership";
 import { Sales } from "./modules/Sales";
 import { SopsPage } from "@/pages/Sops";
+import { OffboardingPage } from "@/pages/Offboarding";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
 import { ChangeControl, CHANGE_CONTROL_TABS, type ChangeControlTab } from "@/pages/change-control/ChangeControl";
 import { surface } from "./tokens";
@@ -294,6 +295,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "sops") {
     return <SopsPage />;
+  }
+  if (sel.kind === "msp" && sel.page === "offboarding") {
+    return <OffboardingPage profile={profile} />;
   }
   if (sel.kind === "msp" && sel.page === "exec") {
     return <ExecutiveView onOpenTenant={(customerId) => navigate({ kind: "tenant", tenant: customerId })} />;

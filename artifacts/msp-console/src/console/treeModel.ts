@@ -368,6 +368,13 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "The procedures this MSP authors, and every run fired against a customer's tenant.",
       };
     }
+    if (sel.page === "offboarding") {
+      return {
+        eyebrow: "OFFBOARDING",
+        title: "Offboarding",
+        note: "This is the whole MSP, and it only runs one way — forward, with no undo.",
+      };
+    }
     return { eyebrow: "OPERATIONS · MSP-WIDE", title: mp?.label ?? "", note: "" };
   }
   const c = find(sel.tenant);
