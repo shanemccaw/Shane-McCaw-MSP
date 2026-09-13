@@ -2656,6 +2656,26 @@ namespace BuildConsole.Services
                 ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) routed to the SECONDARY Claude account — CLAUDE_CONFIG_DIR={secondaryDir}" +
                     (hadOAuthToken || hadApiKey ? $" (stripped inherited {(hadOAuthToken ? "CLAUDE_CODE_OAUTH_TOKEN" : "")}{(hadOAuthToken && hadApiKey ? " + " : "")}{(hadApiKey ? "ANTHROPIC_API_KEY" : "")} so the secondary config dir's own session is actually used)" : "") + ".");
             }
+            else
+            {
+                // Git #3798 — #2006 made a "secondary" build fail closed when the secondary
+                // account isn't usable, but a PRIMARY (default/null/"primary") build had NO
+                // equivalent check at all: it launched unconditionally, and a signed-out
+                // ~/.claude (expired/logged-out Claude Code session) died on first token instead
+                // of failing closed with a clear reason. Reuse the exact same real check #2006
+                // already validates secondary with — ClaudeUsageMeterService.ReadAccessToken,
+                // which returns null when .credentials.json is missing/unreadable/has no
+                // accessToken (covers a missing ~/.claude directory too, since ReadAccessToken's
+                // own File.Exists check just returns null for a dir that doesn't exist) — before
+                // ever launching claude.exe against the default config dir.
+                string primaryDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
+                if (string.IsNullOrEmpty(ClaudeUsageMeterService.ReadAccessToken(primaryDir)))
+                {
+                    ActivityLog.Log("watcher", $"Queue #{item.Id} requested the PRIMARY account but it's not usable (no valid signed-in credentials in {primaryDir}) — refusing to launch a build that would die on first token. Sign in (`claude` / Claude Code) as the primary account, then Retry.");
+                    await MarkLaunchFailedAsync(item.Id, $"primary account unusable: no valid signed-in credentials in {primaryDir}");
+                    return;
+                }
+            }
 
             // Git #1986 — Home/Rental network gate. Inject BUILD_NETWORK into EVERY launched
             // build so the session can read whether it's on Shane's capped Verizon connection.

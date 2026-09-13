@@ -44,6 +44,9 @@ namespace BuildConsole.Controls
             EpicChatProjectUrlBox.Text = savedSettings.EpicChatProjectUrl;
 
             SecondaryClaudeConfigDirBox.Text = savedSettings.SecondaryClaudeConfigDir;
+            // Git #3798 — show the same live signed-in/not-found status on load, not just after
+            // a Save click, so a dead secondary account is visible the moment Settings opens.
+            UpdateSecondaryConfigDirStatus(savedSettings.SecondaryClaudeConfigDir);
 
             ReplitWatcherEnabledCheck.IsChecked = savedSettings.ReplitWatcherEnabled;
             ReplitWatcherIntervalBox.Text = savedSettings.ReplitWatcherIntervalMinutes.ToString();
@@ -1101,9 +1104,65 @@ namespace BuildConsole.Controls
             var path = SecondaryClaudeConfigDirBox.Text.Trim();
             settings.SecondaryClaudeConfigDir = path;
             settings.Save();
-            SecondaryClaudeConfigDirSavedText.Text = string.IsNullOrEmpty(path)
-                ? "Saved (blank — will use the ~/.claude-secondary default)."
-                : $"Secondary account path saved: {path}";
+
+            // Git #3798 — #2006 made a "secondary" build fail closed at LAUNCH time when the
+            // secondary account isn't usable, but Shane had no way to tell it was dead until a
+            // queued build actually failed against it. Validate the same real conditions right
+            // here on save (blank/Directory.Exists/ReadAccessToken — the identical check
+            // QueueWatcherService's launch-time gate and the usage meter panel already use) so
+            // the Settings tab surfaces "not usable" immediately.
+            UpdateSecondaryConfigDirStatus(path);
+        }
+
+        /// <summary>Git #3798 — expand a leading `~` the same way QueueWatcherService and
+        /// ClaudeUsageMeterService already do, so the status check below validates the actual
+        /// resolved path a launch would use, not the raw configured string.</summary>
+        private static string ExpandUserPath(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return "";
+            path = path.Trim();
+            if (path == "~" || path.StartsWith("~/") || path.StartsWith("~\\"))
+            {
+                string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                string rest = path.Length <= 1 ? "" : path.Substring(2);
+                return string.IsNullOrEmpty(rest) ? home : System.IO.Path.Combine(home, rest);
+            }
+            return path;
+        }
+
+        /// <summary>Git #3798 — live signed-in/not-signed-in/not-found indicator for the
+        /// secondary config dir, reusing the exact same real check the launch-time fail-closed
+        /// gate (#2006, QueueWatcherService.LaunchItem) and the usage meter panel already rely
+        /// on (ClaudeUsageMeterService.ReadAccessToken + Directory.Exists) — so Shane can see
+        /// whether the secondary account is actually usable right here in Settings, instead of
+        /// only discovering it when a queued build fails to launch.</summary>
+        private void UpdateSecondaryConfigDirStatus(string rawPath)
+        {
+            string path = ExpandUserPath(rawPath);
+            string text;
+            string brushKey;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                text = "Saved (blank — will use the ~/.claude-secondary default on next load).";
+                brushKey = "StatusWarningBrush";
+            }
+            else if (!System.IO.Directory.Exists(path))
+            {
+                text = $"⚠ Config dir not found: {path} — a \"secondary\" build will refuse to launch.";
+                brushKey = "StatusErrorBrush";
+            }
+            else if (string.IsNullOrEmpty(ClaudeUsageMeterService.ReadAccessToken(path)))
+            {
+                text = $"⚠ Not signed in — no valid credentials in {path}. Run `claude` with CLAUDE_CONFIG_DIR set to this path to sign in, or a \"secondary\" build will refuse to launch.";
+                brushKey = "StatusErrorBrush";
+            }
+            else
+            {
+                text = $"✓ Signed in — {path}";
+                brushKey = "StatusSuccessBrush";
+            }
+            SecondaryClaudeConfigDirSavedText.Text = text;
+            SecondaryClaudeConfigDirSavedText.Foreground = (Brush)FindResource(brushKey);
         }
 
         /// <summary>Git #3069 — persist this instance's real GitHub repo owner/name and Batter Up
