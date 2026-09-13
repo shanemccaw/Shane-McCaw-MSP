@@ -759,6 +759,37 @@ export const mspEventStoreTable = pgTable("msp_event_store", {
 export type MspEventStoreRow = typeof mspEventStoreTable.$inferSelect;
 export type InsertMspEventStoreRow = typeof mspEventStoreTable.$inferInsert;
 
+// ── Inbound Webhook Activity Log (Git #3760) ────────────────────────────────
+// A real, queryable receipt log of every event the platform's own inbound
+// webhook receivers actually get called with — distinct from msp_event_store
+// above, which only gets a row for the subset of events that produced a real
+// business-effect (provisioned/canceled/dunning/plan_changed). This table logs
+// EVERY receipt, including ones a handler legitimately no-ops on, so an MSP
+// Console operator can see real activity rather than just its side effects.
+// `source` is deliberately a closed enum of the platform's real inbound
+// receivers, not a freeform string — the only current member is the one Stripe
+// billing webhook this issue exposes (msp-billing-webhook.ts); msp-webhooks.ts
+// (the still fully-stubbed /api/msp/v1/webhooks/* receiver, tracked separately
+// by #2700) is out of scope and never writes here.
+export const inboundWebhookEventsTable = pgTable("inbound_webhook_events", {
+  id: serial("id").primaryKey(),
+  source: text("source", { enum: ["stripe_msp_billing"] }).notNull(),
+  providerEventId: text("provider_event_id"),
+  eventType: text("event_type").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  outcome: text("outcome", { enum: ["processed", "ignored", "blocked", "error"] }).notNull(),
+  summary: text("summary").notNull(),
+  mspId: integer("msp_id"),
+  errorMessage: text("error_message"),
+}, (t) => [
+  index("inbound_webhook_events_event_type_idx").on(t.eventType),
+  index("inbound_webhook_events_received_at_idx").on(t.receivedAt),
+  index("inbound_webhook_events_msp_id_idx").on(t.mspId),
+]);
+
+export type InboundWebhookEventRow = typeof inboundWebhookEventsTable.$inferSelect;
+export type InsertInboundWebhookEventRow = typeof inboundWebhookEventsTable.$inferInsert;
+
 // ── Idempotency Store ─────────────────────────────────────────────────────────
 // Deduplicates mutating API calls. Key = caller-supplied idempotency key (e.g. UUID).
 // Response is cached for TTL; same key within TTL returns cached response.

@@ -1,21 +1,28 @@
 /**
- * Webhooks — MSP Console module page (Git #2612, Feature #1693). Mounts into
- * the shell's `ScreenSlot` at `/tenants/:id/wh`
+ * Webhooks — MSP Console module page (Git #2612 / #3760, Feature #1693).
+ * Mounts into the shell's `ScreenSlot` at `/tenants/:id/wh`
  * (`Design/MSP_Console/design_handoff_msp_console/Webhooks.dc.html`, README
- * screen 20). Two tabs, faithful to the design's logic class where the real
+ * screen 20). Three tabs, faithful to the design's logic class where the real
  * backend covers it:
  *
  *   Customer endpoints — every endpoint this customer has registered, and its
  *                         current state. Reversibly disable/re-enable; never
  *                         create, edit, rotate or delete — that stays owner-only.
  *   Deliveries         — delivery log and failure history across every endpoint.
- *
- * The design's third tab ("What comes in to us" — inbound platform webhooks)
- * is intentionally not built here: it isn't within `msp-console-webhooks.ts`'s
- * real scope (that route is the operator half of *customer-configured outbound*
- * endpoints only), and the design's own copy for it doesn't hold up against the
- * real inbound Stripe handler's current behaviour — see the finding filed
- * alongside this build.
+ *   What comes in to us — the platform's own INBOUND webhook activity (Git
+ *                         #3760). The Stripe card is real, wired against
+ *                         `useInboundWebhookActivity` (the `inbound_webhook_events`
+ *                         receipt log `msp-billing-webhook.ts` now writes on
+ *                         every real event it receives) — replacing the design's
+ *                         stale "nothing happens with them yet" claim, which was
+ *                         never true of that handler. The second "Internal
+ *                         service callbacks" card stays the design's original
+ *                         static copy: it describes `msp-webhooks.ts`
+ *                         (`/api/msp/v1/webhooks/*`), a genuinely separate,
+ *                         still fully-stubbed receiver tracked by #2700 — its
+ *                         "nothing acts on these yet" claim remains true, so it
+ *                         is left alone rather than wired to a backend that
+ *                         does not exist.
  *
  * Every row and badge comes from the live routes in `src/api/webhooks-api.ts`
  * — no fixture, no fabricated row.
@@ -29,18 +36,49 @@ import {
   useCustomerWebhooks,
   useDisableWebhook,
   useEnableWebhook,
+  useInboundWebhookActivity,
   useWebhookDeliveries,
   type ConsoleWebhook,
+  type InboundWebhookEvent,
 } from "@/api/webhooks-api";
 
-type Tab = "outbound" | "deliveries";
+type Tab = "outbound" | "deliveries" | "inbound";
 type DeliveryFilter = "all" | "ok" | "failed";
+
+/**
+ * The second inbound card is deliberately static — `msp-webhooks.ts`'s
+ * app-signature receiver has no backend surface to read from (it is a
+ * genuine no-op stub, tracked by #2700), so this describes real, current
+ * code rather than fabricating activity for it.
+ */
+const INTERNAL_CALLBACKS_CARD = {
+  title: "Internal service callbacks",
+  who: "Our own background workers reporting back",
+  icon: "server" as const,
+  guards: [
+    "Signed and timestamped the same way, with its own separate secret.",
+    "An unsigned or badly signed call is refused before anything is read.",
+    "Duplicates are remembered for a day and answered from the first result.",
+  ],
+  events: ["provisioning.completed", "provisioning.failed", "health.scan.completed"],
+  note: "The body of these calls is accepted but never read. Nothing acts on them yet.",
+};
+
+// Accurate to msp-billing-webhook.ts specifically (not copied from the
+// design's original mock, which described msp-webhooks.ts's different,
+// idempotency-store-backed mechanism instead — see the module header).
+const STRIPE_GUARDS = [
+  "Every call is verified against Stripe's own signature for this webhook's shared secret before anything is read.",
+  "An event whose timestamp is more than five minutes old or out of sync is rejected.",
+  "Each handler checks the platform's own current state before acting, so the same event arriving twice does not double-provision or double-charge.",
+];
 
 const TONE: Record<string, { strong: string; text: string; tint: string; border: string }> = {
   green: signal.ok,
   amber: signal.warning,
   red: signal.critical,
   blue: signal.info,
+  violet: { strong: signal.notice.strong, text: "#d8b4fe", tint: signal.notice.tint, border: signal.notice.border },
   slate: { strong: signal.neutral.strong, text: text.muted, tint: signal.neutral.tint, border: signal.neutral.border },
 };
 
@@ -94,11 +132,14 @@ export function Webhooks({ customerId }: { customerId: number }) {
   const allDeliveries = useAllCustomerDeliveries(customerId, webhookIds);
   const failing = allDeliveries.deliveries.filter((d) => !isDeliveryOk(d.status) && d.status !== "pending").length;
 
+  const inboundQuery = useInboundWebhookActivity(customerId);
+
   const sel = selId ? webhooks.find((w) => w.webhookId === selId) ?? null : null;
 
   const tabDefs: { id: Tab; label: string; count: string }[] = [
     { id: "outbound", label: "Customer endpoints", count: String(webhooks.length) },
     { id: "deliveries", label: "Deliveries", count: String(allDeliveries.deliveries.length) },
+    { id: "inbound", label: "What comes in to us", count: "2" },
   ];
 
   return (
@@ -155,13 +196,24 @@ export function Webhooks({ customerId }: { customerId: number }) {
         />
       )}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 9, paddingTop: 2 }}>
-        <Icon name="info" size={13} color={text.faint} />
-        <span style={{ fontSize: 11, color: text.faint, textWrap: "pretty" }}>
-          The customer owns these endpoints. From here they can be read and switched off — creating, editing, rotating the
-          secret and deleting stay with them.
-        </span>
-      </div>
+      {tab === "inbound" && (
+        <InboundTab
+          sources={inboundQuery.data?.sources ?? []}
+          events={inboundQuery.data?.events ?? []}
+          loading={inboundQuery.isLoading}
+          error={inboundQuery.isError}
+        />
+      )}
+
+      {tab !== "inbound" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 9, paddingTop: 2 }}>
+          <Icon name="info" size={13} color={text.faint} />
+          <span style={{ fontSize: 11, color: text.faint, textWrap: "pretty" }}>
+            The customer owns these endpoints. From here they can be read and switched off — creating, editing, rotating the
+            secret and deleting stay with them.
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -466,6 +518,155 @@ function DeliveriesTab({
       <span style={{ fontSize: 11.5, color: text.label, textWrap: "pretty" }}>
         Replaying a delivery is not built yet. A failed delivery retries on its own schedule and then stops.
       </span>
+    </div>
+  );
+}
+
+// ── What comes in to us (inbound platform webhooks) tab — Git #3760 ──────────
+
+function outcomeTone(outcome: InboundWebhookEvent["outcome"]): { strong: string; text: string; tint: string; border: string } {
+  if (outcome === "processed") return signal.ok;
+  if (outcome === "blocked") return signal.warning;
+  if (outcome === "error") return signal.critical;
+  return TONE.slate; // "ignored"
+}
+
+function outcomeIcon(outcome: InboundWebhookEvent["outcome"]): string {
+  if (outcome === "processed") return "circle-check-big";
+  if (outcome === "blocked") return "shield-alert";
+  if (outcome === "error") return "circle-x";
+  return "circle-dashed"; // "ignored"
+}
+
+function InboundTab({
+  sources, events, loading, error,
+}: {
+  sources: { key: string; title: string; who: string; configured: boolean; totalReceived: number; lastReceivedAt: string | null; eventTypes: { name: string; acted: boolean }[] }[];
+  events: InboundWebhookEvent[];
+  loading: boolean;
+  error: boolean;
+}) {
+  if (loading) return <div style={{ fontSize: 11.5, color: text.muted }}>Loading inbound webhook activity…</div>;
+  if (error) return <div style={{ fontSize: 11.5, color: signal.critical.text }}>Failed to load inbound webhook activity.</div>;
+
+  const stripe = sources.find((s) => s.key === "stripe_msp_billing") ?? null;
+
+  const cards = [
+    stripe
+      ? {
+          title: stripe.title,
+          who: stripe.who,
+          icon: "credit-card",
+          tone: "violet",
+          configured: stripe.configured,
+          guards: STRIPE_GUARDS,
+          events: stripe.eventTypes,
+          note: stripe.totalReceived === 0
+            ? "No events have arrived here yet for this MSP."
+            : `${stripe.totalReceived} ${stripe.totalReceived === 1 ? "event" : "events"} received for this MSP` +
+              (stripe.lastReceivedAt ? `, most recently ${formatWhen(stripe.lastReceivedAt)}.` : "."),
+        }
+      : null,
+    {
+      title: INTERNAL_CALLBACKS_CARD.title,
+      who: INTERNAL_CALLBACKS_CARD.who,
+      icon: INTERNAL_CALLBACKS_CARD.icon,
+      tone: "blue",
+      configured: false,
+      guards: INTERNAL_CALLBACKS_CARD.guards,
+      events: INTERNAL_CALLBACKS_CARD.events.map((name) => ({ name, acted: false })),
+      note: INTERNAL_CALLBACKS_CARD.note,
+    },
+  ].filter((c): c is NonNullable<typeof c> => c !== null);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(330px, 1fr))", gap: 12 }}>
+        {cards.map((c) => {
+          const t = TONE[c.tone] ?? TONE.slate;
+          const st = c.configured ? signal.ok : signal.warning;
+          return (
+            <div key={c.title} style={cardStyle({ padding: 15, display: "flex", flexDirection: "column", gap: 12, minWidth: 0 })}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 11 }}>
+                <span style={{ width: 30, height: 30, flex: "0 0 30px", borderRadius: 9, background: t.tint, border: `1px solid ${t.border}`, color: t.strong, padding: 7, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Icon name={c.icon} size={16} />
+                </span>
+                <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: text.title, textWrap: "pretty" }}>{c.title}</span>
+                  <span style={{ fontSize: 11, color: text.label, textWrap: "pretty" }}>{c.who}</span>
+                </span>
+                <span style={pill(st)}>{c.configured ? "listening" : "not set up here"}</span>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", color: text.faint }}>HOW IT IS PROTECTED</span>
+                {c.guards.map((g) => (
+                  <div key={g} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+                    <Icon name="shield-check" size={13} color={signal.ok.strong} />
+                    <span style={{ fontSize: 11.5, color: text.secondary, textWrap: "pretty" }}>{g}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 7, paddingTop: 11, borderTop: `1px solid ${border.faint}` }}>
+                <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", color: text.faint }}>EVENTS IT RECOGNISES</span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {c.events.map((ev) => (
+                    <span
+                      key={ev.name}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 9px", borderRadius: 7,
+                        background: "rgba(2,6,23,.5)", border: `1px solid ${border.card}`,
+                        fontFamily: "Menlo, monospace", fontSize: 10.5, color: text.muted, whiteSpace: "nowrap",
+                      }}
+                    >
+                      <Icon name={ev.acted ? "circle-check-big" : "circle-dashed"} size={10} color={ev.acted ? signal.ok.strong : text.label} />
+                      {ev.name}
+                    </span>
+                  ))}
+                </div>
+                <span style={{ fontSize: 11.5, color: signal.warning.text, textWrap: "pretty" }}>{c.note}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {events.length === 0 ? (
+        <div style={cardStyle({ padding: "44px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center" })}>
+          <span style={{ width: 40, height: 40, borderRadius: 12, background: signal.neutral.tint, border: `1px solid ${signal.neutral.border}`, padding: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon name="inbox" size={20} color={text.muted} />
+          </span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: text.title, letterSpacing: "-.01em" }}>Nothing has arrived yet</span>
+          <span style={{ fontSize: 12.5, color: text.muted, maxWidth: 460, textWrap: "pretty" }}>
+            Stripe hasn't called this MSP's billing webhook in this environment yet.
+          </span>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", color: text.faint }}>RECENT ACTIVITY</span>
+          {events.map((e) => {
+            const t = outcomeTone(e.outcome);
+            return (
+              <div key={e.id} style={{ border: `1px solid ${t.border}`, borderRadius: 11, background: surface.card, padding: "13px 14px", display: "flex", gap: 12, alignItems: "flex-start", minWidth: 0 }}>
+                <span style={{ width: 28, height: 28, flex: "0 0 28px", borderRadius: 9, background: t.tint, border: `1px solid ${t.border}`, color: t.strong, padding: 7, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Icon name={outcomeIcon(e.outcome)} size={14} />
+                </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: "Menlo, monospace", fontSize: 12, fontWeight: 600, color: "#93c5fd", whiteSpace: "nowrap" }}>{e.eventType}</span>
+                  </div>
+                  <span style={{ fontSize: 11.5, color: text.muted, textWrap: "pretty" }}>
+                    {e.outcome === "error" && e.errorMessage ? `${e.summary} Failed: ${e.errorMessage}` : e.summary}
+                  </span>
+                  <span style={{ fontSize: 11, color: text.faint }}>{formatWhen(e.receivedAt)}</span>
+                </div>
+                <span style={pill(t)}>{e.outcome}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

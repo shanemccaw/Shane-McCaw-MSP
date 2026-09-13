@@ -1,23 +1,22 @@
 /**
- * MSP Console — Outbound Webhooks module (Git #2612, Feature #1693). Mounts
- * into the shell's `ScreenSlot` at `/tenants/:id/wh`
+ * MSP Console — Webhooks module API client (Git #2612 / #3760, Feature #1693).
+ * Mounts into the shell's `ScreenSlot` at `/tenants/:id/wh`
  * (`Design/MSP_Console/design_handoff_msp_console/Webhooks.dc.html`, README
  * screen 20). Wired against the real, already-built operator backend
- * (`artifacts/api-server/src/routes/msp-console-webhooks.ts`, #2704):
+ * (`artifacts/api-server/src/routes/msp-console-webhooks.ts`, #2704/#3760):
  *
  *   GET  /api/msp/customers/:customerId/webhooks
  *   GET  /api/msp/customers/:customerId/webhooks/:webhookId/deliveries?limit=N
  *   POST /api/msp/customers/:customerId/webhooks/:webhookId/disable
  *   POST /api/msp/customers/:customerId/webhooks/:webhookId/enable
+ *   GET  /api/msp/customers/:customerId/webhooks/inbound?limit=N
  *
- * Deliberately not wired here: the design's third "What comes in to us" tab
- * (inbound platform webhooks — Stripe, internal service callbacks). That is
- * not this backend's scope at all (#2704's own doc comment: this module is
- * the operator half of *customer-configured* outbound endpoints only) and the
- * design's own copy for it doesn't hold up against the real inbound Stripe
- * handler's current behaviour — see the finding filed alongside this build.
- * No fixture module, no fabricated row — every value here comes from a real
- * server response.
+ * The last route is the design's third "What comes in to us" tab (#3760): the
+ * platform's own inbound Stripe billing webhook activity for the MSP that owns
+ * this customer, backed by the real `inbound_webhook_events` receipt log
+ * `msp-billing-webhook.ts`'s dispatcher writes on every call. No fixture
+ * module, no fabricated row — every value here comes from a real server
+ * response.
  */
 import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -57,6 +56,37 @@ export interface WebhookDelivery {
 
 interface DeliveriesResponse {
   deliveries: WebhookDelivery[];
+  nextCursor: number | null;
+}
+
+export interface InboundWebhookEventType {
+  name: string;
+  acted: boolean;
+}
+
+export interface InboundWebhookSource {
+  key: string;
+  title: string;
+  who: string;
+  configured: boolean;
+  totalReceived: number;
+  lastReceivedAt: string | null;
+  eventTypes: InboundWebhookEventType[];
+}
+
+export interface InboundWebhookEvent {
+  id: number;
+  eventType: string;
+  providerEventId: string | null;
+  receivedAt: string;
+  outcome: "processed" | "ignored" | "blocked" | "error";
+  summary: string;
+  errorMessage: string | null;
+}
+
+interface InboundWebhooksResponse {
+  sources: InboundWebhookSource[];
+  events: InboundWebhookEvent[];
   nextCursor: number | null;
 }
 
@@ -147,6 +177,19 @@ export function useDisableWebhook(customerId: number) {
       return parseJsonOrThrow<{ webhook: ConsoleWebhook | null }>(res);
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: webhooksKey(customerId) }),
+  });
+}
+
+// ── Inbound platform webhook activity (Git #3760) ────────────────────────────
+
+export function useInboundWebhookActivity(customerId: number, limit = 50) {
+  const { fetchWithAuth } = useAuth();
+  return useQuery({
+    queryKey: ["msp", "console-webhooks", customerId, "inbound", limit] as const,
+    queryFn: async () => {
+      const res = await fetchWithAuth(`${base(customerId)}/webhooks/inbound?limit=${limit}`);
+      return parseJsonOrThrow<InboundWebhooksResponse>(res);
+    },
   });
 }
 

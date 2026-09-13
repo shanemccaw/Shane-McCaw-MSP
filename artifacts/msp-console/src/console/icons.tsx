@@ -47,8 +47,10 @@ import {
   UserRoundPlus, UserRoundX, UserRoundSearch, Unplug, HardHat, CircleSlash,
   // Sales (#2643) — Sparkles already imported above (Executive View)
   Send, FilePen, Trash2,
-  // Plan Self-Service (#3796)
-  CreditCard,
+  // Plan Self-Service (#3796) — CreditCard.
+  // Inbound webhook activity (#3760) — Server. (ShieldCheck/ShieldAlert/
+  // CircleCheckBig/CircleDashed/CircleX/Inbox already imported above.)
+  CreditCard, Server,
   type LucideIcon,
 } from "lucide-react";
 
@@ -208,8 +210,9 @@ const REGISTRY: Record<string, LucideIcon> = {
   send: Send,
   "file-pen": FilePen,
   "trash-2": Trash2,
-  // Plan Self-Service (#3796)
+  // Plan Self-Service (#3796) / Inbound webhook activity (#3760)
   "credit-card": CreditCard,
+  server: Server,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

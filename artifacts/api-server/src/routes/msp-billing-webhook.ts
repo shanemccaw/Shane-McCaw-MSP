@@ -27,7 +27,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspsTable, mspSubscriptionsTable, usersTable, mspEventStoreTable, mspAgreementAcceptancesTable, platformAgreementsTable, servicesTable } from "@workspace/db";
+import { db, mspsTable, mspSubscriptionsTable, usersTable, mspEventStoreTable, mspAgreementAcceptancesTable, platformAgreementsTable, servicesTable, inboundWebhookEventsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import type { TenantSubscriptionStatus } from "@workspace/db";
 import { getStripeKey } from "../lib/stripe.ts";
@@ -100,6 +100,114 @@ router.post("/msp/stripe/webhook", async (req: Request, res: Response) => {
   res.json({ received: true });
 });
 
+// ── Inbound webhook activity log (Git #3760) ──────────────────────────────────
+//
+// A per-event-type description of what this dispatcher's handler actually does,
+// used to populate `inbound_webhook_events.summary`. These descriptions are the
+// same real behavior documented in this file's own header comment (lines 1-24)
+// — not invented copy. This is a real receipt log ("did a handler run for this
+// event type"), not a re-derivation of each handler's exact internal branch —
+// the handful of events with a precise, per-instance business effect already
+// get their own row in `msp_event_store` (provisioned/canceled/dunning/
+// plan_changed), independently queryable by mspId/eventType there.
+export const INBOUND_EVENT_SUMMARY: Record<string, string> = {
+  "checkout.session.completed": "Checkout completed — provisions the MSP account for a new platform subscription, or fulfills an accepted add_on/subscription offer (#3650) for an existing MSP.",
+  "customer.subscription.updated": "Subscription status synced — cascades access to the MSP's customers if the status changed.",
+  "customer.subscription.deleted": "Subscription canceled — the MSP is suspended and its customers are cascaded into their post-termination window.",
+  "invoice.payment_succeeded": "Payment succeeded — clears dunning and restores the MSP to active if it had been suspended.",
+  "invoice.payment_failed": "Payment failed — starts (or continues) the dunning clock.",
+  "invoice.finalized": "Invoice finalized — queues a Zoho Books invoice-create sync.",
+  "invoice.paid": "Invoice paid — queues a Zoho Books invoice-create + payment sync.",
+  "charge.refunded": "Charge refunded — logged for manual entry in Zoho Books; not auto-synced.",
+  "subscription_schedule.updated": "Scheduled plan change checked — finalized once the new phase becomes current.",
+  "subscription_schedule.completed": "Scheduled plan change finalized.",
+  "subscription_schedule.released": "Schedule released — plan change finalized, or cleared if it ended before taking effect.",
+  "subscription_schedule.canceled": "Scheduled plan change canceled outside the app — pending state cleared.",
+};
+
+/**
+ * Best-effort resolution of the mspId a receipt log row should be attributed
+ * to, from the Stripe object's own subscription/schedule identity — a real,
+ * read-only lookup against the same `mspSubscriptionsTable` every handler
+ * above already reads, not a guess. Called AFTER the handler runs, so a brand
+ * new subscription row `handleCheckoutCompleted` just inserted is findable.
+ * Returns null when no matching row exists (e.g. the event is for a customer's
+ * own subscription, not the MSP's platform one — see #2847) — a null mspId is
+ * an honest "not attributable to one MSP", not an error.
+ */
+async function resolveMspIdForInboundLog(event: import("stripe").Stripe.Event): Promise<number | null> {
+  try {
+    const obj = event.data.object as unknown as Record<string, unknown>;
+
+    if (event.type.startsWith("subscription_schedule.")) {
+      const scheduleId = typeof obj["id"] === "string" ? (obj["id"] as string) : null;
+      if (!scheduleId) return null;
+      const [sub] = await db
+        .select({ mspId: mspSubscriptionsTable.mspId })
+        .from(mspSubscriptionsTable)
+        .where(eq(mspSubscriptionsTable.stripeScheduleId, scheduleId))
+        .limit(1);
+      return sub?.mspId ?? null;
+    }
+
+    let subscriptionId: string | null = null;
+    if (event.type.startsWith("customer.subscription.")) {
+      subscriptionId = typeof obj["id"] === "string" ? (obj["id"] as string) : null;
+    } else {
+      const raw = obj["subscription"] as string | { id?: string } | null | undefined;
+      subscriptionId = typeof raw === "string" ? raw : raw?.id ?? null;
+    }
+
+    if (subscriptionId) {
+      const [sub] = await db
+        .select({ mspId: mspSubscriptionsTable.mspId })
+        .from(mspSubscriptionsTable)
+        .where(eq(mspSubscriptionsTable.stripeSubscriptionId, subscriptionId))
+        .limit(1);
+      if (sub?.mspId != null) return sub.mspId;
+    }
+
+    // Fallback for checkout.session.completed's #3650 msp_offer path — a
+    // one-time (mode: "payment") add_on/subscription-offer checkout has no
+    // Stripe subscription at all to look up, but handleMspOfferCheckoutCompleted
+    // (this same file) reads `mspId` straight off the session's own metadata,
+    // so this is real data already on the event, not a guess.
+    if (event.type === "checkout.session.completed") {
+      const metadata = obj["metadata"] as Record<string, string> | null | undefined;
+      const metaMspId = parseInt(metadata?.["mspId"] ?? "", 10);
+      if (!isNaN(metaMspId)) return metaMspId;
+    }
+
+    return null;
+  } catch (err) {
+    log.warn({ err, eventType: event.type }, "msp-billing-webhook: mspId resolution for inbound log failed (non-fatal)");
+    return null;
+  }
+}
+
+/** Writes one row to the real inbound-activity receipt log. Never throws — a logging failure must not affect webhook processing. */
+async function recordInboundWebhookEvent(row: {
+  event: import("stripe").Stripe.Event;
+  outcome: "processed" | "ignored" | "error";
+  summary: string;
+  mspId: number | null;
+  errorMessage?: string | null;
+}): Promise<void> {
+  try {
+    await db.insert(inboundWebhookEventsTable).values({
+      source: "stripe_msp_billing",
+      providerEventId: row.event.id,
+      eventType: row.event.type,
+      outcome: row.outcome,
+      summary: row.summary,
+      mspId: row.mspId,
+      errorMessage: row.errorMessage ?? null,
+    });
+  } catch (err) {
+    log.warn({ err, eventType: row.event.type }, "msp-billing-webhook: failed to write inbound webhook activity log (non-fatal)");
+  }
+}
+
 /**
  * The single source of truth for MSP-billing Stripe event dispatch.
  *
@@ -112,69 +220,99 @@ router.post("/msp/stripe/webhook", async (req: Request, res: Response) => {
  * thing the simulator path skips is Stripe's own signature verification (which
  * a test harness cannot produce) and Stripe-side event generation. Keep every
  * case here identical to the set documented in this file's header.
+ *
+ * Every call — production or simulated — also writes one row to the real
+ * inbound webhook activity log (`inbound_webhook_events`, Git #3760) so an MSP
+ * Console operator can see what actually came in, whether or not the specific
+ * receipt produced a business-effect row in `msp_event_store`.
  */
 export async function dispatchMspStripeEvent(
   stripe: import("stripe").Stripe,
   event: import("stripe").Stripe.Event,
 ): Promise<void> {
-  switch (event.type) {
-    case "checkout.session.completed":
-      await handleCheckoutCompleted(stripe, event.data.object as import("stripe").Stripe.Checkout.Session);
-      break;
+  const knownSummary = INBOUND_EVENT_SUMMARY[event.type];
 
-    case "customer.subscription.updated":
-      await handleSubscriptionUpdated(event.data.object as import("stripe").Stripe.Subscription);
-      break;
-
-    case "customer.subscription.deleted":
-      await handleSubscriptionDeleted(event.data.object as import("stripe").Stripe.Subscription);
-      break;
-
-    case "invoice.payment_succeeded":
-      await handlePaymentSucceeded(event.data.object as import("stripe").Stripe.Invoice);
-      break;
-
-    case "invoice.payment_failed":
-      await handlePaymentFailed(event.data.object as import("stripe").Stripe.Invoice);
-      break;
-
-    // ── Zoho Books sync (#87) — audited fresh: this webhook previously had
-    // no invoice.finalized/invoice.paid/charge.refunded cases at all. Added
-    // as their own independent cases (rather than folded into
-    // payment_succeeded/payment_failed above) so the pre-existing dunning
-    // logic is untouched and Zoho sync can't double-fire off two Stripe
-    // events for the same invoice.
-    case "invoice.finalized":
-      await handleInvoiceFinalizedZohoSync(event.data.object as import("stripe").Stripe.Invoice);
-      break;
-
-    case "invoice.paid":
-      await handleInvoicePaidZohoSync(event.data.object as import("stripe").Stripe.Invoice);
-      break;
-
-    case "charge.refunded":
-      handleChargeRefundedZohoNote(event.data.object as import("stripe").Stripe.Charge);
-      break;
-
-    case "subscription_schedule.updated":
-      await handleScheduleUpdated(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
-      break;
-
-    case "subscription_schedule.completed":
-      await handleScheduleCompleted(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
-      break;
-
-    case "subscription_schedule.released":
-      await handleScheduleReleased(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
-      break;
-
-    case "subscription_schedule.canceled":
-      await handleScheduleCanceled(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
-      break;
-
-    default:
-      log.info({ eventType: event.type }, "msp-billing-webhook: unhandled event type (ok)");
+  if (knownSummary === undefined) {
+    log.info({ eventType: event.type }, "msp-billing-webhook: unhandled event type (ok)");
+    await recordInboundWebhookEvent({
+      event,
+      outcome: "ignored",
+      summary: "Received, but this event type has no handler here — accepted and ignored.",
+      mspId: null,
+    });
+    return;
   }
+
+  try {
+    switch (event.type) {
+      case "checkout.session.completed":
+        await handleCheckoutCompleted(stripe, event.data.object as import("stripe").Stripe.Checkout.Session);
+        break;
+
+      case "customer.subscription.updated":
+        await handleSubscriptionUpdated(event.data.object as import("stripe").Stripe.Subscription);
+        break;
+
+      case "customer.subscription.deleted":
+        await handleSubscriptionDeleted(event.data.object as import("stripe").Stripe.Subscription);
+        break;
+
+      case "invoice.payment_succeeded":
+        await handlePaymentSucceeded(event.data.object as import("stripe").Stripe.Invoice);
+        break;
+
+      case "invoice.payment_failed":
+        await handlePaymentFailed(event.data.object as import("stripe").Stripe.Invoice);
+        break;
+
+      // ── Zoho Books sync (#87) — audited fresh: this webhook previously had
+      // no invoice.finalized/invoice.paid/charge.refunded cases at all. Added
+      // as their own independent cases (rather than folded into
+      // payment_succeeded/payment_failed above) so the pre-existing dunning
+      // logic is untouched and Zoho sync can't double-fire off two Stripe
+      // events for the same invoice.
+      case "invoice.finalized":
+        await handleInvoiceFinalizedZohoSync(event.data.object as import("stripe").Stripe.Invoice);
+        break;
+
+      case "invoice.paid":
+        await handleInvoicePaidZohoSync(event.data.object as import("stripe").Stripe.Invoice);
+        break;
+
+      case "charge.refunded":
+        handleChargeRefundedZohoNote(event.data.object as import("stripe").Stripe.Charge);
+        break;
+
+      case "subscription_schedule.updated":
+        await handleScheduleUpdated(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+        break;
+
+      case "subscription_schedule.completed":
+        await handleScheduleCompleted(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+        break;
+
+      case "subscription_schedule.released":
+        await handleScheduleReleased(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+        break;
+
+      case "subscription_schedule.canceled":
+        await handleScheduleCanceled(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+        break;
+    }
+  } catch (err) {
+    const mspId = await resolveMspIdForInboundLog(event);
+    await recordInboundWebhookEvent({
+      event,
+      outcome: "error",
+      summary: knownSummary,
+      mspId,
+      errorMessage: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
+
+  const mspId = await resolveMspIdForInboundLog(event);
+  await recordInboundWebhookEvent({ event, outcome: "processed", summary: knownSummary, mspId });
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

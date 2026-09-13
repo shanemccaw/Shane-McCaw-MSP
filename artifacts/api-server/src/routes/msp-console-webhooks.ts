@@ -48,14 +48,28 @@
  *   POST /api/msp/customers/:customerId/webhooks/:webhookId/disable
  *   POST /api/msp/customers/:customerId/webhooks/:webhookId/enable
  *   GET  /api/msp/customers/:customerId/webhooks/:webhookId/deliveries?limit=N
+ *   GET  /api/msp/customers/:customerId/webhooks/inbound?limit=N&cursor=N
+ *
+ * The last route (Git #3760) is a different surface bolted on here for the
+ * same UI (the design's third "What comes in to us" tab): the platform's own
+ * INBOUND Stripe billing webhook activity — real events `msp-billing-webhook.ts`
+ * (`POST /api/msp/stripe/webhook`) has actually received for the MSP that owns
+ * `:customerId`, backed by the real `inbound_webhook_events` receipt log that
+ * dispatcher now writes to on every call. This has no `outbound_webhooks` row
+ * and no per-endpoint id — it is platform infrastructure, not something a
+ * customer configured, so it is scoped by mspId (resolved from `:customerId`
+ * via `tenants.mspId`), not by a webhookId. `msp-webhooks.ts`
+ * (`/api/msp/v1/webhooks/*`) is a separate, still fully-stubbed receiver
+ * tracked by #2700 and intentionally has no route here.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, outboundWebhooksTable, usersTable } from "@workspace/db";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { db, outboundWebhooksTable, usersTable, tenantsTable, inboundWebhookEventsTable } from "@workspace/db";
+import { eq, and, desc, inArray, lt, count } from "drizzle-orm";
 import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { getDeliveryLog } from "../lib/webhook-delivery.ts";
 import { SUBSCRIBABLE_EVENT_TYPES } from "./webhooks.ts";
+import { INBOUND_EVENT_SUMMARY } from "./msp-billing-webhook.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "comms.webhook" });
@@ -371,6 +385,126 @@ router.get(
     } catch (err) {
       log.error({ err, webhookId: req.params["webhookId"] }, "msp-console-webhooks: failed to load delivery log");
       res.status(500).json({ error: "Unable to load the delivery log right now. Please try again shortly." });
+    }
+  },
+);
+
+// ── GET /api/msp/customers/:customerId/webhooks/inbound ──────────────────────
+// The platform's own inbound Stripe billing webhook activity for the MSP that
+// owns this customer (Git #3760). Real data only — `sources[0].eventTypes[].acted`
+// and `events` come straight from `inbound_webhook_events`, the receipt log
+// `dispatchMspStripeEvent` (msp-billing-webhook.ts) writes on every call.
+
+const INBOUND_STRIPE_EVENT_TYPES = Object.keys(INBOUND_EVENT_SUMMARY);
+
+router.get(
+  "/msp/customers/:customerId/webhooks/inbound",
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response) => {
+    try {
+      const customerId = parseCustomerId(req);
+      if (customerId === null) {
+        res.status(400).json({ error: "Invalid customerId" });
+        return;
+      }
+
+      const allowed = await assertCustomerAccess(req.user!, customerId);
+      if (!allowed) {
+        res.status(403).json({ error: "Not authorized for this customer" });
+        return;
+      }
+
+      const [tenant] = await db
+        .select({ mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+      const mspId = tenant?.mspId ?? null;
+
+      const limit = Math.min(Number(req.query["limit"]) || 50, 200);
+      const cursorParam = req.query["cursor"] ? Number(req.query["cursor"]) : undefined;
+      const before = cursorParam != null && Number.isFinite(cursorParam) ? cursorParam : undefined;
+
+      let events: {
+        id: number; eventType: string; providerEventId: string | null; receivedAt: Date;
+        outcome: string; summary: string; errorMessage: string | null;
+      }[] = [];
+      let nextCursor: number | null = null;
+      let totalReceived = 0;
+      let lastReceivedAt: Date | null = null;
+      const actedTypes = new Set<string>();
+
+      // No mspId to attribute to (customer's tenant row has no msp, or is
+      // orphaned) — this MSP has no real platform billing subscription, so
+      // there is genuinely nothing to show rather than an error.
+      if (mspId !== null) {
+        const sourceFilter = eq(inboundWebhookEventsTable.source, "stripe_msp_billing");
+        const mspFilter = eq(inboundWebhookEventsTable.mspId, mspId);
+        const conditions = before != null
+          ? [sourceFilter, mspFilter, lt(inboundWebhookEventsTable.id, before)]
+          : [sourceFilter, mspFilter];
+
+        const rows = await db
+          .select({
+            id: inboundWebhookEventsTable.id,
+            eventType: inboundWebhookEventsTable.eventType,
+            providerEventId: inboundWebhookEventsTable.providerEventId,
+            receivedAt: inboundWebhookEventsTable.receivedAt,
+            outcome: inboundWebhookEventsTable.outcome,
+            summary: inboundWebhookEventsTable.summary,
+            errorMessage: inboundWebhookEventsTable.errorMessage,
+          })
+          .from(inboundWebhookEventsTable)
+          .where(and(...conditions))
+          .orderBy(desc(inboundWebhookEventsTable.id))
+          .limit(limit + 1);
+
+        const hasMore = rows.length > limit;
+        events = hasMore ? rows.slice(0, limit) : rows;
+        nextCursor = hasMore ? (events[events.length - 1]?.id ?? null) : null;
+
+        const [totalRow] = await db
+          .select({ value: count() })
+          .from(inboundWebhookEventsTable)
+          .where(and(sourceFilter, mspFilter));
+        totalReceived = totalRow?.value ?? 0;
+
+        const [mostRecent] = await db
+          .select({ receivedAt: inboundWebhookEventsTable.receivedAt })
+          .from(inboundWebhookEventsTable)
+          .where(and(sourceFilter, mspFilter))
+          .orderBy(desc(inboundWebhookEventsTable.id))
+          .limit(1);
+        lastReceivedAt = mostRecent?.receivedAt ?? null;
+
+        const actedRows = await db
+          .selectDistinct({ eventType: inboundWebhookEventsTable.eventType })
+          .from(inboundWebhookEventsTable)
+          .where(and(sourceFilter, mspFilter, eq(inboundWebhookEventsTable.outcome, "processed")));
+        for (const r of actedRows) actedTypes.add(r.eventType);
+      }
+
+      res.json({
+        sources: [
+          {
+            key: "stripe_msp_billing",
+            title: "Stripe billing callbacks",
+            who: "Stripe, about our own subscription and invoices",
+            configured: Boolean(process.env["MSP_STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET"]),
+            totalReceived,
+            lastReceivedAt,
+            eventTypes: INBOUND_STRIPE_EVENT_TYPES.map((name) => ({
+              name,
+              acted: actedTypes.has(name),
+            })),
+          },
+        ],
+        events,
+        nextCursor,
+      });
+    } catch (err) {
+      log.error({ err, customerId: req.params["customerId"] }, "msp-console-webhooks: failed to load inbound webhook activity");
+      res.status(500).json({ error: "Unable to load inbound webhook activity right now. Please try again shortly." });
     }
   },
 );
