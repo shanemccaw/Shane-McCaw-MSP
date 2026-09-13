@@ -467,13 +467,27 @@ namespace BuildConsole.Services
     }, true);
 
     // Navigation Events (pushState, replaceState, popstate, hashchange)
+    function notifyRouteChange() {
+        if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+            try {
+                window.chrome.webview.postMessage(JSON.stringify({
+                    type: 'vtt-route-change',
+                    route: window.location.pathname + window.location.search,
+                    url: window.location.href
+                }));
+            } catch(e) {}
+        }
+    }
+
     var origPushState = history.pushState;
     if (origPushState) {
         history.pushState = function(state, unused, url) {
             try {
                 recordReproductionStep('NAVIGATE', document.body, 'pushState: ' + String(url || window.location.pathname));
             } catch (e) {}
-            return origPushState.apply(this, arguments);
+            var res = origPushState.apply(this, arguments);
+            notifyRouteChange();
+            return res;
         };
     }
     var origReplaceState = history.replaceState;
@@ -482,18 +496,22 @@ namespace BuildConsole.Services
             try {
                 recordReproductionStep('NAVIGATE', document.body, 'replaceState: ' + String(url || window.location.pathname));
             } catch (e) {}
-            return origReplaceState.apply(this, arguments);
+            var res = origReplaceState.apply(this, arguments);
+            notifyRouteChange();
+            return res;
         };
     }
     window.addEventListener('popstate', function() {
         try {
             recordReproductionStep('NAVIGATE', document.body, 'popstate: ' + window.location.pathname + window.location.search);
         } catch (e) {}
+        notifyRouteChange();
     });
     window.addEventListener('hashchange', function() {
         try {
             recordReproductionStep('NAVIGATE', document.body, 'hashchange: ' + window.location.hash);
         } catch (e) {}
+        notifyRouteChange();
     });
 
     // Form Submissions

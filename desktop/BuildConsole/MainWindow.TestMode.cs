@@ -260,45 +260,146 @@ namespace BuildConsole
             UpdateColQueueWidth();
 
             _activeTestSessionId = "";
+            UnsubscribeTestModeWvEvents();
 
             ToastEngine.Success("Test Mode", "Exited Test Mode — Workspace restored to previous layout.");
+        }
+
+        private Microsoft.Web.WebView2.Wpf.WebView2? _testModeSubscribedWv;
+        private EventHandler<Microsoft.Web.WebView2.Core.CoreWebView2SourceChangedEventArgs>? _testModeSourceChangedHandler;
+        private EventHandler<object>? _testModeHistoryChangedHandler;
+        private EventHandler<Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs>? _testModeWebMessageHandler;
+
+        private void UnsubscribeTestModeWvEvents()
+        {
+            if (_testModeSubscribedWv != null)
+            {
+                if (_testModeSubscribedWv.CoreWebView2 != null)
+                {
+                    try
+                    {
+                        if (_testModeSourceChangedHandler != null)
+                            _testModeSubscribedWv.CoreWebView2.SourceChanged -= _testModeSourceChangedHandler;
+                        if (_testModeHistoryChangedHandler != null)
+                            _testModeSubscribedWv.CoreWebView2.HistoryChanged -= _testModeHistoryChangedHandler;
+                        if (_testModeWebMessageHandler != null)
+                            _testModeSubscribedWv.CoreWebView2.WebMessageReceived -= _testModeWebMessageHandler;
+                    }
+                    catch { }
+                }
+                _testModeSubscribedWv = null;
+            }
+        }
+
+        private void SubscribeTestModeWvEvents(Microsoft.Web.WebView2.Wpf.WebView2 webView)
+        {
+            if (ReferenceEquals(_testModeSubscribedWv, webView)) return;
+
+            UnsubscribeTestModeWvEvents();
+
+            _testModeSubscribedWv = webView;
+            _testModeSourceChangedHandler = (s, e) => Dispatcher.InvokeAsync(() => UpdateTestModeActiveTab());
+            _testModeHistoryChangedHandler = (s, e) => Dispatcher.InvokeAsync(() => UpdateTestModeActiveTab());
+            _testModeWebMessageHandler = (s, e) =>
+            {
+                try
+                {
+                    string msg = e.TryGetWebMessageAsString() ?? "";
+                    if (string.IsNullOrEmpty(msg)) msg = e.WebMessageAsJson ?? "";
+                    if (msg.Contains("vtt-route-change"))
+                    {
+                        Dispatcher.InvokeAsync(() => UpdateTestModeActiveTab());
+                    }
+                }
+                catch { }
+            };
+
+            if (webView.CoreWebView2 != null)
+            {
+                webView.CoreWebView2.SourceChanged += _testModeSourceChangedHandler;
+                webView.CoreWebView2.HistoryChanged += _testModeHistoryChangedHandler;
+                webView.CoreWebView2.WebMessageReceived += _testModeWebMessageHandler;
+            }
+            else
+            {
+                EventHandler<Microsoft.Web.WebView2.Core.CoreWebView2InitializationCompletedEventArgs>? initHandler = null;
+                initHandler = (s, e) =>
+                {
+                    webView.CoreWebView2InitializationCompleted -= initHandler;
+                    if (e.IsSuccess && webView.CoreWebView2 != null && ReferenceEquals(_testModeSubscribedWv, webView))
+                    {
+                        webView.CoreWebView2.SourceChanged += _testModeSourceChangedHandler;
+                        webView.CoreWebView2.HistoryChanged += _testModeHistoryChangedHandler;
+                        webView.CoreWebView2.WebMessageReceived += _testModeWebMessageHandler;
+                    }
+                };
+                webView.CoreWebView2InitializationCompleted += initHandler;
+            }
         }
 
         /// <summary>
         /// Inspects the active editor tab's WebView2 and synchronizes route and telemetry with Test Mode panels.
         /// </summary>
-        public void UpdateTestModeActiveTab()
+        public async void UpdateTestModeActiveTab()
         {
             if (!_isTestMode) return;
 
             var (activeWv, _) = GetActiveEditorTabWebView();
-            if (activeWv?.Source != null)
+            if (activeWv != null)
             {
-                string url = activeWv.Source.ToString();
-                var matchedBase = MatchesWatchedVisualTestBaseUrl(url);
-                string baseUrl = matchedBase ?? (activeWv.Source.Host + (activeWv.Source.Port > 0 ? $":{activeWv.Source.Port}" : ""));
-                string pagePath = "";
+                SubscribeTestModeWvEvents(activeWv);
 
-                if (matchedBase != null)
+                string url = "";
+                if (activeWv.CoreWebView2 != null)
                 {
-                    int baseIdx = url.IndexOf(matchedBase, StringComparison.OrdinalIgnoreCase);
-                    pagePath = url.Substring(baseIdx + matchedBase.Length);
+                    try
+                    {
+                        string rawHref = await activeWv.CoreWebView2.ExecuteScriptAsync("window.location.href");
+                        if (!string.IsNullOrWhiteSpace(rawHref) && rawHref != "null")
+                        {
+                            url = System.Text.Json.JsonSerializer.Deserialize<string>(rawHref) ?? "";
+                        }
+                    }
+                    catch { }
                 }
-                else
+
+                if (string.IsNullOrWhiteSpace(url) && activeWv.Source != null)
                 {
-                    pagePath = activeWv.Source.PathAndQuery;
+                    url = activeWv.Source.ToString();
                 }
 
-                if (string.IsNullOrEmpty(pagePath)) pagePath = "/";
+                if (!string.IsNullOrWhiteSpace(url) && url != "about:blank")
+                {
+                    var matchedBase = MatchesWatchedVisualTestBaseUrl(url);
+                    string baseUrl = matchedBase ?? (activeWv.Source?.Host != null ? (activeWv.Source.Host + (activeWv.Source.Port > 0 ? $":{activeWv.Source.Port}" : "")) : "");
+                    string pagePath = "";
 
-                TestModeComposerPanel.SetActiveRoute(pagePath, url);
-                TestModeDiagnosticsPanel.AttachWebView(activeWv, baseUrl, pagePath);
+                    if (matchedBase != null)
+                    {
+                        int baseIdx = url.IndexOf(matchedBase, StringComparison.OrdinalIgnoreCase);
+                        pagePath = url.Substring(baseIdx + matchedBase.Length);
+                    }
+                    else if (Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+                    {
+                        pagePath = uri.PathAndQuery;
+                    }
+
+                    if (string.IsNullOrEmpty(pagePath)) pagePath = "/";
+                    if (!pagePath.StartsWith("/") && !pagePath.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    {
+                        pagePath = "/" + pagePath;
+                    }
+
+                    TestModeComposerPanel.SetActiveRoute(pagePath, url);
+                    TestModeDiagnosticsPanel.AttachWebView(activeWv, baseUrl, pagePath);
+                    RefreshActiveTestSession();
+                    return;
+                }
             }
-            else
-            {
-                TestModeComposerPanel.SetActiveRoute("No tracked tab active — navigate a watched tab");
-                TestModeDiagnosticsPanel.ClearActiveTab();
-            }
+
+            UnsubscribeTestModeWvEvents();
+            TestModeComposerPanel.SetActiveRoute("No tracked tab active — navigate a watched tab");
+            TestModeDiagnosticsPanel.ClearActiveTab();
         }
 
         /// <summary>
