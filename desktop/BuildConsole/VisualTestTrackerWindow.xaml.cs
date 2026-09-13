@@ -60,6 +60,9 @@ namespace BuildConsole
         private string _globalNotes = "";
         private bool _isPreviewActive;
 
+        // Phase 8: Session Management state
+        private VisualTestTrackerSession? _activeSession;
+
         private ApiHelperWindow? _apiHelperWindow;
 
         public VisualTestTrackerWindow()
@@ -78,8 +81,16 @@ namespace BuildConsole
             _sessionTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _sessionTimer.Tick += (s, e) =>
             {
-                var elapsed = DateTime.Now - _sessionStartTime;
-                SessionTimerText.Text = $"⏱ {elapsed:mm\\:ss}";
+                if (_activeSession != null)
+                {
+                    var elapsed = _activeSession.TotalElapsed;
+                    SessionTimerText.Text = $"⏱ {elapsed:mm\\:ss}";
+                }
+                else
+                {
+                    var elapsed = DateTime.Now - _sessionStartTime;
+                    SessionTimerText.Text = $"⏱ {elapsed:mm\\:ss}";
+                }
             };
             _sessionTimer.Start();
 
@@ -165,12 +176,18 @@ namespace BuildConsole
                         NotesBox.Text, StepsBox.Text, ExpectedBox.Text, ActualBox.Text, TagsBox.Text,
                         _selectedSeverity, _stagedScreenshots);
                 }
+
+                // Phase 8: Pause previous page session
+                VisualTestTrackerSessionStore.PauseSession(_activeSession);
             }
 
             _activeWebView = webView;
             _activeBaseUrl = baseUrl;
             _activePagePath = pagePath;
             _sessionStartTime = DateTime.Now;
+
+            // Phase 8: Activate or resume target page session
+            _activeSession = VisualTestTrackerSessionStore.GetOrCreateActiveSession(baseUrl, pagePath);
 
             // Update Session Indicator
             UpdateSessionIndicator(true);
@@ -202,36 +219,14 @@ namespace BuildConsole
                     }
                 }
 
-                // Restore draft from crash-safe store if present
-                var draft = VisualTestTrackerDraftStore.GetDraft(baseUrl, pagePath);
-                if (draft != null)
+                // Phase 8: Auto-clear or draft restore
+                bool autoClear = ChkAutoClear.IsChecked == true;
+                if (autoClear)
                 {
+                    VisualTestTrackerDraftStore.ClearDraft(baseUrl, pagePath);
                     if (_notesMode == "page")
                     {
-                        NotesBox.Text = draft.Notes;
-                    }
-                    StepsBox.Text = draft.StepsToReproduce;
-                    ExpectedBox.Text = draft.ExpectedBehavior;
-                    ActualBox.Text = draft.ActualBehavior;
-                    TagsBox.Text = draft.Tags;
-                    SetSeveritySelection(draft.Severity);
-                    if (!string.IsNullOrWhiteSpace(draft.StepsToReproduce) ||
-                        !string.IsNullOrWhiteSpace(draft.ExpectedBehavior) ||
-                        !string.IsNullOrWhiteSpace(draft.ActualBehavior))
-                    {
-                        DetailsExpander.IsExpanded = true;
-                    }
-
-                    _stagedScreenshots.Clear();
-                    _stagedScreenshots.AddRange(draft.StagedScreenshots);
-                    RenderStagedThumbnails();
-                    AutoSaveIndicator.Text = _notesMode == "global" ? "✓ Global Notes" : "✓ Draft Restored";
-                }
-                else
-                {
-                    if (_notesMode == "page")
-                    {
-                        NotesBox.Text = _activePage?.Notes ?? "";
+                        NotesBox.Text = "";
                     }
                     StepsBox.Text = "";
                     ExpectedBox.Text = "";
@@ -241,7 +236,56 @@ namespace BuildConsole
                     SetSeveritySelection("Bug");
                     _stagedScreenshots.Clear();
                     RenderStagedThumbnails();
-                    AutoSaveIndicator.Text = _notesMode == "global" ? "✓ Global Notes" : "✓ Ready";
+                    AutoSaveIndicator.Text = "✓ Ready";
+                }
+                else
+                {
+                    // Restore draft from crash-safe store if present
+                    var draft = VisualTestTrackerDraftStore.GetDraft(baseUrl, pagePath);
+                    if (draft != null)
+                    {
+                        if (_notesMode == "page")
+                        {
+                            NotesBox.Text = draft.Notes;
+                        }
+                        StepsBox.Text = draft.StepsToReproduce;
+                        ExpectedBox.Text = draft.ExpectedBehavior;
+                        ActualBox.Text = draft.ActualBehavior;
+                        TagsBox.Text = draft.Tags;
+                        SetSeveritySelection(draft.Severity);
+                        if (!string.IsNullOrWhiteSpace(draft.StepsToReproduce) ||
+                            !string.IsNullOrWhiteSpace(draft.ExpectedBehavior) ||
+                            !string.IsNullOrWhiteSpace(draft.ActualBehavior))
+                        {
+                            DetailsExpander.IsExpanded = true;
+                        }
+
+                        _stagedScreenshots.Clear();
+                        _stagedScreenshots.AddRange(draft.StagedScreenshots);
+                        RenderStagedThumbnails();
+                        AutoSaveIndicator.Text = _notesMode == "global" ? "✓ Global Notes" : "✓ Draft Restored";
+                    }
+                    else
+                    {
+                        if (_notesMode == "page")
+                        {
+                            NotesBox.Text = _activePage?.Notes ?? "";
+                        }
+                        StepsBox.Text = "";
+                        ExpectedBox.Text = "";
+                        ActualBox.Text = "";
+                        TagsBox.Text = "";
+                        DetailsExpander.IsExpanded = false;
+                        SetSeveritySelection("Bug");
+                        _stagedScreenshots.Clear();
+                        RenderStagedThumbnails();
+                        AutoSaveIndicator.Text = _notesMode == "global" ? "✓ Global Notes" : "✓ Ready";
+                    }
+                }
+
+                if (_activeSession != null)
+                {
+                    GoodCheckBox.IsChecked = _activeSession.IsCleanConfirmed;
                 }
 
                 if (_isPreviewActive)
@@ -281,10 +325,13 @@ namespace BuildConsole
                         NotesBox.Text, StepsBox.Text, ExpectedBox.Text, ActualBox.Text, TagsBox.Text,
                         _selectedSeverity, _stagedScreenshots);
                 }
+
+                VisualTestTrackerSessionStore.PauseSession(_activeSession);
             }
 
             _activeWebView = null;
             _activePage = null;
+            _activeSession = null;
             UpdateSessionIndicator(false);
             SetControlsEnabled(false);
             _apiHelperWindow?.UpdateActivePage(null, "", "");
@@ -325,6 +372,8 @@ namespace BuildConsole
             BtnCaptureWpfWindow.IsEnabled = enabled;
             BtnSaveEntry.IsEnabled = enabled;
             BtnClearDraft.IsEnabled = enabled;
+            BtnNewSession.IsEnabled = enabled;
+            BtnClearSession.IsEnabled = enabled;
         }
 
         // ── Auto-Save & Keystroke Persistence ────────────────────────────────────
@@ -903,12 +952,23 @@ namespace BuildConsole
 
                 TelemetryEventsBadge.Text = $"👣 {counts.Events} events";
                 TelemetryEventsBadge.Foreground = (Brush)FindResource(counts.Events > 0 ? "TextBrush" : "Subtext1Brush");
+
+                if (_activeSession != null)
+                {
+                    _activeSession.TelemetryEventsCount = counts.Events;
+                    VisualTestTrackerSessionStore.UpdateSession(_activeSession);
+                }
             }
             catch { }
         }
 
         private void GoodCheckBox_Changed(object sender, RoutedEventArgs e)
         {
+            if (_activeSession != null)
+            {
+                _activeSession.IsCleanConfirmed = GoodCheckBox.IsChecked == true;
+                VisualTestTrackerSessionStore.UpdateSession(_activeSession);
+            }
             if (_suppressEvents || _store == null || _activePage == null) return;
             _ = SaveCurrentPageCleanStatusAsync();
         }
@@ -1267,6 +1327,12 @@ namespace BuildConsole
                 if (_store != null)
                 {
                     await _store.SaveEntryAsync(entry);
+                }
+
+                if (_activeSession != null)
+                {
+                    _activeSession.BugsLoggedCount++;
+                    VisualTestTrackerSessionStore.UpdateSession(_activeSession);
                 }
 
                 // Clear draft from disk & reset fields
@@ -1988,6 +2054,73 @@ namespace BuildConsole
             dlg.ShowDialog();
         }
 
+        // ── Phase 8: Session Management Handlers ─────────────────────────────────
+
+        private void BtnNewSession_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(_activeBaseUrl))
+            {
+                ShowMessage("Navigate to a watched tab to start a session.", isError: true);
+                return;
+            }
+
+            _activeSession = VisualTestTrackerSessionStore.StartNewSession(_activeBaseUrl, _activePagePath, _activeSession);
+            _sessionStartTime = DateTime.Now;
+
+            if (ChkAutoClear.IsChecked == true)
+            {
+                VisualTestTrackerDraftStore.ClearDraft(_activeBaseUrl, _activePagePath);
+                if (_notesMode == "page")
+                {
+                    NotesBox.Text = "";
+                }
+                StepsBox.Text = "";
+                ExpectedBox.Text = "";
+                ActualBox.Text = "";
+                TagsBox.Text = "";
+                DetailsExpander.IsExpanded = false;
+                _stagedScreenshots.Clear();
+                RenderStagedThumbnails();
+            }
+
+            AutoSaveIndicator.Text = "✓ New Session";
+            ShowMessage("Started fresh test session for this page.", isError: false);
+        }
+
+        private void BtnSessionHistory_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new SessionHistoryDialog
+            {
+                Owner = this
+            };
+            dlg.ShowDialog();
+        }
+
+        private void BtnClearSession_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeSession != null)
+            {
+                _activeSession = VisualTestTrackerSessionStore.StartNewSession(_activeBaseUrl, _activePagePath, _activeSession);
+                _sessionStartTime = DateTime.Now;
+            }
+
+            VisualTestTrackerDraftStore.ClearDraft(_activeBaseUrl, _activePagePath);
+            if (_notesMode == "page")
+            {
+                NotesBox.Text = "";
+            }
+            StepsBox.Text = "";
+            ExpectedBox.Text = "";
+            ActualBox.Text = "";
+            TagsBox.Text = "";
+            DetailsExpander.IsExpanded = false;
+            _stagedScreenshots.Clear();
+            RenderStagedThumbnails();
+
+            AutoSaveIndicator.Text = "Cleared";
+            ShowMessage("Session drafts, attachments, and timer cleared.", isError: false);
+        }
+
         // ── Collapsible / Mini Mode ──────────────────────────────────────────────
 
         private void BtnToggleCollapse_Click(object sender, RoutedEventArgs e)
@@ -2045,8 +2178,15 @@ namespace BuildConsole
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
+            VisualTestTrackerSessionStore.PauseSession(_activeSession);
             _apiHelperWindow?.Close();
             Close();
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            VisualTestTrackerSessionStore.PauseSession(_activeSession);
+            base.OnClosed(e);
         }
 
         private void PersistBounds()

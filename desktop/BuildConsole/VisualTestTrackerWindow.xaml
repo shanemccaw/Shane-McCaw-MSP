@@ -85,7 +85,7 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Top row: Status pulse dot + Page Route + Timer -->
+                    <!-- Top row: Status pulse dot + Page Route + Timer & Session Controls -->
                     <Grid Grid.Row="0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -105,15 +105,43 @@
                                    Foreground="{StaticResource TextBrush}"
                                    VerticalAlignment="Center"/>
 
-                        <TextBlock x:Name="SessionTimerText" Grid.Column="2"
-                                   Text="⏱ 00:00" FontSize="10"
-                                   Foreground="{StaticResource Subtext1Brush}"
-                                   Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="SessionTimerText"
+                                       Text="⏱ 00:00" FontSize="10"
+                                       Foreground="{StaticResource Subtext1Brush}"
+                                       Margin="6,0,8,0" VerticalAlignment="Center"/>
+
+                            <!-- Start New Test Session Button -->
+                            <Button x:Name="BtnNewSession"
+                                    Content="▶ New Session"
+                                    Style="{StaticResource IconButton}"
+                                    FontSize="9" Padding="5,2,5,2" Margin="0,0,3,0"
+                                    Foreground="{StaticResource AccentBrush}"
+                                    ToolTip="Archive current session and start a fresh test session for this page"
+                                    Click="BtnNewSession_Click"/>
+
+                            <!-- Session History Button -->
+                            <Button x:Name="BtnSessionHistory"
+                                    Content="📜 History"
+                                    Style="{StaticResource IconButton}"
+                                    FontSize="9" Padding="5,2,5,2" Margin="0,0,3,0"
+                                    ToolTip="View all past testing sessions, duration, and audit logs"
+                                    Click="BtnSessionHistory_Click"/>
+
+                            <!-- Clear Session Button -->
+                            <Button x:Name="BtnClearSession"
+                                    Content="🧹 Clear"
+                                    Style="{StaticResource IconButton}"
+                                    FontSize="9" Padding="4,2,4,2"
+                                    ToolTip="Clear current session draft fields, staged screenshots, and telemetry"
+                                    Click="BtnClearSession_Click"/>
+                        </StackPanel>
                     </Grid>
 
-                    <!-- Sub row: Clean Checkbox + Inline Status Message -->
+                    <!-- Sub row: Clean Checkbox + Auto-Clear Checkbox + Inline Status Message -->
                     <Grid Grid.Row="1" Margin="0,3,0,0">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
@@ -121,12 +149,18 @@
                         <CheckBox x:Name="GoodCheckBox" Grid.Column="0"
                                   Content="Good (confirmed clean)"
                                   Foreground="{StaticResource TextBrush}"
-                                  FontSize="11"
+                                  FontSize="10" Margin="0,0,10,0"
                                   IsEnabled="False"
                                   Checked="GoodCheckBox_Changed"
                                   Unchecked="GoodCheckBox_Changed"/>
 
-                        <TextBlock x:Name="InlineMessage" Grid.Column="1"
+                        <CheckBox x:Name="ChkAutoClear" Grid.Column="1"
+                                  Content="Auto-clear on new session"
+                                  Foreground="{StaticResource Subtext1Brush}"
+                                  FontSize="10" IsChecked="False"
+                                  ToolTip="When enabled, starting a new session clears drafts automatically"/>
+
+                        <TextBlock x:Name="InlineMessage" Grid.Column="2"
                                    FontSize="10" TextTrimming="CharacterEllipsis"
                                    HorizontalAlignment="Right"
                                    VerticalAlignment="Center"
