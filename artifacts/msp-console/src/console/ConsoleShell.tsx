@@ -23,6 +23,7 @@ import { Ownership } from "./modules/Ownership";
 import { Sales } from "./modules/Sales";
 import { PolicyEngine } from "./modules/PolicyEngine";
 import { AccountSecurity } from "./modules/AccountSecurity";
+import { PlanSelfService } from "./modules/PlanSelfService";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
@@ -328,6 +329,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "policy") {
     return <PolicyEngine />;
+  }
+  if (sel.kind === "msp" && sel.page === "plan") {
+    return <PlanSelfService />;
   }
   if (sel.kind === "page" && (CHANGE_CONTROL_TABS as readonly string[]).includes(sel.page)) {
     // Change Control (#2579) needs the full customer row too — its Register,

@@ -47,6 +47,8 @@ import {
   UserRoundPlus, UserRoundX, UserRoundSearch, Unplug, HardHat, CircleSlash,
   // Sales (#2643) — Sparkles already imported above (Executive View)
   Send, FilePen, Trash2,
+  // Plan Self-Service (#3796)
+  CreditCard,
   type LucideIcon,
 } from "lucide-react";
 
@@ -206,6 +208,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   send: Send,
   "file-pen": FilePen,
   "trash-2": Trash2,
+  // Plan Self-Service (#3796)
+  "credit-card": CreditCard,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

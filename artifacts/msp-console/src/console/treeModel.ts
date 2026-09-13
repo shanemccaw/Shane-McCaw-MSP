@@ -391,6 +391,13 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "Password reset, temporary password, MFA and session actions against a real account — every one audited, and every one held to a real server-side role ceiling.",
       };
     }
+    if (sel.page === "plan") {
+      return {
+        eyebrow: "PLATFORM SUBSCRIPTION — SELF-SERVICE",
+        title: "Your plan",
+        note: "The MSP's own plan and payment method.",
+      };
+    }
     return { eyebrow: "OPERATIONS · MSP-WIDE", title: mp?.label ?? "", note: "" };
   }
   const c = find(sel.tenant);
