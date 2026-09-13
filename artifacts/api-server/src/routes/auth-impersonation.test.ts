@@ -50,7 +50,7 @@ function makeMockDb() {
       // with `.returning()` / `.onConflictDoUpdate().returning()` — both real
       // shapes exercised transitively via session-tracking.ts / exception-tracker.ts.
       values: (_vals: unknown) => {
-        const result = Promise.resolve([]) as Promise<unknown[]> & {
+        const result = Promise.resolve([] as unknown[]) as Promise<unknown[]> & {
           returning: (cols?: unknown) => Promise<unknown[]>;
           onConflictDoUpdate: (opts: unknown) => { returning: (cols?: unknown) => Promise<unknown[]> };
         };
