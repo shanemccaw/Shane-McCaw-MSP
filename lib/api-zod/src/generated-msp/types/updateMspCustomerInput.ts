@@ -5,13 +5,15 @@
  * MSP Portal API specification — covers authentication, MSP CRUD, customer management, and portal-facing endpoints.
  * OpenAPI spec version: 0.1.0
  */
-import type { UpdateMspCustomerInputStatus } from './updateMspCustomerInputStatus.ts';
+import type { UpdateMspCustomerInputStatus } from './updateMspCustomerInputStatus';
 
 export interface UpdateMspCustomerInput {
-  /** @minLength 1 */
-  companyName?: string;
-  domain?: string;
-  contactName?: string;
-  contactEmail?: string;
+  /**
+     * @minLength 2
+     * @maxLength 200
+     */
+  name?: string;
+  domain?: string | null;
+  industry?: string | null;
   status?: UpdateMspCustomerInputStatus;
 }

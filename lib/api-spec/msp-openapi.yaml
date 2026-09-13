@@ -177,18 +177,18 @@ paths:
           schema:
             type: integer
             minimum: 1
-            maximum: 200
-            default: 50
+            maximum: 100
+            default: 20
         - in: query
           name: search
           schema:
             type: string
-          description: Filter by company name or domain
+          description: Filter by customer name or domain
         - in: query
           name: status
           schema:
             type: string
-            enum: [active, inactive, all]
+            enum: [active, inactive, onboarding, all]
             default: all
       responses:
         "200":
@@ -546,81 +546,133 @@ components:
 
     MspCustomer:
       type: object
-      required: [id, companyName, status]
+      required: [id, name, status]
       properties:
         id:
           type: integer
         mspId:
           type: integer
-        companyName:
+        name:
+          type: string
+        domain:
+          type: string
+          nullable: true
+        industry:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive, onboarding, archived, suspended, offboarding]
+        tenantId:
+          type: string
+          nullable: true
+        tenantUrl:
+          type: string
+          nullable: true
+        isTestbed:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # The list route's per-row shape (Git #3666/#3746): the same core identity
+    # fields as MspCustomer, plus the real per-tenant directory metrics the MSP
+    # Console's tree needs. Kept as its own schema rather than reusing
+    # MspCustomer because the list SELECT genuinely doesn't project
+    # industry/tenantUrl/isTestbed/updatedAt.
+    MspCustomerListItem:
+      type: object
+      required: [id, name, status, mspId, createdAt, openSignals, criticalSignals]
+      properties:
+        id:
+          type: integer
+        name:
           type: string
         domain:
           type: string
           nullable: true
         status:
           type: string
-          enum: [active, inactive, suspended, offboarding]
-        contactName:
-          type: string
-          nullable: true
-        contactEmail:
-          type: string
-          nullable: true
+          enum: [active, inactive, onboarding, archived]
         tenantId:
           type: string
           nullable: true
+        mspId:
+          type: integer
         createdAt:
           type: string
           format: date-time
+        seats:
+          type: integer
+          nullable: true
+        people:
+          type: integer
+          nullable: true
+        lastScanAt:
+          type: string
+          format: date-time
+          nullable: true
+        openSignals:
+          type: integer
+        criticalSignals:
+          type: integer
+          description: The subset of `openSignals` whose signal definition is severity "critical" (Git #3746).
 
     MspCustomerList:
       type: object
-      required: [customers, total, page, limit]
+      required: [customers, total, page, pageSize]
       properties:
         customers:
           type: array
           items:
-            $ref: "#/components/schemas/MspCustomer"
+            $ref: "#/components/schemas/MspCustomerListItem"
         total:
           type: integer
         page:
           type: integer
-        limit:
+        pageSize:
           type: integer
 
     CreateMspCustomerInput:
       type: object
-      required: [companyName]
+      required: [name, tenantId]
       properties:
-        companyName:
+        name:
           type: string
-          minLength: 1
+          minLength: 2
+          maxLength: 200
         domain:
           type: string
-        contactName:
+        industry:
           type: string
-        contactEmail:
-          type: string
-          format: email
         tenantId:
           type: string
+          minLength: 1
+          maxLength: 36
+        status:
+          type: string
+          enum: [active, onboarding, inactive]
+          default: onboarding
 
     UpdateMspCustomerInput:
       type: object
       properties:
-        companyName:
+        name:
           type: string
-          minLength: 1
+          minLength: 2
+          maxLength: 200
         domain:
           type: string
-        contactName:
+          nullable: true
+        industry:
           type: string
-        contactEmail:
-          type: string
-          format: email
+          nullable: true
         status:
           type: string
-          enum: [active, inactive, suspended]
+          enum: [active, inactive, onboarding, archived]
 
     # ── Signup / Tiers ────────────────────────────────────────────────────────
 

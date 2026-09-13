@@ -134,48 +134,55 @@ export const GetMspDashboardResponse = zod.object({
  */
 export const listMspCustomersQueryPageDefault = 1;
 
-export const listMspCustomersQueryLimitDefault = 50;
-export const listMspCustomersQueryLimitMax = 200;
+export const listMspCustomersQueryLimitDefault = 20;
+export const listMspCustomersQueryLimitMax = 100;
 
 export const listMspCustomersQueryStatusDefault = `all`;
 
 export const ListMspCustomersQueryParams = zod.object({
   "page": zod.coerce.number().min(1).default(listMspCustomersQueryPageDefault),
   "limit": zod.coerce.number().min(1).max(listMspCustomersQueryLimitMax).default(listMspCustomersQueryLimitDefault),
-  "search": zod.coerce.string().optional().describe('Filter by company name or domain'),
-  "status": zod.enum(['active', 'inactive', 'all']).default(listMspCustomersQueryStatusDefault)
+  "search": zod.coerce.string().optional().describe('Filter by customer name or domain'),
+  "status": zod.enum(['active', 'inactive', 'onboarding', 'all']).default(listMspCustomersQueryStatusDefault)
 })
 
 export const ListMspCustomersResponse = zod.object({
   "customers": zod.array(zod.object({
   "id": zod.number(),
-  "mspId": zod.number().optional(),
-  "companyName": zod.string(),
+  "name": zod.string(),
   "domain": zod.string().nullish(),
-  "status": zod.enum(['active', 'inactive', 'suspended', 'offboarding']),
-  "contactName": zod.string().nullish(),
-  "contactEmail": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive', 'onboarding', 'archived']),
   "tenantId": zod.string().nullish(),
-  "createdAt": zod.coerce.date().optional()
+  "mspId": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "seats": zod.number().nullish(),
+  "people": zod.number().nullish(),
+  "lastScanAt": zod.coerce.date().nullish(),
+  "openSignals": zod.number(),
+  "criticalSignals": zod.number().describe('The subset of `openSignals` whose signal definition is severity \"critical\" (Git')
 })),
   "total": zod.number(),
   "page": zod.number(),
-  "limit": zod.number()
+  "pageSize": zod.number()
 })
 
 
 /**
  * @summary Create a new customer under the authenticated MSP
  */
+export const createMspCustomerBodyNameMin = 2;
+export const createMspCustomerBodyNameMax = 200;
 
+export const createMspCustomerBodyTenantIdMax = 36;
 
+export const createMspCustomerBodyStatusDefault = `onboarding`;
 
 export const CreateMspCustomerBody = zod.object({
-  "companyName": zod.string().min(1),
+  "name": zod.string().min(createMspCustomerBodyNameMin).max(createMspCustomerBodyNameMax),
   "domain": zod.string().optional(),
-  "contactName": zod.string().optional(),
-  "contactEmail": zod.string().email().optional(),
-  "tenantId": zod.string().optional()
+  "industry": zod.string().optional(),
+  "tenantId": zod.string().min(1).max(createMspCustomerBodyTenantIdMax),
+  "status": zod.enum(['active', 'onboarding', 'inactive']).default(createMspCustomerBodyStatusDefault)
 })
 
 
@@ -189,13 +196,15 @@ export const GetMspCustomerParams = zod.object({
 export const GetMspCustomerResponse = zod.object({
   "id": zod.number(),
   "mspId": zod.number().optional(),
-  "companyName": zod.string(),
+  "name": zod.string(),
   "domain": zod.string().nullish(),
-  "status": zod.enum(['active', 'inactive', 'suspended', 'offboarding']),
-  "contactName": zod.string().nullish(),
-  "contactEmail": zod.string().nullish(),
+  "industry": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive', 'onboarding', 'archived', 'suspended', 'offboarding']),
   "tenantId": zod.string().nullish(),
-  "createdAt": zod.coerce.date().optional()
+  "tenantUrl": zod.string().nullish(),
+  "isTestbed": zod.boolean().optional(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
 })
 
 
@@ -206,27 +215,30 @@ export const UpdateMspCustomerParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const updateMspCustomerBodyNameMin = 2;
+export const updateMspCustomerBodyNameMax = 200;
 
 
 
 export const UpdateMspCustomerBody = zod.object({
-  "companyName": zod.string().min(1).optional(),
-  "domain": zod.string().optional(),
-  "contactName": zod.string().optional(),
-  "contactEmail": zod.string().email().optional(),
-  "status": zod.enum(['active', 'inactive', 'suspended']).optional()
+  "name": zod.string().min(updateMspCustomerBodyNameMin).max(updateMspCustomerBodyNameMax).optional(),
+  "domain": zod.string().nullish(),
+  "industry": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive', 'onboarding', 'archived']).optional()
 })
 
 export const UpdateMspCustomerResponse = zod.object({
   "id": zod.number(),
   "mspId": zod.number().optional(),
-  "companyName": zod.string(),
+  "name": zod.string(),
   "domain": zod.string().nullish(),
-  "status": zod.enum(['active', 'inactive', 'suspended', 'offboarding']),
-  "contactName": zod.string().nullish(),
-  "contactEmail": zod.string().nullish(),
+  "industry": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive', 'onboarding', 'archived', 'suspended', 'offboarding']),
   "tenantId": zod.string().nullish(),
-  "createdAt": zod.coerce.date().optional()
+  "tenantUrl": zod.string().nullish(),
+  "isTestbed": zod.boolean().optional(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
 })
 
 

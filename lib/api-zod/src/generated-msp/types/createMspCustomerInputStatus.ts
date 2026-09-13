@@ -6,14 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type MspCustomerStatus = typeof MspCustomerStatus[keyof typeof MspCustomerStatus];
+export type CreateMspCustomerInputStatus = typeof CreateMspCustomerInputStatus[keyof typeof CreateMspCustomerInputStatus];
 
 
-export const MspCustomerStatus = {
+export const CreateMspCustomerInputStatus = {
   active: 'active',
-  inactive: 'inactive',
   onboarding: 'onboarding',
-  archived: 'archived',
-  suspended: 'suspended',
-  offboarding: 'offboarding',
+  inactive: 'inactive',
 } as const;

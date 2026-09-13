@@ -12,5 +12,6 @@ export type UpdateMspCustomerInputStatus = typeof UpdateMspCustomerInputStatus[k
 export const UpdateMspCustomerInputStatus = {
   active: 'active',
   inactive: 'inactive',
-  suspended: 'suspended',
+  onboarding: 'onboarding',
+  archived: 'archived',
 } as const;

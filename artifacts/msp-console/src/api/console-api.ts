@@ -13,6 +13,7 @@
  */
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { useListMspCustomers } from "@workspace/api-client-react";
 
 async function getJson<T>(
   fetchWithAuth: (i: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
@@ -54,17 +55,31 @@ export interface DirectoryResponse {
   pageSize: number;
 }
 
+// Git #3745 — this used to hand-roll its own fetch against `/api/msp/customers`
+// with a locally-declared response type, bypassing the generated MSP api-client
+// entirely (the generated `MspCustomer`/`MspCustomerList` types were stale —
+// `companyName`/`limit` vs. the route's real `name`/`pageSize`, and missing the
+// #3666/#3746 directory metrics fields outright — so there was nothing usable to
+// bypass around). Now that the openapi spec and generated types are regenerated
+// to match the real route response, this reads through `useListMspCustomers`
+// like any other MSP-scoped query. `DirectoryCustomer`/`DirectoryResponse` stay
+// as the console's own type aliases (structurally identical to the generated
+// `MspCustomerListItem`/`MspCustomerList`) since they're threaded through most
+// of the console's modules by name.
 export function useDirectory(): UseQueryResult<DirectoryResponse, Error> {
-  const { fetchWithAuth, isLoading, accessToken } = useAuth();
-  return useQuery({
-    queryKey: ["msp", "customers", "directory"],
-    // A high limit so the whole book renders in the tree (the console is a
-    // desktop operator tool; the endpoint caps at 100 per page).
-    queryFn: ({ signal }) =>
-      getJson<DirectoryResponse>(fetchWithAuth, "/api/msp/customers?limit=100", signal),
-    enabled: !isLoading && !!accessToken,
-    staleTime: 30_000,
-  });
+  const { isLoading, accessToken } = useAuth();
+  // A high limit so the whole book renders in the tree (the console is a
+  // desktop operator tool; the endpoint caps at 100 per page).
+  return useListMspCustomers(
+    { limit: 100 },
+    {
+      query: {
+        queryKey: ["msp", "customers", "directory"],
+        enabled: !isLoading && !!accessToken,
+        staleTime: 30_000,
+      },
+    },
+  ) as UseQueryResult<DirectoryResponse, Error>;
 }
 
 // ── Break-glass pending (header pill) ────────────────────────────────────────

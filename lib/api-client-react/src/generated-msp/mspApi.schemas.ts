@@ -109,6 +109,8 @@ export type MspCustomerStatus = typeof MspCustomerStatus[keyof typeof MspCustome
 export const MspCustomerStatus = {
   active: 'active',
   inactive: 'inactive',
+  onboarding: 'onboarding',
+  archived: 'archived',
   suspended: 'suspended',
   offboarding: 'offboarding',
 } as const;
@@ -116,29 +118,73 @@ export const MspCustomerStatus = {
 export interface MspCustomer {
   id: number;
   mspId?: number;
-  companyName: string;
+  name: string;
   domain?: string | null;
+  industry?: string | null;
   status: MspCustomerStatus;
-  contactName?: string | null;
-  contactEmail?: string | null;
   tenantId?: string | null;
+  tenantUrl?: string | null;
+  isTestbed?: boolean;
   createdAt?: string;
+  updatedAt?: string;
+}
+
+export type MspCustomerListItemStatus = typeof MspCustomerListItemStatus[keyof typeof MspCustomerListItemStatus];
+
+
+export const MspCustomerListItemStatus = {
+  active: 'active',
+  inactive: 'inactive',
+  onboarding: 'onboarding',
+  archived: 'archived',
+} as const;
+
+export interface MspCustomerListItem {
+  id: number;
+  name: string;
+  domain?: string | null;
+  status: MspCustomerListItemStatus;
+  tenantId?: string | null;
+  mspId: number;
+  createdAt: string;
+  seats?: number | null;
+  people?: number | null;
+  lastScanAt?: string | null;
+  openSignals: number;
+  /** The subset of `openSignals` whose signal definition is severity "critical" (Git */
+  criticalSignals: number;
 }
 
 export interface MspCustomerList {
-  customers: MspCustomer[];
+  customers: MspCustomerListItem[];
   total: number;
   page: number;
-  limit: number;
+  pageSize: number;
 }
 
+export type CreateMspCustomerInputStatus = typeof CreateMspCustomerInputStatus[keyof typeof CreateMspCustomerInputStatus];
+
+
+export const CreateMspCustomerInputStatus = {
+  active: 'active',
+  onboarding: 'onboarding',
+  inactive: 'inactive',
+} as const;
+
 export interface CreateMspCustomerInput {
-  /** @minLength 1 */
-  companyName: string;
+  /**
+     * @minLength 2
+     * @maxLength 200
+     */
+  name: string;
   domain?: string;
-  contactName?: string;
-  contactEmail?: string;
-  tenantId?: string;
+  industry?: string;
+  /**
+     * @minLength 1
+     * @maxLength 36
+     */
+  tenantId: string;
+  status?: CreateMspCustomerInputStatus;
 }
 
 export type UpdateMspCustomerInputStatus = typeof UpdateMspCustomerInputStatus[keyof typeof UpdateMspCustomerInputStatus];
@@ -147,15 +193,18 @@ export type UpdateMspCustomerInputStatus = typeof UpdateMspCustomerInputStatus[k
 export const UpdateMspCustomerInputStatus = {
   active: 'active',
   inactive: 'inactive',
-  suspended: 'suspended',
+  onboarding: 'onboarding',
+  archived: 'archived',
 } as const;
 
 export interface UpdateMspCustomerInput {
-  /** @minLength 1 */
-  companyName?: string;
-  domain?: string;
-  contactName?: string;
-  contactEmail?: string;
+  /**
+     * @minLength 2
+     * @maxLength 200
+     */
+  name?: string;
+  domain?: string | null;
+  industry?: string | null;
   status?: UpdateMspCustomerInputStatus;
 }
 
@@ -233,11 +282,11 @@ export type ListMspCustomersParams = {
 page?: number;
 /**
  * @minimum 1
- * @maximum 200
+ * @maximum 100
  */
 limit?: number;
 /**
- * Filter by company name or domain
+ * Filter by customer name or domain
  */
 search?: string;
 status?: ListMspCustomersStatus;
@@ -249,6 +298,7 @@ export type ListMspCustomersStatus = typeof ListMspCustomersStatus[keyof typeof 
 export const ListMspCustomersStatus = {
   active: 'active',
   inactive: 'inactive',
+  onboarding: 'onboarding',
   all: 'all',
 } as const;
 

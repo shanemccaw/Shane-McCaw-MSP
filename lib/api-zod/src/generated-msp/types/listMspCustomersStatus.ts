@@ -12,5 +12,6 @@ export type ListMspCustomersStatus = typeof ListMspCustomersStatus[keyof typeof 
 export const ListMspCustomersStatus = {
   active: 'active',
   inactive: 'inactive',
+  onboarding: 'onboarding',
   all: 'all',
 } as const;
