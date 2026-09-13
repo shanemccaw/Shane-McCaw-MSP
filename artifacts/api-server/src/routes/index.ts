@@ -175,6 +175,7 @@ import portalAccountSecurityGraphRouter from "./portal-account-security-graph.ts
 import portalChangeControlRouter from "./portal-change-control.ts";
 import portalChangeCatalogRouter from "./portal-change-catalog.ts";
 import portalMessageCenterRouter from "./portal-message-center.ts";
+import portalStatusReportsRouter from "./portal-status-reports.ts";
 import portalRiskRegisterRouter from "./portal-risk-register.ts";
 import portalPoamsRouter from "./portal-poams.ts";
 import portalActiveDirectoryRouter from "./portal-active-directory.ts";
@@ -501,6 +502,7 @@ router.use(portalAccountSecurityGraphRouter);
 router.use(portalChangeControlRouter);
 router.use(portalChangeCatalogRouter);
 router.use(portalMessageCenterRouter);
+router.use(portalStatusReportsRouter);
 router.use(portalRiskRegisterRouter);
 router.use(portalPoamsRouter);
 router.use(portalActiveDirectoryRouter);

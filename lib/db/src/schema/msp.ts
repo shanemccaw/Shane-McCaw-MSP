@@ -9570,6 +9570,32 @@ export type MspStatusReport = typeof mspStatusReportsTable.$inferSelect;
 export type InsertMspStatusReport = typeof mspStatusReportsTable.$inferInsert;
 export type InsertPolicyDecision = typeof policyDecisionsTable.$inferInsert;
 
+// ── Status report comment threads (Git #3887, phase 1 of 4) ────────────────
+//
+// A real Q&A thread on a published msp_status_reports row — either side can
+// post, so `authorType` records which side actually wrote it rather than
+// leaving the reader to infer it from `authorUserId`'s own role (which can
+// change over time; the comment's own authorType never should). No FK from
+// `authorUserId` beyond `usersTable` — a real user id on either side of the
+// tenant boundary, same as `mspStatusReportsTable.authoredByUserId`.
+export const STATUS_REPORT_COMMENT_AUTHOR_TYPES = ["customer", "msp"] as const;
+export type StatusReportCommentAuthorType = (typeof STATUS_REPORT_COMMENT_AUTHOR_TYPES)[number];
+
+export const mspStatusReportCommentsTable = pgTable("msp_status_report_comments", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").notNull().references(() => mspStatusReportsTable.id, { onDelete: "cascade" }),
+  authorType: text("author_type", { enum: STATUS_REPORT_COMMENT_AUTHOR_TYPES }).notNull(),
+  authorUserId: integer("author_user_id").notNull().references(() => usersTable.id),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_status_report_comments_report_id_idx").on(t.reportId),
+]);
+
+export const insertMspStatusReportCommentSchema = createInsertSchema(mspStatusReportCommentsTable).omit({ id: true, createdAt: true });
+export type MspStatusReportComment = typeof mspStatusReportCommentsTable.$inferSelect;
+export type InsertMspStatusReportComment = typeof mspStatusReportCommentsTable.$inferInsert;
+
 // ── Simple Kanban — Phase 1 only (Git #3773, Feature roadmap #3768) ───────────
 /**
  * Deliberately narrow per #3768's phased plan: plain buckets (columns) and
