@@ -11,13 +11,17 @@
  * assertCustomerAccess so a staff member can never reach a customer outside
  * their own MSP, or outside their per-staff tenant scope.
  *
- * Entitlement model (two independent axes, both must clear for "included"):
+ * Entitlement model (independent axes, all must clear for "included"):
  *   - MSP-side: services.type_attributes.tierCapabilities, via
  *     launch_control_safe_write / launch_control_gated_write (msp-entitlement.ts).
  *   - Customer-side: the customer's purchased Monitoring tier (services.tier,
  *     resolved via tenants -> users -> client_services -> services —
  *     NOT the MSP sales-bundle path, which can't distinguish Enhanced from
  *     Premium) against a catalog action's min_bundled_tier.
+ *   - Tenant-side (Git #3947): the customer's real M365 tenant actually
+ *     holding one of the catalog row's required_license_skus, if any are
+ *     set — independent of both axes above, since this is a genuine
+ *     Microsoft licensing fact, not a platform entitlement.
  * write_action_catalog.required_capability_key is intentionally never read —
  * no add-on/capability-grant mechanism exists yet (see task history).
  *
@@ -31,6 +35,16 @@
  * `write_action` cr_execution immediately after — no separate Console
  * attestation call, and no more `human-action` calls 404ing against a
  * changeRequestId that was never created.
+ *
+ * License gate (Git #3947, proactive counterpart to #3937's reactive fix):
+ * a catalog row can carry `required_license_skus` (nullable jsonb array of
+ * Graph skuPartNumber values, ANY ONE of which satisfies it). Both routes
+ * re-check the customer's tenant against a live `/subscribedSkus` read
+ * (license-gate.ts) — GET reflects it as availability `"license_required"`
+ * (a real 4th state, not just the 3 above) with a `licenseRequirement`
+ * reason on each action; POST re-validates it before ever raising a Change
+ * Request or attempting the write, returning the same `errorType:
+ * "license_gap"` shape #3937 already gave the reactive Graph-write failure.
  *
  * Routes:
  *   GET  /api/msp/:mspId/launch-control/actions?customerId=:customerId
@@ -59,6 +73,11 @@ import {
   raiseChangeRequestForLaunchControlExecution,
   recordLaunchControlExecutionOutcome,
 } from "../lib/launch-control-change-request.ts";
+import {
+  getSubscribedSkuPartNumbersForTenant,
+  tenantHasRequiredLicense,
+  describeRequiredLicense,
+} from "../lib/license-gate.ts";
 
 const log = logger.child({ channel: "engine.launch-control" });
 
@@ -113,18 +132,28 @@ async function resolveCustomerMonitoringTier(customerId: number): Promise<string
   return row?.tier ?? null;
 }
 
-type Availability = "included" | "billable_upsell" | "a_la_carte";
+type Availability = "included" | "billable_upsell" | "a_la_carte" | "license_required";
 
 /**
  * The single source of truth for whether a write_action_catalog row is
  * usable by this MSP for this customer right now. Used by both the GET
  * listing (informational) and POST execute (the actual re-validation gate —
  * never trusts a client-supplied availability label).
+ *
+ * Git #3947 — `hasRequiredLicense` is the real, live-checked answer to
+ * "does the customer's tenant actually hold one of this row's
+ * required_license_skus" (see license-gate.ts). It is deliberately the LAST
+ * gate, not the first: an MSP/customer that isn't even entitled to the
+ * action yet (a_la_carte/billable_upsell) needs to clear that first — a
+ * missing M365 license on top of a missing entitlement is still just "not
+ * available," not a distinct state worth surfacing before entitlement is
+ * even resolved.
  */
 function computeAvailability(
   row: Pick<WriteActionCatalog, "safeOrGated" | "minBundledTier">,
   tier: Awaited<ReturnType<typeof loadTier>>,
   customerTierRank: number | null,
+  hasRequiredLicense: boolean,
 ): Availability {
   // safeOrGated is null for the catalog's `blocked_no_workaround` rows (no
   // safe/gated classification exists for an action with no real write path).
@@ -136,9 +165,17 @@ function computeAvailability(
   if (!tierAllowsFeature(tier, capabilityKey)) return "a_la_carte";
 
   const requiredRank = resolveTierRank(row.minBundledTier);
-  if (requiredRank === null) return "included";
-  if (customerTierRank !== null && customerTierRank >= requiredRank) return "included";
-  return "billable_upsell";
+  const entitled = requiredRank === null || (customerTierRank !== null && customerTierRank >= requiredRank);
+  if (!entitled) return "billable_upsell";
+
+  // Entitlement alone doesn't mean the Graph write can succeed — a tenant
+  // genuinely missing the M365 license this action requires (e.g. Entra ID
+  // P1/P2 for Conditional Access, #3937) fails the write regardless of
+  // MSP-side plan/tier. Never trust a client-supplied license state either;
+  // this is recomputed here from a live read the same as everything else in
+  // this function.
+  if (!hasRequiredLicense) return "license_required";
+  return "included";
 }
 
 // ── GET /msp/:mspId/launch-control/actions ────────────────────────────────────
@@ -160,7 +197,7 @@ router.get(
         return;
       }
 
-      const [tier, customerTier, catalog, templates] = await Promise.all([
+      const [tier, customerTier, catalog, templates, customerTenant] = await Promise.all([
         loadTier(mspId),
         resolveCustomerMonitoringTier(customerId),
         db.select().from(writeActionCatalogTable).orderBy(asc(writeActionCatalogTable.sortOrder)),
@@ -170,6 +207,12 @@ router.get(
             requiredVariables: baselineActionTemplatesTable.requiredVariables,
           })
           .from(baselineActionTemplatesTable),
+        db
+          .select({ tenantId: tenantsTable.tenantId })
+          .from(tenantsTable)
+          .where(and(eq(tenantsTable.id, customerId), eq(tenantsTable.mspId, mspId)))
+          .limit(1)
+          .then((rows) => rows[0]),
       ]);
       const customerTierRank = resolveTierRank(customerTier);
       // Keyed off write_action_catalog.template_id, not the catalog row's own
@@ -177,11 +220,27 @@ router.get(
       // wired to a real baseline_action_templates row.
       const requiredVariablesByTemplateId = new Map(templates.map((t) => [t.templateId, t.requiredVariables]));
 
-      const actions = catalog.map((row) => ({
-        ...row,
-        availability: computeAvailability(row, tier, customerTierRank),
-        requiredVariables: row.templateId ? (requiredVariablesByTemplateId.get(row.templateId) ?? []) : [],
-      }));
+      // Git #3947 — one live /subscribedSkus read per listing render (cached
+      // ~60s per tenant in license-gate.ts), not one per catalog row — the
+      // dispatch note's explicit "don't hammer Graph per action-picker
+      // render." No connected tenant means no license can ever be confirmed
+      // — fails closed (any row with a requirement shows license_required).
+      const tenantSkus = customerTenant?.tenantId
+        ? await getSubscribedSkuPartNumbersForTenant(customerTenant.tenantId)
+        : { skuPartNumbers: new Set<string>(), error: "Selected customer has no connected tenant" };
+
+      const actions = catalog.map((row) => {
+        const requiredLicenseSkus = (row.requiredLicenseSkus ?? []) as string[];
+        const hasRequiredLicense = tenantHasRequiredLicense(requiredLicenseSkus, tenantSkus.skuPartNumbers);
+        return {
+          ...row,
+          availability: computeAvailability(row, tier, customerTierRank, hasRequiredLicense),
+          licenseRequirement: requiredLicenseSkus.length > 0
+            ? { skus: requiredLicenseSkus, satisfied: hasRequiredLicense, description: describeRequiredLicense(requiredLicenseSkus) }
+            : null,
+          requiredVariables: row.templateId ? (requiredVariablesByTemplateId.get(row.templateId) ?? []) : [],
+        };
+      });
 
       res.json({ actions, customerTier });
     } catch (err) {
@@ -244,22 +303,17 @@ router.post(
       }
       const templateId = catalogRow.templateId;
 
-      const [tier, customerTier] = await Promise.all([
-        loadTier(mspId),
-        resolveCustomerMonitoringTier(customerId),
-      ]);
-      const availability = computeAvailability(catalogRow, tier, resolveTierRank(customerTier));
-      if (availability !== "included") {
-        res.status(402).json({ error: "This action is not included in your current plan for this customer", availability });
-        return;
-      }
-
       // Explicit column list (never a bare .select() — tenants carries the
       // consent jsonb). Scoped by mspId as well as id: assertCustomerAccess
       // above already fenced cross-MSP access, but this is the row whose
       // isTestbed flag authorizes a REAL Graph write against a live tenant, so
       // it is re-scoped to the caller's own MSP at the point of read rather
       // than trusting an earlier check.
+      //
+      // Git #3947 — moved ahead of the tier/availability check below (was
+      // fetched after it) because computeAvailability now needs the real
+      // tenantId to check the catalog row's required_license_skus live —
+      // license availability can no longer be decided without it.
       const [customer] = await db
         .select({
           id: tenantsTable.id,
@@ -284,6 +338,37 @@ router.post(
       // any path that doesn't set it explicitly fails CLOSED here.
       if (!customer.isTestbed) {
         res.status(403).json({ error: "Launch Control is only available for a customer flagged isTestbed" });
+        return;
+      }
+
+      const [tier, customerTier, tenantSkus] = await Promise.all([
+        loadTier(mspId),
+        resolveCustomerMonitoringTier(customerId),
+        getSubscribedSkuPartNumbersForTenant(customer.tenantId),
+      ]);
+      const requiredLicenseSkus = (catalogRow.requiredLicenseSkus ?? []) as string[];
+      const hasRequiredLicense = tenantHasRequiredLicense(requiredLicenseSkus, tenantSkus.skuPartNumbers);
+      const availability = computeAvailability(catalogRow, tier, resolveTierRank(customerTier), hasRequiredLicense);
+      if (availability === "license_required") {
+        // Git #3947 — proactive gate: block BEFORE raising a real Change
+        // Request or ever attempting the Graph write, unlike #3937's reactive
+        // fallback below (kept as defense-in-depth for a row with no
+        // required_license_skus set, or a license revoked mid-flight between
+        // this check and the write actually firing).
+        const description = describeRequiredLicense(requiredLicenseSkus);
+        log.info(
+          { mspId, catalogActionId, customerId, tenantId: customer.tenantId, requiredLicenseSkus, skuReadError: tenantSkus.error },
+          "msp-launch-control: execute blocked by proactive license precheck",
+        );
+        res.status(409).json({
+          error: `This action requires ${description} on this customer's tenant, which it does not currently have.`,
+          errorType: "license_gap",
+          licenseFeature: description,
+        });
+        return;
+      }
+      if (availability !== "included") {
+        res.status(402).json({ error: "This action is not included in your current plan for this customer", availability });
         return;
       }
 

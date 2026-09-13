@@ -4327,6 +4327,15 @@ export const writeActionCatalogTable = pgTable("write_action_catalog", {
   // Column not independently re-verified against information_schema in this
   // session (no DB access here, same limitation as the rest of this table).
   templateId: text("template_id"),
+  // Git #3947 — extensible license precondition, same "extensible via data
+  // not schema" pattern as requiredCapabilityKey above. NULL = no license
+  // precondition. Non-null = an array of Graph `skuPartNumber` values, ANY
+  // ONE of which satisfies the gate (e.g. Conditional Access rows carry
+  // ['AAD_PREMIUM', 'AAD_PREMIUM_P2'] — either Entra ID P1 or P2 is enough).
+  // Checked live against the customer tenant's real /subscribedSkus before
+  // execute ever reaches the Graph write (msp-launch-control.ts) and folded
+  // into computeAvailability's "license_required" state for the GET listing.
+  requiredLicenseSkus: jsonb("required_license_skus").$type<string[] | null>(),
 }, (t) => [
   index("write_action_catalog_domain_idx").on(t.domain),
 ]);

@@ -399,3 +399,60 @@ Already-named, not re-filed:
   `write_action_catalog` rows for data-quality/completeness — a distinct concern from #2702/#2703
   above (which are about the catalog↔template *link*, not row content), not duplicated by this
   pack's findings.
+
+---
+
+## Addendum — Git #3947 (license gate) / #3937 (its reactive precursor)
+
+**Everything above predates both issues; line numbers in §0/§1/§2 have shifted (the route file
+grew ~50 lines) and are not re-verified here.** This addendum documents only what changed, cited
+fresh, rather than re-auditing the whole pack.
+
+- **`GraphWriteErrorType` (§3 real enum, `workflow-executor.ts:650, 808` at original extraction)
+  is stale as of #3937**: `graphWriteForTenant`'s `GraphWriteResult.errorType`
+  (`artifacts/api-server/src/lib/graph.ts:1012-1026`) is now a real 5-value union —
+  `"insufficient_privilege" | "conflict" | "bad_request" | "unexpected" | "license_gap"` — not the
+  4 listed above. A license-gated Graph write (e.g. a Conditional Access action against a tenant
+  without Entra ID P1/P2) classifies via the same `classifyGraphError` the read path already used,
+  instead of falling through to a generic `insufficient_privilege` passthrough of the raw Graph 403.
+
+- **`Availability` (§2/§3) is now a real 4-state union, not the tri-state documented above**
+  (`msp-launch-control.ts:135`):
+  ```ts
+  type Availability = "included" | "billable_upsell" | "a_la_carte" | "license_required";
+  ```
+  `computeAvailability` (`:152-176`) takes a new 4th parameter, `hasRequiredLicense: boolean` —
+  computed by both routes from a live Graph `/subscribedSkus` read
+  (`artifacts/api-server/src/lib/license-gate.ts`), never from a client-supplied value. It is
+  checked **last**, after MSP-tier and customer-tier entitlement both already resolve to
+  "included" — an MSP/customer not even entitled to an action yet stays `a_la_carte`/
+  `billable_upsell` regardless of licensing. `write_action_catalog.required_license_skus`
+  (nullable `jsonb` array of Graph `skuPartNumber` values, ANY ONE of which satisfies the
+  requirement — same "extensible via data not schema" pattern as `requiredCapabilityKey`) is the
+  new column backing this; migrated in
+  `lib/db/migrations/manual/2026-09-13-write-action-catalog-required-license-skus-3947.sql`, which
+  backfilled all 9 live `domain = 'Conditional Access'` rows to
+  `["AAD_PREMIUM", "AAD_PREMIUM_P2"]`.
+
+- **GET `/actions` (surface A)** now returns a `licenseRequirement` field per action —
+  `{ skus: string[], satisfied: boolean, description: string } | null` — alongside `availability`,
+  so a future UI can render the "License required" reason text (e.g. "Requires Microsoft Entra ID
+  P1 or P2") the way §2's original 3-state design already intended for the other non-`included`
+  states. **This pack's own §0 already noted "No UI consumes any of these three today"** — that
+  remains true; this field is server-response-shape work only, with nothing yet built to render it
+  (confirmed no `artifacts/*` frontend workspace references Launch Control at all, this session).
+
+- **POST `/execute` (surface B)** re-validates the same live license check before ever raising a
+  Change Request or attempting the Graph write (`msp-launch-control.ts` inside the route body,
+  guarded by `availability === "license_required"`) — returning the identical
+  `errorType: "license_gap"` / `licenseFeature` response shape #3937 already gave the *reactive*
+  fallback further down the same route (kept as defense-in-depth for a row with no
+  `required_license_skus` set, or a license revoked mid-flight between the proactive check and the
+  write actually firing).
+
+- **Known gap, not fixed here**: `action.create-ca-mfa-all-users-policy` and
+  `action.create-ca-guest-mfa-policy` are real, active `baseline_action_templates` rows with no
+  `write_action_catalog` row linking to them at all — confirmed live query, this session. There is
+  nothing to backfill `required_license_skus` onto for either until a catalog row exists; adding
+  one is catalog-authoring work, out of this issue's scope. Filed as a finding — see the issue this
+  addendum's own commit references for the number.
