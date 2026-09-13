@@ -35,24 +35,30 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import express from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { db, mspsTable, tenantsTable, mspPoamsTable, recordDeletionsTable } from "@workspace/db";
+import { db, mspsTable, tenantsTable, usersTable, mspPoamsTable, recordDeletionsTable, auditLogsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const JWT_SECRET = "test-msp-retention-queue-poam-producer-live-secret";
 process.env.JWT_SECRET = JWT_SECRET;
 
-function mspAdminToken(mspId: number): string {
+// Git #3841 — these two ids used to be hardcoded synthetic values (1 and 2)
+// with no real `users` row behind them. `createAuditLog`'s FK insert on
+// `actorUserId` then failed silently (swallowed, see lib/audit.ts), so this
+// test's audit-log claim was never actually exercised. Both tokens are now
+// signed from real, inserted `users` rows so the audit write genuinely
+// succeeds end to end.
+function mspAdminToken(mspId: number, userId: number): string {
   return jwt.sign(
-    { id: 1, email: "admin@msp.com", name: "MSP Admin", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId },
+    { id: userId, email: "admin@msp.com", name: "MSP Admin", role: "client", mspRole: LEGACY_ROLE.mspAdmin, mspId },
     JWT_SECRET,
     { expiresIn: "1h" },
   );
 }
 
-function customerToken(customerId: number): string {
+function customerToken(customerId: number, userId: number): string {
   return jwt.sign(
-    { id: 2, email: "customer@contoso.com", role: "client", mspRole: LEGACY_ROLE.customer, customerId },
+    { id: userId, email: "customer@contoso.com", role: "client", mspRole: LEGACY_ROLE.customer, customerId },
     JWT_SECRET,
     { expiresIn: "1h" },
   );
@@ -65,6 +71,10 @@ describe.skipIf(!process.env.DATABASE_URL)("record_deletions gains a real row �
   const tenantMsId = `${suffix}.onmicrosoft.com`;
   let poamId: number;
   let poamCode: string;
+  let mspAdminUserId: number;
+  let customerUserId: number;
+  let mspAdminAuthToken: string;
+  let customerAuthToken: string;
 
   beforeAll(async () => {
     const [msp] = await db
@@ -78,6 +88,30 @@ describe.skipIf(!process.env.DATABASE_URL)("record_deletions gains a real row �
       .values({ mspId, customerName: `Retention Queue Producer Test Customer ${suffix}`, tenantId: tenantMsId })
       .returning({ id: tenantsTable.id });
     customerId = tenant.id;
+
+    const [mspAdminUser] = await db
+      .insert(usersTable)
+      .values({
+        email: `msp-admin-${suffix}@example.com`,
+        role: "client",
+        mspRole: LEGACY_ROLE.mspAdmin,
+        mspId,
+      })
+      .returning({ id: usersTable.id });
+    mspAdminUserId = mspAdminUser.id;
+    mspAdminAuthToken = mspAdminToken(mspId, mspAdminUserId);
+
+    const [customerUser] = await db
+      .insert(usersTable)
+      .values({
+        email: `customer-${suffix}@contoso.com`,
+        role: "client",
+        mspRole: LEGACY_ROLE.customer,
+        tenantId: customerId,
+      })
+      .returning({ id: usersTable.id });
+    customerUserId = customerUser.id;
+    customerAuthToken = customerToken(customerId, customerUserId);
 
     poamCode = `POAM-TEST-${suffix}`;
     const [poam] = await db
@@ -101,8 +135,12 @@ describe.skipIf(!process.env.DATABASE_URL)("record_deletions gains a real row �
   });
 
   afterAll(async () => {
+    await db.delete(auditLogsTable).where(eq(auditLogsTable.actorUserId, customerUserId));
+    await db.delete(auditLogsTable).where(eq(auditLogsTable.actorUserId, mspAdminUserId));
     await db.delete(recordDeletionsTable).where(eq(recordDeletionsTable.recordType, "msp_poams"));
     await db.delete(mspPoamsTable).where(eq(mspPoamsTable.id, poamId));
+    await db.delete(usersTable).where(eq(usersTable.id, customerUserId));
+    await db.delete(usersTable).where(eq(usersTable.id, mspAdminUserId));
     await db.delete(tenantsTable).where(eq(tenantsTable.tenantId, tenantMsId));
     await db.delete(mspsTable).where(eq(mspsTable.id, mspId));
   });
@@ -127,7 +165,7 @@ describe.skipIf(!process.env.DATABASE_URL)("record_deletions gains a real row �
     const mspApp = await mountApp("./msp-poams.ts");
     const deleteRes = await request(mspApp)
       .delete(`/api/msp/poams/${poamCode}`)
-      .set("Authorization", `Bearer ${mspAdminToken(mspId)}`)
+      .set("Authorization", `Bearer ${mspAdminAuthToken}`)
       .send({ reason: "Created against the wrong tenant by mistake." });
 
     expect(deleteRes.status).toBe(200);
@@ -150,24 +188,38 @@ describe.skipIf(!process.env.DATABASE_URL)("record_deletions gains a real row �
     // Soft-deleted rows are excluded from the plain list read by default.
     const listRes = await request(mspApp)
       .get("/api/msp/poams")
-      .set("Authorization", `Bearer ${mspAdminToken(mspId)}`);
+      .set("Authorization", `Bearer ${mspAdminAuthToken}`);
     expect(listRes.body.find((r: { id: number }) => r.id === poamId)).toBeUndefined();
 
     // ── 3. The customer requests acceleration ─────────────────────────────────────
     const portalApp = await mountApp("./portal-poams.ts");
     const accelRes = await request(portalApp)
       .post(`/api/portal/poams/${poamCode}/request-acceleration`)
-      .set("Authorization", `Bearer ${customerToken(customerId)}`)
+      .set("Authorization", `Bearer ${customerAuthToken}`)
       .send({ reasonKind: "no_longer_needed", reason: "We disabled legacy auth a different way already." });
 
     expect(accelRes.status).toBe(200);
     expect(accelRes.body.deletion.accelerationState).toBe("pending");
 
+    // Git #3841 — the actual claim this fix restores: with a real `users` row
+    // behind `customerAuthToken`'s actor id, `createAuditLog`'s FK insert on
+    // `actorUserId` genuinely succeeds instead of silently failing (see
+    // lib/audit.ts's catch-and-log). Assert the real row exists rather than
+    // just trusting the 200 above, which would also pass on a swallowed error.
+    const [accelAuditRow] = await db
+      .select()
+      .from(auditLogsTable)
+      .where(eq(auditLogsTable.actorUserId, customerUserId));
+    expect(accelAuditRow).toBeTruthy();
+    expect(accelAuditRow.actionType).toBe("retention.acceleration_requested");
+    expect(accelAuditRow.entityId).toBe(String(poamId));
+    expect(accelAuditRow.entityType).toBe("msp_poams");
+
     // ── 4. THE ACTUAL #3451 CLAIM, falsified: the operator queue now returns a real row ──
     const queueApp = await mountApp("./msp-retention-queue.ts");
     const queueRes = await request(queueApp)
       .get("/api/msp/retention/queue")
-      .set("Authorization", `Bearer ${mspAdminToken(mspId)}`);
+      .set("Authorization", `Bearer ${mspAdminAuthToken}`);
 
     expect(queueRes.status).toBe(200);
     expect(queueRes.body.total).toBeGreaterThanOrEqual(1);
@@ -180,7 +232,7 @@ describe.skipIf(!process.env.DATABASE_URL)("record_deletions gains a real row �
     // ── 5. The operator approves it — a real purge happens ────────────────────────
     const decideRes = await request(queueApp)
       .post(`/api/msp/retention/queue/${deletionId}/decide`)
-      .set("Authorization", `Bearer ${mspAdminToken(mspId)}`)
+      .set("Authorization", `Bearer ${mspAdminAuthToken}`)
       .send({ approve: true, note: "Confirmed with the customer, safe to purge now." });
 
     expect(decideRes.status).toBe(200);
