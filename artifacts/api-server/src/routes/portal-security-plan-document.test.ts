@@ -6,21 +6,26 @@
  * portal-risk-register.test.ts's own header:
  *
  *   1. THE AUDIT TRAIL IS SERVER-DERIVED. `signatureHash`/`ipAddress` sent in
- *      the body are ignored — `signSecurityPlanVersion` is always called with
- *      values this route computed itself, never the client's.
+ *      the body are ignored — `signSecurityPlanVersionAsCustomer` is always
+ *      called with values this route computed itself, never the client's.
  *   2. A NAME MUST BE TYPED. `fullName` below the 2-character floor is a 400,
  *      never silently accepted as an empty/near-empty signature.
  *   3. ANOTHER TENANT'S VERSION IS A 404, NOT A 409. Scoped lookup returning
  *      null reads as "not found," exactly like a real miss — it never leaks
  *      into a 409 that would confirm the id exists elsewhere.
- *   4. A SUPERSEDED OR ALREADY-SIGNED VERSION CANNOT BE SIGNED AGAIN — 409 in
- *      both cases, checked from the scoped row before ever calling the
- *      underlying signing function.
+ *   4. A SUPERSEDED OR ALREADY-CUSTOMER-SIGNED VERSION CANNOT BE SIGNED
+ *      AGAIN BY THE CUSTOMER — 409 in both cases, checked from the scoped row
+ *      before ever calling the underlying signing function.
  *   5. `GET .../versions/current` returns the current version REGARDLESS of
  *      signed state — this is deliberately NOT the same tri-state
- *      `portal-security-plan.ts`'s `assembledPlan` (signed-only) enforces;
- *      the customer must be able to review an unsigned sealed version before
- *      deciding to sign it.
+ *      `portal-security-plan.ts`'s `assembledPlan` (fully-executed-only)
+ *      enforces; the customer must be able to review a not-yet-fully-executed
+ *      sealed version before deciding to sign it.
+ *   6. DUAL SIGNATURE (#1689/#3793): the customer signing here never blocks
+ *      on, and never satisfies, the MSP's own independent signature — see
+ *      `msp-security-plan.ts`'s `PATCH .../sign`. A version the MSP already
+ *      signed but the customer hasn't is NOT "already signed" from this
+ *      route's point of view.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
@@ -45,7 +50,7 @@ const versioning = vi.hoisted(() => ({
   getCurrentSecurityPlanVersion: vi.fn(),
   getSecurityPlanVersionByUid: vi.fn(),
   listSecurityPlanVersions: vi.fn(),
-  signSecurityPlanVersion: vi.fn(),
+  signSecurityPlanVersionAsCustomer: vi.fn(),
 }));
 vi.mock("../lib/security-plan-versioning.ts", () => versioning);
 
@@ -89,9 +94,10 @@ function sealedVersion(over: Record<string, unknown> = {}) {
     versionNumber: 1,
     content: CONTENT,
     createdBy: { name: "Shane McCaw", upn: "shane@shanemccaw.com", timestamp: "2026-09-05 00:00:00 UTC" },
-    signed: false,
-    signedBy: null,
-    signedAt: null,
+    customerSignedBy: null,
+    customerSignedAt: null,
+    mspSignedBy: null,
+    mspSignedAt: null,
     supersededAt: null,
     createdAt: new Date("2026-09-05T00:00:00Z"),
     ...over,
@@ -129,16 +135,17 @@ describe("GET /api/portal/security-plan/versions/current", () => {
 describe("POST /api/portal/security-plan/versions/:versionUid/sign", () => {
   const path = "/api/portal/security-plan/versions/11111111-1111-1111-1111-111111111111/sign";
 
-  it("signs a current, unsigned version and returns it", async () => {
+  it("signs a current, not-yet-customer-signed version and returns it", async () => {
     versioning.getSecurityPlanVersionByUid.mockResolvedValue(sealedVersion());
-    versioning.signSecurityPlanVersion.mockResolvedValue(sealedVersion({ signed: true, signedAt: new Date("2026-09-05T01:00:00Z"), signedBy: { name: "Jordan Diaz", title: "IT Administrator", email: CUSTOMER.email, signedAt: "2026-09-05 01:00:00 UTC", ipAddress: "203.0.113.5", signatureHash: "deadbeef" } }));
+    versioning.signSecurityPlanVersionAsCustomer.mockResolvedValue(sealedVersion({ customerSignedAt: new Date("2026-09-05T01:00:00Z"), customerSignedBy: { name: "Jordan Diaz", title: "IT Administrator", email: CUSTOMER.email, signedAt: "2026-09-05 01:00:00 UTC", ipAddress: "203.0.113.5", signatureHash: "deadbeef" } }));
 
     const res = await request(makeApp(CUSTOMER)).post(path).send({ fullName: "Jordan Diaz", title: "IT Administrator" });
 
     expect(res.status).toBe(201);
     expect(res.body.version.signed).toBe(true);
-    expect(versioning.signSecurityPlanVersion).toHaveBeenCalledTimes(1);
-    const [mspId, customerId, versionUid, signedBy] = versioning.signSecurityPlanVersion.mock.calls[0];
+    expect(res.body.version.fullyExecuted).toBe(false); // MSP hasn't signed yet
+    expect(versioning.signSecurityPlanVersionAsCustomer).toHaveBeenCalledTimes(1);
+    const [mspId, customerId, versionUid, signedBy] = versioning.signSecurityPlanVersionAsCustomer.mock.calls[0];
     expect([mspId, customerId, versionUid]).toEqual([SCOPE.mspId, SCOPE.customerId, "11111111-1111-1111-1111-111111111111"]);
     expect(signedBy.name).toBe("Jordan Diaz");
     expect(signedBy.title).toBe("IT Administrator");
@@ -146,15 +153,32 @@ describe("POST /api/portal/security-plan/versions/:versionUid/sign", () => {
     expect(signedBy.email).toBe(CUSTOMER.email);
   });
 
+  it("reports fullyExecuted once both the customer and the MSP have signed", async () => {
+    versioning.getSecurityPlanVersionByUid.mockResolvedValue(sealedVersion({ mspSignedAt: new Date("2026-09-04T00:00:00Z"), mspSignedBy: { name: "Shane McCaw", upn: "shane@shanemccaw.com", timestamp: "2026-09-04 00:00:00 UTC" } }));
+    versioning.signSecurityPlanVersionAsCustomer.mockResolvedValue(
+      sealedVersion({
+        customerSignedAt: new Date("2026-09-05T01:00:00Z"),
+        customerSignedBy: { name: "Jordan Diaz", title: "IT Administrator", email: CUSTOMER.email, signedAt: "2026-09-05 01:00:00 UTC", ipAddress: "203.0.113.5", signatureHash: "deadbeef" },
+        mspSignedAt: new Date("2026-09-04T00:00:00Z"),
+        mspSignedBy: { name: "Shane McCaw", upn: "shane@shanemccaw.com", timestamp: "2026-09-04 00:00:00 UTC" },
+      }),
+    );
+
+    const res = await request(makeApp(CUSTOMER)).post(path).send({ fullName: "Jordan Diaz" });
+    expect(res.status).toBe(201);
+    expect(res.body.version.fullyExecuted).toBe(true);
+    expect(res.body.version.mspSigned).toBe(true);
+  });
+
   it("ignores a client-supplied ipAddress/signatureHash — the audit trail is server-derived", async () => {
     versioning.getSecurityPlanVersionByUid.mockResolvedValue(sealedVersion());
-    versioning.signSecurityPlanVersion.mockResolvedValue(sealedVersion({ signed: true }));
+    versioning.signSecurityPlanVersionAsCustomer.mockResolvedValue(sealedVersion({ customerSignedAt: new Date() }));
 
     await request(makeApp(CUSTOMER))
       .post(path)
       .send({ fullName: "Jordan Diaz", ipAddress: "1.2.3.4", signatureHash: "attacker-chosen" });
 
-    const [, , , signedBy] = versioning.signSecurityPlanVersion.mock.calls[0];
+    const [, , , signedBy] = versioning.signSecurityPlanVersionAsCustomer.mock.calls[0];
     expect(signedBy.ipAddress).not.toBe("1.2.3.4");
     expect(signedBy.signatureHash).not.toBe("attacker-chosen");
   });
@@ -169,26 +193,34 @@ describe("POST /api/portal/security-plan/versions/:versionUid/sign", () => {
     versioning.getSecurityPlanVersionByUid.mockResolvedValue(null);
     const res = await request(makeApp(CUSTOMER)).post(path).send({ fullName: "Jordan Diaz" });
     expect(res.status).toBe(404);
-    expect(versioning.signSecurityPlanVersion).not.toHaveBeenCalled();
+    expect(versioning.signSecurityPlanVersionAsCustomer).not.toHaveBeenCalled();
   });
 
   it("409s a superseded version", async () => {
     versioning.getSecurityPlanVersionByUid.mockResolvedValue(sealedVersion({ supersededAt: new Date("2026-09-04T00:00:00Z") }));
     const res = await request(makeApp(CUSTOMER)).post(path).send({ fullName: "Jordan Diaz" });
     expect(res.status).toBe(409);
-    expect(versioning.signSecurityPlanVersion).not.toHaveBeenCalled();
+    expect(versioning.signSecurityPlanVersionAsCustomer).not.toHaveBeenCalled();
   });
 
-  it("409s an already-signed version", async () => {
-    versioning.getSecurityPlanVersionByUid.mockResolvedValue(sealedVersion({ signed: true, signedAt: new Date() }));
+  it("409s a version this customer has already signed", async () => {
+    versioning.getSecurityPlanVersionByUid.mockResolvedValue(sealedVersion({ customerSignedAt: new Date() }));
     const res = await request(makeApp(CUSTOMER)).post(path).send({ fullName: "Jordan Diaz" });
     expect(res.status).toBe(409);
-    expect(versioning.signSecurityPlanVersion).not.toHaveBeenCalled();
+    expect(versioning.signSecurityPlanVersionAsCustomer).not.toHaveBeenCalled();
   });
 
-  it("409s when the guarded update races and loses (signSecurityPlanVersion returns null)", async () => {
+  it("does NOT treat an MSP-only-signed version as already signed by the customer (#1689 dual signature)", async () => {
+    versioning.getSecurityPlanVersionByUid.mockResolvedValue(sealedVersion({ mspSignedAt: new Date(), mspSignedBy: { name: "Shane McCaw", upn: "shane@shanemccaw.com", timestamp: "2026-09-04 00:00:00 UTC" } }));
+    versioning.signSecurityPlanVersionAsCustomer.mockResolvedValue(sealedVersion({ customerSignedAt: new Date() }));
+    const res = await request(makeApp(CUSTOMER)).post(path).send({ fullName: "Jordan Diaz" });
+    expect(res.status).toBe(201);
+    expect(versioning.signSecurityPlanVersionAsCustomer).toHaveBeenCalledTimes(1);
+  });
+
+  it("409s when the guarded update races and loses (signSecurityPlanVersionAsCustomer returns null)", async () => {
     versioning.getSecurityPlanVersionByUid.mockResolvedValue(sealedVersion());
-    versioning.signSecurityPlanVersion.mockResolvedValue(null);
+    versioning.signSecurityPlanVersionAsCustomer.mockResolvedValue(null);
     const res = await request(makeApp(CUSTOMER)).post(path).send({ fullName: "Jordan Diaz" });
     expect(res.status).toBe(409);
   });

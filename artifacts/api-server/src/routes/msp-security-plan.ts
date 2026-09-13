@@ -18,18 +18,27 @@
  *   POST  /api/msp/security-plan/:customerId/versions              — seal the frozen draft as
  *                                                                     a new version, superseding
  *                                                                     the current one (#1566)
- *   PATCH /api/msp/security-plan/:customerId/versions/:versionUid/sign — sign a version as a whole
+ *   PATCH /api/msp/security-plan/:customerId/versions/:versionUid/sign — the MSP signs
+ *                                                                     the current version
+ *                                                                     as its own party
  *
  * MSP-side, matching `msp-rbd-versions.ts` next door — this is the authoring/sealing
- * side. Per #1561 the MSP writes and signs the plan of record FOR a tenant and the
- * customer reads it; the customer-facing read/sign surface is a separate, not-yet-built
- * concern. SCOPE STOP on #1561/#1562/#1566 ends this build at the wire contract — there
- * is no `Design/portal` export and no `artifacts/portal` page to wire it to yet.
+ * side. Per #1561 the MSP writes the plan of record FOR a tenant and the customer reads
+ * it; #1689 (2026-09-12) settled that BOTH the customer and the MSP must sign it —
+ * dual signature, not MSP-only or customer-only. The customer's own signing surface is
+ * `portal-security-plan-document.ts` (#2949); this route's `PATCH .../sign` is the MSP's
+ * own, independent half of that pair — see #3793 for the full history: this route
+ * originally let an MSPAdmin enter a client-collected off-platform signature into the
+ * single slot that then existed, but the dual-signature decision needs each party
+ * signing their OWN slot, so an MSP-entered proxy for the customer's signature is no
+ * longer the shape this endpoint serves (nothing in `artifacts/msp-console` ever called
+ * it — #1689 itself notes no screen for this Feature exists yet — so there was no live
+ * contract to preserve).
  *
  * #1562 settles the "cumulative vs live" tension: a version is assembled, frozen and
  * signed at a point in time; the live view sits ALONGSIDE it, showing drift from the
- * last signed version, rather than the document silently re-rendering out from under a
- * prior signature. `/drift` is that companion view — see `security-plan-drift.ts`.
+ * last FULLY EXECUTED version, rather than the document silently re-rendering out from
+ * under a prior signature. `/drift` is that companion view — see `security-plan-drift.ts`.
  *
  * `:customerId` is a `tenants.id`. `resolveTenantScope` resolves it to the
  * `(mspId, tenantId)` pair the MSP-era source tables need AND carries the mspId used to
@@ -61,7 +70,7 @@ import {
   createSecurityPlanVersion,
   getCurrentSecurityPlanVersion,
   listSecurityPlanVersions,
-  signSecurityPlanVersion,
+  signSecurityPlanVersionAsMsp,
 } from "../lib/security-plan-versioning.ts";
 import {
   freezeSecurityPlanDraft,
@@ -99,9 +108,16 @@ interface WireSecurityPlanVersion {
   readonly scopeStatement: string;
   readonly createdBy: unknown;
   readonly createdAt: string;
-  readonly signed: boolean;
-  readonly signedBy: unknown;
-  readonly signedAt: string | null;
+  /** #1689/#3793: dual signature — the customer and the MSP each have their own,
+   * independent signature slot. Neither signing blocks or satisfies the other. */
+  readonly customerSigned: boolean;
+  readonly customerSignedBy: unknown;
+  readonly customerSignedAt: string | null;
+  readonly mspSigned: boolean;
+  readonly mspSignedBy: unknown;
+  readonly mspSignedAt: string | null;
+  /** True only once BOTH parties have signed — the dual-signature "done" state. */
+  readonly fullyExecuted: boolean;
   /** True for exactly one version per (mspId, customerId): the current one. */
   readonly isCurrent: boolean;
 }
@@ -121,9 +137,13 @@ function toWireVersion(row: MspSecurityPlanVersion): WireSecurityPlanVersion {
     scopeStatement: row.content.footprint.scope.statement,
     createdBy: row.createdBy,
     createdAt: iso(row.createdAt) as string,
-    signed: row.signed,
-    signedBy: row.signedBy,
-    signedAt: iso(row.signedAt),
+    customerSigned: row.customerSignedAt !== null,
+    customerSignedBy: row.customerSignedBy,
+    customerSignedAt: iso(row.customerSignedAt),
+    mspSigned: row.mspSignedAt !== null,
+    mspSignedBy: row.mspSignedBy,
+    mspSignedAt: iso(row.mspSignedAt),
+    fullyExecuted: row.customerSignedAt !== null && row.mspSignedAt !== null,
     isCurrent: row.supersededAt === null,
   };
 }
@@ -455,16 +475,13 @@ router.post(
   },
 );
 
-const signVersionSchema = z.object({
-  name: z.string().min(1),
-  title: z.string(),
-  email: z.string(),
-  ipAddress: z.string(),
-  signatureHash: z.string(),
-});
-
-// PATCH /api/msp/security-plan/:customerId/versions/:versionUid/sign — sign the current
-// version as a whole. Only the current, unsigned version may be signed.
+// PATCH /api/msp/security-plan/:customerId/versions/:versionUid/sign — the MSP signs
+// the current version as ITS OWN, independent party (#1689/#3793: dual signature — this
+// never blocks on, and is never satisfied by, the customer's own signature via
+// `portal-security-plan-document.ts`). Only the current, not-yet-MSP-signed version may
+// be signed this way. Identity is derived server-side from the authenticated MSP
+// session, exactly like `createdBy` on the seal route above — never client-supplied, so
+// there is no request body to validate.
 router.patch(
   "/msp/security-plan/:customerId/versions/:versionUid/sign",
   requireAuth,
@@ -474,30 +491,25 @@ router.patch(
       const tenant = await resolveOwnedTenant(req, res);
       if (!tenant) return;
       const versionUid = String(req.params.versionUid);
-      const parsed = signVersionSchema.safeParse(req.body);
-      if (!parsed.success) {
-        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid signature data", parsed.error.flatten());
-        return;
-      }
 
-      const signedAtIso = new Date().toISOString().substring(0, 19).replace("T", " ") + " UTC";
-      const updated = await signSecurityPlanVersion(tenant.mspId, tenant.customerId, versionUid, {
-        name: parsed.data.name,
-        title: parsed.data.title,
-        email: parsed.data.email,
-        signedAt: signedAtIso,
-        ipAddress: parsed.data.ipAddress,
-        signatureHash: parsed.data.signatureHash,
+      const userEmail = req.user?.email || "unknown@mspplatform.com";
+      const userName = req.user?.name || "MSP Assessor";
+      const nowUtc = new Date().toISOString().substring(0, 19).replace("T", " ") + " UTC";
+
+      const updated = await signSecurityPlanVersionAsMsp(tenant.mspId, tenant.customerId, versionUid, {
+        name: userName,
+        upn: userEmail,
+        timestamp: nowUtc,
       });
 
       if (!updated) {
-        apiError(res, 409, ApiErrorCode.CONFLICT, "Version not found, not current, or already signed");
+        apiError(res, 409, ApiErrorCode.CONFLICT, "Version not found, not current, or already signed by the MSP");
         return;
       }
 
       log.info(
         { mspId: tenant.mspId, customerId: tenant.customerId, versionUid, scopeStatement: updated.content.footprint.scope.statement },
-        "Security Plan version signed",
+        "Security Plan version signed by MSP",
       );
       res.json({ version: toWireVersion(updated) });
     } catch (err: unknown) {

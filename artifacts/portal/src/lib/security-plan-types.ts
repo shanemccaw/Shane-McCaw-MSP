@@ -85,26 +85,46 @@ export interface WireClientApprover {
   readonly signatureHash: string;
 }
 
-/** `GET /api/portal/security-plan` — the plan of record (last SIGNED version only). */
+/** `MspAssessor` (`lib/db/src/schema/msp.ts`) — the MSP's own signature identity,
+ * the same shape a sealed version's `createdBy` already carries. */
+export interface WireMspAssessor {
+  readonly name: string;
+  readonly upn: string;
+  readonly timestamp: string;
+}
+
+/** `GET /api/portal/security-plan` — the plan of record (last FULLY EXECUTED
+ * version only — #1689/#3793: dual signature, both the customer and the MSP). */
 export interface WireAssembledSecurityPlan {
   readonly versionNumber: number;
   readonly content: SecurityPlanContent;
   readonly scopeStatement: string;
+  /** The later of the two signature timestamps below — when this version actually
+   * became fully executed. */
   readonly signedAt: string;
-  readonly signedBy: WireClientApprover;
+  readonly customerSignedAt: string;
+  readonly customerSignedBy: WireClientApprover;
+  readonly mspSignedAt: string;
+  readonly mspSignedBy: WireMspAssessor;
 }
 
 export interface WireSecurityPlanPayload {
   readonly assembledPlan: WireAssembledSecurityPlan | null;
 }
 
-/** `GET /api/portal/security-plan/versions` row shape. */
+/** `GET /api/portal/security-plan/versions` row shape. #1689/#3793: `signed`/
+ * `signedAt` are THIS CUSTOMER's own signature status (drives "have I signed"
+ * UI, e.g. showing/hiding the sign action) — `fullyExecuted` is the dual-
+ * signature "done" state (both this customer and the MSP have signed). */
 export interface WireSecurityPlanVersionSummary {
   readonly versionUid: string;
   readonly versionNumber: number;
   readonly createdAt: string;
   readonly signed: boolean;
   readonly signedAt: string | null;
+  readonly mspSigned: boolean;
+  readonly mspSignedAt: string | null;
+  readonly fullyExecuted: boolean;
   readonly isCurrent: boolean;
 }
 

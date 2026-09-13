@@ -7006,9 +7006,16 @@ export const mspSecurityPlanVersionsTable = pgTable("msp_security_plan_versions"
   content: jsonb("content").$type<SecurityPlanContent>().notNull(),
   /** Who sealed this version on the MSP side. */
   createdBy: jsonb("created_by").$type<MspAssessor>().notNull(),
-  signed: boolean("signed").notNull().default(false),
-  signedBy: jsonb("signed_by").$type<ClientApprover>(),
-  signedAt: timestamp("signed_at", { withTimezone: true }),
+  /** #1689/#3793: dual signature, not single — the customer and the MSP each have
+   * their own independent signature slot. Neither party's signing blocks or
+   * satisfies the other's; "fully executed" (see callers of
+   * `getLastFullyExecutedSecurityPlanVersion`) means BOTH are non-null. Replaces
+   * the original single `signed`/`signedBy`/`signedAt` triple, which had room for
+   * exactly one signer and left the second party with no slot to sign into. */
+  customerSignedBy: jsonb("customer_signed_by").$type<ClientApprover>(),
+  customerSignedAt: timestamp("customer_signed_at", { withTimezone: true }),
+  mspSignedBy: jsonb("msp_signed_by").$type<MspAssessor>(),
+  mspSignedAt: timestamp("msp_signed_at", { withTimezone: true }),
   /** When a newer version replaced this one. NULL = the current version. Never
    * edited or backfilled once superseded — same rule as `msp_rbd_versions`. */
   supersededAt: timestamp("superseded_at", { withTimezone: true }),

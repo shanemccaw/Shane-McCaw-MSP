@@ -22,7 +22,7 @@
  * compared. See the "prose never drifts" case in security-plan-drift.test.ts.
  */
 import type { SecurityPlanAssembledItem, SecurityPlanContent, SecurityPlanDrift, SecurityPlanModuleDrift } from "@workspace/db";
-import { getLastSignedSecurityPlanVersion } from "./security-plan-versioning.ts";
+import { getLastFullyExecutedSecurityPlanVersion } from "./security-plan-versioning.ts";
 import { assembleSecurityPlan, HONEST_SCOPE } from "./security-plan-assembly.ts";
 import type { TenantScope } from "./portal-customer-scope.ts";
 
@@ -132,8 +132,18 @@ export async function getSecurityPlanDrift(
 ): Promise<{ live: SecurityPlanContent; drift: SecurityPlanDrift }> {
   const [live, lastSignedRow] = await Promise.all([
     assembleSecurityPlan(tenant, HONEST_SCOPE),
-    getLastSignedSecurityPlanVersion(tenant.mspId, tenant.customerId),
+    getLastFullyExecutedSecurityPlanVersion(tenant.mspId, tenant.customerId),
   ]);
+
+  // #1689/#3793: "the last signed version" is now the last FULLY EXECUTED one — both
+  // parties signed. Once both signatures are present they necessarily happened at
+  // different moments; `customerSignedAt`/`mspSignedAt` are both non-null here (that's
+  // what `getLastFullyExecutedSecurityPlanVersion` filters on), so the later of the two
+  // is the moment the version actually became executed.
+  const executedAt =
+    lastSignedRow && lastSignedRow.customerSignedAt && lastSignedRow.mspSignedAt
+      ? new Date(Math.max(lastSignedRow.customerSignedAt.getTime(), lastSignedRow.mspSignedAt.getTime())).toISOString()
+      : null;
 
   const drift = computeSecurityPlanDrift(
     live,
@@ -142,7 +152,7 @@ export async function getSecurityPlanDrift(
       ? {
           versionUid: lastSignedRow.versionUid,
           versionNumber: lastSignedRow.versionNumber,
-          signedAt: lastSignedRow.signedAt instanceof Date ? lastSignedRow.signedAt.toISOString() : null,
+          signedAt: executedAt,
         }
       : null,
   );

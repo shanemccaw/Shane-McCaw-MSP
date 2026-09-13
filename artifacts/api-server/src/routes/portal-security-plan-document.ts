@@ -10,39 +10,35 @@
  *   POST /api/portal/security-plan/versions/:versionUid/sign       — the customer
  *        signs that version themselves
  *   GET  /api/portal/security-plan/drift                           — the live view's
- *        drift from the last SIGNED version (#1562), added at #3027 — the same
- *        computation `msp-security-plan.ts`'s own `/drift` route already serves
- *        MSP-side; nothing customer-facing exposed it before this
+ *        drift from the last FULLY EXECUTED version (#1562), added at #3027 — the
+ *        same computation `msp-security-plan.ts`'s own `/drift` route already
+ *        serves MSP-side; nothing customer-facing exposed it before this
  *
  * ── Real, confirmed gap this closes (#2949) ─────────────────────────────────
  * `msp-security-plan.ts`'s own header was explicit: "the customer-facing
- * read/sign surface is a separate, not-yet-built concern." `PATCH
- * /api/msp/security-plan/:customerId/versions/:versionUid/sign` lets an
- * MSPAdmin seal a signature on the customer's behalf (an out-of-band-collected
- * signature entered by MSP staff); nothing let the customer sign it
- * themselves. This module is that missing path — modeled directly on
- * `portal-rbd-document.ts`, since `msp.ts`'s own comment already calls the
- * Security Plan version chain "the RBD pattern one level up."
+ * read/sign surface is a separate, not-yet-built concern." Nothing let the
+ * customer sign a version themselves — only the MSP side could. This module is
+ * that missing path — modeled directly on `portal-rbd-document.ts`, since
+ * `msp.ts`'s own comment already calls the Security Plan version chain "the
+ * RBD pattern one level up."
  *
- * ── Signature record shape: REUSE `ClientApprover`/`signedBy`, no schema change ──
- * `msp_security_plan_versions` already has room for both halves of the real
- * workflow without adding a column: `createdBy`/`createdAt` records the MSP-side
- * SEAL (who finalized this version's content, and when — already real, already
- * built via `POST .../versions`); `signed`/`signedBy`/`signedAt` records the
- * CLIENT'S OWN sign-off, exactly the `ClientApprover` shape `msp_rbd_versions`
- * and `msp_risk_decisions` already use. `signSecurityPlanVersion` is reused
- * unchanged — it already only touches a row that is current and unsigned, so
- * this route and the existing MSP-side `PATCH .../sign` cannot both succeed
- * against the same version (whichever writes first wins; the other gets 409).
- * No new table, no new column — see `security-plan-versioning.ts`.
+ * ── Signature record shape: DUAL, independent per party (#1689/#3793) ──────
+ * `msp_security_plan_versions` carries one slot per party, not one shared slot:
+ * `createdBy`/`createdAt` records the MSP-side SEAL (who finalized this
+ * version's content, and when — already real, already built via
+ * `POST .../versions`); `customerSignedBy`/`customerSignedAt` records THIS
+ * route's sign-off (`ClientApprover`, the same shape `msp_rbd_versions` and
+ * `msp_risk_decisions` already use); `mspSignedBy`/`mspSignedAt` records the
+ * MSP's own, separate signature via `PATCH /api/msp/security-plan/.../sign`
+ * (`msp-security-plan.ts`). Signing here (`signSecurityPlanVersionAsCustomer`)
+ * only ever touches the customer's own slot — it cannot be blocked by, and
+ * never satisfies, the MSP's signature. A version is "fully executed" only
+ * once BOTH slots are filled — see `security-plan-versioning.ts`.
  *
  * ── `ipAddress`/`signatureHash` are SERVER-derived, never client-supplied ───
  * Same guarantee `portal-risk-register.ts`'s `/accept` route and
  * `portal-rbd-document.ts`'s `/sign` route both enforce: a customer-facing
- * signature must not be able to choose its own audit trail. The MSP-side
- * `PATCH .../sign` accepts these in the body because that route is recording
- * an OFF-PLATFORM signature MSP staff collected, not asserting the platform
- * itself observed the act.
+ * signature must not be able to choose its own audit trail.
  *
  * ── Scoping ───────────────────────────────────────────────────────────────
  * `resolveTenantScope(resolveCustomerId(req))`, the same pair every other
@@ -57,9 +53,10 @@
  *
  * ── What this does NOT change ────────────────────────────────────────────
  * `GET /api/portal/security-plan` (`portal-security-plan.ts`) is untouched —
- * it still serves `assembledPlan`, the last SIGNED version, as the plan of
- * record. This module adds the ability to see and act on the CURRENT version
- * before it is signed; it does not change what counts as the plan of record.
+ * it still serves `assembledPlan`, the last FULLY EXECUTED version, as the
+ * plan of record. This module adds the ability to see and act on the CURRENT
+ * version before it is fully executed; it does not change what counts as the
+ * plan of record.
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { createHash } from "node:crypto";
@@ -73,7 +70,7 @@ import {
   getCurrentSecurityPlanVersion,
   getSecurityPlanVersionByUid,
   listSecurityPlanVersions,
-  signSecurityPlanVersion,
+  signSecurityPlanVersionAsCustomer,
 } from "../lib/security-plan-versioning.ts";
 import { getSecurityPlanDrift } from "../lib/security-plan-drift.ts";
 import type { ClientApprover, MspSecurityPlanVersion, SecurityPlanDrift } from "@workspace/db";
@@ -82,12 +79,19 @@ const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
 
+/** #1689/#3793: `signed`/`signedAt` are THIS CUSTOMER's own signature status — the
+ * field that gates "have I already signed" UI (e.g. hiding the sign action once true).
+ * `mspSigned`/`mspSignedAt` are the MSP's own, independent signature.
+ * `fullyExecuted` is the dual-signature "done" state: both are true. */
 interface WireSecurityPlanVersionSummary {
   readonly versionUid: string;
   readonly versionNumber: number;
   readonly createdAt: string;
   readonly signed: boolean;
   readonly signedAt: string | null;
+  readonly mspSigned: boolean;
+  readonly mspSignedAt: string | null;
+  readonly fullyExecuted: boolean;
   readonly isCurrent: boolean;
 }
 
@@ -109,8 +113,11 @@ function toWireSummary(row: MspSecurityPlanVersion): WireSecurityPlanVersionSumm
     versionUid: row.versionUid,
     versionNumber: row.versionNumber,
     createdAt: iso(row.createdAt) as string,
-    signed: row.signed,
-    signedAt: iso(row.signedAt),
+    signed: row.customerSignedAt !== null,
+    signedAt: iso(row.customerSignedAt),
+    mspSigned: row.mspSignedAt !== null,
+    mspSignedAt: iso(row.mspSignedAt),
+    fullyExecuted: row.customerSignedAt !== null && row.mspSignedAt !== null,
     isCurrent: row.supersededAt === null,
   };
 }
@@ -223,8 +230,8 @@ router.post(
         apiError(res, 409, ApiErrorCode.CONFLICT, "This version has been superseded and can no longer be signed");
         return;
       }
-      if (version.signed) {
-        apiError(res, 409, ApiErrorCode.CONFLICT, "This version has already been signed");
+      if (version.customerSignedAt !== null) {
+        apiError(res, 409, ApiErrorCode.CONFLICT, "You have already signed this version");
         return;
       }
 
@@ -249,9 +256,9 @@ router.post(
         signatureHash,
       };
 
-      const updated = await signSecurityPlanVersion(scope.mspId, scope.customerId, versionUid, signedBy);
+      const updated = await signSecurityPlanVersionAsCustomer(scope.mspId, scope.customerId, versionUid, signedBy);
       if (!updated) {
-        apiError(res, 409, ApiErrorCode.CONFLICT, "This version has already been signed or is no longer current");
+        apiError(res, 409, ApiErrorCode.CONFLICT, "You have already signed this version, or it is no longer current");
         return;
       }
 

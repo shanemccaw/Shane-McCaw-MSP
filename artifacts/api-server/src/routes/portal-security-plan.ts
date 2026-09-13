@@ -32,10 +32,13 @@
  * tables either way.
  * `assembledPlan` is the only model this route serves now: the caller's
  * tenant resolved via `resolveTenantScope` (read-only lookup, no MSP session
- * required) and the last **signed** `msp_security_plan_versions` row for it,
- * if any. Only ever the *signed* version — an unsigned draft/current version
- * is an MSP-internal work product (freeze → author prose → seal is an
- * authoring sequence, not a publication one) and is never surfaced here.
+ * required) and the last **fully executed** `msp_security_plan_versions` row
+ * for it, if any. #1689/#3793: signing is dual (customer AND MSP,
+ * independently) — "the plan of record" only means a version where BOTH have
+ * signed, not whichever party got there first. A version signed by only one
+ * party is exactly like an unsigned draft/current version from this route's
+ * point of view: an in-progress work product, not a publication, and is never
+ * surfaced here.
  *
  * ── ADMIN-AUTHORED, READ-ONLY (and why there is no POST) ────────────────────
  * A Security Plan is the plan of record the MSP (Shane's team) writes and signs
@@ -68,7 +71,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope.ts";
 import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
-import { getLastSignedSecurityPlanVersion } from "../lib/security-plan-versioning.ts";
+import { getLastFullyExecutedSecurityPlanVersion } from "../lib/security-plan-versioning.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -76,27 +79,33 @@ const log = logger.child({ channel: "tenant.portal" });
 const router: IRouter = Router();
 
 /**
- * The #1561 assembled/versioned/signed pipeline's last SIGNED version — the
- * only model this route serves (see file header "One model now").
- * `content` is `SecurityPlanContent` (`security-plan-assembly.ts`'s module rows,
- * the #1563 scope and the #1565 filter footprint, plus authored prose) and
- * `signedBy` is `ClientApprover` — both left as `unknown` here exactly as
- * `msp-security-plan.ts`'s own `WireSecurityPlanVersion` does, since neither
- * type is exported for cross-module reuse and this route does not need to
- * inspect their shape, only pass it through.
+ * The #1561 assembled/versioned/signed pipeline's last FULLY EXECUTED version — the
+ * only model this route serves (see file header "One model now"). #1689/#3793: dual
+ * signature, so both parties' own signature records are surfaced — `content` is
+ * `SecurityPlanContent` (`security-plan-assembly.ts`'s module rows, the #1563 scope and
+ * the #1565 filter footprint, plus authored prose), `customerSignedBy` is
+ * `ClientApprover` and `mspSignedBy` is `MspAssessor` — left as `unknown` here exactly
+ * as `msp-security-plan.ts`'s own `WireSecurityPlanVersion` does, since neither type is
+ * exported for cross-module reuse and this route does not need to inspect their shape,
+ * only pass it through.
  */
 export interface WireAssembledSecurityPlan {
   readonly versionNumber: number;
   readonly content: unknown;
   /** Mirrored out of `content.footprint.scope.statement` — see #1564. */
   readonly scopeStatement: string;
+  /** The later of the two signature timestamps — the moment this version actually
+   * became fully executed (both parties had, by then, signed). */
   readonly signedAt: string;
-  readonly signedBy: unknown;
+  readonly customerSignedAt: string;
+  readonly customerSignedBy: unknown;
+  readonly mspSignedAt: string;
+  readonly mspSignedBy: unknown;
 }
 
 export interface WireSecurityPlanPayload {
-  /** The settled #1561 pipeline's last signed version, or null when nothing
-   * has ever been signed for this customer. */
+  /** The settled #1561 pipeline's last fully-executed version, or null when nothing
+   * has ever been fully executed (either signature is still missing) for this customer. */
   readonly assembledPlan: WireAssembledSecurityPlan | null;
 }
 
@@ -108,15 +117,20 @@ async function resolveAssembledPlan(customerId: number): Promise<WireAssembledSe
     const tenantScope = await resolveTenantScope(customerId);
     if (!tenantScope) return null;
 
-    const lastSigned = await getLastSignedSecurityPlanVersion(tenantScope.mspId, customerId);
-    if (!lastSigned || !lastSigned.signedAt) return null;
+    const lastExecuted = await getLastFullyExecutedSecurityPlanVersion(tenantScope.mspId, customerId);
+    if (!lastExecuted || !lastExecuted.customerSignedAt || !lastExecuted.mspSignedAt) return null;
 
+    const customerSignedAt = lastExecuted.customerSignedAt.toISOString();
+    const mspSignedAt = lastExecuted.mspSignedAt.toISOString();
     return {
-      versionNumber: lastSigned.versionNumber,
-      content: lastSigned.content,
-      scopeStatement: lastSigned.content.footprint.scope.statement,
-      signedAt: lastSigned.signedAt.toISOString(),
-      signedBy: lastSigned.signedBy,
+      versionNumber: lastExecuted.versionNumber,
+      content: lastExecuted.content,
+      scopeStatement: lastExecuted.content.footprint.scope.statement,
+      signedAt: lastExecuted.customerSignedAt.getTime() >= lastExecuted.mspSignedAt.getTime() ? customerSignedAt : mspSignedAt,
+      customerSignedAt,
+      customerSignedBy: lastExecuted.customerSignedBy,
+      mspSignedAt,
+      mspSignedBy: lastExecuted.mspSignedBy,
     };
   } catch (err) {
     log.error(
