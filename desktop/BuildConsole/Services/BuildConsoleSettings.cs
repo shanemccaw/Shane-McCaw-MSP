@@ -389,6 +389,18 @@ namespace BuildConsole.Services
         /// <summary>Last height of the Visual Test Tracker window.</summary>
         public double VisualTestTrackerHeight { get; set; } = 560;
 
+        /// <summary>HUD window opacity (0.3 to 1.0). Default 1.0 (fully opaque).</summary>
+        public double VisualTestTrackerOpacity { get; set; } = 1.0;
+
+        /// <summary>Whether the HUD window dims/auto-hides after 3 seconds of inactivity.</summary>
+        public bool VisualTestTrackerAutoHide { get; set; } = false;
+
+        /// <summary>Pinned corner mode: "None", "TopRight", "BottomRight", "BottomLeft", "TopLeft".</summary>
+        public string VisualTestTrackerPinnedCorner { get; set; } = "None";
+
+        /// <summary>Stopwatch timer mode: "Page" (elapsed time on current page) or "Session" (total session time).</summary>
+        public string VisualTestTrackerTimerMode { get; set; } = "Page";
+
         // ── Git #980 — floaty Build Watch panel window bounds ────────────────
         // Shane: "put it off to another monitor and watch as it progresses."
         // Same local %AppData%\BuildConsole\settings.json store / round-trip

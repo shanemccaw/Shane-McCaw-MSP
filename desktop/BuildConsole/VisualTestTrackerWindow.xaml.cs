@@ -68,6 +68,14 @@ namespace BuildConsole
         private DomElementInfo? _inspectedDomElement;
         private bool _isDomInspectorActive;
 
+        // Phase 10: Quality-of-Life state
+        private double _targetOpacity = 1.0;
+        private bool _isAutoHiding;
+        private readonly DispatcherTimer _inactivityTimer;
+        private DateTime _lastUserActivity = DateTime.Now;
+        private string _pinnedCorner = "None"; // "None", "TopRight", "BottomRight", "BottomLeft", "TopLeft"
+        private string _timerMode = "Page"; // "Page" or "Session"
+
         private ApiHelperWindow? _apiHelperWindow;
 
         public VisualTestTrackerWindow()
@@ -91,18 +99,36 @@ namespace BuildConsole
             _sessionTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _sessionTimer.Tick += (s, e) =>
             {
-                if (_activeSession != null)
+                TimeSpan elapsed;
+                if (_timerMode == "Session")
                 {
-                    var elapsed = _activeSession.TotalElapsed;
-                    SessionTimerText.Text = $"⏱ {elapsed:mm\\:ss}";
+                    elapsed = _activeSession != null ? _activeSession.TotalElapsed : (DateTime.Now - _sessionStartTime);
+                    SessionTimerText.Text = $"⏱ {elapsed:mm\\:ss} (Session)";
+                    SessionTimerText.ToolTip = $"Total session testing duration: {elapsed:hh\\:mm\\:ss}\nClick to toggle Page stopwatch";
                 }
                 else
                 {
-                    var elapsed = DateTime.Now - _sessionStartTime;
-                    SessionTimerText.Text = $"⏱ {elapsed:mm\\:ss}";
+                    elapsed = DateTime.Now - _sessionStartTime;
+                    SessionTimerText.Text = $"⏱ {elapsed:mm\\:ss} (Page)";
+                    SessionTimerText.ToolTip = $"Active page testing duration: {elapsed:hh\\:mm\\:ss}\nClick to toggle Session stopwatch";
                 }
             };
             _sessionTimer.Start();
+
+            // Auto-hide inactivity timer (dims HUD to 20% after 3s idle when enabled)
+            _inactivityTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _inactivityTimer.Tick += (s, e) =>
+            {
+                if (ChkAutoHide.IsChecked == true && !IsMouseOver && !_isAutoHiding)
+                {
+                    if ((DateTime.Now - _lastUserActivity).TotalSeconds >= 3)
+                    {
+                        _isAutoHiding = true;
+                        Opacity = 0.20;
+                    }
+                }
+            };
+            _inactivityTimer.Start();
 
             // Poll live telemetry diagnostics (errors, network failures, events) every 2 seconds
             _telemetryPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
@@ -130,7 +156,26 @@ namespace BuildConsole
                 WindowStartupLocation = WindowStartupLocation.CenterScreen;
             }
 
-            Loaded += (s, e) => _loaded = true;
+            // Restore QoL settings
+            _targetOpacity = Math.Clamp(settings.VisualTestTrackerOpacity, 0.3, 1.0);
+            if (_targetOpacity < 0.3) _targetOpacity = 1.0;
+            SliderOpacity.Value = _targetOpacity;
+            TxtOpacityPercent.Text = $"{(int)(_targetOpacity * 100)}%";
+            Opacity = _targetOpacity;
+
+            ChkAutoHide.IsChecked = settings.VisualTestTrackerAutoHide;
+            _timerMode = !string.IsNullOrWhiteSpace(settings.VisualTestTrackerTimerMode) ? settings.VisualTestTrackerTimerMode : "Page";
+            _pinnedCorner = !string.IsNullOrWhiteSpace(settings.VisualTestTrackerPinnedCorner) ? settings.VisualTestTrackerPinnedCorner : "None";
+            UpdatePinButtonDisplay();
+
+            Loaded += (s, e) =>
+            {
+                _loaded = true;
+                if (_pinnedCorner != "None")
+                {
+                    ApplyPinnedCorner(_pinnedCorner);
+                }
+            };
             LocationChanged += (s, e) => PersistBounds();
             SizeChanged += (s, e) =>
             {
@@ -1412,13 +1457,75 @@ namespace BuildConsole
 
         private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            _lastUserActivity = DateTime.Now;
+            if (_isAutoHiding)
+            {
+                _isAutoHiding = false;
+                Opacity = _targetOpacity;
+            }
+
             // Ctrl+Enter commits the bug entry
-            if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control &&
+                (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
             {
                 if (BtnSaveEntry.IsEnabled)
                 {
                     e.Handled = true;
                     BtnSaveEntry_Click(this, new RoutedEventArgs());
+                    return;
+                }
+            }
+
+            // Ctrl+Shift accelerators
+            if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control &&
+                (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            {
+                switch (e.Key)
+                {
+                    case Key.S: // Region screenshot
+                        if (BtnCaptureRegion.IsEnabled)
+                        {
+                            e.Handled = true;
+                            BtnCaptureRegion_Click(BtnCaptureRegion, new RoutedEventArgs());
+                        }
+                        break;
+                    case Key.F: // Full page screenshot
+                        if (BtnCaptureFull.IsEnabled)
+                        {
+                            e.Handled = true;
+                            BtnCaptureFull_Click(BtnCaptureFull, new RoutedEventArgs());
+                        }
+                        break;
+                    case Key.W: // Window HUD screenshot
+                        if (BtnCaptureWpfWindow.IsEnabled)
+                        {
+                            e.Handled = true;
+                            BtnCaptureWpfWindow_Click(BtnCaptureWpfWindow, new RoutedEventArgs());
+                        }
+                        break;
+                    case Key.I: // DOM inspect toggle
+                        if (BtnInspectDom.IsEnabled)
+                        {
+                            e.Handled = true;
+                            BtnInspectDom_Click(BtnInspectDom, new RoutedEventArgs());
+                        }
+                        break;
+                    case Key.C: // Copy console errors
+                        e.Handled = true;
+                        BtnCopyConsoleErrors_Click(BtnCopyConsoleErrors, new RoutedEventArgs());
+                        break;
+                    case Key.U: // Copy active URL
+                        e.Handled = true;
+                        BtnCopyUrl_Click(BtnCopyUrl, new RoutedEventArgs());
+                        break;
+                    case Key.M: // Toggle mini HUD / full mode
+                        e.Handled = true;
+                        BtnToggleCollapse_Click(BtnToggleCollapse, new RoutedEventArgs());
+                        break;
+                    case Key.P: // Cycle Pin Corner
+                        e.Handled = true;
+                        BtnPinCorner_Click(BtnPinCorner, new RoutedEventArgs());
+                        break;
                 }
             }
         }
@@ -2323,9 +2430,9 @@ namespace BuildConsole
             {
                 _expandedHeight = Height;
                 MainWorkspaceGrid.Visibility = Visibility.Collapsed;
-                Height = 110;
+                Height = 115;
                 BtnToggleCollapse.Content = "▼ Full";
-                BtnToggleCollapse.ToolTip = "Expand full workspace";
+                BtnToggleCollapse.ToolTip = "Expand full workspace (Ctrl+Shift+M)";
                 _isCollapsed = true;
             }
             else
@@ -2333,8 +2440,234 @@ namespace BuildConsole
                 MainWorkspaceGrid.Visibility = Visibility.Visible;
                 Height = _expandedHeight > 200 ? _expandedHeight : 720;
                 BtnToggleCollapse.Content = "▲ Mini";
-                BtnToggleCollapse.ToolTip = "Collapse to mini HUD bar";
+                BtnToggleCollapse.ToolTip = "Collapse to mini HUD bar (Ctrl+Shift+M)";
                 _isCollapsed = false;
+            }
+
+            if (_pinnedCorner != "None")
+            {
+                ApplyPinnedCorner(_pinnedCorner);
+            }
+        }
+
+        // ── Phase 10: Quality-of-Life Handlers ───────────────────────────────────
+
+        private void BtnToggleTimerMode_Click(object sender, RoutedEventArgs e)
+        {
+            _timerMode = _timerMode == "Page" ? "Session" : "Page";
+            ShowMessage($"Stopwatch mode set to {_timerMode} time.", isError: false);
+            PersistBounds();
+        }
+
+        private void BtnCopyUrl_Click(object sender, RoutedEventArgs e)
+        {
+            string url = !string.IsNullOrWhiteSpace(_activeBaseUrl) ? $"{_activeBaseUrl}{_activePagePath}" : "";
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                ShowMessage("No active URL to copy.", isError: true);
+                return;
+            }
+
+            try
+            {
+                if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                    !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    url = "https://" + url;
+                }
+                Clipboard.SetText(url);
+                ShowMessage($"Copied URL: {url}", isError: false);
+            }
+            catch (Exception ex)
+            {
+                ShowMessage($"Copy URL failed: {ex.Message}", isError: true);
+            }
+        }
+
+        private async void BtnCopyConsoleErrors_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var snapshot = await VisualTestTrackerTelemetry.CollectSnapshotAsync(_activeWebView);
+                var errorLogs = snapshot.ConsoleLogs?.Where(l =>
+                    l.Level == "error" || l.Level == "exception" || l.Level == "unhandledrejection" || l.Level == "warn").ToList() ?? new List<ConsoleLogItem>();
+
+                if (errorLogs.Count == 0)
+                {
+                    ShowMessage("No console errors or warnings captured.", isError: false);
+                    return;
+                }
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"### Console Diagnostics ({errorLogs.Count} items) — {_activeBaseUrl}{_activePagePath}");
+                sb.AppendLine($"**Captured**: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                sb.AppendLine("```text");
+                foreach (var log in errorLogs)
+                {
+                    string stamp = !string.IsNullOrWhiteSpace(log.Timestamp) ? $"[{log.Timestamp}] " : "";
+                    sb.AppendLine($"{stamp}[{log.Level.ToUpperInvariant()}] {log.Message}");
+                    if (!string.IsNullOrWhiteSpace(log.StackTrace))
+                    {
+                        var lines = log.StackTrace.Split('\n');
+                        foreach (var sl in lines)
+                        {
+                            var tr = sl.Trim();
+                            if (!string.IsNullOrWhiteSpace(tr)) sb.AppendLine($"    at {tr}");
+                        }
+                    }
+                }
+                sb.AppendLine("```");
+
+                Clipboard.SetText(sb.ToString());
+                ShowMessage($"Copied {errorLogs.Count} console diagnostics to clipboard.", isError: false);
+            }
+            catch (Exception ex)
+            {
+                ShowMessage($"Copy errors failed: {ex.Message}", isError: true);
+            }
+        }
+
+        private void BtnHudOptions_Click(object sender, RoutedEventArgs e)
+        {
+            HudOptionsDrawer.Visibility = HudOptionsDrawer.Visibility == Visibility.Visible
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        }
+
+        private void SliderOpacity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (!_loaded) return;
+            _targetOpacity = Math.Clamp(SliderOpacity.Value, 0.3, 1.0);
+            Opacity = _targetOpacity;
+            if (TxtOpacityPercent != null)
+            {
+                TxtOpacityPercent.Text = $"{(int)(_targetOpacity * 100)}%";
+            }
+            PersistBounds();
+        }
+
+        private void ChkAutoHide_Changed(object sender, RoutedEventArgs e)
+        {
+            if (!_loaded) return;
+            bool autoHide = ChkAutoHide.IsChecked == true;
+            if (!autoHide && _isAutoHiding)
+            {
+                _isAutoHiding = false;
+                Opacity = _targetOpacity;
+            }
+            PersistBounds();
+        }
+
+        private void Window_MouseEnter(object sender, MouseEventArgs e)
+        {
+            _lastUserActivity = DateTime.Now;
+            if (_isAutoHiding)
+            {
+                _isAutoHiding = false;
+            }
+            // Smart hover: temporarily restore 100% opacity for crisp visibility during interaction
+            if (_targetOpacity < 1.0)
+            {
+                Opacity = 1.0;
+            }
+            else
+            {
+                Opacity = _targetOpacity;
+            }
+        }
+
+        private void Window_MouseLeave(object sender, MouseEventArgs e)
+        {
+            _lastUserActivity = DateTime.Now;
+            if (!_isAutoHiding)
+            {
+                Opacity = _targetOpacity;
+            }
+        }
+
+        private void BtnPinCorner_Click(object sender, RoutedEventArgs e)
+        {
+            _pinnedCorner = _pinnedCorner switch
+            {
+                "None" => "TopRight",
+                "TopRight" => "BottomRight",
+                "BottomRight" => "BottomLeft",
+                "BottomLeft" => "TopLeft",
+                _ => "None"
+            };
+
+            UpdatePinButtonDisplay();
+            if (_pinnedCorner != "None")
+            {
+                ApplyPinnedCorner(_pinnedCorner);
+                Topmost = true;
+                ShowMessage($"HUD pinned to {_pinnedCorner} corner.", isError: false);
+            }
+            else
+            {
+                ShowMessage("HUD unpinned.", isError: false);
+            }
+            PersistBounds();
+        }
+
+        private void UpdatePinButtonDisplay()
+        {
+            BtnPinCorner.Content = _pinnedCorner switch
+            {
+                "TopRight" => "📌 Top-R",
+                "BottomRight" => "📌 Btm-R",
+                "BottomLeft" => "📌 Btm-L",
+                "TopLeft" => "📌 Top-L",
+                _ => "📌 Pin"
+            };
+            BtnPinCorner.Foreground = (Brush)FindResource(_pinnedCorner != "None" ? "AccentBrush" : "TextBrush");
+        }
+
+        private void ApplyPinnedCorner(string corner)
+        {
+            try
+            {
+                int currentX = (int)Left;
+                int currentY = (int)Top;
+                var screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point(currentX, currentY));
+                var wa = screen.WorkingArea;
+
+                var source = PresentationSource.FromVisual(this);
+                double dpiX = source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+                double dpiY = source?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+
+                double waLeft = wa.Left / dpiX;
+                double waTop = wa.Top / dpiY;
+                double waWidth = wa.Width / dpiX;
+                double waHeight = wa.Height / dpiY;
+                double waRight = waLeft + waWidth;
+                double waBottom = waTop + waHeight;
+
+                const double margin = 12;
+
+                switch (corner)
+                {
+                    case "TopRight":
+                        Left = waRight - ActualWidth - margin;
+                        Top = waTop + margin;
+                        break;
+                    case "BottomRight":
+                        Left = waRight - ActualWidth - margin;
+                        Top = waBottom - ActualHeight - margin;
+                        break;
+                    case "BottomLeft":
+                        Left = waLeft + margin;
+                        Top = waBottom - ActualHeight - margin;
+                        break;
+                    case "TopLeft":
+                        Left = waLeft + margin;
+                        Top = waTop + margin;
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(VisualTestTrackerStore.Channel, $"ApplyPinnedCorner error: {ex.Message}");
             }
         }
 
@@ -2394,6 +2727,10 @@ namespace BuildConsole
                 settings.VisualTestTrackerTop = Top;
                 settings.VisualTestTrackerWidth = Width;
                 if (!_isCollapsed) settings.VisualTestTrackerHeight = Height;
+                settings.VisualTestTrackerOpacity = _targetOpacity;
+                settings.VisualTestTrackerAutoHide = ChkAutoHide.IsChecked == true;
+                settings.VisualTestTrackerPinnedCorner = _pinnedCorner;
+                settings.VisualTestTrackerTimerMode = _timerMode;
                 settings.Save();
             }
             catch { }
