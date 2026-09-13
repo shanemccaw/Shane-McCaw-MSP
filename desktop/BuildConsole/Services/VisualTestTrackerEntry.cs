@@ -4,22 +4,39 @@ using System.Text;
 
 namespace BuildConsole.Services
 {
-    /// <summary>Represents a single captured browser console log, warning, or unhandled error.</summary>
+    /// <summary>Represents a single captured browser console log, warning, error, or unhandled exception with stack trace.</summary>
     public sealed class ConsoleLogItem
     {
-        public string Level { get; set; } = "error"; // "error", "warn", "exception", "unhandledrejection"
+        public string Level { get; set; } = "error"; // "error", "warn", "info", "log", "exception", "unhandledrejection"
         public string Message { get; set; } = "";
+        public string StackTrace { get; set; } = "";
         public string Timestamp { get; set; } = "";
     }
 
-    /// <summary>Represents a captured failed network request (HTTP 4xx/5xx or network drop).</summary>
+    /// <summary>Represents a captured network request with status, timing duration, and payload size.</summary>
     public sealed class NetworkFailureItem
     {
         public string Method { get; set; } = "GET";
         public string Url { get; set; } = "";
         public int Status { get; set; }
         public string StatusText { get; set; } = "";
+        public double DurationMs { get; set; }
+        public string PayloadSize { get; set; } = "";
         public string Timestamp { get; set; } = "";
+        public bool Failed { get; set; } = true;
+    }
+
+    /// <summary>Represents captured browser performance signals for the page under test.</summary>
+    public sealed class PerformanceSignals
+    {
+        public double PageLoadTimeMs { get; set; }
+        public double DnsTimeMs { get; set; }
+        public double TcpTimeMs { get; set; }
+        public double TtfbMs { get; set; }
+        public double DomContentLoadedMs { get; set; }
+        public double? FirstContentfulPaintMs { get; set; }
+        public double? LargestContentfulPaintMs { get; set; }
+        public int ScriptErrorCount { get; set; }
     }
 
     /// <summary>Represents a captured user interaction event leading up to the bug (breadcrumb).</summary>
@@ -36,7 +53,8 @@ namespace BuildConsole.Services
     /// Includes:
     /// - Auto-collected metadata (URL, timestamp, browser/WebView2 version, OS, window/viewport size, user agent, title)
     /// - User-entered content (notes, steps to reproduce, expected vs actual behavior, severity, tags/categories)
-    /// - Attachments (screenshots, console logs, network failures, reproduction events)
+    /// - Performance signals (page load time, LCP, FCP, TTFB, DOMContentLoaded, script error count)
+    /// - Attachments & diagnostics (screenshots, console logs with stack traces, network logs with timing/payload, reproduction events)
     /// Persisted both to local JSON store (%AppData%\BuildConsole\visual-test-tracker\) and to Postgres when available.
     /// </summary>
     public sealed class VisualTestTrackerEntry
@@ -65,6 +83,9 @@ namespace BuildConsole.Services
         public string WindowSize { get; set; } = "";
         public string ViewportSize { get; set; } = "";
         public string UserAgent { get; set; } = "";
+
+        // ── Performance Signals ─────────────────────────────────────────────────
+        public PerformanceSignals? Performance { get; set; }
 
         // ── Attachments & Diagnostics ───────────────────────────────────────────
         public List<string> ScreenshotPaths { get; set; } = new();
@@ -114,6 +135,27 @@ namespace BuildConsole.Services
                 sb.AppendLine($"| **User Agent** | `{UserAgent}` |");
             sb.AppendLine();
 
+            // Performance Signals Table
+            if (Performance != null)
+            {
+                sb.AppendLine("#### Performance Signals");
+                sb.AppendLine("| Metric | Measurement |");
+                sb.AppendLine("| :--- | :--- |");
+                if (Performance.PageLoadTimeMs > 0)
+                    sb.AppendLine($"| **Page Load Time** | `{Performance.PageLoadTimeMs:F0} ms` |");
+                if (Performance.LargestContentfulPaintMs.HasValue && Performance.LargestContentfulPaintMs.Value > 0)
+                    sb.AppendLine($"| **Largest Contentful Paint (LCP)** | `{Performance.LargestContentfulPaintMs.Value:F0} ms` |");
+                if (Performance.FirstContentfulPaintMs.HasValue && Performance.FirstContentfulPaintMs.Value > 0)
+                    sb.AppendLine($"| **First Contentful Paint (FCP)** | `{Performance.FirstContentfulPaintMs.Value:F0} ms` |");
+                if (Performance.TtfbMs > 0)
+                    sb.AppendLine($"| **Time to First Byte (TTFB)** | `{Performance.TtfbMs:F0} ms` |");
+                if (Performance.DomContentLoadedMs > 0)
+                    sb.AppendLine($"| **DOM Content Loaded** | `{Performance.DomContentLoadedMs:F0} ms` |");
+                if (Performance.ScriptErrorCount > 0)
+                    sb.AppendLine($"| **Script Execution Errors** | `{Performance.ScriptErrorCount}` |");
+                sb.AppendLine();
+            }
+
             // Notes / Summary
             sb.AppendLine("#### Notes / Summary");
             sb.AppendLine(string.IsNullOrWhiteSpace(Notes) ? "_(No notes provided)_" : Notes.Trim());
@@ -153,29 +195,40 @@ namespace BuildConsole.Services
                 sb.AppendLine();
             }
 
-            // Diagnostic: Console Logs
+            // Diagnostic: Console Logs & Stack Traces
             if (ConsoleLogs != null && ConsoleLogs.Count > 0)
             {
-                sb.AppendLine($"#### Attachments: Console Logs ({ConsoleLogs.Count})");
+                sb.AppendLine($"#### Diagnostic: Console Logs & JavaScript Errors ({ConsoleLogs.Count})");
                 sb.AppendLine("```text");
                 foreach (var log in ConsoleLogs)
                 {
                     string stamp = !string.IsNullOrWhiteSpace(log.Timestamp) ? $"[{log.Timestamp}] " : "";
                     sb.AppendLine($"{stamp}[{log.Level.ToUpperInvariant()}] {log.Message}");
+                    if (!string.IsNullOrWhiteSpace(log.StackTrace))
+                    {
+                        var stackLines = log.StackTrace.Split('\n');
+                        foreach (var sl in stackLines)
+                        {
+                            var trimmed = sl.Trim();
+                            if (!string.IsNullOrWhiteSpace(trimmed)) sb.AppendLine($"    at {trimmed}");
+                        }
+                    }
                 }
                 sb.AppendLine("```");
                 sb.AppendLine();
             }
 
-            // Diagnostic: Network Failures
+            // Diagnostic: Network Logs & Failures
             if (NetworkFailures != null && NetworkFailures.Count > 0)
             {
-                sb.AppendLine($"#### Attachments: Network Failures ({NetworkFailures.Count})");
-                sb.AppendLine("| Method | Status | URL | Time |");
-                sb.AppendLine("| :--- | :--- | :--- | :--- |");
+                sb.AppendLine($"#### Diagnostic: Network Logs & Failures ({NetworkFailures.Count})");
+                sb.AppendLine("| Method | Status | URL | Duration | Payload Size | Time |");
+                sb.AppendLine("| :--- | :--- | :--- | :--- | :--- | :--- |");
                 foreach (var net in NetworkFailures)
                 {
-                    sb.AppendLine($"| **{net.Method}** | {net.Status} {net.StatusText} | `{net.Url}` | {net.Timestamp} |");
+                    string durationStr = net.DurationMs > 0 ? $"{net.DurationMs:F0} ms" : "-";
+                    string sizeStr = !string.IsNullOrWhiteSpace(net.PayloadSize) ? net.PayloadSize : "-";
+                    sb.AppendLine($"| **{net.Method}** | {net.Status} {net.StatusText} | `{net.Url}` | {durationStr} | {sizeStr} | {net.Timestamp} |");
                 }
                 sb.AppendLine();
             }
@@ -183,7 +236,7 @@ namespace BuildConsole.Services
             // Diagnostic: Reproduction Events
             if (ReproductionEvents != null && ReproductionEvents.Count > 0)
             {
-                sb.AppendLine($"#### Attachments: Reproduction Events ({ReproductionEvents.Count})");
+                sb.AppendLine($"#### Diagnostic: Reproduction Events ({ReproductionEvents.Count})");
                 int step = 1;
                 foreach (var ev in ReproductionEvents)
                 {

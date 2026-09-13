@@ -297,11 +297,14 @@
 
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock x:Name="TelemetryConsoleBadge" Text="🔴 0 errors" FontSize="9"
-                                               Foreground="{StaticResource Subtext1Brush}" Margin="0,0,8,0"
-                                               ToolTip="Console errors and unhandled exceptions detected in WebView2"/>
+                                               Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"
+                                               ToolTip="Console errors, warnings, and unhandled exceptions in WebView2"/>
                                     <TextBlock x:Name="TelemetryNetworkBadge" Text="⚡ 0 net fail" FontSize="9"
-                                               Foreground="{StaticResource Subtext1Brush}" Margin="0,0,8,0"
-                                               ToolTip="HTTP 4xx/5xx network failures detected"/>
+                                               Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"
+                                               ToolTip="HTTP 4xx/5xx network failures and API requests"/>
+                                    <TextBlock x:Name="TelemetryPerfBadge" Text="⏱ 0ms" FontSize="9"
+                                               Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"
+                                               ToolTip="Page load time and Largest Contentful Paint (LCP)"/>
                                     <TextBlock x:Name="TelemetryEventsBadge" Text="👣 0 events" FontSize="9"
                                                Foreground="{StaticResource Subtext1Brush}"
                                                ToolTip="Recent user interaction events recorded"/>

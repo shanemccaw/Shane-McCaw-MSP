@@ -358,11 +358,20 @@ namespace BuildConsole
             try
             {
                 var counts = await VisualTestTrackerTelemetry.GetCountsAsync(_activeWebView);
-                TelemetryConsoleBadge.Text = $"🔴 {counts.Errors} errors";
-                TelemetryConsoleBadge.Foreground = (Brush)FindResource(counts.Errors > 0 ? "StatusErrorBrush" : "Subtext1Brush");
 
-                TelemetryNetworkBadge.Text = $"⚡ {counts.Network} net fail";
-                TelemetryNetworkBadge.Foreground = (Brush)FindResource(counts.Network > 0 ? "StatusWarningBrush" : "Subtext1Brush");
+                string errStr = counts.Warnings > 0
+                    ? $"🔴 {counts.Errors} err / {counts.Warnings} warn"
+                    : $"🔴 {counts.Errors} errors";
+                TelemetryConsoleBadge.Text = errStr;
+                TelemetryConsoleBadge.Foreground = (Brush)FindResource(counts.Errors > 0 ? "StatusErrorBrush" : (counts.Warnings > 0 ? "StatusWarningBrush" : "Subtext1Brush"));
+
+                TelemetryNetworkBadge.Text = $"⚡ {counts.NetworkFailures} net fail";
+                TelemetryNetworkBadge.Foreground = (Brush)FindResource(counts.NetworkFailures > 0 ? "StatusErrorBrush" : "Subtext1Brush");
+
+                string perfStr = counts.PageLoadMs > 0 ? $"⏱ {counts.PageLoadMs:F0}ms" : "⏱ -";
+                if (counts.LcpMs > 0) perfStr += $" (LCP {counts.LcpMs:F0}ms)";
+                TelemetryPerfBadge.Text = perfStr;
+                TelemetryPerfBadge.Foreground = (Brush)FindResource(counts.PageLoadMs > 3000 ? "StatusWarningBrush" : "Subtext1Brush");
 
                 TelemetryEventsBadge.Text = $"👣 {counts.Events} events";
                 TelemetryEventsBadge.Foreground = (Brush)FindResource(counts.Events > 0 ? "TextBrush" : "Subtext1Brush");
@@ -706,10 +715,13 @@ namespace BuildConsole
                     ViewportSize = viewSize,
                     UserAgent = snapshot.UserAgent,
 
+                    // Performance Signals
+                    Performance = snapshot.Performance,
+
                     // Attachments & Diagnostics
                     ScreenshotPaths = new List<string>(_stagedScreenshots),
                     ConsoleLogs = snapshot.ConsoleLogs ?? new List<ConsoleLogItem>(),
-                    NetworkFailures = snapshot.NetworkFailures ?? new List<NetworkFailureItem>(),
+                    NetworkFailures = snapshot.NetworkLogs ?? new List<NetworkFailureItem>(),
                     ReproductionEvents = snapshot.ReproductionEvents ?? new List<ReproductionEventItem>(),
 
                     CreatedAt = DateTime.Now,
@@ -910,6 +922,25 @@ namespace BuildConsole
                 }
             }
 
+            if (entry.Performance != null && entry.Performance.PageLoadTimeMs > 0)
+            {
+                var perfPill = new Border
+                {
+                    Background = (Brush)FindResource("Surface1Brush"),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(3, 0, 3, 0),
+                    Margin = new Thickness(0, 0, 3, 0),
+                    ToolTip = $"Page Load: {entry.Performance.PageLoadTimeMs:F0}ms, TTFB: {entry.Performance.TtfbMs:F0}ms, LCP: {entry.Performance.LargestContentfulPaintMs:F0}ms",
+                    Child = new TextBlock
+                    {
+                        Text = $"⏱ {entry.Performance.PageLoadTimeMs:F0}ms",
+                        FontSize = 8,
+                        Foreground = (Brush)FindResource("AccentBrush")
+                    }
+                };
+                midHeader.Children.Add(perfPill);
+            }
+
             var timeText = new TextBlock
             {
                 Text = $"{entry.CreatedAt:HH:mm:ss}",
@@ -1043,15 +1074,18 @@ namespace BuildConsole
                 stack.Children.Add(detailsExpander);
             }
 
-            // Diagnostic Badges & Drawer (Console Logs, Network Failures, Events)
+            // Diagnostic Badges & Drawer (Console Logs with Stack Traces, Network Logs, Performance, Events)
             int logCount = entry.ConsoleLogs?.Count ?? 0;
             int netCount = entry.NetworkFailures?.Count ?? 0;
             int eventCount = entry.ReproductionEvents?.Count ?? 0;
-            if (logCount > 0 || netCount > 0 || eventCount > 0)
+            bool hasPerf = entry.Performance != null && (entry.Performance.PageLoadTimeMs > 0 || (entry.Performance.LargestContentfulPaintMs.HasValue && entry.Performance.LargestContentfulPaintMs.Value > 0));
+
+            if (logCount > 0 || netCount > 0 || eventCount > 0 || hasPerf)
             {
+                string perfHeader = hasPerf ? $", {entry.Performance!.PageLoadTimeMs:F0}ms" : "";
                 var diagExpander = new Expander
                 {
-                    Header = $"Diagnostics ({logCount} logs, {netCount} net, {eventCount} evts)",
+                    Header = $"Diagnostics ({logCount} logs, {netCount} net, {eventCount} evts{perfHeader})",
                     FontSize = 9,
                     Foreground = (Brush)FindResource("AccentBrush"),
                     Margin = new Thickness(0, 1, 0, 4)
@@ -1059,56 +1093,102 @@ namespace BuildConsole
 
                 var diagStack = new StackPanel { Margin = new Thickness(4, 2, 4, 2) };
 
-                // Console Logs
+                // 1. Performance Signals
+                if (hasPerf)
+                {
+                    var p = entry.Performance!;
+                    string perfSummary = $"Load: {p.PageLoadTimeMs:F0}ms";
+                    if (p.LargestContentfulPaintMs.HasValue && p.LargestContentfulPaintMs.Value > 0)
+                        perfSummary += $" · LCP: {p.LargestContentfulPaintMs.Value:F0}ms";
+                    if (p.FirstContentfulPaintMs.HasValue && p.FirstContentfulPaintMs.Value > 0)
+                        perfSummary += $" · FCP: {p.FirstContentfulPaintMs.Value:F0}ms";
+                    if (p.TtfbMs > 0)
+                        perfSummary += $" · TTFB: {p.TtfbMs:F0}ms";
+                    if (p.DomContentLoadedMs > 0)
+                        perfSummary += $" · DOM: {p.DomContentLoadedMs:F0}ms";
+                    if (p.ScriptErrorCount > 0)
+                        perfSummary += $" · Errors: {p.ScriptErrorCount}";
+
+                    diagStack.Children.Add(new TextBlock
+                    {
+                        Text = $"Performance Signals ({perfSummary}):",
+                        FontSize = 9,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = (Brush)FindResource("AccentBrush"),
+                        Margin = new Thickness(0, 0, 0, 4)
+                    });
+                }
+
+                // 2. Console Logs & JavaScript Errors (with Stack Traces)
                 if (logCount > 0)
                 {
                     diagStack.Children.Add(new TextBlock
                     {
-                        Text = $"Console Errors/Logs ({logCount}):",
+                        Text = $"Console Logs & Script Errors ({logCount}):",
                         FontSize = 9,
                         FontWeight = FontWeights.SemiBold,
-                        Foreground = (Brush)FindResource("StatusErrorBrush")
+                        Foreground = (Brush)FindResource("StatusErrorBrush"),
+                        Margin = new Thickness(0, hasPerf ? 4 : 0, 0, 2)
                     });
                     foreach (var l in entry.ConsoleLogs!)
                     {
-                        diagStack.Children.Add(new TextBlock
+                        var logText = new TextBlock
                         {
                             Text = $"[{l.Level.ToUpperInvariant()}] {l.Message}",
                             FontSize = 9,
                             FontFamily = new FontFamily("Consolas"),
                             TextWrapping = TextWrapping.Wrap,
-                            Foreground = (Brush)FindResource("Subtext1Brush"),
-                            Margin = new Thickness(2, 0, 0, 2)
-                        });
+                            Foreground = (Brush)FindResource(string.Equals(l.Level, "warn", StringComparison.OrdinalIgnoreCase) ? "StatusWarningBrush" : (string.Equals(l.Level, "error", StringComparison.OrdinalIgnoreCase) || string.Equals(l.Level, "exception", StringComparison.OrdinalIgnoreCase) ? "StatusErrorBrush" : "Subtext1Brush")),
+                            Margin = new Thickness(2, 0, 0, 1)
+                        };
+                        diagStack.Children.Add(logText);
+
+                        if (!string.IsNullOrWhiteSpace(l.StackTrace))
+                        {
+                            var stackText = new TextBlock
+                            {
+                                Text = l.StackTrace,
+                                FontSize = 8,
+                                FontFamily = new FontFamily("Consolas"),
+                                TextWrapping = TextWrapping.Wrap,
+                                Foreground = (Brush)FindResource("Overlay1Brush"),
+                                Margin = new Thickness(8, 0, 0, 3)
+                            };
+                            diagStack.Children.Add(stackText);
+                        }
                     }
                 }
 
-                // Network Failures
+                // 3. Network Logs & Failures (Timing, Payload, Status)
                 if (netCount > 0)
                 {
                     diagStack.Children.Add(new TextBlock
                     {
-                        Text = $"Network Failures ({netCount}):",
+                        Text = $"Network Logs & Failures ({netCount}):",
                         FontSize = 9,
                         FontWeight = FontWeights.SemiBold,
                         Foreground = (Brush)FindResource("StatusWarningBrush"),
-                        Margin = new Thickness(0, 4, 0, 0)
+                        Margin = new Thickness(0, 4, 0, 2)
                     });
                     foreach (var n in entry.NetworkFailures!)
                     {
+                        string dur = n.DurationMs > 0 ? $" ({n.DurationMs:F0}ms" : "";
+                        string sz = !string.IsNullOrEmpty(n.PayloadSize) ? $", {n.PayloadSize}" : "";
+                        string meta = !string.IsNullOrEmpty(dur) ? $"{dur}{sz})" : "";
+
                         diagStack.Children.Add(new TextBlock
                         {
-                            Text = $"{n.Method} {n.Status} {n.StatusText} — {n.Url}",
+                            Text = $"{n.Method} {n.Status} {n.StatusText}{meta} — {n.Url}",
                             FontSize = 9,
                             FontFamily = new FontFamily("Consolas"),
                             TextWrapping = TextWrapping.Wrap,
-                            Foreground = (Brush)FindResource("Subtext1Brush"),
+                            Foreground = (Brush)FindResource(n.Failed ? "StatusErrorBrush" : "Subtext1Brush"),
                             Margin = new Thickness(2, 0, 0, 2)
                         });
                     }
                 }
 
-                // Reproduction Events
+                // 4. Reproduction Events Breadcrumbs
                 if (eventCount > 0)
                 {
                     diagStack.Children.Add(new TextBlock
@@ -1117,7 +1197,7 @@ namespace BuildConsole
                         FontSize = 9,
                         FontWeight = FontWeights.SemiBold,
                         Foreground = (Brush)FindResource("AccentBrush"),
-                        Margin = new Thickness(0, 4, 0, 0)
+                        Margin = new Thickness(0, 4, 0, 2)
                     });
                     foreach (var ev in entry.ReproductionEvents!)
                     {
