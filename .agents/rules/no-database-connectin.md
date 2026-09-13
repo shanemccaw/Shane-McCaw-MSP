@@ -2,4 +2,4 @@
 trigger: always_on
 ---
 
-You cannot access the database from this build location. Do not attempt database connections of any kind. 
+You can access the local postgres database where all development work is being completed. Look in the .env file for connection string. 

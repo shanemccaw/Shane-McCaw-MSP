@@ -520,7 +520,14 @@
                  GIT MILESTONES, EPICS & ISSUES (ADHD TRACKER)
                  ══════════════════════════════════ -->
             <Grid x:Name="IssuesView" DockPanel.Dock="Top" Visibility="Collapsed">
-                <DockPanel Margin="8,6">
+                <!-- Git Board 2.0: Adaptive Hierarchical Layout (zero text truncation) -->
+                <controls:GitBoardPanel x:Name="GitBoardPanel"
+                                        IssueSelected="GitBoardPanel_IssueSelected"
+                                        EpicLocateRequested="GitBoardPanel_EpicLocateRequested"
+                                        GateSelected="GitBoardPanel_GateSelected"/>
+
+                <!-- Legacy layout kept collapsed for full compatibility -->
+                <DockPanel Margin="8,6" Visibility="Collapsed">
                     <StackPanel DockPanel.Dock="Top">
                         <!-- ADHD Visual Stats Chips -->
                         <UniformGrid Columns="2" Margin="0,0,0,8">

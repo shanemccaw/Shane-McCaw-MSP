@@ -49,7 +49,8 @@
     <SolidColorBrush x:Key="Subtext1Brush" Color="{StaticResource TextSecondaryColor}"/>  <!-- was #A6ADC8 -->
     <SolidColorBrush x:Key="BlueBrush"     Color="{StaticResource AccentColor}"/>         <!-- was #89B4FA -->
     <SolidColorBrush x:Key="MauveBrush"    Color="#CBA6F7"/>
-    <SolidColorBrush x:Key="GreenBrush"    Color="#A6E3A1"/>
+    <SolidColorBrush x:Key="GreenBrush"      Color="#A6E3A1"/>
+    <SolidColorBrush x:Key="LightGreenBrush" Color="#A6E3A1"/> <!-- alias — used by VisualTestTrackerWindow, VisualDiffWindow, SessionSyncDialog -->
     <SolidColorBrush x:Key="RedBrush"      Color="#F38BA8"/>
     <SolidColorBrush x:Key="PeachBrush"    Color="#FAB387"/>
     <SolidColorBrush x:Key="YellowBrush"   Color="#F9E2AF"/>
