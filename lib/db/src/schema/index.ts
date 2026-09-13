@@ -1582,6 +1582,30 @@ export const projectClosuresTable = pgTable("project_closures", {
 export type InsertProjectClosure = typeof projectClosuresTable.$inferInsert;
 export type ProjectClosure = typeof projectClosuresTable.$inferSelect;
 
+// Customer Testimonials — standing, any-time customer submission surface
+// (Git #3891). Deliberately separate from project_closures.feedback, which
+// stays the project-closure-specific record it already is — this table is
+// not gated on a project closing. `kind` is a plain text column, not a DB
+// enum (matches this schema's msp_alert-style convention of app-level
+// validation rather than a Postgres CHECK enum).
+export const customerTestimonialsTable = pgTable("customer_testimonials", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  authorUserId: integer("author_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  kind: text("kind").notNull().default("testimonial"), // 'testimonial' | 'feedback' | 'suggestion'
+  permissionToPublish: boolean("permission_to_publish").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [
+  index("customer_testimonials_customer_id_idx").on(t.customerId),
+  check("customer_testimonials_kind_check", sql`${t.kind} IN ('testimonial', 'feedback', 'suggestion')`),
+]);
+
+export type InsertCustomerTestimonial = typeof customerTestimonialsTable.$inferInsert;
+export type CustomerTestimonial = typeof customerTestimonialsTable.$inferSelect;
+export const CUSTOMER_TESTIMONIAL_KINDS = ["testimonial", "feedback", "suggestion"] as const;
+export type CustomerTestimonialKind = typeof CUSTOMER_TESTIMONIAL_KINDS[number];
+
 // Audit Log — persistent chronological record of all admin and client actions
 export const auditLogsTable = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
