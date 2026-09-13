@@ -120,6 +120,8 @@
                                 <MenuItem Header="New Chat"        InputGestureText="Ctrl+N" Click="MenuNewChat_Click"/>
                                 <MenuItem Header="New Browser Window" InputGestureText="Ctrl+Shift+N" Click="MenuNewBrowserWindow_Click"/>
                                 <Separator/>
+                                <MenuItem Header="Theme Editor…"  Click="MenuThemeEditor_Click"/>
+                                <Separator/>
                                 <MenuItem Header="Settings"       Click="MenuSettings_Click"/>
                                 <Separator/>
                                 <MenuItem Header="Exit"            Click="MenuExit_Click"/>

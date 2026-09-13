@@ -6892,6 +6892,12 @@ namespace BuildConsole
             browserWindow.Show();
         }
 
+        private void MenuThemeEditor_Click(object sender, RoutedEventArgs e)
+        {
+            var themeEditor = new ThemeEditorWindow { Owner = this };
+            themeEditor.Show();
+        }
+
         /// <summary>Git #834 / #954 — File > Settings selects the sidebar's Settings
         /// category nav (via ActivityBar.SelectSettings, which also expands a
         /// collapsed sidebar) AND opens/focuses the native Settings tab directly, so

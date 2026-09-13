@@ -1,0 +1,883 @@
+<Window x:Class="BuildConsole.ThemeEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="Theme Viewer &amp; Multi-Dictionary Editor"
+        Icon="app.ico"
+        Height="960" Width="1580"
+        MinWidth="1200" MinHeight="700"
+        Background="{StaticResource BaseBrush}"
+        Foreground="{StaticResource TextBrush}"
+        WindowStyle="None"
+        WindowStartupLocation="CenterOwner"
+        StateChanged="Window_StateChanged">
+
+    <!-- Window Chrome for Dark Custom Titlebar -->
+    <WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36"
+                            ResizeBorderThickness="6"
+                            GlassFrameThickness="-1"
+                            CornerRadius="0"
+                            UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- Custom Card Style -->
+        <Style x:Key="InspectorCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource CardBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderDividerBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+
+        <!-- Diagnostic Chip Styles -->
+        <Style x:Key="WarningChip" TargetType="Border">
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel LastChildFill="True">
+        <!-- ══════════════════════════════════════════════════════════════
+             ANTIGRAVITY CUSTOM TITLE BAR
+             ══════════════════════════════════════════════════════════════ -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource CrustBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,0,1"
+                Height="36">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Title & Status -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,16,0">
+                    <TextBlock Text="🎨" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="WPF Theme Viewer &amp; Editor"
+                               FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                    <Border Background="{StaticResource Surface0Brush}" CornerRadius="3" Padding="6,2" Margin="10,0,0,0">
+                        <TextBlock x:Name="TxtThemeStatus" Text="Loading theme dictionaries..."
+                                   FontSize="11" Foreground="{StaticResource BlueBrush}"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- Center: Toolbar Controls -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,16,0"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                    
+                    <!-- Point & Identify Mode Toggle -->
+                    <ToggleButton x:Name="BtnPointAndIdentify"
+                                  Padding="10,4" Margin="0,0,8,0"
+                                  Background="{StaticResource Surface0Brush}"
+                                  Foreground="{StaticResource TextBrush}"
+                                  BorderBrush="{StaticResource Surface1Brush}"
+                                  BorderThickness="1"
+                                  Checked="BtnPointAndIdentify_Checked"
+                                  Unchecked="BtnPointAndIdentify_Unchecked"
+                                  ToolTip="Click any visual control in the gallery to inspect its brush, color, and typography">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🔍" Margin="0,0,6,0"/>
+                            <TextBlock x:Name="TxtIdentifyStatus" Text="Point &amp; Identify: OFF" FontWeight="SemiBold" FontSize="11"/>
+                        </StackPanel>
+                    </ToggleButton>
+
+                    <!-- Reload Theme Button -->
+                    <Button x:Name="BtnReloadTheme" Click="BtnReloadTheme_Click"
+                            Padding="10,4" Margin="0,0,8,0"
+                            Background="{StaticResource Surface0Brush}"
+                            Foreground="{StaticResource TextBrush}"
+                            BorderBrush="{StaticResource Surface1Brush}"
+                            BorderThickness="1"
+                            ToolTip="Reload all three theme dictionaries from disk">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🔄" Margin="0,0,6,0"/>
+                            <TextBlock Text="Reload" FontSize="11"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Save Changes Button -->
+                    <Button x:Name="BtnSaveChanges" Click="BtnSaveChanges_Click"
+                            Padding="12,4" Margin="0,0,8,0"
+                            Background="{StaticResource BlueBrushTint}"
+                            Foreground="{StaticResource BlueBrush}"
+                            BorderBrush="{StaticResource BlueBrush}"
+                            BorderThickness="1"
+                            FontWeight="SemiBold"
+                            ToolTip="Save all edits back to Colors.xaml, Typography.xaml, DarkTheme.xaml with backups">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="💾" Margin="0,0,6,0"/>
+                            <TextBlock Text="Save Changes" FontSize="11"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- Caption Buttons (Minimize, Maximize, Close) -->
+                <StackPanel Grid.Column="3" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
+                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
+                    <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
+                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
+                    <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
+                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             NOTIFICATION BANNER
+             ══════════════════════════════════════════════════════════════ -->
+        <Border x:Name="BannerNotification" DockPanel.Dock="Top"
+                Background="{StaticResource Surface0Brush}"
+                BorderBrush="{StaticResource BorderDividerBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,6"
+                Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TxtNotificationMessage" Text="Theme update message"
+                           FontSize="12" Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Content="✕" Background="Transparent" BorderThickness="0"
+                        Foreground="{StaticResource TextSecondaryBrush}" Click="BtnDismissBanner_Click"/>
+            </Grid>
+        </Border>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             MAIN WORKSPACE: LEFT TOOLS / RIGHT GALLERY
+             ══════════════════════════════════════════════════════════════ -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="470" MinWidth="380" MaxWidth="600"/>
+                <ColumnDefinition Width="4"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ── Left Panel: Tabs for Palette, Brushes, Typography, Inspector, Editor ── -->
+            <Border Grid.Column="0" Background="{StaticResource PanelBackgroundBrush}" BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="0,0,1,0">
+                <TabControl x:Name="MainToolTabs" Background="Transparent" BorderThickness="0" Margin="4">
+                    
+                    <!-- 1. PALETTE & DIAGNOSTICS TAB -->
+                    <TabItem Header="🎨 Palette">
+                        <Grid Margin="4">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/> <!-- Filters & Search -->
+                                <RowDefinition Height="*"/>    <!-- List of Colors -->
+                            </Grid.RowDefinitions>
+
+                            <!-- Filter Chips -->
+                            <Border Grid.Row="0" Background="{StaticResource CardBackgroundBrush}" CornerRadius="4" Padding="6" Margin="0,0,0,8">
+                                <StackPanel>
+                                    <TextBox x:Name="TxtFilterColors" Style="{StaticResource SearchTextBox}"
+                                             Tag="Search colors..." Margin="0,0,0,6"
+                                             TextChanged="TxtFilterColors_TextChanged"/>
+                                    <WrapPanel Orientation="Horizontal">
+                                        <RadioButton x:Name="RadFilterAll" Content="All" IsChecked="True" Margin="0,0,8,0" Checked="ColorFilter_Changed"/>
+                                        <RadioButton x:Name="RadFilterWarnings" Content="⚠ Warnings" Margin="0,0,8,0" Checked="ColorFilter_Changed"/>
+                                        <RadioButton x:Name="RadFilterUnused" Content="Unused" Margin="0,0,8,0" Checked="ColorFilter_Changed"/>
+                                        <RadioButton x:Name="RadFilterBg" Content="Backgrounds" Margin="0,0,8,0" Checked="ColorFilter_Changed"/>
+                                        <RadioButton x:Name="RadFilterText" Content="Text" Margin="0,0,8,0" Checked="ColorFilter_Changed"/>
+                                        <RadioButton x:Name="RadFilterAccents" Content="Accents" Checked="ColorFilter_Changed"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Virtualized Colors List -->
+                            <ListBox x:Name="LstColors" Grid.Row="1"
+                                     Background="Transparent" BorderThickness="0"
+                                     ScrollViewer.CanContentScroll="True"
+                                     VirtualizingStackPanel.IsVirtualizing="True"
+                                     VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                     SelectionChanged="LstColors_SelectionChanged">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource CardBackgroundBrush}"
+                                                BorderBrush="{StaticResource BorderDividerBrush}"
+                                                BorderThickness="1" CornerRadius="4"
+                                                Padding="8,6" Margin="0,0,0,4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="28"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <!-- Color Swatch -->
+                                                <Border Grid.Column="0" Width="22" Height="22" CornerRadius="4"
+                                                        BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1"
+                                                        VerticalAlignment="Center">
+                                                    <Border.Background>
+                                                        <SolidColorBrush Color="{Binding Color}"/>
+                                                    </Border.Background>
+                                                </Border>
+
+                                                <!-- Key and Hex -->
+                                                <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Key}" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                        <TextBlock Text="{Binding HexValue}" FontFamily="Cascadia Code, Consolas" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                        <TextBlock Text=" • " Foreground="{StaticResource TextDisabledBrush}"/>
+                                                        <TextBlock Text="{Binding BrightnessDisplay, StringFormat='Bri: {0}'}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                        <TextBlock Text=" • " Foreground="{StaticResource TextDisabledBrush}"/>
+                                                        <TextBlock Text="{Binding ContrastDisplay, StringFormat='CR: {0}'}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+
+                                                <!-- Diagnostic Flags & Usage -->
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <!-- Warning Chips -->
+                                                    <Border Style="{StaticResource WarningChip}" Background="#4A3B18"
+                                                            Visibility="{Binding IsTooBright, Converter={StaticResource BoolToVis}}"
+                                                            ToolTip="Brightness warning: color is unusually bright or high-glare for dark theme">
+                                                        <TextBlock Text="⚠ Bright" FontSize="9" Foreground="#F9E2AF" FontWeight="Bold"/>
+                                                    </Border>
+                                                    <Border Style="{StaticResource WarningChip}" Background="#4A2020"
+                                                            Visibility="{Binding IsLowContrast, Converter={StaticResource BoolToVis}}"
+                                                            ToolTip="Low contrast: does not meet recommended WCAG contrast against #0D1117">
+                                                        <TextBlock Text="⚠ Low CR" FontSize="9" Foreground="#F38BA8" FontWeight="Bold"/>
+                                                    </Border>
+                                                    <Border Style="{StaticResource WarningChip}" Background="#3A1E4A"
+                                                            Visibility="{Binding IsOutlier, Converter={StaticResource BoolToVis}}"
+                                                            ToolTip="Outlier: high saturation or harsh magenta/neon outside muted palette">
+                                                        <TextBlock Text="⚠ Outlier" FontSize="9" Foreground="#CBA6F7" FontWeight="Bold"/>
+                                                    </Border>
+                                                    <Border Style="{StaticResource WarningChip}" Background="{StaticResource Surface0Brush}"
+                                                            Visibility="{Binding IsUnused, Converter={StaticResource BoolToVis}}"
+                                                            ToolTip="Unused: not referenced by any brush or style in the theme">
+                                                        <TextBlock Text="Unused" FontSize="9" Foreground="{StaticResource TextDisabledBrush}"/>
+                                                    </Border>
+                                                    
+                                                    <!-- Usage count badge -->
+                                                    <Border Background="{StaticResource Surface1Brush}" CornerRadius="3" Padding="5,2" Margin="4,0,0,0">
+                                                        <TextBlock Text="{Binding UsageCount, StringFormat='×{0}'}" FontSize="10" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </TabItem>
+
+                    <!-- 2. BRUSHES & RELATIONSHIP FLOW TAB -->
+                    <TabItem Header="🖌 Brushes">
+                        <Grid Margin="4">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBox x:Name="TxtFilterBrushes" Grid.Row="0" Style="{StaticResource SearchTextBox}"
+                                     Tag="Search brushes..." Margin="0,0,0,8"
+                                     TextChanged="TxtFilterBrushes_TextChanged"/>
+
+                            <ListBox x:Name="LstBrushes" Grid.Row="1"
+                                     Background="Transparent" BorderThickness="0"
+                                     ScrollViewer.CanContentScroll="True"
+                                     VirtualizingStackPanel.IsVirtualizing="True"
+                                     VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                     SelectionChanged="LstBrushes_SelectionChanged">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource CardBackgroundBrush}"
+                                                BorderBrush="{StaticResource BorderDividerBrush}"
+                                                BorderThickness="1" CornerRadius="4"
+                                                Padding="8,6" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="26"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <Border Grid.Column="0" Width="20" Height="20" CornerRadius="3"
+                                                            BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1"
+                                                            Background="{Binding Brush}"/>
+
+                                                    <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                                        <TextBlock Text="{Binding Key}" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                        <TextBlock Text="{Binding SourceFile, StringFormat='Source: {0}'}" FontSize="10" Foreground="{StaticResource TextDisabledBrush}"/>
+                                                    </StackPanel>
+
+                                                    <Border Grid.Column="2" Background="{StaticResource Surface1Brush}" CornerRadius="3" Padding="5,2">
+                                                        <TextBlock Text="{Binding UsageCount, StringFormat='Used in {0} styles'}" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                                    </Border>
+                                                </Grid>
+
+                                                <!-- Relationship Flow Display -->
+                                                <Border Background="{StaticResource Surface0Brush}" CornerRadius="3" Padding="6,4" Margin="0,6,0,0">
+                                                    <TextBlock FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap">
+                                                        <Run Text="Flow: " FontWeight="SemiBold"/>
+                                                        <Run Text="{Binding ColorKey, TargetNullValue='Literal Hex'}" Foreground="{StaticResource BlueBrush}"/>
+                                                        <Run Text=" ➔ "/>
+                                                        <Run Text="{Binding Key}" Foreground="{StaticResource AccentBrush}"/>
+                                                        <Run Text=" ➔ "/>
+                                                        <Run Text="{Binding ReferencedByStyles.Count, StringFormat='{}{0} Controls'}" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                                    </TextBlock>
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </TabItem>
+
+                    <!-- 3. TYPOGRAPHY TAB -->
+                    <TabItem Header="Aa Typography">
+                        <Grid Margin="4">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Text="Typography Resources (from Typography.xaml)"
+                                       FontWeight="SemiBold" FontSize="12" Margin="4,0,0,8" Foreground="{StaticResource Subtext1Brush}"/>
+
+                            <ListBox x:Name="LstTypography" Grid.Row="1"
+                                     Background="Transparent" BorderThickness="0"
+                                     SelectionChanged="LstTypography_SelectionChanged">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource CardBackgroundBrush}"
+                                                BorderBrush="{StaticResource BorderDividerBrush}"
+                                                BorderThickness="1" CornerRadius="4"
+                                                Padding="10,8" Margin="0,0,0,6">
+                                            <StackPanel>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding Key}" FontWeight="Bold" FontSize="12" Foreground="{StaticResource BlueBrush}"/>
+                                                    <Border Grid.Column="1" Background="{StaticResource Surface0Brush}" CornerRadius="3" Padding="6,2">
+                                                        <TextBlock Text="{Binding Category}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                    </Border>
+                                                </Grid>
+
+                                                <TextBlock Text="{Binding SampleText}"
+                                                           FontFamily="{Binding FontFamily}"
+                                                           FontSize="{Binding FontSize}"
+                                                           FontWeight="{Binding FontWeight}"
+                                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                                           Margin="0,6,0,6" TextWrapping="Wrap"/>
+
+                                                <TextBlock FontSize="10" Foreground="{StaticResource TextDisabledBrush}">
+                                                    <Run Text="Family: "/><Run Text="{Binding FontFamily}"/>
+                                                    <Run Text=" • Size: "/><Run Text="{Binding FontSize}"/><Run Text="px"/>
+                                                    <Run Text=" • Weight: "/><Run Text="{Binding FontWeight}"/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </TabItem>
+
+                    <!-- 4. POINT & IDENTIFY INSPECTOR TAB -->
+                    <TabItem x:Name="TabInspector" Header="🔍 Inspector">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel Margin="6">
+                                <TextBlock Text="Visual Element Inspector" FontWeight="Bold" FontSize="13" Margin="0,0,0,8" Foreground="{StaticResource BlueBrush}"/>
+                                <TextBlock Text="Click any visual element in the gallery to reveal its brushes, colors, and typography."
+                                           FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+                                <Border Style="{StaticResource InspectorCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Target Visual Element" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource Subtext0Brush}"/>
+                                        <TextBlock x:Name="TxtInspectElementName" Text="(No element selected)" FontWeight="Bold" FontSize="14" Margin="0,4,0,2" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <TextBlock x:Name="TxtInspectElementHierarchy" Text="Hierarchy: None" FontSize="11" Foreground="{StaticResource TextDisabledBrush}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource InspectorCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Brush &amp; Color Trace" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,6"/>
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="28"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border x:Name="InspectColorSwatch" Grid.Column="0" Width="22" Height="22" CornerRadius="4"
+                                                    BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1" Background="Transparent"/>
+                                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                                <TextBlock x:Name="TxtInspectBrushName" Text="Brush: None" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                <TextBlock x:Name="TxtInspectColorName" Text="Color: None" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                        <TextBlock x:Name="TxtInspectSourceFile" Text="Defined in: None" FontSize="11" Foreground="{StaticResource BlueBrush}"/>
+                                        <Button x:Name="BtnEditInspectedBrush" Content="✏ Edit This Brush in Editor" Margin="0,8,0,0"
+                                                Click="BtnEditInspectedBrush_Click" Style="{StaticResource {x:Type Button}}"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource InspectorCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Typography Details" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+                                        <TextBlock x:Name="TxtInspectTypography" Text="Font: None" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <Button x:Name="BtnEditInspectedTypography" Content="✏ Edit Typography in Editor" Margin="0,8,0,0"
+                                                Click="BtnEditInspectedTypography_Click" Style="{StaticResource {x:Type Button}}"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource InspectorCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Style &amp; Control Template" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+                                        <TextBlock x:Name="TxtInspectStyle" Text="Style: Default" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <TextBlock x:Name="TxtInspectTemplate" Text="Template: Standard" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+
+                    <!-- 5. EDITOR PANEL TAB -->
+                    <TabItem x:Name="TabEditor" Header="✏ Editor">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel Margin="6">
+                                <TextBlock Text="Resource Live Editor" FontWeight="Bold" FontSize="13" Margin="0,0,0,4" Foreground="{StaticResource BlueBrush}"/>
+                                <TextBlock x:Name="TxtEditorTargetDescription" Text="Select a color, brush, or typography resource to edit"
+                                           FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,10"/>
+
+                                <!-- COLOR & BRUSH EDITOR SECTION -->
+                                <Border x:Name="PnlColorEditor" Style="{StaticResource InspectorCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Color &amp; Brush Controls" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
+
+                                        <!-- Swatch & Hex input -->
+                                        <Grid Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="40"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border x:Name="EditorSwatch" Grid.Column="0" Width="36" Height="36" CornerRadius="4"
+                                                    BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1" Background="#7C8CF0"/>
+                                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                                <TextBlock Text="Hex Value (#RRGGBB or #AARRGGBB)" FontSize="10" Foreground="{StaticResource TextDisabledBrush}"/>
+                                                <TextBox x:Name="TxtEditorHex" Text="#7C8CF0" FontFamily="Cascadia Code, Consolas"
+                                                         TextChanged="TxtEditorHex_TextChanged" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- RGB Sliders -->
+                                        <TextBlock Text="RGB Sliders" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,4,0,2"/>
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="R" Foreground="#F38BA8" VerticalAlignment="Center"/>
+                                            <Slider x:Name="SliderR" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="SliderRgb_ValueChanged"/>
+                                            <TextBlock x:Name="TxtValR" Grid.Column="2" Text="124" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="G" Foreground="#A6E3A1" VerticalAlignment="Center"/>
+                                            <Slider x:Name="SliderG" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="SliderRgb_ValueChanged"/>
+                                            <TextBlock x:Name="TxtValG" Grid.Column="2" Text="140" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="B" Foreground="#89B4FA" VerticalAlignment="Center"/>
+                                            <Slider x:Name="SliderB" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="SliderRgb_ValueChanged"/>
+                                            <TextBlock x:Name="TxtValB" Grid.Column="2" Text="240" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        </Grid>
+
+                                        <!-- HSL Sliders -->
+                                        <TextBlock Text="HSL &amp; Brightness" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,8,0,2"/>
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="H" VerticalAlignment="Center"/>
+                                            <Slider x:Name="SliderHue" Grid.Column="1" Minimum="0" Maximum="360" ValueChanged="SliderHsl_ValueChanged"/>
+                                            <TextBlock x:Name="TxtValHue" Grid.Column="2" Text="232°" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="S" VerticalAlignment="Center"/>
+                                            <Slider x:Name="SliderSat" Grid.Column="1" Minimum="0" Maximum="100" ValueChanged="SliderHsl_ValueChanged"/>
+                                            <TextBlock x:Name="TxtValSat" Grid.Column="2" Text="81%" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="L" VerticalAlignment="Center"/>
+                                            <Slider x:Name="SliderLightness" Grid.Column="1" Minimum="0" Maximum="100" ValueChanged="SliderHsl_ValueChanged"/>
+                                            <TextBlock x:Name="TxtValLightness" Grid.Column="2" Text="71%" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        </Grid>
+
+                                        <!-- Contrast Preview vs Primary Background -->
+                                        <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="8" Margin="0,10,0,10">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock Text="Contrast against #0D1117:" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                    <TextBlock x:Name="TxtEditorContrastPreview" Text="6.8:1 (WCAG AAA Pass)" FontWeight="Bold" FontSize="12" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                                </StackPanel>
+                                                <Border x:Name="BadgeWcag" Grid.Column="1" Background="#234A2E" CornerRadius="3" Padding="6,2" VerticalAlignment="Center">
+                                                    <TextBlock Text="PASS AAA" FontSize="10" FontWeight="Bold" Foreground="#8FC496"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Quick Adjust Palette Buttons -->
+                                        <TextBlock Text="Palette Helpers" FontSize="11" Foreground="{StaticResource TextDisabledBrush}" Margin="0,0,0,4"/>
+                                        <UniformGrid Columns="3" Margin="0,0,0,8">
+                                            <Button Content="Auto-Darken" Margin="0,0,4,0" Click="BtnAutoDarken_Click"/>
+                                            <Button Content="Auto-Lighten" Margin="2,0,2,0" Click="BtnAutoLighten_Click"/>
+                                            <Button Content="Match Hue" Margin="4,0,0,0" Click="BtnMatchPaletteHue_Click"/>
+                                        </UniformGrid>
+
+                                        <Button Content="⚡ Apply Live to Application" Background="{StaticResource BlueBrushTint}"
+                                                Foreground="{StaticResource BlueBrush}" BorderBrush="{StaticResource BlueBrush}"
+                                                FontWeight="SemiBold" Height="30" Click="BtnApplyLiveColor_Click"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- TYPOGRAPHY EDITOR SECTION -->
+                                <Border x:Name="PnlTypographyEditor" Style="{StaticResource InspectorCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Typography Controls" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Font Family" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2"/>
+                                        <ComboBox x:Name="CmbFontFamily" Margin="0,0,0,8" SelectionChanged="CmbFontFamily_SelectionChanged">
+                                            <ComboBoxItem Content="Segoe UI" IsSelected="True"/>
+                                            <ComboBoxItem Content="Cascadia Code, Consolas, Courier New"/>
+                                            <ComboBoxItem Content="Arial"/>
+                                            <ComboBoxItem Content="Calibri"/>
+                                        </ComboBox>
+
+                                        <TextBlock Text="Font Size (px)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2"/>
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                                            <Slider x:Name="SliderFontSize" Minimum="9" Maximum="32" Value="14" ValueChanged="SliderFontSize_ValueChanged"/>
+                                            <TextBlock x:Name="TxtFontSizeVal" Grid.Column="1" Text="14" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        </Grid>
+
+                                        <TextBlock Text="Font Weight" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2"/>
+                                        <ComboBox x:Name="CmbFontWeight" Margin="0,0,0,8" SelectionChanged="CmbFontWeight_SelectionChanged">
+                                            <ComboBoxItem Content="Normal" IsSelected="True"/>
+                                            <ComboBoxItem Content="SemiBold"/>
+                                            <ComboBoxItem Content="Bold"/>
+                                            <ComboBoxItem Content="Light"/>
+                                        </ComboBox>
+
+                                        <!-- Live Preview Box -->
+                                        <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="10" Margin="0,4,0,8">
+                                            <TextBlock x:Name="TxtTypographyPreview" Text="Live Typography Sample Text (14px)"
+                                                       FontFamily="Segoe UI" FontSize="14" FontWeight="Normal" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        </Border>
+
+                                        <Button Content="⚡ Apply Typography to Live Theme" Background="{StaticResource BlueBrushTint}"
+                                                Foreground="{StaticResource BlueBrush}" BorderBrush="{StaticResource BlueBrush}"
+                                                FontWeight="SemiBold" Height="30" Click="BtnApplyLiveTypography_Click"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                </TabControl>
+            </Border>
+
+            <!-- ── Splitter ── -->
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="{StaticResource BorderDividerBrush}"/>
+
+            <!-- ── Right Area: Auto-Generated Control Gallery (Virtualized) ── -->
+            <Grid Grid.Column="2" Background="{StaticResource AppBackgroundBrush}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/> <!-- Gallery Toolbar Header -->
+                    <RowDefinition Height="*"/>    <!-- Gallery Scroll Area -->
+                </Grid.RowDefinitions>
+
+                <!-- Gallery Header -->
+                <Border Grid.Row="0" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="0,0,0,1" Padding="14,8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="🏛 Control Gallery (Combined Theme)" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"/>
+                            <TextBlock Text=" • All elements render using Colors.xaml, Typography.xaml, and DarkTheme.xaml"
+                                       FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="Click any element when Point &amp; Identify is ON" FontSize="11" Foreground="{StaticResource BlueBrush}"/>
+                    </Grid>
+                </Border>
+
+                <!-- Virtualized / Grouped Gallery ScrollViewer -->
+                <ScrollViewer x:Name="GalleryScrollViewer" Grid.Row="1"
+                              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              PreviewMouseLeftButtonDown="Gallery_PreviewMouseLeftButtonDown">
+                    <StackPanel Margin="16" MaxWidth="1000" HorizontalAlignment="Left">
+                        
+                        <!-- ════ SECTION 1: BUTTONS & INTERACTIVE ════ -->
+                        <TextBlock Text="BUTTONS &amp; CTAS" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8"/>
+                        <Border Style="{StaticResource InspectorCard}">
+                            <WrapPanel Orientation="Horizontal">
+                                <Button Content="Standard Button" Margin="0,0,10,10" Width="140"/>
+                                <Button Content="Accent / CTA Button" Style="{StaticResource {x:Type Button}}"
+                                        Background="{StaticResource BlueBrushTint}" Foreground="{StaticResource BlueBrush}" BorderBrush="{StaticResource BlueBrush}"
+                                        FontWeight="SemiBold" Margin="0,0,10,10" Width="160"/>
+                                <Button Content="Success Action" Background="{StaticResource StatusSuccessWashMediumBrush}" Foreground="{StaticResource StatusSuccessBrush}"
+                                        BorderBrush="{StaticResource StatusSuccessBrush}" Margin="0,0,10,10" Width="130"/>
+                                <Button Content="Disabled Button" IsEnabled="False" Margin="0,0,10,10" Width="130"/>
+                                <Button Style="{StaticResource CaptionButton}" Width="40" Height="30" Margin="0,0,10,10" ToolTip="Caption Button Sample">
+                                    <TextBlock Text="⚙" FontSize="12"/>
+                                </Button>
+                            </WrapPanel>
+                        </Border>
+
+                        <!-- ════ SECTION 2: INPUTS & TEXT CONTROLS ════ -->
+                        <TextBlock Text="TEXT INPUTS &amp; EDITORS" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
+                        <Border Style="{StaticResource InspectorCard}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,10,10">
+                                    <TextBlock Text="Standard TextBox" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBox Text="Default text input field with theme border"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
+                                    <TextBlock Text="SearchTextBox (with Clear Affordance)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBox Style="{StaticResource SearchTextBox}" Text="Filter manifest queue..."/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,10,10">
+                                    <TextBlock Text="ComboBox Selector" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <ComboBox SelectedIndex="0">
+                                        <ComboBoxItem Content="Production Environment (Release)"/>
+                                        <ComboBoxItem Content="Staging Environment (Preview)"/>
+                                        <ComboBoxItem Content="Local Development (Debug)"/>
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
+                                    <TextBlock Text="EditorTextBox (Monospace Code)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBox Style="{StaticResource EditorTextBox}" Height="34"
+                                             Text="git checkout -b feature/theme-viewer"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- ════ SECTION 3: TOGGLES, SLIDERS & PROGRESS ════ -->
+                        <TextBlock Text="TOGGLES, SLIDERS &amp; PROGRESS" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
+                        <Border Style="{StaticResource InspectorCard}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Toggles & Radio -->
+                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                    <CheckBox Content="Enable Automatic Build Verification" IsChecked="True" Margin="0,0,0,8"/>
+                                    <CheckBox Content="Sound chime on task completion" IsChecked="False" Margin="0,0,0,10"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <RadioButton Content="Standard Mode" IsChecked="True" Margin="0,0,12,0"/>
+                                        <RadioButton Content="Aggressive Mode" IsChecked="False"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <!-- Sliders & Progress -->
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="Horizontal Slider (72%)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <Slider Minimum="0" Maximum="100" Value="72" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="Determinate Progress (65%)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <ProgressBar Value="65" Height="8" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="Indeterminate Progress (Running)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <ProgressBar IsIndeterminate="True" Height="8"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- ════ SECTION 4: TABS, LISTVIEW & DATAGRID ════ -->
+                        <TextBlock Text="DATA &amp; LIST CONTROLS" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
+                        <Border Style="{StaticResource InspectorCard}">
+                            <StackPanel>
+                                <TabControl Height="130" Margin="0,0,0,10">
+                                    <TabItem Header="Build Queue (4)">
+                                        <ListView x:Name="SampleListView" Margin="4">
+                                            <ListViewItem>
+                                                <Grid Width="500">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="#1048 — feature/theme-viewer (commit 41d5b3b)" FontWeight="SemiBold"/>
+                                                    <TextBlock Grid.Column="1" Text="Running (01:24)" Foreground="{StaticResource BlueBrush}" Margin="0,0,10,0"/>
+                                                    <TextBlock Grid.Column="2" Text="Shane McCaw" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                </Grid>
+                                            </ListViewItem>
+                                            <ListViewItem>
+                                                <Grid Width="500">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="#1047 — hotfix/qa-hud-threading (commit 8ef120a)"/>
+                                                    <TextBlock Grid.Column="1" Text="Success (00:48)" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,0,10,0"/>
+                                                    <TextBlock Grid.Column="2" Text="Claude Subagent" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                </Grid>
+                                            </ListViewItem>
+                                        </ListView>
+                                    </TabItem>
+                                    <TabItem Header="Test Results (18 Passed)">
+                                        <TextBlock Text="All 18 regression suites executed cleanly in 00:29.27 with zero errors." Margin="8" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    </TabItem>
+                                </TabControl>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- ════ SECTION 5: SURFACES, CARDS & OVERLAYS ════ -->
+                        <TextBlock Text="SURFACES, CARDS &amp; MOCKUPS" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Layered Card Mockup -->
+                            <Border Grid.Column="0" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderDividerBrush}"
+                                    BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,8,0">
+                                <StackPanel>
+                                    <TextBlock Text="Layered Container Card" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Demonstrates CardBackgroundBrush over PanelBackgroundBrush with 1px border divider."
+                                               FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,8"/>
+                                    <Separator Background="{StaticResource BorderDividerBrush}" Margin="0,0,0,8"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Secondary" Margin="0,0,6,0" Width="80"/>
+                                        <Button Content="Primary Action" Background="{StaticResource BlueBrushTint}" Foreground="{StaticResource BlueBrush}"
+                                                BorderBrush="{StaticResource BlueBrush}" Width="110"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Modal Dialog Mockup -->
+                            <Border Grid.Column="1" Background="{StaticResource PanelBackgroundColor}" BorderBrush="{StaticResource BlueBrush}"
+                                    BorderThickness="1" CornerRadius="6" Padding="12" Margin="8,0,0,0">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                        <TextBlock Text="💬" Margin="0,0,6,0"/>
+                                        <TextBlock Text="Modal Confirmation Dialog Mockup" FontWeight="Bold" FontSize="12" Foreground="{StaticResource BlueBrush}"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Are you sure you want to apply theme changes to active instances?"
+                                               FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Cancel" Margin="0,0,6,0" Width="70"/>
+                                        <Button Content="Confirm" Background="{StaticResource BlueBrush}" Foreground="White" Width="80"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- ════ SECTION 6: BUILDCONSOLE SPECIFIC CONTROLS ════ -->
+                        <TextBlock Text="BUILDCONSOLE SPECIFIC CONTROLS" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- 1. BuildQueueItem -->
+                            <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource CardBackgroundBrush}"
+                                    BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1" CornerRadius="5"
+                                    Padding="10" Margin="0,0,6,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="BuildQueueItem #1048" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                            <Border Background="{StaticResource StatusRunningBrush}" CornerRadius="3" Padding="5,1" Margin="8,0,0,0">
+                                                <TextBlock Text="RUNNING" FontSize="9" FontWeight="Bold" Foreground="#0D1117"/>
+                                            </Border>
+                                        </StackPanel>
+                                        <TextBlock Text="branch: feature/theme-viewer • commit 41d5b3b" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"/>
+                                        <TextBlock Text="Elapsed: 01:24 • Scoped logs active" FontSize="10" Foreground="{StaticResource TextDisabledBrush}" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Content="Abort" Margin="0,0,4,0" Background="{StaticResource StatusErrorBrush}" Foreground="#0D1117" FontWeight="SemiBold" Padding="8,3"/>
+                                        <Button Content="Logs" Background="{StaticResource Surface0Brush}" Padding="8,3"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- 2. MilestoneCard -->
+                            <Border Grid.Row="0" Grid.Column="1" Background="{StaticResource CardBackgroundBrush}"
+                                    BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1" CornerRadius="5"
+                                    Padding="10" Margin="6,0,0,8">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="MilestoneCard: v2.4 Release" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <TextBlock Grid.Column="1" Text="Due: Oct 1" FontSize="10" Foreground="{StaticResource BlueBrush}"/>
+                                    </Grid>
+                                    <ProgressBar Value="72" Height="6" Margin="0,6,0,4"/>
+                                    <TextBlock Text="72% complete • 18 closed / 7 open issues" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 3. EpicCard -->
+                            <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource CardBackgroundBrush}"
+                                    BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1" CornerRadius="5"
+                                    Padding="10" Margin="0,0,6,0">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <Border Background="#2B2745" CornerRadius="3" Padding="5,1" Margin="0,0,6,0">
+                                            <TextBlock Text="EPIC #803" FontSize="9" FontWeight="Bold" Foreground="{StaticResource MauveBrush}"/>
+                                        </Border>
+                                        <TextBlock Text="EpicCard: Automated Test Architecture" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Integrated QA HUD + Playwright headless worker test harness." FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 4. IssueCard -->
+                            <Border Grid.Row="1" Grid.Column="1" Background="{StaticResource CardBackgroundBrush}"
+                                    BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1" CornerRadius="5"
+                                    Padding="10" Margin="6,0,0,0">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <Border Background="{StaticResource AccentWashMediumBrush}" CornerRadius="3" Padding="5,1" Margin="0,0,6,0">
+                                            <TextBlock Text="ISSUE #2126" FontSize="9" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
+                                        </Border>
+                                        <TextBlock Text="IssueCard: Shell Redesign &amp; Theme System" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Single source of truth multi-dictionary theme with live reload." FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+    </DockPanel>
+</Window>
