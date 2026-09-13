@@ -1,0 +1,11 @@
+{
+  "index": 4,
+  "method": "POST",
+  "url": "http://localhost:5175/api/client-events",
+  "statusCode": 0,
+  "statusText": "Canceled",
+  "durationMs": 358,
+  "payloadSize": "",
+  "timestamp": "19:37:19.675",
+  "failed": true
+}

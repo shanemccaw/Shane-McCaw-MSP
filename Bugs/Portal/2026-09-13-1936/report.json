@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "1.0",
+  "productName": "Portal",
+  "sessionId": "2026-09-13-1936",
+  "timing": {
+    "startedAt": "2026-09-13T19:36:08.6772414-04:00",
+    "endedAt": "2026-09-13T19:37:45.5691078-04:00",
+    "durationSeconds": 96.9,
+    "formattedDuration": "01m 36s"
+  },
+  "environment": {
+    "baseUrl": "localhost:5175/portal/",
+    "activePage": "microsoft-changes",
+    "urlsTested": [
+      "http://localhost:5175/portal/microsoft-changes"
+    ]
+  },
+  "summary": {
+    "assessment": "Issues Found",
+    "totalBugs": 2,
+    "blockers": 0,
+    "critical": 0,
+    "bugs": 2,
+    "minor": 0,
+    "consoleErrors": 0,
+    "networkFailures": 5,
+    "screenshotsCaptured": 1,
+    "apiCalls": 5
+  },
+  "bugs": [
+    {
+      "index": 1,
+      "id": 0,
+      "uuid": "db4d7ec0",
+      "severity": "Bug",
+      "status": "Open",
+      "title": "",
+      "notes": "What bug number are you",
+      "stepsToReproduce": "1. Locate and inspect \u0060[data-testid=\u0022topbar-user-trigger\u0022] \u003E div.flex.size-7\u0060",
+      "expectedBehavior": "",
+      "actualBehavior": "Selector: [data-testid=\u0022topbar-user-trigger\u0022] \u003E div.flex.size-7\r\nTag: \u003Cdiv\u003E\r\nDimensions: 28\u00D728 px\r\nClasses: flex size-7 items-center justify-center rounded-full",
+      "tags": [
+        "dom-inspector",
+        "div"
+      ],
+      "url": "http://localhost:5175/portal/microsoft-changes",
+      "pageTitle": "",
+      "browserVersion": "",
+      "osVersion": "",
+      "windowSize": "",
+      "viewportSize": "",
+      "userAgent": "",
+      "createdAt": "2026-09-13T19:37:32.7455879-04:00",
+      "performance": null,
+      "screenshots": [
+        "2026-09-13_19-37-32-938.png"
+      ]
+    },
+    {
+      "index": 2,
+      "id": 0,
+      "uuid": "c8f174a688f449fc84e2fa656f4fbda0",
+      "severity": "Bug",
+      "status": "Open",
+      "title": "",
+      "notes": "![screenshot](C:\\Users\\Ronnie\\AppData\\Roaming\\BuildConsole\\visual-test-screenshots\\localhost_5175_portal\\microsoft-changes\\2026-09-13_19-37-32-938.png)",
+      "stepsToReproduce": "",
+      "expectedBehavior": "",
+      "actualBehavior": "",
+      "tags": [],
+      "url": "http://localhost:5175/portal/microsoft-changes",
+      "pageTitle": "",
+      "browserVersion": "",
+      "osVersion": "",
+      "windowSize": "",
+      "viewportSize": "",
+      "userAgent": "",
+      "createdAt": "2026-09-13T19:37:45.5685167-04:00",
+      "performance": null,
+      "screenshots": [
+        "2026-09-13_19-37-32-938.png"
+      ]
+    }
+  ],
+  "consoleErrors": [],
+  "commandsExecuted": [],
+  "screenshots": [
+    "screenshots/screenshot-01.png"
+  ],
+  "artifacts": {
+    "summaryMarkdown": "summary.md",
+    "consoleJson": "console/console.json",
+    "notesMarkdown": "notes/notes.md",
+    "apiDirectory": "api/",
+    "screenshotsDirectory": "screenshots/",
+    "attachmentsDirectory": "attachments/"
+  }
+}

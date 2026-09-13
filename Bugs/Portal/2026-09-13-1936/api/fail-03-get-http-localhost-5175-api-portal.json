@@ -1,0 +1,11 @@
+{
+  "index": 3,
+  "method": "GET",
+  "url": "http://localhost:5175/api/portal/message-center",
+  "statusCode": 403,
+  "statusText": "Forbidden",
+  "durationMs": 358,
+  "payloadSize": "41 B",
+  "timestamp": "19:37:19.317",
+  "failed": true
+}
