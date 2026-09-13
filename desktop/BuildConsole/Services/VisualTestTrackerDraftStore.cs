@@ -6,9 +6,10 @@ using System.Text.Json;
 namespace BuildConsole.Services
 {
     /// <summary>
-    /// Crash-safe persistent store for in-progress draft notes, severity, and staged screenshots.
+    /// Crash-safe persistent store for in-progress draft notes, steps, expected/actual behavior,
+    /// tags, severity, and staged screenshots.
     /// Saves immediately to %AppData%\BuildConsole\visual-test-tracker\drafts.json on every keystroke
-    /// or capture, ensuring notes survive page navigation, application restarts, and crashes.
+    /// or capture, ensuring all bug composition fields survive page navigation, application restarts, and crashes.
     /// </summary>
     public static class VisualTestTrackerDraftStore
     {
@@ -17,6 +18,10 @@ namespace BuildConsole.Services
             public string BaseUrl { get; set; } = "";
             public string PagePath { get; set; } = "";
             public string Notes { get; set; } = "";
+            public string StepsToReproduce { get; set; } = "";
+            public string ExpectedBehavior { get; set; } = "";
+            public string ActualBehavior { get; set; } = "";
+            public string Tags { get; set; } = "";
             public string Severity { get; set; } = "Bug";
             public List<string> StagedScreenshots { get; set; } = new();
             public DateTime LastSavedAt { get; set; } = DateTime.Now;
@@ -74,7 +79,16 @@ namespace BuildConsole.Services
         private static string MakeKey(string baseUrl, string pagePath) =>
             $"{baseUrl?.Trim().ToLowerInvariant()}::{pagePath?.Trim().ToLowerInvariant()}";
 
-        public static void SaveDraft(string baseUrl, string pagePath, string notes, string severity, List<string> stagedScreenshots)
+        public static void SaveDraft(
+            string baseUrl,
+            string pagePath,
+            string notes,
+            string stepsToReproduce,
+            string expectedBehavior,
+            string actualBehavior,
+            string tags,
+            string severity,
+            List<string> stagedScreenshots)
         {
             if (string.IsNullOrWhiteSpace(baseUrl)) return;
             var key = MakeKey(baseUrl, pagePath);
@@ -84,11 +98,20 @@ namespace BuildConsole.Services
                 BaseUrl = baseUrl,
                 PagePath = pagePath,
                 Notes = notes ?? "",
+                StepsToReproduce = stepsToReproduce ?? "",
+                ExpectedBehavior = expectedBehavior ?? "",
+                ActualBehavior = actualBehavior ?? "",
+                Tags = tags ?? "",
                 Severity = severity ?? "Bug",
                 StagedScreenshots = stagedScreenshots != null ? new List<string>(stagedScreenshots) : new List<string>(),
                 LastSavedAt = DateTime.Now
             };
             PersistAll(all);
+        }
+
+        public static void SaveDraft(string baseUrl, string pagePath, string notes, string severity, List<string> stagedScreenshots)
+        {
+            SaveDraft(baseUrl, pagePath, notes, "", "", "", "", severity, stagedScreenshots);
         }
 
         public static PageDraft? GetDraft(string baseUrl, string pagePath)
