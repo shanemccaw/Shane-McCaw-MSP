@@ -83,6 +83,14 @@ namespace BuildConsole
         private string _currentA11yFilter = "All";
         private bool _a11yMarkersVisible = true;
 
+        // Phase 12: DevTools Command & Network Runner state
+        private readonly List<string> _consoleCommandHistory = new();
+        private int _consoleHistoryIndex = -1;
+        private string _activeRunnerMode = "Console"; // "Console" or "Network"
+        private string _activeRunnerTab = "Console"; // "Console", "Json", "Raw", "Headers", "Timing"
+        private DevToolsRunnerService.ConsoleExecutionResult? _lastConsoleResult;
+        private DevToolsRunnerService.ApiResponseResult? _lastApiResult;
+
         private ApiHelperWindow? _apiHelperWindow;
 
         public VisualTestTrackerWindow()
@@ -193,6 +201,7 @@ namespace BuildConsole
             };
 
             InitStore();
+            InitializeDevToolsRunnerPresets();
         }
 
         private void InitStore()
@@ -1829,6 +1838,535 @@ namespace BuildConsole
             ShowMessage("Added element info to notes.", isError: false);
         }
 
+        // ── DevTools Command & Network Runner Handlers ─────────────────────────
+
+        private void InitializeDevToolsRunnerPresets()
+        {
+            CboConsolePresets.Items.Clear();
+            CboConsolePresets.Items.Add(new ComboBoxItem { Content = "Select a preset...", Tag = "" });
+            CboConsolePresets.Items.Add(new ComboBoxItem { Content = "localStorage.getItem('token')", Tag = "localStorage.getItem('token')" });
+            CboConsolePresets.Items.Add(new ComboBoxItem { Content = "document.cookie", Tag = "document.cookie" });
+            CboConsolePresets.Items.Add(new ComboBoxItem { Content = "sessionStorage", Tag = "JSON.stringify(sessionStorage)" });
+            CboConsolePresets.Items.Add(new ComboBoxItem { Content = "window.__debugMode = true", Tag = "window.__debugMode = true" });
+            CboConsolePresets.Items.Add(new ComboBoxItem { Content = "document.title", Tag = "document.title" });
+            CboConsolePresets.Items.Add(new ComboBoxItem { Content = "navigator.userAgent", Tag = "navigator.userAgent" });
+            CboConsolePresets.Items.Add(new ComboBoxItem { Content = "location.href", Tag = "location.href" });
+            CboConsolePresets.Items.Add(new ComboBoxItem { Content = "location.reload()", Tag = "location.reload()" });
+            CboConsolePresets.Items.Add(new ComboBoxItem { Content = "document.querySelector('button').click()", Tag = "document.querySelector('button').click()" });
+            CboConsolePresets.SelectedIndex = 0;
+        }
+
+        private void BtnDevToolsRunner_Click(object sender, RoutedEventArgs e)
+        {
+            if (DevToolsRunnerDrawer.Visibility == Visibility.Visible)
+            {
+                DevToolsRunnerDrawer.Visibility = Visibility.Collapsed;
+                BtnDevToolsRunner.Foreground = (Brush)FindResource("TextBrush");
+            }
+            else
+            {
+                DevToolsRunnerDrawer.Visibility = Visibility.Visible;
+                BtnDevToolsRunner.Foreground = (Brush)FindResource("AccentBrush");
+                if (_activeRunnerMode == "Console")
+                {
+                    TxtConsoleCommand.Focus();
+                }
+                else
+                {
+                    TxtApiSnippet.Focus();
+                }
+            }
+        }
+
+        private void BtnCloseDevToolsRunner_Click(object sender, RoutedEventArgs e)
+        {
+            DevToolsRunnerDrawer.Visibility = Visibility.Collapsed;
+            BtnDevToolsRunner.Foreground = (Brush)FindResource("TextBrush");
+        }
+
+        private void BtnOpenFullDevTools_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeWebView?.CoreWebView2 != null)
+            {
+                _activeWebView.CoreWebView2.OpenDevToolsWindow();
+                ShowMessage("Opened native Chromium DevTools window.", isError: false);
+            }
+            else
+            {
+                ShowMessage("WebView2 engine is not active yet.", isError: true);
+            }
+        }
+
+        private void BtnRunnerModeConsole_Click(object sender, RoutedEventArgs e)
+        {
+            _activeRunnerMode = "Console";
+            BtnRunnerModeConsole.Style = (Style)FindResource("SecondaryButton");
+            BtnRunnerModeConsole.FontWeight = FontWeights.Bold;
+            BtnRunnerModeNetwork.Style = (Style)FindResource("IconButton");
+            BtnRunnerModeNetwork.FontWeight = FontWeights.Normal;
+
+            PanelConsoleRunner.Visibility = Visibility.Visible;
+            PanelNetworkRunner.Visibility = Visibility.Collapsed;
+
+            SelectRunnerResultTab("Console");
+            TxtConsoleCommand.Focus();
+        }
+
+        private void BtnRunnerModeNetwork_Click(object sender, RoutedEventArgs e)
+        {
+            _activeRunnerMode = "Network";
+            BtnRunnerModeNetwork.Style = (Style)FindResource("SecondaryButton");
+            BtnRunnerModeNetwork.FontWeight = FontWeights.Bold;
+            BtnRunnerModeConsole.Style = (Style)FindResource("IconButton");
+            BtnRunnerModeConsole.FontWeight = FontWeights.Normal;
+
+            PanelConsoleRunner.Visibility = Visibility.Collapsed;
+            PanelNetworkRunner.Visibility = Visibility.Visible;
+
+            if (_activeRunnerTab == "Console")
+            {
+                SelectRunnerResultTab("Json");
+            }
+            TxtApiSnippet.Focus();
+        }
+
+        private void CboConsolePresets_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (CboConsolePresets.SelectedItem is ComboBoxItem item && item.Tag is string snippet && !string.IsNullOrEmpty(snippet))
+            {
+                TxtConsoleCommand.Text = snippet;
+                TxtConsoleCommand.CaretIndex = TxtConsoleCommand.Text.Length;
+                TxtConsoleCommand.Focus();
+                CboConsolePresets.SelectedIndex = 0;
+            }
+        }
+
+        private void TxtConsoleCommand_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+            {
+                e.Handled = true;
+                BtnRunConsoleCommand_Click(sender, new RoutedEventArgs());
+            }
+            else if (e.Key == Key.Up && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && (TxtConsoleCommand.LineCount <= 1 || TxtConsoleCommand.CaretIndex == 0))
+            {
+                if (_consoleCommandHistory.Count > 0)
+                {
+                    e.Handled = true;
+                    if (_consoleHistoryIndex > 0)
+                    {
+                        _consoleHistoryIndex--;
+                    }
+                    else
+                    {
+                        _consoleHistoryIndex = 0;
+                    }
+
+                    if (_consoleHistoryIndex < _consoleCommandHistory.Count)
+                    {
+                        TxtConsoleCommand.Text = _consoleCommandHistory[_consoleHistoryIndex];
+                        TxtConsoleCommand.CaretIndex = TxtConsoleCommand.Text.Length;
+                    }
+                }
+            }
+            else if (e.Key == Key.Down && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && (TxtConsoleCommand.LineCount <= 1 || TxtConsoleCommand.CaretIndex >= TxtConsoleCommand.Text.Length))
+            {
+                if (_consoleCommandHistory.Count > 0)
+                {
+                    e.Handled = true;
+                    if (_consoleHistoryIndex < _consoleCommandHistory.Count - 1)
+                    {
+                        _consoleHistoryIndex++;
+                        TxtConsoleCommand.Text = _consoleCommandHistory[_consoleHistoryIndex];
+                        TxtConsoleCommand.CaretIndex = TxtConsoleCommand.Text.Length;
+                    }
+                    else
+                    {
+                        _consoleHistoryIndex = _consoleCommandHistory.Count;
+                        TxtConsoleCommand.Text = "";
+                    }
+                }
+            }
+        }
+
+        private async void BtnRunConsoleCommand_Click(object sender, RoutedEventArgs e)
+        {
+            string cmd = TxtConsoleCommand.Text.Trim();
+            if (string.IsNullOrWhiteSpace(cmd))
+            {
+                ShowMessage("Please enter a JavaScript command to run.", isError: true);
+                return;
+            }
+
+            if (_activeWebView?.CoreWebView2 == null)
+            {
+                ShowMessage("WebView2 engine is not active yet.", isError: true);
+                return;
+            }
+
+            // Record to history
+            if (_consoleCommandHistory.Count == 0 || _consoleCommandHistory[^1] != cmd)
+            {
+                _consoleCommandHistory.Add(cmd);
+                if (_consoleCommandHistory.Count > 50) _consoleCommandHistory.RemoveAt(0);
+            }
+            _consoleHistoryIndex = _consoleCommandHistory.Count;
+
+            TxtRunnerStatus.Text = "Running...";
+            TxtRunnerStatus.Foreground = (Brush)FindResource("AccentBrush");
+
+            var res = await DevToolsRunnerService.ExecuteConsoleAsync(_activeWebView, cmd);
+            _lastConsoleResult = res;
+
+            SelectRunnerResultTab("Console");
+
+            if (res.IsError)
+            {
+                TxtRunnerStatus.Text = $"Error ({res.DurationMs} ms)";
+                TxtRunnerStatus.Foreground = (Brush)FindResource("StatusErrorBrush");
+                TxtRunnerResult.Foreground = (Brush)FindResource("StatusErrorBrush");
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"❌ Error: {res.ErrorMessage}");
+                if (!string.IsNullOrEmpty(res.ErrorStack))
+                {
+                    sb.AppendLine("\nStack Trace:");
+                    sb.AppendLine(res.ErrorStack);
+                }
+                if (res.ConsoleLogs.Count > 0)
+                {
+                    sb.AppendLine("\nCaptured Logs:");
+                    foreach (var log in res.ConsoleLogs) sb.AppendLine(log);
+                }
+                TxtRunnerResult.Text = sb.ToString();
+            }
+            else
+            {
+                TxtRunnerStatus.Text = $"Success ({res.DurationMs} ms)";
+                TxtRunnerStatus.Foreground = (Brush)FindResource("LightGreenBrush");
+                TxtRunnerResult.Foreground = (Brush)FindResource("TextBrush");
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"< Return: {res.ReturnValue}");
+                if (res.ConsoleLogs.Count > 0)
+                {
+                    sb.AppendLine("\nCaptured Logs:");
+                    foreach (var log in res.ConsoleLogs) sb.AppendLine(log);
+                }
+                TxtRunnerResult.Text = sb.ToString();
+            }
+        }
+
+        private void BtnClearConsoleCommand_Click(object sender, RoutedEventArgs e)
+        {
+            TxtConsoleCommand.Text = "";
+            TxtConsoleCommand.Focus();
+        }
+
+        private void TxtApiSnippet_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            string input = TxtApiSnippet.Text;
+            var type = DevToolsRunnerService.DetectInputType(input);
+            TxtDetectedType.Text = type switch
+            {
+                DevToolsRunnerService.ApiInputType.CurlCommand => "[cURL Command]",
+                DevToolsRunnerService.ApiInputType.FetchSnippet => "[fetch() Snippet]",
+                DevToolsRunnerService.ApiInputType.XhrSnippet => "[XMLHttpRequest]",
+                DevToolsRunnerService.ApiInputType.RawUrl => "[Raw URL]",
+                DevToolsRunnerService.ApiInputType.RelativePath => "[Relative Path]",
+                DevToolsRunnerService.ApiInputType.JsonPayload => "[JSON Payload]",
+                _ => "[Auto-Detect]"
+            };
+        }
+
+        private async void BtnExecuteApi_Click(object sender, RoutedEventArgs e)
+        {
+            string input = TxtApiSnippet.Text.Trim();
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                ShowMessage("Please enter an API snippet, cURL command, or endpoint URL.", isError: true);
+                return;
+            }
+
+            if (_activeWebView?.CoreWebView2 == null)
+            {
+                ShowMessage("WebView2 engine is not active yet.", isError: true);
+                return;
+            }
+
+            string? methodOverride = null;
+            if (CboApiMethod.SelectedItem is ComboBoxItem mItem)
+            {
+                string m = mItem.Content?.ToString() ?? "Auto";
+                if (m != "Auto") methodOverride = m;
+            }
+
+            string? payload = !string.IsNullOrWhiteSpace(TxtApiPayload.Text) ? TxtApiPayload.Text.Trim() : null;
+
+            TxtRunnerStatus.Text = "Sending request...";
+            TxtRunnerStatus.Foreground = (Brush)FindResource("AccentBrush");
+
+            var res = await DevToolsRunnerService.ExecuteApiAsync(_activeWebView, input, payload, methodOverride);
+            _lastApiResult = res;
+
+            if (res.IsSuccess)
+            {
+                TxtRunnerStatus.Text = $"{res.StatusCode} {res.StatusText} • {res.DurationMs} ms • {res.SizeBytes} B";
+                TxtRunnerStatus.Foreground = (Brush)FindResource("LightGreenBrush");
+                TxtRunnerResult.Foreground = (Brush)FindResource("TextBrush");
+            }
+            else
+            {
+                TxtRunnerStatus.Text = res.StatusCode > 0
+                    ? $"{res.StatusCode} {res.StatusText} • {res.DurationMs} ms"
+                    : $"Failed ({res.DurationMs} ms)";
+                TxtRunnerStatus.Foreground = (Brush)FindResource("StatusErrorBrush");
+                TxtRunnerResult.Foreground = (Brush)FindResource("StatusErrorBrush");
+            }
+
+            SelectRunnerResultTab("Json");
+        }
+
+        private void BtnClearApiSnippet_Click(object sender, RoutedEventArgs e)
+        {
+            TxtApiSnippet.Text = "";
+            TxtApiPayload.Text = "";
+            TxtDetectedType.Text = "[Auto-Detect]";
+            TxtApiSnippet.Focus();
+        }
+
+        private void BtnResultTab_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string tab)
+            {
+                SelectRunnerResultTab(tab);
+            }
+        }
+
+        private void SelectRunnerResultTab(string tab)
+        {
+            _activeRunnerTab = tab;
+
+            // Highlight active tab button
+            var buttons = new[] { BtnTabConsole, BtnTabJson, BtnTabRaw, BtnTabHeaders, BtnTabTiming };
+            foreach (var b in buttons)
+            {
+                if (b.Tag as string == tab)
+                {
+                    b.Style = (Style)FindResource("SecondaryButton");
+                    b.FontWeight = FontWeights.Bold;
+                }
+                else
+                {
+                    b.Style = (Style)FindResource("IconButton");
+                    b.FontWeight = FontWeights.Normal;
+                }
+            }
+
+            UpdateRunnerResultDisplay();
+        }
+
+        private void UpdateRunnerResultDisplay()
+        {
+            switch (_activeRunnerTab)
+            {
+                case "Console":
+                    if (_lastConsoleResult != null)
+                    {
+                        if (_lastConsoleResult.IsError)
+                        {
+                            TxtRunnerResult.Foreground = (Brush)FindResource("StatusErrorBrush");
+                            var sb = new StringBuilder();
+                            sb.AppendLine($"❌ Error: {_lastConsoleResult.ErrorMessage}");
+                            if (!string.IsNullOrEmpty(_lastConsoleResult.ErrorStack))
+                            {
+                                sb.AppendLine("\nStack Trace:");
+                                sb.AppendLine(_lastConsoleResult.ErrorStack);
+                            }
+                            if (_lastConsoleResult.ConsoleLogs.Count > 0)
+                            {
+                                sb.AppendLine("\nCaptured Logs:");
+                                foreach (var log in _lastConsoleResult.ConsoleLogs) sb.AppendLine(log);
+                            }
+                            TxtRunnerResult.Text = sb.ToString();
+                        }
+                        else
+                        {
+                            TxtRunnerResult.Foreground = (Brush)FindResource("TextBrush");
+                            var sb = new StringBuilder();
+                            sb.AppendLine($"< Return: {_lastConsoleResult.ReturnValue}");
+                            if (_lastConsoleResult.ConsoleLogs.Count > 0)
+                            {
+                                sb.AppendLine("\nCaptured Logs:");
+                                foreach (var log in _lastConsoleResult.ConsoleLogs) sb.AppendLine(log);
+                            }
+                            TxtRunnerResult.Text = sb.ToString();
+                        }
+                    }
+                    else
+                    {
+                        TxtRunnerResult.Foreground = (Brush)FindResource("Subtext1Brush");
+                        TxtRunnerResult.Text = "// No console command executed yet.";
+                    }
+                    break;
+
+                case "Json":
+                    if (_lastApiResult != null)
+                    {
+                        TxtRunnerResult.Foreground = _lastApiResult.IsSuccess ? (Brush)FindResource("TextBrush") : (Brush)FindResource("StatusErrorBrush");
+                        if (!string.IsNullOrEmpty(_lastApiResult.PrettyJson))
+                        {
+                            TxtRunnerResult.Text = _lastApiResult.PrettyJson;
+                        }
+                        else if (!string.IsNullOrEmpty(_lastApiResult.ErrorMessage))
+                        {
+                            TxtRunnerResult.Text = $"❌ Network/API Error: {_lastApiResult.ErrorMessage}";
+                        }
+                        else
+                        {
+                            TxtRunnerResult.Text = "(Empty response body)";
+                        }
+                    }
+                    else
+                    {
+                        TxtRunnerResult.Foreground = (Brush)FindResource("Subtext1Brush");
+                        TxtRunnerResult.Text = "// No API response yet.";
+                    }
+                    break;
+
+                case "Raw":
+                    if (_lastApiResult != null)
+                    {
+                        TxtRunnerResult.Foreground = _lastApiResult.IsSuccess ? (Brush)FindResource("TextBrush") : (Brush)FindResource("StatusErrorBrush");
+                        TxtRunnerResult.Text = !string.IsNullOrEmpty(_lastApiResult.RawBody) ? _lastApiResult.RawBody : (!string.IsNullOrEmpty(_lastApiResult.ErrorMessage) ? _lastApiResult.ErrorMessage : "(Empty response body)");
+                    }
+                    else
+                    {
+                        TxtRunnerResult.Foreground = (Brush)FindResource("Subtext1Brush");
+                        TxtRunnerResult.Text = "// No API response yet.";
+                    }
+                    break;
+
+                case "Headers":
+                    if (_lastApiResult != null)
+                    {
+                        TxtRunnerResult.Foreground = (Brush)FindResource("TextBrush");
+                        if (_lastApiResult.Headers.Count > 0)
+                        {
+                            var sb = new StringBuilder();
+                            foreach (var kvp in _lastApiResult.Headers)
+                            {
+                                sb.AppendLine($"{kvp.Key}: {kvp.Value}");
+                            }
+                            TxtRunnerResult.Text = sb.ToString();
+                        }
+                        else
+                        {
+                            TxtRunnerResult.Text = "(No headers captured)";
+                        }
+                    }
+                    else
+                    {
+                        TxtRunnerResult.Foreground = (Brush)FindResource("Subtext1Brush");
+                        TxtRunnerResult.Text = "// No API response yet.";
+                    }
+                    break;
+
+                case "Timing":
+                    TxtRunnerResult.Foreground = (Brush)FindResource("TextBrush");
+                    var tsb = new StringBuilder();
+                    if (_lastApiResult != null)
+                    {
+                        tsb.AppendLine("[API Execution]");
+                        tsb.AppendLine($"Endpoint: {_lastApiResult.Url}");
+                        tsb.AppendLine($"Method: {_lastApiResult.Method}");
+                        tsb.AppendLine($"Status: {_lastApiResult.StatusCode} {_lastApiResult.StatusText}");
+                        tsb.AppendLine($"Duration: {_lastApiResult.DurationMs} ms");
+                        tsb.AppendLine($"Payload Size: {_lastApiResult.SizeBytes} bytes");
+                    }
+                    if (_lastConsoleResult != null)
+                    {
+                        if (tsb.Length > 0) tsb.AppendLine();
+                        tsb.AppendLine("[Last Console Command]");
+                        tsb.AppendLine($"Command: {_lastConsoleResult.Command}");
+                        tsb.AppendLine($"Duration: {_lastConsoleResult.DurationMs} ms");
+                        tsb.AppendLine($"Logs count: {_lastConsoleResult.ConsoleLogs.Count}");
+                    }
+                    if (tsb.Length == 0)
+                    {
+                        TxtRunnerResult.Foreground = (Brush)FindResource("Subtext1Brush");
+                        TxtRunnerResult.Text = "// No execution timing data available.";
+                    }
+                    else
+                    {
+                        TxtRunnerResult.Text = tsb.ToString();
+                    }
+                    break;
+            }
+        }
+
+        private void BtnCopyRunnerResult_Click(object sender, RoutedEventArgs e)
+        {
+            if (!string.IsNullOrEmpty(TxtRunnerResult.Text))
+            {
+                Clipboard.SetText(TxtRunnerResult.Text);
+                ShowMessage("Copied runner output to clipboard.", isError: false);
+            }
+        }
+
+        private void BtnClearRunnerResult_Click(object sender, RoutedEventArgs e)
+        {
+            _lastConsoleResult = null;
+            _lastApiResult = null;
+            TxtRunnerStatus.Text = "Ready";
+            TxtRunnerStatus.Foreground = (Brush)FindResource("Subtext1Brush");
+            TxtRunnerResult.Foreground = (Brush)FindResource("Subtext1Brush");
+            TxtRunnerResult.Text = "// Output cleared.";
+        }
+
+        private void BtnAttachResultToBug_Click(object sender, RoutedEventArgs e)
+        {
+            string formattedContent = "";
+
+            if (_activeRunnerMode == "Console" && _lastConsoleResult != null)
+            {
+                formattedContent = DevToolsRunnerService.FormatConsoleResultForBugReport(_lastConsoleResult);
+            }
+            else if (_lastApiResult != null)
+            {
+                formattedContent = DevToolsRunnerService.FormatApiResultForBugReport(_lastApiResult);
+            }
+            else if (_lastConsoleResult != null)
+            {
+                formattedContent = DevToolsRunnerService.FormatConsoleResultForBugReport(_lastConsoleResult);
+            }
+
+            if (string.IsNullOrWhiteSpace(formattedContent))
+            {
+                ShowMessage("No execution results to attach. Run a command or execute an API call first.", isError: true);
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(NotesBox.Text))
+                NotesBox.Text += "\n\n" + formattedContent;
+            else
+                NotesBox.Text = formattedContent;
+
+            // Ensure "DevTools" is in the tags
+            var currentTags = (TagsBox.Text ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (!currentTags.Contains("DevTools", StringComparer.OrdinalIgnoreCase))
+            {
+                currentTags.Add("DevTools");
+                TagsBox.Text = string.Join(", ", currentTags);
+            }
+
+            DetailsExpander.IsExpanded = true;
+            NotesBox.Focus();
+            NotesBox.CaretIndex = NotesBox.Text.Length;
+            PerformAutoSave();
+            ShowMessage("DevTools runner result attached to bug report draft.", isError: false);
+        }
+
         private void RenderStagedThumbnails()
         {
             StagedThumbnailsPanel.Children.Clear();
@@ -2035,6 +2573,10 @@ namespace BuildConsole
                             e.Handled = true;
                             BtnInspectDom_Click(BtnInspectDom, new RoutedEventArgs());
                         }
+                        break;
+                    case Key.J: // DevTools Runner drawer toggle (Ctrl+Shift+J)
+                        e.Handled = true;
+                        BtnDevToolsRunner_Click(BtnDevToolsRunner, new RoutedEventArgs());
                         break;
                     case Key.C: // Copy console errors
                         e.Handled = true;

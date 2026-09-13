@@ -521,10 +521,16 @@
                                             Click="BtnA11yAudit_Click"/>
                                     <Button x:Name="BtnDomChanges" Content="⚡ DOM Δ (0)"
                                             Style="{StaticResource IconButton}" FontSize="8"
-                                            Padding="3,1,3,1" Margin="0,0,6,0"
+                                            Padding="3,1,3,1" Margin="0,0,4,0"
                                             Foreground="{StaticResource TextBrush}"
                                             ToolTip="Toggle real-time DOM mutation tracking &amp; highlight outlines"
                                             Click="BtnDomChanges_Click"/>
+                                    <Button x:Name="BtnDevToolsRunner" Content="💻 Runner"
+                                            Style="{StaticResource IconButton}" FontSize="8"
+                                            Padding="3,1,3,1" Margin="0,0,6,0"
+                                            Foreground="{StaticResource AccentBrush}"
+                                            ToolTip="Open DevTools Command &amp; Network API Runner"
+                                            Click="BtnDevToolsRunner_Click"/>
                                     <TextBlock x:Name="TelemetryCdpBadge" Text="🌐 CDP Active" FontSize="9"
                                                Foreground="{StaticResource AccentBrush}"
                                                ToolTip="Chrome DevTools Protocol actively capturing engine console, network, and error events"/>
@@ -792,6 +798,267 @@
                                 <Button x:Name="BtnAddDomChangesToSteps" Content="+ Add Mutations to Repro Steps" Style="{StaticResource IconButton}"
                                         FontSize="8" Padding="4,2" Foreground="{StaticResource AccentBrush}" Click="BtnAddDomChangesToSteps_Click"
                                         ToolTip="Appends captured DOM changes to the reproduction steps"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- DEVTOOLS COMMAND & NETWORK RUNNER DRAWER -->
+                        <Border x:Name="DevToolsRunnerDrawer"
+                                Background="{StaticResource Surface0Brush}"
+                                BorderBrush="{StaticResource AccentBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4" Padding="6" Margin="0,0,0,5"
+                                Visibility="Collapsed">
+                            <StackPanel>
+                                <!-- Drawer Header: Title, Native DevTools shortcut, Close -->
+                                <Grid Margin="0,0,0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="💻 DevTools Runner" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,6,0"/>
+                                        <TextBlock Text="(Fast JS &amp; API Shortcut)" FontSize="8" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <Button x:Name="BtnOpenFullDevTools" Grid.Column="1"
+                                            Content="🛠 Full DevTools" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="4,1,4,1" Margin="0,0,4,0"
+                                            Foreground="{StaticResource TextBrush}"
+                                            ToolTip="Open native Chromium DevTools window (DevTools remains fully available and unmodified)"
+                                            Click="BtnOpenFullDevTools_Click"/>
+
+                                    <Button x:Name="BtnCloseDevToolsRunner" Grid.Column="2"
+                                            Content="✕" Style="{StaticResource IconButton}"
+                                            FontSize="9" Width="16" Height="16" Padding="0"
+                                            ToolTip="Close Runner Drawer"
+                                            Click="BtnCloseDevToolsRunner_Click"/>
+                                </Grid>
+
+                                <!-- Mode Selector Tabs: [ 💻 Console Command ] vs [ 🌐 Network / API ] -->
+                                <Grid Margin="0,0,0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="2"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Button x:Name="BtnRunnerModeConsole" Grid.Column="0"
+                                            Content="💻 JS Console" Style="{StaticResource SecondaryButton}"
+                                            FontSize="8" Padding="2,2,2,2" FontWeight="SemiBold"
+                                            Click="BtnRunnerModeConsole_Click"/>
+
+                                    <Button x:Name="BtnRunnerModeNetwork" Grid.Column="2"
+                                            Content="🌐 Network / API" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="2,2,2,2"
+                                            Click="BtnRunnerModeNetwork_Click"/>
+                                </Grid>
+
+                                <!-- 1. CONSOLE RUNNER PANEL -->
+                                <StackPanel x:Name="PanelConsoleRunner" Margin="0,0,0,4">
+                                    <!-- Presets & History Quick Pick -->
+                                    <Grid Margin="0,0,0,3">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0" Text="Preset:" FontSize="8" Foreground="{StaticResource Subtext1Brush}"
+                                                   VerticalAlignment="Center" Margin="0,0,4,0"/>
+
+                                        <ComboBox x:Name="CboConsolePresets" Grid.Column="1"
+                                                  FontSize="8" FontFamily="Consolas" Height="20"
+                                                  SelectionChanged="CboConsolePresets_SelectionChanged"
+                                                  ToolTip="Select a common JavaScript console command preset"/>
+
+                                        <TextBlock Grid.Column="2" Text="↑/↓ for History" FontSize="7"
+                                                   Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    </Grid>
+
+                                    <!-- Command Input -->
+                                    <TextBox x:Name="TxtConsoleCommand"
+                                             Height="42" FontSize="9" FontFamily="Consolas"
+                                             AcceptsReturn="True" TextWrapping="Wrap"
+                                             Background="{StaticResource BaseBrush}" Foreground="{StaticResource TextBrush}"
+                                             BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
+                                             Padding="4,2,4,2" Margin="0,0,0,3"
+                                             ToolTip="Enter JavaScript to execute in WebView2 context. Press Enter to run, Shift+Enter for newline. Use Up/Down arrows to recall history."
+                                             PreviewKeyDown="TxtConsoleCommand_PreviewKeyDown"/>
+
+                                    <!-- Action Bar -->
+                                    <Grid Margin="0,0,0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <Button x:Name="BtnRunConsoleCommand" Grid.Column="0"
+                                                Content="▶ Run Command (Enter)" Style="{StaticResource PrimaryButton}"
+                                                FontSize="8" Padding="6,2,6,2" FontWeight="SemiBold"
+                                                Click="BtnRunConsoleCommand_Click"
+                                                ToolTip="Execute JavaScript in the page context and capture return value and logs"/>
+
+                                        <Button x:Name="BtnClearConsoleCommand" Grid.Column="1"
+                                                Content="🗑 Clear" Style="{StaticResource IconButton}"
+                                                FontSize="8" Padding="4,2,4,2" Margin="3,0,0,0"
+                                                Click="BtnClearConsoleCommand_Click"
+                                                ToolTip="Clear command input"/>
+                                    </Grid>
+                                </StackPanel>
+
+                                <!-- 2. NETWORK / API SNIPPET RUNNER PANEL -->
+                                <StackPanel x:Name="PanelNetworkRunner" Margin="0,0,0,4" Visibility="Collapsed">
+                                    <!-- Detection Badge + Method Override -->
+                                    <Grid Margin="0,0,0,3">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="Detected:" FontSize="8" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,3,0"/>
+                                            <TextBlock x:Name="TxtDetectedType" Text="[Raw URL / Path]" FontSize="8" FontWeight="Bold"
+                                                       Foreground="{StaticResource AccentBrush}"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <TextBlock Text="Method:" FontSize="8" Foreground="{StaticResource Subtext1Brush}"
+                                                       VerticalAlignment="Center" Margin="0,0,3,0"/>
+                                            <ComboBox x:Name="CboApiMethod" FontSize="8" Height="19" Width="68">
+                                                <ComboBoxItem Content="Auto" IsSelected="True"/>
+                                                <ComboBoxItem Content="GET"/>
+                                                <ComboBoxItem Content="POST"/>
+                                                <ComboBoxItem Content="PUT"/>
+                                                <ComboBoxItem Content="DELETE"/>
+                                                <ComboBoxItem Content="PATCH"/>
+                                            </ComboBox>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- API Snippet Input (curl, fetch, URL, path, JSON) -->
+                                    <TextBox x:Name="TxtApiSnippet"
+                                             Height="42" FontSize="9" FontFamily="Consolas"
+                                             AcceptsReturn="True" TextWrapping="Wrap"
+                                             Background="{StaticResource BaseBrush}" Foreground="{StaticResource TextBrush}"
+                                             BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
+                                             Padding="4,2,4,2" Margin="0,0,0,3"
+                                             ToolTip="Paste fetch(), XMLHttpRequest, curl command, raw URL (https://...), or endpoint path (/api/...). Auto-converts curl."
+                                             TextChanged="TxtApiSnippet_TextChanged"/>
+
+                                    <!-- Optional JSON Payload Input -->
+                                    <Grid Margin="0,0,0,3">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="Payload:" FontSize="8" Foreground="{StaticResource Subtext1Brush}"
+                                                   VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBox x:Name="TxtApiPayload" Grid.Column="1"
+                                                 Height="20" FontSize="8" FontFamily="Consolas"
+                                                 Background="{StaticResource BaseBrush}" Foreground="{StaticResource TextBrush}"
+                                                 BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
+                                                 Padding="3,1,3,1"
+                                                 ToolTip="Optional JSON payload for raw URL / relative path requests (e.g. {'user':'admin'})"/>
+                                    </Grid>
+
+                                    <!-- Action Bar -->
+                                    <Grid Margin="0,0,0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <Button x:Name="BtnExecuteApi" Grid.Column="0"
+                                                Content="▶ Execute API Call" Style="{StaticResource PrimaryButton}"
+                                                FontSize="8" Padding="6,2,6,2" FontWeight="SemiBold"
+                                                Click="BtnExecuteApi_Click"
+                                                ToolTip="Execute API call inside the page context (inherits session cookies, tokens &amp; CORS)"/>
+
+                                        <Button x:Name="BtnClearApiSnippet" Grid.Column="1"
+                                                Content="🗑 Clear" Style="{StaticResource IconButton}"
+                                                FontSize="8" Padding="4,2,4,2" Margin="3,0,0,0"
+                                                Click="BtnClearApiSnippet_Click"
+                                                ToolTip="Clear API input"/>
+                                    </Grid>
+                                </StackPanel>
+
+                                <!-- 3. RESULT VIEWER PANEL (Unified Tabs: Console, Pretty JSON, Raw, Headers, Timing) -->
+                                <Border Background="{StaticResource BaseBrush}" CornerRadius="3" BorderBrush="{StaticResource Surface1Brush}"
+                                        BorderThickness="1" Padding="4" Margin="0,0,0,4">
+                                    <StackPanel>
+                                        <!-- Tabs Header -->
+                                        <Grid Margin="0,0,0,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Result Tabs -->
+                                            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                                <Button x:Name="BtnTabConsole" Content="Console" Style="{StaticResource SecondaryButton}"
+                                                        FontSize="7" Padding="4,1,4,1" Margin="0,0,2,0" Tag="Console"
+                                                        Click="BtnResultTab_Click"/>
+                                                <Button x:Name="BtnTabJson" Content="JSON" Style="{StaticResource IconButton}"
+                                                        FontSize="7" Padding="4,1,4,1" Margin="0,0,2,0" Tag="Json"
+                                                        Click="BtnResultTab_Click"/>
+                                                <Button x:Name="BtnTabRaw" Content="Raw" Style="{StaticResource IconButton}"
+                                                        FontSize="7" Padding="4,1,4,1" Margin="0,0,2,0" Tag="Raw"
+                                                        Click="BtnResultTab_Click"/>
+                                                <Button x:Name="BtnTabHeaders" Content="Headers" Style="{StaticResource IconButton}"
+                                                        FontSize="7" Padding="4,1,4,1" Margin="0,0,2,0" Tag="Headers"
+                                                        Click="BtnResultTab_Click"/>
+                                                <Button x:Name="BtnTabTiming" Content="Timing" Style="{StaticResource IconButton}"
+                                                        FontSize="7" Padding="4,1,4,1" Tag="Timing"
+                                                        Click="BtnResultTab_Click"/>
+                                            </StackPanel>
+
+                                            <!-- Status Summary Badge -->
+                                            <TextBlock x:Name="TxtRunnerStatus" Grid.Column="1"
+                                                       Text="Ready" FontSize="8"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Foreground="{StaticResource Subtext1Brush}"/>
+                                        </Grid>
+
+                                        <!-- Result Display Area -->
+                                        <TextBox x:Name="TxtRunnerResult"
+                                                 Height="100" FontSize="8" FontFamily="Consolas"
+                                                 IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                                 Background="{StaticResource CrustBrush}" Foreground="{StaticResource TextBrush}"
+                                                 BorderThickness="0" Padding="3"
+                                                 Text="// Output will appear here after execution..."/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 4. FOOTER ACTIONS: Attach to Bug Report, Copy, Clear -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Button x:Name="BtnAttachResultToBug" Grid.Column="0"
+                                            Content="📎 Attach Result to Bug Report" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="4,2,4,2" FontWeight="SemiBold"
+                                            Foreground="{StaticResource AccentBrush}"
+                                            Click="BtnAttachResultToBug_Click"
+                                            ToolTip="Append the command/API snippet, status, headers, and output to the active bug report draft"/>
+
+                                    <Button x:Name="BtnCopyRunnerResult" Grid.Column="1"
+                                            Content="📋 Copy" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="4,2,4,2" Margin="3,0,0,0"
+                                            Click="BtnCopyRunnerResult_Click"
+                                            ToolTip="Copy displayed result tab text to clipboard"/>
+
+                                    <Button x:Name="BtnClearRunnerResult" Grid.Column="2"
+                                            Content="🗑" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="4,2,4,2" Margin="3,0,0,0"
+                                            Click="BtnClearRunnerResult_Click"
+                                            ToolTip="Clear result output"/>
+                                </Grid>
                             </StackPanel>
                         </Border>
 
