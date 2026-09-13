@@ -405,6 +405,13 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "A customer deletes a record and it enters a holding period rather than disappearing. If they ask for it gone sooner, that request lands here for an operator to approve, decline, or talk about and restore instead.",
       };
     }
+    if (sel.page === "revenue") {
+      return {
+        eyebrow: "PARTNER REVENUE",
+        title: "Partner Revenue",
+        note: "Two halves that must never be totalled: what you pay the platform, verified with the payment processor, and your own resale worksheet, which nothing here charges or reconciles.",
+      };
+    }
     if (sel.page === "plan") {
       return {
         eyebrow: "PLATFORM SUBSCRIPTION — SELF-SERVICE",
