@@ -114,25 +114,26 @@ const deliveriesKey = (customerId: number, webhookId: string) =>
 // ── Customer endpoints ──────────────────────────────────────────────────────
 
 export function useCustomerWebhooks(customerId: number) {
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, isLoading, accessToken } = useAuth();
   return useQuery({
     queryKey: webhooksKey(customerId),
     queryFn: async () => {
       const res = await fetchWithAuth(`${base(customerId)}/webhooks`);
       return parseJsonOrThrow<{ webhooks: ConsoleWebhook[] }>(res);
     },
+    enabled: !isLoading && !!accessToken,
   });
 }
 
 export function useWebhookDeliveries(customerId: number, webhookId: string | null, limit = 50) {
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, isLoading, accessToken } = useAuth();
   return useQuery({
     queryKey: deliveriesKey(customerId, webhookId ?? ""),
     queryFn: async () => {
       const res = await fetchWithAuth(`${base(customerId)}/webhooks/${encodeURIComponent(webhookId!)}/deliveries?limit=${limit}`);
       return parseJsonOrThrow<DeliveriesResponse>(res);
     },
-    enabled: webhookId != null,
+    enabled: !isLoading && !!accessToken && webhookId != null,
   });
 }
 
@@ -143,7 +144,7 @@ export function useWebhookDeliveries(customerId: number, webhookId: string | nul
  * endpoints a single customer registers, not a scalability concern here.
  */
 export function useAllCustomerDeliveries(customerId: number, webhookIds: string[], limitEach = 25) {
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, isLoading: authLoading, accessToken } = useAuth();
   const results = useQueries({
     queries: webhookIds.map((webhookId) => ({
       queryKey: deliveriesKey(customerId, webhookId),
@@ -152,6 +153,7 @@ export function useAllCustomerDeliveries(customerId: number, webhookIds: string[
         const body = await parseJsonOrThrow<DeliveriesResponse>(res);
         return body.deliveries.map((d) => ({ ...d, webhookId }));
       },
+      enabled: !authLoading && !!accessToken,
     })),
   });
 
@@ -183,13 +185,14 @@ export function useDisableWebhook(customerId: number) {
 // ── Inbound platform webhook activity (Git #3760) ────────────────────────────
 
 export function useInboundWebhookActivity(customerId: number, limit = 50) {
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, isLoading, accessToken } = useAuth();
   return useQuery({
     queryKey: ["msp", "console-webhooks", customerId, "inbound", limit] as const,
     queryFn: async () => {
       const res = await fetchWithAuth(`${base(customerId)}/webhooks/inbound?limit=${limit}`);
       return parseJsonOrThrow<InboundWebhooksResponse>(res);
     },
+    enabled: !isLoading && !!accessToken,
   });
 }
 
