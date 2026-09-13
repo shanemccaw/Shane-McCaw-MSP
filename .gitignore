@@ -93,3 +93,9 @@ scripts/azure/app-registration-drift.log
 
 # Scratch bundles produced by artifacts/api-server/run-script.mjs (Git #1797)
 artifacts/api-server/.run-script-*/
+
+# Written by WorktreeProvisionService.cs / scripts/dev-server/provision-worktree.mjs
+# when a worktree is re-provisioned mid-session; names the rescued/* branch holding
+# prior uncommitted work. Genuinely useful but untracked, so left unignored it
+# permanently dirties `git status --porcelain` (Git #3802).
+.worktree-reprovisioned.json
