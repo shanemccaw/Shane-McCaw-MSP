@@ -10,7 +10,7 @@ import {
   CLASS_TONE, RISK_COLOR, STATUS_LABEL, STATUS_TONE, toneColors,
 } from "./shared";
 import {
-  filterByTenant, tenantKeyOf, useChangeRequests, useCreateChangeRequest,
+  filterByTenant, tenantKeyOf, useApproveChangeRequest, useChangeRequests, useCreateChangeRequest,
   useCrTimeline, usePatchChangeRequest, usePostCrComment,
   ApiError, type ChangeCategory, type ChangeClass, type ChangeStatus, type RiskLevel, type WireChangeRequest,
 } from "./api";
@@ -144,10 +144,15 @@ export function Register({ customer, onNavigateTab }: { customer: DirectoryCusto
 function CrDetailDrawer({ cr, onClose, onNavigateTab }: { cr: WireChangeRequest; onClose: () => void; onNavigateTab: (tabId: string) => void }) {
   const timeline = useCrTimeline(cr.id);
   const patch = usePatchChangeRequest();
+  const approve = useApproveChangeRequest();
   const postComment = usePostCrComment();
   const [comment, setComment] = useState("");
   const [rejectArmed, setRejectArmed] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  // #3761 — set only when the server refuses a direct approval because the
+  // change is already sitting on an open CAB agenda item; that stage's row
+  // then falls back to "Decide via Advisory Board" instead of retrying here.
+  const [approveCabBlocked, setApproveCabBlocked] = useState(false);
 
   const pending = cr.approvals.filter((a) => a.decision === "pending").length;
   const rejected = cr.approvals.some((a) => a.decision === "rejected");
@@ -195,7 +200,25 @@ function CrDetailDrawer({ cr, onClose, onNavigateTab }: { cr: WireChangeRequest;
               </span>
               {a.decision === "pending" ? (
                 a.approverRole === "msp" ? (
-                  <Button label="Decide via Advisory Board" onClick={() => onNavigateTab("cc.cab")} title="MSP-side approval stages are recorded through a real CAB agenda decision, not directly here" />
+                  approveCabBlocked ? (
+                    <Button label="Decide via Advisory Board" onClick={() => onNavigateTab("cc.cab")} title="This change is already on an open CAB agenda — its decision is recorded there." />
+                  ) : (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <Button
+                        label="Approve"
+                        icon="circle-check-big"
+                        tone="primary"
+                        disabled={approve.isPending}
+                        onClick={() =>
+                          approve.mutate(
+                            { id: cr.id },
+                            { onError: (err) => { if (err instanceof ApiError && err.status === 409) setApproveCabBlocked(true); } },
+                          )
+                        }
+                      />
+                      <Button label="Reject" icon="circle-x" tone="danger" onClick={() => setRejectArmed(true)} />
+                    </div>
+                  )
                 ) : (
                   <span style={{ fontSize: 11, color: "#64748b" }}>awaiting {ROLE_LABEL[a.approverRole]}</span>
                 )

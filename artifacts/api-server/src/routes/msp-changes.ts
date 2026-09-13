@@ -12,9 +12,10 @@ import { toWireApproval, type WireApprovalRecord } from "../lib/portal-change-ap
 import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "../lib/portal-change-freeze-store.ts";
 import { maintenanceCoverageForBookedSpan } from "../lib/portal-change-maintenance-store.ts";
 import { collidingChangeRequestForSubmit } from "../lib/portal-change-collision-store.ts";
-import { loadApprovalPolicy, materializeApprovalsForChange, NO_POLICY, type ApproverIdentity } from "../lib/portal-change-approvals-store.ts";
+import { loadApprovalPolicy, materializeApprovalsForChange, NO_POLICY, recordApproval, type ApproverIdentity } from "../lib/portal-change-approvals-store.ts";
 import { requiredStages, summarizeApprovals } from "../lib/portal-change-approvals.ts";
 import { recordRejection } from "../lib/portal-change-rejection.ts";
+import { isOnOpenCabAgenda } from "../lib/portal-cab-store.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
 import {
   addAttachment,
@@ -578,6 +579,100 @@ router.patch(
       });
     } catch (err: unknown) {
       log.error({ err }, "PATCH /api/msp/change-requests/:id failed");
+      const msg = err instanceof Error ? err.message : String(err);
+      apiError(res, 500, ApiErrorCode.INTERNAL, msg);
+    }
+  }
+);
+
+const approveChangeRequestSchema = z.object({ note: z.string().trim().max(2_000).optional() });
+
+/**
+ * POST /msp/change-requests/:id/approve — Git #3761. The MSP-side counterpart
+ * to the customer portal's own `POST /portal/change-control/:code/approve`
+ * (`routes/portal-change-control.ts:1144`), for the "MSP technical review"
+ * approval stage (`cr_approvals.approver_role = 'msp'`).
+ *
+ * Before this route, the ONLY path that could record an `msp`-role decision
+ * was `recordAgendaDecision` (`portal-cab-store.ts`) via a real CAB agenda
+ * item, which requires a CAB meeting to already exist. A tier without CAB
+ * features (Shane's own resolution on #3761) has no such meeting, so its MSP
+ * review stage had no route to clear at all — the design's own Approve/Reject
+ * buttons on that stage rendered against nothing.
+ *
+ * Reuses the SAME `recordApproval` (#1496) every other approval surface
+ * calls — one ledger, one set of rules (separation of duties, freeze-exception
+ * gating), regardless of which surface recorded the decision. Blocked when the
+ * change is already sitting on an OPEN CAB agenda item, so this direct path
+ * and a real board decision can never race to decide the same stage.
+ */
+router.post(
+  "/msp/change-requests/:id/approve",
+  requireAuth,
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+
+      const crIdStr = String(req.params.id);
+      const dbId = parseCrId(crIdStr);
+      if (dbId === null) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid change request ID format");
+        return;
+      }
+
+      const parsedBody = approveChangeRequestSchema.safeParse(req.body ?? {});
+      if (!parsedBody.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid approval payload", parsedBody.error.flatten());
+        return;
+      }
+
+      const [existing] = await db
+        .select()
+        .from(mspChangeRequestsTable)
+        .where(and(eq(mspChangeRequestsTable.id, dbId), eq(mspChangeRequestsTable.mspId, mspId)))
+        .limit(1);
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Change request not found");
+        return;
+      }
+
+      if (await isOnOpenCabAgenda(mspId, dbId)) {
+        apiError(
+          res,
+          409,
+          ApiErrorCode.CONFLICT,
+          "This change is on an open Change Advisory Board agenda — decide it there instead.",
+        );
+        return;
+      }
+
+      // Mirrors `operatorIdentity()` in `msp-change-control-cab.ts` and the
+      // #3033 rejection branch above exactly: no customer context on this
+      // surface, so `customerId: 0`.
+      const approver: ApproverIdentity = {
+        personId: req.user ? personIdForUser(req.user.id) : "unknown",
+        name: (req.user?.email ?? "").trim() || `User ${req.user?.id ?? "unknown"}`,
+        email: req.user?.email ?? "",
+        customerId: 0,
+        role: "msp",
+      };
+
+      const result = await recordApproval(existing, approver, parsedBody.data.note?.trim() || null);
+      if (!result.ok) {
+        const errorCode =
+          result.code === 409 ? ApiErrorCode.CONFLICT : result.code === 403 ? ApiErrorCode.FORBIDDEN : ApiErrorCode.VALIDATION;
+        apiError(res, result.code, errorCode, result.error);
+        return;
+      }
+
+      res.json({ id: crIdStr, approved: true, stage: result.stage, complete: result.complete });
+    } catch (err: unknown) {
+      log.error({ err }, "POST /api/msp/change-requests/:id/approve failed");
       const msg = err instanceof Error ? err.message : String(err);
       apiError(res, 500, ApiErrorCode.INTERNAL, msg);
     }

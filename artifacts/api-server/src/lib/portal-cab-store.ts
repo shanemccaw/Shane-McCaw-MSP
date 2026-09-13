@@ -22,7 +22,7 @@ import {
   type CabMemberSide,
   type MspChangeRequest,
 } from "@workspace/db";
-import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 
 import { nextPendingStage } from "./portal-change-approvals.ts";
 import { recordApproval, type ApproverIdentity, type CrEssentials } from "./portal-change-approvals-store.ts";
@@ -278,6 +278,32 @@ export async function eligibleChangesForAgenda(mspId: number, meetingType: CabMe
   return crs
     .filter((c) => c.status !== "rejected" && pendingIds.has(c.id) && !alreadyAgendaed.has(c.id))
     .map((c) => ({ id: c.id, code: formatChangeRequestCode(c.id), title: c.title, tenantId: c.tenantId, riskLevel: c.riskLevel }));
+}
+
+/**
+ * True when a change already sits on an OPEN (scheduled/in_progress) CAB
+ * meeting's agenda with no recommendation recorded yet — i.e. this MSP's board
+ * has already picked the change up and its decision belongs there
+ * (`recordAgendaDecision`), not through a direct approval/rejection route.
+ * Same open-meeting join `eligibleChangesForAgenda` already uses above, single
+ * change instead of a whole-book scan (Git #3761 — the direct MSP-approval
+ * route this guards).
+ */
+export async function isOnOpenCabAgenda(mspId: number, changeRequestId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ id: cabAgendaItemsTable.id })
+    .from(cabAgendaItemsTable)
+    .innerJoin(cabMeetingsTable, eq(cabAgendaItemsTable.meetingId, cabMeetingsTable.id))
+    .where(
+      and(
+        eq(cabMeetingsTable.mspId, mspId),
+        inArray(cabMeetingsTable.status, ["scheduled", "in_progress"]),
+        eq(cabAgendaItemsTable.changeRequestId, changeRequestId),
+        isNull(cabAgendaItemsTable.recommendation),
+      ),
+    )
+    .limit(1);
+  return !!row;
 }
 
 export type AddAgendaItemOutcome =

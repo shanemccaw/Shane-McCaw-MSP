@@ -176,6 +176,27 @@ export function useCreateChangeRequest() {
   });
 }
 
+/**
+ * The direct MSP-side approval (Git #3761) — the counterpart to the customer
+ * portal's own approve action, for the "MSP technical review" stage. Does NOT
+ * require a CAB agenda item to exist; the server itself refuses (409) when the
+ * change is already sitting on an open CAB agenda instead.
+ */
+export function useApproveChangeRequest() {
+  const { fetchWithAuth } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note?: string }) =>
+      postJson<{ id: string; approved: boolean; stage: number; complete: boolean }>(
+        fetchWithAuth, `/api/msp/change-requests/${id}/approve`, { note },
+      ),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["msp", "change-requests"] });
+      qc.invalidateQueries({ queryKey: ["msp", "change-requests", vars.id, "timeline"] });
+    },
+  });
+}
+
 export function usePatchChangeRequest() {
   const { fetchWithAuth } = useAuth();
   const qc = useQueryClient();
