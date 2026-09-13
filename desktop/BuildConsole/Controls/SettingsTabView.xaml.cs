@@ -1640,8 +1640,24 @@ namespace BuildConsole.Controls
 
         // ══════════════════════════════════════════════════════════════════════
         // USER ACCOUNTS MANAGEMENT (Gated profiles & Test credentials)
+        // Git #3922 (Feature #3921) — extended from single-purpose gating-tier test
+        // credentials into named multi-login profiles (Label/TargetApp/LoginUrl/
+        // IsAnonymous added on top of the existing Username/Password/AccountTier/Notes).
         // ══════════════════════════════════════════════════════════════════════
         private string _editingUserAccountId = "";
+
+        /// <summary>Git #3922 — real default local-dev login URL per target app, matching
+        /// scripts/dev-server/services.json's ports/basePath exactly (Portal mounts under
+        /// "/portal/", the others at root). Pre-fills LoginUrl when a target app is picked and
+        /// the field is still blank/untouched; Shane can always overwrite it with the real
+        /// Staging/Production login URL instead.</summary>
+        private static string DefaultLoginUrlForTargetApp(string targetApp) => targetApp switch
+        {
+            "Marketing" => "http://localhost:5173/login",
+            "Portal" => "http://localhost:5175/portal/login",
+            "MSP Console" => "http://localhost:5177/login",
+            _ => "",
+        };
 
         private void RenderUserAccountsSettingsList()
         {
@@ -1692,16 +1708,37 @@ namespace BuildConsole.Controls
 
                 // 2. Account info stack
                 var infoStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-                
-                var userRow = new StackPanel { Orientation = Orientation.Horizontal };
-                userRow.Children.Add(new TextBlock { Text = "User: ", FontSize = 11, Foreground = (Brush)FindResource("Subtext1Brush") });
-                userRow.Children.Add(new TextBlock { Text = acc.Username, FontSize = 12, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("TextBrush") });
-                infoStack.Children.Add(userRow);
 
-                var passRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
-                passRow.Children.Add(new TextBlock { Text = "Pass: ", FontSize = 11, Foreground = (Brush)FindResource("Subtext1Brush") });
-                passRow.Children.Add(new TextBlock { Text = acc.Password, FontSize = 11, Foreground = (Brush)FindResource("Subtext0Brush") });
-                infoStack.Children.Add(passRow);
+                var labelRow = new StackPanel { Orientation = Orientation.Horizontal };
+                string displayLabel = string.IsNullOrWhiteSpace(acc.Label) ? acc.Username : acc.Label;
+                labelRow.Children.Add(new TextBlock { Text = displayLabel, FontSize = 12, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("TextBrush") });
+                if (!string.IsNullOrWhiteSpace(acc.TargetApp))
+                {
+                    labelRow.Children.Add(new TextBlock { Text = $"  ·  {acc.TargetApp}", FontSize = 11, Foreground = (Brush)FindResource("Subtext1Brush"), VerticalAlignment = VerticalAlignment.Center });
+                }
+                infoStack.Children.Add(labelRow);
+
+                if (acc.IsAnonymous)
+                {
+                    infoStack.Children.Add(new TextBlock { Text = "Anonymous — no login", FontSize = 11, FontStyle = FontStyles.Italic, Foreground = (Brush)FindResource("Subtext0Brush"), Margin = new Thickness(0, 2, 0, 2) });
+                }
+                else
+                {
+                    var userRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+                    userRow.Children.Add(new TextBlock { Text = "User: ", FontSize = 11, Foreground = (Brush)FindResource("Subtext1Brush") });
+                    userRow.Children.Add(new TextBlock { Text = acc.Username, FontSize = 11, Foreground = (Brush)FindResource("Subtext0Brush") });
+                    infoStack.Children.Add(userRow);
+
+                    var passRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
+                    passRow.Children.Add(new TextBlock { Text = "Pass: ", FontSize = 11, Foreground = (Brush)FindResource("Subtext1Brush") });
+                    passRow.Children.Add(new TextBlock { Text = acc.Password, FontSize = 11, Foreground = (Brush)FindResource("Subtext0Brush") });
+                    infoStack.Children.Add(passRow);
+
+                    if (!string.IsNullOrWhiteSpace(acc.LoginUrl))
+                    {
+                        infoStack.Children.Add(new TextBlock { Text = acc.LoginUrl, FontSize = 10, Foreground = (Brush)FindResource("Subtext1Brush") });
+                    }
+                }
 
                 if (!string.IsNullOrWhiteSpace(acc.Notes))
                 {
@@ -1820,22 +1857,36 @@ namespace BuildConsole.Controls
             var acc = settings.UserAccounts?.FirstOrDefault(a => a.Id == accountId);
             if (acc == null) return;
 
+            UserAccountLabelBox.Text = acc.Label;
+            UserAccountLoginUrlBox.Text = acc.LoginUrl;
             UserAccountUsernameBox.Text = acc.Username;
             UserAccountPasswordBox.Text = acc.Password;
             UserAccountNotesBox.Text = acc.Notes;
+            UserAccountAnonymousCheck.IsChecked = acc.IsAnonymous;
 
-            int selIdx = 0;
-            switch ((acc.AccountTier ?? "").ToUpperInvariant())
+            int targetIdx = 0;
+            switch (acc.TargetApp)
             {
-                case "STANDARD": selIdx = 0; break;
-                case "PREMIUM": selIdx = 1; break;
-                case "ENTERPRISE": selIdx = 2; break;
-                case "ADMIN": selIdx = 3; break;
+                case "Marketing": targetIdx = 0; break;
+                case "Portal": targetIdx = 1; break;
+                case "MSP Console": targetIdx = 2; break;
             }
-            UserAccountTierBox.SelectedIndex = selIdx;
+            UserAccountTargetAppBox.SelectedIndex = targetIdx;
+
+            var tierItem = UserAccountTierBox.Items.OfType<ComboBoxItem>()
+                .FirstOrDefault(i => string.Equals(i.Content?.ToString(), acc.AccountTier, StringComparison.OrdinalIgnoreCase));
+            if (tierItem != null)
+            {
+                UserAccountTierBox.SelectedItem = tierItem;
+            }
+            else
+            {
+                UserAccountTierBox.SelectedIndex = -1;
+                UserAccountTierBox.Text = acc.AccountTier;
+            }
 
             _editingUserAccountId = accountId;
-            UserAccountFormTitle.Text = "Edit Account Profile Settings";
+            UserAccountFormTitle.Text = "Edit Login Profile";
             BtnSaveUserAccount.Content = "Save Changes";
             BtnCancelUserAccountEdit.Visibility = Visibility.Visible;
         }
@@ -1847,7 +1898,8 @@ namespace BuildConsole.Controls
             var acc = settings.UserAccounts?.FirstOrDefault(a => a.Id == accountId);
             if (acc == null) return;
 
-            if (MessageBox.Show($"Are you sure you want to delete profile '{acc.Username}' ({acc.AccountTier})?", "Delete Profile", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            string confirmLabel = string.IsNullOrWhiteSpace(acc.Label) ? acc.Username : acc.Label;
+            if (MessageBox.Show($"Are you sure you want to delete profile '{confirmLabel}' ({acc.AccountTier})?", "Delete Profile", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
                 return;
 
             if (settings.UserAccounts == null) return;
@@ -1869,14 +1921,26 @@ namespace BuildConsole.Controls
 
         private void BtnSaveUserAccount_Click(object sender, RoutedEventArgs e)
         {
+            string label = UserAccountLabelBox.Text.Trim();
+            string targetApp = (UserAccountTargetAppBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "";
+            string loginUrl = UserAccountLoginUrlBox.Text.Trim();
             string username = UserAccountUsernameBox.Text.Trim();
             string password = UserAccountPasswordBox.Text.Trim();
             string notes = UserAccountNotesBox.Text.Trim();
-            string tier = (UserAccountTierBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Standard";
+            string tier = (UserAccountTierBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? UserAccountTierBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(tier)) tier = "Standard";
+            bool isAnonymous = UserAccountAnonymousCheck.IsChecked == true;
 
-            if (string.IsNullOrEmpty(username))
+            // Git #3922 — an anonymous profile means "run with no login at all"; URL/email/password
+            // are irrelevant, so only a real, non-anonymous profile needs a username to identify it.
+            if (!isAnonymous && string.IsNullOrEmpty(username))
             {
-                MessageBox.Show("Please enter a username or email.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Please enter a username or email, or check Anonymous.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            if (string.IsNullOrEmpty(label))
+            {
+                MessageBox.Show("Please enter a label for this profile.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -1887,34 +1951,42 @@ namespace BuildConsole.Controls
             {
                 var newAcc = new UserAccountEntry
                 {
-                    Username = username,
-                    Password = password,
+                    Label = label,
+                    TargetApp = targetApp,
+                    LoginUrl = isAnonymous ? "" : loginUrl,
+                    Username = isAnonymous ? "" : username,
+                    Password = isAnonymous ? "" : password,
                     Notes = notes,
-                    AccountTier = tier
+                    AccountTier = tier,
+                    IsAnonymous = isAnonymous
                 };
                 settings.UserAccounts.Add(newAcc);
-                
+
                 if (settings.UserAccounts.Count == 1 || string.IsNullOrEmpty(settings.ActiveUserAccountId))
                 {
                     settings.ActiveUserAccountId = newAcc.Id;
                 }
 
-                UserAccountSavedText.Text = "Gated test profile added successfully!";
+                UserAccountSavedText.Text = "Login profile added successfully!";
             }
             else
             {
                 var existing = settings.UserAccounts.FirstOrDefault(a => a.Id == _editingUserAccountId);
                 if (existing != null)
                 {
-                    existing.Username = username;
-                    existing.Password = password;
+                    existing.Label = label;
+                    existing.TargetApp = targetApp;
+                    existing.LoginUrl = isAnonymous ? "" : loginUrl;
+                    existing.Username = isAnonymous ? "" : username;
+                    existing.Password = isAnonymous ? "" : password;
                     existing.Notes = notes;
                     existing.AccountTier = tier;
+                    existing.IsAnonymous = isAnonymous;
                 }
-                
+
                 _editingUserAccountId = "";
-                UserAccountFormTitle.Text = "Create Gated Test Profile";
-                BtnSaveUserAccount.Content = "Add Gated Profile";
+                UserAccountFormTitle.Text = "Create Login Profile";
+                BtnSaveUserAccount.Content = "Add Login Profile";
                 BtnCancelUserAccountEdit.Visibility = Visibility.Collapsed;
 
                 UserAccountSavedText.Text = "Profile settings saved successfully!";
@@ -1923,10 +1995,7 @@ namespace BuildConsole.Controls
             settings.Save();
             RenderUserAccountsSettingsList();
 
-            UserAccountUsernameBox.Text = "";
-            UserAccountPasswordBox.Text = "";
-            UserAccountNotesBox.Text = "";
-            UserAccountTierBox.SelectedIndex = 0;
+            ResetUserAccountForm();
 
             var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             timer.Tick += (s2, e2) => { UserAccountSavedText.Text = ""; timer.Stop(); };
@@ -1936,14 +2005,49 @@ namespace BuildConsole.Controls
         private void BtnCancelUserAccountEdit_Click(object sender, RoutedEventArgs e)
         {
             _editingUserAccountId = "";
-            UserAccountFormTitle.Text = "Create Gated Test Profile";
-            BtnSaveUserAccount.Content = "Add Gated Profile";
+            UserAccountFormTitle.Text = "Create Login Profile";
+            BtnSaveUserAccount.Content = "Add Login Profile";
             BtnCancelUserAccountEdit.Visibility = Visibility.Collapsed;
 
+            ResetUserAccountForm();
+        }
+
+        private void ResetUserAccountForm()
+        {
+            UserAccountLabelBox.Text = "";
+            UserAccountTargetAppBox.SelectedIndex = 0;
+            UserAccountLoginUrlBox.Text = "";
             UserAccountUsernameBox.Text = "";
             UserAccountPasswordBox.Text = "";
             UserAccountNotesBox.Text = "";
             UserAccountTierBox.SelectedIndex = 0;
+            UserAccountAnonymousCheck.IsChecked = false;
+            SetUserAccountFormEnabled(true);
+        }
+
+        /// <summary>Git #3922 — an anonymous profile means "run with no login at all"; disable
+        /// URL/email/password entirely rather than merely ignoring their content, so the state is
+        /// visible in the UI itself, not just enforced silently on save.</summary>
+        private void SetUserAccountFormEnabled(bool loginFieldsEnabled)
+        {
+            UserAccountLoginUrlBox.IsEnabled = loginFieldsEnabled;
+            UserAccountUsernameBox.IsEnabled = loginFieldsEnabled;
+            UserAccountPasswordBox.IsEnabled = loginFieldsEnabled;
+        }
+
+        private void UserAccountAnonymousCheck_CheckedChanged(object sender, RoutedEventArgs e)
+        {
+            SetUserAccountFormEnabled(UserAccountAnonymousCheck.IsChecked != true);
+        }
+
+        private void UserAccountTargetAppBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Git #3922 — pre-fill a sensible default login URL for the picked target app, but only
+            // when the field is still blank/untouched so we never clobber a URL Shane already typed
+            // (e.g. a real Staging/Production login page instead of the local-dev default).
+            if (UserAccountLoginUrlBox == null || !string.IsNullOrWhiteSpace(UserAccountLoginUrlBox.Text)) return;
+            string targetApp = (UserAccountTargetAppBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "";
+            UserAccountLoginUrlBox.Text = DefaultLoginUrlForTargetApp(targetApp);
         }
     }
 }

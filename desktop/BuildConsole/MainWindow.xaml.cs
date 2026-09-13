@@ -3393,12 +3393,14 @@ namespace BuildConsole
                     var accountText = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
                     accountText.Children.Add(new TextBlock
                     {
-                        Text = acc.Username,
+                        // Git #3922 — Label is now the primary display name (falls back to Username for
+                        // a pre-#3922 entry, or when Username is blank on an IsAnonymous profile).
+                        Text = string.IsNullOrWhiteSpace(acc.Label) ? acc.Username : acc.Label,
                         FontSize = 11.5,
                         FontWeight = FontWeights.Bold,
                         Foreground = (Brush)FindResource("TextBrush")
                     });
-                    
+
                     var subText = isCurrentlyActive ? "Active Test Profile" : "";
                     if (!string.IsNullOrWhiteSpace(acc.Notes))
                     {

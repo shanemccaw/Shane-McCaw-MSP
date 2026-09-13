@@ -994,27 +994,63 @@
                                     <TextBlock Text="User Accounts &amp; Gating Tiers" FontSize="15" FontWeight="Bold"
                                                Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
-                                <TextBlock Text="Configure and manage testing account profiles with different tiers (Standard, Premium, Enterprise, Admin). Select the active profile to automate credentials in test runners and pre-fill screens."
+                                <TextBlock Text="Configure and manage named login profiles for Marketing, Portal, and MSP Console — label, target app, login URL, credentials, and a free-text role/tier tag. An anonymous profile runs with no login at all. Select the active profile to automate credentials in test runners and pre-fill screens."
                                            FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
 
                                 <TextBlock Text="Active Testing Profiles" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
-                                
+
                                 <!-- Dynamically populated Accounts list container -->
                                 <StackPanel x:Name="UserAccountsSettingsList" Margin="0,0,0,16"/>
 
                                 <!-- Add / Edit Account Card -->
                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="14" Margin="0,0,0,12">
                                     <StackPanel>
-                                        <TextBlock x:Name="UserAccountFormTitle" Text="Create Gated Test Profile" FontSize="12" FontWeight="SemiBold"
+                                        <TextBlock x:Name="UserAccountFormTitle" Text="Create Login Profile" FontSize="12" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextBrush}" Margin="0,0,0,10"/>
-                                        
+
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="150"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Label -->
+                                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                                <TextBlock Text="Label" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="UserAccountLabelBox" Height="28" FontSize="12"
+                                                         ToolTip="e.g. &quot;MSP Admin — Jane&quot;, &quot;Anonymous — marketing&quot;"/>
+                                            </StackPanel>
+
+                                            <!-- Target App -->
+                                            <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                                                <TextBlock Text="Target App" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <ComboBox x:Name="UserAccountTargetAppBox" Height="28" SelectedIndex="0" FontSize="11"
+                                                          SelectionChanged="UserAccountTargetAppBox_SelectionChanged">
+                                                    <ComboBoxItem Content="Marketing"/>
+                                                    <ComboBoxItem Content="Portal"/>
+                                                    <ComboBoxItem Content="MSP Console"/>
+                                                </ComboBox>
+                                            </StackPanel>
+
+                                            <!-- Login URL -->
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="Login URL" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="UserAccountLoginUrlBox" Height="28" FontSize="12"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <CheckBox x:Name="UserAccountAnonymousCheck" Content="Anonymous — run with no login at all (disables URL / email / password below)"
+                                                  FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,10"
+                                                  Checked="UserAccountAnonymousCheck_CheckedChanged" Unchecked="UserAccountAnonymousCheck_CheckedChanged"/>
+
                                         <Grid Margin="0,0,0,8">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="150"/>
                                             </Grid.ColumnDefinitions>
-                                            
+
                                             <!-- Username -->
                                             <StackPanel Grid.Column="0" Margin="0,0,8,0">
                                                 <TextBlock Text="Username / Email" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
@@ -1027,10 +1063,11 @@
                                                 <TextBox x:Name="UserAccountPasswordBox" Height="28" FontSize="12"/>
                                             </StackPanel>
 
-                                            <!-- Gating Tier -->
+                                            <!-- Role / Tier tag -->
                                             <StackPanel Grid.Column="2">
-                                                <TextBlock Text="Gating Tier" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                                <ComboBox x:Name="UserAccountTierBox" Height="28" SelectedIndex="0" FontSize="11">
+                                                <TextBlock Text="Role / Tier Tag" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <ComboBox x:Name="UserAccountTierBox" Height="28" SelectedIndex="0" FontSize="11" IsEditable="True"
+                                                          ToolTip="Free text — e.g. MSPOperator, Customer:Growth">
                                                     <ComboBoxItem Content="Standard"/>
                                                     <ComboBoxItem Content="Premium"/>
                                                     <ComboBoxItem Content="Enterprise"/>
@@ -1044,7 +1081,7 @@
                                         <TextBox x:Name="UserAccountNotesBox" Height="28" FontSize="12" Margin="0,0,0,12"/>
 
                                         <StackPanel Orientation="Horizontal">
-                                            <Button x:Name="BtnSaveUserAccount" Content="Add Gated Profile" Style="{StaticResource PrimaryButton}"
+                                            <Button x:Name="BtnSaveUserAccount" Content="Add Login Profile" Style="{StaticResource PrimaryButton}"
                                                     Padding="16,5" Click="BtnSaveUserAccount_Click"/>
                                             <Button x:Name="BtnCancelUserAccountEdit" Content="Cancel Edit" Style="{StaticResource IconButton}"
                                                     Padding="12,5" Margin="8,0,0,0" Visibility="Collapsed" Click="BtnCancelUserAccountEdit_Click"/>

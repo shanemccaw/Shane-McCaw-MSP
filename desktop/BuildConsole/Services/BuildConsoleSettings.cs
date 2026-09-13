@@ -55,14 +55,40 @@ namespace BuildConsole.Services
         public bool IsTinkerTier => string.Equals(Tier, Tiers.Tinker, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Represents a user account/credential profile for local instance gating/auth tests.</summary>
+    /// <summary>Represents a user account/credential profile for local instance gating/auth tests.
+    /// Git #3922 (Feature #3921) — extended from a bare username/password/tier tuple into a real named
+    /// multi-login profile: <see cref="Label"/> for a human-readable name, <see cref="TargetApp"/> for
+    /// which live front-end it logs into (real values from scripts/dev-server/services.json's titles —
+    /// Marketing/Portal/MSP Console — not invented names), <see cref="LoginUrl"/> for that app's real
+    /// login page, and <see cref="IsAnonymous"/> for a no-login entry (the marketing free-scan funnel,
+    /// #3590). Same plaintext settings.json persistence as every field below; no new storage path.</summary>
     public class UserAccountEntry
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
+
+        /// <summary>Git #3922 — human-readable name for this profile (e.g. "MSP Admin — Jane",
+        /// "Anonymous — marketing"). Falls back to <see cref="Username"/> in the UI when blank, so a
+        /// pre-#3922 entry (no "label" key) still renders sensibly.</summary>
+        public string Label { get; set; } = "";
+
+        /// <summary>Git #3922 — which live front-end this profile logs into: "Marketing", "Portal", or
+        /// "MSP Console" — the real titles from scripts/dev-server/services.json, not invented names.
+        /// Blank on a pre-#3922 entry.</summary>
+        public string TargetApp { get; set; } = "";
+
+        /// <summary>Git #3922 — the real login page URL for <see cref="TargetApp"/>. Irrelevant/disabled
+        /// when <see cref="IsAnonymous"/> is set.</summary>
+        public string LoginUrl { get; set; } = "";
+
         public string Username { get; set; } = "";
         public string Password { get; set; } = "";
-        public string AccountTier { get; set; } = "Standard"; // Standard, Premium, Enterprise, Admin
+        public string AccountTier { get; set; } = "Standard"; // free-text role/tier tag, e.g. Standard, Premium, Enterprise, Admin, MSPOperator, Customer:Growth
         public string Notes { get; set; } = "";
+
+        /// <summary>Git #3922 — true means "run with no login at all": Username/Password/LoginUrl are
+        /// irrelevant and the UI disables them. Real entry needed for the marketing site's already-real
+        /// Free/anonymous scan funnel (#3590).</summary>
+        public bool IsAnonymous { get; set; } = false;
     }
 
     /// <summary>
