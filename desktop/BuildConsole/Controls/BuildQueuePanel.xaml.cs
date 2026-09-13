@@ -3814,6 +3814,13 @@ namespace BuildConsole.Controls
         /// mis-reported. Members with no GithubNumber (e.g. a local <c>--notGit</c> row) don't
         /// contribute a resolvable Epic; a set made up entirely of such rows resolves to zero Epics
         /// ("No Epic"), same honest treatment as a genuinely un-parented issue.
+        ///
+        /// Git #3872 — a member carrying an explicit <see cref="QueueItem.EpicNumber"/> (its
+        /// prompt header's own <c>--epic &lt;N&gt;</c> override, see
+        /// <see cref="BuildPromptHeader.ParseEpicNumber"/>) contributes that Epic DIRECTLY, bypassing
+        /// the <see cref="EpicResolver"/> parent_number walk entirely for that member — the real
+        /// escape hatch for a build whose Epic the local mirror hasn't resolved (or can't) yet.
+        /// Real DB inference stays the fallback for every member with no override, unchanged.
         /// </summary>
         private async Task<Dictionary<string, List<EpicResolver.ResolvedEpic>>> ResolveBuildSetEpicsAsync(List<QueueItem> items)
         {
@@ -3823,17 +3830,43 @@ namespace BuildConsole.Controls
                 .ToList();
 
             var result = new Dictionary<string, List<EpicResolver.ResolvedEpic>>(StringComparer.OrdinalIgnoreCase);
-            var allNumbers = byKey.SelectMany(g => g.Select(i => i.GithubNumber!.Value)).Distinct().ToList();
-            if (allNumbers.Count == 0) return result;
+            if (byKey.Count == 0) return result;
 
-            var mirrorRows = await GitHubIssueMirror.GetManyAsync(allNumbers);
-            var resolved = await EpicResolver.ResolveTopEpicsAsync(
-                allNumbers.Select(n => (n, mirrorRows.TryGetValue(n, out var m) ? m.ParentNumber : (int?)null)));
+            // Git #3872 — only members WITHOUT an explicit override need the mirror-based
+            // parent_number walk; a member that declared --epic <N> skips it entirely.
+            var needsInference = byKey.SelectMany(g => g.Where(i => !i.EpicNumber.HasValue))
+                .Select(i => i.GithubNumber!.Value).Distinct().ToList();
+
+            var resolved = new Dictionary<int, EpicResolver.ResolvedEpic>();
+            if (needsInference.Count > 0)
+            {
+                var mirrorRows = await GitHubIssueMirror.GetManyAsync(needsInference);
+                resolved = await EpicResolver.ResolveTopEpicsAsync(
+                    needsInference.Select(n => (n, mirrorRows.TryGetValue(n, out var m) ? m.ParentNumber : (int?)null)));
+            }
+
+            // An explicit override still needs a real title for display — a local mirror lookup
+            // only (no live GitHub call from this refresh path); falls back to a bare "#N" label
+            // when the mirror has never seen that number, same honest-absence treatment as
+            // EpicResolver's own "unknown locally" case.
+            var explicitNumbers = byKey.SelectMany(g => g.Where(i => i.EpicNumber.HasValue).Select(i => i.EpicNumber!.Value))
+                .Distinct().ToList();
+            var explicitMirrorRows = explicitNumbers.Count > 0
+                ? await GitHubIssueMirror.GetManyAsync(explicitNumbers)
+                : new Dictionary<int, GitHubIssueMirror.MirrorIssue>();
 
             foreach (var g in byKey)
             {
-                var epics = g.Select(i => i.GithubNumber!.Value)
-                    .Select(n => resolved.TryGetValue(n, out var e) ? e : null)
+                var epics = g.Select(i =>
+                    {
+                        if (i.EpicNumber.HasValue)
+                        {
+                            var n = i.EpicNumber.Value;
+                            var title = explicitMirrorRows.TryGetValue(n, out var m) ? m.Title : $"#{n}";
+                            return new EpicResolver.ResolvedEpic { Number = n, Title = title };
+                        }
+                        return resolved.TryGetValue(i.GithubNumber!.Value, out var e) ? e : null;
+                    })
                     .Where(e => e != null)
                     .Cast<EpicResolver.ResolvedEpic>()
                     .GroupBy(e => e.Number)

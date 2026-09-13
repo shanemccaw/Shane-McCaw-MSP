@@ -75,5 +75,25 @@ namespace BuildConsole.Services
                 .Distinct()
                 .ToList();
         }
+
+        /// <summary>
+        /// Git #3872 — a prompt header's optional <c>--epic &lt;N&gt;</c> override: an explicit
+        /// declaration of this build's real Epic, bypassing <see cref="EpicResolver"/>'s DB-inferred
+        /// <c>parent_number</c> walk entirely for cases where the local mirror hasn't caught up yet
+        /// (#3871's sync-gap fix is the root-cause remedy; this is the independent, explicit-declaration
+        /// safety net, not a replacement for it) or an issue's real Epic is otherwise ambiguous/slow to
+        /// resolve. Null when the prompt has no valid header line, no <c>--epic</c> flag, or the value
+        /// isn't a positive integer.
+        /// </summary>
+        public static int? ParseEpicNumber(string? prompt)
+        {
+            if (string.IsNullOrWhiteSpace(prompt)) return null;
+            var (flags, _) = ExtractLeadingFlags(prompt.TrimStart());
+            if (!flags.TryGetValue("epic", out var raw) || string.IsNullOrWhiteSpace(raw))
+                return null;
+
+            var trimmed = raw.Trim().TrimStart('#');
+            return int.TryParse(trimmed, out var n) && n > 0 ? n : (int?)null;
+        }
     }
 }

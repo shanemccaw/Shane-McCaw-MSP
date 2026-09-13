@@ -213,18 +213,19 @@ namespace BuildConsole.Services
         /// </summary>
         public async Task<List<QueueItem>> GetQueueAsync()
         {
-            // Git #2119/#3583/#3607/#3742 — optional trailing ordinals, strictly append-only per the
-            // #1384 fixed-ordinal contract (MapRow reads each by a fixed absolute ordinal, so a
+            // Git #2119/#3583/#3607/#3742/#3872 — optional trailing ordinals, strictly append-only per
+            // the #1384 fixed-ordinal contract (MapRow reads each by a fixed absolute ordinal, so a
             // later one can only be added by also selecting every earlier one, in the SAME order,
             // even where this specific query has no other use for it): superseded_by_id (21),
-            // repo_owner (22), repo_name (23), archived (24) / archived_at (25), then Git #3742's
-            // new note (26) — needed here so the card's note chip can read QueueItem.Note.
+            // repo_owner (22), repo_name (23), archived (24) / archived_at (25), Git #3742's note (26),
+            // then Git #3872's new epic_number (27) — needed here so the Build Sets rollup can read
+            // QueueItem.EpicNumber (the row's explicit --epic dispatch-header override).
             const string sql = @"
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
                        originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at,
-                       superseded_by_id, repo_owner, repo_name, archived, archived_at, note
+                       superseded_by_id, repo_owner, repo_name, archived, archived_at, note, epic_number
                 FROM bt_build_queue
                 ORDER BY created_at ASC";
 
@@ -330,7 +331,8 @@ namespace BuildConsole.Services
                        COALESCE(build_pid::text, chr(2)), COALESCE(build_pid_started_at::text, chr(2)),
                        COALESCE(superseded_by_id::text, chr(2)), COALESCE(repo_owner, chr(2)),
                        COALESCE(repo_name, chr(2)), COALESCE(archived::text, chr(2)),
-                       COALESCE(archived_at::text, chr(2)), COALESCE(note, chr(2))),
+                       COALESCE(archived_at::text, chr(2)), COALESCE(note, chr(2)),
+                       COALESCE(epic_number::text, chr(2))),
                      ',' ORDER BY created_at, id)), '')
                    FROM bt_build_queue)
                   || '~' ||
@@ -1347,6 +1349,16 @@ namespace BuildConsole.Services
             int? firstBlocker = allBlockers.Count > 0 ? allBlockers[0] : null;
             int[]? blockerArray = allBlockers.Count > 0 ? allBlockers.ToArray() : null;
 
+            // Git #3872 — the prompt header's optional `--epic <N>` override, read the same way as
+            // `--blocked-by` just above: an explicit escape hatch for a build whose real Epic
+            // EpicResolver's DB-inferred parent_number walk can't (yet) resolve — e.g. the local
+            // mirror hasn't caught up to a just-created sub-issue relationship (#3871 is the real
+            // sync-gap root-cause fix; this is the independent, explicit-declaration safety net, not
+            // a substitute for it). Null when the prompt declares no override — the ordinary case —
+            // and BuildQueuePanel's ResolveBuildSetEpicsAsync falls back to real DB inference exactly
+            // as before.
+            var headerEpic = BuildPromptHeader.ParseEpicNumber(prompt);
+
             await using var conn = await OpenAsync();
 
             QueueItem? row = null;
@@ -1376,7 +1388,7 @@ namespace BuildConsole.Services
                 await using var updateCmd = new NpgsqlCommand(@"
                     UPDATE bt_build_queue
                        SET title = @title, prompt = @prompt, model = @model, effort = @effort, cwd = @cwd,
-                           build_set = @buildSet, cli = @cli, account = @account,
+                           build_set = @buildSet, cli = @cli, account = @account, epic_number = @epicNumber,
                            blocked_by_number = @blockedByNumber, blocked_by_numbers = @blockedByNumbers,
                            resume_session_id = @resumeSessionId, originating_chat_id = @originatingChatId,
                            chat_url = @chatUrl, status = @status, claimed_at = NULL, completed_at = NULL,
@@ -1396,6 +1408,7 @@ namespace BuildConsole.Services
                 updateCmd.Parameters.AddWithValue("@buildSet", (object?)buildSetTrimmed ?? DBNull.Value);
                 updateCmd.Parameters.AddWithValue("@cli", (object?)cliTrimmed ?? DBNull.Value);
                 updateCmd.Parameters.AddWithValue("@account", (object?)accountTrimmed ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@epicNumber", (object?)headerEpic ?? DBNull.Value);
                 updateCmd.Parameters.AddWithValue("@blockedByNumber", (object?)firstBlocker ?? DBNull.Value);
                 updateCmd.Parameters.Add(new NpgsqlParameter("@blockedByNumbers", NpgsqlDbType.Array | NpgsqlDbType.Integer)
                 { Value = (object?)blockerArray ?? DBNull.Value });
@@ -1417,12 +1430,12 @@ namespace BuildConsole.Services
                         (title, prompt, model, effort, cwd, github_number,
                          blocked_by_number, blocked_by_numbers, resume_session_id,
                          originating_chat_id, chat_url, build_set, cli, account, status,
-                         repo_owner, repo_name)
+                         repo_owner, repo_name, epic_number)
                     VALUES
                         (@title, @prompt, @model, @effort, @cwd, @githubNumber,
                          @blockedByNumber, @blockedByNumbers, @resumeSessionId,
                          @originatingChatId, @chatUrl, @buildSet, @cli, @account, @status,
-                         @repoOwner, @repoName)
+                         @repoOwner, @repoName, @epicNumber)
                     RETURNING id, title, prompt, model, effort, cwd,
                               github_number, blocked_by_number, blocked_by_numbers,
                               status, exit_code, session_id, resume_session_id,
@@ -1435,6 +1448,7 @@ namespace BuildConsole.Services
                 insertCmd.Parameters.AddWithValue("@cwd", (object?)cwdTrimmed ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@buildSet", (object?)buildSetTrimmed ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@githubNumber", (object?)githubNumber ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@epicNumber", (object?)headerEpic ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@blockedByNumber", (object?)firstBlocker ?? DBNull.Value);
                 insertCmd.Parameters.Add(new NpgsqlParameter("@blockedByNumbers", NpgsqlDbType.Array | NpgsqlDbType.Integer)
                 { Value = (object?)blockerArray ?? DBNull.Value });
@@ -3164,6 +3178,10 @@ namespace BuildConsole.Services
                 // query (which also selects archived/archived_at at 24/25 so the ordinal sequence
                 // stays unambiguous — see that query's own comment).
                 Note              = r.FieldCount > 26 && !r.IsDBNull(26) ? r.GetString(26) : null,
+                // Git #3872 — optional trailing ordinal 27, present only on GetQueueAsync's display
+                // query (which also selects note at 26 so the ordinal sequence stays unambiguous —
+                // see that query's own comment). This row's explicit --epic dispatch-header override.
+                EpicNumber        = r.FieldCount > 27 && !r.IsDBNull(27) ? r.GetInt32(27) : null,
             };
         }
 

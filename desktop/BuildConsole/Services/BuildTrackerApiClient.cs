@@ -90,6 +90,15 @@ namespace BuildConsole.Services
         /// automatically. Null/empty when no note has been added, or when the selecting query didn't
         /// request this optional trailing column (see MapRow's #1384 fixed-ordinal contract).</summary>
         public string? Note { get; set; }
+        /// <summary>Git #3872 — this row's explicit <c>--epic &lt;N&gt;</c> dispatch-header override
+        /// (see <see cref="BuildPromptHeader.ParseEpicNumber"/>), written by
+        /// <see cref="BuildQueuePostgresClient.QueueBuildAsync"/> at queue time. When set, the Build
+        /// Sets rollup uses this directly for the row's Epic-group contribution instead of walking
+        /// <see cref="EpicResolver"/>'s DB-inferred <c>parent_number</c> chain — the real escape hatch
+        /// for a build whose real Epic the local mirror hasn't resolved yet (or can't). Null for the
+        /// overwhelming majority of rows (no override declared), or when the selecting query didn't
+        /// request this optional trailing column (see MapRow's #1384 fixed-ordinal contract).</summary>
+        public int? EpicNumber { get; set; }
     }
 
     /// <summary>Matches POST /admin/simulator/deploy/console's real `{ ok, command, output }` response shape.</summary>

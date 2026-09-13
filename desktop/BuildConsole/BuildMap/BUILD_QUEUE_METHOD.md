@@ -222,7 +222,7 @@ Posted: <UTC ISO8601>
 
 &#x20;
 
-\--model <model> --effort <effort> --title <issueNumber> --blocked-by <N>\[,<N>...]
+\--model <model> --effort <effort> --title <issueNumber> --blocked-by <N>\[,<N>...] --epic <N>
 
 &#x20;
 
@@ -259,6 +259,11 @@ Posted: <UTC ISO8601>
 \- `--title` targets a single leaf issue, never an Epic or Feature.
 
 \- `--blocked-by` only when a real dependency exists.
+
+\- `--epic <N>` is optional — a real, explicit override for a build's real Epic, used only when
+&#x20; DB inference (the local mirror's `parent_number` chain) hasn't caught up yet or is otherwise
+&#x20; ambiguous/slow to resolve. Most dispatches omit it and let DB inference resolve the Epic as
+&#x20; before (Git #3872, complementary to #3871's sync-gap root-cause fix).
 
 \### 4.2 buildSet naming
 
