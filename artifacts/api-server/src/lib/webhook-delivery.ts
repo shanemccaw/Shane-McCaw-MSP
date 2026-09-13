@@ -195,10 +195,12 @@ async function attemptDelivery(
 
   if (!isLastAttempt) {
     const delay = RETRY_DELAYS_MS[attemptNumber - 1];
+    // unref() so this fire-and-forget retry timer can never keep the process
+    // (or a test runner) alive waiting for it to fire — see #3645.
     setTimeout(
       () => void scheduleAttempt(deliveryId, target, bodyPayload, attemptNumber + 1),
       delay,
-    );
+    ).unref();
   }
 
   return false;
