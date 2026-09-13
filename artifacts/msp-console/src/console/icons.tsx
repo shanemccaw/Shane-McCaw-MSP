@@ -59,6 +59,8 @@ import {
   ShoppingCart,
   // Tenant Overview roll-up (#3822)
   ShieldX, FileJson,
+  // POA&Ms (#3897) — ListTodo.
+  ListTodo,
   type LucideIcon,
 } from "lucide-react";
 
@@ -230,6 +232,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   // Tenant Overview roll-up (#3822)
   "shield-x": ShieldX,
   "file-json": FileJson,
+  // POA&Ms (#3897)
+  "list-todo": ListTodo,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

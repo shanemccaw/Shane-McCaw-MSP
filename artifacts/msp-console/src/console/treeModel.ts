@@ -455,6 +455,17 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
       note: "Everything open across this tenant, ordered by what needs a person first.",
     };
   }
+  // #3897 — POA&Ms' eyebrow/title are the design's own exact copy
+  // (`POA&Ms.dc.html`'s header, screen 41). The note is honest about the
+  // route: it has no customerId, so this list is the whole book, not just
+  // this tenant's rows.
+  if (sel.page === "poams") {
+    return {
+      eyebrow: "PLANS OF ACTION & MILESTONES",
+      title: "POA&Ms across the book",
+      note: `Opened from ${name} — the route has no per-tenant filter, so every plan on the MSP's book shows here, not just this tenant's.`,
+    };
+  }
   const p = tenantPageMeta(sel.page);
   const grp = groupForPage(sel.page);
   return {

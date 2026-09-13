@@ -35,6 +35,7 @@ import { surface } from "./tokens";
 import { RunbooksPage } from "@/pages/runbooks/RunbooksPage";
 import { BreakGlassPage } from "@/pages/break-glass/BreakGlassPage";
 import { AdOuAssignmentPage } from "@/pages/ad-ou-assignment/AdOuAssignmentPage";
+import { PoamsPage } from "@/pages/poams/PoamsPage";
 import {
   buildCommands, buildCrumbs, buildRailNodes, buildTreeNodes,
   contextPath, pageMeta, statusLeft, statusRight,
@@ -269,6 +270,19 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     // the register scopes on), not just the numeric id the other modules take.
     const customer = customers.find((c) => c.id === sel.tenant);
     return customer ? <RiskRegister customer={customer} /> : undefined;
+  }
+  if (sel.kind === "page" && sel.page === "poams") {
+    // POA&Ms (#3897), README screen 41. This route has no customerId and
+    // `msp_poams.tenantId` is free text with no real FK, so the list itself
+    // is the whole book regardless of which tenant node this is opened from
+    // (see PoamsPage's own header/notes) — the customer row here is only used
+    // to prefill the create form's free-text tenant fields.
+    // Cancel/convert/delete all require ladder.msp-admin server-side
+    // (msp-poams.ts); MSPOperator can read/author/edit/complete/add
+    // milestones but not those three.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    const isAdmin = profile.role === "admin" || profile.mspRole === "PlatformAdmin" || profile.mspRole === "MSPAdmin";
+    return <PoamsPage customer={customer ? { name: customer.name, tenantId: customer.tenantId, domain: customer.domain } : undefined} isAdmin={isAdmin} />;
   }
   if (sel.kind === "page" && sel.page === "wh") {
     return <Webhooks customerId={sel.tenant} />;

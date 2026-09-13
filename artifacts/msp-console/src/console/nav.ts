@@ -50,6 +50,7 @@ export const CHILD_GROUPS: Group[] = [
   {
     id: "g.gov", label: "Governance", icon: "scale", children: [
       { id: "risk", label: "Risk Register", icon: "shield-alert" },
+      { id: "poams", label: "POA&Ms", icon: "list-todo" },
       { id: "raci", label: "Ownership", icon: "users-round" },
       { id: "run", label: "Runbooks", icon: "book-open" },
       { id: "dr", label: "Data rights", icon: "scale" },
