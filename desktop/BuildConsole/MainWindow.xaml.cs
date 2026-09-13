@@ -3558,6 +3558,18 @@ namespace BuildConsole
 
                 if (ready && associateIssueNumber.HasValue && !epicAssocWired)
                 {
+                    try
+                    {
+                        if (wv.CoreWebView2 == null) return;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Git #3914 — same hazard as #3912: the tab (and this wv) was
+                        // closed while EnsureWebViewInitializedAsync/InjectBuilderButtonsAsync
+                        // was still in flight. Nothing left to wire up.
+                        return;
+                    }
+
                     epicAssocWired = true;
                     int issueNumber = associateIssueNumber.Value;
                     string issueType = associateIssueType ?? "Issue";
