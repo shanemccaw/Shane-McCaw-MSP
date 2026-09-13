@@ -1,6 +1,7 @@
 <UserControl x:Class="BuildConsole.Controls.ActivityBar"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:BuildConsole.Controls"
              Width="48">
 
     <Border Background="{StaticResource CrustBrush}"
@@ -220,6 +221,29 @@
                     <TextBlock Text="&#xE722;" FontFamily="Segoe MDL2 Assets" FontSize="16"
                                Foreground="{StaticResource BlueBrush}"/>
                 </Button>
+
+                <!-- Git #3880 — Notification Tray bell: opens the #3879 tray popout listing every
+                     real NotificationHistoryStore entry. Color is the ONLY signal (no count
+                     badge, per Shane's explicit ask) — accent when at least one bookmarked entry
+                     exists, neutral otherwise. Same real popout convention as BtnWebTools/BtnShelf
+                     above (a plain Button + anchored Popup, reloaded fresh on every open). -->
+                <Button x:Name="BtnNotifications"
+                        Style="{StaticResource IconButton}"
+                        Width="48" Height="44"
+                        ToolTip="Notifications"
+                        Click="BtnNotifications_Click">
+                    <TextBlock x:Name="NotificationBellGlyph" Text="&#xE7E7;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                               Foreground="{StaticResource Subtext1Brush}"/>
+                </Button>
+
+                <Popup x:Name="NotificationsPopup"
+                       PlacementTarget="{Binding ElementName=BtnNotifications}"
+                       Placement="Right"
+                       StaysOpen="False"
+                       AllowsTransparency="True"
+                       PopupAnimation="Fade">
+                    <controls:NotificationTrayPanel x:Name="NotificationTray"/>
+                </Popup>
 
                 <!-- Separator -->
                 <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>

@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using BuildConsole.Services;
 
 namespace BuildConsole.Controls
 {
@@ -43,7 +44,41 @@ namespace BuildConsole.Controls
         /// the full-width Git Doctor Editor tab (OpenGitDoctorTab), not a LeftSidebar view.</summary>
         public event EventHandler? GitDoctorRequested;
 
-        public ActivityBar() => InitializeComponent();
+        public ActivityBar()
+        {
+            InitializeComponent();
+
+            // Git #3880 — reflect current bookmarked-state on load, then keep it live: any
+            // mutation from the tray itself or a floating toast's own bookmark button (#3878)
+            // fires NotificationHistoryStore.Changed, so the bell never goes stale even while
+            // the popout is closed.
+            UpdateNotificationBellColor();
+            NotificationHistoryStore.Changed += NotificationHistoryStore_Changed;
+            Unloaded += (_, _) => NotificationHistoryStore.Changed -= NotificationHistoryStore_Changed;
+        }
+
+        private void NotificationHistoryStore_Changed(object? sender, EventArgs e)
+        {
+            // Store's Changed event can fire from a background thread; hop to the UI thread.
+            Dispatcher.Invoke(UpdateNotificationBellColor);
+        }
+
+        /// <summary>Git #3880 — color is the ONLY signal on the bell (explicitly no count/badge,
+        /// per Shane's repeated ask): accent when at least one bookmarked entry exists, neutral
+        /// otherwise.</summary>
+        private void UpdateNotificationBellColor()
+        {
+            var hasBookmarks = NotificationHistoryStore.Bookmarked.Count > 0;
+            NotificationBellGlyph.Foreground = (Brush)FindResource(hasBookmarks ? "PeachBrush" : "Subtext1Brush");
+        }
+
+        /// <summary>Opens the #3879 tray panel in an anchored popout, reloading its real content
+        /// fresh every open — same convention as BtnWebTools_Click above.</summary>
+        private void BtnNotifications_Click(object sender, RoutedEventArgs e)
+        {
+            NotificationTray.Refresh();
+            NotificationsPopup.IsOpen = true;
+        }
 
         /// <summary>Git #834 — File > Settings menu item routes here so it lands on the SAME SettingsView the cog icon already opens, instead of being a second, divergent path.</summary>
         public void SelectSettings() => BtnSettings.IsChecked = true;

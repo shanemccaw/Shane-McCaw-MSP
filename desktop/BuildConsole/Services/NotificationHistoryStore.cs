@@ -39,6 +39,11 @@ namespace BuildConsole.Services
     /// </summary>
     public static class NotificationHistoryStore
     {
+        /// <summary>Git #3880 — raised after any real mutation (Add/SetBookmarked/
+        /// ClearAllNonBookmarked) so a live UI (the ActivityBar bell's bookmarked-state color,
+        /// the tray panel itself) can refresh without polling. Fired outside the lock to avoid
+        /// re-entrancy if a handler reads back into the store.</summary>
+        public static event EventHandler? Changed;
         private static readonly string StorePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "BuildConsole",
@@ -79,30 +84,39 @@ namespace BuildConsole.Services
                 Save();
             }
 
+            Changed?.Invoke(null, EventArgs.Empty);
             return entry.Id;
         }
 
         public static void SetBookmarked(Guid id, bool bookmarked)
         {
+            bool changed;
             lock (_gate)
             {
                 var entry = _items.FirstOrDefault(e => e.Id == id);
-                if (entry == null || entry.Bookmarked == bookmarked) return;
-
-                entry.Bookmarked = bookmarked;
-                Save();
+                changed = entry != null && entry.Bookmarked != bookmarked;
+                if (changed)
+                {
+                    entry!.Bookmarked = bookmarked;
+                    Save();
+                }
             }
+
+            if (changed) Changed?.Invoke(null, EventArgs.Empty);
         }
 
         /// <summary>Removes every entry where <see cref="NotificationHistoryEntry.Bookmarked"/>
         /// is false. Bookmarked entries are untouched.</summary>
         public static void ClearAllNonBookmarked()
         {
+            int removed;
             lock (_gate)
             {
-                var removed = _items.RemoveAll(e => !e.Bookmarked);
+                removed = _items.RemoveAll(e => !e.Bookmarked);
                 if (removed > 0) Save();
             }
+
+            if (removed > 0) Changed?.Invoke(null, EventArgs.Empty);
         }
 
         /// <summary>Every stored entry, newest first — a live snapshot, safe to enumerate while
