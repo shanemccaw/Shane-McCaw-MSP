@@ -15,11 +15,12 @@ const handlers: TreeHandlers = {
   navigate: noop, toggleTenant: noop, toggleGroup: noop, toggleMsp: noop,
 };
 
-// Two real-shaped directory rows (not fixtures rendered as data — test inputs).
+// Real-shaped directory rows (not fixtures rendered as data — test inputs).
 const customers = [
-  { id: 7, name: "Alpha Ltd", domain: "alpha.example", status: "active", tenantId: "t7", mspId: 1, createdAt: "2026-01-01T00:00:00Z", seats: 120, people: 9, lastScanAt: "2026-09-01T00:00:00Z", openSignals: 0 },
-  { id: 9, name: "Beta Inc", domain: "beta.example", status: "active", tenantId: "t9", mspId: 1, createdAt: "2026-01-02T00:00:00Z", seats: 30, people: 3, lastScanAt: null, openSignals: 0 },
-  { id: 4, name: "Gamma Co", domain: "gamma.example", status: "active", tenantId: "t4", mspId: 1, createdAt: "2026-01-03T00:00:00Z", seats: 500, people: 40, lastScanAt: "2026-09-05T00:00:00Z", openSignals: 6 },
+  { id: 7, name: "Alpha Ltd", domain: "alpha.example", status: "active", tenantId: "t7", mspId: 1, createdAt: "2026-01-01T00:00:00Z", seats: 120, people: 9, lastScanAt: "2026-09-01T00:00:00Z", openSignals: 0, criticalSignals: 0 },
+  { id: 9, name: "Beta Inc", domain: "beta.example", status: "active", tenantId: "t9", mspId: 1, createdAt: "2026-01-02T00:00:00Z", seats: 30, people: 3, lastScanAt: null, openSignals: 0, criticalSignals: 0 },
+  { id: 4, name: "Gamma Co", domain: "gamma.example", status: "active", tenantId: "t4", mspId: 1, createdAt: "2026-01-03T00:00:00Z", seats: 500, people: 40, lastScanAt: "2026-09-05T00:00:00Z", openSignals: 6, criticalSignals: 0 },
+  { id: 11, name: "Delta LLC", domain: "delta.example", status: "active", tenantId: "t11", mspId: 1, createdAt: "2026-01-04T00:00:00Z", seats: 60, people: 5, lastScanAt: "2026-09-06T00:00:00Z", openSignals: 3, criticalSignals: 1 },
 ];
 
 test("IA has 7 tenant groups and 17 ops pages", () => {
@@ -63,7 +64,8 @@ test("groupForPage resolves owning group and null for leaf pages", () => {
 test("status dot uses real directory fields only", () => {
   assert.equal(statusDotColor(customers[0]), statusDot.healthy); // scanned, 0 signals
   assert.equal(statusDotColor(customers[1]), statusDot.neverScanned); // lastScanAt null
-  assert.equal(statusDotColor(customers[2]), statusDot.warnings); // open signals
+  assert.equal(statusDotColor(customers[2]), statusDot.warnings); // open signals, none critical
+  assert.equal(statusDotColor(customers[3]), statusDot.critical); // at least one critical signal (Git #3746)
 });
 
 test("collapsed tree shows two roots + operations pages, tenants closed", () => {
@@ -111,7 +113,7 @@ test("breadcrumb for a grouped page has root, tenant, group and page", () => {
 
 test("command palette lists root, every ops page, and tenant × page", () => {
   const cmds = buildCommands(customers, handlers);
-  // 1 root + 17 ops + 3 tenants * 27 pages (#3897 added "poams", #3818 added
+  // 1 root + 17 ops + 4 tenants * 27 pages (#3897 added "poams", #3818 added
   // "ou", #3819 added "marketplace")
   assert.equal(cmds.length, 1 + 17 + customers.length * 27);
   assert.ok(cmds.some((c) => c.label === "Alpha Ltd › Risk Register" && c.group === "NODE"));
@@ -121,5 +123,5 @@ test("command palette lists root, every ops page, and tenant × page", () => {
 test("icon rail lists consulting, ops and every tenant", () => {
   const rail = buildRailNodes(customers, { kind: "root" }, handlers);
   assert.ok(rail.some((r) => r.label === "Shane McCaw Consulting"));
-  assert.equal(rail.filter((r) => r.key.startsWith("rail:tenant:")).length, 3);
+  assert.equal(rail.filter((r) => r.key.startsWith("rail:tenant:")).length, customers.length);
 });

@@ -6,12 +6,12 @@
  * list (GET /api/msp/customers).
  *
  * Covers:
- *   - all four metrics populate correctly for a normal, fully-scanned customer
+ *   - all five metrics populate correctly for a normal, fully-scanned customer
  *   - a customer with no M365 tenantId gets null seats/people (nothing to key
- *     that lookup by) but still gets a real openSignals/lastScanAt from its
- *     customerId
+ *     that lookup by) but still gets a real openSignals/criticalSignals/
+ *     lastScanAt from its customerId
  *   - a customer absent from every source table (never scanned, no signals)
- *     gets the honest defaults — null/null/null/0 — not a fabricated figure
+ *     gets the honest defaults — null/null/null/0/0 — not a fabricated figure
  *   - seats is null when resolvePaidSeatFigures finds nothing priced (real,
  *     already-established `license-waste-source.ts` behavior — see this
  *     module's own header for why the PAID figure is used at all, not the
@@ -23,13 +23,14 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const { mockExecute } = vi.hoisted(() => ({ mockExecute: vi.fn() }));
+
 vi.mock("@workspace/db", () => ({
-  db: { select: vi.fn(), selectDistinctOn: vi.fn() },
+  db: { select: vi.fn(), selectDistinctOn: vi.fn(), execute: mockExecute },
   tenantMonitorProfilesTable: {
     tenantId: "tenantId", checkKey: "checkKey", extractedProperties: "extractedProperties",
     collectedAt: "collectedAt",
   },
-  tenantSignalHistoryTable: { customerId: "customerId", resolvedAt: "resolvedAt" },
   mspDiagnosticRunsTable: { customerId: "customerId", completedAt: "completedAt", status: "status" },
 }));
 
@@ -37,10 +38,14 @@ vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => ({ and: args }),
   eq: (c: unknown, v: unknown) => ({ eq: [c, v] }),
   inArray: (c: unknown, v: unknown) => ({ inArray: [c, v] }),
-  isNull: (c: unknown) => ({ isNull: c }),
   desc: (c: unknown) => ({ desc: c }),
   max: (c: unknown) => ({ max: c }),
-  count: () => ({ count: true }),
+  // `sql` is only used here to build the raw openSignals/criticalSignals query
+  // text; the mocked `db.execute` never actually parses it, so a passthrough
+  // tag (and a no-op `.join`) is enough to keep the module importable.
+  sql: Object.assign((strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values }), {
+    join: (parts: unknown[]) => ({ join: parts }),
+  }),
 }));
 
 vi.mock("./logger.ts", () => {
@@ -74,15 +79,15 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-/** Wires the two db.select rows (openSignals / lastScan), the one db.selectDistinctOn rows (people), and resolvePaidSeatFigures' per-tenant return (seats), by real distinguishing shape — not call order. */
+/** Wires db.execute's rows (openSignals/criticalSignals), the db.select rows (lastScan), the db.selectDistinctOn rows (people), and resolvePaidSeatFigures' per-tenant return (seats), by real distinguishing shape — not call order. */
 function wireRows(opts: {
   openSignalsRows?: unknown[];
   lastScanRows?: unknown[];
   peopleRows?: unknown[];
   seatsByTenantId?: Record<string, { provisioned: number } | null>;
 }) {
+  mockExecute.mockResolvedValue({ rows: opts.openSignalsRows ?? [] });
   mockSelect.mockImplementation((cols: Record<string, unknown>) => {
-    if ("openCount" in cols) return buildChain(opts.openSignalsRows ?? []);
     if ("lastScanAt" in cols) return buildChain(opts.lastScanRows ?? []);
     throw new Error(`unexpected db.select projection: ${JSON.stringify(Object.keys(cols))}`);
   });
@@ -102,9 +107,9 @@ describe("fetchCustomerDirectoryMetrics", () => {
     expect(mockResolvePaidSeatFigures).not.toHaveBeenCalled();
   });
 
-  it("populates all four metrics for a normal, fully-scanned customer", async () => {
+  it("populates all five metrics for a normal, fully-scanned customer", async () => {
     wireRows({
-      openSignalsRows: [{ customerId: 1, openCount: "3" }],
+      openSignalsRows: [{ customerId: 1, openCount: "3", criticalCount: "1" }],
       lastScanRows: [{ customerId: 1, lastScanAt: new Date("2026-09-06T23:07:08.981Z") }],
       peopleRows: [{ tenantId: "tenant-1", extractedProperties: { totalUserCount: 25 } }],
       seatsByTenantId: { "tenant-1": { provisioned: 1 } },
@@ -117,13 +122,14 @@ describe("fetchCustomerDirectoryMetrics", () => {
       people: 25,
       lastScanAt: "2026-09-06T23:07:08.981Z",
       openSignals: 3,
+      criticalSignals: 1,
     });
     expect(mockResolvePaidSeatFigures).toHaveBeenCalledWith("tenant-1");
   });
 
-  it("gives null seats/people (no tenantId to key by) but real openSignals/lastScanAt for an unclaimed customer", async () => {
+  it("gives null seats/people (no tenantId to key by) but real openSignals/criticalSignals/lastScanAt for an unclaimed customer", async () => {
     wireRows({
-      openSignalsRows: [{ customerId: 2, openCount: "1" }],
+      openSignalsRows: [{ customerId: 2, openCount: "1", criticalCount: "0" }],
       lastScanRows: [{ customerId: 2, lastScanAt: new Date("2026-08-01T00:00:00Z") }],
       peopleRows: [],
       seatsByTenantId: {},
@@ -136,6 +142,7 @@ describe("fetchCustomerDirectoryMetrics", () => {
       people: null,
       lastScanAt: "2026-08-01T00:00:00.000Z",
       openSignals: 1,
+      criticalSignals: 0,
     });
     // No tenantIds in the book at all → the people query is never issued and
     // resolvePaidSeatFigures is never called.
@@ -148,7 +155,22 @@ describe("fetchCustomerDirectoryMetrics", () => {
 
     const result = await fetchCustomerDirectoryMetrics([{ id: 3, tenantId: "tenant-3" }]);
 
-    expect(result.get(3)).toEqual({ seats: null, people: null, lastScanAt: null, openSignals: 0 });
+    expect(result.get(3)).toEqual({
+      seats: null, people: null, lastScanAt: null, openSignals: 0, criticalSignals: 0,
+    });
+  });
+
+  it("reports criticalSignals as the subset of openSignals whose severity resolved to critical", async () => {
+    wireRows({
+      openSignalsRows: [{ customerId: 5, openCount: "4", criticalCount: "2" }],
+      lastScanRows: [],
+      peopleRows: [],
+      seatsByTenantId: {},
+    });
+
+    const result = await fetchCustomerDirectoryMetrics([{ id: 5, tenantId: "tenant-5" }]);
+
+    expect(result.get(5)).toMatchObject({ openSignals: 4, criticalSignals: 2 });
   });
 
   it("reports null seats when resolvePaidSeatFigures finds nothing priced", async () => {

@@ -43,6 +43,8 @@ export interface DirectoryCustomer {
   people: number | null;
   lastScanAt: string | null;
   openSignals: number;
+  /** The subset of `openSignals` whose signal definition is severity "critical" (Git #3746). */
+  criticalSignals: number;
 }
 
 export interface DirectoryResponse {

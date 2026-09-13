@@ -72,6 +72,7 @@ export interface Command {
 /** The tenant status dot, from real directory fields only. */
 export function statusDotColor(c: DirectoryCustomer): string {
   if (c.lastScanAt == null) return statusDot.neverScanned;
+  if (c.criticalSignals > 0) return statusDot.critical;
   if (c.openSignals > 0) return statusDot.warnings;
   return statusDot.healthy;
 }

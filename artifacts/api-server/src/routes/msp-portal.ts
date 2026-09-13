@@ -1059,8 +1059,10 @@ router.post(
 // Additive (Git #3666): each row also carries seats/people/lastScanAt/openSignals
 // — the real per-tenant directory metrics the MSP Console's "Managed Tenants" root
 // screen needs (confirmed missing by #3665's audit; the design's own directory
-// screen had no backing route, only a static mock array). See
-// msp-customer-directory-metrics.ts for what each figure is sourced from and why.
+// screen had no backing route, only a static mock array). Additive again (Git
+// #3746): criticalSignals, the severity split behind the tree sidebar's 4th
+// (critical/red) status dot. See msp-customer-directory-metrics.ts for what each
+// figure is sourced from and why.
 
 router.get(
   "/msp/customers",
@@ -1131,7 +1133,7 @@ router.get(
       );
       const customersWithDirectoryMetrics = customers.map((c) => ({
         ...c,
-        ...(directoryMetrics.get(c.id) ?? { seats: null, people: null, lastScanAt: null, openSignals: 0 }),
+        ...(directoryMetrics.get(c.id) ?? { seats: null, people: null, lastScanAt: null, openSignals: 0, criticalSignals: 0 }),
       }));
 
       res.json({

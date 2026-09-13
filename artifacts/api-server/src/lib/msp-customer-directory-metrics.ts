@@ -44,27 +44,57 @@
  *                   whole-book `activeSignalsCount` in
  *                   msp-financial-aggregator.ts already applies, narrowed to
  *                   one customer at a time.
+ *   - criticalSignals: the subset of the above whose `signal_key` resolves to
+ *                   `severity: "critical"` — Git #3746. This is the field the
+ *                   MSP Console's tree sidebar needs to render its 4th, red
+ *                   status dot (README "Tree sidebar": healthy/warnings/
+ *                   critical/never-scanned); before this, `openSignals` alone
+ *                   only distinguished "some open signal" from "none", so the
+ *                   design's critical state was unreachable. Chose a plain
+ *                   count over a `worstSeverity` enum: `statusDotColor` only
+ *                   ever needs "is any open signal critical", which a count
+ *                   answers as directly as an enum would while staying the
+ *                   same shape as `openSignals` beside it — no `warningSignals`
+ *                   counterpart, since `openSignals - criticalSignals` already
+ *                   tells the UI whether a non-critical open signal exists and
+ *                   a second count would duplicate that arithmetic.
  *
- * openSignals/lastScanAt are batched into one GROUP BY query each across the
- * whole requested page (keyed by customerId). people is one batched
- * "latest row per tenantId" query. seats runs `resolvePaidSeatFigures` per
- * tenant (it does its own per-SKU price lookups internally, exactly like
- * every other real caller of that function) — one call per page row, in
- * parallel; acceptable at the route's existing page-size cap (100).
+ *                   `tenant_signal_history` itself carries no severity column
+ *                   (a fired signal is just a key + timestamps) — severity is
+ *                   a property of the *signal definition*, resolved by
+ *                   joining `signal_key` against `signal_derivation_rules` /
+ *                   `signal_rule_groups` (both carry `severity` via the
+ *                   shared `SIGNAL_INTELLIGENCE_FIELDS`, exactly like
+ *                   `fetchSignalRulesAndGroups` in priority-engine.ts already
+ *                   reads them for signal evaluation). Scoped to platform-
+ *                   default rows (`msp_id IS NULL`) only, the same scope
+ *                   `fetchSignalRulesAndGroups(null)` uses — confirmed via the
+ *                   local DB that zero MSP-specific severity overrides exist
+ *                   today; if that changes, this needs the same per-customer
+ *                   `mspId` scoping `fetchSignalRulesAndGroups` already does.
+ *
+ * openSignals+criticalSignals are now one combined GROUP BY query (a raw SQL
+ * join, since the severity resolution needs a CTE the query builder doesn't
+ * express cleanly) across the whole requested page, keyed by customerId —
+ * still one query for both fields, not a second query per tenant. lastScanAt
+ * is its own batched GROUP BY query. people is one batched "latest row per
+ * tenantId" query. seats runs `resolvePaidSeatFigures` per tenant (it does
+ * its own per-SKU price lookups internally, exactly like every other real
+ * caller of that function) — one call per page row, in parallel; acceptable
+ * at the route's existing page-size cap (100).
  *
  * A tenant with no M365 `tenantId` on file, or no stored data yet for a given
- * metric, gets `null` (seats/people/lastScanAt) or `0` (openSignals — "no open
- * signals" IS the honest answer for a never-scanned tenant), never a
- * fabricated figure.
+ * metric, gets `null` (seats/people/lastScanAt) or `0` (openSignals/
+ * criticalSignals — "no open signals" IS the honest answer for a
+ * never-scanned tenant), never a fabricated figure.
  */
 
 import {
   db,
   tenantMonitorProfilesTable,
-  tenantSignalHistoryTable,
   mspDiagnosticRunsTable,
 } from "@workspace/db";
-import { and, count, desc, eq, inArray, isNull, max } from "drizzle-orm";
+import { and, desc, eq, inArray, max, sql } from "drizzle-orm";
 import { resolvePaidSeatFigures } from "./license-waste-source.ts";
 import { logger } from "./logger.ts";
 
@@ -84,9 +114,13 @@ export interface CustomerDirectoryMetrics {
   lastScanAt: string | null;
   /** Count of this customer's currently-unresolved `tenant_signal_history` rows. */
   openSignals: number;
+  /** The subset of `openSignals` whose signal definition carries `severity: "critical"` (Git #3746). */
+  criticalSignals: number;
 }
 
-const EMPTY_METRICS: CustomerDirectoryMetrics = { seats: null, people: null, lastScanAt: null, openSignals: 0 };
+const EMPTY_METRICS: CustomerDirectoryMetrics = {
+  seats: null, people: null, lastScanAt: null, openSignals: 0, criticalSignals: 0,
+};
 
 function toNullableNumber(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -114,12 +148,34 @@ export async function fetchCustomerDirectoryMetrics(
   }
   const tenantIds = [...tenantIdToCustomerId.keys()];
 
-  // ── openSignals — one GROUP BY over the whole page, keyed by customerId ──────
-  const openSignalsQuery = db
-    .select({ customerId: tenantSignalHistoryTable.customerId, openCount: count() })
-    .from(tenantSignalHistoryTable)
-    .where(and(inArray(tenantSignalHistoryTable.customerId, customerIds), isNull(tenantSignalHistoryTable.resolvedAt)))
-    .groupBy(tenantSignalHistoryTable.customerId);
+  // ── openSignals + criticalSignals — one combined GROUP BY over the whole page,
+  // keyed by customerId. Raw SQL (not the query builder) because resolving each
+  // row's severity needs a CTE joined against `signal_key` — see the module
+  // header for why this is still one query, not a second query per tenant.
+  const openSignalsQuery = db.execute<{ customerId: number; openCount: string; criticalCount: string }>(sql`
+    WITH signal_severity AS (
+      SELECT DISTINCT ON (signal_key) signal_key, severity
+      FROM (
+        SELECT signal_key, severity, 0 AS source_priority
+        FROM signal_derivation_rules
+        WHERE msp_id IS NULL
+        UNION ALL
+        SELECT signal_key, severity, 1 AS source_priority
+        FROM signal_rule_groups
+        WHERE msp_id IS NULL
+      ) combined
+      ORDER BY signal_key, source_priority
+    )
+    SELECT
+      h.customer_id AS "customerId",
+      COUNT(*) AS "openCount",
+      COUNT(*) FILTER (WHERE ss.severity = 'critical') AS "criticalCount"
+    FROM tenant_signal_history h
+    LEFT JOIN signal_severity ss ON ss.signal_key = h.signal_key
+    WHERE h.customer_id IN (${sql.join(customerIds.map((id) => sql`${id}`), sql`, `)})
+      AND h.resolved_at IS NULL
+    GROUP BY h.customer_id
+  `).then((r) => r.rows);
 
   // ── lastScanAt — one GROUP BY over the whole page, keyed by customerId ──────
   const lastScanQuery = db
@@ -174,7 +230,10 @@ export async function fetchCustomerDirectoryMetrics(
   for (const row of openSignalsRows) {
     if (row.customerId === null) continue;
     const metrics = result.get(row.customerId);
-    if (metrics) metrics.openSignals = Number(row.openCount ?? 0);
+    if (metrics) {
+      metrics.openSignals = Number(row.openCount ?? 0);
+      metrics.criticalSignals = Number(row.criticalCount ?? 0);
+    }
   }
 
   for (const row of lastScanRows) {
