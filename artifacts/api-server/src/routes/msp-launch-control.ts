@@ -329,6 +329,39 @@ router.post(
         "launch_control",
       );
 
+      // Git #3937 — real, live-confirmed evidence: CA actions that require Entra ID
+      // P1/P2 (create-ca-signin-risk-policy, create-ca-user-risk-policy, and any
+      // other license-gated write) were surfacing as an undifferentiated raw Graph
+      // 403 with no indication the tenant simply isn't licensed for the feature.
+      // graphWriteForTenant now classifies this distinctly as errorType
+      // "license_gap" (see graph.ts); surface a clear, customer-safe message here
+      // instead of falling through to the generic 200-with-success:false response
+      // below, which would otherwise still leave a raw Graph error body as the
+      // only signal to a technician.
+      if (!result.success && result.errorType === "license_gap") {
+        try {
+          await recordLaunchControlExecutionOutcome({
+            changeRequestId: changeRequest.id,
+            mspId,
+            tenantId: customer.tenantId,
+            success: false,
+          });
+        } catch (err) {
+          log.error({ err, mspId, changeRequestId: changeRequest.id }, "msp-launch-control: execution record failed (non-fatal)");
+        }
+        log.info(
+          { mspId, templateId, customerId, tenantId: customer.tenantId, licenseFeature: result.licenseFeature, changeRequestId: changeRequest.id },
+          "msp-launch-control: execute blocked by tenant license gap",
+        );
+        res.status(409).json({
+          error: `This action requires ${result.licenseFeature ?? "a Microsoft 365 add-on license"} on this customer's tenant, which it does not currently have.`,
+          errorType: "license_gap",
+          licenseFeature: result.licenseFeature ?? null,
+          changeRequest: { id: changeRequest.id, code: changeRequest.code },
+        });
+        return;
+      }
+
       // #3541 — record the execution as a `write_action` (a code path — this
       // very call — confirms it) and close the CR out immediately; see
       // launch-control-change-request.ts's header for why this is NOT a

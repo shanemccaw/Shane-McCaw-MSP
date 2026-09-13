@@ -660,7 +660,12 @@ export interface BaselineTemplateExecutionResult {
   success: boolean;
   status: number;
   data: unknown;
-  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected";
+  // Git #3937 — "license_gap" surfaces a tenant licensing shortfall (e.g. Entra
+  // ID P1/P2 for Conditional Access) distinctly from a real privilege failure;
+  // see graphWriteForTenant's GraphWriteResult for where this is classified.
+  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected" | "license_gap";
+  /** Customer-safe name of the missing license/add-on. Present only when errorType === "license_gap". */
+  licenseFeature?: string;
   endpoint: string;
   method: string;
   label: string;
@@ -1207,6 +1212,7 @@ export async function runBaselineTemplateAgainstTenant(
         success: result.success,
         status: result.status,
         errorType: result.errorType ?? null,
+        licenseFeature: result.licenseFeature ?? null,
         endpoint,
         method,
         customerId,
@@ -1222,6 +1228,7 @@ export async function runBaselineTemplateAgainstTenant(
 
   return {
     success: result.success, status: result.status, data: result.data, errorType: result.errorType,
+    licenseFeature: result.licenseFeature,
     endpoint, method, label: resolved.label, auditLogId,
   };
 }
@@ -1230,7 +1237,9 @@ export interface RollbackExecutionResult {
   success: boolean;
   status: number;
   data: unknown;
-  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected";
+  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected" | "license_gap";
+  /** Customer-safe name of the missing license/add-on. Present only when errorType === "license_gap". */
+  licenseFeature?: string;
   endpoint: string;
   method: string;
   label: string;
@@ -9875,7 +9884,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
             output = { success: true, status: gwoResult.status, data: gwoResult.data };
           } else {
             switchChosenHandle = gwoResult.errorType ?? "unexpected";
-            output = { success: false, status: gwoResult.status, errorType: gwoResult.errorType, data: gwoResult.data };
+            output = { success: false, status: gwoResult.status, errorType: gwoResult.errorType, licenseFeature: gwoResult.licenseFeature, data: gwoResult.data };
             nodeError = true;
           }
           log.info({ runId, customerId: gwoCustomerId, tenantId: gwoCustomerRow.tenantId, method: gwoMethod, endpoint: gwoEndpointRaw, status: gwoResult.status, success: gwoResult.success }, "wf-executor: graph_write_operation completed");
@@ -10209,6 +10218,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               success: false,
               status: ebtResult.status,
               errorType: ebtResult.errorType,
+              licenseFeature: ebtResult.licenseFeature,
               data: ebtResult.data,
               templateId: ebtTemplateId,
               label: ebtResult.label,

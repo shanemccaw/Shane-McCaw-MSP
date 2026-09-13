@@ -90,7 +90,10 @@ export interface AuthMethodDeleteResult {
   success: boolean;
   status: number;
   data?: unknown;
-  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected";
+  // Widened to match GraphWriteResult (Git #3937) so this stays assignable from
+  // graphWriteForTenant's real return type — not expected in practice for a
+  // per-method DELETE, but the type must accept whatever that choke point can produce.
+  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected" | "license_gap";
 }
 
 export interface MfaReregistrationDeps {

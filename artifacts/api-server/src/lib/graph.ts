@@ -1013,7 +1013,16 @@ export interface GraphWriteResult {
   success: boolean;
   status: number;
   data: any;
-  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected";
+  // Git #3937 — "license_gap" is distinct from "insufficient_privilege": the
+  // write reached Graph and was rejected because the tenant lacks the M365
+  // SKU/add-on the endpoint requires (e.g. Entra ID P1/P2 for Conditional
+  // Access), not because the app/admin lacks permission. Classified via the
+  // same `classifyGraphError` the read path (graphFetchForTenant) already
+  // uses, so a caller can surface a clear "requires <feature>" message
+  // instead of a raw 403 passthrough.
+  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected" | "license_gap";
+  /** Customer-safe name of the missing license/add-on. Present only when errorType === "license_gap". */
+  licenseFeature?: string;
 }
 
 /**
@@ -1123,6 +1132,29 @@ export async function graphWriteForTenant(
       await markTenantWriteConsentRevoked(tenantId);
       throw new WriteConsentRequiredError(tenantId, "revoked_mid_call");
     }
+    // Git #3937 — a license/feature gap (e.g. Entra ID P1/P2 required for
+    // Conditional Access) is not a consent or permission problem: admin
+    // consent is valid and the write app is authorized, the tenant simply
+    // hasn't licensed the feature. Classify it the same way the read path
+    // (graphFetchForTenant) already does, BEFORE falling through to the
+    // generic insufficient_privilege below — real, live-confirmed evidence
+    // (testbed tenant, create-ca-signin-risk-policy/create-ca-user-risk-policy)
+    // showed this collapsing to an undifferentiated raw 403 with no way for a
+    // caller to tell a license gap apart from an actual privilege failure.
+    const cls = classifyGraphError(text, res.status);
+    if (cls.kind === "license_gap") {
+      log.info(
+        { customerId, tenantId, status: res.status, feature: cls.feature, code: cls.code },
+        "Graph tenant write call: Microsoft 365 license/feature gap — not a privilege failure",
+      );
+      return {
+        success: false,
+        status: res.status,
+        errorType: "license_gap",
+        data: text,
+        licenseFeature: cls.feature ?? "a required Microsoft 365 add-on license",
+      };
+    }
     if (res.status === 401) {
       // Non-consent 401 — evict the cached write token so the next attempt
       // re-mints (where a genuine revocation surfaces authoritatively), and
@@ -1131,7 +1163,7 @@ export async function graphWriteForTenant(
       return { success: false, status: 401, errorType: "insufficient_privilege", data: text };
     }
 
-    // Non-consent 400/403
+    // Non-consent, non-license-gap 400/403
     if (res.status === 403) {
       // Evict the cached write token on a 403 as well, so if the admin recently
       // granted new permissions, the next attempt fetches a fresh token.
