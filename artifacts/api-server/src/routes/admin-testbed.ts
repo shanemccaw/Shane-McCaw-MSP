@@ -75,6 +75,13 @@ import { isReplitDevEnvironment, getStripeKey } from "../lib/stripe.ts";
 import { dispatchMspStripeEvent } from "./msp-billing-webhook.ts";
 import { handleMspDunningAdvance } from "../lib/msp-billing-nodes.ts";
 import { logger } from "../lib/logger.ts";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { LEGACY_ROLE_ORDER, type LegacyRole } from "@workspace/db/rbac/legacy-ladder";
+
+function getJwtSecret(): string {
+  return process.env.JWT_SECRET || "dev-jwt-secret-fallback";
+}
 
 const log = logger.child({ channel: "admin.testbed" });
 
@@ -1321,6 +1328,182 @@ router.post(
       res.json({ ok: true, customerId, mspId: scope.mspId, sopsSeeded });
     } catch (err) {
       log.error({ err, customerId }, "admin-testbed: seed-sops failed");
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+);
+
+// ── GET /admin/testbed/tenants ───────────────────────────────────────────────
+// Returns list of tenants for test account setup and tenant switching in dev.
+router.get(
+  "/admin/testbed/tenants",
+  requireDevOrigin,
+  requireAdminOrIngestToken(),
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const tenants = await db
+        .select({
+          id: tenantsTable.id,
+          name: tenantsTable.customerName,
+          tenantId: tenantsTable.tenantId,
+          domain: tenantsTable.domain,
+          mspId: tenantsTable.mspId,
+          status: tenantsTable.status,
+          isTestbed: tenantsTable.isTestbed,
+        })
+        .from(tenantsTable)
+        .orderBy(tenantsTable.customerName);
+
+      res.json({ ok: true, tenants });
+    } catch (err) {
+      log.error({ err }, "admin-testbed: list tenants failed");
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+);
+
+// ── POST /admin/testbed/create-account ───────────────────────────────────────
+// Creates or updates a test account bypassing payment and form barriers.
+// Dev-origin gated + requireAdminOrIngestToken().
+router.post(
+  "/admin/testbed/create-account",
+  requireDevOrigin,
+  requireAdminOrIngestToken(),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const body = (req.body ?? {}) as {
+        email?: string;
+        password?: string;
+        name?: string;
+        role?: string;
+        tenantId?: number | null;
+        mspId?: number | null;
+      };
+
+      const email = (body.email?.trim() || `test-user-${Date.now()}@example.com`).toLowerCase();
+      const rawPassword = body.password?.trim() || "TestPass123!";
+      const name = body.name?.trim() || "Test Account";
+      const requestedRole = (body.role?.trim() || "Customer") as LegacyRole;
+
+      const validRoles = LEGACY_ROLE_ORDER as readonly string[];
+      const role: LegacyRole = validRoles.includes(requestedRole) ? requestedRole : "Customer";
+
+      let tenantId: number | null = body.tenantId != null ? Number(body.tenantId) : null;
+      let mspId: number | null = body.mspId != null ? Number(body.mspId) : null;
+
+      // If tenantId was provided, verify and resolve owning mspId if not given
+      if (tenantId != null && !Number.isNaN(tenantId)) {
+        const [tenant] = await db
+          .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.id, tenantId))
+          .limit(1);
+
+        if (tenant) {
+          if (!mspId) mspId = tenant.mspId;
+        } else {
+          tenantId = null;
+        }
+      }
+
+      // If role requires tenant but none provided, look up first active tenant
+      if (role === "Customer" && tenantId == null) {
+        const [firstTenant] = await db
+          .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.status, "active"))
+          .limit(1);
+        if (firstTenant) {
+          tenantId = firstTenant.id;
+          if (!mspId) mspId = firstTenant.mspId;
+        }
+      }
+
+      // Hash password
+      const passwordHash = await bcrypt.hash(rawPassword, 10);
+
+      // Check if user already exists
+      const [existingUser] = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.email, email))
+        .limit(1);
+
+      let userId: number;
+      if (existingUser) {
+        userId = existingUser.id;
+        await db
+          .update(usersTable)
+          .set({
+            name,
+            passwordHash,
+            mspRole: role,
+            tenantId,
+            mspId,
+            isActive: true,
+            failedLoginAttempts: 0,
+            lockedUntil: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(usersTable.id, userId));
+        log.info({ userId, email, role, tenantId }, "admin-testbed: updated existing test user");
+      } else {
+        const [created] = await db
+          .insert(usersTable)
+          .values({
+            email,
+            passwordHash,
+            name,
+            role: role === "PlatformAdmin" ? "admin" : "client",
+            mspRole: role,
+            tenantId,
+            mspId,
+            isActive: true,
+          })
+          .returning({ id: usersTable.id });
+        userId = created.id;
+        log.info({ userId, email, role, tenantId }, "admin-testbed: created test user");
+      }
+
+      // Mint access token
+      const tokenPayload = {
+        id: userId,
+        email,
+        name,
+        mspRole: role,
+        customerId: tenantId,
+        mspId,
+      };
+      const accessToken = jwt.sign(tokenPayload, getJwtSecret(), { expiresIn: "7d" });
+
+      // Also mint a single-use signup-exchange token for portal auto-login
+      const exchangeToken = randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      await db.insert(signupExchangeTokensTable).values({
+        userId,
+        token: exchangeToken,
+        expiresAt,
+      });
+
+      res.json({
+        ok: true,
+        user: {
+          id: userId,
+          email,
+          name,
+          role,
+          tenantId,
+          mspId,
+        },
+        credentials: {
+          email,
+          password: rawPassword,
+        },
+        accessToken,
+        exchangeToken,
+      });
+    } catch (err) {
+      log.error({ err }, "admin-testbed: create test account failed");
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   },

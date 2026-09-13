@@ -218,6 +218,221 @@ namespace BuildConsole.Services
             ActivityLog.Log(Channel, $"Deleted screenshot id={screenshotId} (file='{path}').");
         }
 
+        // ── Bug Entries Management (Local JSON + optional PostgreSQL sync) ────────
+
+        private static string LocalEntriesFilePath
+        {
+            get
+            {
+                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole", "visual-test-tracker");
+                Directory.CreateDirectory(dir);
+                return Path.Combine(dir, "entries.json");
+            }
+        }
+
+        private static readonly object _entriesLock = new();
+
+        private static List<VisualTestTrackerEntry> LoadLocalEntries()
+        {
+            lock (_entriesLock)
+            {
+                try
+                {
+                    var file = LocalEntriesFilePath;
+                    if (!File.Exists(file)) return new List<VisualTestTrackerEntry>();
+                    var json = File.ReadAllText(file);
+                    return System.Text.Json.JsonSerializer.Deserialize<List<VisualTestTrackerEntry>>(json) ?? new List<VisualTestTrackerEntry>();
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log(Channel, $"Failed to load local entries: {ex.Message}");
+                    return new List<VisualTestTrackerEntry>();
+                }
+            }
+        }
+
+        private static void PersistLocalEntries(List<VisualTestTrackerEntry> list)
+        {
+            lock (_entriesLock)
+            {
+                try
+                {
+                    var file = LocalEntriesFilePath;
+                    var opts = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+                    var json = System.Text.Json.JsonSerializer.Serialize(list, opts);
+                    File.WriteAllText(file, json);
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log(Channel, $"Failed to persist local entries: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>Lists bug entries for a specific page, newest first. Combines local JSON cache with PostgreSQL when available.</summary>
+        public async Task<List<VisualTestTrackerEntry>> ListEntriesAsync(int pageId, string baseUrl, string pagePath)
+        {
+            var local = LoadLocalEntries().FindAll(e =>
+                (pageId > 0 && e.PageId == pageId) ||
+                (!string.IsNullOrWhiteSpace(baseUrl) && string.Equals(e.BaseUrl, baseUrl, StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(e.PagePath, pagePath, StringComparison.OrdinalIgnoreCase)));
+
+            try
+            {
+                await using var conn = await OpenAsync();
+                await using var cmd = new NpgsqlCommand(
+                    "SELECT id, entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at " +
+                    "FROM visual_test_tracker_entries WHERE page_id = @pid ORDER BY created_at DESC", conn);
+                cmd.Parameters.AddWithValue("@pid", pageId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                var dbList = new List<VisualTestTrackerEntry>();
+                while (await reader.ReadAsync())
+                {
+                    dbList.Add(new VisualTestTrackerEntry
+                    {
+                        Id = reader.GetInt32(0),
+                        EntryUuid = reader.GetString(1),
+                        PageId = reader.GetInt32(2),
+                        BaseUrl = reader.GetString(3),
+                        PagePath = reader.GetString(4),
+                        Title = reader.GetString(5),
+                        Notes = reader.GetString(6),
+                        Severity = reader.GetString(7),
+                        Status = reader.GetString(8),
+                        CreatedAt = reader.GetFieldValue<DateTime>(9),
+                        UpdatedAt = reader.GetFieldValue<DateTime>(10)
+                    });
+                }
+
+                // Merge with local screenshot paths
+                var localMap = new Dictionary<string, VisualTestTrackerEntry>(StringComparer.OrdinalIgnoreCase);
+                foreach (var loc in local)
+                {
+                    localMap[loc.EntryUuid] = loc;
+                }
+
+                foreach (var d in dbList)
+                {
+                    if (localMap.TryGetValue(d.EntryUuid, out var locMatch))
+                    {
+                        d.ScreenshotPaths = locMatch.ScreenshotPaths;
+                    }
+                }
+
+                // Any local entries not yet in DB
+                var dbUuids = new HashSet<string>(dbList.ConvertAll(d => d.EntryUuid), StringComparer.OrdinalIgnoreCase);
+                foreach (var loc in local)
+                {
+                    if (!dbUuids.Contains(loc.EntryUuid))
+                        dbList.Add(loc);
+                }
+
+                dbList.Sort((a, b) => b.CreatedAt.CompareTo(a.CreatedAt));
+                return dbList;
+            }
+            catch
+            {
+                // DB table may not exist yet or DB offline — return local entries cleanly
+                local.Sort((a, b) => b.CreatedAt.CompareTo(a.CreatedAt));
+                return local;
+            }
+        }
+
+        /// <summary>Saves or updates a bug entry to both local JSON and PostgreSQL.</summary>
+        public async Task SaveEntryAsync(VisualTestTrackerEntry entry)
+        {
+            if (entry == null) return;
+            entry.UpdatedAt = DateTime.Now;
+
+            // 1. Save locally
+            var all = LoadLocalEntries();
+            int idx = all.FindIndex(e => string.Equals(e.EntryUuid, entry.EntryUuid, StringComparison.OrdinalIgnoreCase));
+            if (idx >= 0) all[idx] = entry;
+            else all.Insert(0, entry);
+            PersistLocalEntries(all);
+
+            // 2. Best-effort DB upsert
+            try
+            {
+                await using var conn = await OpenAsync();
+                await using var cmd = new NpgsqlCommand(
+                    "INSERT INTO visual_test_tracker_entries (entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at) " +
+                    "VALUES (@u, @pid, @b, @p, @t, @n, @sev, @st, @c, @up) " +
+                    "ON CONFLICT (entry_uuid) DO UPDATE SET " +
+                    "title = EXCLUDED.title, notes = EXCLUDED.notes, severity = EXCLUDED.severity, " +
+                    "status = EXCLUDED.status, updated_at = EXCLUDED.updated_at " +
+                    "RETURNING id", conn);
+                cmd.Parameters.AddWithValue("@u", entry.EntryUuid);
+                cmd.Parameters.AddWithValue("@pid", entry.PageId);
+                cmd.Parameters.AddWithValue("@b", entry.BaseUrl ?? "");
+                cmd.Parameters.AddWithValue("@p", entry.PagePath ?? "");
+                cmd.Parameters.AddWithValue("@t", entry.Title ?? "");
+                cmd.Parameters.AddWithValue("@n", entry.Notes ?? "");
+                cmd.Parameters.AddWithValue("@sev", entry.Severity ?? "Bug");
+                cmd.Parameters.AddWithValue("@st", entry.Status ?? "Open");
+                cmd.Parameters.AddWithValue("@c", entry.CreatedAt);
+                cmd.Parameters.AddWithValue("@up", entry.UpdatedAt);
+                var idObj = await cmd.ExecuteScalarAsync();
+                if (idObj is int idVal) entry.Id = idVal;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"DB save entry skipped: {ex.Message}");
+            }
+        }
+
+        /// <summary>Updates an entry's status (e.g. 'Open' or 'Resolved').</summary>
+        public async Task UpdateEntryStatusAsync(string entryUuid, string status)
+        {
+            if (string.IsNullOrWhiteSpace(entryUuid)) return;
+
+            var all = LoadLocalEntries();
+            var target = all.Find(e => string.Equals(e.EntryUuid, entryUuid, StringComparison.OrdinalIgnoreCase));
+            if (target != null)
+            {
+                target.Status = status;
+                target.UpdatedAt = DateTime.Now;
+                PersistLocalEntries(all);
+            }
+
+            try
+            {
+                await using var conn = await OpenAsync();
+                await using var cmd = new NpgsqlCommand(
+                    "UPDATE visual_test_tracker_entries SET status = @st, updated_at = now() WHERE entry_uuid = @u", conn);
+                cmd.Parameters.AddWithValue("@st", status);
+                cmd.Parameters.AddWithValue("@u", entryUuid);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"DB status update skipped: {ex.Message}");
+            }
+        }
+
+        /// <summary>Deletes a bug entry by UUID from local storage and DB.</summary>
+        public async Task DeleteEntryAsync(string entryUuid)
+        {
+            if (string.IsNullOrWhiteSpace(entryUuid)) return;
+
+            var all = LoadLocalEntries();
+            all.RemoveAll(e => string.Equals(e.EntryUuid, entryUuid, StringComparison.OrdinalIgnoreCase));
+            PersistLocalEntries(all);
+
+            try
+            {
+                await using var conn = await OpenAsync();
+                await using var cmd = new NpgsqlCommand(
+                    "DELETE FROM visual_test_tracker_entries WHERE entry_uuid = @u", conn);
+                cmd.Parameters.AddWithValue("@u", entryUuid);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"DB entry delete skipped: {ex.Message}");
+            }
+        }
+
         private static VisualTestTrackerPage ReadPage(NpgsqlDataReader reader) => new VisualTestTrackerPage
         {
             Id = reader.GetInt32(0),

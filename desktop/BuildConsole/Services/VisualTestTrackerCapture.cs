@@ -156,6 +156,49 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>Captures the full WPF window (including HUD, borders, dialogs, and overlays) using on-screen GDI capture.</summary>
+        public static Task<CaptureResult> CaptureWpfWindowAsync(Window window, string baseUrl, string pagePath)
+        {
+            if (window == null) return Task.FromResult(Fail("Window not provided."));
+
+            string path = BuildFilePath(baseUrl, pagePath);
+            try
+            {
+                Point screenTopLeft = window.PointToScreen(new Point(0, 0));
+                var source = PresentationSource.FromVisual(window);
+                double dpiX = source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+                double dpiY = source?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+
+                int x = (int)Math.Max(0, screenTopLeft.X);
+                int y = (int)Math.Max(0, screenTopLeft.Y);
+                int width = (int)Math.Round(window.ActualWidth * dpiX);
+                int height = (int)Math.Round(window.ActualHeight * dpiY);
+
+                if (width <= 0 || height <= 0)
+                    return Task.FromResult(Fail("Window dimensions are invalid or minimized."));
+
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+                using (var bmp = new System.Drawing.Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                {
+                    using (var g = System.Drawing.Graphics.FromImage(bmp))
+                    {
+                        g.CopyFromScreen(x, y, 0, 0, new System.Drawing.Size(width, height), System.Drawing.CopyPixelOperation.SourceCopy);
+                    }
+                    bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+                }
+
+                ActivityLog.Log(Channel, $"WPF Window capture OK: {baseUrl}{pagePath} -> {path}");
+                return Task.FromResult(new CaptureResult { Success = true, FilePath = path });
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"WPF Window capture FAILED: {ex.Message}");
+                TryDelete(path);
+                return Task.FromResult(Fail($"WPF Window capture failed: {ex.Message}"));
+            }
+        }
+
         private static Int32Rect ClampRect(Int32Rect r, int maxW, int maxH)
         {
             int x = Math.Max(0, Math.Min(r.X, maxW));

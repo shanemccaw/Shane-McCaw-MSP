@@ -1,0 +1,161 @@
+<Window x:Class="BuildConsole.ScreenshotAnnotationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Screenshot Annotation Studio"
+        Width="960" Height="720"
+        MinWidth="640" MinHeight="480"
+        WindowStyle="None"
+        ResizeMode="CanResizeWithGrip"
+        Topmost="True"
+        ShowInTaskbar="False"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <Border Background="{StaticResource MantleBrush}"
+            BorderBrush="{StaticResource Surface0Brush}"
+            BorderThickness="1"
+            CornerRadius="6">
+        <Grid Margin="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Title Bar -->
+                <RowDefinition Height="Auto"/> <!-- Toolbar -->
+                <RowDefinition Height="*"/>    <!-- Canvas Area -->
+                <RowDefinition Height="Auto"/> <!-- Footer Actions -->
+            </Grid.RowDefinitions>
+
+            <!-- Header Strip (Drag Handle) -->
+            <Border x:Name="HeaderStrip" Grid.Row="0"
+                    Background="{StaticResource CrustBrush}"
+                    CornerRadius="6,6,0,0"
+                    Padding="10,6,8,6"
+                    MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="&#x270F;" FontSize="13"
+                               Margin="0,0,6,0" VerticalAlignment="Center"
+                               Foreground="{StaticResource AccentBrush}"/>
+                    <TextBlock Grid.Column="1" Text="Screenshot Annotation Studio (InkCanvas)"
+                               FontSize="12" FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource TextBrush}"/>
+                    <Button x:Name="BtnClose" Grid.Column="2"
+                            Content="&#x2715;"
+                            Style="{StaticResource IconButton}"
+                            FontSize="10"
+                            Padding="5,2,5,2"
+                            ToolTip="Cancel"
+                            Click="BtnCancel_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- Tools & Colors Toolbar -->
+            <Border Grid.Row="1" Background="{StaticResource Surface0Brush}" Padding="8,4,8,4">
+                <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Tool Selection -->
+                    <RadioButton x:Name="ToolPen" Content="✏ Pen" IsChecked="True"
+                                 Style="{StaticResource TabRadioButton}" Margin="0,0,4,0"
+                                 Checked="Tool_Changed"/>
+                    <RadioButton x:Name="ToolHighlighter" Content="🖍 Highlighter"
+                                 Style="{StaticResource TabRadioButton}" Margin="0,0,4,0"
+                                 Checked="Tool_Changed"/>
+                    <RadioButton x:Name="ToolArrow" Content="➡ Arrow"
+                                 Style="{StaticResource TabRadioButton}" Margin="0,0,4,0"
+                                 Checked="Tool_Changed"/>
+                    <RadioButton x:Name="ToolRectangle" Content="▭ Rectangle"
+                                 Style="{StaticResource TabRadioButton}" Margin="0,0,4,0"
+                                 Checked="Tool_Changed"/>
+                    <RadioButton x:Name="ToolEllipse" Content="◯ Ellipse"
+                                 Style="{StaticResource TabRadioButton}" Margin="0,0,4,0"
+                                 Checked="Tool_Changed"/>
+                    <RadioButton x:Name="ToolText" Content="🔤 Text"
+                                 Style="{StaticResource TabRadioButton}" Margin="0,0,4,0"
+                                 Checked="Tool_Changed"/>
+                    <RadioButton x:Name="ToolRedact" Content="⬛ Redact (Blackout)"
+                                 Style="{StaticResource TabRadioButton}" Margin="0,0,8,0"
+                                 Checked="Tool_Changed"/>
+
+                    <Rectangle Width="1" Height="20" Fill="{StaticResource Surface1Brush}" Margin="2,0,8,0" VerticalAlignment="Center"/>
+
+                    <!-- Color Picker Buttons -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                        <Button Tag="#F38BA8" Background="#F38BA8" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Red" Click="Color_Click" BorderThickness="1" BorderBrush="#FFFFFF"/>
+                        <Button Tag="#FAB387" Background="#FAB387" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Orange" Click="Color_Click" BorderThickness="0"/>
+                        <Button Tag="#F9E2AF" Background="#F9E2AF" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Yellow" Click="Color_Click" BorderThickness="0"/>
+                        <Button Tag="#A6E3A1" Background="#A6E3A1" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Green" Click="Color_Click" BorderThickness="0"/>
+                        <Button Tag="#89DCEB" Background="#89DCEB" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Cyan" Click="Color_Click" BorderThickness="0"/>
+                        <Button Tag="#CBA6F7" Background="#CBA6F7" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Purple" Click="Color_Click" BorderThickness="0"/>
+                        <Button Tag="#FFFFFF" Background="#FFFFFF" Width="18" Height="18" Margin="2,0,2,0" ToolTip="White" Click="Color_Click" BorderThickness="0"/>
+                    </StackPanel>
+
+                    <Rectangle Width="1" Height="20" Fill="{StaticResource Surface1Brush}" Margin="2,0,8,0" VerticalAlignment="Center"/>
+
+                    <!-- Stroke Size -->
+                    <ComboBox x:Name="CmbSize" Width="80" Height="24" FontSize="10"
+                              Background="{StaticResource BaseBrush}"
+                              Foreground="{StaticResource TextBrush}"
+                              SelectionChanged="CmbSize_SelectionChanged"
+                              VerticalAlignment="Center" Margin="0,0,8,0">
+                        <ComboBoxItem Content="Fine (2px)"/>
+                        <ComboBoxItem Content="Medium (4px)" IsSelected="True"/>
+                        <ComboBoxItem Content="Thick (8px)"/>
+                    </ComboBox>
+
+                    <Button x:Name="BtnUndo" Content="↩ Undo" Style="{StaticResource IconButton}"
+                            FontSize="10" Padding="6,2,6,2" Margin="0,0,4,0" Click="BtnUndo_Click"/>
+                    <Button x:Name="BtnClear" Content="🗑 Clear" Style="{StaticResource IconButton}"
+                            FontSize="10" Padding="6,2,6,2" Click="BtnClear_Click"/>
+                </WrapPanel>
+            </Border>
+
+            <!-- Canvas Viewport -->
+            <ScrollViewer Grid.Row="2" Background="{StaticResource CrustBrush}"
+                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                <Grid x:Name="CanvasContainer" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="10">
+                    <!-- Base Screenshot Image -->
+                    <Image x:Name="ImgBase" Stretch="None"/>
+
+                    <!-- Interactive InkCanvas for Pen & Highlighter -->
+                    <InkCanvas x:Name="InkDraw" Background="Transparent"/>
+
+                    <!-- Shape/Text/Redaction Overlay Canvas for geometric shapes & text labels -->
+                    <Canvas x:Name="ShapeOverlay" Background="Transparent"
+                            MouseDown="ShapeOverlay_MouseDown"
+                            MouseMove="ShapeOverlay_MouseMove"
+                            MouseUp="ShapeOverlay_MouseUp"/>
+                </Grid>
+            </ScrollViewer>
+
+            <!-- Footer Action Bar -->
+            <Border Grid.Row="3" Background="{StaticResource CrustBrush}"
+                    CornerRadius="0,0,6,6" Padding="10,6,10,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="StatusHintText" Grid.Column="0"
+                               Text="Annotate screenshot, then click Save to attach directly to your bug entry."
+                               FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                               VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button x:Name="BtnCopyImage" Content="📋 Copy Image"
+                                Style="{StaticResource SecondaryButton}"
+                                Padding="10,4,10,4" Margin="0,0,6,0"
+                                Click="BtnCopyImage_Click"/>
+                        <Button x:Name="BtnSaveAttach" Content="💾 Save &amp; Attach to Bug"
+                                Style="{StaticResource PrimaryButton}"
+                                Padding="12,4,12,4" Margin="0,0,6,0"
+                                Click="BtnSaveAttach_Click"/>
+                        <Button Content="Cancel" Style="{StaticResource IconButton}"
+                                Padding="8,4,8,4"
+                                Click="BtnCancel_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
