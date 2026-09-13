@@ -101,6 +101,7 @@ import notificationPreferencesRouter from "./notification-preferences.ts";
 import portalAlertPreferencesRouter from "./portal-alert-preferences.ts";
 import pushRouter from "./push.ts";
 import adminCallbackTokensRouter from "./admin-callback-tokens.ts";
+import adminManualScriptsRouter from "./admin-manual-scripts.ts";
 import adminDocumentDownloadsRouter from "./admin-document-downloads.ts";
 import portalQuickWinScoringRouter from "./portal-quick-win-scoring.ts";
 import adminWorkflowsRouter from "./admin-workflows.ts";
@@ -430,6 +431,7 @@ router.use(notificationPreferencesRouter);
 router.use(portalAlertPreferencesRouter);
 router.use(pushRouter);
 router.use(adminCallbackTokensRouter);
+router.use(adminManualScriptsRouter);
 // Rehomed from admin-insights.ts (Git #3478) — admin-insights.ts and
 // insight-pdf.ts were deleted outright once these three still-live GET routes
 // (and the generic HTML→PDF helpers other features depend on) were moved out.
