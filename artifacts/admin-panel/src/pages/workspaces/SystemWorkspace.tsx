@@ -13,6 +13,7 @@ import IncidentsAdminPage from "@/pages/IncidentsAdminPage";
 import { ActiveDirectoryPage } from "@/pages/ActiveDirectoryPage";
 import AiBillingPage from "@/pages/AiBillingPage";
 import ZohoIntegrationPage from "@/pages/integrations/ZohoIntegrationPage";
+import AzureCredentialsPage from "@/pages/AzureCredentials";
 
 function getContent(section: string): ReactNode {
   switch (section) {
@@ -27,6 +28,7 @@ function getContent(section: string): ReactNode {
     case "simulator":             return <SimulatorStudioPage />;
     case "active-directory":      return <ActiveDirectoryPage />;
     case "ai-billing":            return <AiBillingPage />;
+    case "azure-credentials":     return <AzureCredentialsPage />;
     case "integrations-zoho":     return <ZohoIntegrationPage />;
     case "pcc":                   return <PccDashboard />;
     default:                      return <InboxPage />;

@@ -63,6 +63,7 @@ import {
   Rocket,
   FolderTree,
   GitCompare,
+  KeyRound,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -189,6 +190,7 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "sys-simulator", label: "Simulator Studio", path: "/system/simulator", icon: FlaskConical },
           { id: "sys-active-directory", label: "Active Directory", path: "/system/active-directory", icon: FolderTree },
           { id: "sys-ai-billing", label: "AI Billing", path: "/system/ai-billing", icon: Receipt },
+          { id: "sys-azure-credentials", label: "Azure Credentials", path: "/system/azure-credentials", icon: KeyRound },
         ],
       },
       {
