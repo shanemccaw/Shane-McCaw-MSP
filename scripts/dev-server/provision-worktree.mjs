@@ -136,6 +136,7 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
         foreign: scan.foreignLinks.length,
         dangling: scan.danglingLinks.length,
         poisonedBins: scan.poisonedBins.length,
+        missingTrees: scan.missingTrees.length,
       };
       if (!scan.clean) {
         let repairRes = null;

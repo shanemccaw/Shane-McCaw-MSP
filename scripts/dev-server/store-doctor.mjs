@@ -33,6 +33,12 @@
 //   * every file in <host>/node_modules/.bin: absolute paths baked into shims
 //     that point into a worktree (`\wt\`) or point outside the root at a path
 //     that no longer exists (#1967's vitest shim class).
+//   * every real workspace package (has its own package.json with real deps):
+//       - MISSING: its node_modules is absent, or present but has no real package
+//         entries (Git #3646, found chasing #2985/#3000 — a host with no link tree
+//         at all used to be silently dropped from the scan, and an empty-but-present
+//         node_modules passed too, so out.clean stayed true with nothing checked).
+//     MISSING trees are reported but never auto-repaired — see repairSharedStore().
 //
 // Repair (via the CLI's --repair flag, or via repairSharedStore() called directly by
 // provision-worktree.mjs / worktree-lifecycle.mjs — see the Git #1980 note above):
@@ -92,7 +98,7 @@ function isUnder(child, root) {
 }
 
 /** Workspace-package dirs that can host a node_modules (mirrors link-deps.mjs). */
-function nodeModulesHosts(root) {
+function workspacePackageDirs(root) {
   const hosts = [root];
   for (const group of ["artifacts", "lib", "lib/integrations", "scripts"]) {
     const dir = path.join(root, group);
@@ -112,7 +118,77 @@ function nodeModulesHosts(root) {
       if (existsSync(path.join(sub, "package.json"))) hosts.push(sub);
     }
   }
-  return hosts.filter((h) => existsSync(path.join(h, "node_modules")));
+  return hosts;
+}
+
+/** Every real workspace package (has its own package.json) — the universe MISSING-tree checks over. */
+function workspacePackages(root) {
+  return workspacePackageDirs(root).filter((h) => existsSync(path.join(h, "package.json")));
+}
+
+function nodeModulesHosts(root) {
+  return workspacePackageDirs(root).filter((h) => existsSync(path.join(h, "node_modules")));
+}
+
+/**
+ * True if `nmDir` contains at least one real package link (top-level or @scoped) —
+ * i.e. is actually populated, not just present-but-empty (the #2985/#3000 failure
+ * shape: the directory exists but holds nothing but stray build artifacts).
+ */
+function hasRealPackageEntries(nmDir) {
+  let entries;
+  try {
+    entries = readdirSync(nmDir);
+  } catch {
+    return false;
+  }
+  for (const name of entries) {
+    if (name === ".bin" || name === ".pnpm" || name.startsWith(".")) continue;
+    if (name.startsWith("@")) {
+      try {
+        if (readdirSync(path.join(nmDir, name)).length > 0) return true;
+      } catch {
+        continue;
+      }
+    } else {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A workspace package that declares real (non-empty) dependencies but whose own
+ * node_modules is absent or has no real package entries — a link tree that SHOULD
+ * exist and doesn't. Distinct from FOREIGN/DANGLING (those require a link to exist
+ * first); this is what #2985/#3000 found going undetected: nodeModulesHosts()
+ * silently drops a host with no node_modules from the scan, and an empty-but-present
+ * node_modules passes it too, so out.clean stayed true with nothing to check.
+ */
+function scanMissingTrees(root, out) {
+  for (const pkgDir of workspacePackages(root)) {
+    let pkg;
+    try {
+      pkg = JSON.parse(readFileSync(path.join(pkgDir, "package.json"), "utf8"));
+    } catch {
+      continue;
+    }
+    const depCount =
+      Object.keys(pkg.dependencies || {}).length +
+      Object.keys(pkg.devDependencies || {}).length +
+      Object.keys(pkg.peerDependencies || {}).length +
+      Object.keys(pkg.optionalDependencies || {}).length;
+    if (depCount === 0) continue; // nothing to link — no tree is expected
+    const nm = path.join(pkgDir, "node_modules");
+    if (isReparsePoint(nm)) continue; // a junctioned host inside a real checkout: not this root's tree to judge
+    if (!existsSync(nm)) {
+      out.missingTrees.push({ package: pkgDir, reason: "node_modules directory does not exist" });
+      continue;
+    }
+    if (!hasRealPackageEntries(nm)) {
+      out.missingTrees.push({ package: pkgDir, reason: "node_modules exists but has no real package entries" });
+    }
+  }
 }
 
 function checkLink(root, link, out) {
@@ -223,6 +299,7 @@ export function scanSharedStore(root) {
     foreignLinks: [],
     danglingLinks: [],
     poisonedBins: [],
+    missingTrees: [],
     clean: true,
   };
   const rootNm = path.join(root, "node_modules");
@@ -242,8 +319,12 @@ export function scanSharedStore(root) {
   // pnpm's hidden hoisted links live under <root>/node_modules/.pnpm/node_modules.
   const hoisted = path.join(rootNm, ".pnpm", "node_modules");
   if (existsSync(hoisted)) scanPackageLinks(root, hoisted, out);
+  scanMissingTrees(root, out);
   out.clean =
-    out.foreignLinks.length === 0 && out.danglingLinks.length === 0 && out.poisonedBins.length === 0;
+    out.foreignLinks.length === 0 &&
+    out.danglingLinks.length === 0 &&
+    out.poisonedBins.length === 0 &&
+    out.missingTrees.length === 0;
   return out;
 }
 
@@ -346,6 +427,18 @@ export function repairSharedStore(root, scan) {
     }
   }
 
+  // A missing/empty tree has no "store copy elsewhere" to relink from — it's an
+  // absent local install, and per the #1987/#1988 bandwidth rule this script never
+  // runs or prescribes `pnpm install` to fill it. Report honestly as unrepairable;
+  // a deliberate reinstall decision belongs to Shane.
+  for (const missing of scan.missingTrees) {
+    res.unrepairable.push({
+      link: missing.package,
+      target: "(node_modules)",
+      reason: `${missing.reason} — relinking cannot create a tree that was never installed; this is a decision for Shane, not an automatic install`,
+    });
+  }
+
   return res;
 }
 
@@ -364,7 +457,14 @@ function printScan(scan) {
   show("FOREIGN links (resolve outside this checkout)", scan.foreignLinks, (f) => `${f.link} -> ${f.target}`);
   show("DANGLING links (target gone)", scan.danglingLinks, (f) => `${f.link} -> ${f.target}`);
   show("POISONED .bin shims", scan.poisonedBins, (b) => `${b.file} [${b.badPaths.join(", ")}]`);
-  console.log(scan.clean ? "  CLEAN — no foreign, dangling or poisoned entries." : "  POISONED — see entries above.");
+  show(
+    "MISSING trees (package.json declares deps, node_modules absent/empty)",
+    scan.missingTrees,
+    (m) => `${m.package} — ${m.reason}`
+  );
+  console.log(
+    scan.clean ? "  CLEAN — no foreign, dangling, poisoned or missing entries." : "  POISONED — see entries above."
+  );
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
