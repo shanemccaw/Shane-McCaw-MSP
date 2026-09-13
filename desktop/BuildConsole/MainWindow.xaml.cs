@@ -3714,10 +3714,19 @@ namespace BuildConsole
             wv.Loaded += async (s, e) =>
             {
                 await InjectBuilderButtonsAsync(wv);
-                if (!navigated && wv.CoreWebView2 != null)
+                try
                 {
-                    navigated = true;
-                    wv.CoreWebView2.Navigate(chat.ClaudeUrl);
+                    if (!navigated && wv.CoreWebView2 != null)
+                    {
+                        navigated = true;
+                        wv.CoreWebView2.Navigate(chat.ClaudeUrl);
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Git #3912 — the tab (and this wv) was closed while
+                    // InjectBuilderButtonsAsync was still in flight. Nothing left to
+                    // navigate; real and expected under a fast tab-close, not a bug to log.
                 }
             };
             return wv;
