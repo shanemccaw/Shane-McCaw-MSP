@@ -175,15 +175,68 @@
                                 </Border>
                                 <Border x:Name="BodyDom" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
                                     <StackPanel Orientation="Vertical">
-                                        <!-- Picked Readout -->
-                                        <StackPanel x:Name="DomPickedContainer" Visibility="Collapsed" Margin="0,0,0,6">
+                                        <!-- Picked Readout & Inline Comment Box -->
+                                        <StackPanel x:Name="DomPickedContainer" Visibility="Collapsed" Margin="0,0,0,8">
+                                            <!-- Element Details Card -->
+                                            <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="0,0,0,6">
+                                                <StackPanel Orientation="Vertical">
+                                                    <WrapPanel Margin="0,0,0,3">
+                                                        <TextBlock x:Name="TxtDomTag" Text="div.card" FontFamily="Consolas" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,6,0"/>
+                                                        <TextBlock x:Name="TxtDomDims" Text="320×180px" FontSize="9.5" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock x:Name="TxtDomA11y" Text="a11y verified" FontSize="9" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}" VerticalAlignment="Center"/>
+                                                    </WrapPanel>
+                                                    <TextBlock x:Name="TxtDomSelector" Text="#root > main > div:nth-child(2)" FontFamily="Consolas" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,2"/>
+                                                    <TextBlock x:Name="TxtDomInnerText" Text="&quot;Button text&quot;" FontFamily="Segoe UI" FontStyle="Italic" FontSize="9" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap" Visibility="Collapsed"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Inline Comment Box Card -->
+                                            <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="0,0,0,6">
+                                                <StackPanel Orientation="Vertical">
+                                                    <Grid Margin="0,0,0,4">
+                                                        <TextBlock Text="Add Comment" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="Shift+Enter = ↵ line  ·  Enter = Send" FontSize="8.5" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                    <Border Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,6">
+                                                        <Grid>
+                                                            <TextBox x:Name="TxtDomComment"
+                                                                     Background="Transparent"
+                                                                     BorderThickness="0"
+                                                                     Foreground="{StaticResource TextBrush}"
+                                                                     CaretBrush="{StaticResource AccentBrush}"
+                                                                     FontSize="10.5"
+                                                                     FontFamily="Segoe UI"
+                                                                     TextWrapping="Wrap"
+                                                                     AcceptsReturn="False"
+                                                                     MinHeight="54"
+                                                                     MaxHeight="120"
+                                                                     VerticalScrollBarVisibility="Auto"
+                                                                     PreviewKeyDown="TxtDomComment_PreviewKeyDown"
+                                                                     TextChanged="TxtDomComment_TextChanged"/>
+                                                            <TextBlock x:Name="TxtDomCommentWatermark"
+                                                                       Text="Type comment... (Shift+Enter for newline, Enter to send to bug list)"
+                                                                       FontSize="10"
+                                                                       Foreground="{StaticResource Subtext1Brush}"
+                                                                       FontStyle="Italic"
+                                                                       IsHitTestVisible="False"
+                                                                       VerticalAlignment="Top"
+                                                                       Margin="2,2,0,0"/>
+                                                        </Grid>
+                                                    </Border>
+                                                    <DockPanel LastChildFill="False">
+                                                        <Button x:Name="BtnDomSendBug" DockPanel.Dock="Left" Style="{StaticResource PrimaryButton}" FontSize="10" Padding="8,4" Click="BtnDomSendBug_Click">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="&#xE725;" FontFamily="Segoe MDL2 Assets" FontSize="10" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                                                <TextBlock Text="Send to Bug List (Enter)" FontWeight="Bold" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+                                                        </Button>
+                                                        <TextBlock x:Name="TxtDomBugSuccess" DockPanel.Dock="Left" Text="✓ Sent to bug list!" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}" VerticalAlignment="Center" Margin="8,0,0,0" Visibility="Collapsed"/>
+                                                    </DockPanel>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Secondary Helper Actions -->
                                             <WrapPanel Margin="0,0,0,4">
-                                                <TextBlock x:Name="TxtDomTag" Text="div.card" FontFamily="Consolas" FontSize="11" FontWeight="Bold" Margin="0,0,6,0"/>
-                                                <TextBlock x:Name="TxtDomDims" Text="320x180" FontSize="9.5" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                                <TextBlock x:Name="TxtDomA11y" Text="a11y OK" FontSize="9" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}" VerticalAlignment="Center"/>
-                                            </WrapPanel>
-                                            <TextBlock x:Name="TxtDomSelector" Text="#root > main > div:nth-child(2)" FontFamily="Consolas" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
-                                            <WrapPanel Margin="0,0,0,6">
                                                 <Button Content="+ Add to Repro Steps" Style="{StaticResource SecondaryButton}" FontSize="9.5" Padding="5,2" Margin="0,0,4,0" Click="BtnDomAddToSteps_Click"/>
                                                 <Button Content="+ Add to Notes" Style="{StaticResource SecondaryButton}" FontSize="9.5" Padding="5,2" Click="BtnDomAddToNotes_Click"/>
                                             </WrapPanel>

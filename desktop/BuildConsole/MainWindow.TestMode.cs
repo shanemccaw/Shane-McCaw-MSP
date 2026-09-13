@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using BuildConsole.Controls;
 using BuildConsole.Services;
 
 namespace BuildConsole
@@ -54,6 +57,41 @@ namespace BuildConsole
             TestModeDiagnosticsPanel.AddToNotesRequested += (note) =>
             {
                 TestModeComposerPanel.AppendNote(note);
+            };
+
+            TestModeDiagnosticsPanel.BugSubmittedFromDomInspector += (comment, element) =>
+            {
+                string notes = string.IsNullOrWhiteSpace(comment)
+                    ? $"DOM Element issue: `{element.Selector}`"
+                    : comment;
+
+                var actualSb = new StringBuilder();
+                actualSb.AppendLine($"Selector: {element.Selector}");
+                actualSb.AppendLine($"Tag: <{element.Tag.ToLowerInvariant()}>");
+                actualSb.AppendLine($"Dimensions: {(int)element.Width}×{(int)element.Height} px");
+                if (!string.IsNullOrWhiteSpace(element.Classes))
+                {
+                    actualSb.AppendLine($"Classes: {element.Classes}");
+                }
+                if (!string.IsNullOrWhiteSpace(element.InnerText))
+                {
+                    string text = element.InnerText.Trim();
+                    if (text.Length > 120) text = text[..117] + "...";
+                    actualSb.AppendLine($"Text: \"{text}\"");
+                }
+
+                var bug = new BugCardViewModel
+                {
+                    Severity = "Bug",
+                    Notes = notes,
+                    Route = TestModeComposerPanel.ActiveRoute,
+                    Steps = $"1. Locate and inspect `{element.Selector}`",
+                    Actual = actualSb.ToString().TrimEnd(),
+                    Tags = new List<string> { "dom-inspector", element.Tag.ToLowerInvariant() }
+                };
+
+                TestModeComposerPanel.AddBug(bug);
+                ToastEngine.Success("Bug Logged", $"Added bug for <{element.Tag.ToLowerInvariant()}> to bug list.");
             };
 
             TestModeDiagnosticsPanel.ApiHelperRequested += OpenApiHelperForTestMode;

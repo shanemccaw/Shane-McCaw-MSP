@@ -69,6 +69,7 @@ namespace BuildConsole.Controls
     public partial class TestModeComposerPanel : UserControl
     {
         private string _activeRoute = "about:blank";
+        public string ActiveRoute => _activeRoute;
         private string _fullUrl = "";
         private bool _isWide;
 
@@ -511,6 +512,23 @@ namespace BuildConsole.Controls
             // Mark session dot amber
             DotSessionPulse.Fill = new SolidColorBrush(Color.FromRgb(0xD4, 0xA5, 0x6C));
             ChkGood.IsChecked = false;
+        }
+
+        /// <summary>
+        /// Directly inserts a bug entry into the bug list (e.g. from DOM Inspector) and opens the drawer.
+        /// </summary>
+        public void AddBug(BugCardViewModel bug)
+        {
+            AllBugs.Insert(0, bug);
+            RefreshBugDrawer();
+            ShowToast($"Bug entry #{bug.Id} logged!");
+
+            DotSessionPulse.Fill = new SolidColorBrush(Color.FromRgb(0xD4, 0xA5, 0x6C));
+            ChkGood.IsChecked = false;
+
+            // Automatically reveal the bug drawer
+            BodyBugDrawer.Visibility = Visibility.Visible;
+            IconBugDrawerChevron.Text = "\uE70D";
         }
 
         private void BtnClearBug_Click(object sender, RoutedEventArgs e)

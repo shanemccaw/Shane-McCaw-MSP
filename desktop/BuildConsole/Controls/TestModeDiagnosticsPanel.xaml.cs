@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using BuildConsole.Services;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
@@ -34,6 +35,7 @@ namespace BuildConsole.Controls
         public event Action<bool>? ExpansionChanged;
         public event Action<string>? AddToReproStepsRequested;
         public event Action<string>? AddToNotesRequested;
+        public event Action<string, DomElementInfo>? BugSubmittedFromDomInspector;
         public event Action? ApiHelperRequested;
 
         public bool IsExpanded
@@ -118,9 +120,35 @@ namespace BuildConsole.Controls
         {
             try
             {
-                string message = e.TryGetWebMessageAsString();
+                string message = "";
+                try
+                {
+                    message = e.TryGetWebMessageAsString();
+                }
+                catch { }
+
+                if (string.IsNullOrEmpty(message))
+                {
+                    try
+                    {
+                        message = e.WebMessageAsJson ?? "";
+                        if (message.StartsWith("\"") && message.EndsWith("\"") && message.Length >= 2)
+                        {
+                            try { message = JsonSerializer.Deserialize<string>(message) ?? message; } catch { }
+                        }
+                    }
+                    catch { }
+                }
+
                 if (!string.IsNullOrEmpty(message))
                 {
+                    var domInfo = VisualTestTrackerTelemetry.TryParseDomInspectMessage(message);
+                    if (domInfo != null)
+                    {
+                        // Note: TryParseDomInspectMessage raises OnDomElementInspected which is subscribed to in the constructor.
+                        return;
+                    }
+
                     try
                     {
                         using var doc = JsonDocument.Parse(message);
@@ -143,12 +171,6 @@ namespace BuildConsole.Controls
                         }
                     }
                     catch { }
-
-                    var domInfo = VisualTestTrackerTelemetry.TryParseDomInspectMessage(message);
-                    if (domInfo != null)
-                    {
-                        Dispatcher.Invoke(() => HandleDomElementInspected(domInfo));
-                    }
                 }
             }
             catch { }
@@ -273,43 +295,17 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            _isPickingElement = !_isPickingElement;
-            TxtPickElementLabel.Text = _isPickingElement ? "Cancel Pick" : "Pick Element";
-
             if (_isPickingElement)
             {
-                // Inject click/hover picker snippet into WebView2
-                string script = @"(function() {
-                    if (window.__vttPickerActive) return;
-                    window.__vttPickerActive = true;
-                    var prevEl = null;
-                    function onOver(ev) {
-                        if (prevEl) prevEl.style.outline = '';
-                        prevEl = ev.target;
-                        prevEl.style.outline = '2px solid #7C8CF0';
-                    }
-                    function onClick(ev) {
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                        if (prevEl) prevEl.style.outline = '';
-                        window.removeEventListener('mouseover', onOver, true);
-                        window.removeEventListener('click', onClick, true);
-                        window.__vttPickerActive = false;
-                        var r = ev.target.getBoundingClientRect();
-                        window.chrome.webview.postMessage({
-                            type: 'dom_inspect',
-                            tagName: ev.target.tagName.toLowerCase(),
-                            className: ev.target.className || '',
-                            id: ev.target.id || '',
-                            rect: { width: Math.round(r.width), height: Math.round(r.height) },
-                            selector: ev.target.id ? '#' + ev.target.id : (ev.target.tagName.toLowerCase() + (ev.target.className ? '.' + ev.target.className.trim().replace(/\s+/g, '.') : ''))
-                        });
-                    }
-                    window.addEventListener('mouseover', onOver, true);
-                    window.addEventListener('click', onClick, true);
-                })();";
-                await _activeWebView.CoreWebView2.ExecuteScriptAsync(script);
+                _isPickingElement = false;
+                TxtPickElementLabel.Text = _lastInspectedElement != null ? "Pick Another" : "Pick Element";
+                await VisualTestTrackerTelemetry.DisableDomInspectorAsync(_activeWebView);
+                return;
             }
+
+            _isPickingElement = true;
+            TxtPickElementLabel.Text = "Cancel Pick";
+            await VisualTestTrackerTelemetry.EnableDomInspectorAsync(_activeWebView);
         }
 
         private void HandleDomElementInspected(DomElementInfo info)
@@ -320,16 +316,94 @@ namespace BuildConsole.Controls
             TxtDomEmpty.Visibility = Visibility.Collapsed;
             DomPickedContainer.Visibility = Visibility.Visible;
 
+            // Ensure DOM accordion section is visible and expanded
+            BodyDom.Visibility = Visibility.Visible;
+            IconDomChevron.Text = "\uE70E";
+
             string firstClass = "";
             if (!string.IsNullOrWhiteSpace(info.Classes))
             {
                 var parts = info.Classes.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length > 0) firstClass = "." + parts[0];
             }
-            TxtDomTag.Text = $"{info.Tag}{firstClass}";
-            TxtDomDims.Text = $"{(int)info.Width}×{(int)info.Height}";
+            TxtDomTag.Text = $"{info.Tag.ToLowerInvariant()}{firstClass}";
+            TxtDomDims.Text = $"{(int)info.Width}×{(int)info.Height}px";
             TxtDomA11y.Text = "a11y verified";
             TxtDomSelector.Text = info.Selector;
+
+            if (!string.IsNullOrWhiteSpace(info.InnerText))
+            {
+                string snippet = info.InnerText.Trim();
+                if (snippet.Length > 80) snippet = snippet[..77] + "...";
+                TxtDomInnerText.Text = $"\"{snippet}\"";
+                TxtDomInnerText.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                TxtDomInnerText.Visibility = Visibility.Collapsed;
+            }
+
+            // Reset comment box and give it instant focus for typing
+            TxtDomComment.Clear();
+            TxtDomBugSuccess.Visibility = Visibility.Collapsed;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                TxtDomComment.Focus();
+                Keyboard.Focus(TxtDomComment);
+            }), DispatcherPriority.Input);
+        }
+
+        private void TxtDomComment_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+                {
+                    // Shift+Enter: Insert a newline
+                    e.Handled = true;
+                    int caret = TxtDomComment.CaretIndex;
+                    TxtDomComment.Text = TxtDomComment.Text.Insert(caret, Environment.NewLine);
+                    TxtDomComment.CaretIndex = caret + Environment.NewLine.Length;
+                }
+                else
+                {
+                    // Enter: Submit to bug list
+                    e.Handled = true;
+                    SubmitDomBug();
+                }
+            }
+        }
+
+        private void TxtDomComment_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            TxtDomCommentWatermark.Visibility = string.IsNullOrEmpty(TxtDomComment.Text)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        private void BtnDomSendBug_Click(object sender, RoutedEventArgs e)
+        {
+            SubmitDomBug();
+        }
+
+        private void SubmitDomBug()
+        {
+            if (_lastInspectedElement == null) return;
+
+            string comment = TxtDomComment.Text.Trim();
+            BugSubmittedFromDomInspector?.Invoke(comment, _lastInspectedElement);
+
+            TxtDomComment.Clear();
+
+            // Show confirmation badge briefly
+            TxtDomBugSuccess.Visibility = Visibility.Visible;
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
+            timer.Tick += (s, e) =>
+            {
+                timer.Stop();
+                TxtDomBugSuccess.Visibility = Visibility.Collapsed;
+            };
+            timer.Start();
         }
 
         private void BtnDomAddToSteps_Click(object sender, RoutedEventArgs e)

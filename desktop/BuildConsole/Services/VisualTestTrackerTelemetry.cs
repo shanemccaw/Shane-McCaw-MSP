@@ -626,7 +626,9 @@ namespace BuildConsole.Services
 
         private const string DomInspectorScript = @"
 (function() {
-    if (window.__vttDomInspectorActive) return;
+    if (window.__vttDomInspectorCleanUp) {
+        window.__vttDomInspectorCleanUp();
+    }
     window.__vttDomInspectorActive = true;
 
     var overlay = document.getElementById('__vtt_dom_inspector_overlay');
@@ -728,6 +730,7 @@ namespace BuildConsole.Services
     }
 
     function onMouseMove(e) {
+        if (!window.__vttDomInspectorActive) return;
         var target = document.elementFromPoint(e.clientX, e.clientY);
         if (!target || target === overlay || overlay.contains(target)) return;
         hoveredEl = target;
@@ -786,10 +789,9 @@ namespace BuildConsole.Services
             attributes: getAttributes(el)
         };
 
-        window.__vttDomInspectorActive = false;
-        overlay.style.display = 'none';
-        document.removeEventListener('mousemove', onMouseMove, true);
-        document.removeEventListener('click', onClick, true);
+        if (window.__vttDomInspectorCleanUp) {
+            window.__vttDomInspectorCleanUp();
+        }
 
         if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
             window.chrome.webview.postMessage(JSON.stringify({
@@ -799,6 +801,14 @@ namespace BuildConsole.Services
         }
     }
 
+    window.__vttDomInspectorCleanUp = function() {
+        window.__vttDomInspectorActive = false;
+        var ov = document.getElementById('__vtt_dom_inspector_overlay');
+        if (ov) ov.style.display = 'none';
+        document.removeEventListener('mousemove', onMouseMove, true);
+        document.removeEventListener('click', onClick, true);
+    };
+
     document.addEventListener('mousemove', onMouseMove, true);
     document.addEventListener('click', onClick, true);
 })();
@@ -806,9 +816,13 @@ namespace BuildConsole.Services
 
         private const string DomInspectorStopScript = @"
 (function() {
-    window.__vttDomInspectorActive = false;
-    var overlay = document.getElementById('__vtt_dom_inspector_overlay');
-    if (overlay) overlay.style.display = 'none';
+    if (window.__vttDomInspectorCleanUp) {
+        window.__vttDomInspectorCleanUp();
+    } else {
+        window.__vttDomInspectorActive = false;
+        var overlay = document.getElementById('__vtt_dom_inspector_overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
 })();
 ";
 
