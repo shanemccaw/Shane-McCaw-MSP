@@ -491,7 +491,7 @@ namespace BuildConsole
         }
 
         /// <summary>Runs a manifest's uiSteps directly through UiTestExecutor against this window's own WebView2 — used by both the Automation sidebar's manual Play button and RunManifestAsync.</summary>
-        public async Task<Services.UiTestRunResult> RunUiTestAsync(string targetUrl, List<BuildConsole.Controls.AutomationAction> steps, Services.TestRunVariables? vars = null, Services.ViewportSpec? defaultViewport = null, string? screenshotDir = null, Func<string, string>? originResolver = null)
+        public async Task<Services.UiTestRunResult> RunUiTestAsync(string targetUrl, List<BuildConsole.Controls.AutomationAction> steps, Services.TestRunVariables? vars = null, Services.ViewportSpec? defaultViewport = null, string? screenshotDir = null, Func<string, string>? originResolver = null, Services.UserAccountEntry? loginProfile = null)
         {
             // Git #966 — the manifest path (RunManifestAsync) passes a screenshotDir named for the run
             // (test-results/{issue}-{ts}/screenshots); the manual Play path passes none, so fall back to a
@@ -520,7 +520,7 @@ namespace BuildConsole
             {
                 // Git #877 — thread the per-run variable store so uiSteps can resolve {{name}}
                 // placeholders and extract into the same dictionary the api/graph executors share.
-                var result = await executor.RunAsync(targetUrl, steps, vars, defaultViewport, screenshotDir, originResolver);
+                var result = await executor.RunAsync(targetUrl, steps, vars, defaultViewport, screenshotDir, originResolver, loginProfile);
                 // Git #966 — hand this run's captured screenshots to the review gallery.
                 SetGalleryScreenshots(result.Screenshots);
                 return result;

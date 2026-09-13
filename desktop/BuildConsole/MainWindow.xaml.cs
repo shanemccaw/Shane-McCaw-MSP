@@ -10100,6 +10100,25 @@ namespace BuildConsole
                     }
                     var uiDefaultViewport = BuildConsole.Services.ViewportSpec.Parse(manifest.ViewportJson);
 
+                    // Git #3923 (Feature #3921) — resolve the manifest's optional `loginAs` label against
+                    // Settings' real login profile list (#3922), by Label (falling back to Username, matching
+                    // the same fallback Settings' own UI uses when a profile carries no Label). Null when the
+                    // manifest declares no loginAs, or the label doesn't match a real profile — either way,
+                    // UiTestExecutor's hasLoginProfile check below treats that identically to "no login primitive"
+                    // (zero behavior change), just with a clear log line naming the miss instead of failing silently.
+                    BuildConsole.Services.UserAccountEntry? loginProfile = null;
+                    if (!string.IsNullOrWhiteSpace(manifest.LoginAs))
+                    {
+                        var accounts = BuildConsole.Services.BuildConsoleSettings.Load().UserAccounts;
+                        loginProfile = accounts.FirstOrDefault(a =>
+                            string.Equals(a.Label, manifest.LoginAs, StringComparison.OrdinalIgnoreCase)) ??
+                            accounts.FirstOrDefault(a =>
+                                string.IsNullOrWhiteSpace(a.Label) && string.Equals(a.Username, manifest.LoginAs, StringComparison.OrdinalIgnoreCase));
+                        BuildConsole.Services.ActivityLog.Log("testing.ui-executor", loginProfile != null
+                            ? $"[{mode}] Issue #{manifest.Issue} loginAs '{manifest.LoginAs}' resolved to profile targeting {loginProfile.TargetApp} (anonymous={loginProfile.IsAnonymous})."
+                            : $"[{mode}] Issue #{manifest.Issue} loginAs '{manifest.LoginAs}' did NOT resolve to any Settings login profile — running uiSteps with no login (same as loginAs omitted).");
+                    }
+
                     string? uiRepoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
                     string? screenshotDir = uiRepoRoot != null
                         ? System.IO.Path.Combine(uiRepoRoot, "test-results", runResult.RunFolderName, "screenshots")
@@ -10134,7 +10153,7 @@ namespace BuildConsole
                     }
                     else
                     {
-                        uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars, uiDefaultViewport, screenshotDir, uiOriginResolver);
+                        uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars, uiDefaultViewport, screenshotDir, uiOriginResolver, loginProfile);
                     }
                     capturedShots = uiResult.Screenshots;
                     var uiStepResults = uiResult.ToTestStepResults();

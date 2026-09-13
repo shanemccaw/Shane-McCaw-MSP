@@ -44,6 +44,13 @@ namespace BuildConsole.Services
         /// the default viewport for every uiStep that doesn't declare its own. Parsed by
         /// UiTestExecutor.ViewportSpec. Null when the manifest declares no viewport.</summary>
         public string? ViewportJson { get; set; }
+        /// <summary>Git #3923 (Feature #3921) — the manifest's optional top-level `loginAs` field: a
+        /// label resolved against Settings' real <see cref="UserAccountEntry"/> profile list (#3922)
+        /// by RunManifestAsync before uiSteps run. When it names a real, non-anonymous profile,
+        /// UiTestExecutor logs the WebView2 in as that profile BEFORE the manifest's own uiSteps
+        /// execute. Null/absent — the default — is unchanged existing behaviour (no login attempted;
+        /// a manifest that bakes its own login uiSteps, #987-style, keeps doing exactly that).</summary>
+        public string? LoginAs { get; set; }
         public string SourcePath { get; set; } = string.Empty;
 
         public static TestManifest? LoadFromFile(string path)
@@ -65,6 +72,12 @@ namespace BuildConsole.Services
                 if (root.TryGetProperty("viewport", out var viewportEl) &&
                     (viewportEl.ValueKind == JsonValueKind.Object || viewportEl.ValueKind == JsonValueKind.String))
                     manifest.ViewportJson = viewportEl.GetRawText();
+
+                // Git #3923 — optional top-level `loginAs` label, resolved against Settings' login
+                // profile list by the caller (RunManifestAsync), not here — TestManifest only carries
+                // the raw label through.
+                if (root.TryGetProperty("loginAs", out var loginAsEl) && loginAsEl.ValueKind == JsonValueKind.String)
+                    manifest.LoginAs = loginAsEl.GetString();
 
                 if (root.TryGetProperty("apiTests", out var apiTestsEl) && apiTestsEl.ValueKind == JsonValueKind.Array)
                     manifest.ApiTests = apiTestsEl.EnumerateArray().Select(e => e.Clone()).ToList();

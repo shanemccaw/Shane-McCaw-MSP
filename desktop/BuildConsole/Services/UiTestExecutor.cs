@@ -239,6 +239,11 @@ namespace BuildConsole.Services
         /// UiStepPollIntervalMs (or a non-positive one). ~250ms keeps the loop responsive without hammering
         /// ExecuteScriptAsync.</summary>
         private const int DefaultExpectPollIntervalMs = 250;
+        /// <summary>Git #3923 — how long <see cref="WaitForUrlAwayFromLoginAsync"/> polls the WebView2's real
+        /// current URL for a genuine redirect away from the login page before treating a loginAs attempt as a
+        /// failed login. Generous enough to absorb a real POST /api/auth/login round-trip + client-side router
+        /// redirect against a cold/compiling Dev front-end, same reasoning as DefaultExpectPollTimeoutMs.</summary>
+        private const int LoginPollTimeoutMs = 20000;
         /// <summary>Default bounded window an `expect`/click/input step polls the DOM for its condition (state
         /// and/or #1016 textContains) before failing, when the step declares no `timeoutMs` of its own. Loaded
         /// from BuildConsoleSettings.UiStepPollTimeoutMs (falling back to <see cref="DefaultExpectPollTimeoutMs"/>
@@ -317,13 +322,19 @@ namespace BuildConsole.Services
         /// on first capture). Null disables capture. Git #977 — a screenshot is now taken at EVERY step by default
         /// (always-on for UI drift detection), superseding #966's failure-only + <see cref="Controls.AutomationAction.Screenshot"/>
         /// opt-in; the flag now only affects the capture reason label.</param>
-        public async Task<UiTestRunResult> RunAsync(string targetUrl, IReadOnlyList<Controls.AutomationAction> steps, TestRunVariables? vars = null, ViewportSpec? defaultViewport = null, string? screenshotDir = null, Func<string, string>? originResolver = null)
+        /// <param name="loginProfile">Git #3923 (Feature #3921) — the manifest's `loginAs` label already
+        /// resolved by the caller against Settings' real login profile list (#3922). Null (the default, and
+        /// what every pre-#3923 caller passes) means "no login primitive" — zero behavior change. A real,
+        /// non-anonymous profile is logged in BEFORE the manifest's own steps execute; an anonymous profile is
+        /// treated exactly like null (run with no login at all, per #3922's IsAnonymous contract).</param>
+        public async Task<UiTestRunResult> RunAsync(string targetUrl, IReadOnlyList<Controls.AutomationAction> steps, TestRunVariables? vars = null, ViewportSpec? defaultViewport = null, string? screenshotDir = null, Func<string, string>? originResolver = null, UserAccountEntry? loginProfile = null)
         {
             _targetUrl = targetUrl;
             _vars = vars ?? new TestRunVariables();
             _screenshotDir = string.IsNullOrWhiteSpace(screenshotDir) ? null : screenshotDir;
             // Git #1210 — per-navigation Dev front-end origin remap (null for Staging/Prod/manual, see field doc).
             _originResolver = originResolver;
+            bool hasLoginProfile = loginProfile != null && !loginProfile.IsAnonymous;
 
             // If the manifest starts with a goto step, start directly at that destination
             string initialUrl = targetUrl;
@@ -343,9 +354,33 @@ namespace BuildConsole.Services
                 await MainWindow.EnsureWebViewInitializedAsync(_webView);
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
 
-                // Target-scoped session isolation: ensure clean logged-out baseline for the app origin being tested,
-                // NEVER touching replit.com, claude.ai, or other tabs in the shared profile.
-                await EnsureLoggedOutForOriginAsync(initialUrl);
+                if (hasLoginProfile)
+                {
+                    // Git #3923 — a real, non-anonymous loginAs profile: log in BEFORE the manifest's own
+                    // steps (and before initialUrl is navigated to). Real, honest failure — a bad login
+                    // aborts the WHOLE run right here, step 0, rather than falling through to run the
+                    // manifest's steps unauthenticated (the real motivating scenario this issue names).
+                    await EnsureLoggedOutForOriginAsync(loginProfile!.LoginUrl);
+                    var (loginOk, loginDetail) = await PerformLoginAsync(loginProfile);
+                    Emit(loginOk ? "LOGIN OK" : "LOGIN FAILED", loginDetail, loginOk ? "SUCCESS" : "ERROR", loginOk ? "#A6E3A1" : "#F38BA8");
+                    ActivityLog.Log(Channel, $"loginAs '{loginProfile.Label}': {(loginOk ? "SUCCESS" : "FAILED")} — {loginDetail}");
+                    if (!loginOk)
+                    {
+                        await CaptureScreenshotAsync(0, "step-failed", $"loginAs {loginProfile.Label}");
+                        result.Success = false;
+                        result.Aborted = true;
+                        result.AbortReason = $"loginAs '{loginProfile.Label}' failed: {loginDetail}";
+                        result.StatusText = $"❌ TEST ABORTED — loginAs '{loginProfile.Label}' failed: {loginDetail}";
+                        ActivityLog.Log(Channel, $"RUN ABORTED for {targetUrl} — {result.AbortReason}. Halting before any manifest step ran.");
+                        return result;
+                    }
+                }
+                else
+                {
+                    // Target-scoped session isolation: ensure clean logged-out baseline for the app origin being tested,
+                    // NEVER touching replit.com, claude.ai, or other tabs in the shared profile.
+                    await EnsureLoggedOutForOriginAsync(initialUrl);
+                }
 
                 if (!await NavigateAsync(initialUrl))
                 {
@@ -1112,6 +1147,90 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 ActivityLog.Log(Channel, $"EnsureLoggedOut warning: {ex.Message}");
+            }
+        }
+
+        /// <summary>Git #3923 (Feature #3921) — runs the real login sequence for a resolved, non-anonymous
+        /// <see cref="UserAccountEntry"/>: navigate to its LoginUrl, fill Username/Password via the same
+        /// native-DOM value-setter JS-injection technique <see cref="ExecuteClickOrInputOnceAsync"/> already
+        /// proves out (#871), submit, then wait for a real signal the session is authenticated. Real signal
+        /// used here: the app's OWN client-side router redirecting the WebView2 away from the login page —
+        /// audited against all three real target apps' actual post-login redirect (Portal's
+        /// AuthContext-driven router redirect off /portal/login, Admin's `<Redirect to="/system/simulator" />`
+        /// off /login, MSP Console's `navigate(returnTo ?? "/tenants")` off /login) — a genuinely observable,
+        /// app-agnostic contract rather than inventing a per-app "logged in" element. Never throws; a failure
+        /// at any stage (missing LoginUrl, field not found/fillable, submit not found, or no redirect within
+        /// <see cref="LoginPollTimeoutMs"/> — bad credentials being the real motivating case) returns a clear
+        /// false + reason for the caller to abort the whole run on, per the issue's "fail clearly at step 0"
+        /// requirement.</summary>
+        private async Task<(bool success, string detail)> PerformLoginAsync(UserAccountEntry profile)
+        {
+            if (string.IsNullOrWhiteSpace(profile.LoginUrl))
+                return (false, $"loginAs profile '{profile.Label}' has no LoginUrl set — nothing to navigate to.");
+
+            Emit("LOGIN", $"Logging in as '{profile.Label}' ({profile.TargetApp}) via {profile.LoginUrl}…", "INFO", "#89B4FA");
+            ActivityLog.Log(Channel, $"loginAs: navigating to {profile.LoginUrl} for profile '{profile.Label}' (TargetApp={profile.TargetApp}).");
+
+            if (!await NavigateAsync(profile.LoginUrl))
+                return (false, $"navigation to login page {profile.LoginUrl} failed.");
+
+            await Task.Delay(PostNavigationSettleMs);
+
+            var (emailSelector, passwordSelector, submitSelector) = LoginSelectorsForTargetApp(profile.TargetApp);
+
+            var emailResult = await ExecuteClickOrInputAsync("input", emailSelector, "input", profile.Username, ExpectPollTimeoutMs, 0);
+            if (!emailResult.passed)
+                return (false, $"could not find/fill email field ({emailSelector}) on {profile.LoginUrl} — {emailResult.detail}");
+
+            var passwordResult = await ExecuteClickOrInputAsync("input", passwordSelector, "input", profile.Password, ExpectPollTimeoutMs, 0);
+            if (!passwordResult.passed)
+                return (false, $"could not find/fill password field ({passwordSelector}) on {profile.LoginUrl} — {passwordResult.detail}");
+
+            var submitResult = await ExecuteClickOrInputAsync("click", submitSelector, "button", string.Empty, ExpectPollTimeoutMs, 0);
+            if (!submitResult.passed)
+                return (false, $"could not click submit ({submitSelector}) on {profile.LoginUrl} — {submitResult.detail}");
+
+            bool authenticated = await WaitForUrlAwayFromLoginAsync(LoginPollTimeoutMs);
+            if (!authenticated)
+                return (false, $"submitted credentials for '{profile.Label}' but the app never redirected away from its login page within {LoginPollTimeoutMs}ms (current URL: {_webView.Source}) — treating as a failed login (bad credentials or an unexpected page).");
+
+            return (true, $"Authenticated as '{profile.Label}' ({profile.TargetApp}) — redirected to {_webView.Source}.");
+        }
+
+        /// <summary>Git #3923 — the real login-field selectors per TargetApp, audited against each app's real
+        /// current login page rather than assumed identical. Portal's real login page (rebuilt under Feature
+        /// #1648, see test-manifests/auth/sign-in.json) carries `data-testid`s
+        /// (login-email/login-password/login-submit). Admin (`artifacts/admin-panel/src/pages/Login.tsx`) and
+        /// MSP Console (`artifacts/msp-console/src/auth/SignInPage.tsx`) carry no `data-testid` on their login
+        /// forms today — audited directly — so both fall back to the real native `type="email"` /
+        /// `type="password"` / `type="submit"` attributes their forms actually render. Unrecognized/blank
+        /// TargetApp also falls back to that same generic selector set.</summary>
+        private static (string email, string password, string submit) LoginSelectorsForTargetApp(string targetApp)
+        {
+            if (string.Equals(targetApp, "Portal", StringComparison.OrdinalIgnoreCase))
+                return ("[data-testid='login-email']", "[data-testid='login-password']", "[data-testid='login-submit']");
+
+            return ("input[type='email']", "input[type='password']", "button[type='submit']");
+        }
+
+        /// <summary>Git #3923 — polls the WebView2's real current URL (CoreWebView2.Source, falling back to
+        /// the WPF Source) every <see cref="ExpectPollIntervalMs"/> for up to <paramref name="timeoutMs"/>,
+        /// returning true the instant its path no longer contains "/login" — the real, observable
+        /// "authenticated" signal every target app's own router redirect produces on a successful login (see
+        /// <see cref="PerformLoginAsync"/>'s doc comment for the three real redirects audited). Returns false
+        /// on timeout, which the caller treats as a failed login.</summary>
+        private async Task<bool> WaitForUrlAwayFromLoginAsync(int timeoutMs)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (true)
+            {
+                string current = _webView.CoreWebView2?.Source ?? _webView.Source?.ToString() ?? string.Empty;
+                if (!string.IsNullOrEmpty(current) && current.IndexOf("/login", StringComparison.OrdinalIgnoreCase) < 0)
+                    return true;
+
+                long remaining = timeoutMs - sw.ElapsedMilliseconds;
+                if (remaining <= 0) return false;
+                await Task.Delay((int)Math.Min(ExpectPollIntervalMs, remaining));
             }
         }
 
