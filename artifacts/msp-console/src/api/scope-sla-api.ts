@@ -186,6 +186,24 @@ export interface ScopeCreepPolicy {
   readonly updatedAt: string;
 }
 
+export interface SlaBreach {
+  readonly id: number;
+  readonly breachId: string;
+  readonly timerId: string;
+  readonly mspId: number;
+  readonly customerId: number;
+  readonly policyId: number;
+  readonly ticketRef: string | null;
+  readonly phase: "response" | "resolution";
+  readonly breachType: string;
+  readonly elapsedMinutes: number;
+  readonly thresholdMinutes: number;
+  readonly operatorTaskId: string | null;
+  readonly resolvedAt: string | null;
+  readonly resolutionNotes: string | null;
+  readonly createdAt: string;
+}
+
 export interface SlaComplianceRecord {
   readonly id: number;
   readonly recordId: string;
@@ -302,6 +320,46 @@ export function useSlaTimers(): UseQueryResult<{ timers: SlaTimer[] }, ScopeSlaA
     queryKey: K.timers,
     queryFn: async () => parseJsonOrThrow<{ timers: SlaTimer[] }>(await fetchWithAuth("/api/msp/sla/timers")),
     enabled: ready,
+    staleTime: 15_000,
+  });
+}
+
+// ── Customer-scoped reads (Tenant Overview roll-up, #3822) ────────────────────
+// The three routes below all accept a real `?customerId=` filter server-side
+// (`msp-sla.ts`, `msp-scope-creep.ts`) — genuine scoped reads, not the whole
+// book filtered client-side. Each is still a capped read: timers and open
+// detections at 200 rows, unresolved breaches at 100 — the same real
+// `LIMIT 200` / `LIMIT 100` the route's own SQL carries, so a very noisy
+// tenant's count is a floor, not an exact total. The Overview roll-up's own
+// "How this roll-up is assembled" note records this; these hooks do not
+// invent a higher cap or silently paginate past it.
+
+export function useSlaTimersForCustomer(customerId: number | null): UseQueryResult<{ timers: SlaTimer[] }, ScopeSlaApiError> {
+  const { fetchWithAuth, ready } = useAuthedFetch();
+  return useQuery({
+    queryKey: ["msp", "sla", "timers", "customer", customerId],
+    queryFn: async () => parseJsonOrThrow<{ timers: SlaTimer[] }>(await fetchWithAuth(`/api/msp/sla/timers?customerId=${customerId}`)),
+    enabled: ready && customerId != null,
+    staleTime: 15_000,
+  });
+}
+
+export function useSlaBreachesForCustomer(customerId: number | null): UseQueryResult<{ breaches: SlaBreach[] }, ScopeSlaApiError> {
+  const { fetchWithAuth, ready } = useAuthedFetch();
+  return useQuery({
+    queryKey: ["msp", "sla", "breaches", "customer", customerId],
+    queryFn: async () => parseJsonOrThrow<{ breaches: SlaBreach[] }>(await fetchWithAuth(`/api/msp/sla/breaches?customerId=${customerId}`)),
+    enabled: ready && customerId != null,
+    staleTime: 15_000,
+  });
+}
+
+export function useScopeCreepDetectionsForCustomer(customerId: number | null): UseQueryResult<{ detections: ScopeCreepDetection[] }, ScopeSlaApiError> {
+  const { fetchWithAuth, ready } = useAuthedFetch();
+  return useQuery({
+    queryKey: ["msp", "scope-creep", "detections", "customer", customerId],
+    queryFn: async () => parseJsonOrThrow<{ detections: ScopeCreepDetection[] }>(await fetchWithAuth(`/api/msp/scope-creep/detections?customerId=${customerId}&status=open`)),
+    enabled: ready && customerId != null,
     staleTime: 15_000,
   });
 }

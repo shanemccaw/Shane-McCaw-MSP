@@ -46,6 +46,7 @@ import {
 import { RiskRegister } from "@/modules/risk-register/RiskRegister";
 import { RetentionQueue } from "@/modules/retention/RetentionQueue";
 import { PartnerRevenue } from "./modules/PartnerRevenue";
+import { Overview } from "./modules/Overview";
 
 function roleLabelFor(p: MspUserProfile): string {
   if (p.mspRole === "PlatformAdmin") return "PlatformAdmin — full access";
@@ -246,6 +247,13 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
 function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (next: Selection) => void, profile: MspUserProfile): React.ReactNode {
   if (sel.kind === "root") {
     return <BreakGlassWatchlist onOpenTenant={(customerId) => navigate({ kind: "page", tenant: customerId, page: "bg" })} />;
+  }
+  if (sel.kind === "page" && sel.page === "overview") {
+    // Tenant Overview roll-up (#3822) needs the full customer row — the same
+    // real M365 tenantId GUID Risk Register and Change Control need above —
+    // to filter the MSP-wide reads it aggregates down to this one tenant.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    return customer ? <Overview customer={customer} navigate={navigate} /> : undefined;
   }
   if (sel.kind === "page" && sel.page === "run") {
     return <RunbooksPage customerId={sel.tenant} />;

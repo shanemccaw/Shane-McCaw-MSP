@@ -57,6 +57,8 @@ import {
   FolderTree,
   // Marketplace Purchase (#3819)
   ShoppingCart,
+  // Tenant Overview roll-up (#3822)
+  ShieldX, FileJson,
   type LucideIcon,
 } from "lucide-react";
 
@@ -225,6 +227,9 @@ const REGISTRY: Record<string, LucideIcon> = {
   "folder-tree": FolderTree,
   // Marketplace Purchase (#3819)
   "shopping-cart": ShoppingCart,
+  // Tenant Overview roll-up (#3822)
+  "shield-x": ShieldX,
+  "file-json": FileJson,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

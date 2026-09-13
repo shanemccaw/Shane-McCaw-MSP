@@ -446,6 +446,15 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
       note: `${name} — manual placements and the customer's own requests to change them.`,
     };
   }
+  // #3822 — Overview's eyebrow/note are the design's own exact copy
+  // (`MSP Console.dc.html`'s logic class, the `overview` frames-meta entry).
+  if (sel.page === "overview") {
+    return {
+      eyebrow: "TENANT OVERVIEW",
+      title: name,
+      note: "Everything open across this tenant, ordered by what needs a person first.",
+    };
+  }
   const p = tenantPageMeta(sel.page);
   const grp = groupForPage(sel.page);
   return {
