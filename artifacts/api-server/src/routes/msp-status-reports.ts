@@ -26,21 +26,33 @@
  *       Publishing an already-published report is a no-op 409, not a second
  *       publishedAt stamp.
  *
+ *   GET    /api/msp/status-reports/:id/comments
+ *     — The full two-sided comment thread on a report (Git #3888, phase 2 of
+ *       4 — sibling of #3887's customer-facing read+comment surface, same
+ *       `msp_status_report_comments` table).
+ *
+ *   POST   /api/msp/status-reports/:id/comments
+ *     — Add a comment as the MSP operator (`authorType: "msp"`). Notifies
+ *       every customer-side user on the report's customer (same tenant-wide
+ *       fan-out `notifyRetentionRestore` already uses) so engagement is
+ *       visible without the customer having to poll.
+ *
  * Auth: requireCapability("ladder.msp-operator") on every route (admits
  * MSPOperator, MSPAdmin, PlatformAdmin) plus assertCustomerAccess on every
  * :customerId-scoped route — the same ownership-check pattern every other
  * MSP-scoped route in this repo uses (msp-break-glass.ts, msp-diagnostics.ts).
- * The two :id-only routes resolve the report first, then run the exact same
+ * The :id-only routes resolve the report first, then run the exact same
  * assertCustomerAccess check against its stored customerId, so a report id
  * belonging to another MSP's customer 404s rather than confirming existence.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspStatusReportsTable, usersTable } from "@workspace/db";
-import { eq, desc, inArray } from "drizzle-orm";
+import { db, mspStatusReportsTable, mspStatusReportCommentsTable, usersTable } from "@workspace/db";
+import { eq, desc, asc, inArray, and } from "drizzle-orm";
 import { z } from "zod";
 import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { createNotification } from "../lib/notification-center.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -60,6 +72,17 @@ function reportToWire(row: typeof mspStatusReportsTable.$inferSelect, authoredBy
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
+  };
+}
+
+function commentToWire(row: typeof mspStatusReportCommentsTable.$inferSelect, authorName: string | null) {
+  return {
+    id: row.id,
+    reportId: row.reportId,
+    authorType: row.authorType,
+    authorName,
+    body: row.body,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -283,6 +306,116 @@ router.post(
     } catch (err) {
       log.error({ err, id }, "msp-status-reports: POST publish failed");
       return res.status(500).json({ error: "Failed to publish status report" });
+    }
+  },
+);
+
+const createCommentSchema = z.object({
+  body: z.string().trim().min(1).max(10_000),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /msp/status-reports/:id/comments — full two-sided thread
+// ─────────────────────────────────────────────────────────────────────────────
+router.get(
+  "/msp/status-reports/:id/comments",
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(404).json({ error: "Not found" });
+
+    try {
+      const [report] = await db.select().from(mspStatusReportsTable).where(eq(mspStatusReportsTable.id, id)).limit(1);
+      if (!report) return res.status(404).json({ error: "Not found" });
+
+      if (!(await assertCustomerAccess(req.user!, report.customerId))) {
+        return res.status(404).json({ error: "Not found" });
+      }
+
+      const rows = await db
+        .select()
+        .from(mspStatusReportCommentsTable)
+        .where(eq(mspStatusReportCommentsTable.reportId, id))
+        .orderBy(asc(mspStatusReportCommentsTable.createdAt));
+
+      const authorIds = [...new Set(rows.map((r) => r.authorUserId))];
+      const authorRows = authorIds.length
+        ? await db
+            .select({ id: usersTable.id, name: usersTable.name })
+            .from(usersTable)
+            .where(inArray(usersTable.id, authorIds))
+        : [];
+      const nameById = new Map(authorRows.map((u) => [u.id, u.name]));
+
+      return res.json({ comments: rows.map((r) => commentToWire(r, nameById.get(r.authorUserId) ?? null)) });
+    } catch (err) {
+      log.error({ err, id }, "msp-status-reports: GET comments failed");
+      return res.status(500).json({ error: "Failed to load comments" });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /msp/status-reports/:id/comments — MSP operator adds a comment
+// ─────────────────────────────────────────────────────────────────────────────
+router.post(
+  "/msp/status-reports/:id/comments",
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(404).json({ error: "Not found" });
+
+    const parsed = createCommentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    }
+
+    try {
+      const [report] = await db.select().from(mspStatusReportsTable).where(eq(mspStatusReportsTable.id, id)).limit(1);
+      if (!report) return res.status(404).json({ error: "Not found" });
+
+      if (!(await assertCustomerAccess(req.user!, report.customerId))) {
+        return res.status(404).json({ error: "Not found" });
+      }
+
+      const [row] = await db
+        .insert(mspStatusReportCommentsTable)
+        .values({
+          reportId: id,
+          authorType: "msp",
+          authorUserId: req.user!.id,
+          body: parsed.data.body,
+        })
+        .returning();
+
+      // Notify every customer-side user on this report's customer — same
+      // tenant-wide fan-out `notifyRetentionRestore` already uses — so
+      // engagement is visible without the customer having to poll.
+      // Best-effort: createNotification never throws, so a delivery failure
+      // here can't fail the comment write that already committed.
+      void (async () => {
+        const recipients = await db
+          .select({ id: usersTable.id })
+          .from(usersTable)
+          .where(and(eq(usersTable.tenantId, report.customerId), eq(usersTable.role, "client")));
+
+        for (const recipient of recipients) {
+          void createNotification({
+            title: `New comment on your status report "${report.periodLabel}"`,
+            body: parsed.data.body,
+            category: "message",
+            notifType: "message",
+            linkPath: `/status-reports/${report.id}`,
+            recipient: { type: "customer_user", userId: recipient.id },
+          });
+        }
+      })();
+
+      const [author] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, req.user!.id)).limit(1);
+      return res.status(201).json({ comment: commentToWire(row, author?.name ?? null) });
+    } catch (err) {
+      log.error({ err, id }, "msp-status-reports: POST comment failed");
+      return res.status(500).json({ error: "Failed to add comment" });
     }
   },
 );
