@@ -1,12 +1,11 @@
 {
-  "feature": "Marketing Free Scan page (/scan) — the real consent gate (Git #1361): the start form captures name/company/work email and its POST /api/public/free-scan/start fires the real lead + returns the read app's real scopes; 'Review access and continue' advances to the new consent-disclosure screen (scopes card generated from REQUIRED_MT_SCOPES + the 'Not requested' counter-list) rather than straight to scanning.",
+  "feature": "Marketing Free Scan page (/scan) — the real consent gate (Git #1361) AND the real locked/teaser results view (Git #1358): the start form captures name/company/work email and its POST /api/public/free-scan/start fires the real lead + returns the read app's real scopes; 'Review access and continue' advances to the consent-disclosure screen; once the loading animation hands off, the page polls GET /api/public/free-scan/results (the SAME buildPillarSummary computation /api/portal/pillars reads) for the Prospect's real pillar scores and findings.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "a962c2513",
+  "lastVerifiedAgainstCommit": "PENDING",
   "notes": [
     "Git #1361 replaced the single-checkbox Free Scan → Scan flow with a real consent gate:",
-    "start → consent → granting → scanning → results. Only the start form and the new consent/",
-    "granting screens changed; the scanning + results phases are still the SIMULATED fixture from",
-    "the Part 2 rebuild (Design/free-scan-consent-export/Marketing Free Scan.dc.html).",
+    "start → consent → granting → scanning → results. Git #1358 then replaced the results phase's",
+    "authored FIXTURE with a real read of this Prospect's own tenant.",
     "",
     "SCOPE OF THIS MANIFEST — what is deterministically assertable:",
     "  1. POST /api/public/free-scan/start (apiTests): rejects an invalid email 400 (no lead fired),",
@@ -23,15 +22,21 @@
     "     read access...'), at least one real read scope (Directory.Read.All) in the scopes card, the",
     "     'Not requested' counter-list, and the 'Grant read-only access' button — proving the new",
     "     consent phase is inserted and rendered.",
+    "  4. GET /api/public/free-scan/results (apiTests, Git #1358): its own deterministic ordering",
+    "     gates — an invalid sessionId is refused 400 session_invalid, a well-formed but non-existent",
+    "     sessionId is refused 404 session_expired — the same real gates public-free-scan-results.test.ts",
+    "     exercises end-to-end against local Postgres (invalid/expired/no-consent/scanning/ready), which",
+    "     this manifest does not duplicate.",
     "",
     "DELIBERATELY NOT ASSERTED, documented honestly rather than faked:",
     "  - The 'Grant read-only access' click is NOT exercised: it opens Microsoft's own admin-consent",
     "    screen in a popup (real OAuth) and mints a real checkout session — the OAuth wall is",
     "    architecturally undrivable by this harness (same caveat read-consent-flow.json carries). The",
-    "    granting → scanning resume-on-callback is covered by that real mechanism, not a mock.",
-    "  - The six-sector scanner animation and the results screen: still SIMULATED on timers (no Graph",
-    "    call), ~9.6s of stepped animation, and every number is authored demo data — not a stable or",
-    "    meaningful assertion target.",
+    "    granting → scanning → real results resume-on-callback is covered by that real mechanism (and",
+    "    by public-free-scan-results.test.ts against real Postgres rows), not by this UI harness.",
+    "  - The six-sector loading animation itself: still runs on a fixed client timer (no live per-check",
+    "    progress feed exists for an anonymous Prospect) — cosmetic scaffolding for the wait, not a",
+    "    meaningful assertion target. What it hands off to (the results read) is real as of #1358.",
     "",
     "DEPLOYED-ORIGIN CAVEAT (same class the sibling marketing manifests carry): asserts against",
     "{{DEPLOY_URL}}, which reflects the new endpoint + this page only once the marketing site and",
@@ -68,6 +73,20 @@
       "headers": { "Content-Type": "application/json" },
       "body": { "email": "not-an-email" },
       "expect": { "status": 400, "jsonPath": "$.error", "exists": true }
+    },
+    {
+      "name": "RESULTS GUARD (Git #1358) — an invalid sessionId is refused 400 session_invalid",
+      "sessionTag": "1358-locked-results",
+      "method": "GET",
+      "path": "/api/public/free-scan/results?sessionId=nope",
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "session_invalid" }
+    },
+    {
+      "name": "RESULTS GUARD (Git #1358) — a well-formed but non-existent sessionId is refused 404 session_expired",
+      "sessionTag": "1358-locked-results",
+      "method": "GET",
+      "path": "/api/public/free-scan/results?sessionId=00000000-0000-4000-8000-000000000000",
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
     }
   ],
   "uiSteps": [

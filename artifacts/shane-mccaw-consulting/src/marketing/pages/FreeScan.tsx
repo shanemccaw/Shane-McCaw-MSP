@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Nav } from "../components/Nav";
 import { Footer } from "../components/Footer";
 import { useSignalCheckCount } from "../../hooks/useSignalCheckCount";
 import { logger } from "../../lib/logger";
+import { RevealNoScanGate } from "@workspace/copilot-scan-scene/RevealNoScanGate";
 
 // Consent + lead capture are the server's `auth`/`growth` work (#1361); the client call sites are
 // mirrored onto the same channel so the logs read together.
@@ -30,11 +31,27 @@ const authLog = logger.child({ channel: "auth" });
 //     real scope list (REQUIRED_MT_SCOPES, returned by the start endpoint) so they cannot drift
 //     from what Microsoft actually asks for.
 //
-// STILL SIMULATED, per the handoff README's "Out of scope" list: the scan animation and every
-// number on the results screen (findings, evidence, the licence-waste figures, the monitoring
-// quote) are authored demo data, kept in the FIXTURE block below in one place so they can be
-// swapped for a real Graph read + the tenant's own seat-count pricing later. Do not treat the
-// scanning/results numbers as live — only the consent + lead capture are.
+// REAL, per Git #1358 (Phase 6) — the results screen is not a mock either:
+//   - Once the six-sector loading animation finishes, the page polls
+//     GET /api/public/free-scan/results?sessionId=... (public-free-scan-results.ts), the SAME real
+//     computation (buildPillarSummary) the entire authenticated portal's /api/portal/pillars reads.
+//     Identity is resolved server-side from the free-scan sessionId already in the browser — this
+//     Prospect never gets a JWT (#656's hasRealEntitlement gate) — never from anything this page
+//     supplies as a customerId.
+//   - The endpoint also calls the #3946 backstop, so a consent-time scan that failed to even start
+//     gets kicked off here. Until the real run has settled, this page shows a genuine "scan in
+//     progress" state (the shared Scene 0 `RevealNoScanGate`, #1357) and polls rather than showing
+//     an empty/broken results view.
+//   - Every real pillar score and every real finding (severity, title, the actual evidence items,
+//     why it matters) is shown — that IS the free scan's promise. The one thing genuinely withheld
+//     is the fix/action itself (`recommendation`), which the results endpoint never puts on the
+//     wire at all — Monitoring is what pays for that, not a client-side hide of real data.
+//
+// STILL SIMULATED, per the handoff README's "Out of scope" list: the six-sector loading animation
+// itself (the wedge fill / finding-cue flavor text in SECTORS below) still runs on a fixed client
+// timer rather than live per-check progress — there is no public, session-scoped live-progress feed
+// for an anonymous Prospect (that would be real streaming infrastructure, not this page). The
+// animation is cosmetic scaffolding for the wait; the RESULTS it hands off to are real.
 
 type Phase = "start" | "consent" | "granting" | "scanning" | "results";
 
@@ -314,134 +331,112 @@ const DIVIDERS: [number, number, number, number][] = [
   [-104.0, 0.0, -214.0, 0.0],
 ];
 
-// ── FIXTURE: the authored scan result (swap for a real Graph read + seat pricing) ──
+// ── REAL RESULTS — the wire shape GET /api/public/free-scan/results returns ──
+// (public-free-scan-results.ts). Mirrors that route's response, not the fixture
+// this replaced (Git #1358) — see that file's own header for what is and is not
+// on this wire (notably: never `recommendation`, the fix itself).
 
-type Finding = {
-  severity: "Urgent" | "Needs attention" | "Worth knowing";
-  area: string;
-  title: string;
-  meaning: string;
-  why: string;
-  evidenceNote: string;
-  evidence: { item: string; meta: string }[];
-  fix: string;
-  fixEffort: string;
+/** The six War Room pillar keys this page ever displays — `copilot` is the
+ *  authenticated portal's roll-up card and is never part of the Free Scan. */
+const DISPLAY_PILLAR_KEYS = ["governance", "security", "compliance", "licensing", "adoption", "health"] as const;
+type DisplayPillarKey = (typeof DISPLAY_PILLAR_KEYS)[number];
+
+const PILLAR_LABELS: Record<DisplayPillarKey, string> = {
+  governance: "Governance",
+  security: "Security",
+  compliance: "Compliance",
+  licensing: "Licensing",
+  adoption: "Adoption",
+  health: "Health",
 };
 
-const FINDINGS: Finding[] = [
-  {
-    severity: "Urgent",
-    area: "Sharing and access",
-    title: "23 files are shared with a link that works for anyone on the internet",
-    meaning:
-      'Someone in your tenant created "anyone with the link" links. No sign-in, no expiry, no record of who opened them.',
-    why: "These links keep working after people leave, get forwarded, and end up indexed. This is the single most common way company files leak without anything being hacked.",
-    evidenceNote: "4 of 23 shown",
-    evidence: [
-      { item: "/sites/Finance/Shared Documents/FY26 Budget v4.xlsx", meta: "created 14 months ago" },
-      { item: "/sites/HR/Shared Documents/Salary Bands 2026.xlsx", meta: "no expiry" },
-      { item: "/personal/j.reyes/Documents/Client List.csv", meta: "owner left in March" },
-      { item: "/sites/Legal/Shared Documents/Acquisition NDA.pdf", meta: "opened 41 times" },
-    ],
-    fix: "Expire the anonymous links, replace the 4 still needed with named access, and block new anonymous links tenant-wide",
-    fixEffort: "One runbook, about 20 minutes, reversible",
-  },
-  {
-    severity: "Urgent",
-    area: "Administrator accounts",
-    title: "3 admin accounts can sign in without multi-factor authentication",
-    meaning:
-      "Three accounts with full or near-full control of your tenant only need a password to sign in.",
-    why: "An admin account without MFA is the account attackers look for first. One reused password and the whole tenant is theirs, including your backups and your mail flow.",
-    evidenceNote: "all 3 shown",
-    evidence: [
-      { item: "admin@yourcompany.com — Global Administrator", meta: "no MFA method registered" },
-      { item: "svc-backup@yourcompany.com — Exchange Administrator", meta: "password 3 years old" },
-      { item: "it.contractor@yourcompany.com — Global Administrator", meta: "last sign-in 2 days ago" },
-    ],
-    fix: "Register MFA on all three, convert the service account to app-only auth, and remove the contractor from Global Administrator",
-    fixEffort: "Guided change, needs one approval, no user disruption",
-  },
-  {
-    severity: "Urgent",
-    area: "Records and investigations",
-    title: "Your audit log only keeps 90 days of activity",
-    meaning:
-      "Any record of who did what in your tenant older than 90 days is already gone and cannot be recovered.",
-    why: "Investigations, insurance claims and legal holds routinely ask for six to twelve months. If something happened four months ago, there is currently no way to answer what happened.",
-    evidenceNote: "configuration read from your tenant",
-    evidence: [
-      { item: "Unified audit log retention", meta: "90 days (default)" },
-      { item: "Litigation hold coverage", meta: "0 of 1,240 mailboxes" },
-      { item: "Mailbox audit for owner actions", meta: "not enabled" },
-    ],
-    fix: "Raise retention to one year, enable owner-action auditing, and put the 14 mailboxes named in your policy on hold",
-    fixEffort: "Configuration change, immediate, no downtime",
-  },
-  {
-    severity: "Needs attention",
-    area: "Guests and former staff",
-    title: "27 external guests still have access, including 6 whose companies you no longer work with",
-    meaning:
-      "Guest accounts from past projects were never removed. They can still open the Teams and files they were added to.",
-    why: "Nobody notices a guest account. They keep their access through reorganisations and contract endings, and they are outside your control entirely — you cannot enforce MFA or device rules on them.",
-    evidenceNote: "4 of 27 shown",
-    evidence: [
-      { item: "p.novak@former-vendor.co — 3 Teams, 2 sites", meta: "last activity 11 months ago" },
-      { item: "contractor@agency-b.com — Finance Planning", meta: "contract ended Jan 2026" },
-      { item: "a.mehta@partner-x.io — 6 Teams", meta: "never signed in" },
-      { item: "temp.audit@ext-audit.com — Legal Archive", meta: "audit closed 2024" },
-    ],
-    fix: "Remove the 6 ended relationships, re-confirm the remaining 21 with their internal sponsor, and turn on quarterly guest reviews",
-    fixEffort: "Runbook plus one review cycle",
-  },
-  {
-    severity: "Needs attention",
-    area: "Money",
-    title: "You are paying for 46 licences nobody has used in 90 days",
-    meaning:
-      "Forty-six assigned seats show no sign-in or activity for the last quarter, including 12 duplicate assignments where one person holds two overlapping plans.",
-    why: "This is a recurring bill for nothing, and it renews quietly. It is also the finding that usually pays for the work on everything else on this page.",
-    evidenceNote: "4 of 9 SKUs shown",
-    evidence: [
-      { item: "Microsoft 365 E5 — 120 assigned, 68 active", meta: "$1,976/mo idle" },
-      { item: "Microsoft 365 Copilot — 60 assigned, 22 active", meta: "$1,140/mo idle" },
-      { item: "Power BI Pro — 85 assigned, 41 active", meta: "$440/mo idle" },
-      { item: "Duplicate E3 + Business Premium", meta: "12 users" },
-    ],
-    fix: "Reclaim the 46 idle seats, resolve the 12 duplicates, and set a monthly reclaim review before your renewal date",
-    fixEffort: "One review, then automatic",
-  },
-  {
-    severity: "Worth knowing",
-    area: "Teams and sites nobody owns",
-    title: "14 Teams have no owner, and 41 meeting recordings are sitting in them",
-    meaning:
-      "Fourteen Teams have no active owner. Two of them still allow external sharing, and between them they hold 41 meeting recordings and 18 GB of files.",
-    why: "An ownerless Team cannot be governed, archived or safely deleted — nobody can say what it contains or who should have it. Recordings are usually the most sensitive and least inventoried content in a tenant.",
-    evidenceNote: "4 of 14 shown",
-    evidence: [
-      { item: "Project Atlas (Pilot)", meta: "11 recordings · external sharing on" },
-      { item: "Marketing Campaign 2024", meta: "no activity in 11 months" },
-      { item: "Vendor Selection — Confidential", meta: "9 recordings · 1 guest" },
-      { item: "Q3 Reorg Planning", meta: "6 GB · 2 private channels" },
-    ],
-    fix: "Assign or archive each Team, move the recordings to a retained location, and close external sharing on the two exposed sites",
-    fixEffort: "Runbook plus owner confirmation",
-  },
-];
+type RealFindingSeverity = "critical" | "warning";
+type DisplaySeverity = "Urgent" | "Needs attention";
+const SEVERITY_LABEL: Record<RealFindingSeverity, DisplaySeverity> = {
+  critical: "Urgent",
+  warning: "Needs attention",
+};
 
-const RESULT_DATE = "21 August 2026";
-const TOTAL_FINDINGS = 14;
-const URGENT_COUNT = 3;
-const SEVERITY_COUNTS: { label: string; count: number; color: string }[] = [
-  { label: "Urgent", count: 3, color: "#f87171" },
-  { label: "Needs attention", count: 6, color: "#fbbf24" },
-  { label: "Worth knowing", count: 5, color: "#60a5fa" },
-];
-const WASTE_HEADLINE = "you are paying about $3,556 a month for licences nobody uses.";
-const WASTE_BODY =
-  "46 assigned seats show no activity in 90 days and 12 people hold two overlapping plans. That is roughly $42,672 a year, and it renews on its own unless somebody acts on it.";
+interface RealFinding {
+  severity: RealFindingSeverity;
+  checkKey: string;
+  title: string;
+  description: string | null;
+  whyItMatters: string | null;
+  evidence: Record<string, unknown> | null;
+}
+
+interface RealPillarCard {
+  pillar: string;
+  score: number | null;
+  evaluation: { status: "scored" | "insufficient_data" | "not_evaluated" };
+  findingCounts: { critical: number; warning: number };
+  findings: RealFinding[];
+}
+
+interface FreeScanResultsReady {
+  status: "ready";
+  generatedAt: string;
+  totalFindings: number;
+  criticalFindings: number;
+  annualWasteDollars: number | null;
+  pillars: RealPillarCard[];
+}
+
+interface FreeScanResultsScanning {
+  status: "scanning";
+  activeRunId: string | null;
+  findingsRunId: string | null;
+}
+
+type FreeScanResultsResponse = FreeScanResultsReady | FreeScanResultsScanning;
+
+/** A finding flattened for display, with its pillar's label attached and its
+ *  real evidence reduced to a plain string list (evidence is a curated
+ *  name-list subset, `{ [field]: string[] }`, or null). */
+interface DisplayFinding {
+  severity: DisplaySeverity;
+  area: string;
+  title: string;
+  meaning: string | null;
+  why: string | null;
+  evidenceItems: string[];
+}
+
+function evidenceItems(evidence: Record<string, unknown> | null): string[] {
+  if (!evidence) return [];
+  const [, values] = Object.entries(evidence)[0] ?? [];
+  return Array.isArray(values) ? values.filter((v): v is string => typeof v === "string") : [];
+}
+
+function flattenFindings(pillars: RealPillarCard[]): DisplayFinding[] {
+  const flattened: DisplayFinding[] = [];
+  for (const pillar of pillars) {
+    const label = PILLAR_LABELS[pillar.pillar as DisplayPillarKey] ?? pillar.pillar;
+    for (const f of pillar.findings) {
+      flattened.push({
+        severity: SEVERITY_LABEL[f.severity],
+        area: label,
+        title: f.title,
+        meaning: f.description,
+        why: f.whyItMatters,
+        evidenceItems: evidenceItems(f.evidence),
+      });
+    }
+  }
+  // Worst first — critical before warning; stable within each tier (server
+  // already ranks each pillar's own list by real signal weight).
+  return flattened.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "Urgent" ? -1 : 1));
+}
+
+function formatResultDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" });
+  } catch {
+    return iso;
+  }
+}
+
 const LOCKED_CAPABILITIES = [
   "Running any of the fixes above against your tenant",
   "Tracking a finding from raised to closed, with a record of who closed it",
@@ -825,12 +820,9 @@ function PlainPillars({ heading }: { heading: string }) {
   );
 }
 
-const sevColor = (sev: Finding["severity"]) =>
-  sev === "Urgent" ? "#f87171" : sev === "Needs attention" ? "#fbbf24" : "#60a5fa";
-const sevBg = (sev: Finding["severity"]) =>
-  sev === "Urgent" ? "rgba(248,113,113,.12)" : sev === "Needs attention" ? "rgba(251,191,36,.12)" : "rgba(96,165,250,.12)";
-const sevBorder = (sev: Finding["severity"]) =>
-  sev === "Urgent" ? "rgba(248,113,113,.3)" : sev === "Needs attention" ? "rgba(251,191,36,.3)" : "rgba(96,165,250,.3)";
+const sevColor = (sev: DisplaySeverity) => (sev === "Urgent" ? "#f87171" : "#fbbf24");
+const sevBg = (sev: DisplaySeverity) => (sev === "Urgent" ? "rgba(248,113,113,.12)" : "rgba(251,191,36,.12)");
+const sevBorder = (sev: DisplaySeverity) => (sev === "Urgent" ? "rgba(248,113,113,.3)" : "rgba(251,191,36,.3)");
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function FreeScan() {
@@ -854,6 +846,13 @@ export default function FreeScan() {
   const [vw, setVw] = useState(1200);
   const [vh, setVh] = useState(900);
   const [rm, setRm] = useState(false);
+  // Git #1358 — the real results read. "idle" before the loading animation hands off;
+  // "scanning" once polled and the real backend run has not settled yet (RevealNoScanGate,
+  // #1357); "ready" once GET /api/public/free-scan/results returns real pillar data; "error"
+  // on a genuine fetch/session failure.
+  const [resultsStatus, setResultsStatus] = useState<"idle" | "scanning" | "ready" | "error">("idle");
+  const [realResults, setRealResults] = useState<FreeScanResultsReady | null>(null);
+  const [resultsError, setResultsError] = useState<string | null>(null);
 
   const stepsRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -865,6 +864,14 @@ export default function FreeScan() {
   const unmountedRef = useRef(false);
   // The interval closures need the live paused value; a ref keeps them in sync with the state.
   const pausedRef = useRef(false);
+  // The free-scan checkout sessionId, minted once in grantRead(). The real results read
+  // (Git #1358) resolves identity from THIS, server-side — never from a customerId this page
+  // supplies — so it has to survive past the closure that minted it.
+  const sessionIdRef = useRef<string | null>(null);
+  // The real results poll's own timer + a bounded attempt counter (Git #2160's bounded-wait
+  // discipline: a real scan can genuinely take a while, but this page must not poll forever).
+  const resultsPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resultsPollAttemptsRef = useRef(0);
 
   useEffect(() => {
     const onResize = () => {
@@ -881,6 +888,7 @@ export default function FreeScan() {
       if (clockRef.current) clearInterval(clockRef.current);
       if (resultsTimerRef.current) clearTimeout(resultsTimerRef.current);
       if (grantTimerRef.current) clearTimeout(grantTimerRef.current);
+      if (resultsPollRef.current) clearTimeout(resultsPollRef.current);
       try {
         popupRef.current?.close();
       } catch {
@@ -917,6 +925,77 @@ export default function FreeScan() {
       setElapsed((e) => (pausedRef.current ? e : e + 1));
     }, 1000);
   };
+
+  // ── Git #1358: the real results read ────────────────────────────────────────
+  // Bounded poll (Git #2160): a real scan can genuinely take a while, but this
+  // page must never hold the visitor on an indefinite wait. ~4 minutes at 8s
+  // apart, then RevealNoScanGate's own retry button takes over from the timer.
+  const RESULTS_POLL_MS = 8000;
+  const RESULTS_POLL_MAX_ATTEMPTS = 30;
+
+  const fetchFreeScanResults = () => {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId) {
+      setResultsStatus("error");
+      setResultsError("We lost track of your scan session. Please start a new scan.");
+      return;
+    }
+    void (async () => {
+      try {
+        const res = await fetch(`/api/public/free-scan/results?sessionId=${encodeURIComponent(sessionId)}`);
+        const data = (await res.json().catch(() => ({}))) as Partial<FreeScanResultsResponse> & { error?: string };
+        if (unmountedRef.current) return;
+        if (!res.ok) {
+          setResultsStatus("error");
+          setResultsError(
+            data.error === "read_consent_required"
+              ? "We don't have a completed read-only connection for this tenant yet."
+              : "We couldn't load your results. Please try again in a moment.",
+          );
+          return;
+        }
+        if (data.status === "ready") {
+          setRealResults(data as FreeScanResultsReady);
+          setResultsStatus("ready");
+          return;
+        }
+        // status === "scanning" — the real backend run has not settled yet.
+        setResultsStatus("scanning");
+        resultsPollAttemptsRef.current += 1;
+        if (resultsPollAttemptsRef.current >= RESULTS_POLL_MAX_ATTEMPTS) return;
+        resultsPollRef.current = setTimeout(fetchFreeScanResults, RESULTS_POLL_MS);
+      } catch {
+        if (unmountedRef.current) return;
+        setResultsStatus("error");
+        setResultsError("We couldn't reach the server to load your results. Please try again.");
+      }
+    })();
+  };
+
+  // Fires the first real read the moment the loading animation hands off to
+  // the results phase, and re-fires if the visitor leaves and comes back
+  // (re-entering "results" resets the poll budget).
+  useEffect(() => {
+    if (phase !== "results") return;
+    resultsPollAttemptsRef.current = 0;
+    setResultsStatus("idle");
+    fetchFreeScanResults();
+    return () => {
+      if (resultsPollRef.current) clearTimeout(resultsPollRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  const retryFreeScanResults = () => {
+    resultsPollAttemptsRef.current = 0;
+    setResultsError(null);
+    fetchFreeScanResults();
+  };
+
+  const displayFindings = useMemo(
+    () => (realResults ? flattenFindings(realResults.pillars) : []),
+    [realResults],
+  );
 
   const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
 
@@ -1044,6 +1123,9 @@ export default function FreeScan() {
           throw new Error("Could not start the Microsoft connection. Please try again.");
         }
         const sessionId = sessionData.sessionId;
+        // Git #1358: the real results read resolves identity from this sessionId server-side —
+        // stash it now so it survives past this closure into the results phase.
+        sessionIdRef.current = sessionId;
         const urlRes = await fetch(`/api/public/flow/read-consent-url?sessionId=${encodeURIComponent(sessionId)}`);
         const urlData = (await urlRes.json().catch(() => ({}))) as { url?: string };
         if (!urlRes.ok || !urlData.url) {
@@ -1774,7 +1856,51 @@ export default function FreeScan() {
         )}
 
         {/* ── RESULTS ───────────────────────────────────────────────────── */}
-        {phase === "results" && (
+        {phase === "results" && (resultsStatus === "idle" || resultsStatus === "scanning") && (
+          <RevealNoScanGate
+            open
+            message={
+              "We're still reading your tenant's real configuration — this can take a little while on a " +
+              "larger tenant. This page will move on the moment it's ready; you can also check by hand below."
+            }
+            onRetry={retryFreeScanResults}
+            ctaLabel="Check now"
+          />
+        )}
+
+        {phase === "results" && resultsStatus === "error" && (
+          <section style={{ minHeight: "calc(100vh - 57px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "5vh 5vw" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 520, textAlign: "center", alignItems: "center" }}>
+              <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".22em", textTransform: "uppercase", color: "#f87171" }}>
+                Couldn't load your results
+              </span>
+              <p style={{ margin: 0, fontSize: 14.5, fontWeight: 500, lineHeight: 1.6, color: "#cbd5e1" }} data-testid="freescan-results-error">
+                {resultsError}
+              </p>
+              <button
+                type="button"
+                onClick={retryFreeScanResults}
+                data-testid="freescan-results-retry"
+                style={{
+                  marginTop: 10,
+                  padding: "10px 22px",
+                  borderRadius: 10,
+                  border: "1px solid #3b82f6",
+                  background: "#3b82f6",
+                  color: "#fff",
+                  fontFamily: "inherit",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Try again
+              </button>
+            </div>
+          </section>
+        )}
+
+        {phase === "results" && resultsStatus === "ready" && realResults && (
           <>
             <section style={{ padding: "44px 32px 24px" }}>
               <div style={{ maxWidth: 1000, margin: "0 auto" }}>
@@ -1799,7 +1925,7 @@ export default function FreeScan() {
                         marginBottom: 10,
                       }}
                     >
-                      Scan complete · {scanDomain} · {RESULT_DATE}
+                      Scan complete · {scanDomain} · {formatResultDate(realResults.generatedAt)}
                     </div>
                     <h1
                       data-testid="freescan-results-heading"
@@ -1813,7 +1939,9 @@ export default function FreeScan() {
                         textWrap: "pretty",
                       }}
                     >
-                      We found {TOTAL_FINDINGS} things wrong in your tenant. {URGENT_COUNT} of them are urgent.
+                      {realResults.totalFindings === 0
+                        ? "Good news — this scan didn't turn up anything that needs attention right now."
+                        : `We found ${realResults.totalFindings} things wrong in your tenant. ${realResults.criticalFindings} of them are urgent.`}
                     </h1>
                     <p style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.7, margin: 0 }}>
                       Everything below is real, read from your own tenant a moment ago — not a sample and not a
@@ -1822,7 +1950,14 @@ export default function FreeScan() {
                     </p>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 200 }}>
-                    {SEVERITY_COUNTS.map((sc) => (
+                    {[
+                      { label: "Urgent" as const, count: realResults.criticalFindings, color: "#f87171" },
+                      {
+                        label: "Needs attention" as const,
+                        count: realResults.totalFindings - realResults.criticalFindings,
+                        color: "#fbbf24",
+                      },
+                    ].map((sc) => (
                       <div
                         key={sc.label}
                         style={{
@@ -1846,28 +1981,101 @@ export default function FreeScan() {
                   </div>
                 </div>
 
+                {/* Real per-pillar scores — #1358's own directive: "real pillar scores ... visible". */}
                 <div
                   style={{
-                    padding: "18px 20px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(248,113,113,.25)",
-                    background: "linear-gradient(100deg,rgba(248,113,113,.1),rgba(2,6,23,0) 70%)",
-                    marginBottom: 30,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(6,minmax(0,1fr))",
+                    gap: 10,
+                    marginBottom: 26,
                   }}
                 >
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#f8fafc", marginBottom: 5 }}>
-                    The money one, first: {WASTE_HEADLINE}
-                  </div>
-                  <div style={{ fontSize: 12.5, color: "#94a3b8", lineHeight: 1.65 }}>{WASTE_BODY}</div>
+                  {DISPLAY_PILLAR_KEYS.map((key) => {
+                    const card = realResults.pillars.find((p) => p.pillar === key);
+                    const sector = SECTORS.find((s) => s.key === PILLAR_LABELS[key]);
+                    const scored = card?.evaluation.status === "scored" && card.score != null;
+                    return (
+                      <div
+                        key={key}
+                        data-testid={`freescan-pillar-score-${key}`}
+                        style={{
+                          padding: "12px 8px",
+                          borderRadius: 12,
+                          border: "1px solid rgba(30,41,59,.9)",
+                          background: "#0b1524",
+                          textAlign: "center",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 9.5,
+                            fontWeight: 700,
+                            letterSpacing: ".08em",
+                            textTransform: "uppercase",
+                            color: sector?.color ?? "#94a3b8",
+                          }}
+                        >
+                          {PILLAR_LABELS[key]}
+                        </div>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: scored ? "#f8fafc" : "#475569", marginTop: 4 }}>
+                          {scored ? Math.round(card!.score as number) : "—"}
+                        </div>
+                        <div style={{ fontSize: 9.5, color: "#64748b" }}>
+                          {scored
+                            ? "/ 100"
+                            : card?.evaluation.status === "insufficient_data"
+                            ? "not enough data yet"
+                            : "not scored yet"}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
+
+                {realResults.annualWasteDollars != null && (
+                  <div
+                    style={{
+                      padding: "18px 20px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(248,113,113,.25)",
+                      background: "linear-gradient(100deg,rgba(248,113,113,.1),rgba(2,6,23,0) 70%)",
+                      marginBottom: 30,
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#f8fafc", marginBottom: 5 }}>
+                      The money one, first: you are paying about $
+                      {Math.round(realResults.annualWasteDollars / 12).toLocaleString()} a month in Microsoft 365
+                      licence costs that show no recent activity.
+                    </div>
+                    <div style={{ fontSize: 12.5, color: "#94a3b8", lineHeight: 1.65 }}>
+                      That is roughly ${Math.round(realResults.annualWasteDollars).toLocaleString()} a year, and it
+                      renews on its own unless somebody acts on it.
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
 
             <section style={{ padding: "0 32px 30px" }}>
               <div style={{ maxWidth: 1000, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-                {FINDINGS.map((f) => (
+                {displayFindings.length === 0 && (
                   <div
-                    key={f.title}
+                    style={{
+                      padding: 20,
+                      borderRadius: 16,
+                      border: "1px solid rgba(30,41,59,.9)",
+                      background: "#0b1524",
+                      fontSize: 13.5,
+                      color: "#94a3b8",
+                      textAlign: "center",
+                    }}
+                  >
+                    No critical or warning-level findings on this scan. Monitoring is what tells you the day that changes.
+                  </div>
+                )}
+                {displayFindings.map((f, i) => (
+                  <div
+                    key={`${f.area}-${f.title}-${i}`}
                     style={{ borderRadius: 16, border: "1px solid rgba(30,41,59,.9)", background: "#0b1524", overflow: "hidden" }}
                   >
                     <div style={{ padding: "20px 20px 18px" }}>
@@ -1916,64 +2124,59 @@ export default function FreeScan() {
                         </span>
                       </div>
 
-                      <p style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.7, margin: "0 0 6px" }}>
-                        <b style={{ color: "#f8fafc" }}>What this means:</b> {f.meaning}
-                      </p>
-                      <p style={{ fontSize: 12.5, color: "#94a3b8", lineHeight: 1.7, margin: "0 0 16px" }}>
-                        <b style={{ color: "#cbd5e1" }}>Why it matters:</b> {f.why}
-                      </p>
+                      {f.meaning && (
+                        <p style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.7, margin: "0 0 6px" }}>
+                          <b style={{ color: "#f8fafc" }}>What this means:</b> {f.meaning}
+                        </p>
+                      )}
+                      {f.why && (
+                        <p style={{ fontSize: 12.5, color: "#94a3b8", lineHeight: 1.7, margin: "0 0 16px" }}>
+                          <b style={{ color: "#cbd5e1" }}>Why it matters:</b> {f.why}
+                        </p>
+                      )}
 
-                      <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.06)", background: "#020617", padding: 14 }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: 12,
-                            marginBottom: 11,
-                          }}
-                        >
-                          <span
+                      {f.evidenceItems.length > 0 && (
+                        <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.06)", background: "#020617", padding: 14 }}>
+                          <div
                             style={{
-                              fontSize: 9.5,
-                              fontWeight: 700,
-                              textTransform: "uppercase",
-                              letterSpacing: ".1em",
-                              color: "#64748b",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 12,
+                              marginBottom: 11,
                             }}
                           >
-                            The actual items we found
-                          </span>
-                          <span style={{ fontSize: 10.5, color: "#475569" }}>{f.evidenceNote}</span>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {f.evidence.map((ev, i) => (
-                            <div
-                              key={i}
+                            <span
                               style={{
-                                display: "flex",
-                                alignItems: "baseline",
-                                justifyContent: "space-between",
-                                gap: 14,
-                                fontSize: 12,
-                                lineHeight: 1.5,
+                                fontSize: 9.5,
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                letterSpacing: ".1em",
+                                color: "#64748b",
                               }}
                             >
-                              <span
+                              The actual items we found
+                            </span>
+                            <span style={{ fontSize: 10.5, color: "#475569" }}>{f.evidenceItems.length} shown</span>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {f.evidenceItems.map((item, ei) => (
+                              <div
+                                key={ei}
                                 style={{
+                                  fontSize: 12,
+                                  lineHeight: 1.5,
                                   color: "#e2e8f0",
                                   fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace",
-                                  minWidth: 0,
                                   wordBreak: "break-word",
                                 }}
                               >
-                                {ev.item}
-                              </span>
-                              <span style={{ color: "#64748b", flexShrink: 0, fontSize: 11 }}>{ev.meta}</span>
-                            </div>
-                          ))}
+                                {item}
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
 
                     <div
@@ -2014,9 +2217,11 @@ export default function FreeScan() {
                             {iconLock(15)}
                           </span>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 11.5, fontWeight: 700, color: "#cbd5e1" }}>The fix: {f.fix}</div>
+                            <div style={{ fontSize: 11.5, fontWeight: 700, color: "#cbd5e1" }}>
+                              Fixing this is part of Monitoring
+                            </div>
                             <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.55, marginTop: 2 }}>
-                              {f.fixEffort} · locked until this tenant is monitored
+                              The specific fix, its steps and its effort estimate unlock once this tenant is monitored
                             </div>
                           </div>
                         </div>
@@ -2192,7 +2397,8 @@ export default function FreeScan() {
               >
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 800, color: "#f8fafc" }}>
-                    {TOTAL_FINDINGS} findings, {URGENT_COUNT} urgent — none of them fix themselves.
+                    {realResults.totalFindings} findings, {realResults.criticalFindings} urgent — none of them fix
+                    themselves.
                   </div>
                   <div style={{ fontSize: 11.5, color: "#cbd5e1", marginTop: 2 }}>
                     {QUOTE_PRICE}/mo to close them and watch for the next one.
