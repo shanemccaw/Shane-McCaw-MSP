@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 
 namespace BuildConsole.Services
@@ -969,7 +970,12 @@ namespace BuildConsole.Services
             // Git #3902 — remembered so Save() can refuse to write this defaults-only instance
             // over a settings.json that exists by the time it saves (a transient File.Exists miss,
             // or another writer creating it in between) instead of replacing it wholesale.
-            if (!fileExists) return new BuildConsoleSettings { _origin = LoadOrigin.MissingFile };
+            if (!fileExists)
+            {
+                var missing = new BuildConsoleSettings { _origin = LoadOrigin.MissingFile };
+                missing.CaptureBaselineFromSelf(); // Git #3907 — see field doc on _baselineJson.
+                return missing;
+            }
 
             const int maxAttempts = 4;
             Exception? lastError = null;
@@ -1007,13 +1013,59 @@ namespace BuildConsole.Services
             // for an unreadable file. Every `Load(); mutate; Save();` caller in the app would
             // otherwise write those defaults (blank GitHubPat included) straight over the real file
             // — the confirmed PAT wipe. Save() refuses to persist a Degraded instance, full stop.
-            return new BuildConsoleSettings { _origin = LoadOrigin.Degraded };
+            var degraded = new BuildConsoleSettings { _origin = LoadOrigin.Degraded };
+            degraded.CaptureBaselineFromSelf(); // Git #3907 — see field doc on _baselineJson.
+            return degraded;
         }
 
         // Git #3902 — where this instance came from, so Save() can tell a real, successfully-read
         // settings object apart from a defaults stand-in. Not serialized.
         private enum LoadOrigin { Constructed, FromFile, MissingFile, Degraded }
         private LoadOrigin _origin = LoadOrigin.Constructed;
+
+        /// <summary>
+        /// Git #3907 — the general case beyond #3902's credential-only fix. Every settings writer in
+        /// the app follows `var s = BuildConsoleSettings.Load(); s.X = ...; s.Save();`, and the old
+        /// Save() serialized the WHOLE held instance — so any instance held across time (the Settings
+        /// tab loaded at construction, a long-lived service like QueueWatcherService) silently
+        /// reverted whatever ANY other writer changed to ANY other field in between, since it wrote
+        /// back its own stale copy of every field it didn't itself touch.
+        ///
+        /// This is the JSON exactly as read by <see cref="Load"/> (or, for a
+        /// MissingFile/Degraded-origin instance, this instance's own state at the moment it was
+        /// constructed — see <see cref="CaptureBaselineFromSelf"/>) — i.e. "what this instance saw
+        /// before any caller touched it". <see cref="SaveGuarded"/> re-reads the fresh on-disk state
+        /// at save time and, for every writable field OTHER than the two protected credentials
+        /// (already handled by Guard 3), adopts that fresh value whenever the current value still
+        /// matches this baseline (this instance never touched that field) — a field that DOES differ
+        /// from baseline is this instance's own deliberate change and always wins. Same "mine beats
+        /// theirs for what I actually touched" rule #3902 established for credentials, generalized
+        /// here to every other field, with no changes needed at any of the 69 `.Save()` call sites.
+        /// Not serialized.
+        /// </summary>
+        private string? _baselineJson;
+
+        /// <summary>Git #3907 — captures this instance's OWN current state as its baseline. Used for
+        /// the MissingFile/Degraded origins, where there is no real on-disk JSON to snapshot yet —
+        /// the instance's just-constructed state (before any caller mutation) is the correct "nothing
+        /// touched yet" baseline.</summary>
+        private void CaptureBaselineFromSelf() => _baselineJson = JsonSerializer.Serialize(this);
+
+        /// <summary>Git #3907 — deserializes <see cref="_baselineJson"/> back into a real settings
+        /// object so <see cref="MergeUnchangedFieldsFromDisk"/> can diff this instance's current
+        /// property values against it. Null when no baseline was ever captured (e.g. a settings
+        /// instance built by test/tool code without going through <see cref="Load"/>) — callers treat
+        /// that as "can't safely merge" and fall back to the pre-#3907 whole-object write.</summary>
+        private BuildConsoleSettings? BaselineSnapshot()
+        {
+            if (string.IsNullOrEmpty(_baselineJson)) return null;
+            try
+            {
+                return JsonSerializer.Deserialize<BuildConsoleSettings>(
+                    _baselineJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch { return null; }
+        }
 
         /// <summary>Git #3901 — true when Load() could not read an existing settings.json and handed back
         /// blank defaults. A blank GitHubPat on such an instance means "unreadable right now", not
@@ -1038,6 +1090,16 @@ namespace BuildConsole.Services
                 // like any other unparseable read so the retry/Degraded path handles it.
                 if (settings == null) throw new JsonException("settings.json deserialized to null");
                 settings._origin = LoadOrigin.FromFile;
+                // Git #3907 — the RAW on-disk JSON as read, captured BEFORE the in-memory-only
+                // backfills below run. This is the baseline Save() diffs against later: a field
+                // that still matches this baseline at Save() time was never touched by this
+                // instance's own session, so Save() adopts the fresh on-disk value for it instead
+                // of writing back this (possibly stale) held instance's own copy. Capturing it
+                // pre-backfill is deliberate — a backfilled field (e.g. a seeded ConfiguredRepos
+                // entry) then reads as "changed" relative to the true-on-disk baseline, so it still
+                // gets persisted by the next ordinary explicit Save() exactly as designed above,
+                // instead of being silently discarded as "unchanged" by the new merge.
+                settings._baselineJson = json;
                 settings.PausedBuildIds ??= new List<int>();
 
                 // Git #3902 — the three backfills below are IN-MEMORY ONLY. They used to each call
@@ -1101,6 +1163,50 @@ namespace BuildConsole.Services
         // PAT-wipe shape; the real value is carried forward instead. The only way to genuinely clear
         // one is the explicit SaveClearingCredential(name) path the Settings tab's Save buttons use.
         private static readonly string[] ProtectedCredentialFields = { nameof(GitHubPat), nameof(ZohoApiToken) };
+
+        /// <summary>Git #3907 — every real, writable settings field eligible for the general merge:
+        /// public, has both a getter and a setter (this alone excludes every computed read-only
+        /// property, e.g. HasGitHubPat/GitHubOwnerRepo/IsDegradedRead), takes no index parameters, and
+        /// isn't one of the two protected credential fields (Guard 3 above already owns those
+        /// specifically). Computed once; reflection cost is then paid only per Save() call, not per
+        /// property lookup. Declared after <see cref="ProtectedCredentialFields"/> so this static
+        /// initializer runs after that one (C# runs a type's static field initializers in textual
+        /// declaration order) — it needs that field's real value, not its default.</summary>
+        private static readonly PropertyInfo[] MergeableProperties = typeof(BuildConsoleSettings)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && p.CanWrite && p.GetIndexParameters().Length == 0)
+            .Where(p => Array.IndexOf(ProtectedCredentialFields, p.Name) < 0)
+            .ToArray();
+
+        /// <summary>Git #3907 — for every <see cref="MergeableProperties"/> field, generic structural
+        /// equality via JSON serialization (works uniformly for primitives, nullable value types, and
+        /// the List&lt;T&gt; collection fields alike, without a per-type comparer). A field whose
+        /// current value still equals its <paramref name="baseline"/> value was never touched by this
+        /// instance's own session, so it adopts <paramref name="fresh"/>'s value (the real state some
+        /// other writer left on disk). A field that differs from baseline is this instance's own
+        /// deliberate change and is left as-is — it always wins over whatever is on disk. (Granularity
+        /// is per top-level property, not per list element — two writers changing two different
+        /// entries of the SAME list-valued field in the same window is still last-writer-wins for that
+        /// one field, same as the rest of the app's optimistic-concurrency posture.)</summary>
+        private void MergeUnchangedFieldsFromDisk(BuildConsoleSettings baseline, BuildConsoleSettings fresh)
+        {
+            foreach (var prop in MergeableProperties)
+            {
+                var baselineValue = prop.GetValue(baseline);
+                var currentValue = prop.GetValue(this);
+                if (!JsonValueEquals(baselineValue, currentValue)) continue; // this instance changed it — mine wins
+
+                var freshValue = prop.GetValue(fresh);
+                if (!JsonValueEquals(currentValue, freshValue)) prop.SetValue(this, freshValue);
+            }
+        }
+
+        private static bool JsonValueEquals(object? a, object? b)
+        {
+            if (a is null && b is null) return true;
+            if (a is null || b is null) return false;
+            return JsonSerializer.Serialize(a) == JsonSerializer.Serialize(b);
+        }
 
         private static string GetCredential(BuildConsoleSettings s, string field) => field switch
         {
@@ -1166,16 +1272,19 @@ namespace BuildConsole.Services
                 return;
             }
 
+            // Git #3907 — read the fresh on-disk state ONCE, up front, and reuse it for both Guard 3
+            // (credential-specific, unchanged below) and the general field merge that follows it.
+            BuildConsoleSettings? freshFromDisk = diskExists ? TryReadDiskForGuard() : null;
+
             // Guard 3 — never persist a blank protected credential over a real one on disk.
             if (diskExists)
             {
-                var onDisk = TryReadDiskForGuard();
                 foreach (var field in ProtectedCredentialFields)
                 {
                     if (field == explicitlyClearedCredential) continue;
                     if (!string.IsNullOrWhiteSpace(GetCredential(this, field))) continue;
 
-                    if (onDisk == null)
+                    if (freshFromDisk == null)
                     {
                         // Can't prove the file's value is blank, and this write would blank it.
                         ActivityLog.Log("settings.save",
@@ -1184,7 +1293,7 @@ namespace BuildConsole.Services
                         return;
                     }
 
-                    var diskValue = GetCredential(onDisk, field);
+                    var diskValue = GetCredential(freshFromDisk, field);
                     if (!string.IsNullOrWhiteSpace(diskValue))
                     {
                         SetCredential(this, field, diskValue);
@@ -1193,6 +1302,20 @@ namespace BuildConsole.Services
                             $"on-disk value instead of wiping it (#3902). Clear it deliberately via the Settings tab if intended.");
                     }
                 }
+            }
+
+            // Git #3907 — the general fix beyond #3902's credential-only guard: for every OTHER
+            // writable field, adopt the fresh on-disk value whenever this instance never actually
+            // touched that field since its own Load() (see MergeUnchangedFieldsFromDisk for the real
+            // per-field diff). This is what stops a long-lived instance (the Settings tab, or a
+            // background service holding one BuildConsoleSettings across many Save() calls) from
+            // silently reverting a concurrent writer's real change to a field it never itself set.
+            // Falls back to the pre-#3907 whole-object write (this instance's own copy, unchanged)
+            // when there's no fresh disk read or no captured baseline to diff against.
+            if (freshFromDisk != null)
+            {
+                var baseline = BaselineSnapshot();
+                if (baseline != null) MergeUnchangedFieldsFromDisk(baseline, freshFromDisk);
             }
 
             var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
@@ -1229,6 +1352,12 @@ namespace BuildConsole.Services
                 try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { /* best-effort temp cleanup */ }
             }
             _origin = LoadOrigin.FromFile;
+            // Git #3907 — this instance's baseline is now whatever was just written (its own changes
+            // PLUS whatever the merge above pulled in from other writers), so if this SAME instance is
+            // held and Save()'d again later (e.g. a long-lived service), the next diff correctly
+            // measures only what changes between now and then — not a re-diff against the original,
+            // now-stale Load()-time snapshot.
+            CaptureBaselineFromSelf();
         }
 
         /// <summary>Git #3902 — reads settings.json sharing Read/Write/DELETE. File.ReadAllText shares
