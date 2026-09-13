@@ -25,6 +25,7 @@ import { PolicyEngine } from "./modules/PolicyEngine";
 import { AccountSecurity } from "./modules/AccountSecurity";
 import { Dlq } from "./modules/Dlq";
 import { PlanSelfService } from "./modules/PlanSelfService";
+import { Reports } from "./modules/Reports";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
@@ -336,6 +337,12 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "plan") {
     return <PlanSelfService />;
+  }
+  if (sel.kind === "msp" && sel.page === "reports") {
+    // Deleting a report definition requires ladder.msp-admin server-side (msp-reports.ts);
+    // MSPOperator can read/create/trigger/pause everything but not delete a definition.
+    const isAdmin = profile.role === "admin" || profile.mspRole === "PlatformAdmin" || profile.mspRole === "MSPAdmin";
+    return <Reports isAdmin={isAdmin} />;
   }
   if (sel.kind === "page" && (CHANGE_CONTROL_TABS as readonly string[]).includes(sel.page)) {
     // Change Control (#2579) needs the full customer row too — its Register,

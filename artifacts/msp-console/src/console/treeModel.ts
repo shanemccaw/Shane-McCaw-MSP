@@ -405,6 +405,13 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "The MSP's own plan and payment method.",
       };
     }
+    if (sel.page === "reports") {
+      return {
+        eyebrow: "REPORTS",
+        title: "Definitions, runs and canvases",
+        note: "Every generated document, every custom canvas, and the schedules nothing yet executes.",
+      };
+    }
     return { eyebrow: "OPERATIONS · MSP-WIDE", title: mp?.label ?? "", note: "" };
   }
   const c = find(sel.tenant);

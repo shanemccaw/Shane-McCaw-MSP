@@ -51,6 +51,8 @@ import {
   // Inbound webhook activity (#3760) — Server. (ShieldCheck/ShieldAlert/
   // CircleCheckBig/CircleDashed/CircleX/Inbox already imported above.)
   CreditCard, Server,
+  // Reports (#3815)
+  FileBarChart2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -213,6 +215,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   // Plan Self-Service (#3796) / Inbound webhook activity (#3760)
   "credit-card": CreditCard,
   server: Server,
+  // Reports (#3815)
+  "file-bar-chart-2": FileBarChart2,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});
