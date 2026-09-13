@@ -250,64 +250,217 @@ namespace BuildConsole.Services
         };
     }
 
-    // ── 5. User Interaction Breadcrumbs ──────────────────────────────────
-    function describeElement(el) {
-        if (!el || !el.tagName) return 'unknown';
-        var desc = el.tagName.toLowerCase();
-        if (el.id) desc += '#' + el.id;
-        if (el.className && typeof el.className === 'string') {
-            var classes = el.className.trim().split(/\s+/).slice(0, 2).join('.');
-            if (classes) desc += '.' + classes;
+    // ── 5. Automated Reproduction Step Tracking ──────────────────────────
+    function getUniqueSelector(el) {
+        if (!el || el.nodeType !== 1) return '';
+        if (el.id) return '#' + CSS.escape(el.id);
+
+        var path = [];
+        var curr = el;
+        while (curr && curr.nodeType === 1 && curr !== document.body && curr !== document.documentElement) {
+            var sel = curr.tagName.toLowerCase();
+            if (curr.id) {
+                path.unshift('#' + CSS.escape(curr.id));
+                break;
+            }
+            if (curr.className && typeof curr.className === 'string') {
+                var classes = curr.className.trim().split(/\s+/).filter(Boolean);
+                if (classes.length > 0) {
+                    sel += '.' + classes.slice(0, 2).map(function(c) {
+                        try { return CSS.escape(c); } catch(e) { return c; }
+                    }).join('.');
+                }
+            }
+            if (curr.name && typeof curr.name === 'string') {
+                sel += '[name=""' + curr.name + '""]';
+            }
+            if (curr.getAttribute && curr.getAttribute('data-testid')) {
+                sel = '[data-testid=""' + curr.getAttribute('data-testid') + '""]';
+                path.unshift(sel);
+                break;
+            }
+            var parent = curr.parentNode;
+            if (parent && parent.children) {
+                var siblings = Array.from(parent.children).filter(function(c) { return c.tagName === curr.tagName; });
+                if (siblings.length > 1) {
+                    var idx = siblings.indexOf(curr) + 1;
+                    sel += ':nth-of-type(' + idx + ')';
+                }
+            }
+            path.unshift(sel);
+            curr = parent;
+            if (path.length >= 4) break;
         }
-        return desc;
+        return path.join(' > ');
     }
 
-    function elementDetails(el) {
-        if (!el) return '';
-        if (el.type === 'password') return 'value=""••••••""';
-        var text = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim();
-        if (text.length > 50) text = text.substring(0, 47) + '...';
-        return text;
+    function getSanitizedOuterHtml(el) {
+        if (!el || !el.outerHTML) return '';
+        try {
+            var clone = el.cloneNode(false);
+            if (clone.type === 'password' || (clone.name && String(clone.name).toLowerCase().includes('password'))) {
+                clone.value = '••••••';
+                if (clone.hasAttribute('value')) clone.setAttribute('value', '••••••');
+            }
+            var html = clone.outerHTML || '';
+            if (html.length > 180) {
+                html = html.substring(0, 177) + '...';
+            }
+            return html;
+        } catch (e) {
+            return '<' + (el.tagName ? el.tagName.toLowerCase() : 'element') + '>';
+        }
     }
 
+    function recordReproductionStep(actionType, targetEl, details) {
+        try {
+            var step = {
+                actionType: actionType,
+                selector: getUniqueSelector(targetEl),
+                outerHtml: getSanitizedOuterHtml(targetEl),
+                details: details || '',
+                timestamp: getNow()
+            };
+            window.__vttTelemetry.reproductionEvents.push(step);
+            if (window.__vttTelemetry.reproductionEvents.length > maxItems) {
+                window.__vttTelemetry.reproductionEvents.shift();
+            }
+        } catch (e) {}
+    }
+
+    // Clicks & Button Presses
     document.addEventListener('click', function(evt) {
         try {
             var target = evt.target;
-            window.__vttTelemetry.reproductionEvents.push({
-                eventType: 'click',
-                target: describeElement(target),
-                details: elementDetails(target),
-                timestamp: getNow()
-            });
-            if (window.__vttTelemetry.reproductionEvents.length > maxItems) window.__vttTelemetry.reproductionEvents.shift();
+            if (!target) return;
+            var buttonEl = target.closest ? target.closest('button, [role=""button""], input[type=""button""], input[type=""submit""], input[type=""reset""]') : null;
+            if (buttonEl) {
+                var btnText = (buttonEl.innerText || buttonEl.value || buttonEl.getAttribute('aria-label') || '').trim();
+                if (btnText.length > 40) btnText = btnText.substring(0, 37) + '...';
+                recordReproductionStep('BUTTON_PRESS', buttonEl, btnText ? 'Button: ""' + btnText + '""' : 'Button pressed');
+            } else {
+                var text = (target.innerText || target.getAttribute('aria-label') || target.title || '').trim();
+                if (text.length > 40) text = text.substring(0, 37) + '...';
+                var action = target.tagName && target.tagName.toLowerCase() === 'a' ? 'LINK_CLICK' : 'CLICK';
+                recordReproductionStep(action, target, text ? '""' + text + '""' : '');
+            }
         } catch (e) {}
     }, true);
 
+    // Keyboard Button Presses (Enter or Space on focused button/link)
+    document.addEventListener('keydown', function(evt) {
+        try {
+            if (evt.key === 'Enter' || evt.key === ' ') {
+                var target = evt.target;
+                if (target && target.closest) {
+                    var btn = target.closest('button, [role=""button""], a, input[type=""submit""]');
+                    if (btn) {
+                        var text = (btn.innerText || btn.value || '').trim();
+                        recordReproductionStep('BUTTON_PRESS', btn, 'Key [' + evt.key + ']' + (text ? ' on ""' + text + '""' : ''));
+                    }
+                }
+            }
+        } catch (e) {}
+    }, true);
+
+    // Form Inputs & Changes (with automatic password redaction)
     document.addEventListener('change', function(evt) {
         try {
             var target = evt.target;
-            window.__vttTelemetry.reproductionEvents.push({
-                eventType: 'change',
-                target: describeElement(target),
-                details: elementDetails(target),
-                timestamp: getNow()
-            });
-            if (window.__vttTelemetry.reproductionEvents.length > maxItems) window.__vttTelemetry.reproductionEvents.shift();
+            if (!target || !target.tagName) return;
+            var tag = target.tagName.toLowerCase();
+            var details = '';
+            if (target.type === 'password' || (target.name && String(target.name).toLowerCase().includes('password'))) {
+                details = 'Password changed (••••••)';
+            } else if (target.type === 'checkbox') {
+                details = target.checked ? 'Checked' : 'Unchecked';
+            } else if (target.type === 'radio') {
+                details = 'Selected radio value=""' + (target.value || '') + '""';
+            } else if (tag === 'select') {
+                var selOption = target.options && target.selectedIndex >= 0 ? target.options[target.selectedIndex].text : target.value;
+                details = 'Selected option ""' + selOption + '""';
+            } else {
+                var val = String(target.value || '').trim();
+                if (val.length > 40) val = val.substring(0, 37) + '...';
+                details = val ? 'value=""' + val + '""' : 'Cleared input';
+            }
+            recordReproductionStep('INPUT', target, details);
         } catch (e) {}
     }, true);
 
+    // Navigation Events (pushState, replaceState, popstate, hashchange)
+    var origPushState = history.pushState;
+    if (origPushState) {
+        history.pushState = function(state, unused, url) {
+            try {
+                recordReproductionStep('NAVIGATE', document.body, 'pushState: ' + String(url || window.location.pathname));
+            } catch (e) {}
+            return origPushState.apply(this, arguments);
+        };
+    }
+    var origReplaceState = history.replaceState;
+    if (origReplaceState) {
+        history.replaceState = function(state, unused, url) {
+            try {
+                recordReproductionStep('NAVIGATE', document.body, 'replaceState: ' + String(url || window.location.pathname));
+            } catch (e) {}
+            return origReplaceState.apply(this, arguments);
+        };
+    }
+    window.addEventListener('popstate', function() {
+        try {
+            recordReproductionStep('NAVIGATE', document.body, 'popstate: ' + window.location.pathname + window.location.search);
+        } catch (e) {}
+    });
+    window.addEventListener('hashchange', function() {
+        try {
+            recordReproductionStep('NAVIGATE', document.body, 'hashchange: ' + window.location.hash);
+        } catch (e) {}
+    });
+
+    // Form Submissions
     document.addEventListener('submit', function(evt) {
         try {
-            var target = evt.target;
-            window.__vttTelemetry.reproductionEvents.push({
-                eventType: 'submit',
-                target: describeElement(target),
-                details: target.action || '',
-                timestamp: getNow()
-            });
-            if (window.__vttTelemetry.reproductionEvents.length > maxItems) window.__vttTelemetry.reproductionEvents.shift();
+            var form = evt.target;
+            var action = (form && form.getAttribute ? form.getAttribute('action') : '') || '';
+            var method = (form && form.getAttribute ? form.getAttribute('method') : 'GET') || 'GET';
+            recordReproductionStep('SUBMIT', form || document.body, 'Form submitted (' + method.toUpperCase() + (action ? ' -> ' + action : '') + ')');
         } catch (e) {}
     }, true);
+
+    // DOM Changes (Modals, Dialogs, Alerts, Toasts appearing)
+    try {
+        if (window.MutationObserver && document.body) {
+            var lastMutationTime = 0;
+            var mutObserver = new MutationObserver(function(mutations) {
+                var now = Date.now();
+                if (now - lastMutationTime < 400) return;
+                for (var i = 0; i < mutations.length; i++) {
+                    var m = mutations[i];
+                    if (m.type === 'childList' && m.addedNodes) {
+                        for (var j = 0; j < m.addedNodes.length; j++) {
+                            var n = m.addedNodes[j];
+                            if (n.nodeType === 1) {
+                                var role = n.getAttribute ? n.getAttribute('role') : '';
+                                var cls = (n.className && typeof n.className === 'string') ? n.className.toLowerCase() : '';
+                                var isAlertOrModal = role === 'dialog' || role === 'alert' || role === 'alertdialog' ||
+                                    cls.includes('modal') || cls.includes('dialog') || cls.includes('toast') ||
+                                    cls.includes('alert') || cls.includes('error') || cls.includes('banner');
+                                if (isAlertOrModal) {
+                                    lastMutationTime = now;
+                                    var snippet = (n.innerText || '').trim();
+                                    if (snippet.length > 50) snippet = snippet.substring(0, 47) + '...';
+                                    recordReproductionStep('DOM_MUTATION', n, (snippet ? 'Rendered: ""' + snippet + '""' : 'Added to DOM'));
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            mutObserver.observe(document.body, { childList: true, subtree: true });
+        }
+    } catch (e) {}
 })();
 ";
 

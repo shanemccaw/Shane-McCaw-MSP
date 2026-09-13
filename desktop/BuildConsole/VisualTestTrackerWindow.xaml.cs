@@ -1188,30 +1188,48 @@ namespace BuildConsole
                     }
                 }
 
-                // 4. Reproduction Events Breadcrumbs
+                // 4. Automated Reproduction Steps
                 if (eventCount > 0)
                 {
                     diagStack.Children.Add(new TextBlock
                     {
-                        Text = $"Reproduction Events ({eventCount}):",
+                        Text = $"Automated Reproduction Steps ({eventCount}):",
                         FontSize = 9,
                         FontWeight = FontWeights.SemiBold,
                         Foreground = (Brush)FindResource("AccentBrush"),
                         Margin = new Thickness(0, 4, 0, 2)
                     });
+                    int stepNum = 1;
                     foreach (var ev in entry.ReproductionEvents!)
                     {
-                        string desc = $"{ev.EventType} on {ev.Target}";
-                        if (!string.IsNullOrWhiteSpace(ev.Details)) desc += $" ({ev.Details})";
-                        diagStack.Children.Add(new TextBlock
+                        string action = !string.IsNullOrWhiteSpace(ev.ActionType) ? ev.ActionType.ToUpperInvariant() : "ACTION";
+                        string target = !string.IsNullOrWhiteSpace(ev.Selector) ? ev.Selector : ev.Target;
+                        string details = !string.IsNullOrWhiteSpace(ev.Details) ? $" — {ev.Details}" : "";
+                        string stamp = !string.IsNullOrWhiteSpace(ev.Timestamp) ? $"[{ev.Timestamp}] " : "";
+
+                        var stepRow = new StackPanel { Margin = new Thickness(2, 0, 0, 3) };
+                        stepRow.Children.Add(new TextBlock
                         {
-                            Text = desc,
+                            Text = $"{stepNum++}. {stamp}[{action}] {target}{details}",
                             FontSize = 9,
                             FontFamily = new FontFamily("Consolas"),
                             TextWrapping = TextWrapping.Wrap,
-                            Foreground = (Brush)FindResource("Subtext1Brush"),
-                            Margin = new Thickness(2, 0, 0, 2)
+                            Foreground = (Brush)FindResource("TextBrush")
                         });
+
+                        if (!string.IsNullOrWhiteSpace(ev.OuterHtml))
+                        {
+                            stepRow.Children.Add(new TextBlock
+                            {
+                                Text = ev.OuterHtml,
+                                FontSize = 8,
+                                FontFamily = new FontFamily("Consolas"),
+                                TextWrapping = TextWrapping.Wrap,
+                                Foreground = (Brush)FindResource("Overlay1Brush"),
+                                Margin = new Thickness(12, 0, 0, 0)
+                            });
+                        }
+                        diagStack.Children.Add(stepRow);
                     }
                 }
 

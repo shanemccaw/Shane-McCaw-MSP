@@ -39,13 +39,27 @@ namespace BuildConsole.Services
         public int ScriptErrorCount { get; set; }
     }
 
-    /// <summary>Represents a captured user interaction event leading up to the bug (breadcrumb).</summary>
+    /// <summary>Represents a captured user action / reproduction step (click, button press, input, navigation, submit, DOM mutation).</summary>
     public sealed class ReproductionEventItem
     {
-        public string EventType { get; set; } = "click"; // "click", "change", "submit"
-        public string Target { get; set; } = "";
+        public string ActionType { get; set; } = "CLICK"; // "CLICK", "BUTTON_PRESS", "INPUT", "NAVIGATE", "SUBMIT", "DOM_MUTATION"
+        public string Selector { get; set; } = "";
+        public string OuterHtml { get; set; } = "";
         public string Details { get; set; } = "";
         public string Timestamp { get; set; } = "";
+
+        // Backward compatibility properties:
+        public string EventType
+        {
+            get => !string.IsNullOrEmpty(ActionType) ? ActionType : "CLICK";
+            set => ActionType = value;
+        }
+
+        public string Target
+        {
+            get => !string.IsNullOrEmpty(Selector) ? Selector : OuterHtml;
+            set => Selector = value;
+        }
     }
 
     /// <summary>
@@ -233,16 +247,25 @@ namespace BuildConsole.Services
                 sb.AppendLine();
             }
 
-            // Diagnostic: Reproduction Events
+            // Diagnostic: Automated Reproduction Steps
             if (ReproductionEvents != null && ReproductionEvents.Count > 0)
             {
-                sb.AppendLine($"#### Diagnostic: Reproduction Events ({ReproductionEvents.Count})");
+                sb.AppendLine($"#### Automated Reproduction Steps ({ReproductionEvents.Count})");
                 int step = 1;
                 foreach (var ev in ReproductionEvents)
                 {
-                    string details = !string.IsNullOrWhiteSpace(ev.Details) ? $" — \"{ev.Details}\"" : "";
+                    string action = !string.IsNullOrWhiteSpace(ev.ActionType) ? ev.ActionType.ToUpperInvariant() : "ACTION";
                     string stamp = !string.IsNullOrWhiteSpace(ev.Timestamp) ? $" `{ev.Timestamp}`" : "";
-                    sb.AppendLine($"{step++}.{stamp} **{ev.EventType}** on `{ev.Target}`{details}");
+                    string target = !string.IsNullOrWhiteSpace(ev.Selector) ? $"`{ev.Selector}`" : (!string.IsNullOrWhiteSpace(ev.Target) ? $"`{ev.Target}`" : "");
+                    string details = !string.IsNullOrWhiteSpace(ev.Details) ? $" — {ev.Details}" : "";
+
+                    sb.AppendLine($"{step++}.{stamp} **[{action}]** {target}{details}");
+                    if (!string.IsNullOrWhiteSpace(ev.OuterHtml))
+                    {
+                        sb.AppendLine("   ```html");
+                        sb.AppendLine($"   {ev.OuterHtml.Trim()}");
+                        sb.AppendLine("   ```");
+                    }
                 }
                 sb.AppendLine();
             }
