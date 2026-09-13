@@ -320,6 +320,46 @@ async function issueSessionForUser(
   res.json({ accessToken, refreshToken, refreshExpiresAt: refreshExpiresAt.toISOString(), user: payload });
 }
 
+// ─── GET /api/msp/auth/me ─────────────────────────────────────────────────────
+//
+// The identity the MSP Console gates its whole shell on. `AuthGate.tsx`
+// (`useMspAuthMe()`) calls this immediately after login and mounts `ConsoleShell`
+// only on a 200 carrying an operator profile — so a missing/404 handler here means
+// no operator can reach the console at all (Git #3942, caught live via #3836).
+//
+// The spec (`lib/api-spec/msp-openapi.yaml`, `operationId: mspAuthMe`) returns
+// `MspUserProfile` — the same `{ id, email, name, role, mspRole, mspId, mspSlug,
+// customerId }` shape `POST /auth/login` issues in its `user` field. This is an
+// identity/auth surface, so every field is re-derived from the DB via getMspClaims
+// (which reads the user's own `users` row and resolves `mspSlug` from `msps`),
+// never trusted from the JWT payload — a long-lived token reassigned to another
+// MSP would otherwise report a stale claim. Mirrors the same re-read rationale as
+// `/auth/me/context` (auth-session-context.ts).
+router.get("/msp/auth/me", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) {
+    // A valid JWT for a user row that no longer exists — authenticate failed to
+    // resolve a real identity, so 401 per the spec's only documented error.
+    res.status(401).json({ error: "Account no longer exists" });
+    return;
+  }
+
+  const mspClaims = await getMspClaims(user.id);
+
+  res.json({
+    id: user.id,
+    email: user.email,
+    name: user.name ?? null,
+    role: user.role,
+    mspRole: mspClaims.mspRole ?? null,
+    mspId: mspClaims.mspId ?? null,
+    mspSlug: mspClaims.mspSlug ?? null,
+    customerId: mspClaims.customerId ?? null,
+  });
+});
+
 router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
