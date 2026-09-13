@@ -81,7 +81,7 @@
                             <Button x:Name="BtnEndSessionSync" Style="{StaticResource PrimaryButton}"
                                     FontSize="10" FontWeight="SemiBold" Padding="8,3" Margin="0,0,4,0"
                                     Content="End &amp; Sync" Click="BtnEndSessionSync_Click"
-                                    ToolTip="Finalize session, generate summary, and copy to clipboard"/>
+                                    ToolTip="Finalize session, save to disk at /Bugs/&lt;Product&gt;/, and commit &amp; sync to Git (Shift+Click for instant sync)"/>
                             <Button x:Name="BtnNewSession" Style="{StaticResource SecondaryButton}"
                                     FontSize="10" Padding="6,3" Margin="0,0,4,0"
                                     Content="New" Click="BtnNewSession_Click"

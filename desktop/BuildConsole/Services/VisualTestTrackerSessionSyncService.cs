@@ -340,8 +340,9 @@ namespace BuildConsole.Services
 
             try
             {
-                // Root session directory: Bugs/<ProductName>/<SessionId>/
-                string sessionRelDir = Path.Combine("Bugs", VisualTestTrackerExportService.SanitizeDirectoryName(context.ProductName), context.SessionId);
+                // Root session directory: Bugs/<ProductName>/<SessionId>/ (or Bug/<ProductName>/<SessionId>/)
+                string bugsFolder = Directory.Exists(Path.Combine(repoRoot, "Bug")) && !Directory.Exists(Path.Combine(repoRoot, "Bugs")) ? "Bug" : "Bugs";
+                string sessionRelDir = Path.Combine(bugsFolder, VisualTestTrackerExportService.SanitizeDirectoryName(context.ProductName), context.SessionId);
                 string sessionAbsDir = Path.Combine(repoRoot, sessionRelDir);
 
                 string screenshotsDir = Path.Combine(sessionAbsDir, "screenshots");
@@ -629,7 +630,8 @@ namespace BuildConsole.Services
             }
             if (!result.Success) return result;
 
-            string relDir = Path.Combine("Bugs", VisualTestTrackerExportService.SanitizeDirectoryName(context.ProductName), context.SessionId).Replace('\\', '/');
+            string bugsFolder = Directory.Exists(Path.Combine(repoRoot, "Bug")) && !Directory.Exists(Path.Combine(repoRoot, "Bugs")) ? "Bug" : "Bugs";
+            string relDir = Path.Combine(bugsFolder, VisualTestTrackerExportService.SanitizeDirectoryName(context.ProductName), context.SessionId).Replace('\\', '/');
 
             // 2. git add <relDir>
             var addSw = Stopwatch.StartNew();
@@ -646,10 +648,13 @@ namespace BuildConsole.Services
                 return result;
             }
 
-            // 3. git commit -m "<CommitMessage>"
-            string commitMsg = result.CommitMessage.Replace("\"", "\\\"");
+            // 3. git commit
+            var lines = (result.CommitMessage ?? "").Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+            string mArgs = lines.Length > 0
+                ? string.Join(" ", lines.Select(l => $"-m \"{l.Replace("\"", "\\\"")}\""))
+                : $"-m \"QA Session {context.SessionId} – {context.ProductName}\"";
             var commitSw = Stopwatch.StartNew();
-            var commitRes = await RunGitAsync(repoRoot, $"commit -m \"{commitMsg}\"");
+            var commitRes = await RunGitAsync(repoRoot, $"commit {mArgs}");
             commitSw.Stop();
             if (commitSw.ElapsedMilliseconds > 1000)
             {

@@ -9,6 +9,7 @@
         Topmost="True"
         ShowInTaskbar="False"
         AllowsTransparency="True"
+        WindowStartupLocation="CenterOwner"
         Background="Transparent">
 
     <Border Background="{StaticResource MantleBrush}"
@@ -229,6 +230,7 @@
                                 Style="{StaticResource PrimaryButton}"
                                 FontWeight="SemiBold" FontSize="11"
                                 Padding="10,5,10,5"
+                                IsDefault="True"
                                 Click="BtnSyncAndPush_Click"/>
 
                         <Button x:Name="BtnOpenFolder" Grid.Column="1"

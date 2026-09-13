@@ -99,6 +99,32 @@ namespace BuildConsole.Controls
         public event Action<string, bool>? PageTestedCleanChanged;
         public event Action? ExitTestModeRequested;
         public event Action? HistoryRequested;
+        public event Action? EndSessionSyncRequested;
+
+        // Session inspection & controls
+        public DateTime SessionStartTime => _sessionStartTime;
+        public string CurrentNotes => TxtNotesBox.Text.Trim();
+        public string GlobalNotes => _globalNotes;
+        public string StepsText => TxtStepsBox.Text.Trim();
+        public string ExpectedText => TxtExpectedBox.Text.Trim();
+        public string ActualText => TxtActualBox.Text.Trim();
+        public List<string> TagsList => TxtTagsBox.Text.Split(new[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        public string SelectedSeverity => (CmbSeverity.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Bug";
+        public bool IsGoodChecked => ChkGood.IsChecked == true;
+        public bool IsAutoClearChecked => ChkAutoClear.IsChecked == true;
+        public List<string> GetStagedScreenshotPaths() => StagedScreenshots.Select(s => s.FilePath).Where(p => !string.IsNullOrEmpty(p)).ToList();
+
+        public void ResetSession(bool clearBugs = true)
+        {
+            _sessionStartTime = DateTime.Now;
+            _pageStartTime = DateTime.Now;
+            ClearComposer();
+            if (clearBugs)
+            {
+                AllBugs.Clear();
+                RefreshBugDrawer();
+            }
+        }
 
         public TestModeComposerPanel()
         {
@@ -242,30 +268,7 @@ namespace BuildConsole.Controls
 
         private void BtnEndSessionSync_Click(object sender, RoutedEventArgs e)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine($"# Testing Session Summary");
-            sb.AppendLine($"- **Start**: {_sessionStartTime:yyyy-MM-dd HH:mm:ss}");
-            sb.AppendLine($"- **Duration**: {(int)(DateTime.Now - _sessionStartTime).TotalMinutes} min");
-            sb.AppendLine($"- **Total Bugs Logged**: {AllBugs.Count} ({AllBugs.Count(b => b.IsResolved)} resolved)");
-            sb.AppendLine();
-
-            foreach (var bug in AllBugs)
-            {
-                sb.AppendLine($"### [{bug.Severity}] {bug.Route}");
-                sb.AppendLine($"- **Status**: {(bug.IsResolved ? "Resolved" : "Open")}");
-                sb.AppendLine($"- **Notes**: {bug.Notes}");
-                if (!string.IsNullOrEmpty(bug.Steps)) sb.AppendLine($"- **Steps**: {bug.Steps}");
-                if (!string.IsNullOrEmpty(bug.Expected)) sb.AppendLine($"- **Expected**: {bug.Expected}");
-                if (!string.IsNullOrEmpty(bug.Actual)) sb.AppendLine($"- **Actual**: {bug.Actual}");
-                if (bug.Screenshots.Count > 0)
-                {
-                    sb.AppendLine($"- **Screenshots**: {string.Join(", ", bug.Screenshots)}");
-                }
-                sb.AppendLine();
-            }
-
-            Clipboard.SetText(sb.ToString());
-            ShowToast("Session markdown copied to clipboard!");
+            EndSessionSyncRequested?.Invoke();
         }
 
         private void BtnNewSession_Click(object sender, RoutedEventArgs e)
@@ -273,11 +276,7 @@ namespace BuildConsole.Controls
             if (MessageBox.Show("Start a new testing session? Unsaved notes will be cleared.", "New Session",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             {
-                _sessionStartTime = DateTime.Now;
-                _pageStartTime = DateTime.Now;
-                AllBugs.Clear();
-                ClearComposer();
-                RefreshBugDrawer();
+                ResetSession(clearBugs: true);
                 ShowToast("Fresh testing session started.");
             }
         }
@@ -306,7 +305,7 @@ namespace BuildConsole.Controls
             PageTestedCleanChanged?.Invoke(_activeRoute, false);
         }
 
-        private void ShowToast(string message)
+        public void ShowToast(string message)
         {
             TxtToast.Text = message;
             BorderToast.Visibility = Visibility.Visible;
@@ -536,7 +535,7 @@ namespace BuildConsole.Controls
             ClearComposer();
         }
 
-        private void ClearComposer()
+        public void ClearComposer()
         {
             TxtNotesBox.Clear();
             TxtTagsBox.Clear();
@@ -574,7 +573,7 @@ namespace BuildConsole.Controls
             }
         }
 
-        private void RefreshBugDrawer()
+        public void RefreshBugDrawer()
         {
             var filtered = AllBugs.Where(b =>
             {

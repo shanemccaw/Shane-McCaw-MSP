@@ -125,6 +125,11 @@ namespace BuildConsole
             {
                 await CaptureHudForTestModeAsync();
             };
+
+            TestModeComposerPanel.EndSessionSyncRequested += async () =>
+            {
+                await ExecuteEndSessionSyncAsync();
+            };
         }
 
         /// <summary>
@@ -386,6 +391,172 @@ namespace BuildConsole
         {
             var dlg = new SessionHistoryDialog { Owner = this };
             dlg.ShowDialog();
+        }
+
+        private async Task ExecuteEndSessionSyncAsync()
+        {
+            try
+            {
+                var (activeWv, _) = GetActiveEditorTabWebView();
+                string url = activeWv?.Source?.ToString() ?? "";
+                var matchedBase = MatchesWatchedVisualTestBaseUrl(url);
+                string baseUrl = matchedBase ?? (activeWv?.Source?.Host != null ? (activeWv.Source.Host + (activeWv.Source.Port > 0 ? $":{activeWv.Source.Port}" : "")) : "");
+                string pagePath = "";
+
+                if (matchedBase != null && !string.IsNullOrEmpty(url))
+                {
+                    int baseIdx = url.IndexOf(matchedBase, StringComparison.OrdinalIgnoreCase);
+                    pagePath = url.Substring(baseIdx + matchedBase.Length);
+                }
+                else
+                {
+                    pagePath = activeWv?.Source?.PathAndQuery ?? (!string.IsNullOrEmpty(TestModeComposerPanel.ActiveRoute) ? TestModeComposerPanel.ActiveRoute : "/");
+                }
+                if (string.IsNullOrEmpty(pagePath)) pagePath = "/";
+
+                // Collect telemetry snapshot from active webview
+                VisualTestTrackerTelemetry.TelemetrySnapshot? telemetry = null;
+                if (activeWv != null)
+                {
+                    try
+                    {
+                        telemetry = await VisualTestTrackerTelemetry.CollectSnapshotAsync(activeWv);
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("visual-test-tracker", $"Telemetry snapshot warning: {ex.Message}");
+                    }
+                }
+
+                string productName = VisualTestTrackerExportService.DetectArea(url, pagePath);
+
+                // Convert AllBugs to VisualTestTrackerEntry list
+                var entries = new List<VisualTestTrackerEntry>();
+                foreach (var bug in TestModeComposerPanel.AllBugs)
+                {
+                    entries.Add(new VisualTestTrackerEntry
+                    {
+                        EntryUuid = bug.Id,
+                        Severity = bug.Severity,
+                        Status = bug.IsResolved ? "Resolved" : "Open",
+                        Notes = bug.Notes,
+                        PagePath = !string.IsNullOrWhiteSpace(bug.Route) ? bug.Route : pagePath,
+                        CurrentUrl = !string.IsNullOrWhiteSpace(url) ? url : bug.Route,
+                        StepsToReproduce = bug.Steps,
+                        ExpectedBehavior = bug.Expected,
+                        ActualBehavior = bug.Actual,
+                        Tags = bug.Tags != null ? new List<string>(bug.Tags) : new(),
+                        ScreenshotPaths = bug.Screenshots != null ? new List<string>(bug.Screenshots) : new(),
+                        CreatedAt = bug.CreatedAt,
+                        UpdatedAt = bug.CreatedAt
+                    });
+                }
+
+                // If composer has unsaved notes, also include as an entry
+                string currentNotes = TestModeComposerPanel.CurrentNotes;
+                if (!string.IsNullOrWhiteSpace(currentNotes))
+                {
+                    if (!entries.Any(e => string.Equals(e.Notes, currentNotes, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        entries.Add(new VisualTestTrackerEntry
+                        {
+                            Severity = TestModeComposerPanel.SelectedSeverity,
+                            Status = "Open",
+                            Notes = currentNotes,
+                            PagePath = pagePath,
+                            CurrentUrl = url,
+                            StepsToReproduce = TestModeComposerPanel.StepsText,
+                            ExpectedBehavior = TestModeComposerPanel.ExpectedText,
+                            ActualBehavior = TestModeComposerPanel.ActualText,
+                            Tags = TestModeComposerPanel.TagsList,
+                            ScreenshotPaths = TestModeComposerPanel.GetStagedScreenshotPaths(),
+                            CreatedAt = DateTime.Now,
+                            UpdatedAt = DateTime.Now
+                        });
+                    }
+                }
+
+                var stagedShots = TestModeComposerPanel.GetStagedScreenshotPaths();
+
+                var context = new SessionSyncContext
+                {
+                    ProductName = productName,
+                    BaseUrl = baseUrl,
+                    PagePath = pagePath,
+                    StartedAt = TestModeComposerPanel.SessionStartTime,
+                    EndedAt = DateTime.Now,
+                    Duration = DateTime.Now - TestModeComposerPanel.SessionStartTime,
+                    Entries = entries,
+                    CurrentNotes = currentNotes,
+                    GlobalNotes = TestModeComposerPanel.GlobalNotes,
+                    StepsToReproduce = TestModeComposerPanel.StepsText,
+                    ExpectedBehavior = TestModeComposerPanel.ExpectedText,
+                    ActualBehavior = TestModeComposerPanel.ActualText,
+                    ScreenshotPaths = stagedShots,
+                    ConsoleLogs = telemetry != null ? new List<ConsoleLogItem>(telemetry.ConsoleLogs) : new(),
+                    NetworkFailures = telemetry != null ? new List<NetworkFailureItem>(telemetry.NetworkLogs.Where(n => n.Failed)) : new(),
+                    ReproEvents = telemetry != null ? new List<ReproductionEventItem>(telemetry.ReproductionEvents) : new(),
+                    IsCleanConfirmed = TestModeComposerPanel.IsGoodChecked,
+                    UrlsTested = !string.IsNullOrEmpty(url) ? new List<string> { url } : new List<string>()
+                };
+
+                // Check for direct sync (e.g. if Shift is held)
+                bool isDirectSync = System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift);
+                if (isDirectSync)
+                {
+                    string repoRoot = VisualTestTrackerExportService.ResolveRepoRoot();
+                    context.SessionId = VisualTestTrackerSessionSyncService.GenerateSessionId(context.StartedAt);
+                    ToastEngine.Info("Session Sync", $"Writing artifacts to /Bugs/{context.ProductName}/{context.SessionId}/ and committing to Git...");
+
+                    var syncRes = await VisualTestTrackerSessionSyncService.ExecuteGitSyncAsync(context, repoRoot, pushToRemote: true);
+                    if (syncRes.Success)
+                    {
+                        string commitPart = !string.IsNullOrEmpty(syncRes.CommitHash) ? $" ({syncRes.CommitHash})" : "";
+                        string pushPart = syncRes.PushedToRemote ? " • Pushed to remote" : "";
+                        ToastEngine.Success("Session Synced", $"✓ Saved to /Bugs/{syncRes.ProductName}/{syncRes.SessionId}/ and synced to Git{commitPart}{pushPart}.");
+                        TestModeComposerPanel.ShowToast($"Synced to /Bugs/{syncRes.ProductName}/{syncRes.SessionId}/");
+
+                        if (TestModeComposerPanel.IsAutoClearChecked)
+                        {
+                            TestModeComposerPanel.ClearComposer();
+                            TestModeComposerPanel.AllBugs.Clear();
+                            TestModeComposerPanel.RefreshBugDrawer();
+                        }
+                    }
+                    else
+                    {
+                        ToastEngine.Error("Sync Failed", syncRes.Error ?? "Could not sync session to Git.");
+                    }
+                    return;
+                }
+
+                // Standard flow: Open SessionSyncDialog
+                var dialog = new SessionSyncDialog(context)
+                {
+                    Owner = this
+                };
+
+                bool? result = dialog.ShowDialog();
+                if (result == true && dialog.IsSynced && dialog.Result != null)
+                {
+                    var syncRes = dialog.Result;
+                    string commitPart = !string.IsNullOrEmpty(syncRes.CommitHash) ? $" ({syncRes.CommitHash})" : "";
+                    string pushPart = syncRes.PushedToRemote ? " • Pushed to remote" : "";
+                    ToastEngine.Success("Session Synced", $"✓ Saved to /Bugs/{syncRes.ProductName}/{syncRes.SessionId}/ and synced to Git{commitPart}{pushPart}.");
+                    TestModeComposerPanel.ShowToast($"Synced to /Bugs/{syncRes.ProductName}/{syncRes.SessionId}/");
+
+                    if (TestModeComposerPanel.IsAutoClearChecked)
+                    {
+                        TestModeComposerPanel.ClearComposer();
+                        TestModeComposerPanel.AllBugs.Clear();
+                        TestModeComposerPanel.RefreshBugDrawer();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Error("Session Sync Error", ex.Message);
+            }
         }
 
         private void BtnExitTestMode_Click(object sender, RoutedEventArgs e)

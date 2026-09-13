@@ -55,7 +55,9 @@ namespace BuildConsole
             int errorCount = _context.ConsoleLogs.Count(l => l.Level == "error" || l.Level == "exception" || l.Level == "unhandledrejection");
             TxtErrorsBadge.Text = errorCount.ToString();
             TxtApiBadge.Text = (_context.ApiResults.Count + _context.NetworkFailures.Count).ToString();
-            TxtDurationBadge.Text = $"{_context.Duration.Minutes:D2}:{_context.Duration.Seconds:D2}";
+            TxtDurationBadge.Text = _context.Duration.TotalHours >= 1
+                ? $"{(int)_context.Duration.TotalHours}:{_context.Duration.Minutes:D2}:{_context.Duration.Seconds:D2}"
+                : $"{_context.Duration.Minutes:D2}:{_context.Duration.Seconds:D2}";
 
             _isUpdating = false;
 
@@ -99,7 +101,8 @@ namespace BuildConsole
             _context.SessionId = sessId;
 
             string cleanProd = VisualTestTrackerExportService.SanitizeDirectoryName(prodName);
-            string destRel = $"/Bugs/{cleanProd}/{sessId}/";
+            string bugsFolder = Directory.Exists(Path.Combine(_repoRoot, "Bug")) && !Directory.Exists(Path.Combine(_repoRoot, "Bugs")) ? "Bug" : "Bugs";
+            string destRel = $"/{bugsFolder}/{cleanProd}/{sessId}/";
             TxtDestinationPath.Text = destRel;
 
             // Auto-generate commit message and summary
@@ -177,7 +180,8 @@ namespace BuildConsole
                     string commitPart = !string.IsNullOrEmpty(res.CommitHash) ? $" (Commit: {res.CommitHash})" : "";
                     string pushPart = res.PushedToRemote ? " • Pushed to remote." : (push ? " • Committed locally (push skipped/offline)." : "");
 
-                    StatusMessageText.Text = $"✓ Session saved and synced to Git!{commitPart}{pushPart}\nPath: /Bugs/{res.ProductName}/{res.SessionId}/";
+                    string bugsFolder = Directory.Exists(Path.Combine(_repoRoot, "Bug")) && !Directory.Exists(Path.Combine(_repoRoot, "Bugs")) ? "Bug" : "Bugs";
+                    StatusMessageText.Text = $"✓ Session saved and synced to Git!{commitPart}{pushPart}\nPath: /{bugsFolder}/{res.ProductName}/{res.SessionId}/";
                     StatusMessageText.Foreground = (Brush)FindResource("StatusSuccessBrush");
 
                     BtnOpenFolder.IsEnabled = true;

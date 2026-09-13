@@ -72,7 +72,14 @@ namespace BuildConsole.Services
             Marshal.StructureToPtr(mmi, lParam, true);
         }
 
-        /// <summary>Dark immersive title bar + maximize-respects-taskbar fix. Call once, from OnSourceInitialized.</summary>
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        private const uint WM_SETICON = 0x0080;
+        private const int ICON_SMALL = 0;
+        private const int ICON_BIG = 1;
+
+        /// <summary>Dark immersive title bar + maximize-respects-taskbar fix + explicit taskbar icon. Call once, from OnSourceInitialized.</summary>
         public static void Setup(Window window)
         {
             var hwnd = new WindowInteropHelper(window).Handle;
@@ -87,6 +94,26 @@ namespace BuildConsole.Services
 
                 int micaValue = 2; // DWMSBT_MAINWINDOW
                 DwmSetWindowAttribute(hwnd, 38, ref micaValue, sizeof(int)); // DWMWA_SYSTEMBACKDROP_TYPE
+            }
+            catch { }
+
+            // Explicitly set WM_SETICON on the HWND so taskbar / Alt-Tab always displays the real app icon
+            try
+            {
+                var icoInfo = Application.GetResourceStream(new Uri("pack://application:,,,/app.ico"));
+                if (icoInfo != null)
+                {
+                    using var ms = new System.IO.MemoryStream();
+                    icoInfo.Stream.CopyTo(ms);
+
+                    ms.Position = 0;
+                    using var icoBig = new System.Drawing.Icon(ms, 32, 32);
+                    SendMessage(hwnd, WM_SETICON, (IntPtr)ICON_BIG, icoBig.Handle);
+
+                    ms.Position = 0;
+                    using var icoSmall = new System.Drawing.Icon(ms, 16, 16);
+                    SendMessage(hwnd, WM_SETICON, (IntPtr)ICON_SMALL, icoSmall.Handle);
+                }
             }
             catch { }
 
