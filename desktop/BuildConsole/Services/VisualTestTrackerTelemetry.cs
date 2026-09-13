@@ -26,6 +26,7 @@ namespace BuildConsole.Services
         public double Height { get; set; }
         public double Left { get; set; }
         public double Top { get; set; }
+        public double DevicePixelRatio { get; set; } = 1.0;
         public Dictionary<string, string> Attributes { get; set; } = new();
     }
 
@@ -630,6 +631,12 @@ namespace BuildConsole.Services
         window.__vttDomInspectorCleanUp();
     }
     window.__vttDomInspectorActive = true;
+    window.__vttDomStickyInspector = true;
+
+    var isLocked = false;
+    var hoveredEl = null;
+    var selectedEl = null;
+    var currentPayload = null;
 
     var overlay = document.getElementById('__vtt_dom_inspector_overlay');
     if (!overlay) {
@@ -637,12 +644,13 @@ namespace BuildConsole.Services
         overlay.id = '__vtt_dom_inspector_overlay';
         overlay.style.position = 'fixed';
         overlay.style.pointerEvents = 'none';
-        overlay.style.zIndex = '2147483647';
+        overlay.style.zIndex = '2147483645';
         overlay.style.border = '2px solid #38bdf8';
         overlay.style.backgroundColor = 'rgba(56, 189, 248, 0.15)';
         overlay.style.borderRadius = '3px';
-        overlay.style.transition = 'all 0.05s ease-out';
+        overlay.style.transition = 'top 0.05s ease-out, left 0.05s ease-out, width 0.05s ease-out, height 0.05s ease-out';
         overlay.style.display = 'none';
+        overlay.style.boxSizing = 'border-box';
 
         var badge = document.createElement('div');
         badge.id = '__vtt_dom_inspector_badge';
@@ -664,7 +672,121 @@ namespace BuildConsole.Services
         document.documentElement.appendChild(overlay);
     }
 
-    var hoveredEl = null;
+    var noteCard = document.getElementById('__vtt_dom_note_card');
+    if (!noteCard) {
+        noteCard = document.createElement('div');
+        noteCard.id = '__vtt_dom_note_card';
+        noteCard.style.position = 'fixed';
+        noteCard.style.zIndex = '2147483647';
+        noteCard.style.width = '340px';
+        noteCard.style.boxSizing = 'border-box';
+        noteCard.style.backgroundColor = '#0f172a';
+        noteCard.style.border = '1px solid #38bdf8';
+        noteCard.style.borderRadius = '8px';
+        noteCard.style.boxShadow = '0 12px 30px rgba(0,0,0,0.7), 0 0 0 1px rgba(56, 189, 248, 0.2)';
+        noteCard.style.padding = '10px 12px';
+        noteCard.style.fontFamily = '-apple-system, BlinkMacSystemFont, ""Segoe UI"", Roboto, Helvetica, Arial, sans-serif';
+        noteCard.style.display = 'none';
+        noteCard.style.color = '#f8fafc';
+
+        noteCard.innerHTML = `
+            <div style=""display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;"">
+                <div style=""display:flex; align-items:center; overflow:hidden;"">
+                    <span id=""__vtt_card_tag"" style=""font-family:Consolas, monospace; font-size:11.5px; font-weight:700; color:#38bdf8; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; max-width:200px;"">element</span>
+                    <span id=""__vtt_card_dims"" style=""font-size:10px; color:#94a3b8; margin-left:6px; white-space:nowrap;"">0×0px</span>
+                </div>
+                <button id=""__vtt_card_close"" title=""Cancel note and unselect (Esc)"" style=""background:none; border:none; color:#94a3b8; font-size:14px; cursor:pointer; padding:1px 5px; border-radius:3px; line-height:1;"">✕</button>
+            </div>
+            <div id=""__vtt_card_selector"" style=""font-family:Consolas, monospace; font-size:9.5px; color:#64748b; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; margin-bottom:6px;"">selector</div>
+            <textarea id=""__vtt_card_input"" placeholder=""Type bug note... (Enter to send, Shift+Enter for newline, Esc to cancel)"" style=""width:100%; box-sizing:border-box; height:50px; min-height:44px; max-height:110px; background:#1e293b; border:1px solid #334155; border-radius:5px; color:#f8fafc; font-size:11.5px; padding:6px 8px; resize:vertical; outline:none; font-family:inherit; line-height:1.35;""></textarea>
+            <div style=""display:flex; justify-content:space-between; align-items:center; margin-top:8px;"">
+                <div>
+                    <button id=""__vtt_card_add_step"" title=""Add to repro steps in composer"" style=""background:#1e293b; border:1px solid #334155; color:#94a3b8; font-size:10px; font-weight:600; padding:3px 7px; border-radius:4px; cursor:pointer;"">+ Step</button>
+                </div>
+                <div style=""display:flex; gap:6px; align-items:center;"">
+                    <button id=""__vtt_card_cancel"" style=""background:none; border:none; color:#94a3b8; font-size:10.5px; cursor:pointer; padding:3px 6px;"">Cancel (Esc)</button>
+                    <button id=""__vtt_card_send"" style=""background:#0284c7; border:none; color:#ffffff; font-size:10.5px; font-weight:700; padding:4px 10px; border-radius:4px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.3);"">Send Bug (Enter)</button>
+                </div>
+            </div>
+        `;
+
+        document.documentElement.appendChild(noteCard);
+
+        var closeBtn = document.getElementById('__vtt_card_close');
+        var cancelBtn = document.getElementById('__vtt_card_cancel');
+        var sendBtn = document.getElementById('__vtt_card_send');
+        var addStepBtn = document.getElementById('__vtt_card_add_step');
+        var noteInput = document.getElementById('__vtt_card_input');
+
+        if (closeBtn) closeBtn.addEventListener('click', function(ev) { ev.stopPropagation(); cancelNote(); });
+        if (cancelBtn) cancelBtn.addEventListener('click', function(ev) { ev.stopPropagation(); cancelNote(); });
+        if (sendBtn) sendBtn.addEventListener('click', function(ev) { ev.stopPropagation(); submitBug(); });
+        if (addStepBtn) {
+            addStepBtn.addEventListener('click', function(ev) {
+                ev.stopPropagation();
+                if (currentPayload && window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+                    window.chrome.webview.postMessage(JSON.stringify({
+                        type: 'VTT_DOM_ADD_STEP',
+                        data: { step: 'Click element `' + currentPayload.selector + '`' }
+                    }));
+                    addStepBtn.innerText = '✓ Added';
+                    setTimeout(function() { addStepBtn.innerText = '+ Step'; }, 1500);
+                }
+            });
+        }
+
+        if (noteInput) {
+            noteInput.addEventListener('keydown', function(ev) {
+                ev.stopPropagation();
+                if (ev.key === 'Escape') {
+                    ev.preventDefault();
+                    cancelNote();
+                } else if (ev.key === 'Enter' && !ev.shiftKey) {
+                    ev.preventDefault();
+                    submitBug();
+                }
+            });
+        }
+
+        noteCard.addEventListener('click', function(ev) { ev.stopPropagation(); });
+        noteCard.addEventListener('mousedown', function(ev) { ev.stopPropagation(); });
+    }
+
+    function cancelNote() {
+        isLocked = false;
+        selectedEl = null;
+        if (noteCard) noteCard.style.display = 'none';
+        if (overlay) overlay.style.display = 'none';
+
+        if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+            window.chrome.webview.postMessage(JSON.stringify({
+                type: 'VTT_DOM_INSPECT_CANCEL'
+            }));
+        }
+    }
+
+    function submitBug() {
+        var noteInput = document.getElementById('__vtt_card_input');
+        var comment = noteInput ? noteInput.value.trim() : '';
+
+        // Hide overlay and card immediately before screenshot is captured
+        if (noteCard) noteCard.style.display = 'none';
+        if (overlay) overlay.style.display = 'none';
+
+        var payloadToSend = currentPayload;
+        isLocked = false;
+        selectedEl = null;
+
+        if (payloadToSend && window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+            window.chrome.webview.postMessage(JSON.stringify({
+                type: 'VTT_DOM_BUG_SUBMIT',
+                data: {
+                    comment: comment,
+                    element: payloadToSend
+                }
+            }));
+        }
+    }
 
     function getSelector(el) {
         if (!el || el.nodeType !== 1) return '';
@@ -730,12 +852,15 @@ namespace BuildConsole.Services
     }
 
     function onMouseMove(e) {
-        if (!window.__vttDomInspectorActive) return;
+        if (!window.__vttDomInspectorActive || isLocked) return;
         var target = document.elementFromPoint(e.clientX, e.clientY);
-        if (!target || target === overlay || overlay.contains(target)) return;
+        if (!target || target === overlay || overlay.contains(target) || target === noteCard || (noteCard && noteCard.contains(target))) return;
         hoveredEl = target;
         var rect = target.getBoundingClientRect();
         overlay.style.display = 'block';
+        overlay.style.border = '2px solid #38bdf8';
+        overlay.style.boxShadow = 'none';
+        overlay.style.backgroundColor = 'rgba(56, 189, 248, 0.15)';
         overlay.style.top = rect.top + 'px';
         overlay.style.left = rect.left + 'px';
         overlay.style.width = Math.max(0, rect.width) + 'px';
@@ -763,18 +888,28 @@ namespace BuildConsole.Services
 
     function onClick(e) {
         if (!window.__vttDomInspectorActive) return;
+        if (noteCard && (e.target === noteCard || noteCard.contains(e.target))) return;
+
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
 
+        if (isLocked) {
+            cancelNote();
+            return;
+        }
+
         var el = hoveredEl || e.target;
-        if (!el) return;
+        if (!el || el === document.documentElement || el === document.body) return;
+
+        isLocked = true;
+        selectedEl = el;
 
         var rect = el.getBoundingClientRect();
         var outer = el.outerHTML || '';
         if (outer.length > 500) outer = outer.substring(0, 497) + '...';
 
-        var payload = {
+        currentPayload = {
             tag: el.tagName ? el.tagName.toUpperCase() : '',
             id: el.id || '',
             classes: typeof el.className === 'string' ? el.className.trim() : '',
@@ -786,31 +921,89 @@ namespace BuildConsole.Services
             height: Math.round(rect.height),
             left: Math.round(rect.left),
             top: Math.round(rect.top),
+            devicePixelRatio: window.devicePixelRatio || 1,
             attributes: getAttributes(el)
         };
 
-        if (window.__vttDomInspectorCleanUp) {
-            window.__vttDomInspectorCleanUp();
+        // Locked highlight overlay
+        overlay.style.display = 'block';
+        overlay.style.border = '2px solid #0ea5e9';
+        overlay.style.boxShadow = '0 0 0 3px rgba(14, 165, 233, 0.4)';
+        overlay.style.backgroundColor = 'rgba(14, 165, 233, 0.2)';
+        overlay.style.top = rect.top + 'px';
+        overlay.style.left = rect.left + 'px';
+        overlay.style.width = Math.max(0, rect.width) + 'px';
+        overlay.style.height = Math.max(0, rect.height) + 'px';
+
+        var badge = document.getElementById('__vtt_dom_inspector_badge');
+        if (badge) {
+            badge.innerText = 'LOCKED: ' + el.tagName.toLowerCase() + (el.id ? '#' + el.id : '');
         }
+
+        // Populate card
+        var cardTag = document.getElementById('__vtt_card_tag');
+        var cardDims = document.getElementById('__vtt_card_dims');
+        var cardSel = document.getElementById('__vtt_card_selector');
+        var cardInput = document.getElementById('__vtt_card_input');
+
+        if (cardTag) cardTag.innerText = el.tagName.toLowerCase() + (el.id ? '#' + el.id : (el.className && typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/)[0] : ''));
+        if (cardDims) cardDims.innerText = Math.round(rect.width) + ' × ' + Math.round(rect.height) + 'px';
+        if (cardSel) cardSel.innerText = currentPayload.selector;
+        if (cardInput) cardInput.value = '';
+
+        var cardWidth = 340;
+        var cardHeight = 150;
+        var topPos = (rect.top > cardHeight + 12) ? (rect.top - cardHeight - 8) : Math.min(window.innerHeight - cardHeight - 10, rect.bottom + 8);
+        var leftPos = Math.max(10, Math.min(window.innerWidth - cardWidth - 10, rect.left));
+
+        noteCard.style.top = Math.round(topPos) + 'px';
+        noteCard.style.left = Math.round(leftPos) + 'px';
+        noteCard.style.display = 'block';
+
+        setTimeout(function() {
+            if (cardInput) cardInput.focus();
+        }, 30);
 
         if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
             window.chrome.webview.postMessage(JSON.stringify({
                 type: 'VTT_DOM_INSPECT',
-                data: payload
+                data: currentPayload
             }));
         }
     }
 
+    function onGlobalKeyDown(ev) {
+        if (ev.key === 'Escape' && isLocked) {
+            ev.preventDefault();
+            cancelNote();
+        }
+    }
+
+    window.__vttDomDismissNote = function() {
+        isLocked = false;
+        selectedEl = null;
+        if (noteCard) noteCard.style.display = 'none';
+        if (overlay) overlay.style.display = 'none';
+    };
+
     window.__vttDomInspectorCleanUp = function() {
         window.__vttDomInspectorActive = false;
-        var ov = document.getElementById('__vtt_dom_inspector_overlay');
-        if (ov) ov.style.display = 'none';
+        window.__vttDomStickyInspector = false;
+        isLocked = false;
+        if (overlay) {
+            try { overlay.remove(); } catch (e) { overlay.style.display = 'none'; }
+        }
+        if (noteCard) {
+            try { noteCard.remove(); } catch (e) { noteCard.style.display = 'none'; }
+        }
         document.removeEventListener('mousemove', onMouseMove, true);
         document.removeEventListener('click', onClick, true);
+        document.removeEventListener('keydown', onGlobalKeyDown, true);
     };
 
     document.addEventListener('mousemove', onMouseMove, true);
     document.addEventListener('click', onClick, true);
+    document.addEventListener('keydown', onGlobalKeyDown, true);
 })();
 ";
 
@@ -820,8 +1013,11 @@ namespace BuildConsole.Services
         window.__vttDomInspectorCleanUp();
     } else {
         window.__vttDomInspectorActive = false;
+        window.__vttDomStickyInspector = false;
         var overlay = document.getElementById('__vtt_dom_inspector_overlay');
         if (overlay) overlay.style.display = 'none';
+        var noteCard = document.getElementById('__vtt_dom_note_card');
+        if (noteCard) noteCard.style.display = 'none';
     }
 })();
 ";
@@ -2112,6 +2308,81 @@ namespace BuildConsole.Services
             }
             catch { }
             return null;
+        }
+
+        /// <summary>Dismisses the in-page floating note card and releases element lock, keeping sticky inspector active if enabled.</summary>
+        public static async Task DismissDomNoteAsync(WebView2? webView)
+        {
+            if (webView?.CoreWebView2 == null) return;
+            try
+            {
+                await webView.ExecuteScriptAsync("window.__vttDomDismissNote && window.__vttDomDismissNote();");
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Parses an incoming WebMessage string to check if it contains a VTT_DOM_BUG_SUBMIT payload.
+        /// </summary>
+        public static (string Comment, DomElementInfo Element)? TryParseDomBugSubmitMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message) || !message.Contains("VTT_DOM_BUG_SUBMIT")) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(message);
+                if (doc.RootElement.TryGetProperty("type", out var typeEl) &&
+                    typeEl.GetString() == "VTT_DOM_BUG_SUBMIT" &&
+                    doc.RootElement.TryGetProperty("data", out var dataEl))
+                {
+                    string comment = dataEl.TryGetProperty("comment", out var cEl) ? cEl.GetString() ?? "" : "";
+                    DomElementInfo? element = null;
+                    if (dataEl.TryGetProperty("element", out var elEl))
+                    {
+                        element = JsonSerializer.Deserialize<DomElementInfo>(elEl.GetRawText(), new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+                    }
+                    if (element != null) return (comment, element);
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>
+        /// Parses an incoming WebMessage string to check if it contains a VTT_DOM_ADD_STEP payload.
+        /// </summary>
+        public static string? TryParseDomAddStepMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message) || !message.Contains("VTT_DOM_ADD_STEP")) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(message);
+                if (doc.RootElement.TryGetProperty("type", out var typeEl) &&
+                    typeEl.GetString() == "VTT_DOM_ADD_STEP" &&
+                    doc.RootElement.TryGetProperty("data", out var dataEl))
+                {
+                    return dataEl.TryGetProperty("step", out var sEl) ? sEl.GetString() : null;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>
+        /// Parses an incoming WebMessage string to check if it contains a VTT_DOM_INSPECT_CANCEL payload.
+        /// </summary>
+        public static bool TryParseDomInspectCancelMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message) || !message.Contains("VTT_DOM_INSPECT_CANCEL")) return false;
+            try
+            {
+                using var doc = JsonDocument.Parse(message);
+                return doc.RootElement.TryGetProperty("type", out var typeEl) && typeEl.GetString() == "VTT_DOM_INSPECT_CANCEL";
+            }
+            catch { }
+            return false;
         }
 
         /// <summary>

@@ -175,6 +175,26 @@
                                 </Border>
                                 <Border x:Name="BodyDom" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
                                     <StackPanel Orientation="Vertical">
+                                        <!-- Persistent DOM Inspector Toggle Bar -->
+                                        <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="0,0,0,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Text="ELEMENT INSPECTOR" FontSize="9" FontWeight="ExtraBold" Foreground="{StaticResource Subtext0Brush}"/>
+                                                    <TextBlock x:Name="TxtDomStatus" Text="Active — hover &amp; click elements" FontSize="9.5" Foreground="{StaticResource AccentBrush}"/>
+                                                </StackPanel>
+                                                <Button x:Name="BtnToggleDomInspect" Grid.Column="1" Style="{StaticResource SecondaryButton}" Padding="7,3" Click="BtnToggleDomInspect_Click" ToolTip="Toggle continuous element inspection on or off">
+                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <Ellipse x:Name="DotDomInspectActive" Width="7" Height="7" Fill="#10B981" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                                        <TextBlock x:Name="TxtToggleDomInspectLabel" Text="Active (ON)" FontWeight="Bold" FontSize="9.5" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+
                                         <!-- Picked Readout & Inline Comment Box -->
                                         <StackPanel x:Name="DomPickedContainer" Visibility="Collapsed" Margin="0,0,0,8">
                                             <!-- Element Details Card -->
@@ -217,13 +237,13 @@
                                                                      PreviewKeyDown="TxtDomComment_PreviewKeyDown"
                                                                      TextChanged="TxtDomComment_TextChanged"/>
                                                             <TextBlock x:Name="TxtDomCommentWatermark"
-                                                                       Text="Type comment... (Shift+Enter for newline, Enter to send to bug list)"
-                                                                       FontSize="10"
-                                                                       Foreground="{StaticResource Subtext1Brush}"
-                                                                       FontStyle="Italic"
-                                                                       IsHitTestVisible="False"
-                                                                       VerticalAlignment="Top"
-                                                                       Margin="2,2,0,0"/>
+                                                                        Text="Type comment... (Shift+Enter for newline, Enter to send to bug list)"
+                                                                        FontSize="10"
+                                                                        Foreground="{StaticResource Subtext1Brush}"
+                                                                        FontStyle="Italic"
+                                                                        IsHitTestVisible="False"
+                                                                        VerticalAlignment="Top"
+                                                                        Margin="2,2,0,0"/>
                                                         </Grid>
                                                     </Border>
                                                     <DockPanel LastChildFill="False">
@@ -246,13 +266,7 @@
                                             </WrapPanel>
                                         </StackPanel>
 
-                                        <TextBlock x:Name="TxtDomEmpty" Text="No element selected." FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,6"/>
-                                        <Button x:Name="BtnPickElement" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" FontSize="10.5" Padding="8,5" Click="BtnPickElement_Click">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="&#xE7A8;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,0,6,0"/>
-                                                <TextBlock x:Name="TxtPickElementLabel" Text="Pick Element" FontWeight="Bold"/>
-                                            </StackPanel>
-                                        </Button>
+                                        <TextBlock x:Name="TxtDomEmpty" Text="Hover over the page to inspect elements, or click to lock and add a note directly on the element." FontSize="9.5" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap" Margin="0,2,0,0"/>
                                     </StackPanel>
                                 </Border>
 

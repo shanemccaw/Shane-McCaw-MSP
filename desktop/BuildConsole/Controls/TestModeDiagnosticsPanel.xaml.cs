@@ -26,7 +26,7 @@ namespace BuildConsole.Controls
         private bool _isExpanded;
 
         private DomElementInfo? _lastInspectedElement;
-        private bool _isPickingElement;
+        private bool _isDomInspectorActive = true;
         private AccessibilityAuditReport _lastA11yReport = new();
         private int _baselineDomNodeCount;
 
@@ -88,6 +88,10 @@ namespace BuildConsole.Controls
                     }
                     catch { }
                     _ = VisualTestTrackerTelemetry.InjectObserverAsync(_activeWebView);
+                    if (_isDomInspectorActive)
+                    {
+                        _ = VisualTestTrackerTelemetry.EnableDomInspectorAsync(_activeWebView);
+                    }
                     UpdateTelemetry();
                 }
                 else
@@ -103,7 +107,7 @@ namespace BuildConsole.Controls
 
         private void ActiveWebView_CoreWebView2InitializationCompleted(object? sender, CoreWebView2InitializationCompletedEventArgs e)
         {
-            if (_activeWebView?.CoreWebView2 != null)
+            if (e.IsSuccess && _activeWebView?.CoreWebView2 != null)
             {
                 try
                 {
@@ -112,6 +116,10 @@ namespace BuildConsole.Controls
                 }
                 catch { }
                 _ = VisualTestTrackerTelemetry.InjectObserverAsync(_activeWebView);
+                if (_isDomInspectorActive)
+                {
+                    _ = VisualTestTrackerTelemetry.EnableDomInspectorAsync(_activeWebView);
+                }
                 UpdateTelemetry();
             }
         }
@@ -142,6 +150,43 @@ namespace BuildConsole.Controls
 
                 if (!string.IsNullOrEmpty(message))
                 {
+                    // 1. Check for in-page quick bug submit (Enter from note card)
+                    var bugSubmit = VisualTestTrackerTelemetry.TryParseDomBugSubmitMessage(message);
+                    if (bugSubmit != null)
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            TxtDomComment.Clear();
+                            _lastInspectedElement = null;
+                            DomPickedContainer.Visibility = Visibility.Collapsed;
+                            TxtDomEmpty.Visibility = Visibility.Visible;
+                            BugSubmittedFromDomInspector?.Invoke(bugSubmit.Value.Comment, bugSubmit.Value.Element);
+                        });
+                        return;
+                    }
+
+                    // 2. Check for + Step from note card
+                    var step = VisualTestTrackerTelemetry.TryParseDomAddStepMessage(message);
+                    if (!string.IsNullOrEmpty(step))
+                    {
+                        Dispatcher.Invoke(() => AddToReproStepsRequested?.Invoke(step));
+                        return;
+                    }
+
+                    // 3. Check for in-page note cancel (Esc from note card)
+                    if (VisualTestTrackerTelemetry.TryParseDomInspectCancelMessage(message))
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            TxtDomComment.Clear();
+                            _lastInspectedElement = null;
+                            DomPickedContainer.Visibility = Visibility.Collapsed;
+                            TxtDomEmpty.Visibility = Visibility.Visible;
+                        });
+                        return;
+                    }
+
+                    // 4. Check for element inspection hover/click
                     var domInfo = VisualTestTrackerTelemetry.TryParseDomInspectMessage(message);
                     if (domInfo != null)
                     {
@@ -165,6 +210,8 @@ namespace BuildConsole.Controls
                             {
                                 if (rectEl.TryGetProperty("width", out var w)) info.Width = w.GetDouble();
                                 if (rectEl.TryGetProperty("height", out var h)) info.Height = h.GetDouble();
+                                if (rectEl.TryGetProperty("left", out var l)) info.Left = l.GetDouble();
+                                if (rectEl.TryGetProperty("top", out var tp)) info.Top = tp.GetDouble();
                             }
                             Dispatcher.Invoke(() => HandleDomElementInspected(info));
                             return;
@@ -287,7 +334,7 @@ namespace BuildConsole.Controls
         // DOM Inspector
         // ═══════════════════════════════════════════════════════════════════
 
-        private async void BtnPickElement_Click(object sender, RoutedEventArgs e)
+        private async void BtnToggleDomInspect_Click(object sender, RoutedEventArgs e)
         {
             if (_activeWebView?.CoreWebView2 == null)
             {
@@ -295,24 +342,40 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            if (_isPickingElement)
-            {
-                _isPickingElement = false;
-                TxtPickElementLabel.Text = _lastInspectedElement != null ? "Pick Another" : "Pick Element";
-                await VisualTestTrackerTelemetry.DisableDomInspectorAsync(_activeWebView);
-                return;
-            }
+            _isDomInspectorActive = !_isDomInspectorActive;
+            UpdateDomInspectToggleUi();
 
-            _isPickingElement = true;
-            TxtPickElementLabel.Text = "Cancel Pick";
-            await VisualTestTrackerTelemetry.EnableDomInspectorAsync(_activeWebView);
+            if (_isDomInspectorActive)
+            {
+                await VisualTestTrackerTelemetry.EnableDomInspectorAsync(_activeWebView);
+            }
+            else
+            {
+                await VisualTestTrackerTelemetry.DisableDomInspectorAsync(_activeWebView);
+            }
+        }
+
+        private void UpdateDomInspectToggleUi()
+        {
+            if (_isDomInspectorActive)
+            {
+                DotDomInspectActive.Fill = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#10B981"));
+                TxtToggleDomInspectLabel.Text = "Active (ON)";
+                TxtDomStatus.Text = "Active — hover & click elements";
+                TxtDomStatus.Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush");
+            }
+            else
+            {
+                DotDomInspectActive.Fill = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#64748B"));
+                TxtToggleDomInspectLabel.Text = "Paused (OFF)";
+                TxtDomStatus.Text = "Paused — inspector inactive";
+                TxtDomStatus.Foreground = (System.Windows.Media.Brush)FindResource("Subtext1Brush");
+            }
         }
 
         private void HandleDomElementInspected(DomElementInfo info)
         {
             _lastInspectedElement = info;
-            _isPickingElement = false;
-            TxtPickElementLabel.Text = "Pick Another";
             TxtDomEmpty.Visibility = Visibility.Collapsed;
             DomPickedContainer.Visibility = Visibility.Visible;
 
@@ -404,26 +467,29 @@ namespace BuildConsole.Controls
             _lastInspectedElement = null;
             DomPickedContainer.Visibility = Visibility.Collapsed;
             TxtDomEmpty.Visibility = Visibility.Visible;
-            TxtPickElementLabel.Text = "Pick Element";
 
-            if (_isPickingElement)
+            if (_activeWebView?.CoreWebView2 != null)
             {
-                _isPickingElement = false;
-                if (_activeWebView?.CoreWebView2 != null)
-                {
-                    await VisualTestTrackerTelemetry.DisableDomInspectorAsync(_activeWebView);
-                }
+                await VisualTestTrackerTelemetry.DismissDomNoteAsync(_activeWebView);
             }
         }
 
-        private void SubmitDomBug()
+        private async void SubmitDomBug()
         {
             if (_lastInspectedElement == null) return;
 
             string comment = TxtDomComment.Text.Trim();
-            BugSubmittedFromDomInspector?.Invoke(comment, _lastInspectedElement);
+            var elem = _lastInspectedElement;
+            _lastInspectedElement = null;
 
             TxtDomComment.Clear();
+            DomPickedContainer.Visibility = Visibility.Collapsed;
+            TxtDomEmpty.Visibility = Visibility.Visible;
+
+            if (_activeWebView?.CoreWebView2 != null)
+            {
+                await VisualTestTrackerTelemetry.DismissDomNoteAsync(_activeWebView);
+            }
 
             // Show confirmation badge briefly
             TxtDomBugSuccess.Visibility = Visibility.Visible;
@@ -434,6 +500,8 @@ namespace BuildConsole.Controls
                 TxtDomBugSuccess.Visibility = Visibility.Collapsed;
             };
             timer.Start();
+
+            BugSubmittedFromDomInspector?.Invoke(comment, elem);
         }
 
         private void BtnDomAddToSteps_Click(object sender, RoutedEventArgs e)

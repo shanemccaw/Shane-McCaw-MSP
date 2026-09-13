@@ -59,7 +59,7 @@ namespace BuildConsole
                 TestModeComposerPanel.AppendNote(note);
             };
 
-            TestModeDiagnosticsPanel.BugSubmittedFromDomInspector += (comment, element) =>
+            TestModeDiagnosticsPanel.BugSubmittedFromDomInspector += async (comment, element) =>
             {
                 string notes = string.IsNullOrWhiteSpace(comment)
                     ? $"DOM Element issue: `{element.Selector}`"
@@ -90,8 +90,44 @@ namespace BuildConsole
                     Tags = new List<string> { "dom-inspector", element.Tag.ToLowerInvariant() }
                 };
 
+                // Automatically capture cropped element screenshot and attach to bug report
+                var (activeWv, _) = GetActiveEditorTabWebView();
+                if (activeWv?.CoreWebView2 != null && element.Width > 0 && element.Height > 0)
+                {
+                    try
+                    {
+                        var source = PresentationSource.FromVisual(activeWv);
+                        double dpiX = source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+                        double dpr = element.DevicePixelRatio > 0 ? element.DevicePixelRatio : dpiX;
+
+                        int pad = (int)Math.Round(8 * dpr);
+                        int x = (int)Math.Max(0, Math.Round(element.Left * dpr) - pad);
+                        int y = (int)Math.Max(0, Math.Round(element.Top * dpr) - pad);
+                        int w = (int)Math.Round(element.Width * dpr) + pad * 2;
+                        int h = (int)Math.Round(element.Height * dpr) + pad * 2;
+                        var cropRect = new Int32Rect(x, y, w, h);
+
+                        string url = activeWv.Source?.ToString() ?? "";
+                        string matchedBase = MatchesWatchedVisualTestBaseUrl(url) ?? "localhost:5175";
+                        int baseIdx = url.IndexOf(matchedBase, StringComparison.OrdinalIgnoreCase);
+                        string pagePath = baseIdx >= 0 ? url.Substring(baseIdx + matchedBase.Length) : activeWv.Source?.PathAndQuery ?? "/";
+                        if (string.IsNullOrEmpty(pagePath)) pagePath = "/";
+
+                        var shotResult = await VisualTestTrackerCapture.CaptureRegionAsync(activeWv, matchedBase, pagePath, cropRect);
+                        if (shotResult.Success && !string.IsNullOrEmpty(shotResult.FilePath))
+                        {
+                            bug.Screenshots.Add(shotResult.FilePath);
+                            TestModeComposerPanel.StageScreenshot(shotResult.FilePath);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        BuildConsole.Services.ActivityLog.Log("visual-tracker", $"Auto element screenshot failed: {ex.Message}");
+                    }
+                }
+
                 TestModeComposerPanel.AddBug(bug);
-                ToastEngine.Success("Bug Logged", $"Added bug for <{element.Tag.ToLowerInvariant()}> to bug list.");
+                ToastEngine.Success("Bug Logged", $"Added bug for <{element.Tag.ToLowerInvariant()}> with element screenshot.");
             };
 
             TestModeDiagnosticsPanel.ApiHelperRequested += OpenApiHelperForTestMode;

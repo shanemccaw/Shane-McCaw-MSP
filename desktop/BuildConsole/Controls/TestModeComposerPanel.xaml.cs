@@ -35,6 +35,9 @@ namespace BuildConsole.Controls
 
         public string TimestampDisplay => CreatedAt.ToString("HH:mm:ss");
         public string StatusButtonLabel => IsResolved ? "✓ Resolved" : "● Open";
+        public bool HasScreenshot => Screenshots != null && Screenshots.Count > 0;
+        public Visibility HasScreenshotVisibility => HasScreenshot ? Visibility.Visible : Visibility.Collapsed;
+        public string? FirstScreenshot => Screenshots?.FirstOrDefault();
 
         public Brush SeverityBackground
         {
