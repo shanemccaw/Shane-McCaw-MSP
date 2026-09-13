@@ -597,11 +597,12 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
       foreign: scan.foreignLinks.length,
       dangling: scan.danglingLinks.length,
       poisonedBins: scan.poisonedBins.length,
+      missingTrees: scan.missingTrees.length,
     };
     if (!scan.clean) {
       console.warn(
         `[worktree-cleanup] WARNING: shared store at ${config.mainRepoRoot} is POISONED after removing ${wtPath} ` +
-          `(foreign=${scan.foreignLinks.length}, dangling=${scan.danglingLinks.length}, poisonedBins=${scan.poisonedBins.length}). ` +
+          `(foreign=${scan.foreignLinks.length}, dangling=${scan.danglingLinks.length}, poisonedBins=${scan.poisonedBins.length}, missingTrees=${scan.missingTrees.length}). ` +
           `Auto-repairing now (Git #1980) — see storeAutoRepair in this log entry.`
       );
       let repairRes = null;
