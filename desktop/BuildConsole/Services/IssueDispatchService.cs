@@ -111,6 +111,20 @@ namespace BuildConsole.Services
         public static async Task<DispatchAttemptResult> DispatchAsync(BuildQueuePostgresClient? db, int issueNumber)
         {
             var settings = BuildConsoleSettings.Load();
+            // Git #3901 — a degraded read (settings.json exists but was mid-replace / unreadable) hands
+            // back a blank PAT that used to surface as "No GitHub PAT configured" with a real PAT set.
+            // Give the file a moment and read again before concluding anything about the PAT.
+            for (int attempt = 1; attempt <= 3 && settings.IsDegradedRead; attempt++)
+            {
+                await Task.Delay(250 * attempt);
+                settings = BuildConsoleSettings.Load();
+            }
+            if (settings.IsDegradedRead)
+                return new DispatchAttemptResult
+                {
+                    Outcome = DispatchOutcome.Failed,
+                    Message = "Couldn't read settings.json right now (see ActivityLog settings.load) — your PAT is not the problem. Try the dispatch again.",
+                };
             if (!settings.HasGitHubPat)
                 return new DispatchAttemptResult
                 {

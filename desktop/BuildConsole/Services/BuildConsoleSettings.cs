@@ -989,6 +989,12 @@ namespace BuildConsole.Services
         private enum LoadOrigin { Constructed, FromFile, MissingFile, Degraded }
         private LoadOrigin _origin = LoadOrigin.Constructed;
 
+        /// <summary>Git #3901 — true when Load() could not read an existing settings.json and handed back
+        /// blank defaults. A blank GitHubPat on such an instance means "unreadable right now", not
+        /// "no PAT configured" — callers that report the missing PAT to the user check this first.</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool IsDegradedRead => _origin == LoadOrigin.Degraded;
+
         /// <summary>Git #2770 — the real read/deserialize/backfill body, factored out of <see cref="Load"/>
         /// so the retry loop above can re-invoke it. Throws on a transient IO/parse failure (the retry
         /// loop catches and retries); a genuinely-missing file is handled by the caller before this runs.</summary>
