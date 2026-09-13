@@ -402,7 +402,17 @@ router.post("/auth/mfa/totp/verify-setup", requireAuth, mfaLimiter, async (req: 
     return;
   }
 
-  const result = verifySync({ token: code.replace(/\s/g, ""), secret, epochTolerance: 30 });
+  // Git #3863 — otplib's verifySync throws (rather than returning { valid: false })
+  // on a malformed/undersized secret or a token that isn't 6 digits. `secret` here
+  // is caller-supplied (round-tripped from /totp/setup's response), so a wrong code
+  // paired with a malformed secret must still resolve to the same 400, not an
+  // unhandled 500.
+  let result: { valid: boolean };
+  try {
+    result = verifySync({ token: code.replace(/\s/g, ""), secret, epochTolerance: 30 });
+  } catch {
+    result = { valid: false };
+  }
   if (!result.valid) {
     res.status(400).json({ error: "Invalid verification code. Please try again." });
     return;
