@@ -65,22 +65,91 @@ namespace BuildConsole.Services
     }
 
     /// <summary>
+    /// Lightweight bug record persisted to AppData so History can reconstruct
+    /// BugCardViewModel objects even when a session has never been synced to Git.
+    /// </summary>
+    public sealed class PersistedBugRecord
+    {
+        public string Id { get; set; } = "";
+        public string Severity { get; set; } = "Bug";
+        public string Notes { get; set; } = "";
+        public string Route { get; set; } = "";
+        public string Steps { get; set; } = "";
+        public string Expected { get; set; } = "";
+        public string Actual { get; set; } = "";
+        public List<string> Tags { get; set; } = new();
+        public List<string> Screenshots { get; set; } = new();
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public bool IsResolved { get; set; }
+        public bool IsSynced { get; set; }
+        public string SyncedSessionId { get; set; } = "";
+    }
+
+    /// <summary>
     /// Persistent store for test sessions, saving to %AppData%\BuildConsole\visual-test-tracker\sessions.json.
     /// Manages per-page active sessions, session switching, and historical audit logs.
     /// </summary>
     public static class VisualTestTrackerSessionStore
     {
-        private static string SessionsFilePath
+        private static string SessionsFilePath => Path.Combine(TrackingDir, "sessions.json");
+
+        private static readonly object _lock = new();
+
+        private static string TrackingDir
         {
             get
             {
                 var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole", "visual-test-tracker");
                 Directory.CreateDirectory(dir);
-                return Path.Combine(dir, "sessions.json");
+                return dir;
             }
         }
 
-        private static readonly object _lock = new();
+        private static string BugsFilePath(string sessionId)
+            => Path.Combine(TrackingDir, $"bugs-{sessionId}.json");
+
+        /// <summary>
+        /// Persists the full bug list for a session to AppData so History can load them back
+        /// even when the session has never been synced via End &amp; Sync.
+        /// </summary>
+        public static void SaveSessionBugs(string sessionId, IEnumerable<PersistedBugRecord> bugs)
+        {
+            if (string.IsNullOrEmpty(sessionId)) return;
+            lock (_lock)
+            {
+                try
+                {
+                    var opts = new JsonSerializerOptions { WriteIndented = true };
+                    File.WriteAllText(BugsFilePath(sessionId), JsonSerializer.Serialize(bugs.ToList(), opts));
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("visual-test-tracker", $"SaveSessionBugs error: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Loads the persisted bug records for a session from AppData.
+        /// Returns an empty list when nothing has been saved yet.
+        /// </summary>
+        public static List<PersistedBugRecord> LoadSessionBugs(string sessionId)
+        {
+            if (string.IsNullOrEmpty(sessionId)) return new();
+            lock (_lock)
+            {
+                try
+                {
+                    var path = BugsFilePath(sessionId);
+                    if (!File.Exists(path)) return new();
+                    return JsonSerializer.Deserialize<List<PersistedBugRecord>>(File.ReadAllText(path)) ?? new();
+                }
+                catch
+                {
+                    return new();
+                }
+            }
+        }
 
         public static List<VisualTestTrackerSession> LoadAll()
         {

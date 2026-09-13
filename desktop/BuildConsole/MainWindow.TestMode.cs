@@ -29,6 +29,10 @@ namespace BuildConsole
         private Visibility _savedSidebarSplitterVisibility = Visibility.Visible;
         private bool _testModeInitialized;
 
+        // The VisualTestTrackerSession.SessionId (GUID) for the active test-mode session,
+        // used to persist bug cards to AppData so History can load them back.
+        private string _activeTestSessionId = "";
+
         /// <summary>Toggle Test Mode on or off.</summary>
         public void ToggleTestMode()
         {
@@ -166,6 +170,13 @@ namespace BuildConsole
             {
                 await ExecuteEndSessionSyncAsync();
             };
+
+            // Auto-persist bugs to AppData whenever the bug list changes so
+            // History can load them back even before End & Sync is run.
+            TestModeComposerPanel.AllBugs.CollectionChanged += (s, e) =>
+            {
+                PersistTestModeBugs();
+            };
         }
 
         /// <summary>
@@ -211,6 +222,9 @@ namespace BuildConsole
             // 4. Update route & attach active WebView2
             UpdateTestModeActiveTab();
 
+            // 5. Establish (or resume) the active session record so bugs can be persisted
+            RefreshActiveTestSession();
+
             ToastEngine.Success("Test Mode", "Entered Test Mode — Left diagnostics rail, 540px test composer active. (Press Ctrl+Shift+T or click ✕ to exit)");
         }
 
@@ -244,6 +258,8 @@ namespace BuildConsole
             _queuePinned = _savedQueuePinned;
             ColQueue.Width = _savedColQueueWidth.Value > 0 ? _savedColQueueWidth : new GridLength(DefaultQueueWidth);
             UpdateColQueueWidth();
+
+            _activeTestSessionId = "";
 
             ToastEngine.Success("Test Mode", "Exited Test Mode — Workspace restored to previous layout.");
         }
@@ -282,6 +298,63 @@ namespace BuildConsole
             {
                 TestModeComposerPanel.SetActiveRoute("No tracked tab active — navigate a watched tab");
                 TestModeDiagnosticsPanel.ClearActiveTab();
+            }
+        }
+
+        /// <summary>
+        /// Gets or creates the VisualTestTrackerSession for the current test-mode route
+        /// and stores its SessionId in _activeTestSessionId for bug persistence.
+        /// </summary>
+        private void RefreshActiveTestSession()
+        {
+            try
+            {
+                string route = TestModeComposerPanel.ActiveRoute;
+                if (string.IsNullOrWhiteSpace(route) || route.StartsWith("No tracked tab", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Use a generic session keyed to the composer session start time
+                    route = "/";
+                }
+                var session = VisualTestTrackerSessionStore.GetOrCreateActiveSession("test-mode", route);
+                _activeTestSessionId = session.SessionId;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("visual-test-tracker", $"RefreshActiveTestSession error: {ex.Message}");
+                _activeTestSessionId = Guid.NewGuid().ToString("N");
+            }
+        }
+
+        /// <summary>
+        /// Persists the current AllBugs collection to AppData as a bugs-&lt;sessionId&gt;.json file.
+        /// Called automatically whenever the bug collection changes so History can always load them back.
+        /// </summary>
+        private void PersistTestModeBugs()
+        {
+            if (string.IsNullOrEmpty(_activeTestSessionId)) return;
+            try
+            {
+                var records = TestModeComposerPanel.AllBugs.Select(b => new PersistedBugRecord
+                {
+                    Id = b.Id,
+                    Severity = b.Severity,
+                    Notes = b.Notes,
+                    Route = b.Route,
+                    Steps = b.Steps,
+                    Expected = b.Expected,
+                    Actual = b.Actual,
+                    Tags = b.Tags != null ? new List<string>(b.Tags) : new(),
+                    Screenshots = b.Screenshots != null ? new List<string>(b.Screenshots) : new(),
+                    CreatedAt = b.CreatedAt,
+                    IsResolved = b.IsResolved,
+                    IsSynced = b.IsSynced,
+                    SyncedSessionId = b.SyncedSessionId
+                });
+                VisualTestTrackerSessionStore.SaveSessionBugs(_activeTestSessionId, records);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("visual-test-tracker", $"PersistTestModeBugs error: {ex.Message}");
             }
         }
 
