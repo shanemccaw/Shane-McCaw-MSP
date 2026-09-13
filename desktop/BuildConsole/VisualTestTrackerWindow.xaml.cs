@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -52,11 +55,18 @@ namespace BuildConsole
         private List<VisualTestTrackerEntry> _currentEntries = new();
         private string _activeFilter = "All"; // "All", "Open", "Resolved"
 
+        // Phase 6: Notes & Documentation Tools state
+        private string _notesMode = "page"; // "page" or "global"
+        private string _globalNotes = "";
+        private bool _isPreviewActive;
+
         private ApiHelperWindow? _apiHelperWindow;
 
         public VisualTestTrackerWindow()
         {
             InitializeComponent();
+
+            _globalNotes = VisualTestTrackerDraftStore.LoadGlobalNotes();
 
             _autoSaveDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
             _autoSaveDebounce.Tick += (s, e) =>
@@ -141,13 +151,20 @@ namespace BuildConsole
         public async void OnTrackedNavigation(WebView2 webView, string baseUrl, string pagePath)
         {
             // Auto-save any previous page's draft before switching
-            if (!string.IsNullOrWhiteSpace(_activeBaseUrl) &&
-                (!string.IsNullOrWhiteSpace(NotesBox.Text) || !string.IsNullOrWhiteSpace(StepsBox.Text) || _stagedScreenshots.Count > 0))
+            if (!string.IsNullOrWhiteSpace(_activeBaseUrl))
             {
-                VisualTestTrackerDraftStore.SaveDraft(
-                    _activeBaseUrl, _activePagePath,
-                    NotesBox.Text, StepsBox.Text, ExpectedBox.Text, ActualBox.Text, TagsBox.Text,
-                    _selectedSeverity, _stagedScreenshots);
+                if (_notesMode == "global")
+                {
+                    _globalNotes = NotesBox.Text;
+                    VisualTestTrackerDraftStore.SaveGlobalNotes(_globalNotes);
+                }
+                else if (!string.IsNullOrWhiteSpace(NotesBox.Text) || !string.IsNullOrWhiteSpace(StepsBox.Text) || _stagedScreenshots.Count > 0)
+                {
+                    VisualTestTrackerDraftStore.SaveDraft(
+                        _activeBaseUrl, _activePagePath,
+                        NotesBox.Text, StepsBox.Text, ExpectedBox.Text, ActualBox.Text, TagsBox.Text,
+                        _selectedSeverity, _stagedScreenshots);
+                }
             }
 
             _activeWebView = webView;
@@ -189,7 +206,10 @@ namespace BuildConsole
                 var draft = VisualTestTrackerDraftStore.GetDraft(baseUrl, pagePath);
                 if (draft != null)
                 {
-                    NotesBox.Text = draft.Notes;
+                    if (_notesMode == "page")
+                    {
+                        NotesBox.Text = draft.Notes;
+                    }
                     StepsBox.Text = draft.StepsToReproduce;
                     ExpectedBox.Text = draft.ExpectedBehavior;
                     ActualBox.Text = draft.ActualBehavior;
@@ -205,11 +225,14 @@ namespace BuildConsole
                     _stagedScreenshots.Clear();
                     _stagedScreenshots.AddRange(draft.StagedScreenshots);
                     RenderStagedThumbnails();
-                    AutoSaveIndicator.Text = "✓ Draft Restored";
+                    AutoSaveIndicator.Text = _notesMode == "global" ? "✓ Global Notes" : "✓ Draft Restored";
                 }
                 else
                 {
-                    NotesBox.Text = _activePage?.Notes ?? "";
+                    if (_notesMode == "page")
+                    {
+                        NotesBox.Text = _activePage?.Notes ?? "";
+                    }
                     StepsBox.Text = "";
                     ExpectedBox.Text = "";
                     ActualBox.Text = "";
@@ -218,7 +241,12 @@ namespace BuildConsole
                     SetSeveritySelection("Bug");
                     _stagedScreenshots.Clear();
                     RenderStagedThumbnails();
-                    AutoSaveIndicator.Text = "✓ Ready";
+                    AutoSaveIndicator.Text = _notesMode == "global" ? "✓ Global Notes" : "✓ Ready";
+                }
+
+                if (_isPreviewActive)
+                {
+                    UpdateNotesPreview();
                 }
 
                 ShowMessage("", isError: false);
@@ -239,13 +267,20 @@ namespace BuildConsole
         /// <summary>Called when the active tab is no longer on a watched URL.</summary>
         public void ClearActiveTab()
         {
-            if (!string.IsNullOrWhiteSpace(_activeBaseUrl) &&
-                (!string.IsNullOrWhiteSpace(NotesBox.Text) || !string.IsNullOrWhiteSpace(StepsBox.Text) || _stagedScreenshots.Count > 0))
+            if (!string.IsNullOrWhiteSpace(_activeBaseUrl))
             {
-                VisualTestTrackerDraftStore.SaveDraft(
-                    _activeBaseUrl, _activePagePath,
-                    NotesBox.Text, StepsBox.Text, ExpectedBox.Text, ActualBox.Text, TagsBox.Text,
-                    _selectedSeverity, _stagedScreenshots);
+                if (_notesMode == "global")
+                {
+                    _globalNotes = NotesBox.Text;
+                    VisualTestTrackerDraftStore.SaveGlobalNotes(_globalNotes);
+                }
+                else if (!string.IsNullOrWhiteSpace(NotesBox.Text) || !string.IsNullOrWhiteSpace(StepsBox.Text) || _stagedScreenshots.Count > 0)
+                {
+                    VisualTestTrackerDraftStore.SaveDraft(
+                        _activeBaseUrl, _activePagePath,
+                        NotesBox.Text, StepsBox.Text, ExpectedBox.Text, ActualBox.Text, TagsBox.Text,
+                        _selectedSeverity, _stagedScreenshots);
+                }
             }
 
             _activeWebView = null;
@@ -279,7 +314,7 @@ namespace BuildConsole
         private void SetControlsEnabled(bool enabled)
         {
             GoodCheckBox.IsEnabled = enabled;
-            NotesBox.IsEnabled = enabled;
+            NotesBox.IsEnabled = enabled || _notesMode == "global";
             TagsBox.IsEnabled = enabled;
             StepsBox.IsEnabled = enabled;
             ExpectedBox.IsEnabled = enabled;
@@ -337,18 +372,511 @@ namespace BuildConsole
 
         private void PerformAutoSave()
         {
-            if (string.IsNullOrWhiteSpace(_activeBaseUrl)) return;
             try
             {
-                VisualTestTrackerDraftStore.SaveDraft(
-                    _activeBaseUrl, _activePagePath,
-                    NotesBox.Text, StepsBox.Text, ExpectedBox.Text, ActualBox.Text, TagsBox.Text,
-                    _selectedSeverity, _stagedScreenshots);
-                AutoSaveIndicator.Text = "✓ Auto-Saved";
+                if (_notesMode == "global")
+                {
+                    _globalNotes = NotesBox.Text;
+                    VisualTestTrackerDraftStore.SaveGlobalNotes(_globalNotes);
+                    AutoSaveIndicator.Text = "✓ Global Saved";
+                }
+                else
+                {
+                    if (string.IsNullOrWhiteSpace(_activeBaseUrl)) return;
+                    VisualTestTrackerDraftStore.SaveDraft(
+                        _activeBaseUrl, _activePagePath,
+                        NotesBox.Text, StepsBox.Text, ExpectedBox.Text, ActualBox.Text, TagsBox.Text,
+                        _selectedSeverity, _stagedScreenshots);
+                    AutoSaveIndicator.Text = "✓ Auto-Saved";
+                }
+
+                if (_isPreviewActive)
+                {
+                    UpdateNotesPreview();
+                }
             }
             catch
             {
                 AutoSaveIndicator.Text = "Save error";
+            }
+        }
+
+        // ── Phase 6: Notes & Documentation Tools ─────────────────────────────────
+
+        private void BtnTabNotes_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not string mode) return;
+            if (string.Equals(_notesMode, mode, StringComparison.OrdinalIgnoreCase)) return;
+
+            // Save active notes before switching
+            if (_notesMode == "global")
+            {
+                _globalNotes = NotesBox.Text;
+                VisualTestTrackerDraftStore.SaveGlobalNotes(_globalNotes);
+            }
+            else
+            {
+                PerformAutoSave();
+            }
+
+            _notesMode = mode.ToLowerInvariant();
+
+            _suppressEvents = true;
+            try
+            {
+                if (_notesMode == "global")
+                {
+                    BtnTabNotesPage.Foreground = (Brush)FindResource("Subtext1Brush");
+                    BtnTabNotesPage.FontWeight = FontWeights.Normal;
+                    BtnTabNotesGlobal.Foreground = (Brush)FindResource("AccentBrush");
+                    BtnTabNotesGlobal.FontWeight = FontWeights.SemiBold;
+
+                    _globalNotes = VisualTestTrackerDraftStore.LoadGlobalNotes();
+                    NotesBox.Text = _globalNotes;
+                    NotesBox.IsEnabled = true;
+                    AutoSaveIndicator.Text = "✓ Global Notes";
+                }
+                else
+                {
+                    BtnTabNotesPage.Foreground = (Brush)FindResource("AccentBrush");
+                    BtnTabNotesPage.FontWeight = FontWeights.SemiBold;
+                    BtnTabNotesGlobal.Foreground = (Brush)FindResource("Subtext1Brush");
+                    BtnTabNotesGlobal.FontWeight = FontWeights.Normal;
+
+                    var draft = VisualTestTrackerDraftStore.GetDraft(_activeBaseUrl, _activePagePath);
+                    NotesBox.Text = draft != null ? draft.Notes : (_activePage?.Notes ?? "");
+                    NotesBox.IsEnabled = _activeWebView != null;
+                    AutoSaveIndicator.Text = "✓ Page Notes";
+                }
+
+                if (_isPreviewActive)
+                {
+                    UpdateNotesPreview();
+                }
+            }
+            finally
+            {
+                _suppressEvents = false;
+            }
+        }
+
+        private void BtnMdFormat_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not string tag) return;
+            if (_isPreviewActive)
+            {
+                ToggleNotesPreview(false);
+            }
+
+            string selectedText = NotesBox.SelectedText;
+            int selectionStart = NotesBox.SelectionStart;
+            int selectionLength = NotesBox.SelectionLength;
+            string replacement = "";
+            int newCaretPos = selectionStart;
+
+            switch (tag.ToLowerInvariant())
+            {
+                case "bold":
+                    if (string.IsNullOrEmpty(selectedText))
+                    {
+                        replacement = "**bold text**";
+                        newCaretPos = selectionStart + 2;
+                        selectionLength = 9;
+                    }
+                    else
+                    {
+                        replacement = $"**{selectedText}**";
+                        newCaretPos = selectionStart + replacement.Length;
+                        selectionLength = 0;
+                    }
+                    break;
+
+                case "italic":
+                    if (string.IsNullOrEmpty(selectedText))
+                    {
+                        replacement = "*italic text*";
+                        newCaretPos = selectionStart + 1;
+                        selectionLength = 11;
+                    }
+                    else
+                    {
+                        replacement = $"*{selectedText}*";
+                        newCaretPos = selectionStart + replacement.Length;
+                        selectionLength = 0;
+                    }
+                    break;
+
+                case "code":
+                    if (string.IsNullOrEmpty(selectedText))
+                    {
+                        replacement = "`code`";
+                        newCaretPos = selectionStart + 1;
+                        selectionLength = 4;
+                    }
+                    else
+                    {
+                        replacement = $"`{selectedText}`";
+                        newCaretPos = selectionStart + replacement.Length;
+                        selectionLength = 0;
+                    }
+                    break;
+
+                case "list":
+                    if (string.IsNullOrEmpty(selectedText))
+                    {
+                        replacement = (selectionStart == 0 || NotesBox.Text.EndsWith("\n") || NotesBox.Text.Length <= selectionStart || NotesBox.Text[Math.Max(0, selectionStart - 1)] == '\n')
+                            ? "- List item\n"
+                            : "\n- List item\n";
+                        newCaretPos = selectionStart + replacement.Length;
+                        selectionLength = 0;
+                    }
+                    else
+                    {
+                        var lines = selectedText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+                        var sbList = new StringBuilder();
+                        for (int i = 0; i < lines.Length; i++)
+                        {
+                            if (i > 0) sbList.Append("\n");
+                            sbList.Append("- ").Append(lines[i]);
+                        }
+                        replacement = sbList.ToString();
+                        newCaretPos = selectionStart + replacement.Length;
+                        selectionLength = 0;
+                    }
+                    break;
+
+                case "link":
+                    if (string.IsNullOrEmpty(selectedText))
+                    {
+                        replacement = "[link text](https://example.com)";
+                        newCaretPos = selectionStart + 1;
+                        selectionLength = 9;
+                    }
+                    else
+                    {
+                        replacement = $"[{selectedText}](https://example.com)";
+                        newCaretPos = selectionStart + selectedText.Length + 3;
+                        selectionLength = 19;
+                    }
+                    break;
+            }
+
+            if (!string.IsNullOrEmpty(replacement))
+            {
+                var text = NotesBox.Text;
+                NotesBox.Text = text.Substring(0, selectionStart) + replacement + text.Substring(selectionStart + NotesBox.SelectionLength);
+                NotesBox.Focus();
+                NotesBox.Select(newCaretPos, selectionLength);
+                PerformAutoSave();
+            }
+        }
+
+        private void BtnTogglePreview_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleNotesPreview(!_isPreviewActive);
+        }
+
+        private void ToggleNotesPreview(bool showPreview)
+        {
+            _isPreviewActive = showPreview;
+            if (_isPreviewActive)
+            {
+                UpdateNotesPreview();
+                NotesBox.Visibility = Visibility.Collapsed;
+                NotesPreviewContainer.Visibility = Visibility.Visible;
+                BtnTogglePreview.Content = "✏";
+                BtnTogglePreview.ToolTip = "Switch to Editor mode";
+            }
+            else
+            {
+                NotesPreviewContainer.Visibility = Visibility.Collapsed;
+                NotesBox.Visibility = Visibility.Visible;
+                BtnTogglePreview.Content = "👁";
+                BtnTogglePreview.ToolTip = "Switch to Markdown Preview";
+                NotesBox.Focus();
+            }
+        }
+
+        private void UpdateNotesPreview()
+        {
+            NotesPreviewText.Inlines.Clear();
+            var raw = NotesBox.Text;
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                NotesPreviewText.Inlines.Add(new Run("(Empty notes)")
+                {
+                    FontStyle = FontStyles.Italic,
+                    Foreground = (Brush)FindResource("Subtext1Brush")
+                });
+                return;
+            }
+
+            var lines = raw.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (i > 0)
+                {
+                    NotesPreviewText.Inlines.Add(new LineBreak());
+                }
+
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                if (line.StartsWith("### "))
+                {
+                    var r = new Run(line.Substring(4)) { FontWeight = FontWeights.Bold, FontSize = 12, Foreground = (Brush)FindResource("AccentBrush") };
+                    NotesPreviewText.Inlines.Add(r);
+                }
+                else if (line.StartsWith("## "))
+                {
+                    var r = new Run(line.Substring(3)) { FontWeight = FontWeights.Bold, FontSize = 13, Foreground = (Brush)FindResource("AccentBrush") };
+                    NotesPreviewText.Inlines.Add(r);
+                }
+                else if (line.StartsWith("# "))
+                {
+                    var r = new Run(line.Substring(2)) { FontWeight = FontWeights.Bold, FontSize = 14, Foreground = (Brush)FindResource("AccentBrush") };
+                    NotesPreviewText.Inlines.Add(r);
+                }
+                else if (line.StartsWith("- ") || line.StartsWith("* "))
+                {
+                    NotesPreviewText.Inlines.Add(new Run("  • ") { FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("AccentBrush") });
+                    AppendFormattedMarkdownInlines(NotesPreviewText.Inlines, line.Substring(2));
+                }
+                else if (Regex.IsMatch(line, @"^\d+\.\s"))
+                {
+                    var match = Regex.Match(line, @"^(\d+\.\s)(.*)$");
+                    NotesPreviewText.Inlines.Add(new Run(match.Groups[1].Value) { FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("AccentBrush") });
+                    AppendFormattedMarkdownInlines(NotesPreviewText.Inlines, match.Groups[2].Value);
+                }
+                else if (line.StartsWith("![") && line.Contains("](") && line.EndsWith(")"))
+                {
+                    int altEnd = line.IndexOf("](");
+                    string alt = line.Substring(2, altEnd - 2);
+                    string url = line.Substring(altEnd + 2, line.Length - altEnd - 3);
+                    var span = new Span();
+                    span.Inlines.Add(new Run("🖼 ") { FontSize = 12 });
+                    span.Inlines.Add(new Run(alt) { FontWeight = FontWeights.SemiBold, Foreground = (Brush)FindResource("AccentBrush") });
+                    span.Inlines.Add(new Run($" ({Path.GetFileName(url)})") { FontStyle = FontStyles.Italic, FontSize = 10, Foreground = (Brush)FindResource("Subtext1Brush") });
+                    NotesPreviewText.Inlines.Add(span);
+                }
+                else
+                {
+                    AppendFormattedMarkdownInlines(NotesPreviewText.Inlines, line);
+                }
+            }
+        }
+
+        private void AppendFormattedMarkdownInlines(InlineCollection inlines, string text)
+        {
+            int idx = 0;
+            while (idx < text.Length)
+            {
+                if (idx + 1 < text.Length && text[idx] == '*' && text[idx + 1] == '*')
+                {
+                    int end = text.IndexOf("**", idx + 2);
+                    if (end > idx + 1)
+                    {
+                        var boldText = text.Substring(idx + 2, end - idx - 2);
+                        inlines.Add(new Bold(new Run(boldText)));
+                        idx = end + 2;
+                        continue;
+                    }
+                }
+
+                if (text[idx] == '`')
+                {
+                    int end = text.IndexOf('`', idx + 1);
+                    if (end > idx)
+                    {
+                        var codeText = text.Substring(idx + 1, end - idx - 1);
+                        var codeRun = new Run(codeText)
+                        {
+                            FontFamily = new FontFamily("Consolas"),
+                            Background = (Brush)FindResource("Surface1Brush"),
+                            Foreground = (Brush)FindResource("TextBrush")
+                        };
+                        inlines.Add(codeRun);
+                        idx = end + 1;
+                        continue;
+                    }
+                }
+
+                if (text[idx] == '[')
+                {
+                    int closeBracket = text.IndexOf("](", idx + 1);
+                    if (closeBracket > idx)
+                    {
+                        int closeParen = text.IndexOf(')', closeBracket + 2);
+                        if (closeParen > closeBracket)
+                        {
+                            var linkText = text.Substring(idx + 1, closeBracket - idx - 1);
+                            var linkUrl = text.Substring(closeBracket + 2, closeParen - closeBracket - 2);
+                            var linkRun = new Run(linkText)
+                            {
+                                Foreground = (Brush)FindResource("AccentBrush"),
+                                TextDecorations = TextDecorations.Underline
+                            };
+                            inlines.Add(linkRun);
+                            idx = closeParen + 1;
+                            continue;
+                        }
+                    }
+                }
+
+                if (text[idx] == '*')
+                {
+                    int end = text.IndexOf('*', idx + 1);
+                    if (end > idx)
+                    {
+                        var italicText = text.Substring(idx + 1, end - idx - 1);
+                        inlines.Add(new Italic(new Run(italicText)));
+                        idx = end + 1;
+                        continue;
+                    }
+                }
+
+                int nextSpecial = text.IndexOfAny(new[] { '*', '`', '[' }, idx);
+                if (nextSpecial == -1)
+                {
+                    inlines.Add(new Run(text.Substring(idx)));
+                    break;
+                }
+                else if (nextSpecial > idx)
+                {
+                    inlines.Add(new Run(text.Substring(idx, nextSpecial - idx)));
+                    idx = nextSpecial;
+                }
+                else
+                {
+                    inlines.Add(new Run(text[idx].ToString()));
+                    idx++;
+                }
+            }
+        }
+
+        private void AutoLinkScreenshot(string filePath)
+        {
+            if (AutoLinkShotsCheckBox.IsChecked != true) return;
+            int shotNumber = _stagedScreenshots.Count;
+            string linkText = $"\n![Screenshot {shotNumber}]({filePath})\n";
+
+            int caret = NotesBox.CaretIndex;
+            if (caret >= 0 && caret <= NotesBox.Text.Length)
+            {
+                NotesBox.Text = NotesBox.Text.Insert(caret, linkText);
+                NotesBox.CaretIndex = caret + linkText.Length;
+            }
+            else
+            {
+                NotesBox.Text += linkText;
+                NotesBox.CaretIndex = NotesBox.Text.Length;
+            }
+
+            if (_isPreviewActive)
+            {
+                UpdateNotesPreview();
+            }
+        }
+
+        private void BtnAddStep_Click(object sender, RoutedEventArgs e)
+        {
+            DetailsExpander.IsExpanded = true;
+            var currentText = StepsBox.Text.Trim();
+            int nextStepNum = 1;
+
+            if (!string.IsNullOrWhiteSpace(currentText))
+            {
+                var lines = currentText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
+                {
+                    var match = Regex.Match(line.Trim(), @"^(\d+)\.");
+                    if (match.Success && int.TryParse(match.Groups[1].Value, out int n))
+                    {
+                        if (n >= nextStepNum) nextStepNum = n + 1;
+                    }
+                }
+                if (nextStepNum == 1)
+                {
+                    nextStepNum = lines.Length + 1;
+                }
+            }
+
+            string stepPrefix = string.IsNullOrWhiteSpace(currentText) ? $"{nextStepNum}. " : $"\n{nextStepNum}. ";
+            StepsBox.Text += stepPrefix;
+            StepsBox.Focus();
+            StepsBox.CaretIndex = StepsBox.Text.Length;
+            PerformAutoSave();
+        }
+
+        private async void BtnImportAutoSteps_Click(object sender, RoutedEventArgs e)
+        {
+            DetailsExpander.IsExpanded = true;
+            if (_activeWebView == null)
+            {
+                ShowMessage("No active WebView2 session to import steps from.", isError: true);
+                return;
+            }
+
+            try
+            {
+                var snapshot = await VisualTestTrackerTelemetry.CollectSnapshotAsync(_activeWebView);
+                var events = snapshot.ReproductionEvents;
+                if (events == null || events.Count == 0)
+                {
+                    ShowMessage("No user interactions captured yet on this page.", isError: false);
+                    return;
+                }
+
+                var sb = new StringBuilder();
+                int stepIndex = 1;
+
+                var currentText = StepsBox.Text.Trim();
+                if (!string.IsNullOrWhiteSpace(currentText))
+                {
+                    var lines = currentText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var line in lines)
+                    {
+                        var match = Regex.Match(line.Trim(), @"^(\d+)\.");
+                        if (match.Success && int.TryParse(match.Groups[1].Value, out int n))
+                        {
+                            if (n >= stepIndex) stepIndex = n + 1;
+                        }
+                    }
+                    sb.Append(currentText).Append("\n");
+                }
+
+                int addedCount = 0;
+                foreach (var ev in events)
+                {
+                    string target = !string.IsNullOrWhiteSpace(ev.Details) ? $"\"{ev.Details}\"" : (!string.IsNullOrWhiteSpace(ev.Selector) ? ev.Selector : "element");
+                    string desc = (ev.ActionType ?? "").ToLowerInvariant() switch
+                    {
+                        "navigate" => $"Navigate to {ev.Details}",
+                        "click" => $"Click on {target}",
+                        "button" => $"Click button {target}",
+                        "input" => $"Enter value into {target}",
+                        "submit" => $"Submit form {target}",
+                        "dom_mutation" => $"Inspect alert/modal {target}",
+                        _ => $"{ev.ActionType}: {ev.Details}"
+                    };
+
+                    sb.AppendLine($"{stepIndex}. {desc}");
+                    stepIndex++;
+                    addedCount++;
+                }
+
+                StepsBox.Text = sb.ToString().TrimEnd();
+                StepsBox.Focus();
+                StepsBox.CaretIndex = StepsBox.Text.Length;
+                PerformAutoSave();
+                ShowMessage($"Imported {addedCount} user actions into reproduction steps.", isError: false);
+            }
+            catch (Exception ex)
+            {
+                ShowMessage($"Failed to import auto steps: {ex.Message}", isError: true);
             }
         }
 
@@ -417,6 +945,7 @@ namespace BuildConsole
 
                 _stagedScreenshots.Add(result.FilePath);
                 RenderStagedThumbnails();
+                AutoLinkScreenshot(result.FilePath);
                 PerformAutoSave();
                 ShowMessage("Full page captured & attached to draft.", isError: false);
             }
@@ -479,6 +1008,7 @@ namespace BuildConsole
 
                 _stagedScreenshots.Add(result.FilePath);
                 RenderStagedThumbnails();
+                AutoLinkScreenshot(result.FilePath);
                 PerformAutoSave();
                 ShowMessage("Region captured & attached to draft.", isError: false);
             }
@@ -507,6 +1037,7 @@ namespace BuildConsole
 
                 _stagedScreenshots.Add(result.FilePath);
                 RenderStagedThumbnails();
+                AutoLinkScreenshot(result.FilePath);
                 PerformAutoSave();
                 ShowMessage("Full WPF window HUD captured & attached to draft.", isError: false);
             }
@@ -613,7 +1144,12 @@ namespace BuildConsole
                 int idx = _stagedScreenshots.IndexOf(path);
                 if (idx >= 0)
                 {
+                    var oldPath = path;
                     _stagedScreenshots[idx] = annotWin.ResultFilePath;
+                    if (NotesBox.Text.Contains(oldPath))
+                    {
+                        NotesBox.Text = NotesBox.Text.Replace(oldPath, annotWin.ResultFilePath);
+                    }
                     RenderStagedThumbnails();
                     PerformAutoSave();
                     ShowMessage("Annotated screenshot updated in draft.", isError: false);
@@ -735,7 +1271,10 @@ namespace BuildConsole
 
                 // Clear draft from disk & reset fields
                 VisualTestTrackerDraftStore.ClearDraft(_activeBaseUrl, _activePagePath);
-                NotesBox.Text = "";
+                if (_notesMode == "page")
+                {
+                    NotesBox.Text = "";
+                }
                 StepsBox.Text = "";
                 ExpectedBox.Text = "";
                 ActualBox.Text = "";
@@ -761,7 +1300,17 @@ namespace BuildConsole
 
         private void BtnClearDraft_Click(object sender, RoutedEventArgs e)
         {
-            NotesBox.Text = "";
+            if (_notesMode == "global")
+            {
+                NotesBox.Text = "";
+                _globalNotes = "";
+                VisualTestTrackerDraftStore.SaveGlobalNotes("");
+            }
+            else
+            {
+                NotesBox.Text = "";
+                VisualTestTrackerDraftStore.ClearDraft(_activeBaseUrl, _activePagePath);
+            }
             StepsBox.Text = "";
             ExpectedBox.Text = "";
             ActualBox.Text = "";
@@ -769,7 +1318,6 @@ namespace BuildConsole
             DetailsExpander.IsExpanded = false;
             _stagedScreenshots.Clear();
             RenderStagedThumbnails();
-            VisualTestTrackerDraftStore.ClearDraft(_activeBaseUrl, _activePagePath);
             AutoSaveIndicator.Text = "Cleared";
             ShowMessage("Draft cleared.", isError: false);
         }

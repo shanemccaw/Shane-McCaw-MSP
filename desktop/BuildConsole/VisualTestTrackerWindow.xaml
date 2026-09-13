@@ -182,6 +182,46 @@
                             </ComboBox>
                         </Grid>
 
+                        <!-- Notes Mode Tabs & Markdown Formatting Toolbar -->
+                        <Grid Margin="0,0,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Page Notes vs Global Notes Tab Selector -->
+                            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                <Button x:Name="BtnTabNotesPage" Content="📄 Page Notes"
+                                        Style="{StaticResource IconButton}" FontSize="9" FontWeight="SemiBold"
+                                        Padding="5,1,5,1" Margin="0,0,2,0" Foreground="{StaticResource AccentBrush}"
+                                        Click="BtnTabNotes_Click" Tag="page"
+                                        ToolTip="Notes scoped to this specific page/route"/>
+                                <Button x:Name="BtnTabNotesGlobal" Content="🌐 Global Notes"
+                                        Style="{StaticResource IconButton}" FontSize="9"
+                                        Padding="5,1,5,1" Foreground="{StaticResource Subtext1Brush}"
+                                        Click="BtnTabNotes_Click" Tag="global"
+                                        ToolTip="Global scratchpad shared across all pages and sessions"/>
+                            </StackPanel>
+
+                            <!-- Markdown Formatting Controls -->
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,0,4,0">
+                                <Button Content="B" FontWeight="Bold" Style="{StaticResource IconButton}" FontSize="9" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="bold" ToolTip="Bold (**text**)"/>
+                                <Button Content="I" FontStyle="Italic" Style="{StaticResource IconButton}" FontSize="9" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="italic" ToolTip="Italic (*text*)"/>
+                                <Button Content="`" FontFamily="Consolas" Style="{StaticResource IconButton}" FontSize="9" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="code" ToolTip="Inline code (`code`)"/>
+                                <Button Content="•" Style="{StaticResource IconButton}" FontSize="10" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="list" ToolTip="Bullet list (- item)"/>
+                                <Button Content="🔗" Style="{StaticResource IconButton}" FontSize="8" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="link" ToolTip="Insert link [title](url)"/>
+                                <Button x:Name="BtnTogglePreview" Content="👁" Style="{StaticResource IconButton}" FontSize="9" Width="18" Height="18" Padding="0" Click="BtnTogglePreview_Click" ToolTip="Toggle Markdown Preview"/>
+                            </StackPanel>
+
+                            <!-- Auto-Link Shots Checkbox -->
+                            <CheckBox x:Name="AutoLinkShotsCheckBox" Grid.Column="2"
+                                      Content="Auto-link shots" FontSize="9"
+                                      Foreground="{StaticResource Subtext1Brush}"
+                                      IsChecked="True" VerticalAlignment="Center"
+                                      ToolTip="Automatically insert markdown link in notes when capturing screenshots"/>
+                        </Grid>
+
                         <!-- Notes TextBox (Auto-Saved on Keystroke, Ctrl+Enter commits) -->
                         <TextBox x:Name="NotesBox"
                                  Height="52"
@@ -196,7 +236,25 @@
                                  Padding="5"
                                  IsEnabled="False"
                                  TextChanged="Field_TextChanged"
-                                 ToolTip="Enter bug notes or summary. Press Ctrl+Enter to save."/>
+                                 ToolTip="Enter notes (Markdown supported). Press Ctrl+Enter to save."/>
+
+                        <!-- Markdown Preview Box (Toggleable via 👁) -->
+                        <Border x:Name="NotesPreviewContainer"
+                                Background="{StaticResource Surface0Brush}"
+                                BorderBrush="{StaticResource AccentBrush}"
+                                BorderThickness="1"
+                                CornerRadius="3"
+                                Padding="5"
+                                Height="52"
+                                Visibility="Collapsed"
+                                Margin="0,0,0,2">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <TextBlock x:Name="NotesPreviewText"
+                                           FontSize="11"
+                                           Foreground="{StaticResource TextBrush}"
+                                           TextWrapping="Wrap"/>
+                            </ScrollViewer>
+                        </Border>
 
                         <!-- Tags & Categories Input Strip -->
                         <Grid Margin="0,4,0,3">
@@ -236,8 +294,30 @@
                                   FontSize="10" Foreground="{StaticResource Subtext1Brush}"
                                   Margin="0,0,0,4" IsExpanded="False">
                             <StackPanel Margin="0,3,0,1">
-                                <TextBlock Text="Steps to Reproduce:" FontSize="9" FontWeight="SemiBold"
-                                           Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                <!-- Steps Header with Quick Add Step and Import Auto Steps -->
+                                <Grid Margin="0,0,0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="Steps to Reproduce:" FontSize="9" FontWeight="SemiBold"
+                                               Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <Button x:Name="BtnAddStep" Content="+ Add Step"
+                                                Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,3,0"
+                                                Foreground="{StaticResource AccentBrush}"
+                                                ToolTip="Increment and append the next numbered step"
+                                                Click="BtnAddStep_Click"/>
+                                        <Button x:Name="BtnImportAutoSteps" Content="📥 Import Auto Steps"
+                                                Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1"
+                                                Foreground="{StaticResource StatusSuccessBrush}"
+                                                ToolTip="Import captured user clicks, inputs, and actions into editable steps"
+                                                Click="BtnImportAutoSteps_Click"/>
+                                    </StackPanel>
+                                </Grid>
+
                                 <TextBox x:Name="StepsBox" Height="42"
                                          AcceptsReturn="True" TextWrapping="Wrap"
                                          VerticalScrollBarVisibility="Auto"

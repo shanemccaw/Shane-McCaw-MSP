@@ -7,9 +7,10 @@ namespace BuildConsole.Services
 {
     /// <summary>
     /// Crash-safe persistent store for in-progress draft notes, steps, expected/actual behavior,
-    /// tags, severity, and staged screenshots.
-    /// Saves immediately to %AppData%\BuildConsole\visual-test-tracker\drafts.json on every keystroke
-    /// or capture, ensuring all bug composition fields survive page navigation, application restarts, and crashes.
+    /// tags, severity, and staged screenshots, as well as cross-page Global Notes.
+    /// Saves immediately to %AppData%\BuildConsole\visual-test-tracker\drafts.json and global-notes.md
+    /// on every keystroke or capture, ensuring all bug composition fields survive page navigation,
+    /// application restarts, and crashes.
     /// </summary>
     public static class VisualTestTrackerDraftStore
     {
@@ -34,6 +35,16 @@ namespace BuildConsole.Services
                 var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole", "visual-test-tracker");
                 Directory.CreateDirectory(dir);
                 return Path.Combine(dir, "drafts.json");
+            }
+        }
+
+        private static string GlobalNotesFilePath
+        {
+            get
+            {
+                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole", "visual-test-tracker");
+                Directory.CreateDirectory(dir);
+                return Path.Combine(dir, "global-notes.md");
             }
         }
 
@@ -130,6 +141,40 @@ namespace BuildConsole.Services
             if (all.Remove(key))
             {
                 PersistAll(all);
+            }
+        }
+
+        // ── Global Cross-Page Notes ──────────────────────────────────────────────
+
+        public static string LoadGlobalNotes()
+        {
+            lock (_lock)
+            {
+                try
+                {
+                    var file = GlobalNotesFilePath;
+                    return File.Exists(file) ? File.ReadAllText(file) : "";
+                }
+                catch
+                {
+                    return "";
+                }
+            }
+        }
+
+        public static void SaveGlobalNotes(string text)
+        {
+            lock (_lock)
+            {
+                try
+                {
+                    var file = GlobalNotesFilePath;
+                    File.WriteAllText(file, text ?? "");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("visual-test-tracker", $"Global notes save error: {ex.Message}");
+                }
             }
         }
     }
