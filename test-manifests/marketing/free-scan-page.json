@@ -1,7 +1,7 @@
 {
   "feature": "Marketing Free Scan page (/scan) — the real consent gate (Git #1361) AND the real locked/teaser results view (Git #1358): the start form captures name/company/work email and its POST /api/public/free-scan/start fires the real lead + returns the read app's real scopes; 'Review access and continue' advances to the consent-disclosure screen; once the loading animation hands off, the page polls GET /api/public/free-scan/results (the SAME buildPillarSummary computation /api/portal/pillars reads) for the Prospect's real pillar scores and findings.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "1b652cae6",
   "notes": [
     "Git #1361 replaced the single-checkbox Free Scan → Scan flow with a real consent gate:",
     "start → consent → granting → scanning → results. Git #1358 then replaced the results phase's",
