@@ -1393,6 +1393,7 @@ namespace BuildConsole
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             // Status Toggle Button (Clickable pill)
             bool isOpen = string.Equals(entry.Status, "Open", StringComparison.OrdinalIgnoreCase);
@@ -1499,6 +1500,23 @@ namespace BuildConsole
             midHeader.Children.Add(timeText);
             Grid.SetColumn(midHeader, 2);
 
+            // Export JSON Button
+            var exportBtn = new Button
+            {
+                Content = "📦",
+                Style = (Style)FindResource("IconButton"),
+                FontSize = 9,
+                Padding = new Thickness(4, 1, 4, 1),
+                Margin = new Thickness(2, 0, 2, 0),
+                ToolTip = "Export this bug report as JSON to local repo /Bugs/<Area>/",
+                Tag = entry
+            };
+            exportBtn.Click += (s, e) =>
+            {
+                OpenExportDialog(new List<VisualTestTrackerEntry> { entry });
+            };
+            Grid.SetColumn(exportBtn, 3);
+
             // Copy Markdown Button
             var copyMdBtn = new Button
             {
@@ -1515,7 +1533,7 @@ namespace BuildConsole
                 Clipboard.SetText(entry.ToMarkdown());
                 ShowMessage("Full bug report markdown copied to clipboard.", isError: false);
             };
-            Grid.SetColumn(copyMdBtn, 3);
+            Grid.SetColumn(copyMdBtn, 4);
 
             // Delete Button
             var delBtn = new Button
@@ -1535,11 +1553,12 @@ namespace BuildConsole
                     await RefreshBugListAsync();
                 }
             };
-            Grid.SetColumn(delBtn, 4);
+            Grid.SetColumn(delBtn, 5);
 
             header.Children.Add(statusBtn);
             header.Children.Add(sevBadge);
             header.Children.Add(midHeader);
+            header.Children.Add(exportBtn);
             header.Children.Add(copyMdBtn);
             header.Children.Add(delBtn);
             stack.Children.Add(header);
@@ -1947,6 +1966,26 @@ namespace BuildConsole
 
             Clipboard.SetText(sb.ToString());
             ShowMessage("Full page bug report copied as Markdown.", isError: false);
+        }
+
+        private void BtnExportJson_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentEntries.Count == 0)
+            {
+                ShowMessage("No bug entries on this page to export.", isError: true);
+                return;
+            }
+
+            OpenExportDialog(new List<VisualTestTrackerEntry>(_currentEntries));
+        }
+
+        private void OpenExportDialog(List<VisualTestTrackerEntry> entries)
+        {
+            var dlg = new ExportBugDialog(entries, _activeBaseUrl, _activePagePath)
+            {
+                Owner = this
+            };
+            dlg.ShowDialog();
         }
 
         // ── Collapsible / Mini Mode ──────────────────────────────────────────────

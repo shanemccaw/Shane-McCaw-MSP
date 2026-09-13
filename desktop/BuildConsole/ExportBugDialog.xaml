@@ -1,0 +1,187 @@
+<Window x:Class="BuildConsole.ExportBugDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Export Bug Reports"
+        Width="490" Height="410"
+        MinWidth="420" MinHeight="350"
+        WindowStyle="None"
+        ResizeMode="CanResizeWithGrip"
+        Topmost="True"
+        ShowInTaskbar="False"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <Border Background="{StaticResource MantleBrush}"
+            BorderBrush="{StaticResource Surface0Brush}"
+            BorderThickness="1"
+            CornerRadius="6">
+        <Grid Margin="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Title Bar -->
+                <RowDefinition Height="*"/>    <!-- Content Body -->
+                <RowDefinition Height="Auto"/> <!-- Bottom Actions & Status -->
+            </Grid.RowDefinitions>
+
+            <!-- 1. Header strip: drag handle + title + close button -->
+            <Border x:Name="HeaderStrip" Grid.Row="0"
+                    Background="{StaticResource CrustBrush}"
+                    CornerRadius="6,6,0,0"
+                    Padding="10,6,8,6"
+                    MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0" Text="📦" FontSize="12"
+                               Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="Export Bug Reports to Local Repo (/Bugs/)"
+                               FontSize="11" FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource TextBrush}"/>
+                    <Button x:Name="BtnClose" Grid.Column="2"
+                            Content="✕"
+                            Style="{StaticResource IconButton}"
+                            FontSize="10"
+                            Padding="5,2,5,2"
+                            ToolTip="Close"
+                            Click="BtnClose_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- 2. Main Content Body -->
+            <StackPanel Grid.Row="1" Margin="12,10,12,6">
+                <!-- Scope & Source Info Card -->
+                <Border Background="{StaticResource Surface0Brush}"
+                        BorderBrush="{StaticResource Surface1Brush}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="8,6,8,6"
+                        Margin="0,0,0,10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Scope:" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"/>
+                        <TextBlock x:Name="ScopeDescriptionText" Grid.Column="1"
+                                   Text="1 bug entry on /portal/dashboard"
+                                   FontSize="10" Foreground="{StaticResource AccentBrush}"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </Grid>
+                </Border>
+
+                <!-- Target Area Picker -->
+                <TextBlock Text="Target Repository Area:" FontSize="10" FontWeight="SemiBold"
+                           Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
+
+                <ComboBox x:Name="CmbTargetArea" Height="26"
+                          IsEditable="True"
+                          FontSize="11"
+                          Background="{StaticResource Surface0Brush}"
+                          Foreground="{StaticResource TextBrush}"
+                          BorderBrush="{StaticResource Surface1Brush}"
+                          BorderThickness="1"
+                          Padding="4,2,4,2"
+                          Margin="0,0,0,10"
+                          SelectionChanged="CmbTargetArea_SelectionChanged"
+                          ToolTip="Select target area or type a custom subfolder name">
+                    <ComboBoxItem Content="MSP_Console"/>
+                    <ComboBoxItem Content="Portal"/>
+                    <ComboBoxItem Content="Admin-Panel"/>
+                    <ComboBoxItem Content="Marketing"/>
+                    <ComboBoxItem Content="Website"/>
+                    <ComboBoxItem Content="General"/>
+                </ComboBox>
+
+                <!-- Options Checkbox -->
+                <CheckBox x:Name="ChkCopyScreenshots"
+                          Content="Copy screenshot attachments into /Bugs/&lt;Area&gt;/attachments/"
+                          FontSize="10"
+                          Foreground="{StaticResource TextBrush}"
+                          IsChecked="True"
+                          Margin="0,0,0,10"
+                          ToolTip="Copies screenshot image files directly into the repository folder alongside the JSON"/>
+
+                <!-- Destination Directory Path Preview -->
+                <TextBlock Text="Repository Destination Directory:" FontSize="9" FontWeight="SemiBold"
+                           Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+
+                <Border Background="{StaticResource Surface0Brush}"
+                        BorderBrush="{StaticResource Surface1Brush}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        Padding="6,5,6,5"
+                        Margin="0,0,0,8">
+                    <TextBlock x:Name="DestinationPathText"
+                               Text="C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP\Bugs\Portal\"
+                               FontFamily="Consolas" FontSize="9"
+                               Foreground="{StaticResource TextBrush}"
+                               TextWrapping="Wrap"/>
+                </Border>
+
+                <!-- What's included summary -->
+                <TextBlock Text="Included in JSON export: Metadata • Notes • Repro steps • Screenshots • Logs (Console &amp; Network)"
+                           FontSize="9" FontStyle="Italic"
+                           Foreground="{StaticResource Subtext1Brush}"
+                           Margin="0,2,0,0"/>
+            </StackPanel>
+
+            <!-- 3. Bottom Action Bar & Status -->
+            <Border Grid.Row="2" Background="{StaticResource CrustBrush}"
+                    CornerRadius="0,0,6,6"
+                    Padding="12,8,12,8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock x:Name="StatusMessageText" Grid.Row="0"
+                               FontSize="10" FontWeight="SemiBold"
+                               Foreground="{StaticResource StatusSuccessBrush}"
+                               Margin="0,0,0,6"
+                               Visibility="Collapsed"
+                               TextWrapping="Wrap"/>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button x:Name="BtnExport" Grid.Column="0"
+                                Content="📦 Export to Local Repo"
+                                Style="{StaticResource PrimaryButton}"
+                                FontWeight="SemiBold"
+                                FontSize="11"
+                                Padding="10,5,10,5"
+                                Click="BtnExport_Click"/>
+
+                        <Button x:Name="BtnOpenFolder" Grid.Column="1"
+                                Content="📂 Open Folder"
+                                Style="{StaticResource IconButton}"
+                                FontSize="10"
+                                Padding="8,5,8,5"
+                                Margin="6,0,0,0"
+                                IsEnabled="False"
+                                ToolTip="Open the destination /Bugs/&lt;Area&gt;/ folder in Windows Explorer"
+                                Click="BtnOpenFolder_Click"/>
+
+                        <Button x:Name="BtnCancel" Grid.Column="2"
+                                Content="Done"
+                                Style="{StaticResource IconButton}"
+                                FontSize="10"
+                                Padding="8,5,8,5"
+                                Margin="6,0,0,0"
+                                Click="BtnClose_Click"/>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

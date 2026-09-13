@@ -508,13 +508,22 @@
                                     Click="BtnFilter_Click" Tag="Resolved"/>
                         </StackPanel>
 
-                        <!-- Copy All Markdown -->
-                        <Button x:Name="BtnCopyAllMarkdown" Grid.Column="2"
-                                Content="📋 Copy Report"
-                                Style="{StaticResource IconButton}"
-                                FontSize="9" Padding="5,2,5,2"
-                                ToolTip="Copy Markdown bug report of all entries on this page"
-                                Click="BtnCopyAllMarkdown_Click"/>
+                        <!-- Actions: Export to /Bugs/ & Copy Markdown -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <Button x:Name="BtnExportJson"
+                                    Content="📦 Export to /Bugs/"
+                                    Style="{StaticResource IconButton}"
+                                    FontSize="9" Padding="5,2,5,2" Margin="0,0,4,0"
+                                    Foreground="{StaticResource AccentBrush}"
+                                    ToolTip="Export bug reports to local repo /Bugs/ (MSP_Console, Portal, Admin-Panel, Marketing, etc.) as JSON"
+                                    Click="BtnExportJson_Click"/>
+                            <Button x:Name="BtnCopyAllMarkdown"
+                                    Content="📋 Copy Report"
+                                    Style="{StaticResource IconButton}"
+                                    FontSize="9" Padding="5,2,5,2"
+                                    ToolTip="Copy Markdown bug report of all entries on this page"
+                                    Click="BtnCopyAllMarkdown_Click"/>
+                        </StackPanel>
                     </Grid>
 
                     <!-- Scrollable Entries List -->
