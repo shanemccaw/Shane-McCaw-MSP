@@ -458,6 +458,55 @@ describe("GET /msp/active-directory/ou-assignment-requests", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual(rows);
   });
+
+  // ── #3916 — optional ?customerId= scoping, matching the sibling ?customerId=
+  // pattern on GET /msp/active-directory/ous ────────────────────────────────
+  it("400s when customerId is present but not a positive integer", async () => {
+    const res = await request(makeApp())
+      .get("/msp/active-directory/ou-assignment-requests?customerId=not-a-number")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`);
+    expect(res.status).toBe(400);
+    expect(mockSelect).not.toHaveBeenCalled();
+  });
+
+  it("404s a customerId outside the caller's book, without disclosing it exists", async () => {
+    mockSelect.mockReturnValueOnce(selectChain([])); // tenant ownership check -> no match
+    const res = await request(makeApp())
+      .get("/msp/active-directory/ou-assignment-requests?customerId=42")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`);
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { code: "NOT_FOUND", message: "Customer not found" } });
+  });
+
+  it("scopes to one customer's requests when ?customerId= is given", async () => {
+    const rows = [{ id: 1, mspId: MSP_ID, customerId: 42, status: "pending", objectUpn: "user@customer.com" }];
+    mockSelect
+      .mockReturnValueOnce(selectChain([{ id: 42 }])) // customerId ownership check (assertCustomerAccess: tenant lookup)
+      .mockReturnValueOnce(selectChain([])) // assertCustomerAccess: per-staff-scope block check
+      .mockReturnValueOnce(selectChain([])) // resolveStaffScopedCustomerIds for the query conditions
+      .mockReturnValueOnce(selectChain(rows)); // requests, scoped to customerId
+    const res = await request(makeApp())
+      .get("/msp/active-directory/ou-assignment-requests?customerId=42")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(rows);
+  });
+
+  it("omitting customerId preserves today's whole-book behavior exactly (no ownership lookup)", async () => {
+    const rows = [
+      { id: 1, mspId: MSP_ID, customerId: 42, status: "pending", objectUpn: "a@customer.com" },
+      { id: 2, mspId: MSP_ID, customerId: 43, status: "pending", objectUpn: "b@other-customer.com" },
+    ];
+    mockSelect
+      .mockReturnValueOnce(selectChain([])) // unrestricted staff scope
+      .mockReturnValueOnce(selectChain(rows)); // whole-book requests
+    const res = await request(makeApp())
+      .get("/msp/active-directory/ou-assignment-requests")
+      .set("Authorization", `Bearer ${mspToken({ mspId: MSP_ID })}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(rows);
+    expect(mockSelect).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("PATCH /msp/active-directory/ou-assignment-requests/:id", () => {

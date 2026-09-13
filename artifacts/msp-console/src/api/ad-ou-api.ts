@@ -21,10 +21,9 @@
  *   DELETE /api/msp/active-directory/ou-assignments/:id                — clear a
  *          placement outright; the object falls back to the department-name
  *          guess for policy purposes
- *   GET    /api/msp/active-directory/ou-assignment-requests             — every
- *          customer-raised request in the caller's MSP book (not filterable by
- *          customer server-side, so this module filters client-side to the
- *          selected tenant), newest first, optional `?status=`
+ *   GET    /api/msp/active-directory/ou-assignment-requests?customerId=  — every
+ *          request raised by one customer (added for #3916; still folds in
+ *          staff scoping server-side), newest first, optional `?status=`
  *   PATCH  /api/msp/active-directory/ou-assignment-requests/:id         — answer
  *          one: approved/rejected/fulfilled. Approving/fulfilling a request
  *          that named a real `requestedOuId` immediately applies it (the same
@@ -186,16 +185,16 @@ export function useClearAssignment() {
   });
 }
 
-/** The server never accepts a `customerId` filter on this route — it returns
- * every request in the caller's MSP book (staff-scoped). This module filters
- * to the selected tenant client-side. */
-export function useOuAssignmentRequests(): UseQueryResult<OuAssignmentRequest[], AdOuApiError> {
+/** Scoped to one customer server-side via `?customerId=` (added for #3916) —
+ * this page is mounted per-tenant, so it no longer has to pull the caller's
+ * whole MSP book just to render one tenant's requests. */
+export function useOuAssignmentRequests(customerId: number | null): UseQueryResult<OuAssignmentRequest[], AdOuApiError> {
   const { fetchWithAuth, isLoading, accessToken } = useAuth();
   return useQuery({
-    queryKey: ["msp", "ad", "ou-assignment-requests"],
+    queryKey: ["msp", "ad", "ou-assignment-requests", customerId],
     queryFn: ({ signal }) =>
-      getJson<OuAssignmentRequest[]>(fetchWithAuth, "/api/msp/active-directory/ou-assignment-requests", signal),
-    enabled: !isLoading && !!accessToken,
+      getJson<OuAssignmentRequest[]>(fetchWithAuth, `/api/msp/active-directory/ou-assignment-requests?customerId=${customerId}`, signal),
+    enabled: !isLoading && !!accessToken && customerId !== null,
     staleTime: 10_000,
   });
 }

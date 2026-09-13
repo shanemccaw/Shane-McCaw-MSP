@@ -82,8 +82,8 @@ export function AdOuAssignmentPage({
   const assignmentsQuery = useOuAssignments(ouId);
   const assignments: OuAssignment[] = forceEmpty ? [] : (assignmentsQuery.data ?? []);
 
-  const requestsQuery = useOuAssignmentRequests();
-  const allRequests: OuAssignmentRequest[] = forceEmpty ? [] : (requestsQuery.data ?? []).filter((r) => r.customerId === customerId);
+  const requestsQuery = useOuAssignmentRequests(customerId);
+  const allRequests: OuAssignmentRequest[] = forceEmpty ? [] : (requestsQuery.data ?? []);
 
   const assignObject = useAssignObject(customerId);
   const moveAssignment = useMoveAssignment();

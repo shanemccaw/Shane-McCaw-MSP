@@ -409,11 +409,17 @@ router.delete(
   },
 );
 
-// ── GET /msp/active-directory/ou-assignment-requests ──────────────────────────
+// ── GET /msp/active-directory/ou-assignment-requests?customerId= ─────────────
 // Every real customer-raised request against the caller's MSP book, most
 // recent first. Optional `?status=pending` narrows to one real status
 // (`ACTIVE_DIRECTORY_OU_ASSIGNMENT_REQUEST_STATUSES`) — an unrecognised value
 // is ignored rather than 400ing, since this is a display filter, not a write.
+// Optional `?customerId=` (added for #3916, same pattern as the sibling
+// `/msp/active-directory/ous?customerId=` route above, added for #2591) scopes
+// the query to one customer via `assertCustomerAccess` — a per-tenant caller
+// (e.g. the MSP Console AD OU Assignment page) no longer has to pull the whole
+// book and filter client-side. Omitting it preserves today's whole-book
+// behavior exactly, still folding in `resolveStaffScopedCustomerIds`.
 router.get(
   "/msp/active-directory/ou-assignment-requests",
   requireAuth,
@@ -427,10 +433,24 @@ router.get(
 
     const statusFilter = ACTIVE_DIRECTORY_OU_ASSIGNMENT_REQUEST_STATUSES.find((s) => s === req.query.status);
 
+    let customerId: number | null = null;
+    if (req.query.customerId !== undefined) {
+      customerId = Number(req.query.customerId);
+      if (!Number.isInteger(customerId) || customerId <= 0) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "customerId must be a positive integer");
+        return;
+      }
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Customer not found");
+        return;
+      }
+    }
+
     try {
       const scopedCustomerIds = await resolveStaffScopedCustomerIds(req.user!);
       const conditions = [eq(activeDirectoryOuAssignmentRequestsTable.mspId, mspId)];
       if (scopedCustomerIds !== null) conditions.push(inArray(activeDirectoryOuAssignmentRequestsTable.customerId, scopedCustomerIds));
+      if (customerId !== null) conditions.push(eq(activeDirectoryOuAssignmentRequestsTable.customerId, customerId));
       if (statusFilter) conditions.push(eq(activeDirectoryOuAssignmentRequestsTable.status, statusFilter));
 
       const rows = await db
