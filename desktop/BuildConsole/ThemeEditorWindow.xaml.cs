@@ -18,6 +18,7 @@ namespace BuildConsole
 
         private bool _isPointAndIdentifyActive;
         private bool _isUpdatingFromCode;
+        private bool _isInitialized;
 
         // Active edit targets
         private ColorModel? _selectedColor;
@@ -31,7 +32,10 @@ namespace BuildConsole
 
         public ThemeEditorWindow()
         {
+            _isUpdatingFromCode = true;
             InitializeComponent();
+            _isUpdatingFromCode = false;
+            _isInitialized = true;
             Loaded += ThemeEditorWindow_Loaded;
         }
 
@@ -389,6 +393,10 @@ namespace BuildConsole
 
         private void UpdateEditorFromColor(Color c)
         {
+            if (!_isInitialized || SliderR == null || SliderG == null || SliderB == null
+                || SliderHue == null || SliderSat == null || SliderLightness == null
+                || TxtEditorHex == null || EditorSwatch == null) return;
+
             _isUpdatingFromCode = true;
 
             string hex = ThemeParserService.ColorToHex(c);
@@ -399,18 +407,18 @@ namespace BuildConsole
             SliderR.Value = c.R;
             SliderG.Value = c.G;
             SliderB.Value = c.B;
-            TxtValR.Text = c.R.ToString();
-            TxtValG.Text = c.G.ToString();
-            TxtValB.Text = c.B.ToString();
+            if (TxtValR != null) TxtValR.Text = c.R.ToString();
+            if (TxtValG != null) TxtValG.Text = c.G.ToString();
+            if (TxtValB != null) TxtValB.Text = c.B.ToString();
 
             // HSL
             var (h, s, l) = ThemeDiagnosticsService.ColorToHsl(c);
             SliderHue.Value = h;
             SliderSat.Value = s * 100.0;
             SliderLightness.Value = l * 100.0;
-            TxtValHue.Text = $"{h:F0}°";
-            TxtValSat.Text = $"{s * 100.0:F0}%";
-            TxtValLightness.Text = $"{l * 100.0:F0}%";
+            if (TxtValHue != null) TxtValHue.Text = $"{h:F0}°";
+            if (TxtValSat != null) TxtValSat.Text = $"{s * 100.0:F0}%";
+            if (TxtValLightness != null) TxtValLightness.Text = $"{l * 100.0:F0}%";
 
             // Contrast & WCAG preview
             UpdateContrastDisplay(c);
@@ -420,6 +428,8 @@ namespace BuildConsole
 
         private void UpdateContrastDisplay(Color c)
         {
+            if (!_isInitialized || TxtEditorContrastPreview == null || BadgeWcag == null) return;
+
             double cr = ThemeDiagnosticsService.CalculateContrastRatio(c, ThemeDiagnosticsService.PrimaryBackgroundColor);
             bool passAAA = cr >= 7.0;
             bool passAA = cr >= 4.5;
@@ -428,25 +438,34 @@ namespace BuildConsole
             string rating = passAAA ? "AAA Pass" : (passAA ? "AA Pass" : (passLarge ? "AA Large Pass" : "Fail"));
             TxtEditorContrastPreview.Text = $"{cr:F1}:1 ({rating})";
 
+            var successBrush = TryFindResource("StatusSuccessBrush") as Brush ?? Brushes.LightGreen;
+            var warningBrush = TryFindResource("StatusWarningBrush") as Brush ?? Brushes.Orange;
+
             if (passAA)
             {
-                TxtEditorContrastPreview.Foreground = (Brush)FindResource("StatusSuccessBrush");
+                TxtEditorContrastPreview.Foreground = successBrush;
                 BadgeWcag.Background = new SolidColorBrush(Color.FromRgb(0x23, 0x4A, 0x2E));
-                ((TextBlock)BadgeWcag.Child).Text = passAAA ? "PASS AAA" : "PASS AA";
-                ((TextBlock)BadgeWcag.Child).Foreground = (Brush)FindResource("StatusSuccessBrush");
+                if (BadgeWcag.Child is TextBlock tb)
+                {
+                    tb.Text = passAAA ? "PASS AAA" : "PASS AA";
+                    tb.Foreground = successBrush;
+                }
             }
             else
             {
-                TxtEditorContrastPreview.Foreground = (Brush)FindResource("StatusWarningBrush");
+                TxtEditorContrastPreview.Foreground = warningBrush;
                 BadgeWcag.Background = new SolidColorBrush(Color.FromRgb(0x4A, 0x2E, 0x18));
-                ((TextBlock)BadgeWcag.Child).Text = passLarge ? "AA LARGE" : "LOW CONTRAST";
-                ((TextBlock)BadgeWcag.Child).Foreground = (Brush)FindResource("StatusWarningBrush");
+                if (BadgeWcag.Child is TextBlock tb)
+                {
+                    tb.Text = passLarge ? "AA LARGE" : "LOW CONTRAST";
+                    tb.Foreground = warningBrush;
+                }
             }
         }
 
         private void TxtEditorHex_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if (_isUpdatingFromCode) return;
+            if (_isUpdatingFromCode || !_isInitialized || TxtEditorHex == null) return;
             string hex = TxtEditorHex.Text.Trim();
             if (hex.Length == 7 || hex.Length == 9)
             {
@@ -457,7 +476,7 @@ namespace BuildConsole
 
         private void SliderRgb_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (_isUpdatingFromCode) return;
+            if (_isUpdatingFromCode || !_isInitialized || SliderR == null || SliderG == null || SliderB == null) return;
             byte r = (byte)Math.Clamp(SliderR.Value, 0, 255);
             byte g = (byte)Math.Clamp(SliderG.Value, 0, 255);
             byte b = (byte)Math.Clamp(SliderB.Value, 0, 255);
@@ -468,7 +487,7 @@ namespace BuildConsole
 
         private void SliderHsl_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (_isUpdatingFromCode) return;
+            if (_isUpdatingFromCode || !_isInitialized || SliderHue == null || SliderSat == null || SliderLightness == null) return;
             double h = SliderHue.Value;
             double s = SliderSat.Value / 100.0;
             double l = SliderLightness.Value / 100.0;
@@ -531,13 +550,11 @@ namespace BuildConsole
 
         private void SliderFontSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (TxtFontSizeVal != null)
+            if (_isUpdatingFromCode || !_isInitialized || SliderFontSize == null || TxtFontSizeVal == null) return;
+            TxtFontSizeVal.Text = SliderFontSize.Value.ToString("0");
+            if (TxtTypographyPreview != null)
             {
-                TxtFontSizeVal.Text = SliderFontSize.Value.ToString("0");
-                if (TxtTypographyPreview != null)
-                {
-                    TxtTypographyPreview.FontSize = SliderFontSize.Value;
-                }
+                TxtTypographyPreview.FontSize = SliderFontSize.Value;
             }
         }
 
