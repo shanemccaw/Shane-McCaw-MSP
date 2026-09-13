@@ -53,6 +53,8 @@ import {
   CreditCard, Server,
   // Reports (#3815)
   FileBarChart2,
+  // AD OU Assignment (#3818) — FolderTree.
+  FolderTree,
   type LucideIcon,
 } from "lucide-react";
 
@@ -217,6 +219,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   server: Server,
   // Reports (#3815)
   "file-bar-chart-2": FileBarChart2,
+  // AD OU Assignment (#3818)
+  "folder-tree": FolderTree,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

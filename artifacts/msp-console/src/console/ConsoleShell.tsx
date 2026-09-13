@@ -33,6 +33,7 @@ import { ChangeControl, CHANGE_CONTROL_TABS, type ChangeControlTab } from "@/pag
 import { surface } from "./tokens";
 import { RunbooksPage } from "@/pages/runbooks/RunbooksPage";
 import { BreakGlassPage } from "@/pages/break-glass/BreakGlassPage";
+import { AdOuAssignmentPage } from "@/pages/ad-ou-assignment/AdOuAssignmentPage";
 import {
   buildCommands, buildCrumbs, buildRailNodes, buildTreeNodes,
   contextPath, pageMeta, statusLeft, statusRight,
@@ -275,6 +276,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "page" && sel.page === "bg") {
     return <BreakGlassPage customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "ou") {
+    return <AdOuAssignmentPage customerId={sel.tenant} />;
   }
   if (sel.kind === "page" && sel.page === "raci") {
     // Ownership / RACI (#2594) needs the full customer row for its display

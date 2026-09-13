@@ -61,6 +61,7 @@ export const CHILD_GROUPS: Group[] = [
       { id: "bg", label: "Break-glass", icon: "key-round" },
       { id: "lc", label: "Launch Control", icon: "rocket" },
       { id: "wh", label: "Webhooks", icon: "webhook" },
+      { id: "ou", label: "OU Assignment", icon: "folder-tree" },
     ],
   },
   {

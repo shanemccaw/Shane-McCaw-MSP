@@ -24,9 +24,10 @@ const customers = [
 
 test("IA has 7 tenant groups and 16 ops pages", () => {
   assert.equal(CHILD_GROUPS.length, 7);
+  // 13 original + dlq, reports, retention (concurrent builds #3814/#3815/#3906)
   assert.equal(MSP_PAGES.length, 16);
-  // 2 leaf groups (overview, audit) + 3 + 7 + 4 + 4 + 4 group children = 24
-  assert.equal(CHILD_PAGES.length, 24);
+  // 2 leaf groups (overview, audit) + 3 + 7 + 5 (#3818 added "ou") + 4 + 4 group children = 25
+  assert.equal(CHILD_PAGES.length, 25);
 });
 
 test("selectionToPath / parseLocation round-trip every kind", () => {
@@ -108,8 +109,8 @@ test("breadcrumb for a grouped page has root, tenant, group and page", () => {
 
 test("command palette lists root, every ops page, and tenant × page", () => {
   const cmds = buildCommands(customers, handlers);
-  // 1 root + 16 ops + 3 tenants * 24 pages
-  assert.equal(cmds.length, 1 + 16 + customers.length * 24);
+  // 1 root + 16 ops + 3 tenants * 25 pages (#3818 added "ou")
+  assert.equal(cmds.length, 1 + 16 + customers.length * 25);
   assert.ok(cmds.some((c) => c.label === "Alpha Ltd › Risk Register" && c.group === "NODE"));
   assert.ok(cmds.some((c) => c.label === "Operations › Sales" && c.group === "MSP"));
 });

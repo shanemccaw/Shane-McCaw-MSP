@@ -437,6 +437,15 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
       note: "The tenant control surface — subscription, consent, scanning and every control this console has against it.",
     };
   }
+  // #3818 — AD OU Assignment's eyebrow/title are the design's own exact copy
+  // (`AD OU Assignment.dc.html`'s header, screen 46).
+  if (sel.page === "ou") {
+    return {
+      eyebrow: "ACTIVE DIRECTORY · OU ASSIGNMENT",
+      title: "Who sits in which unit",
+      note: `${name} — manual placements and the customer's own requests to change them.`,
+    };
+  }
   const p = tenantPageMeta(sel.page);
   const grp = groupForPage(sel.page);
   return {
