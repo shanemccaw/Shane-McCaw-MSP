@@ -52,10 +52,12 @@ import {
   salesOffersTable,
   servicesTable,
   mspEventStoreTable,
+  usersTable,
 } from "@workspace/db";
 import { eq, and, desc, count, or } from "drizzle-orm";
 import { requireCapability, requireAuth } from "../middlewares/requireAuth.ts";
 import { resolveMspId, resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { resolveCustomerPortalUserId } from "../lib/tenant-signals.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "workflow.doc-pipeline" });
@@ -134,6 +136,43 @@ async function getMspStripeCustomerId(mspId: number): Promise<string | null> {
   return sub?.stripeCustomerId ?? null;
 }
 
+/**
+ * Resolve a sales_offers.customerId to a real tenants.id, for a given mspId.
+ * customerId on the offer is dual-shaped (tenants.tenant_id M365 GUID text, or
+ * tenants.id serial PK — same dual-shape lookup msp_customers carried), so both
+ * are checked. Shared by every branch of offer acceptance that needs the
+ * customer's real tenant row (project SOW customer, add_on/subscription
+ * checkout customer contact) so they resolve it identically.
+ */
+async function resolveOfferCustomerId(mspId: number, rawCustomerId: number | null): Promise<number | null> {
+  if (!rawCustomerId) return null;
+  const [customer] = await db
+    .select({ id: tenantsTable.id })
+    .from(tenantsTable)
+    .where(and(
+      eq(tenantsTable.mspId, mspId),
+      or(
+        eq(tenantsTable.tenantId, rawCustomerId.toString()),
+        eq(tenantsTable.id, rawCustomerId),
+      ),
+    ))
+    .limit(1);
+  return customer?.id ?? null;
+}
+
+/** Resolve the customer's own contact email (their canonical active portal login), or null. */
+async function resolveOfferCustomerEmail(customerId: number | null): Promise<string | null> {
+  if (!customerId) return null;
+  const portalUserId = await resolveCustomerPortalUserId(customerId);
+  if (!portalUserId) return null;
+  const [customerUser] = await db
+    .select({ email: usersTable.email })
+    .from(usersTable)
+    .where(eq(usersTable.id, portalUserId))
+    .limit(1);
+  return customerUser?.email ?? null;
+}
+
 // ── POST /api/msp/offers/:offerId/accept ──────────────────────────────────────
 // Accept a sales offer. Branches by serviceClass:
 //   project      → create SOW (draft), return sowId for customer review + sign
@@ -178,6 +217,7 @@ router.post(
     let serviceDescription: string | null = null;
     let trialPeriodDays: number | null = null;
     let allowFreeCheckout = true;
+    let fulfillmentTypeKey: string | null = null;
 
     if (offer.serviceId) {
       const [svc] = await db
@@ -190,6 +230,7 @@ router.post(
           allowFreeCheckout: servicesTable.allowFreeCheckout,
           trialPeriodDays: servicesTable.trialPeriodDays,
           typeAttributes: servicesTable.typeAttributes,
+          fulfillmentTypeKey: servicesTable.fulfillmentTypeKey,
         })
         .from(servicesTable)
         .where(eq(servicesTable.id, offer.serviceId))
@@ -202,6 +243,7 @@ router.post(
         serviceDescription = svc.description ?? null;
         trialPeriodDays = svc.trialPeriodDays ?? null;
         allowFreeCheckout = svc.allowFreeCheckout;
+        fulfillmentTypeKey = svc.fulfillmentTypeKey ?? null;
 
         // Gate Monitoring Tier services on minMspPlanTier (now in typeAttributes)
         const pType = detectProductType(svc.serviceClass, svc.deliveryType);
@@ -230,23 +272,7 @@ router.post(
 
     if (serviceClass === "project") {
       // Resolve customer context
-      let customerId: number | null = null;
-      if (offer.customerId) {
-        const [customer] = await db
-          .select({ id: tenantsTable.id })
-          .from(tenantsTable)
-          .where(and(
-            eq(tenantsTable.mspId, mspId),
-            or(
-              // tenants.tenant_id is the M365 GUID (text); tenants.id is the
-              // serial PK. Same dual-shape lookup msp_customers carried.
-              eq(tenantsTable.tenantId, offer.customerId.toString()),
-              eq(tenantsTable.id, offer.customerId),
-            ),
-          ))
-          .limit(1);
-        customerId = customer?.id ?? null;
-      }
+      const customerId = await resolveOfferCustomerId(mspId, offer.customerId);
 
       // Get optional MSP customer agreement template
       let customerAgreementText: string | null = null;
@@ -357,6 +383,20 @@ router.post(
       : "http://localhost:3000";
     const portalBase = `${baseUrl}/portal`;
 
+    // #3650 — the customer being billed here is the offer's own customer, not
+    // the MSP staffer who clicked Accept (req.user!.email was previously sent
+    // as customer_email, which redirected the checkout to the wrong inbox
+    // entirely). Resolve the offer's real tenant + its canonical portal
+    // contact email the same way the "project" branch above does.
+    const offerCustomerId = await resolveOfferCustomerId(mspId, offer.customerId);
+    const customerEmail = await resolveOfferCustomerEmail(offerCustomerId);
+    if (!customerEmail) {
+      log.warn(
+        { offerId, mspId, offerCustomerId },
+        "msp-sow: could not resolve a customer contact email for this checkout session — Stripe will collect one at checkout",
+      );
+    }
+
     try {
       // #3634 — serviceClass narrowly checked for "subscription", but retainer
       // catalog items carry serviceClass="retainer" with billingType="recurring_monthly"
@@ -369,12 +409,21 @@ router.post(
       const mode: "subscription" | "payment" = isRecurring ? "subscription" : "payment";
       const sessionParams: Record<string, unknown> = {
         mode,
-        customer_email: req.user!.email,
+        // Omit entirely rather than default back to the staffer's email —
+        // Stripe Checkout prompts for an email itself when none is passed.
+        ...(customerEmail ? { customer_email: customerEmail } : {}),
         metadata: {
           offerId: String(offerId),
           mspId: String(mspId),
           serviceClass,
           fulfillment_type: "msp_offer",
+          // Consumed by msp-billing-webhook.ts's checkout.session.completed
+          // handler (#3650) to actually provision this purchase.
+          customerId: offerCustomerId !== null ? String(offerCustomerId) : "",
+          serviceId: offer.serviceId ? String(offer.serviceId) : "",
+          fulfillmentTypeKey: fulfillmentTypeKey ?? "",
+          amountCents: String(amountCents),
+          serviceName,
         },
         success_url: `${portalBase}/customer-home?offer_accepted=1`,
         cancel_url: `${portalBase}/customer-home?offer_cancelled=1`,

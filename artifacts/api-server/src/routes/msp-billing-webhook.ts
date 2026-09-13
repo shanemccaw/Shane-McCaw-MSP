@@ -9,7 +9,10 @@
  * Signing secret env var: MSP_STRIPE_WEBHOOK_SECRET (or falls back to STRIPE_WEBHOOK_SECRET)
  *
  * Events handled:
- *   checkout.session.completed         — payment confirmed → provision MSP
+ *   checkout.session.completed         — payment confirmed → provision MSP,
+ *                                         OR (metadata.fulfillment_type ===
+ *                                         "msp_offer") provision an accepted
+ *                                         msp-sow.ts add_on/subscription offer (#3650)
  *   customer.subscription.updated      — sync status
  *   customer.subscription.deleted      — cancel subscription, suspend MSP
  *   invoice.payment_succeeded          — clear dunning, update period
@@ -28,7 +31,8 @@ import { db, mspsTable, mspSubscriptionsTable, usersTable, mspEventStoreTable, m
 import { eq, and, sql } from "drizzle-orm";
 import type { TenantSubscriptionStatus } from "@workspace/db";
 import { getStripeKey } from "../lib/stripe.ts";
-import { syncTenantSubscriptionFromStripe } from "../lib/tenant-billing-state.ts";
+import { syncTenantSubscriptionFromStripe, recordTenantSubscription } from "../lib/tenant-billing-state.ts";
+import { resolveFulfillment } from "../lib/resolve-fulfillment.ts";
 import { syncTenantsAfterStatusWrite } from "../lib/retention/subscription-state.ts";
 import { cascadeMspSubscriptionToCustomers } from "../lib/retention/msp-cascade.ts";
 import { enqueueZohoBooksInvoiceSync } from "../lib/zoho-books.ts";
@@ -206,10 +210,23 @@ async function handleCheckoutCompleted(
   stripe: import("stripe").Stripe,
   session: import("stripe").Stripe.Checkout.Session,
 ): Promise<void> {
-  if (session.mode !== "subscription" || session.payment_status !== "paid") return;
-
   const metadata = session.metadata ?? {};
   const fulfillmentType = metadata.fulfillment_type ?? metadata.signup_source ?? "";
+
+  // #3650 — msp-sow.ts's add_on/subscription offer-acceptance checkout
+  // (`POST /api/msp/offers/:offerId/accept`) tags its Checkout Session with
+  // this fulfillment_type and expects provisioning to happen here. It has to
+  // be handled BEFORE the `session.mode !== "subscription"` gate below: a
+  // one-time add_on uses `mode: "payment"`, which that gate would otherwise
+  // drop unconditionally, exactly as it silently did for every msp_offer
+  // checkout (subscription or one-time) before this fix.
+  if (fulfillmentType === "msp_offer") {
+    await handleMspOfferCheckoutCompleted(stripe, session, metadata);
+    return;
+  }
+
+  if (session.mode !== "subscription" || session.payment_status !== "paid") return;
+
   if (fulfillmentType !== "msp_monthly_subscription" && metadata.signup_source !== "msp_platform") {
     // Not a platform subscription checkout — ignore
     return;
@@ -451,6 +468,131 @@ async function handleCheckoutCompleted(
   } catch (err) {
     log.warn({ err, mspId: msp.id }, "msp-billing-webhook: sale alert notification failed (non-fatal)");
   }
+}
+
+// ── checkout.session.completed: fulfillment_type "msp_offer" (#3650) ─────────
+//
+// msp-sow.ts's add_on/subscription branch of POST /api/msp/offers/:offerId/accept
+// creates this Checkout Session and returns { outcome: "checkout_required",
+// checkoutUrl } synchronously — the actual provisioning was always meant to
+// happen here, on Stripe's callback. Before this fix nothing consumed the
+// event at all, so a successfully paid msp_offer checkout never resolved
+// fulfillment and never recorded a tenant_subscriptions row, regardless of
+// mode.
+async function handleMspOfferCheckoutCompleted(
+  stripe: import("stripe").Stripe,
+  session: import("stripe").Stripe.Checkout.Session,
+  metadata: import("stripe").Stripe.Metadata,
+): Promise<void> {
+  // Same "paid, or no charge was due" acceptance as portal-checkout.ts's own
+  // checkout-redirect fulfillment path (portal_offer) — a $0-due trial-start
+  // subscription session reports payment_status "no_payment_required", not "paid".
+  if (session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
+    log.info(
+      { sessionId: session.id, paymentStatus: session.payment_status },
+      "msp-billing-webhook: msp_offer checkout completed but payment not confirmed — skipping fulfillment",
+    );
+    return;
+  }
+
+  const offerId = parseInt(metadata.offerId ?? "", 10);
+  const mspId = parseInt(metadata.mspId ?? "", 10);
+  const customerId = parseInt(metadata.customerId ?? "", 10) || null;
+  const serviceId = parseInt(metadata.serviceId ?? "", 10) || null;
+  const fulfillmentTypeKey = metadata.fulfillmentTypeKey ?? "";
+  const serviceClass = metadata.serviceClass ?? "add_on";
+  const serviceName = metadata.serviceName ?? "";
+  const metaAmountCents = parseInt(metadata.amountCents ?? "", 10);
+  const amountCents = session.amount_total ?? (isNaN(metaAmountCents) ? 0 : metaAmountCents);
+
+  if (isNaN(offerId) || isNaN(mspId)) {
+    log.error({ sessionId: session.id, metadata }, "msp-billing-webhook: msp_offer checkout missing offerId/mspId metadata — cannot provision");
+    return;
+  }
+
+  // ── Subscription billing state ──────────────────────────────────────────
+  // Recurring (mode "subscription") msp_offer purchases are billed directly to
+  // the customer's own card — customer_email now targets the real customer
+  // contact (#3650), not the accepting MSP staffer — so this is billingParty
+  // "customer", the same fact msp-marketplace-purchase.ts records for its own
+  // (MSP-card-on-file) subscription path. Without this, resolveTenantBillingState
+  // (Git #2847) never learns this customer is paying.
+  if (session.mode === "subscription" && customerId) {
+    const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+    if (subscriptionId) {
+      try {
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        const rawSub = subscription as unknown as { current_period_start?: number; current_period_end?: number };
+        await recordTenantSubscription({
+          tenantId: customerId,
+          mspId,
+          billingParty: "customer",
+          source: "checkout",
+          status: subscription.status === "trialing" ? "trialing" : "active",
+          serviceId,
+          planName: serviceName || null,
+          stripeCustomerId: typeof session.customer === "string" ? session.customer : session.customer?.id ?? null,
+          stripeSubscriptionId: subscriptionId,
+          stripePriceId: subscription.items.data[0]?.price?.id ?? null,
+          billingInterval: "month",
+          unitAmountCents: amountCents,
+          currentPeriodStart: rawSub.current_period_start ? new Date(rawSub.current_period_start * 1000) : null,
+          currentPeriodEnd: rawSub.current_period_end ? new Date(rawSub.current_period_end * 1000) : null,
+          cancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
+        });
+      } catch (err) {
+        log.error(
+          { err, sessionId: session.id, offerId, customerId },
+          "msp-billing-webhook: msp_offer subscription paid but tenant_subscriptions record failed (non-fatal — money already moved)",
+        );
+      }
+    } else {
+      log.warn({ sessionId: session.id, offerId }, "msp-billing-webhook: msp_offer subscription-mode session has no subscription id");
+    }
+  }
+
+  // ── Fulfillment ──────────────────────────────────────────────────────────
+  const idempotencyKey = `msp_offer_checkout:session:${session.id}`;
+  if (fulfillmentTypeKey) {
+    const result = await resolveFulfillment({
+      fulfillmentTypeKey,
+      idempotencyKey,
+      trigger: "purchase",
+      payload: {
+        offerId, customerId, mspId, serviceId,
+        stripeSessionId: session.id,
+        amountCents,
+        serviceName, serviceClass,
+        customerEmail: session.customer_email ?? session.customer_details?.email ?? "",
+        subscriptionId: typeof session.subscription === "string" ? session.subscription : session.subscription?.id ?? null,
+      },
+    });
+    log.info(
+      { result, offerId, customerId, mspId, sessionId: session.id },
+      "msp-billing-webhook: resolveFulfillment completed for msp_offer checkout",
+    );
+  } else {
+    log.warn({ sessionId: session.id, offerId }, "msp-billing-webhook: msp_offer checkout has no fulfillmentTypeKey in metadata — nothing to resolve");
+  }
+
+  try {
+    await db.insert(mspEventStoreTable).values({
+      eventType: "msp.offer.checkout_completed",
+      source: "msp-billing-webhook",
+      actor: { id: "system", role: "system", type: "system" },
+      meta: { tenant: { mspId, customerId } },
+      payload: { offerId, serviceId, serviceClass, amountCents, sessionId: session.id },
+      mspId,
+      ownerType: customerId ? "customer" : "msp",
+    });
+  } catch (err) {
+    log.warn({ err, sessionId: session.id }, "msp-billing-webhook: failed to emit msp.offer.checkout_completed event (non-fatal)");
+  }
+
+  log.info(
+    { offerId, mspId, customerId, serviceId, serviceClass, sessionId: session.id },
+    "msp-billing-webhook: msp_offer checkout provisioned",
+  );
 }
 
 /** Creates or links the MSP admin user account. Returns the userId, or null on failure. */

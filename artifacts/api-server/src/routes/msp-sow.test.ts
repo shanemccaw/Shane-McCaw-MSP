@@ -45,7 +45,7 @@ function makeChain(rows: unknown[]) {
 // selectResults / insertResults / updateResult are filled per-test via helpers.
 // The mock reads from these arrays in call-order.
 
-const { mockDb, mockState, mockStripeSessionCreate, mockFulfillAcceptedProjectOffer } = vi.hoisted(() => {
+const { mockDb, mockState, mockStripeSessionCreate, mockFulfillAcceptedProjectOffer, mockResolveCustomerPortalUserId } = vi.hoisted(() => {
   const mockState = {
     selectResults: [] as unknown[][],
     insertResults: [] as unknown[][],
@@ -77,7 +77,15 @@ const { mockDb, mockState, mockStripeSessionCreate, mockFulfillAcceptedProjectOf
     status: "sow_generating", projectId: 501, documentId: 9001,
   });
 
-  return { mockDb, mockState, mockStripeSessionCreate, mockFulfillAcceptedProjectOffer };
+  // #3650 — msp-sow.ts resolves the offer's real customer contact email via
+  // this canonical resolver (tenant-signals.ts) rather than reinventing the
+  // portal-user lookup. Mocked directly (default: no portal user found) the
+  // same way msp-staff.test.ts does, since its real implementation orders by
+  // canonicalPortalUserOrder() via db.select(...).orderBy(...), which this
+  // file's simpler queue-based mock db does not model.
+  const mockResolveCustomerPortalUserId = vi.fn().mockResolvedValue(null);
+
+  return { mockDb, mockState, mockStripeSessionCreate, mockFulfillAcceptedProjectOffer, mockResolveCustomerPortalUserId };
 });
 
 // ── Module mocks ───────────────────────────────────────────────────────────────
@@ -93,7 +101,8 @@ vi.mock("@workspace/db", () => ({
   mspsTable:                  { id: "id", name: "name", slug: "slug" },
   tenantsTable:               { id: "id", mspId: "msp_id", tenantId: "tenant_id" },
   salesOffersTable:           { id: "id", state: "state", mspId: "msp_id", serviceId: "service_id", tenantId: "tenant_id", title: "title", adjustedPriceCents: "adjusted_price_cents" },
-  servicesTable:              { id: "id", name: "name", description: "description", serviceClass: "service_class", billingType: "billing_type", allowFreeCheckout: "allow_free_checkout", trialPeriodDays: "trial_period_days" },
+  servicesTable:              { id: "id", name: "name", description: "description", serviceClass: "service_class", billingType: "billing_type", allowFreeCheckout: "allow_free_checkout", trialPeriodDays: "trial_period_days", fulfillmentTypeKey: "fulfillment_type_key" },
+  usersTable:                 { id: "id", email: "email" },
   mspEventStoreTable:         { eventType: "event_type" },
   fulfillmentQueueTable:      { id: "id", sourceType: "source_type", sourceId: "source_id", deliveryStatus: "delivery_status" },
 }));
@@ -143,6 +152,10 @@ vi.mock("../lib/logger.ts", () => ({
 
 vi.mock("../lib/stripe.ts", () => ({
   getStripeKey: vi.fn(() => "sk_test_mock"),
+}));
+
+vi.mock("../lib/tenant-signals.ts", () => ({
+  resolveCustomerPortalUserId: mockResolveCustomerPortalUserId,
 }));
 
 vi.mock("stripe", () => {
@@ -311,6 +324,54 @@ describe("POST /msp/offers/:offerId/accept", () => {
     expect(res.status).toBe(200);
     expect(res.body.outcome).toBe("checkout_required");
     expect(res.body.checkoutUrl).toContain("stripe.com");
+
+    // #3650 — the offer carries no resolvable customer (no customerId field
+    // on this fixture), so there is no real contact email to send. The old
+    // bug defaulted customer_email to the accepting staffer's own email
+    // (admin@msp.test) in that case; the fix omits the field entirely and
+    // lets Stripe collect an email at checkout instead.
+    const sessionParams = mockStripeSessionCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(sessionParams).not.toHaveProperty("customer_email");
+    expect(sessionParams["metadata"]).toMatchObject({ fulfillment_type: "msp_offer" });
+  });
+
+  // #3650 — the checkout session must be addressed to the offer's own customer,
+  // not the MSP staffer who called this endpoint (req.user.email), and must
+  // carry the metadata msp-billing-webhook.ts's checkout.session.completed
+  // handler needs to actually provision the purchase.
+  it("#3650: resolves the offer's real customer email for customer_email and enriches checkout metadata", async () => {
+    const app = buildApp();
+
+    queueSelect(
+      [{ id: 6, state: "sent", mspId: 42, serviceId: 25, customerId: 77, title: "Backup Add-On", adjustedPriceCents: 1500 }],
+      [{ name: "Backup Add-On", description: null, serviceClass: "add_on", allowFreeCheckout: true, trialPeriodDays: null, fulfillmentTypeKey: "backup_addon" }],
+      // MSP lookup for success_url
+      [{ name: "Contoso MSP", slug: "contoso" }],
+      // Customer (tenant) lookup — resolveOfferCustomerId
+      [{ id: 88 }],
+      // Customer contact email lookup — usersTable, keyed off resolveCustomerPortalUserId's result
+      [{ email: "jane@customer.example" }],
+    );
+    mockResolveCustomerPortalUserId.mockResolvedValueOnce(501);
+
+    const res = await request(app).post("/msp/offers/6/accept").send({});
+    expect(res.status).toBe(200);
+    expect(res.body.outcome).toBe("checkout_required");
+
+    const sessionParams = mockStripeSessionCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(sessionParams["customer_email"]).toBe("jane@customer.example");
+    expect(sessionParams["customer_email"]).not.toBe("admin@msp.test"); // the staffer's email — the bug this regresses
+    expect(sessionParams["metadata"]).toMatchObject({
+      offerId: "6",
+      mspId: "42",
+      serviceClass: "add_on",
+      fulfillment_type: "msp_offer",
+      customerId: "88",
+      serviceId: "25",
+      fulfillmentTypeKey: "backup_addon",
+      amountCents: "1500",
+      serviceName: "Backup Add-On",
+    });
   });
 
   // #3634 — a real live catalog shape: retainer items carry serviceClass="retainer"
