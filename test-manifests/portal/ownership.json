@@ -76,6 +76,6 @@
     { "name": "OWN5 -- ...Accountable...", "action": "expect", "selector": "[data-testid='ownership-cell-{{firstObjectId}}-a']", "state": "visible" },
     { "name": "OWN6 -- ...Consulted...", "action": "expect", "selector": "[data-testid='ownership-cell-{{firstObjectId}}-c']", "state": "visible" },
     { "name": "OWN7 -- ...and Informed.", "action": "expect", "selector": "[data-testid='ownership-cell-{{firstObjectId}}-i']", "state": "visible" },
-    { "name": "OWN8 -- the ledger of what this read-only build deliberately does not do is on screen, naming that write actions land with #3041 rather than silently omitting them.", "action": "expect", "selector": "body", "textContains": "wires only the read surface" }
+    { "name": "OWN8 -- the ledger of what this page deliberately does not do is on screen, naming the write actions #3041 left unwired (reorder/delegations) rather than silently omitting them.", "action": "expect", "selector": "body", "textContains": "What this page deliberately does not do" }
   ]
 }
