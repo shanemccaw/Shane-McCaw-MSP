@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <script src="./lucide-local.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;height:100%;background:#0d1117;color-scheme:dark}
+    body > div{height:100%}
+    a{color:#58A6FF;text-decoration:none}
+    a:hover{color:#79B3C8;text-decoration:underline}
+    .om-scroll{scrollbar-width:thin;scrollbar-color:#484F58 transparent}
+    .om-scroll::-webkit-scrollbar{width:11px;height:11px}
+    .om-scroll::-webkit-scrollbar-track{background:transparent}
+    .om-scroll::-webkit-scrollbar-thumb{background:#30363D;border:3px solid #0d1117;border-radius:8px;min-height:44px}
+    .om-scroll::-webkit-scrollbar-thumb:hover{background:#484F58}
+    input,textarea,select,button{font-family:inherit}
+    input::placeholder,textarea::placeholder{color:#7D8590}
+    select{color-scheme:dark}
+  </style>
+</helmet>
+
+<div style="height:100vh;width:100%;display:flex;background:#0d1117;color:#E6EDF3;font-family:Inter,ui-sans-serif,system-ui,sans-serif;overflow:hidden;position:relative">
+
+  <!-- LEFT PANEL — diagnostics / extras -->
+  <div data-screen-label="Test Mode — Left Panel (Diagnostics)" style="width:{{ leftPanelWidth }}px;flex:none;display:flex;flex-direction:column;background:#0d1117;border-right:1px solid #30363D;overflow:hidden;transition:width .12s ease">
+    <div style="height:34px;flex:none;display:flex;align-items:center;gap:6px;padding:0 8px;border-bottom:1px solid #21262d">
+      <sc-if value="{{ leftExpanded }}" hint-placeholder-val="{{ false }}">
+        <span style="font-size:9.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#8B949E;flex:1">Diagnostics</span>
+      </sc-if>
+      <span onClick="{{ onToggleLeftPanel }}" title="{{ leftToggleTitle }}" style="width:20px;height:20px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#7D8590;cursor:pointer;margin-left:{{ leftToggleMargin }}" style-hover="background:#ffffff0f;color:#E6EDF3"><i data-lucide="{{ leftToggleIcon }}" width="13" height="13"></i></span>
+    </div>
+
+    <div class="om-scroll" style="flex:1;overflow-y:auto;min-height:0">
+
+      <sc-if value="{{ leftCollapsed }}" hint-placeholder-val="{{ true }}">
+        <div style="padding:8px 0;display:flex;flex-direction:column;align-items:center;gap:3px">
+          <sc-for list="{{ railIcons }}" as="ri" hint-placeholder-count="6">
+            <span onClick="{{ ri.onClick }}" title="{{ ri.title }}" style="{{ ri.style }}" style-hover="background:#ffffff0f;color:#E6EDF3"><i data-lucide="{{ ri.icon }}" width="15" height="15"></i></span>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ leftExpanded }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:10px;display:flex;flex-direction:column;gap:10px">
+
+          <div style="display:flex;flex-wrap:wrap;gap:5px">
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:700;color:#DC8A8A;background:#DC8A8A1a;border:1px solid #DC8A8A40;border-radius:6px;padding:3px 7px"><i data-lucide="alert-triangle" width="10" height="10"></i>{{ errCount }} errors</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:700;color:#D4A56C;background:#D4A56C1a;border:1px solid #D4A56C40;border-radius:6px;padding:3px 7px"><i data-lucide="zap" width="10" height="10"></i>{{ netFailCount }} net fail</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:700;color:#79B3C8;background:#79B3C81a;border:1px solid #79B3C840;border-radius:6px;padding:3px 7px"><i data-lucide="timer" width="10" height="10"></i>{{ perfLabel }}</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:700;color:#8B949E;background:#8B949E1a;border:1px solid #8B949E40;border-radius:6px;padding:3px 7px"><i data-lucide="list-checks" width="10" height="10"></i>{{ reproEventsCount }} events</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:700;color:#8B949E;background:#8B949E1a;border:1px solid #8B949E40;border-radius:6px;padding:3px 7px"><i data-lucide="scan-eye" width="10" height="10"></i>a11y {{ a11yIssues }}</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:700;color:#8B949E;background:#8B949E1a;border:1px solid #8B949E40;border-radius:6px;padding:3px 7px"><i data-lucide="activity" width="10" height="10"></i>DOM Δ {{ mutCount }}</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:700;color:#7D8590;padding:3px 2px"><i data-lucide="globe" width="10" height="10"></i>CDP {{ cdpLabel }}</span>
+          </div>
+
+          <div style="display:flex;flex-direction:column;border:1px solid #21262d;border-radius:8px;overflow:hidden">
+
+            <div onClick="{{ onToggleSection_dom }}" style="{{ domHeaderStyle }}" style-hover="background:#161b22">
+              <span style="display:inline-flex;width:12px;height:12px;flex:none"><i data-lucide="search" width="12" height="12"></i></span>
+              <span style="flex:1;font-size:11px;font-weight:700">DOM Inspector</span>
+              <span style="display:inline-flex;width:10px;height:10px;color:#7D8590"><i data-lucide="{{ domChevron }}" width="10" height="10"></i></span>
+            </div>
+            <sc-if value="{{ isDomOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:10px;display:flex;flex-direction:column;gap:7px;background:#0D1117;border-top:1px solid #21262d">
+                <sc-if value="{{ domPicked }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                    <span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:11px;font-weight:700;color:#E6EDF3">{{ domEl.tag }}</span>
+                    <span style="font-size:9.5px;color:#7D8590">{{ domEl.dims }}</span>
+                    <span style="font-size:9px;font-weight:700;color:{{ domEl.badgeColor }}">{{ domEl.a11y }}</span>
+                  </div>
+                  <div style="font-size:9.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;word-break:break-all">{{ domEl.selector }}</div>
+                  <div style="display:flex;gap:5px;flex-wrap:wrap">
+                    <span onClick="{{ onAddDomToSteps }}" style="font-size:9.5px;font-weight:700;color:#58A6FF;cursor:pointer" style-hover="text-decoration:underline">+ Add to Repro Steps</span>
+                    <span onClick="{{ onAddDomToNotes }}" style="font-size:9.5px;font-weight:700;color:#58A6FF;cursor:pointer" style-hover="text-decoration:underline">+ Add to Notes</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ domPicked }}" hint-placeholder-val="{{ true }}">
+                  <div style="font-size:10px;color:#7D8590">No element selected.</div>
+                </sc-if>
+                <button onClick="{{ onPickElement }}" style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:6px;padding:5px 9px;cursor:pointer" style-hover="background:#282e38"><i data-lucide="crosshair" width="11" height="11"></i>{{ pickElementLabel }}</button>
+              </div>
+            </sc-if>
+
+            <div onClick="{{ onToggleSection_a11y }}" style="{{ a11yHeaderStyle }}" style-hover="background:#161b22">
+              <span style="display:inline-flex;width:12px;height:12px;flex:none"><i data-lucide="scan-eye" width="12" height="12"></i></span>
+              <span style="flex:1;font-size:11px;font-weight:700">Accessibility Audit</span>
+              <span style="display:inline-flex;width:10px;height:10px;color:#7D8590"><i data-lucide="{{ a11yChevron }}" width="10" height="10"></i></span>
+            </div>
+            <sc-if value="{{ isA11yOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:10px;display:flex;flex-direction:column;gap:7px;background:#0D1117;border-top:1px solid #21262d">
+                <div style="font-size:10px;color:#7D8590">{{ a11ySummary }}</div>
+                <div style="display:flex;gap:5px;flex-wrap:wrap">
+                  <button onClick="{{ onRescanA11y }}" style="font-size:10.5px;font-weight:700;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:6px;padding:5px 9px;cursor:pointer" style-hover="background:#282e38"><i data-lucide="refresh-cw" width="10" height="10" style="margin-right:5px;vertical-align:-1px"></i>Rescan</button>
+                  <sc-if value="{{ a11yHasIssues }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ onAddA11yToBug }}" style="font-size:10.5px;font-weight:700;color:#7C8CF0;background:#7C8CF01a;border:1px solid #7C8CF040;border-radius:6px;padding:5px 9px;cursor:pointer" style-hover="background:#7C8CF02a">+ Add to Bug Report</button>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-if>
+
+            <div onClick="{{ onToggleSection_mut }}" style="{{ mutHeaderStyle }}" style-hover="background:#161b22">
+              <span style="display:inline-flex;width:12px;height:12px;flex:none"><i data-lucide="activity" width="12" height="12"></i></span>
+              <span style="flex:1;font-size:11px;font-weight:700">DOM Mutations</span>
+              <span style="display:inline-flex;width:10px;height:10px;color:#7D8590"><i data-lucide="{{ mutChevron }}" width="10" height="10"></i></span>
+            </div>
+            <sc-if value="{{ isMutOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:10px;display:flex;flex-direction:column;gap:7px;background:#0D1117;border-top:1px solid #21262d">
+                <div style="font-size:10px;color:#7D8590">{{ mutSummary }}</div>
+                <div style="display:flex;gap:5px;flex-wrap:wrap">
+                  <button onClick="{{ onMutBaseline }}" style="font-size:10.5px;font-weight:700;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:6px;padding:5px 9px;cursor:pointer" style-hover="background:#282e38">Baseline Snapshot</button>
+                  <button onClick="{{ onMutDiff }}" style="font-size:10.5px;font-weight:700;color:#7D8590;background:none;border:1px solid #30363D;border-radius:6px;padding:5px 9px;cursor:pointer" style-hover="background:#161b22">Diff Snapshot</button>
+                  <sc-if value="{{ mutHasCount }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ onAddMutToSteps }}" style="font-size:10.5px;font-weight:700;color:#7C8CF0;background:#7C8CF01a;border:1px solid #7C8CF040;border-radius:6px;padding:5px 9px;cursor:pointer" style-hover="background:#7C8CF02a">+ Add to Repro Steps</button>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-if>
+
+            <div onClick="{{ onToggleSection_run }}" style="{{ runHeaderStyle }}" style-hover="background:#161b22">
+              <span style="display:inline-flex;width:12px;height:12px;flex:none"><i data-lucide="terminal" width="12" height="12"></i></span>
+              <span style="flex:1;font-size:11px;font-weight:700">DevTools Runner</span>
+              <span style="display:inline-flex;width:10px;height:10px;color:#7D8590"><i data-lucide="{{ runChevron }}" width="10" height="10"></i></span>
+            </div>
+            <sc-if value="{{ isRunOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:10px;display:flex;flex-direction:column;gap:7px;background:#0D1117;border-top:1px solid #21262d">
+                <textarea value="{{ consoleCmd }}" onChange="{{ onConsoleCmdChange }}" onKeyDown="{{ onConsoleCmdKey }}" placeholder="console.log(...) or paste a curl / fetch / URL" rows="2" style="width:100%;background:#0a0d12;border:1px solid #30363D;border-radius:6px;color:#E6EDF3;font-size:10.5px;font-family:Consolas,ui-monospace,Menlo,monospace;padding:7px 8px;outline:none;resize:vertical" style-focus="border-color:#7C8CF0"></textarea>
+                <button onClick="{{ onRunConsole }}" style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;color:#0d1117;background:#7C8CF0;border:none;border-radius:6px;padding:5px 10px;cursor:pointer" style-hover="background:#8f9df3"><i data-lucide="play" width="11" height="11"></i>Run (Enter)</button>
+                <sc-if value="{{ hasConsoleHistory }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:4px;max-height:120px;overflow-y:auto" class="om-scroll">
+                    <sc-for list="{{ consoleHistory }}" as="ch" hint-placeholder-count="2">
+                      <div style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:9.5px;background:#0a0d12;border:1px solid #21262d;border-radius:5px;padding:5px 7px">
+                        <div style="color:#79B3C8">&gt; {{ ch.cmd }}</div>
+                        <div style="color:#8FC496;margin-top:2px">{{ ch.result }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <span onClick="{{ onAttachResultToBug }}" style="font-size:9.5px;font-weight:700;color:#58A6FF;cursor:pointer;align-self:flex-start" style-hover="text-decoration:underline">📎 Attach last result to bug</span>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <div onClick="{{ onToggleSection_hud }}" style="{{ hudHeaderStyle }}" style-hover="background:#161b22">
+              <span style="display:inline-flex;width:12px;height:12px;flex:none"><i data-lucide="sliders-horizontal" width="12" height="12"></i></span>
+              <span style="flex:1;font-size:11px;font-weight:700">HUD Options</span>
+              <span style="display:inline-flex;width:10px;height:10px;color:#7D8590"><i data-lucide="{{ hudChevron }}" width="10" height="10"></i></span>
+            </div>
+            <sc-if value="{{ isHudOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:10px;display:flex;flex-direction:column;gap:9px;background:#0D1117;border-top:1px solid #21262d">
+                <div>
+                  <div style="display:flex;justify-content:space-between;font-size:10px;color:#8B949E;margin-bottom:5px"><span>Opacity</span><span style="font-family:Consolas,ui-monospace,Menlo,monospace;color:#E6EDF3">{{ opacityPct }}%</span></div>
+                  <input type="range" min="30" max="100" value="{{ opacityPct }}" onChange="{{ onOpacityChange }}" style="width:100%;accent-color:#7C8CF0"></input>
+                </div>
+                <label onClick="{{ onToggleAutoHide }}" style="display:flex;align-items:center;gap:7px;font-size:10.5px;color:#8B949E;cursor:pointer">
+                  <span style="{{ autoHideBoxStyle }}"><sc-if value="{{ autoHide }}" hint-placeholder-val="{{ false }}"><i data-lucide="check" width="10" height="10"></i></sc-if></span>
+                  Auto-hide when idle
+                </label>
+              </div>
+            </sc-if>
+
+          </div>
+
+          <div onClick="{{ onOpenApiHelper }}" title="API Helper" style="display:flex;align-items:center;gap:8px;padding:8px 9px;border:1px solid #21262d;border-radius:8px;cursor:pointer" style-hover="background:#161b22">
+            <span style="display:inline-flex;width:14px;height:14px;color:#7C8CF0;flex:none"><i data-lucide="zap" width="14" height="14"></i></span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:11px;font-weight:700;color:#E6EDF3">API Helper</div>
+              <div style="font-size:9px;color:#7D8590">Opens companion window</div>
+            </div>
+          </div>
+
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- CENTER — WebView2 -->
+  <div style="flex:1;min-width:0;display:flex;align-items:center;justify-content:center;background:repeating-linear-gradient(45deg,#0a0d12,#0a0d12 11px,#0b0f15 11px,#0b0f15 22px);position:relative">
+    <div style="text-align:center">
+      <div style="font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8B949E;margin-bottom:5px">WebView2</div>
+      <div style="font-size:11px;color:#576069">{{ centerSubtext }}</div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL — session, composer, bug list -->
+  <div data-screen-label="Test Mode — Right Panel (Composer)" style="width:{{ rightPanelWidth }}px;flex:none;display:flex;flex-direction:column;background:#0d1117;border-left:1px solid #30363D;overflow:hidden;transition:width .12s ease">
+
+    <div style="flex:none;padding:9px 10px;border-bottom:1px solid #21262d;display:flex;flex-direction:column;gap:7px">
+      <div style="display:flex;align-items:center;gap:7px">
+        <span style="width:8px;height:8px;border-radius:99px;background:{{ pulseColor }};flex:none"></span>
+        <span style="flex:1;min-width:0;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:11px;font-weight:600;color:#8B949E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ routeLabel }}</span>
+        <span onClick="{{ onCopyUrl }}" title="Copy URL" style="width:20px;height:20px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#7D8590;cursor:pointer" style-hover="background:#ffffff0f;color:#E6EDF3"><i data-lucide="link-2" width="12" height="12"></i></span>
+        <span onClick="{{ onToggleRightWidth }}" title="{{ rightToggleTitle }}" style="width:20px;height:20px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#7D8590;cursor:pointer" style-hover="background:#ffffff0f;color:#E6EDF3"><i data-lucide="{{ rightToggleIcon }}" width="12" height="12"></i></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+        <span onClick="{{ onToggleTimerMode }}" title="Toggle Page Time / Session Time" style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:#8B949E;font-family:Consolas,ui-monospace,Menlo,monospace;background:#161b22;border:1px solid #30363D;border-radius:6px;padding:4px 8px;cursor:pointer" style-hover="color:#E6EDF3"><i data-lucide="clock" width="11" height="11"></i>{{ timerLabel }} {{ timerText }}</span>
+        <button onClick="{{ onEndSession }}" style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;color:#0d1117;background:#7C8CF0;border:none;border-radius:6px;padding:5px 9px;cursor:pointer" style-hover="background:#8f9df3"><i data-lucide="send" width="11" height="11"></i>End Session &amp; Sync</button>
+        <span onClick="{{ onNewSession }}" title="New Session" style="width:24px;height:24px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#7D8590;cursor:pointer;border:1px solid #30363D" style-hover="background:#161b22;color:#E6EDF3"><i data-lucide="play" width="12" height="12"></i></span>
+        <span onClick="{{ onHistory }}" title="Session History" style="width:24px;height:24px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#7D8590;cursor:pointer;border:1px solid #30363D" style-hover="background:#161b22;color:#E6EDF3"><i data-lucide="history" width="12" height="12"></i></span>
+        <span onClick="{{ onClearSession }}" title="Clear Session" style="width:24px;height:24px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#7D8590;cursor:pointer;border:1px solid #30363D" style-hover="background:#161b22;color:#E6EDF3"><i data-lucide="trash-2" width="12" height="12"></i></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <label onClick="{{ onToggleGood }}" title="{{ goodTitle }}" style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:{{ goodLabelColor }};cursor:{{ goodCursor }}">
+          <span style="{{ goodBoxStyle }}"><sc-if value="{{ goodChecked }}" hint-placeholder-val="{{ false }}"><i data-lucide="check" width="10" height="10"></i></sc-if></span>
+          Good (confirmed clean)
+        </label>
+        <label onClick="{{ onToggleAutoClear }}" style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:#8B949E;cursor:pointer">
+          <span style="{{ autoClearBoxStyle }}"><sc-if value="{{ autoClear }}" hint-placeholder-val="{{ false }}"><i data-lucide="check" width="10" height="10"></i></sc-if></span>
+          Auto-clear on new session
+        </label>
+      </div>
+      <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size:10px;font-weight:600;color:#8FC496">{{ toast }}</div>
+      </sc-if>
+    </div>
+
+    <div class="om-scroll" style="flex:1;overflow-y:auto;min-height:0;padding:10px;display:flex;flex-direction:column;gap:10px">
+
+      <div>
+        <div style="display:flex;align-items:center;margin-bottom:7px">
+          <span style="font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#7C8CF0;flex:1">Log Issue / Bug Entry</span>
+          <span style="font-size:9.5px;color:#8FC496;font-weight:600">✓ Saved</span>
+        </div>
+
+        <select value="{{ severity }}" onChange="{{ onSeverityChange }}" style="width:100%;background:#0a0d12;border:1px solid #30363D;border-radius:6px;color:#E6EDF3;font-size:11.5px;font-weight:600;padding:7px 8px;margin-bottom:8px;outline:none" style-focus="border-color:#7C8CF0">
+          <option value="Blocker">Blocker</option>
+          <option value="Critical">Critical</option>
+          <option value="Bug">Bug</option>
+          <option value="UI Glitch">UI Glitch</option>
+          <option value="Functional">Functional</option>
+          <option value="Low">Low</option>
+        </select>
+
+        <div style="display:flex;gap:1px;background:#21262d;border-radius:6px;padding:2px;margin-bottom:7px">
+          <span onClick="{{ onNotesModePage }}" style="{{ notesTabPageStyle }}">Page Notes</span>
+          <span onClick="{{ onNotesModeGlobal }}" style="{{ notesTabGlobalStyle }}">Global Notes</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:2px;margin-bottom:5px">
+          <span onClick="{{ onMdBold }}" title="Bold" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#8B949E;cursor:pointer" style-hover="background:#ffffff0f;color:#E6EDF3"><i data-lucide="pen-line" width="12" height="12"></i></span>
+          <span onClick="{{ onMdItalic }}" title="Italic" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#8B949E;cursor:pointer" style-hover="background:#ffffff0f;color:#E6EDF3"><i data-lucide="text" width="12" height="12"></i></span>
+          <span onClick="{{ onMdCode }}" title="Inline code" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#8B949E;cursor:pointer" style-hover="background:#ffffff0f;color:#E6EDF3"><i data-lucide="file-code" width="12" height="12"></i></span>
+          <span onClick="{{ onMdList }}" title="Bullet list" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#8B949E;cursor:pointer" style-hover="background:#ffffff0f;color:#E6EDF3"><i data-lucide="list-checks" width="12" height="12"></i></span>
+          <span onClick="{{ onMdLink }}" title="Link" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#8B949E;cursor:pointer" style-hover="background:#ffffff0f;color:#E6EDF3"><i data-lucide="link-2" width="12" height="12"></i></span>
+          <span onClick="{{ onTogglePreview }}" title="Toggle preview" style="{{ previewToggleStyle }}"><i data-lucide="eye" width="12" height="12"></i></span>
+        </div>
+
+        <textarea value="{{ notes }}" onChange="{{ onNotesChange }}" onKeyDown="{{ onNotesKeyDown }}" placeholder="What's wrong? Markdown supported." rows="8" style="width:100%;background:#0a0d12;border:1px solid #30363D;border-radius:6px;color:#E6EDF3;font-size:12px;padding:9px 10px;outline:none;resize:vertical;margin-bottom:6px;line-height:1.6" style-focus="border-color:#7C8CF0"></textarea>
+
+        <sc-if value="{{ previewOn }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-bottom:6px">
+            <div style="font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#7D8590;margin-bottom:4px">Preview</div>
+            <div style="min-height:60px;background:#0a0d12;border:1px solid #30363D;border-radius:6px;padding:9px 10px;font-size:11.5px;color:#dedbd5;line-height:1.6" dangerouslySetInnerHTML="{{ previewHtml }}"></div>
+          </div>
+        </sc-if>
+
+        <label onClick="{{ onToggleAutoLink }}" style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:#8B949E;cursor:pointer;margin-bottom:8px">
+          <span style="{{ autoLinkBoxStyle }}"><sc-if value="{{ autoLinkShots }}" hint-placeholder-val="{{ true }}"><i data-lucide="check" width="10" height="10"></i></sc-if></span>
+          Auto-link shots
+        </label>
+
+        <input value="{{ tags }}" onChange="{{ onTagsChange }}" placeholder="Tags — comma separated (Auth, Checkout, Navigation)" style="width:100%;background:#0a0d12;border:1px solid #30363D;border-radius:6px;color:#E6EDF3;font-size:11px;padding:7px 9px;outline:none;margin-bottom:6px" style-focus="border-color:#7C8CF0"></input>
+
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px">
+          <sc-for list="{{ quickTags }}" as="qt" hint-placeholder-count="6">
+            <span onClick="{{ qt.onClick }}" style="font-size:9.5px;font-weight:700;color:#8B949E;background:#161b22;border:1px solid #30363D;border-radius:99px;padding:3px 9px;cursor:pointer" style-hover="color:#E6EDF3;border-color:#484F58">+ #{{ qt.label }}</span>
+          </sc-for>
+        </div>
+
+        <div style="border:1px solid #21262d;border-radius:8px;overflow:hidden">
+          <div onClick="{{ onToggleDetails }}" style="display:flex;align-items:center;gap:7px;padding:8px 9px;cursor:pointer" style-hover="background:#161b22">
+            <span style="display:inline-flex;width:10px;height:10px;color:#7D8590"><i data-lucide="{{ detailsChevron }}" width="10" height="10"></i></span>
+            <span style="flex:1;font-size:11px;font-weight:700;color:#8B949E">Steps to Reproduce · Expected · Actual</span>
+          </div>
+          <sc-if value="{{ detailsOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:10px;display:flex;flex-direction:column;gap:9px;border-top:1px solid #21262d">
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+                  <span style="font-size:9.5px;font-weight:700;color:#7D8590;text-transform:uppercase;letter-spacing:.06em">Steps to Reproduce</span>
+                  <span onClick="{{ onAddStep }}" style="font-size:9.5px;color:#58A6FF;cursor:pointer" style-hover="text-decoration:underline">+ Add Step</span>
+                </div>
+                <textarea value="{{ stepsText }}" onChange="{{ onStepsChange }}" placeholder="1. …" rows="3" style="width:100%;background:#0a0d12;border:1px solid #30363D;border-radius:6px;color:#E6EDF3;font-size:11px;padding:7px 8px;outline:none;resize:vertical" style-focus="border-color:#7C8CF0"></textarea>
+              </div>
+              <div>
+                <div style="font-size:9.5px;font-weight:700;color:#7D8590;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Expected Behavior</div>
+                <textarea value="{{ expectedText }}" onChange="{{ onExpectedChange }}" rows="2" style="width:100%;background:#0a0d12;border:1px solid #30363D;border-radius:6px;color:#E6EDF3;font-size:11px;padding:7px 8px;outline:none;resize:vertical" style-focus="border-color:#7C8CF0"></textarea>
+              </div>
+              <div>
+                <div style="font-size:9.5px;font-weight:700;color:#7D8590;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Actual Behavior</div>
+                <textarea value="{{ actualText }}" onChange="{{ onActualChange }}" rows="2" style="width:100%;background:#0a0d12;border:1px solid #30363D;border-radius:6px;color:#E6EDF3;font-size:11px;padding:7px 8px;outline:none;resize:vertical" style-focus="border-color:#7C8CF0"></textarea>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <button onClick="{{ onCaptureFull }}" style="flex:1;min-width:78px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:10.5px;font-weight:700;color:#E6EDF3;background:#161b22;border:1px solid #30363D;border-radius:7px;padding:7px 0;cursor:pointer" style-hover="background:#1c222c"><i data-lucide="camera" width="12" height="12"></i>Full</button>
+        <button onClick="{{ onCaptureRegion }}" style="flex:1;min-width:78px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:10.5px;font-weight:700;color:#E6EDF3;background:#161b22;border:1px solid #30363D;border-radius:7px;padding:7px 0;cursor:pointer" style-hover="background:#1c222c"><i data-lucide="crop" width="12" height="12"></i>Region</button>
+        <button onClick="{{ onCaptureHud }}" style="flex:1;min-width:78px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:10.5px;font-weight:700;color:#E6EDF3;background:#161b22;border:1px solid #30363D;border-radius:7px;padding:7px 0;cursor:pointer" style-hover="background:#1c222c"><i data-lucide="app-window" width="12" height="12"></i>HUD</button>
+        <button onClick="{{ onOpenDiff }}" style="flex:1;min-width:78px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:10.5px;font-weight:700;color:#E6EDF3;background:#161b22;border:1px solid #30363D;border-radius:7px;padding:7px 0;cursor:pointer" style-hover="background:#1c222c"><i data-lucide="columns" width="12" height="12"></i>Diff</button>
+        <button onClick="{{ onInspect }}" style="flex:1;min-width:78px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:10.5px;font-weight:700;color:#E6EDF3;background:#161b22;border:1px solid #30363D;border-radius:7px;padding:7px 0;cursor:pointer" style-hover="background:#1c222c"><i data-lucide="search" width="12" height="12"></i>Inspect</button>
+      </div>
+
+      <sc-if value="{{ hasStagedShots }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px">
+          <sc-for list="{{ stagedShots }}" as="shot" hint-placeholder-count="2">
+            <div style="flex:none;display:flex;align-items:center;gap:6px;background:#161b22;border:1px solid #30363D;border-radius:6px;padding:5px 6px 5px 8px">
+              <span style="display:inline-flex;width:11px;height:11px;color:#7D8590"><i data-lucide="camera" width="11" height="11"></i></span>
+              <span style="font-size:9.5px;color:#8B949E;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap">{{ shot.name }}</span>
+              <span onClick="{{ shot.onRemove }}" style="width:14px;height:14px;display:flex;align-items:center;justify-content:center;color:#7D8590;cursor:pointer" style-hover="color:#DC8A8A"><i data-lucide="x" width="10" height="10"></i></span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+    </div>
+
+    <div style="flex:none;display:flex;gap:7px;padding:9px 10px;border-top:1px solid #21262d">
+      <button onClick="{{ onSaveEntry }}" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;font-size:11.5px;font-weight:800;color:#0d1117;background:#7C8CF0;border:none;border-radius:7px;padding:9px 0;cursor:pointer" style-hover="background:#8f9df3"><i data-lucide="check-circle-2" width="13" height="13"></i>Save Bug Entry <span style="opacity:.7;font-weight:600;font-size:10px">Ctrl+Enter</span></button>
+      <button onClick="{{ onClearDraft }}" style="flex:none;padding:9px 14px;border-radius:7px;background:none;border:1px solid #30363D;color:#8B949E;font-size:11.5px;font-weight:700;cursor:pointer" style-hover="background:#161b22;color:#E6EDF3">Clear</button>
+    </div>
+
+    <div style="flex:none;border-top:1px solid #21262d;max-height:46vh;display:flex;flex-direction:column">
+      <div onClick="{{ onToggleBugList }}" style="flex:none;display:flex;align-items:center;gap:7px;padding:9px 10px;cursor:pointer" style-hover="background:#161b22">
+        <span style="display:inline-flex;width:11px;height:11px;color:#7D8590"><i data-lucide="{{ bugListChevron }}" width="11" height="11"></i></span>
+        <span style="font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8B949E;flex:1">Bug List ({{ bugCount }})</span>
+      </div>
+      <sc-if value="{{ bugListOpen }}" hint-placeholder-val="{{ false }}">
+        <div class="om-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:0 10px 12px;display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;gap:5px;flex:none">
+            <sc-for list="{{ bugFilters }}" as="bf" hint-placeholder-count="3">
+              <span onClick="{{ bf.onClick }}" style="{{ bf.style }}">{{ bf.label }}</span>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ hasBugs }}" hint-placeholder-val="{{ false }}">
+            <sc-for list="{{ filteredBugs }}" as="b" hint-placeholder-count="2">
+              <div style="border:1px solid #21262d;border-radius:8px;padding:9px 10px;display:flex;flex-direction:column;gap:6px;flex:none">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span style="{{ b.statusStyle }}">{{ b.statusLabel }}</span>
+                  <span style="{{ b.severityStyle }}">{{ b.severity }}</span>
+                  <span style="font-size:9px;color:#576069;margin-left:auto">{{ b.time }}</span>
+                </div>
+                <div style="font-size:11px;color:#E6EDF3;line-height:1.4">{{ b.summary }}</div>
+                <sc-if value="{{ b.hasTags }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;gap:4px;flex-wrap:wrap">
+                    <sc-for list="{{ b.tagChips }}" as="tg" hint-placeholder-count="2"><span style="font-size:9px;font-weight:700;color:#79B3C8;background:#79B3C81a;border-radius:99px;padding:2px 7px">#{{ tg.label }}</span></sc-for>
+                  </div>
+                </sc-if>
+                <div style="display:flex;gap:10px;margin-top:2px">
+                  <span onClick="{{ b.onToggleStatus }}" style="font-size:9.5px;font-weight:700;color:#58A6FF;cursor:pointer" style-hover="text-decoration:underline">{{ b.toggleLabel }}</span>
+                  <span onClick="{{ b.onCopyMd }}" style="font-size:9.5px;font-weight:700;color:#8B949E;cursor:pointer" style-hover="color:#E6EDF3">Copy MD</span>
+                  <span onClick="{{ b.onDelete }}" style="font-size:9.5px;font-weight:700;color:#DC8A8A;cursor:pointer;margin-left:auto" style-hover="text-decoration:underline">Delete</span>
+                </div>
+              </div>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{ hasBugs }}" hint-placeholder-val="{{ true }}">
+            <div style="text-align:center;padding:18px 10px;color:#576069;font-size:11px;border:1px dashed #21262d;border-radius:8px;flex:none">{{ emptyBugsLabel }}</div>
+          </sc-if>
+
+          <div style="display:flex;gap:6px;flex:none">
+            <button onClick="{{ onExportBugs }}" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:10.5px;font-weight:700;color:#7C8CF0;background:#7C8CF01a;border:1px solid #7C8CF040;border-radius:7px;padding:7px 0;cursor:pointer" style-hover="background:#7C8CF02a"><i data-lucide="box" width="12" height="12"></i>Export to /Bugs/</button>
+            <button onClick="{{ onCopyReport }}" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:10.5px;font-weight:700;color:#8B949E;background:none;border:1px solid #30363D;border-radius:7px;padding:7px 0;cursor:pointer" style-hover="background:#161b22"><i data-lucide="copy" width="12" height="12"></i>Copy Report</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+  </div>
+
+  <!-- API HELPER — spawned dialog -->
+  <sc-if value="{{ apiHelperOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ onCloseApiHelper }}" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center">
+      <div onClick="{{ swallowClick }}" class="om-scroll" style="width:440px;max-height:88vh;overflow-y:auto;display:flex;flex-direction:column;background:#161b22;border:1px solid #30363D;border-radius:6px;box-shadow:0 24px 60px rgba(0,0,0,.5)">
+        <div style="flex:none;display:flex;align-items:center;gap:6px;padding:9px 8px 9px 10px;background:#0d1117;border-radius:6px 6px 0 0;border-bottom:1px solid #30363D">
+          <span style="display:inline-flex;width:13px;height:13px;color:#7C8CF0"><i data-lucide="zap" width="13" height="13"></i></span>
+          <span style="flex:1;font-size:12px;font-weight:600;color:#E6EDF3">API Helper — Test Accounts &amp; Page Actions</span>
+          <span onClick="{{ onCloseApiHelper }}" title="Close" style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#7D8590;cursor:pointer" style-hover="background:#ffffff0f;color:#E6EDF3"><i data-lucide="x" width="12" height="12"></i></span>
+        </div>
+        <div style="flex:none;display:flex;align-items:center;gap:6px;padding:7px 10px;background:#30363D">
+          <span style="font-size:11px;font-weight:600;color:#7D8590">Target Page:</span>
+          <span style="font-size:11px;color:#E6EDF3;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ apiTargetPage }}</span>
+        </div>
+        <div style="padding:10px;display:flex;flex-direction:column;gap:10px">
+
+          <div style="background:#0d1117;border:1px solid #30363D;border-radius:5px;padding:10px;display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:11px;font-weight:800;color:#7C8CF0">CREATE TEST ACCOUNT (BYPASS PAYMENTS)</div>
+            <div style="font-size:10px;color:#7D8590;line-height:1.4">Provisions a user account via API with chosen Tenant &amp; Role without Stripe checkouts or form requirements.</div>
+            <div style="font-size:11px;color:#7D8590">Email Address:</div>
+            <div style="display:flex;gap:4px">
+              <input value="{{ apiEmail }}" onChange="{{ onApiEmailChange }}" placeholder="test.user@example.com" style="flex:1;min-width:0;height:26px;background:#30363D;border:1px solid #484F58;border-radius:5px;color:#E6EDF3;font-size:11px;padding:0 8px;outline:none" style-focus="border-color:#7C8CF0"></input>
+              <button onClick="{{ onRandomEmail }}" style="flex:none;display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:5px;padding:0 8px;cursor:pointer" style-hover="background:#282e38"><i data-lucide="sparkles" width="10" height="10"></i>Random</button>
+            </div>
+            <div style="display:flex;gap:6px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:11px;color:#7D8590;margin-bottom:2px">Password:</div>
+                <input value="{{ apiPassword }}" onChange="{{ onApiPasswordChange }}" style="width:100%;height:26px;background:#30363D;border:1px solid #484F58;border-radius:5px;color:#E6EDF3;font-size:11px;padding:0 8px;outline:none" style-focus="border-color:#7C8CF0"></input>
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:11px;color:#7D8590;margin-bottom:2px">Display Name:</div>
+                <input value="{{ apiName }}" onChange="{{ onApiNameChange }}" style="width:100%;height:26px;background:#30363D;border:1px solid #484F58;border-radius:5px;color:#E6EDF3;font-size:11px;padding:0 8px;outline:none" style-focus="border-color:#7C8CF0"></input>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:11px;color:#7D8590;margin-bottom:2px">Associated Tenant:</div>
+                <select value="{{ apiTenant }}" onChange="{{ onApiTenantChange }}" style="width:100%;height:26px;background:#30363D;border:1px solid #484F58;border-radius:5px;color:#E6EDF3;font-size:11px;padding:0 6px;outline:none">
+                  <sc-for list="{{ tenantOptions }}" as="t" hint-placeholder-count="3"><option value="{{ t }}">{{ t }}</option></sc-for>
+                </select>
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:11px;color:#7D8590;margin-bottom:2px">RBAC Role:</div>
+                <select value="{{ apiRole }}" onChange="{{ onApiRoleChange }}" style="width:100%;height:26px;background:#30363D;border:1px solid #484F58;border-radius:5px;color:#E6EDF3;font-size:11px;padding:0 6px;outline:none">
+                  <sc-for list="{{ roleOptions }}" as="r" hint-placeholder-count="3"><option value="{{ r }}">{{ r }}</option></sc-for>
+                </select>
+              </div>
+            </div>
+            <button onClick="{{ onCreateAccount }}" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:11.5px;font-weight:700;color:#0d1117;background:#7C8CF0;border:none;border-radius:6px;padding:8px 0;cursor:pointer;margin-top:2px" style-hover="background:#8f9df3"><i data-lucide="zap" width="12" height="12"></i>Create Test Account via API</button>
+          </div>
+
+          <div style="background:#0d1117;border:1px solid #30363D;border-radius:5px;padding:10px;display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:11px;font-weight:800;color:#7C8CF0">PAGE ACTIONS (ACTIVE BROWSER TAB)</div>
+            <div style="font-size:10px;color:#7D8590;line-height:1.4">Directly manipulate the active page using this test account's credentials or tokens:</div>
+            <div style="display:flex;gap:6px">
+              <button onClick="{{ onFillLoginForm }}" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:10.5px;font-weight:600;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:5px;padding:6px 0;cursor:pointer" style-hover="background:#282e38"><i data-lucide="key-round" width="11" height="11"></i>Fill Login Form</button>
+              <button onClick="{{ onFillAndSubmit }}" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:10.5px;font-weight:600;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:5px;padding:6px 0;cursor:pointer" style-hover="background:#282e38"><i data-lucide="send" width="11" height="11"></i>Fill &amp; Submit Login</button>
+            </div>
+            <button onClick="{{ onDirectLogin }}" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:10.5px;font-weight:600;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:5px;padding:6px 0;cursor:pointer" style-hover="background:#282e38"><i data-lucide="zap" width="11" height="11"></i>Direct Login (Bypass Form &amp; Navigate)</button>
+            <div style="display:flex;gap:6px">
+              <button onClick="{{ onNavigatePortal }}" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:10.5px;font-weight:600;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:5px;padding:6px 0;cursor:pointer" style-hover="background:#282e38"><i data-lucide="globe" width="11" height="11"></i>Go to /portal-v2</button>
+              <button onClick="{{ onCopyCredentials }}" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:10.5px;font-weight:600;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:5px;padding:6px 0;cursor:pointer" style-hover="background:#282e38"><i data-lucide="copy" width="11" height="11"></i>Copy Credentials</button>
+            </div>
+          </div>
+
+          <div style="background:#0d1117;border:1px solid #30363D;border-radius:5px;padding:10px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center">
+              <span style="flex:1;font-size:11px;font-weight:800;color:#7D8590">RECENT TEST ACCOUNTS</span>
+              <span onClick="{{ onClearRecents }}" style="font-size:10px;font-weight:600;color:#7D8590;cursor:pointer" style-hover="color:#E6EDF3">Clear</span>
+            </div>
+            <sc-if value="{{ hasRecentAccounts }}" hint-placeholder-val="{{ false }}">
+              <sc-for list="{{ recentAccounts }}" as="acc" hint-placeholder-count="2">
+                <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #21262d">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:10.5px;color:#E6EDF3;font-family:Consolas,ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ acc.email }}</div>
+                    <div style="font-size:9px;color:#7D8590">{{ acc.tenant }} · {{ acc.role }} · {{ acc.time }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </sc-if>
+            <sc-if value="{{ hasRecentAccounts }}" hint-placeholder-val="{{ true }}">
+              <div style="font-size:10px;color:#7D8590">No recent test accounts yet.</div>
+            </sc-if>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- VISUAL DIFF — spawned dialog -->
+  <sc-if value="{{ diffOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ onCloseDiff }}" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;display:flex;align-items:center;justify-content:center">
+      <div onClick="{{ swallowClick }}" style="width:min(92vw,1100px);height:min(88vh,760px);display:flex;flex-direction:column;background:#1C2128;border:1px solid #30363D;border-radius:6px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5)">
+        <div style="flex:none;height:36px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;background:#0d1117;border-bottom:1px solid #30363D">
+          <span style="display:inline-flex;width:13px;height:13px;color:#7D8590"><i data-lucide="columns" width="13" height="13"></i></span>
+          <span style="font-size:12px;font-weight:600;color:#8B949E">Visual Diff &amp; Screenshot Comparison</span>
+          <span style="font-size:11px;font-family:Consolas,ui-monospace,Menlo,monospace;color:#7C8CF0;background:#30363D;border-radius:3px;padding:2px 6px;margin-left:6px">{{ apiTargetPage }}</span>
+          <div style="flex:1"></div>
+          <span onClick="{{ onCloseDiff }}" title="Close" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#7D8590;cursor:pointer" style-hover="background:#ffffff0f;color:#E6EDF3"><i data-lucide="x" width="13" height="13"></i></span>
+        </div>
+
+        <div style="flex:none;background:#161b22;border-bottom:1px solid #30363D;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;gap:16px">
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="font-size:10px;font-weight:800;color:#7C8CF0">BASELINE (Source of Truth)</span>
+                <div style="flex:1"></div>
+                <span style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:600;color:#8B949E;cursor:pointer" style-hover="color:#E6EDF3"><i data-lucide="folder-open" width="9" height="9"></i>Browse...</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:600;color:#8FC496;cursor:pointer" style-hover="color:#a6dbae"><i data-lucide="star" width="9" height="9"></i>Set Current as Baseline</span>
+              </div>
+              <select style="height:26px;background:#0d1117;border:1px solid #30363D;border-radius:5px;color:#7D8590;font-size:10px;padding:0 6px;outline:none"><option>No screenshots yet</option></select>
+            </div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="font-size:10px;font-weight:800;color:#8FC496">CURRENT (Under Test)</span>
+                <div style="flex:1"></div>
+                <span style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:600;color:#8B949E;cursor:pointer" style-hover="color:#E6EDF3"><i data-lucide="folder-open" width="9" height="9"></i>Browse...</span>
+              </div>
+              <select style="height:26px;background:#0d1117;border:1px solid #30363D;border-radius:5px;color:#7D8590;font-size:10px;padding:0 6px;outline:none"><option>No screenshots yet</option></select>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="display:flex;gap:3px;background:#0d1117;border-radius:5px;padding:3px">
+              <span onClick="{{ onSetDiffModeSide }}" style="{{ diffModeSideStyle }}">Side-by-Side</span>
+              <span onClick="{{ onSetDiffModeSwipe }}" style="{{ diffModeSwipeStyle }}">Swipe / Split Slider</span>
+              <span onClick="{{ onSetDiffModeHeat }}" style="{{ diffModeHeatStyle }}">Difference Heatmap</span>
+            </div>
+            <div style="flex:1"></div>
+            <div style="display:inline-flex;align-items:center;gap:6px;background:#0d1117;border-radius:5px;padding:5px 10px">
+              <span style="display:inline-flex;width:12px;height:12px;color:#7D8590"><i data-lucide="columns" width="12" height="12"></i></span>
+              <span style="font-size:11px;font-weight:600;color:#8B949E">Select a baseline and current screenshot to compare.</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:1;min-height:0;background:#0d1117;position:relative">
+          <sc-if value="{{ isDiffSide }}" hint-placeholder-val="{{ true }}">
+            <div style="height:100%;display:flex">
+              <div style="flex:1;min-width:0;border-right:1px solid #30363D;display:flex;align-items:center;justify-content:center;position:relative">
+                <span style="position:absolute;top:10px;left:10px;font-size:9px;font-weight:800;color:#7C8CF0;background:#000000b3;border-radius:3px;padding:2px 6px">BASELINE</span>
+                <span style="font-size:11px;color:#576069">No screenshot selected</span>
+              </div>
+              <div style="flex:1;min-width:0;display:flex;align-items:center;justify-content:center;position:relative">
+                <span style="position:absolute;top:10px;left:10px;font-size:9px;font-weight:800;color:#8FC496;background:#000000b3;border-radius:3px;padding:2px 6px">CURRENT</span>
+                <span style="font-size:11px;color:#576069">No screenshot selected</span>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isDiffSwipe }}" hint-placeholder-val="{{ false }}">
+            <div style="height:100%;display:flex;align-items:center;justify-content:center">
+              <span style="font-size:11px;color:#576069">Select two screenshots to enable the swipe comparison</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isDiffHeat }}" hint-placeholder-val="{{ false }}">
+            <div style="height:100%;display:flex;align-items:center;justify-content:center">
+              <span style="font-size:11px;color:#576069">Select two screenshots to generate a difference heatmap</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="flex:none;background:#161b22;border-top:1px solid #30363D;padding:8px 12px;display:flex;align-items:center;gap:16px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:10.5px;color:#8B949E">Zoom:</span>
+            <input type="range" min="20" max="300" value="{{ diffZoom }}" onChange="{{ onZoomChange }}" style="width:100px;accent-color:#7C8CF0"></input>
+            <span style="font-size:10.5px;font-family:Consolas,ui-monospace,Menlo,monospace;color:#E6EDF3">{{ diffZoom }}%</span>
+          </div>
+          <label onClick="{{ onToggleSyncScroll }}" style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:#8B949E;cursor:pointer">
+            <span style="{{ syncScrollBoxStyle }}"><sc-if value="{{ diffSyncScroll }}" hint-placeholder-val="{{ true }}"><i data-lucide="check" width="9" height="9"></i></sc-if></span>
+            Sync Scroll
+          </label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:10.5px;color:#8B949E">Tolerance:</span>
+            <input type="range" min="1" max="20" value="{{ diffTolerance }}" onChange="{{ onToleranceChange }}" style="width:80px;accent-color:#7C8CF0"></input>
+            <span style="font-size:10.5px;font-family:Consolas,ui-monospace,Menlo,monospace;color:#E6EDF3">{{ diffTolerance }}%</span>
+          </div>
+          <div style="flex:1"></div>
+          <button onClick="{{ onAttachDiffToBug }}" style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:#0d1117;background:#7C8CF0;border:none;border-radius:6px;padding:6px 10px;cursor:pointer" style-hover="background:#8f9df3"><i data-lucide="send" width="11" height="11"></i>Attach Diff to Bug</button>
+          <button onClick="{{ onCopyDiffSummary }}" style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:6px;padding:6px 10px;cursor:pointer" style-hover="background:#282e38"><i data-lucide="copy" width="11" height="11"></i>Copy Summary</button>
+          <button onClick="{{ onSaveDiffImage }}" style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:6px;padding:6px 10px;cursor:pointer" style-hover="background:#282e38"><i data-lucide="box" width="11" height="11"></i>Save Diff Map</button>
+          <button onClick="{{ onCloseDiff }}" style="font-size:10.5px;font-weight:600;color:#8B949E;background:none;border:1px solid #30363D;border-radius:6px;padding:6px 10px;cursor:pointer" style-hover="background:#161b22">Close</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- SESSION HISTORY — spawned dialog -->
+  <sc-if value="{{ historyOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ onCloseHistory }}" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center">
+      <div onClick="{{ swallowClick }}" style="width:560px;max-height:80vh;display:flex;flex-direction:column;background:#161b22;border:1px solid #30363D;border-radius:6px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5)">
+        <div style="flex:none;display:flex;align-items:center;gap:6px;padding:9px 8px 9px 10px;background:#0d1117;border-bottom:1px solid #30363D">
+          <span style="display:inline-flex;width:13px;height:13px;color:#7D8590"><i data-lucide="history" width="13" height="13"></i></span>
+          <span style="flex:1;font-size:12px;font-weight:600;color:#E6EDF3">Testing Session History &amp; Audit Trail</span>
+          <span onClick="{{ onCloseHistory }}" title="Close" style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#7D8590;cursor:pointer" style-hover="background:#ffffff0f;color:#E6EDF3"><i data-lucide="x" width="12" height="12"></i></span>
+        </div>
+        <div style="flex:none;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:9px 12px;background:#30363D;border-bottom:1px solid #484F58">
+          <div><div style="font-size:8px;font-weight:800;color:#7D8590">TOTAL SESSIONS</div><div style="font-size:14px;font-weight:800;color:#7C8CF0">{{ totalSessions }}</div></div>
+          <div><div style="font-size:8px;font-weight:800;color:#7D8590">TESTING TIME</div><div style="font-size:14px;font-weight:800;color:#E6EDF3">{{ testingTimeLabel }}</div></div>
+          <div><div style="font-size:8px;font-weight:800;color:#7D8590">BUGS FOUND</div><div style="font-size:14px;font-weight:800;color:#D4A56C">{{ bugsFoundTotal }}</div></div>
+          <div><div style="font-size:8px;font-weight:800;color:#7D8590">CONFIRMED CLEAN</div><div style="font-size:14px;font-weight:800;color:#8FC496">{{ confirmedCleanCount }}</div></div>
+        </div>
+        <div class="om-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:10px 12px">
+          <sc-if value="{{ hasSessionHistory }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <sc-for list="{{ sessionHistoryRows }}" as="h" hint-placeholder-count="2">
+                <div style="border:1px solid #30363D;border-radius:6px;padding:8px 10px;display:flex;align-items:center;gap:10px">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:11px;font-weight:600;color:#E6EDF3;font-family:Consolas,ui-monospace,Menlo,monospace">{{ h.route }}</div>
+                    <div style="font-size:9.5px;color:#7D8590">{{ h.durationLabel }} · {{ h.bugs }} bug(s)</div>
+                  </div>
+                  <sc-if value="{{ h.clean }}" hint-placeholder-val="{{ false }}"><span style="font-size:9px;font-weight:700;color:#8FC496;background:#8FC4961a;border-radius:99px;padding:2px 8px">Confirmed clean</span></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ hasSessionHistory }}" hint-placeholder-val="{{ true }}">
+            <div style="text-align:center;font-size:11px;font-style:italic;color:#7D8590;padding:30px 20px">No recorded test sessions yet. As you navigate and test pages, sessions are automatically logged here.</div>
+          </sc-if>
+        </div>
+        <div style="flex:none;display:flex;align-items:center;gap:8px;padding:9px 12px;background:#0d1117;border-top:1px solid #30363D">
+          <button onClick="{{ onCopyHistoryMd }}" style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:5px;padding:6px 8px;cursor:pointer" style-hover="background:#282e38"><i data-lucide="copy" width="10" height="10"></i>Copy History (Markdown)</button>
+          <div style="flex:1"></div>
+          <button onClick="{{ onClearHistory }}" style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:#E6EDF3;background:#21262d;border:1px solid #30363D;border-radius:5px;padding:6px 8px;cursor:pointer" style-hover="background:#282e38"><i data-lucide="trash-2" width="10" height="10"></i>Clear All</button>
+          <button onClick="{{ onCloseHistory }}" style="font-size:10px;font-weight:700;color:#0d1117;background:#7C8CF0;border:none;border-radius:5px;padding:6px 12px;cursor:pointer" style-hover="background:#8f9df3">Close</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- REGION SELECT — fullscreen overlay -->
+  <sc-if value="{{ regionOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:#00000066;z-index:300;cursor:crosshair">
+      <div style="position:absolute;top:12px;left:12px;background:#000000cc;color:#fff;font-size:12px;font-weight:600;padding:6px 10px;border-radius:3px">Drag to select a region — Esc or right-click to cancel</div>
+      <div style="position:absolute;top:30%;left:30%;width:40%;height:34%;border:2px solid #7C8CF0;background:#7C8CF026">
+        <div style="position:absolute;bottom:-42px;left:0;display:flex;gap:6px">
+          <button onClick="{{ onUseRegionSelection }}" style="font-size:11px;font-weight:700;color:#0d1117;background:#7C8CF0;border:none;border-radius:5px;padding:6px 12px;cursor:pointer" style-hover="background:#8f9df3">Use This Selection</button>
+          <button onClick="{{ onCloseRegionCancel }}" style="font-size:11px;font-weight:600;color:#E6EDF3;background:#161b22;border:1px solid #30363D;border-radius:5px;padding:6px 12px;cursor:pointer" style-hover="background:#21262d">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    leftExpanded: false, leftSection: 'dom', rightWide: false,
+    severity: 'Bug', notesMode: 'page', notes: '', previewOn: false, autoLinkShots: true, tags: '',
+    detailsOpen: false, stepsText: '', expectedText: '', actualText: '',
+    timerMode: 'page', goodChecked: false, autoClear: false,
+    bugListOpen: false, bugFilter: 'All',
+    sessionActive: false, route: '', seconds: 0,
+    stagedShots: [], shotSeq: 1, bugs: [], bugSeq: 1,
+    domIdx: -1, domPicked: false, a11yIssues: 0, a11yScanIdx: -1, mutBaseline: false, mutCount: 0,
+    reproEventsCount: 0,
+    consoleCmd: '', consoleHistory: [],
+    opacityPct: 100, autoHide: false,
+    toast: '',
+    apiHelperOpen: false, diffOpen: false, historyOpen: false, regionOpen: false,
+    apiEmail: '', apiPassword: 'TestPass123!', apiName: 'Test User', apiTenant: 'Acme Corp', apiRole: 'Admin', recentAccounts: [],
+    diffMode: 'side', diffZoom: 100, diffTolerance: 5, diffSyncScroll: true,
+    sessionHistory: []
+  };
+
+  tenantOptions = ['Acme Corp', 'Globex Inc', 'Initech'];
+  roleOptions = ['Admin', 'Manager', 'Viewer'];
+
+  domSamples = [
+    { tag: '<BUTTON>', dims: '120 × 36 px', selector: 'button.primary-btn', a11y: 'a11y: OK', badgeColor: '#8FC496' },
+    { tag: '<IMG>', dims: '240 × 160 px', selector: 'img.hero-banner', a11y: '⚠ missing-alt', badgeColor: '#D4A56C' },
+    { tag: '<INPUT>', dims: '280 × 40 px', selector: 'input[name="email"]', a11y: 'a11y: OK', badgeColor: '#8FC496' },
+    { tag: '<DIV>', dims: '320 × 48 px', selector: 'div.card-header', a11y: '⚠ low-contrast', badgeColor: '#D4A56C' }
+  ];
+  a11yScanResults = [0, 3, 1, 4, 0];
+  severityColors = { Blocker: '#DC8A8A', Critical: '#D4A56C', Bug: '#E3B341', 'UI Glitch': '#79B3C8', Functional: '#8B949E', Low: '#7D8590' };
+
+  componentDidMount() {
+    const run = () => { if (window.lucide) { window.lucide.createIcons(); return true; } return false; };
+    if (!run()) this._it = setInterval(() => { if (run()) clearInterval(this._it); }, 200);
+    this._timer = setInterval(() => { if (this.state.sessionActive) this.setState(s => ({ seconds: s.seconds + 1 })); }, 1000);
+  }
+  componentDidUpdate() { if (window.lucide) window.lucide.createIcons(); }
+  componentWillUnmount() { if (this._it) clearInterval(this._it); if (this._timer) clearInterval(this._timer); if (this._toastTimer) clearTimeout(this._toastTimer); }
+
+  showToast(msg) {
+    if (this._toastTimer) clearTimeout(this._toastTimer);
+    this.setState({ toast: msg });
+    this._toastTimer = setTimeout(() => this.setState({ toast: '' }), 2600);
+  }
+
+  openSection(key) { this.setState({ leftExpanded: true, leftSection: key }); }
+
+  checkboxStyle(on, disabled) {
+    const bg = disabled ? '#161b22' : (on ? '#7C8CF0' : 'transparent');
+    const border = disabled ? '#30363D' : (on ? '#7C8CF0' : '#30363D');
+    return `width:14px;height:14px;border-radius:4px;border:1px solid ${border};background:${bg};display:inline-flex;align-items:center;justify-content:center;flex:none;color:#0d1117`;
+  }
+  tabStyle(active) { return `flex:1;text-align:center;font-size:10.5px;font-weight:700;padding:5px 0;border-radius:5px;cursor:pointer;background:${active ? '#0d1117' : 'transparent'};color:${active ? '#E6EDF3' : '#7D8590'}`; }
+  accordionHeaderStyle(open) { return `display:flex;align-items:center;gap:7px;padding:8px 9px;cursor:pointer;color:#E6EDF3;background:${open ? '#161b22' : 'transparent'}`; }
+  filterChipStyle(active) { return `font-size:9.5px;font-weight:700;padding:4px 10px;border-radius:99px;cursor:pointer;background:${active ? '#7C8CF01a' : '#161b22'};border:1px solid ${active ? '#7C8CF040' : '#30363D'};color:${active ? '#7C8CF0' : '#8B949E'}`; }
+
+  formatTime(sec) {
+    const m = Math.floor(sec / 60).toString().padStart(2, '0');
+    const s = (sec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  }
+  renderMarkdown(text) {
+    if (!text || !text.trim()) return '<span style="color:#576069">Nothing to preview yet.</span>';
+    const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lines = esc.split('\n').map(line => {
+      let l = line
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`(.+?)`/g, '<code style="background:#21262d;padding:1px 4px;border-radius:3px;font-family:Consolas,ui-monospace,Menlo,monospace">$1</code>')
+        .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" style="color:#58A6FF">$1</a>');
+      if (/^\s*-\s+/.test(l)) l = '&bull;&nbsp; ' + l.replace(/^\s*-\s+/, '');
+      return l;
+    });
+    return lines.join('<br>');
+  }
+
+  formatDuration(sec) {
+    const m = Math.floor(sec / 60);
+    const s = (sec % 60).toString().padStart(2, '0');
+    return `${m}m ${s}s`;
+  }
+
+  makeBugId() { const n = this.state.bugSeq; this.setState({ bugSeq: n + 1 }); return n; }
+
+  renderVals() {
+    const s = this.state;
+    const railDefs = [
+      { key: 'dom', icon: 'search', title: 'DOM Inspector' },
+      { key: 'a11y', icon: 'scan-eye', title: 'Accessibility Audit' },
+      { key: 'mut', icon: 'activity', title: 'DOM Mutations' },
+      { key: 'run', icon: 'terminal', title: 'DevTools Runner' },
+      { key: 'hud', icon: 'sliders-horizontal', title: 'HUD Options' },
+      { key: 'api', icon: 'zap', title: 'API Helper', onClick: () => this.setState({ apiHelperOpen: true }) }
+    ];
+
+    const domEl = s.domIdx >= 0 ? this.domSamples[s.domIdx] : null;
+    const a11yScanned = s.a11yScanIdx >= 0;
+
+    const filteredBugs = s.bugs.filter(b => s.bugFilter === 'All' ? true : b.status === s.bugFilter);
+
+    return {
+      leftPanelWidth: s.leftExpanded ? 300 : 48,
+      leftExpanded: s.leftExpanded,
+      leftCollapsed: !s.leftExpanded,
+      leftToggleIcon: s.leftExpanded ? 'chevron-left' : 'chevron-right',
+      leftToggleTitle: s.leftExpanded ? 'Collapse panel' : 'Expand panel',
+      leftToggleMargin: s.leftExpanded ? '0' : 'auto',
+      onToggleLeftPanel: () => this.setState(st => ({ leftExpanded: !st.leftExpanded })),
+
+      railIcons: railDefs.map(d => ({
+        icon: d.icon, title: d.title,
+        onClick: d.onClick || (() => this.openSection(d.key)),
+        style: `width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:#7D8590;cursor:pointer`
+      })),
+
+      rightPanelWidth: s.rightWide ? 540 : 420,
+      rightToggleIcon: s.rightWide ? 'chevron-right' : 'chevron-left',
+      rightToggleTitle: s.rightWide ? 'Narrow panel' : 'Widen panel',
+      onToggleRightWidth: () => this.setState(st => ({ rightWide: !st.rightWide })),
+
+      errCount: 0, netFailCount: 0,
+      perfLabel: s.sessionActive ? 'live' : '--',
+      reproEventsCount: s.reproEventsCount,
+      a11yIssues: s.a11yIssues,
+      mutCount: s.mutCount,
+      cdpLabel: s.sessionActive ? 'Active' : '--',
+      centerSubtext: s.sessionActive ? `Tracking ${s.route}` : 'Live web application renders here in Test Mode',
+
+      isDomOpen: s.leftSection === 'dom', isA11yOpen: s.leftSection === 'a11y', isMutOpen: s.leftSection === 'mut',
+      isRunOpen: s.leftSection === 'run', isHudOpen: s.leftSection === 'hud',
+      domHeaderStyle: this.accordionHeaderStyle(s.leftSection === 'dom'),
+      a11yHeaderStyle: this.accordionHeaderStyle(s.leftSection === 'a11y'),
+      mutHeaderStyle: this.accordionHeaderStyle(s.leftSection === 'mut'),
+      runHeaderStyle: this.accordionHeaderStyle(s.leftSection === 'run'),
+      hudHeaderStyle: this.accordionHeaderStyle(s.leftSection === 'hud'),
+      domChevron: s.leftSection === 'dom' ? 'chevron-up' : 'chevron-down',
+      a11yChevron: s.leftSection === 'a11y' ? 'chevron-up' : 'chevron-down',
+      mutChevron: s.leftSection === 'mut' ? 'chevron-up' : 'chevron-down',
+      runChevron: s.leftSection === 'run' ? 'chevron-up' : 'chevron-down',
+      hudChevron: s.leftSection === 'hud' ? 'chevron-up' : 'chevron-down',
+      onToggleSection_dom: () => this.setState(st => ({ leftSection: st.leftSection === 'dom' ? null : 'dom' })),
+      onToggleSection_a11y: () => this.setState(st => ({ leftSection: st.leftSection === 'a11y' ? null : 'a11y' })),
+      onToggleSection_mut: () => this.setState(st => ({ leftSection: st.leftSection === 'mut' ? null : 'mut' })),
+      onToggleSection_run: () => this.setState(st => ({ leftSection: st.leftSection === 'run' ? null : 'run' })),
+      onToggleSection_hud: () => this.setState(st => ({ leftSection: st.leftSection === 'hud' ? null : 'hud' })),
+      onOpenApiHelper: () => this.setState({ apiHelperOpen: true }),
+      apiHelperOpen: s.apiHelperOpen,
+      onCloseApiHelper: () => this.setState({ apiHelperOpen: false }),
+      swallowClick: e => e.stopPropagation(),
+      apiTargetPage: s.sessionActive ? `${s.route}` : 'No active page connected',
+      apiEmail: s.apiEmail, onApiEmailChange: e => this.setState({ apiEmail: e.target.value }),
+      onRandomEmail: () => this.setState({ apiEmail: `test.${Date.now().toString().slice(-6)}@example.com` }),
+      apiPassword: s.apiPassword, onApiPasswordChange: e => this.setState({ apiPassword: e.target.value }),
+      apiName: s.apiName, onApiNameChange: e => this.setState({ apiName: e.target.value }),
+      apiTenant: s.apiTenant, onApiTenantChange: e => this.setState({ apiTenant: e.target.value }),
+      apiRole: s.apiRole, onApiRoleChange: e => this.setState({ apiRole: e.target.value }),
+      onCreateAccount: () => {
+        const email = s.apiEmail.trim() || `test.${Date.now().toString().slice(-6)}@example.com`;
+        this.setState(st => ({ recentAccounts: [{ id: Date.now(), email, role: st.apiRole, tenant: st.apiTenant, time: 'just now' }, ...st.recentAccounts], apiEmail: '' }));
+        this.showToast('Test account created via API');
+      },
+      onCopyCredentials: () => this.showToast('Credentials copied'),
+      onFillLoginForm: () => this.showToast(s.sessionActive ? 'Login form filled' : 'No active page connected'),
+      onFillAndSubmit: () => this.showToast(s.sessionActive ? 'Login form submitted' : 'No active page connected'),
+      onDirectLogin: () => this.showToast(s.sessionActive ? 'Session cookies injected — navigating' : 'No active page connected'),
+      onNavigatePortal: () => this.showToast(s.sessionActive ? 'Navigated to /portal-v2' : 'No active page connected'),
+      hasRecentAccounts: s.recentAccounts.length > 0,
+      recentAccounts: s.recentAccounts,
+      onClearRecents: () => this.setState({ recentAccounts: [] }),
+
+      diffOpen: s.diffOpen, onCloseDiff: () => this.setState({ diffOpen: false }),
+      diffModeSideStyle: this.tabStyle(s.diffMode === 'side'), diffModeSwipeStyle: this.tabStyle(s.diffMode === 'swipe'), diffModeHeatStyle: this.tabStyle(s.diffMode === 'heat'),
+      onSetDiffModeSide: () => this.setState({ diffMode: 'side' }), onSetDiffModeSwipe: () => this.setState({ diffMode: 'swipe' }), onSetDiffModeHeat: () => this.setState({ diffMode: 'heat' }),
+      isDiffSide: s.diffMode === 'side', isDiffSwipe: s.diffMode === 'swipe', isDiffHeat: s.diffMode === 'heat',
+      diffZoom: s.diffZoom, onZoomChange: e => this.setState({ diffZoom: Number(e.target.value) }),
+      diffTolerance: s.diffTolerance, onToleranceChange: e => this.setState({ diffTolerance: Number(e.target.value) }),
+      diffSyncScroll: s.diffSyncScroll, onToggleSyncScroll: () => this.setState(st => ({ diffSyncScroll: !st.diffSyncScroll })),
+      syncScrollBoxStyle: this.checkboxStyle(s.diffSyncScroll, false),
+      onAttachDiffToBug: () => { this.setState(st => ({ notes: (st.notes ? st.notes + '\n' : '') + 'Visual diff attached — see staged screenshots.' })); this.showToast('Diff attached to bug draft'); },
+      onCopyDiffSummary: () => this.showToast('Diff summary copied'),
+      onSaveDiffImage: () => this.showToast('Diff map saved'),
+
+      historyOpen: s.historyOpen, onCloseHistory: () => this.setState({ historyOpen: false }),
+      hasSessionHistory: s.sessionHistory.length > 0,
+      sessionHistoryRows: s.sessionHistory.map(h => ({ ...h, durationLabel: this.formatTime(h.durationSec), cleanLabel: h.clean ? 'Confirmed clean' : '' })),
+      totalSessions: s.sessionHistory.length,
+      testingTimeLabel: this.formatDuration(s.sessionHistory.reduce((a, h) => a + h.durationSec, 0)),
+      bugsFoundTotal: s.sessionHistory.reduce((a, h) => a + h.bugs, 0) + s.bugs.length,
+      confirmedCleanCount: s.sessionHistory.filter(h => h.clean).length,
+      onCopyHistoryMd: () => { if (s.sessionHistory.length === 0) { this.showToast('No history to copy'); return; } this.showToast('History copied as Markdown'); },
+      onClearHistory: () => this.setState({ sessionHistory: [] }),
+
+      regionOpen: s.regionOpen,
+      onCloseRegionCancel: () => this.setState({ regionOpen: false }),
+      onUseRegionSelection: () => { this.setState({ regionOpen: false }); this.stageShot('region'); },
+
+      domPicked: s.domPicked, domEl: domEl || {}, pickElementLabel: s.domPicked ? 'Pick Another' : 'Pick Element',
+      onPickElement: () => this.setState(st => ({ domIdx: (st.domIdx + 1) % this.domSamples.length, domPicked: true })),
+      onAddDomToSteps: () => {
+        if (!domEl) return;
+        this.setState(st => ({
+          stepsText: (st.stepsText ? st.stepsText + '\n' : '') + `${(st.stepsText || '').split('\n').filter(Boolean).length + 1}. Click ${domEl.tag} (${domEl.selector})`,
+          reproEventsCount: st.reproEventsCount + 1, detailsOpen: true
+        }));
+        this.showToast('Added to Repro Steps');
+      },
+      onAddDomToNotes: () => {
+        if (!domEl) return;
+        this.setState(st => ({ notes: (st.notes ? st.notes + '\n' : '') + `> ${domEl.selector}` }));
+        this.showToast('Added to Notes');
+      },
+
+      a11ySummary: a11yScanned ? `${s.a11yIssues} issue${s.a11yIssues === 1 ? '' : 's'} found.` : '0 issues found. Run a scan to audit the active page.',
+      a11yHasIssues: a11yScanned && s.a11yIssues > 0,
+      onRescanA11y: () => {
+        const idx = (s.a11yScanIdx + 1) % this.a11yScanResults.length;
+        this.setState({ a11yScanIdx: idx, a11yIssues: this.a11yScanResults[idx] });
+      },
+      onAddA11yToBug: () => {
+        this.setState(st => ({ notes: (st.notes ? st.notes + '\n' : '') + `${st.a11yIssues} accessibility issue(s) detected on this page.` }));
+        this.showToast('Added to Notes');
+      },
+
+      mutSummary: s.mutBaseline ? `${s.mutCount} mutation${s.mutCount === 1 ? '' : 's'} since baseline.` : 'No baseline set.',
+      mutHasCount: s.mutCount > 0,
+      onMutBaseline: () => { this.setState({ mutBaseline: true, mutCount: 0 }); this.showToast('Baseline captured'); },
+      onMutDiff: () => {
+        if (!s.mutBaseline) { this.showToast('Set a baseline first'); return; }
+        this.setState(st => ({ mutCount: st.mutCount + 2 }));
+      },
+      onAddMutToSteps: () => {
+        this.setState(st => ({ stepsText: (st.stepsText ? st.stepsText + '\n' : '') + `${st.mutCount} DOM mutation(s) observed since baseline.`, detailsOpen: true }));
+        this.showToast('Added to Repro Steps');
+      },
+
+      consoleCmd: s.consoleCmd,
+      onConsoleCmdChange: e => this.setState({ consoleCmd: e.target.value }),
+      onConsoleCmdKey: e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.runConsole(); } },
+      onRunConsole: () => this.runConsole(),
+      hasConsoleHistory: s.consoleHistory.length > 0,
+      consoleHistory: s.consoleHistory,
+      onAttachResultToBug: () => {
+        const last = s.consoleHistory[0];
+        if (!last) return;
+        this.setState(st => ({ notes: (st.notes ? st.notes + '\n' : '') + `\`${last.cmd}\` → ${last.result}` }));
+        this.showToast('Attached to bug draft');
+      },
+
+      opacityPct: s.opacityPct,
+      onOpacityChange: e => this.setState({ opacityPct: Number(e.target.value) }),
+      autoHide: s.autoHide, autoHideBoxStyle: this.checkboxStyle(s.autoHide, false),
+      onToggleAutoHide: () => this.setState(st => ({ autoHide: !st.autoHide })),
+
+      severity: s.severity, onSeverityChange: e => this.setState({ severity: e.target.value }),
+      notesTabPageStyle: this.tabStyle(s.notesMode === 'page'), notesTabGlobalStyle: this.tabStyle(s.notesMode === 'global'),
+      onNotesModePage: () => this.setState({ notesMode: 'page' }), onNotesModeGlobal: () => this.setState({ notesMode: 'global' }),
+
+      previewOn: s.previewOn, previewHtml: { __html: this.renderMarkdown(s.notes) },
+      previewToggleStyle: `width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;cursor:pointer;margin-left:auto;color:${s.previewOn ? '#7C8CF0' : '#8B949E'};background:${s.previewOn ? '#7C8CF01a' : 'transparent'}`,
+      onTogglePreview: () => this.setState(st => ({ previewOn: !st.previewOn })),
+      notes: s.notes, onNotesChange: e => this.setState({ notes: e.target.value }),
+      onNotesKeyDown: e => {
+        if (e.key !== 'Enter') return;
+        const ta = e.target;
+        const val = ta.value;
+        const pos = ta.selectionStart;
+        const lineStart = val.lastIndexOf('\n', pos - 1) + 1;
+        const currentLine = val.slice(lineStart, pos);
+        const m = currentLine.match(/^(\s*)-\s+(.*)$/);
+        if (!m) return;
+        e.preventDefault();
+        const indent = m[1], content = m[2];
+        let newVal, newPos;
+        if (content.trim() === '') {
+          newVal = val.slice(0, lineStart) + val.slice(pos);
+          newPos = lineStart;
+        } else {
+          const insert = '\n' + indent + '- ';
+          newVal = val.slice(0, pos) + insert + val.slice(pos);
+          newPos = pos + insert.length;
+        }
+        this.setState({ notes: newVal });
+        requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = newPos; });
+      },
+      onMdBold: () => this.setState(st => ({ notes: st.notes + '**bold**' })),
+      onMdItalic: () => this.setState(st => ({ notes: st.notes + '*italic*' })),
+      onMdCode: () => this.setState(st => ({ notes: st.notes + '`code`' })),
+      onMdList: () => this.setState(st => ({ notes: (st.notes ? st.notes + '\n' : '') + '- item' })),
+      onMdLink: () => this.setState(st => ({ notes: st.notes + '[title](url)' })),
+
+      autoLinkShots: s.autoLinkShots, autoLinkBoxStyle: this.checkboxStyle(s.autoLinkShots, false),
+      onToggleAutoLink: () => this.setState(st => ({ autoLinkShots: !st.autoLinkShots })),
+
+      tags: s.tags, onTagsChange: e => this.setState({ tags: e.target.value }),
+      quickTags: ['Auth', 'UI', 'API', 'Checkout', 'Performance', 'Form'].map(label => ({
+        label, onClick: () => this.setState(st => ({ tags: st.tags ? `${st.tags}, ${label}` : label }))
+      })),
+
+      detailsOpen: s.detailsOpen, detailsChevron: s.detailsOpen ? 'chevron-up' : 'chevron-right',
+      onToggleDetails: () => this.setState(st => ({ detailsOpen: !st.detailsOpen })),
+      stepsText: s.stepsText, onStepsChange: e => this.setState({ stepsText: e.target.value }),
+      expectedText: s.expectedText, onExpectedChange: e => this.setState({ expectedText: e.target.value }),
+      actualText: s.actualText, onActualChange: e => this.setState({ actualText: e.target.value }),
+      onAddStep: () => {
+        const n = (s.stepsText || '').split('\n').filter(Boolean).length + 1;
+        this.setState(st => ({ stepsText: (st.stepsText ? st.stepsText + '\n' : '') + `${n}. ` }));
+      },
+
+      hasStagedShots: s.stagedShots.length > 0,
+      stagedShots: s.stagedShots.map(shot => ({ ...shot, onRemove: () => this.setState(st => ({ stagedShots: st.stagedShots.filter(x => x.id !== shot.id) })) })),
+      onCaptureFull: () => this.stageShot('full'),
+      onCaptureRegion: () => this.setState({ regionOpen: true }),
+      onCaptureHud: () => this.stageShot('hud'),
+      onOpenDiff: () => this.setState({ diffOpen: true }),
+      onInspect: () => this.openSection('dom'),
+
+      onSaveEntry: () => this.saveEntry(),
+      onClearDraft: () => {
+        this.setState({ notes: '', tags: '', stepsText: '', expectedText: '', actualText: '', stagedShots: [], previewOn: false });
+        this.showToast('Draft cleared');
+      },
+
+      goodChecked: s.goodChecked,
+      goodDisabled: s.bugs.some(b => b.status === 'Open'),
+      goodTitle: s.bugs.some(b => b.status === 'Open') ? 'Resolve open bugs on this page first' : '',
+      goodLabelColor: s.bugs.some(b => b.status === 'Open') ? '#576069' : '#8B949E',
+      goodCursor: s.bugs.some(b => b.status === 'Open') ? 'not-allowed' : 'pointer',
+      goodBoxStyle: this.checkboxStyle(s.goodChecked, s.bugs.some(b => b.status === 'Open')),
+      onToggleGood: () => { if (s.bugs.some(b => b.status === 'Open')) return; this.setState(st => ({ goodChecked: !st.goodChecked })); },
+      autoClear: s.autoClear, autoClearBoxStyle: this.checkboxStyle(s.autoClear, false),
+      onToggleAutoClear: () => this.setState(st => ({ autoClear: !st.autoClear })),
+
+      pulseColor: s.sessionActive ? '#8FC496' : '#D4A56C',
+      routeLabel: s.sessionActive ? s.route : 'No tracked tab active — navigate a watched tab',
+      onCopyUrl: () => { if (!s.sessionActive) { this.showToast('No active route to copy'); return; } this.showToast('URL copied'); },
+      timerLabel: s.timerMode === 'page' ? 'Page' : 'Session',
+      timerText: this.formatTime(s.seconds),
+      onToggleTimerMode: () => this.setState(st => ({ timerMode: st.timerMode === 'page' ? 'session' : 'page' })),
+      onNewSession: () => { this.setState({ sessionActive: true, route: '/portal/dashboard', seconds: 0 }); this.showToast('New session started'); },
+      onEndSession: () => {
+        if (!s.sessionActive) { this.showToast('No active session'); return; }
+        this.showToast(`Synced to /Bugs/Portal/session-${Date.now().toString().slice(-6)}`);
+        const rec = { id: Date.now(), route: s.route, durationSec: s.seconds, bugs: s.bugs.length, clean: s.goodChecked };
+        this.setState(st => ({ sessionActive: false, route: '', sessionHistory: [rec, ...st.sessionHistory], goodChecked: false }));
+      },
+      onHistory: () => this.setState({ historyOpen: true }),
+      onClearSession: () => { this.setState({ seconds: 0 }); this.showToast('Session timer cleared'); },
+
+      hasToast: !!s.toast, toast: s.toast,
+
+      bugListOpen: s.bugListOpen, bugListChevron: s.bugListOpen ? 'chevron-up' : 'chevron-right',
+      onToggleBugList: () => this.setState(st => ({ bugListOpen: !st.bugListOpen })),
+      bugCount: s.bugs.length,
+      bugFilters: ['All', 'Open', 'Resolved'].map(label => ({ label, style: this.filterChipStyle(s.bugFilter === label), onClick: () => this.setState({ bugFilter: label }) })),
+      hasBugs: filteredBugs.length > 0,
+      emptyBugsLabel: s.bugs.length === 0 ? 'No bug entries for this page yet.' : `No ${s.bugFilter.toLowerCase()} entries.`,
+      filteredBugs: filteredBugs.map(b => ({
+        ...b,
+        statusLabel: b.status,
+        statusStyle: `font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:99px;background:${b.status === 'Open' ? '#D4A56C1a' : '#8FC4961a'};color:${b.status === 'Open' ? '#D4A56C' : '#8FC496'}`,
+        severityStyle: `font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:5px;background:${this.severityColors[b.severity]}1a;color:${this.severityColors[b.severity]}`,
+        hasTags: b.tags.length > 0,
+        tagChips: b.tags.map(t => ({ label: t })),
+        toggleLabel: b.status === 'Open' ? 'Resolve' : 'Reopen',
+        onToggleStatus: () => this.setState(st => ({ bugs: st.bugs.map(x => x.id === b.id ? { ...x, status: x.status === 'Open' ? 'Resolved' : 'Open' } : x) })),
+        onCopyMd: () => this.showToast('Copied bug as Markdown'),
+        onDelete: () => this.setState(st => ({ bugs: st.bugs.filter(x => x.id !== b.id) }))
+      })),
+      onExportBugs: () => { if (s.bugs.length === 0) { this.showToast('No entries to export'); return; } this.showToast(`Exported ${s.bugs.length} entrie${s.bugs.length === 1 ? '' : 's'} to /Bugs/Portal/`); },
+      onCopyReport: () => { if (s.bugs.length === 0) { this.showToast('No entries to copy'); return; } this.showToast('Report copied to clipboard'); }
+    };
+  }
+
+  stageShot(type) {
+    const id = this.state.shotSeq;
+    const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
+    this.setState(st => ({ shotSeq: st.shotSeq + 1, stagedShots: [...st.stagedShots, { id, name: `${type}-${stamp}.png` }] }));
+    this.showToast(`${type[0].toUpperCase()}${type.slice(1)} screenshot staged`);
+  }
+
+  runConsole() {
+    const cmd = this.state.consoleCmd.trim();
+    if (!cmd) return;
+    this.setState(st => ({ consoleHistory: [{ cmd, result: 'OK — no active page context' }, ...st.consoleHistory].slice(0, 5), consoleCmd: '' }));
+  }
+
+  saveEntry() {
+    const s = this.state;
+    if (!s.notes.trim() && s.stagedShots.length === 0) { this.showToast('Add notes or a screenshot first'); return; }
+    const id = this.makeBugId();
+    const tags = s.tags.split(',').map(t => t.trim()).filter(Boolean);
+    const entry = { id, severity: s.severity, status: 'Open', summary: s.notes.trim() || '(screenshot only)', tags, time: 'just now' };
+    this.setState(st => ({
+      bugs: [entry, ...st.bugs], notes: '', tags: '', stepsText: '', expectedText: '', actualText: '',
+      stagedShots: [], previewOn: false, bugListOpen: true
+    }));
+    this.showToast('Bug entry saved');
+  }
+}
+
+</script>
+</body>
+</html>

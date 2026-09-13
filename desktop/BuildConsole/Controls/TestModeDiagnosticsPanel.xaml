@@ -1,0 +1,346 @@
+<UserControl x:Class="BuildConsole.Controls.TestModeDiagnosticsPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource CrustBrush}"
+             Foreground="{StaticResource TextBrush}">
+
+    <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,1,0">
+        <Grid>
+            <!-- ══════════════════════════════════════════════════════════════
+                 1. COLLAPSED RAIL (48px wide)
+                 ══════════════════════════════════════════════════════════════ -->
+            <Grid x:Name="RailCollapsed" Width="48" Visibility="Visible">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="34"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Expand toggle button -->
+                <Border Grid.Row="0" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1">
+                    <Button x:Name="BtnExpandRail"
+                            Style="{StaticResource IconButton}"
+                            HorizontalAlignment="Right"
+                            Width="24" Height="24"
+                            Margin="0,0,6,0"
+                            Padding="0"
+                            ToolTip="Expand Diagnostics (300px)"
+                            Click="BtnExpandRail_Click">
+                        <TextBlock Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="11" Foreground="{StaticResource Subtext0Brush}"/>
+                    </Button>
+                </Border>
+
+                <!-- Vertical Icon Rail -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Margin="0,8,0,8">
+                        <!-- DOM Inspector -->
+                        <Button x:Name="RailBtnDom" Style="{StaticResource IconButton}" Width="32" Height="32" Margin="0,0,0,3"
+                                ToolTip="DOM Inspector" Click="RailBtnDom_Click">
+                            <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource Subtext0Brush}"/>
+                        </Button>
+
+                        <!-- Accessibility Audit -->
+                        <Button x:Name="RailBtnA11y" Style="{StaticResource IconButton}" Width="32" Height="32" Margin="0,0,0,3"
+                                ToolTip="Accessibility Audit" Click="RailBtnA11y_Click">
+                            <TextBlock Text="&#xE7B5;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource Subtext0Brush}"/>
+                        </Button>
+
+                        <!-- DOM Mutations -->
+                        <Button x:Name="RailBtnMut" Style="{StaticResource IconButton}" Width="32" Height="32" Margin="0,0,0,3"
+                                ToolTip="DOM Mutations" Click="RailBtnMut_Click">
+                            <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource Subtext0Brush}"/>
+                        </Button>
+
+                        <!-- DevTools Runner -->
+                        <Button x:Name="RailBtnRunner" Style="{StaticResource IconButton}" Width="32" Height="32" Margin="0,0,0,3"
+                                ToolTip="DevTools Runner" Click="RailBtnRunner_Click">
+                            <TextBlock Text="&#xE756;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource Subtext0Brush}"/>
+                        </Button>
+
+                        <!-- HUD Options -->
+                        <Button x:Name="RailBtnHud" Style="{StaticResource IconButton}" Width="32" Height="32" Margin="0,0,0,3"
+                                ToolTip="HUD Options" Click="RailBtnHud_Click">
+                            <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource Subtext0Brush}"/>
+                        </Button>
+
+                        <!-- API Helper -->
+                        <Button x:Name="RailBtnApi" Style="{StaticResource IconButton}" Width="32" Height="32" Margin="0,0,0,3"
+                                ToolTip="API Helper" Click="RailBtnApi_Click">
+                            <TextBlock Text="&#xE945;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource AccentBrush}"/>
+                        </Button>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- ══════════════════════════════════════════════════════════════
+                 2. EXPANDED PANEL (300px wide)
+                 ══════════════════════════════════════════════════════════════ -->
+            <Grid x:Name="PanelExpanded" Width="300" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="34"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header Strip -->
+                <Border Grid.Row="0" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1" Padding="10,0,8,0">
+                    <Grid VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="DIAGNOSTICS" FontSize="9.5" FontWeight="ExtraBold"
+                                   Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+
+                        <Button x:Name="BtnCollapseRail" Grid.Column="1"
+                                Style="{StaticResource IconButton}"
+                                Width="24" Height="24"
+                                Padding="0"
+                                ToolTip="Collapse Diagnostics Rail (48px)"
+                                Click="BtnCollapseRail_Click">
+                            <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="11" Foreground="{StaticResource Subtext0Brush}"/>
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <!-- Main Scrollable Body -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="10" Orientation="Vertical">
+
+                        <!-- Telemetry Badge Pills -->
+                        <WrapPanel Margin="0,0,0,10">
+                            <!-- Errors -->
+                            <Border Background="#1ADC8A8A" BorderBrush="#40DC8A8A" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE783;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="#DC8A8A" Margin="0,0,3,0"/>
+                                    <TextBlock x:Name="TxtTelemetryErrors" Text="0 errors" FontSize="9.5" FontWeight="Bold" Foreground="#DC8A8A"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Net Fail -->
+                            <Border Background="#1AD4A56C" BorderBrush="#40D4A56C" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE945;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="#D4A56C" Margin="0,0,3,0"/>
+                                    <TextBlock x:Name="TxtTelemetryNetFail" Text="0 net fail" FontSize="9.5" FontWeight="Bold" Foreground="#D4A56C"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Perf ms -->
+                            <Border Background="#1A79B3C8" BorderBrush="#4079B3C8" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE916;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="#79B3C8" Margin="0,0,3,0"/>
+                                    <TextBlock x:Name="TxtTelemetryPerf" Text="-- ms" FontSize="9.5" FontWeight="Bold" Foreground="#79B3C8"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Events -->
+                            <Border Background="#1A8B949E" BorderBrush="#408B949E" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,3,0"/>
+                                    <TextBlock x:Name="TxtTelemetryEvents" Text="0 events" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- A11y -->
+                            <Border Background="#1A8B949E" BorderBrush="#408B949E" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
+                                <TextBlock x:Name="TxtTelemetryA11y" Text="a11y 0" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
+                            </Border>
+
+                            <!-- DOM Delta -->
+                            <Border Background="#1A8B949E" BorderBrush="#408B949E" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
+                                <TextBlock x:Name="TxtTelemetryDomMut" Text="DOM Δ 0" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
+                            </Border>
+
+                            <!-- CDP -->
+                            <Border Background="Transparent" Padding="4,3" Margin="0,0,4,4">
+                                <TextBlock x:Name="TxtTelemetryCdp" Text="CDP connected" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource Subtext1Brush}"/>
+                            </Border>
+                        </WrapPanel>
+
+                        <!-- Accordion Container -->
+                        <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,10">
+                            <StackPanel Orientation="Vertical">
+
+                                <!-- ── Section 1: DOM Inspector ── -->
+                                <Border x:Name="HdrDom" Background="{StaticResource CrustBrush}" Padding="9,8" Cursor="Hand" MouseLeftButtonDown="HdrDom_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="DOM Inspector" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="IconDomChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                                <Border x:Name="BodyDom" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
+                                    <StackPanel Orientation="Vertical">
+                                        <!-- Picked Readout -->
+                                        <StackPanel x:Name="DomPickedContainer" Visibility="Collapsed" Margin="0,0,0,6">
+                                            <WrapPanel Margin="0,0,0,4">
+                                                <TextBlock x:Name="TxtDomTag" Text="div.card" FontFamily="Consolas" FontSize="11" FontWeight="Bold" Margin="0,0,6,0"/>
+                                                <TextBlock x:Name="TxtDomDims" Text="320x180" FontSize="9.5" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="TxtDomA11y" Text="a11y OK" FontSize="9" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}" VerticalAlignment="Center"/>
+                                            </WrapPanel>
+                                            <TextBlock x:Name="TxtDomSelector" Text="#root > main > div:nth-child(2)" FontFamily="Consolas" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                                            <WrapPanel Margin="0,0,0,6">
+                                                <Button Content="+ Add to Repro Steps" Style="{StaticResource SecondaryButton}" FontSize="9.5" Padding="5,2" Margin="0,0,4,0" Click="BtnDomAddToSteps_Click"/>
+                                                <Button Content="+ Add to Notes" Style="{StaticResource SecondaryButton}" FontSize="9.5" Padding="5,2" Click="BtnDomAddToNotes_Click"/>
+                                            </WrapPanel>
+                                        </StackPanel>
+
+                                        <TextBlock x:Name="TxtDomEmpty" Text="No element selected." FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,6"/>
+                                        <Button x:Name="BtnPickElement" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" FontSize="10.5" Padding="8,5" Click="BtnPickElement_Click">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE7A8;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,0,6,0"/>
+                                                <TextBlock x:Name="TxtPickElementLabel" Text="Pick Element" FontWeight="Bold"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- ── Section 2: Accessibility Audit ── -->
+                                <Border x:Name="HdrA11y" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="9,8" Cursor="Hand" MouseLeftButtonDown="HdrA11y_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="&#xE7B5;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="Accessibility Audit" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="IconA11yChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                                <Border x:Name="BodyA11y" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
+                                    <StackPanel Orientation="Vertical">
+                                        <TextBlock x:Name="TxtA11ySummary" Text="0 issues found. Run a scan to audit the active page." FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                                        <WrapPanel>
+                                            <Button x:Name="BtnRescanA11y" Style="{StaticResource SecondaryButton}" FontSize="10.5" Padding="8,5" Margin="0,0,6,0" Click="BtnRescanA11y_Click">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="10" Margin="0,0,5,0"/>
+                                                    <TextBlock Text="Rescan" FontWeight="Bold"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button x:Name="BtnAddA11yToBug" Style="{StaticResource PrimaryButton}" FontSize="10.5" Padding="8,5" Visibility="Collapsed" Click="BtnAddA11yToBug_Click" Content="+ Add to Bug Report"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- ── Section 3: DOM Mutations ── -->
+                                <Border x:Name="HdrMut" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="9,8" Cursor="Hand" MouseLeftButtonDown="HdrMut_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="DOM Mutations" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="IconMutChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                                <Border x:Name="BodyMut" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
+                                    <StackPanel Orientation="Vertical">
+                                        <TextBlock x:Name="TxtMutSummary" Text="0 DOM mutations tracked." FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,8"/>
+                                        <WrapPanel>
+                                            <Button Style="{StaticResource SecondaryButton}" FontSize="10.5" Padding="8,5" Margin="0,0,6,0" Content="Baseline Snapshot" Click="BtnMutBaseline_Click"/>
+                                            <Button Style="{StaticResource SecondaryButton}" FontSize="10.5" Padding="8,5" Margin="0,0,6,0" Content="Diff Snapshot" Click="BtnMutDiff_Click"/>
+                                            <Button x:Name="BtnAddMutToSteps" Style="{StaticResource PrimaryButton}" FontSize="10.5" Padding="8,5" Visibility="Collapsed" Content="+ Add to Repro Steps" Click="BtnAddMutToSteps_Click"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- ── Section 4: DevTools Runner ── -->
+                                <Border x:Name="HdrRunner" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="9,8" Cursor="Hand" MouseLeftButtonDown="HdrRunner_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="&#xE756;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="DevTools Runner" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="IconRunnerChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                                <Border x:Name="BodyRunner" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
+                                    <StackPanel Orientation="Vertical">
+                                        <TextBox x:Name="TxtConsoleCmd" Height="42" TextWrapping="Wrap" AcceptsReturn="True"
+                                                 Background="#0A0D12" BorderBrush="{StaticResource Surface0Brush}"
+                                                 Foreground="{StaticResource TextBrush}" FontFamily="Consolas" FontSize="10.5"
+                                                 Padding="6" Margin="0,0,0,6"
+                                                 KeyDown="TxtConsoleCmd_KeyDown"/>
+                                        <Button Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" FontSize="10.5" Padding="8,5" Margin="0,0,0,6" Click="BtnRunConsole_Click">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="10" Margin="0,0,5,0"/>
+                                                <TextBlock Text="Run (Enter)" FontWeight="Bold"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <ItemsControl x:Name="ListConsoleHistory" Margin="0,0,0,6">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="#0A0D12" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="0,0,0,4">
+                                                        <StackPanel Orientation="Vertical">
+                                                            <TextBlock Text="{Binding Cmd}" FontFamily="Consolas" FontSize="9.5" Foreground="#79B3C8"/>
+                                                            <TextBlock Text="{Binding Result}" FontFamily="Consolas" FontSize="9.5" Foreground="#8FC496" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock x:Name="BtnAttachConsoleResult" Text="📎 Attach last result to bug" FontSize="9.5" FontWeight="Bold"
+                                                   Foreground="{StaticResource BlueBrush}" Cursor="Hand" Visibility="Collapsed"
+                                                   MouseLeftButtonDown="BtnAttachConsoleResult_Click"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- ── Section 5: HUD Options ── -->
+                                <Border x:Name="HdrHud" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="9,8" Cursor="Hand" MouseLeftButtonDown="HdrHud_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="HUD Options" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="IconHudChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                                <Border x:Name="BodyHud" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
+                                    <StackPanel Orientation="Vertical">
+                                        <Grid Margin="0,0,0,4">
+                                            <TextBlock Text="Opacity" FontSize="10" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Left"/>
+                                            <TextBlock x:Name="TxtOpacityReadout" Text="100%" FontFamily="Consolas" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Right"/>
+                                        </Grid>
+                                        <Slider x:Name="SliderOpacity" Minimum="30" Maximum="100" Value="100" Margin="0,0,0,8" ValueChanged="SliderOpacity_ValueChanged"/>
+                                        <CheckBox x:Name="ChkAutoHide" Content="Auto-hide when idle" FontSize="10.5" Foreground="{StaticResource Subtext0Brush}"/>
+                                    </StackPanel>
+                                </Border>
+
+                            </StackPanel>
+                        </Border>
+
+                        <!-- API Helper Entry Row -->
+                        <Border Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="8"
+                                Padding="8,9" Cursor="Hand" MouseLeftButtonDown="BtnOpenApiHelper_Click">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="&#xE945;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource AccentBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="API Helper" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                                    <TextBlock Text="Opens companion window" FontSize="9" Foreground="{StaticResource Subtext1Brush}"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>
