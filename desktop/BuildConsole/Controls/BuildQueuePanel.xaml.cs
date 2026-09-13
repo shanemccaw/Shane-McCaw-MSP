@@ -1809,40 +1809,53 @@ namespace BuildConsole.Controls
         /// </summary>
         public void UpdateQueueStatusCounts()
         {
-            var c = ComputeQueueStatusCounts();
-            var active = _watcher?.RunningCount ?? 0;
+            if (QueueStatusCountsText == null || QueueStatusBorder == null) return;
 
-            string blockedText = c.Provisional ? $"{c.Blocked}*" : c.Blocked.ToString();
-            QueueStatusCountsText.Text =
-                $"Queue: {c.InQueue}  ·  Up Next: {c.UpNext}  ·  Active: {active}  ·  Blocked: {blockedText}  ·  Verifying: {c.Verifying}  ·  Total: {c.Total}";
-
-            if (c.Provisional)
+            try
             {
-                QueueStatusCountsText.Foreground = (Brush)Application.Current.FindResource("Subtext0Brush");
-                QueueStatusBorder.ToolTip = "Blocked count is provisional — waiting for the first Git Board refresh to confirm which blockers are still open. Click for the next builds to run.";
+                var c = ComputeQueueStatusCounts();
+                var active = _watcher?.RunningCount ?? 0;
+
+                string blockedText = c.Provisional ? $"{c.Blocked}*" : c.Blocked.ToString();
+                QueueStatusCountsText.Text =
+                    $"Queue: {c.InQueue}  ·  Up Next: {c.UpNext}  ·  Active: {active}  ·  Blocked: {blockedText}  ·  Verifying: {c.Verifying}  ·  Total: {c.Total}";
+
+                if (c.Provisional)
+                {
+                    QueueStatusCountsText.Foreground = (Brush)(TryFindResource("Subtext0Brush")
+                        ?? Application.Current?.TryFindResource("Subtext0Brush")
+                        ?? Brushes.Gray);
+                    QueueStatusBorder.ToolTip = "Blocked count is provisional — waiting for the first Git Board refresh to confirm which blockers are still open. Click for the next builds to run.";
+                }
+                else
+                {
+                    QueueStatusCountsText.Foreground = (Brush)(TryFindResource("TextBrush")
+                        ?? Application.Current?.TryFindResource("TextBrush")
+                        ?? Brushes.White);
+                    // Git #2107 — _openIssues (and therefore the 🔒 BLOCKED badge itself) is only as
+                    // fresh as the last Git Board refresh or auto-recheck; say so plainly rather than
+                    // implying it's live.
+                    string freshness = _openIssuesRefreshedUtc.HasValue
+                        ? $"blockers last checked {FormatAgo(DateTime.UtcNow - _openIssuesRefreshedUtc.Value)}"
+                        : "blockers not yet checked this session";
+                    QueueStatusBorder.ToolTip = $"Live queue status ({freshness}) — click for the next builds to run, in real claim order.";
+                }
+
+                if (QueueNextPopup?.IsOpen == true) _ = RenderNextToRunAsync();
+                RenderMatrixDrawer();
+
+                // Git #3864 — mirror this exact, already-computed string into the global status bar.
+                QueueStatusCountsChanged?.Invoke(this, new QueueStatusCountsDisplay
+                {
+                    Text = QueueStatusCountsText.Text,
+                    Provisional = c.Provisional,
+                    ToolTip = QueueStatusBorder.ToolTip as string ?? string.Empty,
+                });
             }
-            else
+            catch (Exception ex)
             {
-                QueueStatusCountsText.Foreground = (Brush)Application.Current.FindResource("TextBrush");
-                // Git #2107 — _openIssues (and therefore the 🔒 BLOCKED badge itself) is only as
-                // fresh as the last Git Board refresh or auto-recheck; say so plainly rather than
-                // implying it's live.
-                string freshness = _openIssuesRefreshedUtc.HasValue
-                    ? $"blockers last checked {FormatAgo(DateTime.UtcNow - _openIssuesRefreshedUtc.Value)}"
-                    : "blockers not yet checked this session";
-                QueueStatusBorder.ToolTip = $"Live queue status ({freshness}) — click for the next builds to run, in real claim order.";
+                System.Diagnostics.Debug.WriteLine($"[BuildQueuePanel] Non-fatal error updating queue counts: {ex.Message}");
             }
-
-            if (QueueNextPopup?.IsOpen == true) _ = RenderNextToRunAsync();
-            RenderMatrixDrawer();
-
-            // Git #3864 — mirror this exact, already-computed string into the global status bar.
-            QueueStatusCountsChanged?.Invoke(this, new QueueStatusCountsDisplay
-            {
-                Text = QueueStatusCountsText.Text,
-                Provisional = c.Provisional,
-                ToolTip = QueueStatusBorder.ToolTip as string ?? string.Empty,
-            });
         }
 
         /// <summary>Git #2107 — human "2h ago" style relative time for the QUEUE header's

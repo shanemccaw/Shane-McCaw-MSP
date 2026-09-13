@@ -36,6 +36,10 @@
     <SolidColorBrush x:Key="TextPrimaryBrush"   Color="{StaticResource TextPrimaryColor}"/>
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
     <SolidColorBrush x:Key="TextDisabledBrush"  Color="{StaticResource TextDisabledColor}"/>
+    <!-- Primary aliases available unconditionally across all dictionary merge states -->
+    <SolidColorBrush x:Key="TextBrush"     Color="{StaticResource TextPrimaryColor}"/>
+    <SolidColorBrush x:Key="Subtext0Brush" Color="{StaticResource TextSecondaryColor}"/>
+    <SolidColorBrush x:Key="Subtext1Brush" Color="{StaticResource TextSecondaryColor}"/>
 
     <!-- Accent (interactive elements, links, selected state) -->
     <Color x:Key="AccentColor">#7C8CF0</Color>
