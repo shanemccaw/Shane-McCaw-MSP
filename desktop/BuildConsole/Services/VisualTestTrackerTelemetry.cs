@@ -1,20 +1,43 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
 namespace BuildConsole.Services
 {
     /// <summary>
-    /// Automatic Telemetry &amp; Diagnostics Capture for WebView2 in Visual Test Tracker.
+    /// Represents detailed metadata and dimensions of an inspected DOM element.
+    /// </summary>
+    public sealed class DomElementInfo
+    {
+        public string Tag { get; set; } = "";
+        public string Id { get; set; } = "";
+        public string Classes { get; set; } = "";
+        public string Selector { get; set; } = "";
+        public string XPath { get; set; } = "";
+        public string OuterHtml { get; set; } = "";
+        public string InnerText { get; set; } = "";
+        public double Width { get; set; }
+        public double Height { get; set; }
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public Dictionary<string, string> Attributes { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Automatic Telemetry, Chrome DevTools Protocol (CDP) &amp; Diagnostics Capture for WebView2 in Visual Test Tracker.
     /// Captures:
-    /// 1. Console logs (Errors, Warnings, Info/Debug logs, and Stack Traces).
-    /// 2. Network logs (Failed requests, Status codes, URLs, Timing durations in ms, and Payload sizes).
-    /// 3. JavaScript errors (Uncaught exceptions, unhandled Promise rejections, and script execution errors).
-    /// 4. Performance signals (Page load time, TTFB, DOMContentLoaded, FCP, LCP, and script error count).
-    /// 5. User interaction breadcrumbs (clicks, inputs with password redaction, form submits).
-    /// 6. Auto-collected environment &amp; viewport metadata.
+    /// 1. Console logs (Runtime.consoleAPICalled, Console.messageAdded with stack traces).
+    /// 2. Network logs (Network.requestWillBeSent, responseReceived, loadingFailed with timing &amp; payload sizes).
+    /// 3. JavaScript errors (Runtime.exceptionThrown for engine-level uncaught exceptions &amp; unhandled rejections).
+    /// 4. Early JS injection (AddScriptToExecuteOnDocumentCreatedAsync) for bulletproof reproduction tracking.
+    /// 5. Interactive DOM element inspector (hover-highlighting, selector generation, outerHTML capture).
+    /// 6. Performance navigation signals (page load time, TTFB, DOMContentLoaded, FCP, LCP).
     /// </summary>
     public static class VisualTestTrackerTelemetry
     {
@@ -547,6 +570,226 @@ namespace BuildConsole.Services
 })();
 ";
 
+        private const string DomInspectorScript = @"
+(function() {
+    if (window.__vttDomInspectorActive) return;
+    window.__vttDomInspectorActive = true;
+
+    var overlay = document.getElementById('__vtt_dom_inspector_overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = '__vtt_dom_inspector_overlay';
+        overlay.style.position = 'fixed';
+        overlay.style.pointerEvents = 'none';
+        overlay.style.zIndex = '2147483647';
+        overlay.style.border = '2px solid #38bdf8';
+        overlay.style.backgroundColor = 'rgba(56, 189, 248, 0.15)';
+        overlay.style.borderRadius = '3px';
+        overlay.style.transition = 'all 0.05s ease-out';
+        overlay.style.display = 'none';
+
+        var badge = document.createElement('div');
+        badge.id = '__vtt_dom_inspector_badge';
+        badge.style.position = 'absolute';
+        badge.style.top = '-24px';
+        badge.style.left = '0';
+        badge.style.backgroundColor = '#0f172a';
+        badge.style.color = '#38bdf8';
+        badge.style.fontFamily = 'Consolas, monospace';
+        badge.style.fontSize = '11px';
+        badge.style.fontWeight = 'bold';
+        badge.style.padding = '2px 6px';
+        badge.style.borderRadius = '3px';
+        badge.style.whiteSpace = 'nowrap';
+        badge.style.boxShadow = '0 2px 6px rgba(0,0,0,0.4)';
+        badge.style.pointerEvents = 'none';
+        overlay.appendChild(badge);
+
+        document.documentElement.appendChild(overlay);
+    }
+
+    var hoveredEl = null;
+
+    function getSelector(el) {
+        if (!el || el.nodeType !== 1) return '';
+        if (el.id) return '#' + CSS.escape(el.id);
+        var path = [];
+        var curr = el;
+        while (curr && curr.nodeType === 1 && curr !== document.body && curr !== document.documentElement) {
+            var sel = curr.tagName.toLowerCase();
+            if (curr.id) {
+                path.unshift('#' + CSS.escape(curr.id));
+                break;
+            }
+            if (curr.getAttribute && curr.getAttribute('data-testid')) {
+                path.unshift('[data-testid=""' + curr.getAttribute('data-testid') + '""]');
+                break;
+            }
+            if (curr.className && typeof curr.className === 'string') {
+                var cls = curr.className.trim().split(/\s+/).filter(Boolean);
+                if (cls.length > 0) sel += '.' + cls.slice(0, 2).map(function(c) { try { return CSS.escape(c); } catch(e) { return c; } }).join('.');
+            }
+            var parent = curr.parentNode;
+            if (parent && parent.children) {
+                var siblings = Array.from(parent.children).filter(function(c) { return c.tagName === curr.tagName; });
+                if (siblings.length > 1) {
+                    var idx = siblings.indexOf(curr) + 1;
+                    sel += ':nth-of-type(' + idx + ')';
+                }
+            }
+            path.unshift(sel);
+            curr = parent;
+            if (path.length >= 4) break;
+        }
+        return path.join(' > ');
+    }
+
+    function getXPath(el) {
+        if (!el || el.nodeType !== 1) return '';
+        if (el.id) return '//*[@id=""' + el.id + '""]';
+        var segs = [];
+        for (; el && el.nodeType === 1; el = el.parentNode) {
+            if (el.id) {
+                segs.unshift('*[@id=""' + el.id + '""]');
+                return '/' + segs.join('/');
+            }
+            var i = 1;
+            for (var sib = el.previousSibling; sib; sib = sib.previousSibling) {
+                if (sib.nodeType === 1 && sib.tagName === el.tagName) i++;
+            }
+            segs.unshift(el.tagName.toLowerCase() + '[' + i + ']');
+        }
+        return '/' + segs.join('/');
+    }
+
+    function getAttributes(el) {
+        var attrs = {};
+        if (el && el.attributes) {
+            for (var i = 0; i < el.attributes.length; i++) {
+                var a = el.attributes[i];
+                attrs[a.name] = a.value;
+            }
+        }
+        return attrs;
+    }
+
+    function onMouseMove(e) {
+        var target = document.elementFromPoint(e.clientX, e.clientY);
+        if (!target || target === overlay || overlay.contains(target)) return;
+        hoveredEl = target;
+        var rect = target.getBoundingClientRect();
+        overlay.style.display = 'block';
+        overlay.style.top = rect.top + 'px';
+        overlay.style.left = rect.left + 'px';
+        overlay.style.width = Math.max(0, rect.width) + 'px';
+        overlay.style.height = Math.max(0, rect.height) + 'px';
+
+        var badge = document.getElementById('__vtt_dom_inspector_badge');
+        if (badge) {
+            var tagStr = target.tagName.toLowerCase();
+            if (target.id) tagStr += '#' + target.id;
+            else if (target.className && typeof target.className === 'string') {
+                var firstClass = target.className.trim().split(/\s+/)[0];
+                if (firstClass) tagStr += '.' + firstClass;
+            }
+            tagStr += ' | ' + Math.round(rect.width) + ' × ' + Math.round(rect.height);
+            badge.innerText = tagStr;
+            if (rect.top < 26) {
+                badge.style.top = '2px';
+                badge.style.bottom = 'auto';
+            } else {
+                badge.style.top = '-24px';
+                badge.style.bottom = 'auto';
+            }
+        }
+    }
+
+    function onClick(e) {
+        if (!window.__vttDomInspectorActive) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        var el = hoveredEl || e.target;
+        if (!el) return;
+
+        var rect = el.getBoundingClientRect();
+        var outer = el.outerHTML || '';
+        if (outer.length > 500) outer = outer.substring(0, 497) + '...';
+
+        var payload = {
+            tag: el.tagName ? el.tagName.toUpperCase() : '',
+            id: el.id || '',
+            classes: typeof el.className === 'string' ? el.className.trim() : '',
+            selector: getSelector(el),
+            xpath: getXPath(el),
+            outerHtml: outer,
+            innerText: (el.innerText || el.textContent || '').trim().substring(0, 200),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+            left: Math.round(rect.left),
+            top: Math.round(rect.top),
+            attributes: getAttributes(el)
+        };
+
+        window.__vttDomInspectorActive = false;
+        overlay.style.display = 'none';
+        document.removeEventListener('mousemove', onMouseMove, true);
+        document.removeEventListener('click', onClick, true);
+
+        if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+            window.chrome.webview.postMessage(JSON.stringify({
+                type: 'VTT_DOM_INSPECT',
+                data: payload
+            }));
+        }
+    }
+
+    document.addEventListener('mousemove', onMouseMove, true);
+    document.addEventListener('click', onClick, true);
+})();
+";
+
+        private const string DomInspectorStopScript = @"
+(function() {
+    window.__vttDomInspectorActive = false;
+    var overlay = document.getElementById('__vtt_dom_inspector_overlay');
+    if (overlay) overlay.style.display = 'none';
+})();
+";
+
+        private const string InspectElementBySelectorScript = @"
+(function(selector) {
+    try {
+        var el = document.querySelector(selector);
+        if (!el) return null;
+        var rect = el.getBoundingClientRect();
+        var outer = el.outerHTML || '';
+        if (outer.length > 500) outer = outer.substring(0, 497) + '...';
+        var attrs = {};
+        for (var i = 0; i < el.attributes.length; i++) {
+            attrs[el.attributes[i].name] = el.attributes[i].value;
+        }
+        return JSON.stringify({
+            tag: el.tagName ? el.tagName.toUpperCase() : '',
+            id: el.id || '',
+            classes: typeof el.className === 'string' ? el.className.trim() : '',
+            selector: selector,
+            xpath: '',
+            outerHtml: outer,
+            innerText: (el.innerText || el.textContent || '').trim().substring(0, 200),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+            left: Math.round(rect.left),
+            top: Math.round(rect.top),
+            attributes: attrs
+        });
+    } catch(e) {
+        return null;
+    }
+})('{escapedSelector}');
+";
+
         public sealed class TelemetrySnapshot
         {
             public string Url { get; set; } = "";
@@ -575,30 +818,471 @@ namespace BuildConsole.Services
             public double LcpMs { get; set; }
         }
 
-        /// <summary>Injects the observer script into the active WebView2 page.</summary>
-        public static async Task InjectObserverAsync(WebView2? webView)
+        private sealed class CdpInFlightRequest
+        {
+            public string RequestId { get; set; } = "";
+            public string Url { get; set; } = "";
+            public string Method { get; set; } = "GET";
+            public double Timestamp { get; set; }
+            public double WallTime { get; set; }
+        }
+
+        // ── CDP Telemetry Buffers & Synchronization ──────────────────────────────
+        private static readonly object _cdpLock = new();
+        private static readonly List<ConsoleLogItem> _cdpConsoleLogs = new();
+        private static readonly List<NetworkFailureItem> _cdpNetworkLogs = new();
+        private static readonly ConcurrentDictionary<string, CdpInFlightRequest> _inFlightRequests = new();
+        private static int _cdpScriptErrors = 0;
+        private static readonly HashSet<CoreWebView2> _attachedCoreWebViews = new();
+
+        /// <summary>Event raised when an element is inspected in the active WebView2.</summary>
+        public static event Action<DomElementInfo>? OnDomElementInspected;
+
+        /// <summary>
+        /// Attaches Chrome DevTools Protocol (CDP) domains, listeners, and guaranteed early JS injection
+        /// to the specified CoreWebView2 instance. Safe to call repeatedly (idempotent).
+        /// </summary>
+        public static async Task AttachCdpAsync(CoreWebView2? coreWebView2)
+        {
+            if (coreWebView2 == null) return;
+
+            lock (_cdpLock)
+            {
+                if (_attachedCoreWebViews.Contains(coreWebView2))
+                    return;
+                _attachedCoreWebViews.Add(coreWebView2);
+            }
+
+            try
+            {
+                // 1. Enable CDP Domains
+                await coreWebView2.CallDevToolsProtocolMethodAsync("Runtime.enable", "{}");
+                await coreWebView2.CallDevToolsProtocolMethodAsync("Console.enable", "{}");
+                await coreWebView2.CallDevToolsProtocolMethodAsync("Network.enable", "{}");
+                await coreWebView2.CallDevToolsProtocolMethodAsync("DOM.enable", "{}");
+
+                // 2. Wire Console and Runtime Exception Receivers
+                var runtimeConsoleReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Runtime.consoleAPICalled");
+                runtimeConsoleReceiver.DevToolsProtocolEventReceived += OnCdpConsoleApiCalled;
+
+                var consoleMessageReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Console.messageAdded");
+                consoleMessageReceiver.DevToolsProtocolEventReceived += OnCdpConsoleMessageAdded;
+
+                var runtimeExceptionReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Runtime.exceptionThrown");
+                runtimeExceptionReceiver.DevToolsProtocolEventReceived += OnCdpExceptionThrown;
+
+                // 3. Wire Network Receivers
+                var reqSentReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Network.requestWillBeSent");
+                reqSentReceiver.DevToolsProtocolEventReceived += OnCdpRequestWillBeSent;
+
+                var respRecvReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Network.responseReceived");
+                respRecvReceiver.DevToolsProtocolEventReceived += OnCdpResponseReceived;
+
+                var loadFailReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Network.loadingFailed");
+                loadFailReceiver.DevToolsProtocolEventReceived += OnCdpLoadingFailed;
+
+                var loadFinReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Network.loadingFinished");
+                loadFinReceiver.DevToolsProtocolEventReceived += OnCdpLoadingFinished;
+
+                // 4. Guaranteed Early JS Injection for Repro Tracking
+                await coreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(ObserverScript);
+
+                // Also inject into current document immediately if already loaded
+                await coreWebView2.ExecuteScriptAsync(ObserverScript);
+
+                ActivityLog.Log(VisualTestTrackerStore.Channel, "DevTools Protocol (CDP) attached and initialized successfully.");
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(VisualTestTrackerStore.Channel, $"DevTools Protocol attachment failed: {ex.Message}");
+            }
+        }
+
+        // ── CDP Event Handlers ──────────────────────────────────────────────────
+
+        private static void OnCdpConsoleApiCalled(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
+                var root = doc.RootElement;
+                string type = root.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? "log" : "log";
+                string level = type.ToLowerInvariant() switch
+                {
+                    "error" => "error",
+                    "warning" => "warn",
+                    "info" => "info",
+                    "debug" => "debug",
+                    _ => "log"
+                };
+
+                var argsSb = new StringBuilder();
+                if (root.TryGetProperty("args", out var argsEl) && argsEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var arg in argsEl.EnumerateArray())
+                    {
+                        if (argsSb.Length > 0) argsSb.Append(' ');
+                        if (arg.TryGetProperty("value", out var valEl))
+                        {
+                            argsSb.Append(valEl.ToString());
+                        }
+                        else if (arg.TryGetProperty("description", out var descEl))
+                        {
+                            argsSb.Append(descEl.GetString());
+                        }
+                        else
+                        {
+                            argsSb.Append(arg.ToString());
+                        }
+                    }
+                }
+
+                string stack = "";
+                if (root.TryGetProperty("stackTrace", out var stackEl) &&
+                    stackEl.TryGetProperty("callFrames", out var framesEl) &&
+                    framesEl.ValueKind == JsonValueKind.Array)
+                {
+                    var stackSb = new StringBuilder();
+                    foreach (var f in framesEl.EnumerateArray())
+                    {
+                        string fn = f.TryGetProperty("functionName", out var fnEl) ? fnEl.GetString() ?? "" : "";
+                        string url = f.TryGetProperty("url", out var urlEl) ? urlEl.GetString() ?? "" : "";
+                        int line = f.TryGetProperty("lineNumber", out var lineEl) ? lineEl.GetInt32() : 0;
+                        int col = f.TryGetProperty("columnNumber", out var colEl) ? colEl.GetInt32() : 0;
+                        stackSb.AppendLine($"{fn} ({url}:{line}:{col})");
+                    }
+                    stack = stackSb.ToString().TrimEnd();
+                }
+
+                string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+
+                lock (_cdpLock)
+                {
+                    _cdpConsoleLogs.Add(new ConsoleLogItem
+                    {
+                        Level = level,
+                        Message = argsSb.ToString(),
+                        StackTrace = stack,
+                        Timestamp = timestamp
+                    });
+                    if (_cdpConsoleLogs.Count > 100) _cdpConsoleLogs.RemoveAt(0);
+                }
+            }
+            catch { }
+        }
+
+        private static void OnCdpConsoleMessageAdded(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
+                if (doc.RootElement.TryGetProperty("message", out var msgEl))
+                {
+                    string level = msgEl.TryGetProperty("level", out var lvlEl) ? lvlEl.GetString() ?? "log" : "log";
+                    string text = msgEl.TryGetProperty("text", out var textEl) ? textEl.GetString() ?? "" : "";
+                    string url = msgEl.TryGetProperty("url", out var urlEl) ? urlEl.GetString() ?? "" : "";
+                    int line = msgEl.TryGetProperty("line", out var lineEl) ? lineEl.GetInt32() : 0;
+                    string loc = !string.IsNullOrEmpty(url) ? $" ({url}:{line})" : "";
+
+                    string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+                    string fullMsg = text + loc;
+
+                    lock (_cdpLock)
+                    {
+                        if (_cdpConsoleLogs.Count == 0 || !_cdpConsoleLogs[^1].Message.Equals(fullMsg, StringComparison.Ordinal))
+                        {
+                            _cdpConsoleLogs.Add(new ConsoleLogItem
+                            {
+                                Level = level.ToLowerInvariant() == "warning" ? "warn" : level.ToLowerInvariant(),
+                                Message = fullMsg,
+                                StackTrace = "",
+                                Timestamp = timestamp
+                            });
+                            if (_cdpConsoleLogs.Count > 100) _cdpConsoleLogs.RemoveAt(0);
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private static void OnCdpExceptionThrown(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
+                if (doc.RootElement.TryGetProperty("exceptionDetails", out var detEl))
+                {
+                    string text = detEl.TryGetProperty("text", out var tEl) ? tEl.GetString() ?? "Uncaught Exception" : "Uncaught Exception";
+                    string desc = "";
+                    if (detEl.TryGetProperty("exception", out var exObj) && exObj.TryGetProperty("description", out var descEl))
+                    {
+                        desc = descEl.GetString() ?? "";
+                    }
+
+                    string url = detEl.TryGetProperty("url", out var urlEl) ? urlEl.GetString() ?? "" : "";
+                    int line = detEl.TryGetProperty("lineNumber", out var lineEl) ? lineEl.GetInt32() : 0;
+                    int col = detEl.TryGetProperty("columnNumber", out var colEl) ? colEl.GetInt32() : 0;
+                    string loc = !string.IsNullOrEmpty(url) ? $" ({url}:{line}:{col})" : "";
+
+                    string stack = "";
+                    if (detEl.TryGetProperty("stackTrace", out var stackEl) &&
+                        stackEl.TryGetProperty("callFrames", out var framesEl) &&
+                        framesEl.ValueKind == JsonValueKind.Array)
+                    {
+                        var stackSb = new StringBuilder();
+                        foreach (var f in framesEl.EnumerateArray())
+                        {
+                            string fn = f.TryGetProperty("functionName", out var fnEl) ? fnEl.GetString() ?? "" : "";
+                            string fUrl = f.TryGetProperty("url", out var uEl) ? uEl.GetString() ?? "" : "";
+                            int fLine = f.TryGetProperty("lineNumber", out var lEl) ? lEl.GetInt32() : 0;
+                            int fCol = f.TryGetProperty("columnNumber", out var cEl) ? cEl.GetInt32() : 0;
+                            stackSb.AppendLine($"{fn} ({fUrl}:{fLine}:{fCol})");
+                        }
+                        stack = stackSb.ToString().TrimEnd();
+                    }
+
+                    string fullMsg = (!string.IsNullOrEmpty(desc) ? desc : text) + loc;
+                    string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+
+                    lock (_cdpLock)
+                    {
+                        _cdpScriptErrors++;
+                        _cdpConsoleLogs.Add(new ConsoleLogItem
+                        {
+                            Level = "exception",
+                            Message = fullMsg,
+                            StackTrace = stack,
+                            Timestamp = timestamp
+                        });
+                        if (_cdpConsoleLogs.Count > 100) _cdpConsoleLogs.RemoveAt(0);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private static void OnCdpRequestWillBeSent(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
+                var root = doc.RootElement;
+                string reqId = root.TryGetProperty("requestId", out var rEl) ? rEl.GetString() ?? "" : "";
+                if (string.IsNullOrEmpty(reqId)) return;
+
+                string url = "";
+                string method = "GET";
+                if (root.TryGetProperty("request", out var reqEl))
+                {
+                    url = reqEl.TryGetProperty("url", out var uEl) ? uEl.GetString() ?? "" : "";
+                    method = reqEl.TryGetProperty("method", out var mEl) ? mEl.GetString() ?? "GET" : "GET";
+                }
+
+                double ts = root.TryGetProperty("timestamp", out var tsEl) ? tsEl.GetDouble() : 0;
+                double wall = root.TryGetProperty("wallTime", out var wEl) ? wEl.GetDouble() : 0;
+
+                _inFlightRequests[reqId] = new CdpInFlightRequest
+                {
+                    RequestId = reqId,
+                    Url = url,
+                    Method = method,
+                    Timestamp = ts,
+                    WallTime = wall
+                };
+            }
+            catch { }
+        }
+
+        private static void OnCdpResponseReceived(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
+                var root = doc.RootElement;
+                string reqId = root.TryGetProperty("requestId", out var rEl) ? rEl.GetString() ?? "" : "";
+                double ts = root.TryGetProperty("timestamp", out var tsEl) ? tsEl.GetDouble() : 0;
+
+                string url = "";
+                int status = 0;
+                string statusText = "";
+                string payloadSize = "";
+
+                if (root.TryGetProperty("response", out var respEl))
+                {
+                    url = respEl.TryGetProperty("url", out var uEl) ? uEl.GetString() ?? "" : "";
+                    status = respEl.TryGetProperty("status", out var sEl) ? sEl.GetInt32() : 0;
+                    statusText = respEl.TryGetProperty("statusText", out var stEl) ? stEl.GetString() ?? "" : "";
+
+                    if (respEl.TryGetProperty("headers", out var headersEl))
+                    {
+                        foreach (var h in headersEl.EnumerateObject())
+                        {
+                            if (h.Name.Equals("content-length", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (long.TryParse(h.Value.GetString(), out long bytes))
+                                {
+                                    payloadSize = FormatBytes(bytes);
+                                }
+                                break;
+                            }
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(payloadSize) && respEl.TryGetProperty("encodedDataLength", out var lenEl))
+                    {
+                        payloadSize = FormatBytes((long)lenEl.GetDouble());
+                    }
+                }
+
+                double durationMs = 0;
+                string method = "GET";
+                if (!string.IsNullOrEmpty(reqId) && _inFlightRequests.TryGetValue(reqId, out var req))
+                {
+                    if (ts > 0 && req.Timestamp > 0)
+                        durationMs = Math.Round(Math.Max(0, (ts - req.Timestamp) * 1000));
+                    method = req.Method;
+                    if (string.IsNullOrEmpty(url)) url = req.Url;
+                }
+
+                bool isFailed = status >= 400 || status == 0;
+                string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+
+                lock (_cdpLock)
+                {
+                    _cdpNetworkLogs.Add(new NetworkFailureItem
+                    {
+                        Method = method,
+                        Url = url,
+                        Status = status,
+                        StatusText = !string.IsNullOrEmpty(statusText) ? statusText : (isFailed ? "HTTP Error" : "OK"),
+                        DurationMs = durationMs,
+                        PayloadSize = payloadSize,
+                        Timestamp = timestamp,
+                        Failed = isFailed
+                    });
+                    if (_cdpNetworkLogs.Count > 100) _cdpNetworkLogs.RemoveAt(0);
+                }
+            }
+            catch { }
+        }
+
+        private static void OnCdpLoadingFailed(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
+                var root = doc.RootElement;
+                string reqId = root.TryGetProperty("requestId", out var rEl) ? rEl.GetString() ?? "" : "";
+                string errorText = root.TryGetProperty("errorText", out var errEl) ? errEl.GetString() ?? "Network Drop" : "Network Drop";
+                bool canceled = root.TryGetProperty("canceled", out var canEl) && canEl.GetBoolean();
+                double ts = root.TryGetProperty("timestamp", out var tsEl) ? tsEl.GetDouble() : 0;
+
+                string url = "";
+                string method = "GET";
+                double durationMs = 0;
+
+                if (!string.IsNullOrEmpty(reqId) && _inFlightRequests.TryRemove(reqId, out var req))
+                {
+                    url = req.Url;
+                    method = req.Method;
+                    if (ts > 0 && req.Timestamp > 0)
+                        durationMs = Math.Round(Math.Max(0, (ts - req.Timestamp) * 1000));
+                }
+
+                string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+
+                lock (_cdpLock)
+                {
+                    _cdpNetworkLogs.Add(new NetworkFailureItem
+                    {
+                        Method = method,
+                        Url = url,
+                        Status = 0,
+                        StatusText = canceled ? "Canceled" : errorText,
+                        DurationMs = durationMs,
+                        PayloadSize = "",
+                        Timestamp = timestamp,
+                        Failed = true
+                    });
+                    if (_cdpNetworkLogs.Count > 100) _cdpNetworkLogs.RemoveAt(0);
+                }
+            }
+            catch { }
+        }
+
+        private static void OnCdpLoadingFinished(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
+                var root = doc.RootElement;
+                string reqId = root.TryGetProperty("requestId", out var rEl) ? rEl.GetString() ?? "" : "";
+                if (!string.IsNullOrEmpty(reqId))
+                {
+                    _inFlightRequests.TryRemove(reqId, out _);
+                }
+            }
+            catch { }
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            if (bytes <= 0) return "";
+            if (bytes < 1024) return $"{bytes} B";
+            if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+            return $"{bytes / (1024.0 * 1024.0):F2} MB";
+        }
+
+        /// <summary>Clears CDP captured console logs, network logs, and error metrics.</summary>
+        public static void ClearCdpData()
+        {
+            lock (_cdpLock)
+            {
+                _cdpConsoleLogs.Clear();
+                _cdpNetworkLogs.Clear();
+                _inFlightRequests.Clear();
+                _cdpScriptErrors = 0;
+            }
+        }
+
+        // ── DOM Inspection API ──────────────────────────────────────────────────
+
+        /// <summary>Enables the interactive hover and click DOM element inspector in WebView2.</summary>
+        public static async Task EnableDomInspectorAsync(WebView2? webView)
         {
             if (webView?.CoreWebView2 == null) return;
             try
             {
-                await webView.ExecuteScriptAsync(ObserverScript);
+                await webView.ExecuteScriptAsync(DomInspectorScript);
             }
             catch (Exception ex)
             {
-                ActivityLog.Log(VisualTestTrackerStore.Channel, $"Telemetry observer injection error: {ex.Message}");
+                ActivityLog.Log(VisualTestTrackerStore.Channel, $"EnableDomInspector error: {ex.Message}");
             }
         }
 
-        /// <summary>Captures a complete snapshot of diagnostics, user agent, viewport size, performance signals, and logs.</summary>
-        public static async Task<TelemetrySnapshot> CollectSnapshotAsync(WebView2? webView)
+        /// <summary>Disables the DOM element inspector overlay in WebView2.</summary>
+        public static async Task DisableDomInspectorAsync(WebView2? webView)
         {
-            if (webView?.CoreWebView2 == null) return new TelemetrySnapshot();
-
+            if (webView?.CoreWebView2 == null) return;
             try
             {
-                var rawResult = await webView.ExecuteScriptAsync(CollectorScript);
-                if (string.IsNullOrWhiteSpace(rawResult) || rawResult == "null")
-                    return new TelemetrySnapshot();
+                await webView.ExecuteScriptAsync(DomInspectorStopScript);
+            }
+            catch { }
+        }
+
+        /// <summary>Inspects an element matching a CSS selector and returns its structured metadata.</summary>
+        public static async Task<DomElementInfo?> InspectElementBySelectorAsync(WebView2? webView, string selector)
+        {
+            if (webView?.CoreWebView2 == null || string.IsNullOrWhiteSpace(selector)) return null;
+            try
+            {
+                string escapedSelector = selector.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\"", "\\\"");
+                string script = InspectElementBySelectorScript.Replace("{escapedSelector}", escapedSelector);
+                var rawResult = await webView.ExecuteScriptAsync(script);
+                if (string.IsNullOrWhiteSpace(rawResult) || rawResult == "null") return null;
 
                 string jsonToParse = rawResult;
                 if (rawResult.StartsWith("\"") && rawResult.EndsWith("\""))
@@ -611,52 +1295,182 @@ namespace BuildConsole.Services
                     catch { }
                 }
 
-                var snapshot = JsonSerializer.Deserialize<TelemetrySnapshot>(jsonToParse, new JsonSerializerOptions
+                return JsonSerializer.Deserialize<DomElementInfo>(jsonToParse, new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
                 });
-
-                return snapshot ?? new TelemetrySnapshot();
             }
             catch (Exception ex)
             {
-                ActivityLog.Log(VisualTestTrackerStore.Channel, $"Telemetry collection error: {ex.Message}");
-                return new TelemetrySnapshot();
+                ActivityLog.Log(VisualTestTrackerStore.Channel, $"InspectElementBySelector error: {ex.Message}");
+                return null;
             }
+        }
+
+        /// <summary>
+        /// Parses an incoming WebMessage string to check if it contains a VTT_DOM_INSPECT payload.
+        /// Raises OnDomElementInspected if valid.
+        /// </summary>
+        public static DomElementInfo? TryParseDomInspectMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message) || !message.Contains("VTT_DOM_INSPECT")) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(message);
+                if (doc.RootElement.TryGetProperty("type", out var typeEl) &&
+                    typeEl.GetString() == "VTT_DOM_INSPECT" &&
+                    doc.RootElement.TryGetProperty("data", out var dataEl))
+                {
+                    var info = JsonSerializer.Deserialize<DomElementInfo>(dataEl.GetRawText(), new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                    if (info != null)
+                    {
+                        OnDomElementInspected?.Invoke(info);
+                        return info;
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>Injects the observer script into the active WebView2 page and attaches CDP.</summary>
+        public static async Task InjectObserverAsync(WebView2? webView)
+        {
+            if (webView?.CoreWebView2 == null) return;
+            try
+            {
+                await AttachCdpAsync(webView.CoreWebView2);
+                await webView.ExecuteScriptAsync(ObserverScript);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(VisualTestTrackerStore.Channel, $"Telemetry observer injection error: {ex.Message}");
+            }
+        }
+
+        /// <summary>Captures a complete snapshot of diagnostics, user agent, viewport size, performance signals, and logs.</summary>
+        public static async Task<TelemetrySnapshot> CollectSnapshotAsync(WebView2? webView)
+        {
+            var snapshot = new TelemetrySnapshot();
+
+            if (webView?.CoreWebView2 != null)
+            {
+                try
+                {
+                    var rawResult = await webView.ExecuteScriptAsync(CollectorScript);
+                    if (!string.IsNullOrWhiteSpace(rawResult) && rawResult != "null")
+                    {
+                        string jsonToParse = rawResult;
+                        if (rawResult.StartsWith("\"") && rawResult.EndsWith("\""))
+                        {
+                            try
+                            {
+                                var unescaped = JsonSerializer.Deserialize<string>(rawResult);
+                                if (!string.IsNullOrEmpty(unescaped)) jsonToParse = unescaped;
+                            }
+                            catch { }
+                        }
+
+                        var parsed = JsonSerializer.Deserialize<TelemetrySnapshot>(jsonToParse, new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+                        if (parsed != null) snapshot = parsed;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log(VisualTestTrackerStore.Channel, $"Telemetry collection error: {ex.Message}");
+                }
+            }
+
+            // Merge CDP captured data for maximum fidelity (catches pre-injection logs, uncaught exceptions, network drops)
+            lock (_cdpLock)
+            {
+                if (_cdpConsoleLogs.Count > 0)
+                {
+                    var existing = new HashSet<string>(snapshot.ConsoleLogs.ConvertAll(c => c.Message));
+                    foreach (var cdpLog in _cdpConsoleLogs)
+                    {
+                        if (!existing.Contains(cdpLog.Message))
+                        {
+                            snapshot.ConsoleLogs.Add(cdpLog);
+                        }
+                    }
+                }
+
+                if (_cdpNetworkLogs.Count > 0)
+                {
+                    var existingKeys = new HashSet<string>(snapshot.NetworkLogs.ConvertAll(n => $"{n.Method}:{n.Url}:{n.Status}"));
+                    foreach (var cdpNet in _cdpNetworkLogs)
+                    {
+                        string key = $"{cdpNet.Method}:{cdpNet.Url}:{cdpNet.Status}";
+                        if (!existingKeys.Contains(key))
+                        {
+                            snapshot.NetworkLogs.Add(cdpNet);
+                        }
+                    }
+                }
+
+                if (_cdpScriptErrors > 0 && snapshot.Performance != null)
+                {
+                    snapshot.Performance.ScriptErrorCount = Math.Max(snapshot.Performance.ScriptErrorCount, _cdpScriptErrors);
+                }
+            }
+
+            return snapshot;
         }
 
         /// <summary>Fetches lightweight counts of captured diagnostics for UI badge displays.</summary>
         public static async Task<TelemetryCounts> GetCountsAsync(WebView2? webView)
         {
-            if (webView?.CoreWebView2 == null) return new TelemetryCounts();
+            var counts = new TelemetryCounts();
 
-            try
+            if (webView?.CoreWebView2 != null)
             {
-                var raw = await webView.ExecuteScriptAsync(CountsScript);
-                if (string.IsNullOrWhiteSpace(raw) || raw == "null") return new TelemetryCounts();
-
-                string json = raw;
-                if (raw.StartsWith("\"") && raw.EndsWith("\""))
+                try
                 {
-                    try
+                    var raw = await webView.ExecuteScriptAsync(CountsScript);
+                    if (!string.IsNullOrWhiteSpace(raw) && raw != "null")
                     {
-                        var unescaped = JsonSerializer.Deserialize<string>(raw);
-                        if (!string.IsNullOrEmpty(unescaped)) json = unescaped;
+                        string json = raw;
+                        if (raw.StartsWith("\"") && raw.EndsWith("\""))
+                        {
+                            try
+                            {
+                                var unescaped = JsonSerializer.Deserialize<string>(raw);
+                                if (!string.IsNullOrEmpty(unescaped)) json = unescaped;
+                            }
+                            catch { }
+                        }
+
+                        var parsed = JsonSerializer.Deserialize<TelemetryCounts>(json, new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+                        if (parsed != null) counts = parsed;
                     }
-                    catch { }
                 }
-
-                var counts = JsonSerializer.Deserialize<TelemetryCounts>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-
-                return counts ?? new TelemetryCounts();
+                catch { }
             }
-            catch
+
+            // Blend with real-time CDP counts
+            lock (_cdpLock)
             {
-                return new TelemetryCounts();
+                int cdpErrors = _cdpConsoleLogs.Count(l => l.Level == "error" || l.Level == "exception" || l.Level == "unhandledrejection");
+                int cdpWarnings = _cdpConsoleLogs.Count(l => l.Level == "warn");
+                int cdpNetFail = _cdpNetworkLogs.Count(n => n.Failed);
+
+                counts.Errors = Math.Max(counts.Errors, cdpErrors);
+                counts.Warnings = Math.Max(counts.Warnings, cdpWarnings);
+                counts.NetworkFailures = Math.Max(counts.NetworkFailures, cdpNetFail);
+                counts.TotalNetwork = Math.Max(counts.TotalNetwork, _cdpNetworkLogs.Count);
             }
+
+            return counts;
         }
     }
 }

@@ -13,6 +13,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using BuildConsole.Services;
+using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
 namespace BuildConsole
@@ -63,11 +64,20 @@ namespace BuildConsole
         // Phase 8: Session Management state
         private VisualTestTrackerSession? _activeSession;
 
+        // Phase 9: Developer Tools Integration (CDP) & DOM Inspector state
+        private DomElementInfo? _inspectedDomElement;
+        private bool _isDomInspectorActive;
+
         private ApiHelperWindow? _apiHelperWindow;
 
         public VisualTestTrackerWindow()
         {
             InitializeComponent();
+
+            VisualTestTrackerTelemetry.OnDomElementInspected += info =>
+            {
+                Dispatcher.Invoke(() => HandleDomElementInspected(info));
+            };
 
             _globalNotes = VisualTestTrackerDraftStore.LoadGlobalNotes();
 
@@ -197,7 +207,12 @@ namespace BuildConsole
 
             SetControlsEnabled(true);
 
-            // Inject telemetry observer into the active page
+            // Phase 9: Attach CDP and wire WebMessageReceived for DOM inspection & telemetry
+            if (webView?.CoreWebView2 != null)
+            {
+                webView.CoreWebView2.WebMessageReceived -= OnActiveWebView_WebMessageReceived;
+                webView.CoreWebView2.WebMessageReceived += OnActiveWebView_WebMessageReceived;
+            }
             await VisualTestTrackerTelemetry.InjectObserverAsync(webView);
 
             try
@@ -329,9 +344,16 @@ namespace BuildConsole
                 VisualTestTrackerSessionStore.PauseSession(_activeSession);
             }
 
+            if (_activeWebView?.CoreWebView2 != null)
+            {
+                _activeWebView.CoreWebView2.WebMessageReceived -= OnActiveWebView_WebMessageReceived;
+            }
             _activeWebView = null;
             _activePage = null;
             _activeSession = null;
+            _isDomInspectorActive = false;
+            DomInspectorDrawer.Visibility = Visibility.Collapsed;
+            BtnInspectDom.Content = "🔍 Inspect";
             UpdateSessionIndicator(false);
             SetControlsEnabled(false);
             _apiHelperWindow?.UpdateActivePage(null, "", "");
@@ -370,6 +392,7 @@ namespace BuildConsole
             BtnCaptureFull.IsEnabled = enabled;
             BtnCaptureRegion.IsEnabled = enabled;
             BtnCaptureWpfWindow.IsEnabled = enabled;
+            BtnInspectDom.IsEnabled = enabled;
             BtnSaveEntry.IsEnabled = enabled;
             BtnClearDraft.IsEnabled = enabled;
             BtnNewSession.IsEnabled = enabled;
@@ -1109,6 +1132,166 @@ namespace BuildConsole
             {
                 BtnCaptureWpfWindow.IsEnabled = true;
             }
+        }
+
+        // ── Phase 9: DOM Inspector & Developer Tools Integration ─────────────────
+
+        private void OnActiveWebView_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            try
+            {
+                string message = e.TryGetWebMessageAsString();
+                var domInfo = VisualTestTrackerTelemetry.TryParseDomInspectMessage(message);
+                if (domInfo != null)
+                {
+                    Dispatcher.Invoke(() => HandleDomElementInspected(domInfo));
+                }
+            }
+            catch { }
+        }
+
+        private async void BtnInspectDom_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeWebView == null) return;
+
+            if (_isDomInspectorActive)
+            {
+                await VisualTestTrackerTelemetry.DisableDomInspectorAsync(_activeWebView);
+                _isDomInspectorActive = false;
+                BtnInspectDom.Content = "🔍 Inspect";
+                ShowMessage("DOM Inspector canceled.", isError: false);
+            }
+            else
+            {
+                await VisualTestTrackerTelemetry.EnableDomInspectorAsync(_activeWebView);
+                _isDomInspectorActive = true;
+                BtnInspectDom.Content = "🛑 Stop";
+                ShowMessage("Hover and click any element in the web view to inspect its DOM properties...", isError: false);
+            }
+        }
+
+        private void HandleDomElementInspected(DomElementInfo info)
+        {
+            _inspectedDomElement = info;
+            _isDomInspectorActive = false;
+            BtnInspectDom.Content = "🔍 Inspect";
+
+            TxtDomElementTag.Text = $"<{info.Tag}>";
+            TxtDomDimensions.Text = $"{info.Width:F0} × {info.Height:F0} px";
+            TxtDomSelector.Text = info.Selector;
+            TxtDomOuterHtml.Text = info.OuterHtml;
+
+            DomInspectorDrawer.Visibility = Visibility.Visible;
+            ShowMessage($"Inspected: {info.Selector} ({info.Tag})", isError: false);
+        }
+
+        private async void BtnDomReinspect_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeWebView == null) return;
+            await VisualTestTrackerTelemetry.EnableDomInspectorAsync(_activeWebView);
+            _isDomInspectorActive = true;
+            BtnInspectDom.Content = "🛑 Stop";
+            ShowMessage("Hover and click any element in the web view to inspect its DOM properties...", isError: false);
+        }
+
+        private async void BtnDomClose_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeWebView != null)
+            {
+                await VisualTestTrackerTelemetry.DisableDomInspectorAsync(_activeWebView);
+            }
+            _isDomInspectorActive = false;
+            BtnInspectDom.Content = "🔍 Inspect";
+            DomInspectorDrawer.Visibility = Visibility.Collapsed;
+        }
+
+        private void BtnCopyDomSelector_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(TxtDomSelector.Text)) return;
+            try
+            {
+                Clipboard.SetText(TxtDomSelector.Text);
+                ShowMessage("Copied selector to clipboard.", isError: false);
+            }
+            catch (Exception ex)
+            {
+                ShowMessage($"Clipboard copy failed: {ex.Message}", isError: true);
+            }
+        }
+
+        private void BtnCopyDomHtml_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(TxtDomOuterHtml.Text)) return;
+            try
+            {
+                Clipboard.SetText(TxtDomOuterHtml.Text);
+                ShowMessage("Copied outer HTML to clipboard.", isError: false);
+            }
+            catch (Exception ex)
+            {
+                ShowMessage($"Clipboard copy failed: {ex.Message}", isError: true);
+            }
+        }
+
+        private void BtnInsertDomToSteps_Click(object sender, RoutedEventArgs e)
+        {
+            if (_inspectedDomElement == null) return;
+
+            string tag = (_inspectedDomElement.Tag ?? "").ToUpperInvariant();
+            string sel = !string.IsNullOrWhiteSpace(_inspectedDomElement.Selector) ? _inspectedDomElement.Selector : "element";
+            string text = !string.IsNullOrWhiteSpace(_inspectedDomElement.InnerText) ? $"\"{_inspectedDomElement.InnerText}\"" : "";
+
+            string actionDesc = tag switch
+            {
+                "BUTTON" => text != "" ? $"Click button {text} (`{sel}`)" : $"Click button `{sel}`",
+                "INPUT" => $"Enter value into `{sel}`",
+                "A" => text != "" ? $"Click link {text} (`{sel}`)" : $"Click link `{sel}`",
+                "SELECT" => $"Select option in dropdown `{sel}`",
+                "TEXTAREA" => $"Enter text into `{sel}`",
+                "FORM" => $"Submit form `{sel}`",
+                _ => $"Interact with {tag.ToLowerInvariant()} `{sel}`"
+            };
+
+            int stepIndex = 1;
+            var currentText = StepsBox.Text.Trim();
+            var sb = new StringBuilder();
+            if (!string.IsNullOrWhiteSpace(currentText))
+            {
+                var lines = currentText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
+                {
+                    var match = Regex.Match(line.Trim(), @"^(\d+)\.");
+                    if (match.Success && int.TryParse(match.Groups[1].Value, out int n))
+                    {
+                        if (n >= stepIndex) stepIndex = n + 1;
+                    }
+                }
+                sb.Append(currentText).Append("\n");
+            }
+
+            sb.AppendLine($"{stepIndex}. {actionDesc}");
+            StepsBox.Text = sb.ToString().TrimEnd();
+            DetailsExpander.IsExpanded = true;
+            StepsBox.Focus();
+            StepsBox.CaretIndex = StepsBox.Text.Length;
+            PerformAutoSave();
+            ShowMessage($"Appended step {stepIndex} for {sel}.", isError: false);
+        }
+
+        private void BtnInsertDomToNotes_Click(object sender, RoutedEventArgs e)
+        {
+            if (_inspectedDomElement == null) return;
+            string sel = _inspectedDomElement.Selector;
+            string tag = _inspectedDomElement.Tag;
+            string size = $"{_inspectedDomElement.Width:F0}x{_inspectedDomElement.Height:F0}px";
+            string noteSnippet = $"\n- Inspected `<{tag}>` `{sel}` ({size})";
+
+            var current = NotesBox.Text;
+            NotesBox.Text = (current + noteSnippet).TrimStart('\n');
+            NotesBox.Focus();
+            NotesBox.CaretIndex = NotesBox.Text.Length;
+            PerformAutoSave();
+            ShowMessage("Added element info to notes.", isError: false);
         }
 
         private void RenderStagedThumbnails()
@@ -2066,6 +2249,11 @@ namespace BuildConsole
 
             _activeSession = VisualTestTrackerSessionStore.StartNewSession(_activeBaseUrl, _activePagePath, _activeSession);
             _sessionStartTime = DateTime.Now;
+            VisualTestTrackerTelemetry.ClearCdpData();
+            _inspectedDomElement = null;
+            DomInspectorDrawer.Visibility = Visibility.Collapsed;
+            _isDomInspectorActive = false;
+            BtnInspectDom.Content = "🔍 Inspect";
 
             if (ChkAutoClear.IsChecked == true)
             {
@@ -2103,6 +2291,12 @@ namespace BuildConsole
                 _activeSession = VisualTestTrackerSessionStore.StartNewSession(_activeBaseUrl, _activePagePath, _activeSession);
                 _sessionStartTime = DateTime.Now;
             }
+
+            VisualTestTrackerTelemetry.ClearCdpData();
+            _inspectedDomElement = null;
+            DomInspectorDrawer.Visibility = Visibility.Collapsed;
+            _isDomInspectorActive = false;
+            BtnInspectDom.Content = "🔍 Inspect";
 
             VisualTestTrackerDraftStore.ClearDraft(_activeBaseUrl, _activePagePath);
             if (_notesMode == "page")

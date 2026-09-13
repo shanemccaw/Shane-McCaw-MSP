@@ -420,8 +420,11 @@
                                                Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"
                                                ToolTip="Page load time and Largest Contentful Paint (LCP)"/>
                                     <TextBlock x:Name="TelemetryEventsBadge" Text="👣 0 events" FontSize="9"
-                                               Foreground="{StaticResource Subtext1Brush}"
+                                               Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"
                                                ToolTip="Recent user interaction events recorded"/>
+                                    <TextBlock x:Name="TelemetryCdpBadge" Text="🌐 CDP Active" FontSize="9"
+                                               Foreground="{StaticResource AccentBrush}"
+                                               ToolTip="Chrome DevTools Protocol actively capturing engine console, network, and error events"/>
                                 </StackPanel>
 
                                 <TextBlock x:Name="TelemetryEnvBadge" Grid.Column="1"
@@ -432,40 +435,146 @@
                             </Grid>
                         </Border>
 
-                        <!-- Capture Buttons Strip -->
+                        <!-- Capture & Inspect Buttons Strip -->
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="4"/>
+                                <ColumnDefinition Width="3"/>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="4"/>
+                                <ColumnDefinition Width="3"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="3"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
                             <Button x:Name="BtnCaptureFull" Grid.Column="0"
-                                    Content="📷 Full Page"
+                                    Content="📷 Full"
                                     Style="{StaticResource SecondaryButton}"
-                                    FontSize="10" Padding="4,4,4,4"
+                                    FontSize="10" Padding="2,4,2,4"
                                     IsEnabled="False"
                                     ToolTip="Capture full scrollable WebView2 page"
                                     Click="BtnCaptureFull_Click"/>
 
                             <Button x:Name="BtnCaptureRegion" Grid.Column="2"
-                                    Content="✂ Region..."
+                                    Content="✂ Region"
                                     Style="{StaticResource SecondaryButton}"
-                                    FontSize="10" Padding="4,4,4,4"
+                                    FontSize="10" Padding="2,4,2,4"
                                     IsEnabled="False"
                                     ToolTip="Select and crop on-screen region"
                                     Click="BtnCaptureRegion_Click"/>
 
                             <Button x:Name="BtnCaptureWpfWindow" Grid.Column="4"
-                                    Content="🪟 Window HUD"
+                                    Content="🪟 HUD"
                                     Style="{StaticResource SecondaryButton}"
-                                    FontSize="10" Padding="4,4,4,4"
+                                    FontSize="10" Padding="2,4,2,4"
                                     IsEnabled="False"
                                     ToolTip="Capture full WPF window with HUD and overlays"
                                     Click="BtnCaptureWpfWindow_Click"/>
+
+                            <Button x:Name="BtnInspectDom" Grid.Column="6"
+                                    Content="🔍 Inspect"
+                                    Style="{StaticResource SecondaryButton}"
+                                    FontSize="10" Padding="2,4,2,4"
+                                    IsEnabled="False"
+                                    ToolTip="Interactive DOM element inspector: hover and click any element to inspect its selector, HTML, and attributes"
+                                    Click="BtnInspectDom_Click"/>
                         </Grid>
+
+                        <!-- DOM Inspector Drawer (Interactive CDP element inspection) -->
+                        <Border x:Name="DomInspectorDrawer"
+                                Background="{StaticResource Surface0Brush}"
+                                BorderBrush="{StaticResource AccentBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4" Padding="6" Margin="0,0,0,5"
+                                Visibility="Collapsed">
+                            <StackPanel>
+                                <!-- Header with Tag, Dimensions, Re-inspect, and Close -->
+                                <Grid Margin="0,0,0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="DOM:" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,4,0"/>
+                                        <TextBlock x:Name="TxtDomElementTag" Text="&lt;BUTTON&gt;" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,4,0"/>
+                                        <TextBlock x:Name="TxtDomDimensions" Text="120 × 36 px" FontSize="9" Foreground="{StaticResource Subtext1Brush}"/>
+                                    </StackPanel>
+
+                                    <Button x:Name="BtnDomReinspect" Grid.Column="1"
+                                            Content="🔍 Pick Another" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="4,1,4,1" Margin="0,0,3,0"
+                                            ToolTip="Select another element to inspect"
+                                            Click="BtnDomReinspect_Click"/>
+
+                                    <Button x:Name="BtnDomClose" Grid.Column="2"
+                                            Content="✕" Style="{StaticResource IconButton}"
+                                            FontSize="9" Width="16" Height="16" Padding="0"
+                                            ToolTip="Close DOM Inspector"
+                                            Click="BtnDomClose_Click"/>
+                                </Grid>
+
+                                <!-- Selector Display with Copy -->
+                                <Grid Margin="0,0,0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBox x:Name="TxtDomSelector" Grid.Column="0"
+                                             IsReadOnly="True" FontSize="9" FontFamily="Consolas"
+                                             Background="{StaticResource BaseBrush}" Foreground="{StaticResource TextBrush}"
+                                             BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
+                                             Padding="3,2,3,2"
+                                             ToolTip="Unique CSS Selector"/>
+
+                                    <Button x:Name="BtnCopyDomSelector" Grid.Column="1"
+                                            Content="📋 Copy Sel" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="4,1,4,1" Margin="3,0,0,0"
+                                            ToolTip="Copy CSS selector to clipboard"
+                                            Click="BtnCopyDomSelector_Click"/>
+                                </Grid>
+
+                                <!-- OuterHTML Preview Block -->
+                                <TextBox x:Name="TxtDomOuterHtml"
+                                         IsReadOnly="True" Height="36" AcceptsReturn="True" TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto" FontSize="9" FontFamily="Consolas"
+                                         Background="{StaticResource BaseBrush}" Foreground="{StaticResource Subtext1Brush}"
+                                         BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
+                                         Padding="3,2,3,2" Margin="0,0,0,4"
+                                         ToolTip="Sanitized Outer HTML"/>
+
+                                <!-- Action Buttons: Insert to Repro Steps, Insert to Notes, Copy HTML -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="3"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="3"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Button x:Name="BtnInsertDomToSteps" Grid.Column="0"
+                                            Content="+ Add to Repro Steps" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="3,2,3,2" Foreground="{StaticResource AccentBrush}"
+                                            ToolTip="Insert interaction step with this element into Steps to Reproduce"
+                                            Click="BtnInsertDomToSteps_Click"/>
+
+                                    <Button x:Name="BtnInsertDomToNotes" Grid.Column="2"
+                                            Content="+ Add to Notes" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="3,2,3,2" Foreground="{StaticResource TextBrush}"
+                                            ToolTip="Insert selector and details into Notes"
+                                            Click="BtnInsertDomToNotes_Click"/>
+
+                                    <Button x:Name="BtnCopyDomHtml" Grid.Column="4"
+                                            Content="📋 HTML" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="4,2,4,2"
+                                            ToolTip="Copy Outer HTML"
+                                            Click="BtnCopyDomHtml_Click"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
 
                         <!-- Staged Screenshots Preview Bar (Attachments for current draft) -->
                         <Border x:Name="StagedScreenshotsContainer"
