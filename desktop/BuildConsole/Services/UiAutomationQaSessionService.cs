@@ -135,117 +135,129 @@ namespace BuildConsole.Services
                 AutomationDirectory = automationDir
             };
 
+            long startMemory = GC.GetTotalMemory(false);
+            var totalSw = Stopwatch.StartNew();
+
             try
             {
-                Directory.CreateDirectory(automationDir);
-                string screenshotsDir = Path.Combine(automationDir, "screenshots");
-                string domDir = Path.Combine(automationDir, "dom");
-                string apiDir = Path.Combine(automationDir, "api");
-
-                Directory.CreateDirectory(screenshotsDir);
-                Directory.CreateDirectory(domDir);
-                Directory.CreateDirectory(apiDir);
-
-                // 1. Copy and bundle screenshots
-                var relativeScreenshots = new List<string>();
-                int shotIndex = 1;
-                foreach (var src in context.ScreenshotPaths)
+                var ioSw = Stopwatch.StartNew();
+                await Task.Run(() =>
                 {
-                    if (string.IsNullOrWhiteSpace(src) || !File.Exists(src)) continue;
-                    try
-                    {
-                        string ext = Path.GetExtension(src);
-                        if (string.IsNullOrEmpty(ext)) ext = ".png";
-                        string destFileName = $"screenshot-{shotIndex:D2}{ext}";
-                        string destPath = Path.Combine(screenshotsDir, destFileName);
-                        File.Copy(src, destPath, overwrite: true);
-                        relativeScreenshots.Add($"screenshots/{destFileName}");
-                        shotIndex++;
-                    }
-                    catch (Exception ex)
-                    {
-                        ActivityLog.Log(Channel, $"Screenshot copy error: {ex.Message}");
-                    }
-                }
-                result.ScreenshotsSaved = relativeScreenshots.Count;
+                    Directory.CreateDirectory(automationDir);
+                    string screenshotsDir = Path.Combine(automationDir, "screenshots");
+                    string domDir = Path.Combine(automationDir, "dom");
+                    string apiDir = Path.Combine(automationDir, "api");
 
-                // 2. Save individual API failure JSON files
-                int apiCount = 0;
-                foreach (var api in context.ApiFailures)
-                {
-                    try
-                    {
-                        string slug = VisualTestTrackerExportService.MakeSlug(api.Name);
-                        string apiFileName = $"{apiCount + 1:D2}-{slug}.json";
-                        string apiFilePath = Path.Combine(apiDir, apiFileName);
+                    Directory.CreateDirectory(screenshotsDir);
+                    Directory.CreateDirectory(domDir);
+                    Directory.CreateDirectory(apiDir);
 
-                        var apiData = new
+                    // 1. Copy and bundle screenshots
+                    var relativeScreenshots = new List<string>();
+                    int shotIndex = 1;
+                    foreach (var src in context.ScreenshotPaths)
+                    {
+                        if (string.IsNullOrWhiteSpace(src) || !File.Exists(src)) continue;
+                        try
                         {
-                            name = api.Name,
-                            method = api.Method,
-                            requestUrl = api.RequestUrl,
-                            statusCode = api.StatusCode,
-                            durationMs = api.DurationMs,
-                            reason = api.Reason,
-                            requestHeaders = api.RequestHeaders,
-                            responseHeaders = api.ResponseHeaders,
-                            responseBody = api.ResponseBody,
-                            timestamp = api.Timestamp.ToString("o")
-                        };
-
-                        File.WriteAllText(apiFilePath, JsonSerializer.Serialize(apiData, new JsonSerializerOptions { WriteIndented = true }));
-                        apiCount++;
+                            string ext = Path.GetExtension(src);
+                            if (string.IsNullOrEmpty(ext)) ext = ".png";
+                            string destFileName = $"screenshot-{shotIndex:D2}{ext}";
+                            string destPath = Path.Combine(screenshotsDir, destFileName);
+                            File.Copy(src, destPath, overwrite: true);
+                            relativeScreenshots.Add($"screenshots/{destFileName}");
+                            shotIndex++;
+                        }
+                        catch (Exception ex)
+                        {
+                            ActivityLog.Log(Channel, $"Screenshot copy error: {ex.Message}");
+                        }
                     }
-                    catch (Exception ex)
+                    result.ScreenshotsSaved = relativeScreenshots.Count;
+
+                    // 2. Save individual API failure JSON files
+                    int apiCount = 0;
+                    foreach (var api in context.ApiFailures)
                     {
-                        ActivityLog.Log(Channel, $"API failure file write error: {ex.Message}");
-                    }
-                }
-                result.ApiFailuresCaptured = apiCount;
+                        try
+                        {
+                            string slug = VisualTestTrackerExportService.MakeSlug(api.Name);
+                            string apiFileName = $"{apiCount + 1:D2}-{slug}.json";
+                            string apiFilePath = Path.Combine(apiDir, apiFileName);
 
-                // 3. Save DOM diff snapshots into dom/
-                int domCount = 0;
-                foreach (var diff in context.DomDiffs)
+                            var apiData = new
+                            {
+                                name = api.Name,
+                                method = api.Method,
+                                requestUrl = api.RequestUrl,
+                                statusCode = api.StatusCode,
+                                durationMs = api.DurationMs,
+                                reason = api.Reason,
+                                requestHeaders = api.RequestHeaders,
+                                responseHeaders = api.ResponseHeaders,
+                                responseBody = api.ResponseBody,
+                                timestamp = api.Timestamp.ToString("o")
+                            };
+
+                            File.WriteAllText(apiFilePath, JsonSerializer.Serialize(apiData, new JsonSerializerOptions { WriteIndented = true }));
+                            apiCount++;
+                        }
+                        catch (Exception ex)
+                        {
+                            ActivityLog.Log(Channel, $"API failure file write error: {ex.Message}");
+                        }
+                    }
+                    result.ApiFailuresCaptured = apiCount;
+
+                    // 3. Save DOM diff snapshots into dom/
+                    int domCount = 0;
+                    foreach (var diff in context.DomDiffs)
+                    {
+                        try
+                        {
+                            string domFileName = $"dom-step-{diff.StepIndex:D2}.json";
+                            string domFilePath = Path.Combine(domDir, domFileName);
+                            File.WriteAllText(domFilePath, JsonSerializer.Serialize(diff, new JsonSerializerOptions { WriteIndented = true }));
+                            diff.SnapshotPath = $"dom/{domFileName}";
+                            domCount++;
+                        }
+                        catch (Exception ex)
+                        {
+                            ActivityLog.Log(Channel, $"DOM snapshot write error: {ex.Message}");
+                        }
+                    }
+                    result.DomSnapshotsSaved = domCount;
+
+                    // 4. Save console.json (capturing console errors only)
+                    string consoleJsonPath = Path.Combine(automationDir, "console.json");
+                    var consoleErrorsExport = context.ConsoleErrors.Select(c => new
+                    {
+                        level = c.Level,
+                        message = c.Message,
+                        stack = c.StackTrace,
+                        timestamp = c.Timestamp
+                    }).ToList();
+
+                    File.WriteAllText(consoleJsonPath, JsonSerializer.Serialize(consoleErrorsExport, new JsonSerializerOptions { WriteIndented = true }));
+                    result.ConsoleErrorsCaptured = consoleErrorsExport.Count;
+
+                    // 5. Generate and write report.json
+                    string reportJsonPath = Path.Combine(automationDir, "report.json");
+                    string reportJsonContent = GenerateReportJson(context, relativeScreenshots);
+                    File.WriteAllText(reportJsonPath, reportJsonContent);
+                    result.ReportJsonPath = reportJsonPath;
+
+                    // 6. Generate and write summary.md
+                    string summaryMdPath = Path.Combine(automationDir, "summary.md");
+                    string summaryMdContent = GenerateSummaryMarkdown(context, relativeScreenshots);
+                    File.WriteAllText(summaryMdPath, summaryMdContent);
+                    result.SummaryMdPath = summaryMdPath;
+                });
+                ioSw.Stop();
+                if (ioSw.ElapsedMilliseconds > 1000)
                 {
-                    try
-                    {
-                        string domFileName = $"dom-step-{diff.StepIndex:D2}.json";
-                        string domFilePath = Path.Combine(domDir, domFileName);
-                        File.WriteAllText(domFilePath, JsonSerializer.Serialize(diff, new JsonSerializerOptions { WriteIndented = true }));
-                        diff.SnapshotPath = $"dom/{domFileName}";
-                        domCount++;
-                    }
-                    catch (Exception ex)
-                    {
-                        ActivityLog.Log(Channel, $"DOM snapshot write error: {ex.Message}");
-                    }
+                    ActivityLog.Log(Channel, $"Slow automated artifact write: {ioSw.ElapsedMilliseconds}ms for session {context.SessionId}");
                 }
-                result.DomSnapshotsSaved = domCount;
-
-                // 4. Save console.json (capturing console errors only)
-                string consoleJsonPath = Path.Combine(automationDir, "console.json");
-                var consoleErrorsExport = context.ConsoleErrors.Select(c => new
-                {
-                    level = c.Level,
-                    message = c.Message,
-                    stack = c.StackTrace,
-                    timestamp = c.Timestamp
-                }).ToList();
-
-                File.WriteAllText(consoleJsonPath, JsonSerializer.Serialize(consoleErrorsExport, new JsonSerializerOptions { WriteIndented = true }));
-                result.ConsoleErrorsCaptured = consoleErrorsExport.Count;
-
-                // 5. Generate and write report.json
-                string reportJsonPath = Path.Combine(automationDir, "report.json");
-                string reportJsonContent = GenerateReportJson(context, relativeScreenshots);
-                File.WriteAllText(reportJsonPath, reportJsonContent);
-                result.ReportJsonPath = reportJsonPath;
-
-                // 6. Generate and write summary.md
-                string summaryMdPath = Path.Combine(automationDir, "summary.md");
-                string summaryMdContent = GenerateSummaryMarkdown(context, relativeScreenshots);
-                File.WriteAllText(summaryMdPath, summaryMdContent);
-                result.SummaryMdPath = summaryMdPath;
 
                 // 7. Commit and push to Git if enabled
                 if (commitToGit)
@@ -258,10 +270,24 @@ namespace BuildConsole.Services
                     result.CommitMessage = commitMsg;
 
                     string relAutomationPath = $"Bugs/{cleanProduct}/{context.SessionId}/automation/";
+                    var gitAddSw = Stopwatch.StartNew();
                     var (stageOk, stageErr) = await RunGitCommandAsync(repoRoot, $"add \"{relAutomationPath}\"");
+                    gitAddSw.Stop();
+                    if (gitAddSw.ElapsedMilliseconds > 1000)
+                    {
+                        ActivityLog.Log(Channel, $"Slow git add for automation: {gitAddSw.ElapsedMilliseconds}ms");
+                    }
+
                     if (stageOk)
                     {
+                        var gitCommitSw = Stopwatch.StartNew();
                         var (commitOk, commitOut, commitErr) = await RunGitCommandWithOutputAsync(repoRoot, $"commit -m \"{commitMsg.Replace("\"", "\\\"")}\"");
+                        gitCommitSw.Stop();
+                        if (gitCommitSw.ElapsedMilliseconds > 1000)
+                        {
+                            ActivityLog.Log(Channel, $"Slow git commit for automation: {gitCommitSw.ElapsedMilliseconds}ms");
+                        }
+
                         if (commitOk)
                         {
                             var (hashOk, hash, _) = await RunGitCommandWithOutputAsync(repoRoot, "rev-parse --short HEAD");
@@ -270,7 +296,13 @@ namespace BuildConsole.Services
                             if (pushToRemote)
                             {
                                 string branch = await GetGitBranchAsync(repoRoot);
+                                var gitPushSw = Stopwatch.StartNew();
                                 var (pushOk, pushErr) = await RunGitCommandAsync(repoRoot, $"push origin {branch}");
+                                gitPushSw.Stop();
+                                if (gitPushSw.ElapsedMilliseconds > 1000)
+                                {
+                                    ActivityLog.Log(Channel, $"Slow git push for automation: {gitPushSw.ElapsedMilliseconds}ms");
+                                }
                                 if (!pushOk)
                                 {
                                     ActivityLog.Log(Channel, $"Git push warning: {pushErr}");
@@ -283,6 +315,11 @@ namespace BuildConsole.Services
                         }
                     }
                 }
+
+                totalSw.Stop();
+                long endMemory = GC.GetTotalMemory(false);
+                long memDeltaMb = (endMemory - startMemory) / (1024 * 1024);
+                ActivityLog.Log(Channel, $"Automation QA session finalized: total={totalSw.ElapsedMilliseconds}ms, memory delta={memDeltaMb}MB (start: {startMemory / (1024 * 1024)}MB, end: {endMemory / (1024 * 1024)}MB)");
 
                 result.Success = true;
                 ActivityLog.Log(Channel, $"Successfully saved automated QA session to {automationDir}.");

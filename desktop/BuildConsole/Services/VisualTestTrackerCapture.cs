@@ -139,12 +139,22 @@ namespace BuildConsole.Services
                     return Fail("Selected region falls outside the captured viewport — try again.");
 
                 var cropped = new CroppedBitmap(full, clamped);
+                cropped.Freeze();
                 string path = BuildFilePath(baseUrl, pagePath);
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                var encoder = new PngBitmapEncoder();
-                encoder.Frames.Add(BitmapFrame.Create(cropped));
-                using (var outStream = new FileStream(path, FileMode.Create, FileAccess.Write))
+                var encSw = System.Diagnostics.Stopwatch.StartNew();
+                await Task.Run(() =>
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(cropped));
+                    using var outStream = new FileStream(path, FileMode.Create, FileAccess.Write);
                     encoder.Save(outStream);
+                });
+                encSw.Stop();
+                if (encSw.ElapsedMilliseconds > 1000)
+                {
+                    ActivityLog.Log(Channel, $"Slow region capture encode: {encSw.ElapsedMilliseconds}ms for {path}");
+                }
 
                 ActivityLog.Log(Channel, $"Region capture OK: {baseUrl}{pagePath} rect={clamped} -> {path}");
                 return new CaptureResult { Success = true, FilePath = path };
@@ -157,9 +167,9 @@ namespace BuildConsole.Services
         }
 
         /// <summary>Captures the full WPF window (including HUD, borders, dialogs, and overlays) using on-screen GDI capture.</summary>
-        public static Task<CaptureResult> CaptureWpfWindowAsync(Window window, string baseUrl, string pagePath)
+        public static async Task<CaptureResult> CaptureWpfWindowAsync(Window window, string baseUrl, string pagePath)
         {
-            if (window == null) return Task.FromResult(Fail("Window not provided."));
+            if (window == null) return Fail("Window not provided.");
 
             string path = BuildFilePath(baseUrl, pagePath);
             try
@@ -175,27 +185,33 @@ namespace BuildConsole.Services
                 int height = (int)Math.Round(window.ActualHeight * dpiY);
 
                 if (width <= 0 || height <= 0)
-                    return Task.FromResult(Fail("Window dimensions are invalid or minimized."));
+                    return Fail("Window dimensions are invalid or minimized.");
 
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-
-                using (var bmp = new System.Drawing.Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                var gdiSw = System.Diagnostics.Stopwatch.StartNew();
+                await Task.Run(() =>
                 {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    using var bmp = new System.Drawing.Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
                     using (var g = System.Drawing.Graphics.FromImage(bmp))
                     {
                         g.CopyFromScreen(x, y, 0, 0, new System.Drawing.Size(width, height), System.Drawing.CopyPixelOperation.SourceCopy);
                     }
                     bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+                });
+                gdiSw.Stop();
+                if (gdiSw.ElapsedMilliseconds > 1000)
+                {
+                    ActivityLog.Log(Channel, $"Slow WPF window capture encode: {gdiSw.ElapsedMilliseconds}ms for {path}");
                 }
 
                 ActivityLog.Log(Channel, $"WPF Window capture OK: {baseUrl}{pagePath} -> {path}");
-                return Task.FromResult(new CaptureResult { Success = true, FilePath = path });
+                return new CaptureResult { Success = true, FilePath = path };
             }
             catch (Exception ex)
             {
                 ActivityLog.Log(Channel, $"WPF Window capture FAILED: {ex.Message}");
                 TryDelete(path);
-                return Task.FromResult(Fail($"WPF Window capture failed: {ex.Message}"));
+                return Fail($"WPF Window capture failed: {ex.Message}");
             }
         }
 

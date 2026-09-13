@@ -1619,6 +1619,49 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>
+        /// Unhooks Chrome DevTools Protocol (CDP) listeners from the specified CoreWebView2 instance,
+        /// releasing event handlers and freeing the reference.
+        /// </summary>
+        public static void DetachCdp(CoreWebView2? coreWebView2)
+        {
+            if (coreWebView2 == null) return;
+
+            lock (_cdpLock)
+            {
+                if (!_attachedCoreWebViews.Contains(coreWebView2))
+                    return;
+                _attachedCoreWebViews.Remove(coreWebView2);
+            }
+
+            try
+            {
+                var runtimeConsoleReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Runtime.consoleAPICalled");
+                runtimeConsoleReceiver.DevToolsProtocolEventReceived -= OnCdpConsoleApiCalled;
+
+                var consoleMessageReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Console.messageAdded");
+                consoleMessageReceiver.DevToolsProtocolEventReceived -= OnCdpConsoleMessageAdded;
+
+                var runtimeExceptionReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Runtime.exceptionThrown");
+                runtimeExceptionReceiver.DevToolsProtocolEventReceived -= OnCdpExceptionThrown;
+
+                var reqSentReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Network.requestWillBeSent");
+                reqSentReceiver.DevToolsProtocolEventReceived -= OnCdpRequestWillBeSent;
+
+                var respRecvReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Network.responseReceived");
+                respRecvReceiver.DevToolsProtocolEventReceived -= OnCdpResponseReceived;
+
+                var loadFailReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Network.loadingFailed");
+                loadFailReceiver.DevToolsProtocolEventReceived -= OnCdpLoadingFailed;
+
+                var loadFinReceiver = coreWebView2.GetDevToolsProtocolEventReceiver("Network.loadingFinished");
+                loadFinReceiver.DevToolsProtocolEventReceived -= OnCdpLoadingFinished;
+
+                ActivityLog.Log(VisualTestTrackerStore.Channel, "DevTools Protocol (CDP) detached successfully.");
+            }
+            catch { }
+        }
+
         // ── CDP Event Handlers ──────────────────────────────────────────────────
 
         private static void OnCdpConsoleApiCalled(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)

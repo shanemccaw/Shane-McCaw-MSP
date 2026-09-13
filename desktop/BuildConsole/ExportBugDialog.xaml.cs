@@ -101,7 +101,7 @@ namespace BuildConsole
             UpdateDestinationPath();
         }
 
-        private void BtnExport_Click(object sender, RoutedEventArgs e)
+        private async void BtnExport_Click(object sender, RoutedEventArgs e)
         {
             var area = GetSelectedArea();
             bool copyShots = ChkCopyScreenshots.IsChecked == true;
@@ -112,11 +112,11 @@ namespace BuildConsole
                 BugExportResult result;
                 if (_entries.Count == 1)
                 {
-                    result = VisualTestTrackerExportService.ExportEntry(_entries[0], area, copyShots);
+                    result = await VisualTestTrackerExportService.ExportEntryAsync(_entries[0], area, copyShots);
                 }
                 else
                 {
-                    result = VisualTestTrackerExportService.ExportEntries(_entries, area, copyShots);
+                    result = await VisualTestTrackerExportService.ExportEntriesAsync(_entries, area, copyShots);
                 }
 
                 if (result.Success)

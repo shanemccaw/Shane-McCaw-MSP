@@ -98,14 +98,18 @@ namespace BuildConsole
 
         private ApiHelperWindow? _apiHelperWindow;
 
+        private readonly Action<DomElementInfo> _onDomElementInspectedHandler;
+        private readonly Action<DomMutationRecord> _onDomMutationRecordedHandler;
+
         public VisualTestTrackerWindow()
         {
             InitializeComponent();
 
-            VisualTestTrackerTelemetry.OnDomElementInspected += info =>
-            {
-                Dispatcher.Invoke(() => HandleDomElementInspected(info));
-            };
+            _onDomElementInspectedHandler = info => Dispatcher.Invoke(() => HandleDomElementInspected(info));
+            VisualTestTrackerTelemetry.OnDomElementInspected += _onDomElementInspectedHandler;
+
+            _onDomMutationRecordedHandler = HandleDomMutationRecorded;
+            VisualTestTrackerTelemetry.OnDomMutationRecorded += _onDomMutationRecordedHandler;
 
             _globalNotes = VisualTestTrackerDraftStore.LoadGlobalNotes();
 
@@ -150,15 +154,17 @@ namespace BuildConsole
             };
             _inactivityTimer.Start();
 
-            // Poll live telemetry diagnostics (errors, network failures, events) every 2 seconds
-            _telemetryPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            // Poll live telemetry diagnostics (errors, network failures, events) every 4 seconds when active and visible
+            _telemetryPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
             _telemetryPollTimer.Tick += async (s, e) =>
             {
+                // Core Requirement #6: No periodic heavy polling when minimized, hidden, or no active page
+                if (WindowState == WindowState.Minimized || Visibility != Visibility.Visible || _activeWebView?.CoreWebView2 == null)
+                    return;
+
                 await RefreshLiveTelemetryBadgesAsync();
             };
             _telemetryPollTimer.Start();
-
-            VisualTestTrackerTelemetry.OnDomMutationRecorded += HandleDomMutationRecorded;
 
             var settings = BuildConsoleSettings.Load();
             if (settings.VisualTestTrackerWidth > 0) Width = settings.VisualTestTrackerWidth;
@@ -3875,6 +3881,41 @@ namespace BuildConsole
         protected override void OnClosed(EventArgs e)
         {
             VisualTestTrackerSessionStore.PauseSession(_activeSession);
+
+            // 1. Stop all timers to prevent background dispatcher tick overhead
+            _autoSaveDebounce?.Stop();
+            _sessionTimer?.Stop();
+            _inactivityTimer?.Stop();
+            _telemetryPollTimer?.Stop();
+
+            // 2. Unsubscribe static telemetry events to prevent memory leaks / pinned window instances
+            if (_onDomElementInspectedHandler != null)
+                VisualTestTrackerTelemetry.OnDomElementInspected -= _onDomElementInspectedHandler;
+            if (_onDomMutationRecordedHandler != null)
+                VisualTestTrackerTelemetry.OnDomMutationRecorded -= _onDomMutationRecordedHandler;
+
+            // 3. Detach CDP from active WebView2 and unhook WebMessageReceived
+            if (_activeWebView?.CoreWebView2 != null)
+            {
+                try
+                {
+                    _activeWebView.CoreWebView2.WebMessageReceived -= OnActiveWebView_WebMessageReceived;
+                    VisualTestTrackerTelemetry.DetachCdp(_activeWebView.CoreWebView2);
+                }
+                catch { }
+            }
+
+            // 4. Release heavy UI resources and clear collections
+            _activeWebView = null;
+            _inspectedDomElement = null;
+            _capturedDomMutations.Clear();
+            _stagedScreenshots.Clear();
+            _currentEntries.Clear();
+            _sessionApiResults.Clear();
+            _sessionConsoleRuns.Clear();
+            _sessionUrlsVisited.Clear();
+            _apiHelperWindow = null;
+
             base.OnClosed(e);
         }
 

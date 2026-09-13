@@ -616,14 +616,29 @@ namespace BuildConsole.Services
         /// </summary>
         public static async Task<SessionSyncResult> ExecuteGitSyncAsync(SessionSyncContext context, string repoRoot, bool pushToRemote = true)
         {
-            // 1. Write all session files first
-            var result = WriteSessionFiles(context, repoRoot);
+            long startMemory = GC.GetTotalMemory(false);
+            var totalSw = Stopwatch.StartNew();
+
+            // 1. Write all session files off UI thread
+            var writeSw = Stopwatch.StartNew();
+            var result = await Task.Run(() => WriteSessionFiles(context, repoRoot));
+            writeSw.Stop();
+            if (writeSw.ElapsedMilliseconds > 1000)
+            {
+                ActivityLog.Log("visual-test-tracker", $"Slow session disk write: WriteSessionFiles took {writeSw.ElapsedMilliseconds}ms for session {context.SessionId}");
+            }
             if (!result.Success) return result;
 
             string relDir = Path.Combine("Bugs", VisualTestTrackerExportService.SanitizeDirectoryName(context.ProductName), context.SessionId).Replace('\\', '/');
 
             // 2. git add <relDir>
+            var addSw = Stopwatch.StartNew();
             var addRes = await RunGitAsync(repoRoot, $"add \"{relDir}\"");
+            addSw.Stop();
+            if (addSw.ElapsedMilliseconds > 1000)
+            {
+                ActivityLog.Log("visual-test-tracker", $"Slow git add: {addSw.ElapsedMilliseconds}ms for {relDir}");
+            }
             if (addRes.ExitCode != 0)
             {
                 result.Success = false;
@@ -633,7 +648,13 @@ namespace BuildConsole.Services
 
             // 3. git commit -m "<CommitMessage>"
             string commitMsg = result.CommitMessage.Replace("\"", "\\\"");
+            var commitSw = Stopwatch.StartNew();
             var commitRes = await RunGitAsync(repoRoot, $"commit -m \"{commitMsg}\"");
+            commitSw.Stop();
+            if (commitSw.ElapsedMilliseconds > 1000)
+            {
+                ActivityLog.Log("visual-test-tracker", $"Slow git commit: {commitSw.ElapsedMilliseconds}ms");
+            }
             if (commitRes.ExitCode != 0)
             {
                 // Check if nothing to commit (e.g. already committed)
@@ -659,6 +680,7 @@ namespace BuildConsole.Services
             // 5. git push (if requested)
             if (pushToRemote)
             {
+                var pushSw = Stopwatch.StartNew();
                 // Query current branch
                 var branchRes = await RunGitAsync(repoRoot, "rev-parse --abbrev-ref HEAD");
                 string currentBranch = branchRes.ExitCode == 0 ? branchRes.StdOut.Trim() : "main";
@@ -685,7 +707,17 @@ namespace BuildConsole.Services
                         // Note: We do NOT fail the entire operation if push fails (e.g. offline or auth); commit is safely local!
                     }
                 }
+                pushSw.Stop();
+                if (pushSw.ElapsedMilliseconds > 1000)
+                {
+                    ActivityLog.Log("visual-test-tracker", $"Slow git push: {pushSw.ElapsedMilliseconds}ms");
+                }
             }
+
+            totalSw.Stop();
+            long endMemory = GC.GetTotalMemory(false);
+            long memDeltaMb = (endMemory - startMemory) / (1024 * 1024);
+            ActivityLog.Log("visual-test-tracker", $"Session sync performance: total={totalSw.ElapsedMilliseconds}ms, memory delta={memDeltaMb}MB (start: {startMemory / (1024 * 1024)}MB, end: {endMemory / (1024 * 1024)}MB)");
 
             result.Success = true;
             return result;

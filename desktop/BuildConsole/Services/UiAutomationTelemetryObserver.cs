@@ -53,19 +53,20 @@ namespace BuildConsole.Services
     public sealed class UiAutomationTelemetryObserver : IDisposable
     {
         private const string Channel = "testing.automation-telemetry";
+        private const int MaxTelemetryItems = 500;
         private readonly WebView2 _webView;
         private readonly int _slowApiThresholdMs;
         private bool _isAttached;
         private string? _consoleScriptId;
 
-        private readonly ConcurrentBag<ConsoleLogItem> _consoleErrors = new();
-        private readonly ConcurrentBag<AutomationApiFailureItem> _apiFailures = new();
+        private readonly ConcurrentQueue<ConsoleLogItem> _consoleErrors = new();
+        private readonly ConcurrentQueue<AutomationApiFailureItem> _apiFailures = new();
         private readonly ConcurrentDictionary<string, Stopwatch> _inFlightRequests = new();
         private readonly List<AutomationDomDiffItem> _domDiffs = new();
         private readonly HashSet<string> _visitedUrls = new(StringComparer.OrdinalIgnoreCase);
 
-        public IReadOnlyList<ConsoleLogItem> ConsoleErrors => _consoleErrors.OrderBy(c => c.Timestamp).ToList();
-        public IReadOnlyList<AutomationApiFailureItem> ApiFailures => _apiFailures.OrderBy(a => a.Timestamp).ToList();
+        public IReadOnlyList<ConsoleLogItem> ConsoleErrors => _consoleErrors.ToList();
+        public IReadOnlyList<AutomationApiFailureItem> ApiFailures => _apiFailures.ToList();
         public IReadOnlyList<AutomationDomDiffItem> DomDiffs => _domDiffs;
         public IReadOnlyList<string> VisitedUrls => _visitedUrls.ToList();
 
@@ -116,6 +117,7 @@ namespace BuildConsole.Services
                 stack: (new Error()).stack || '',
                 timestamp: new Date().toISOString()
             });
+            if (window.__qaConsoleErrors.length > 500) window.__qaConsoleErrors.shift();
         } catch(_) {}
         if (origError) origError.apply(console, arguments);
     };
@@ -129,6 +131,7 @@ namespace BuildConsole.Services
                 stack: e.error ? e.error.stack || '' : '',
                 timestamp: new Date().toISOString()
             });
+            if (window.__qaConsoleErrors.length > 500) window.__qaConsoleErrors.shift();
         } catch(_) {}
     });
 
@@ -142,6 +145,7 @@ namespace BuildConsole.Services
                 stack: reason && reason.stack ? reason.stack : '',
                 timestamp: new Date().toISOString()
             });
+            if (window.__qaConsoleErrors.length > 500) window.__qaConsoleErrors.shift();
         } catch(_) {}
     });
 })();";
@@ -247,7 +251,7 @@ namespace BuildConsole.Services
                         Timestamp = DateTime.Now
                     };
 
-                    _apiFailures.Add(failureItem);
+                    AddApiFailure(failureItem);
                     ActivityLog.Log(Channel, $"Captured API problem: [{method} {statusCode}] {url} ({reason})");
                 }
             }
@@ -255,6 +259,18 @@ namespace BuildConsole.Services
             {
                 ActivityLog.Log(Channel, $"Error in WebResourceResponseReceived telemetry: {ex.Message}");
             }
+        }
+
+        private void AddConsoleError(ConsoleLogItem item)
+        {
+            _consoleErrors.Enqueue(item);
+            while (_consoleErrors.Count > MaxTelemetryItems && _consoleErrors.TryDequeue(out _)) { }
+        }
+
+        private void AddApiFailure(AutomationApiFailureItem item)
+        {
+            _apiFailures.Enqueue(item);
+            while (_apiFailures.Count > MaxTelemetryItems && _apiFailures.TryDequeue(out _)) { }
         }
 
         /// <summary>
@@ -288,7 +304,7 @@ namespace BuildConsole.Services
 
                         if (!string.IsNullOrWhiteSpace(msg))
                         {
-                            _consoleErrors.Add(new ConsoleLogItem
+                            AddConsoleError(new ConsoleLogItem
                             {
                                 Level = "error",
                                 Message = string.IsNullOrWhiteSpace(src) ? msg : $"[{src}] {msg}",
@@ -419,7 +435,13 @@ namespace BuildConsole.Services
                 }
             }
             catch { }
-            _isAttached = false;
+            finally
+            {
+                _inFlightRequests.Clear();
+                _visitedUrls.Clear();
+                _domDiffs.Clear();
+                _isAttached = false;
+            }
         }
     }
 }

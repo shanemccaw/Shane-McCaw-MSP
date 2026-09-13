@@ -806,7 +806,7 @@ namespace BuildConsole.Services
                 var completed = await Task.WhenAny(captureTcs.Task, Task.Delay(CaptureResponseTimeoutMs));
                 captureSw.Stop();
                 _webView.CoreWebView2.WebResourceResponseReceived -= captureHandler;
-                var captured = completed == captureTcs.Task ? captureTcs.Task.Result : null;
+                var captured = completed == captureTcs.Task ? await captureTcs.Task : null;
                 var capturedArgs = captured?.Args;
                 bool captureMatched = capturedArgs != null;
                 ActivityLog.Log(Channel, captureMatched
@@ -1845,7 +1845,7 @@ namespace BuildConsole.Services
                     return (null, msg);
                 }
 
-                var stream = getContentTask.Result;
+                var stream = await getContentTask;
                 if (stream == null)
                 {
                     sw.Stop();
@@ -1877,7 +1877,7 @@ namespace BuildConsole.Services
                     return (null, msg);
                 }
 
-                var body = readTask.Result;
+                var body = await readTask;
                 sw.Stop();
                 reader.Dispose(); // disposes the underlying stream too
                 ActivityLog.Log(Channel, $"ReadResponseBodyAsync: body read complete in {sw.ElapsedMilliseconds}ms ({body?.Length ?? 0} chars).");

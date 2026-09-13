@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace BuildConsole.Services
 {
@@ -481,6 +484,44 @@ namespace BuildConsole.Services
                     Error = ex.Message
                 };
             }
+        }
+
+        /// <summary>
+        /// Asynchronously exports a single VisualTestTrackerEntry off the UI thread with latency tracking.
+        /// </summary>
+        public static Task<BugExportResult> ExportEntryAsync(VisualTestTrackerEntry entry, string area, bool copyScreenshots = true, CancellationToken cancellationToken = default)
+        {
+            return Task.Run(() =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var sw = Stopwatch.StartNew();
+                var res = ExportEntry(entry, area, copyScreenshots);
+                sw.Stop();
+                if (sw.ElapsedMilliseconds > 1000)
+                {
+                    ActivityLog.Log("visual-test-tracker", $"Slow single-entry export: {sw.ElapsedMilliseconds}ms for {entry.Id}");
+                }
+                return res;
+            }, cancellationToken);
+        }
+
+        /// <summary>
+        /// Asynchronously exports multiple VisualTestTrackerEntry instances off the UI thread with latency tracking.
+        /// </summary>
+        public static Task<BugExportResult> ExportEntriesAsync(IEnumerable<VisualTestTrackerEntry> entries, string area, bool copyScreenshots = true, CancellationToken cancellationToken = default)
+        {
+            return Task.Run(() =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var sw = Stopwatch.StartNew();
+                var res = ExportEntries(entries, area, copyScreenshots);
+                sw.Stop();
+                if (sw.ElapsedMilliseconds > 1000)
+                {
+                    ActivityLog.Log("visual-test-tracker", $"Slow multi-entry export: {sw.ElapsedMilliseconds}ms for {res.ExportedCount} entries");
+                }
+                return res;
+            }, cancellationToken);
         }
     }
 }
