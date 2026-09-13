@@ -67,6 +67,27 @@ export function getMspPortalBaseUrl(): string {
 }
 
 /**
+ * Returns the base URL for the msp-console artifact (/msp-console) — the MSP
+ * operator/admin surface, distinct from both the customer msp-portal (/portal)
+ * and the deprecated CRM artifact (/crm). Same domain, different path prefix:
+ * all three artifacts are served from one origin, so this reuses the shared
+ * getDomainBase() selection exactly like getMspPortalBaseUrl() does, appending
+ * /msp-console instead of /portal.
+ *
+ * The mount path matches the console's own Vite base (MSP_CONSOLE_CANONICAL_BASE
+ * = "/msp-console/" in artifacts/msp-console/vite.config.ts). No trailing slash,
+ * because callers concatenate a further path (e.g.
+ * `${getMspConsoleBaseUrl()}/forgot-password`).
+ *
+ * Use this for links meant to land an MSP staff user back in the console —
+ * e.g. the password-reset email a console-originated forgot-password produces
+ * (#3910), so it doesn't hand them a customer-portal link.
+ */
+export function getMspConsoleBaseUrl(): string {
+  return `${getDomainBase()}/msp-console`;
+}
+
+/**
  * Returns the msp-portal artifact's URL WITH a trailing slash — for direct
  * browser navigation to the portal root (window.open, <a href>, redirect
  * Location). msp-portal's Vite dev server is configured with base="/portal/"

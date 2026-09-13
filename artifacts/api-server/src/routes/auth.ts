@@ -7,7 +7,7 @@ import { db, usersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTa
 import { eq, desc } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
-import { getPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
+import { getPortalBaseUrl, getMspConsoleBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { signMfaToken, getActiveMfaMethods } from "./mfa.ts";
 import { isProductionEnvironment } from "../lib/env.ts";
 import { dispatchEvent, EVENT_TYPES, systemActor, userActor, impersonationActor } from "../lib/event-bus.ts";
@@ -718,7 +718,23 @@ router.get("/auth/setup-context", setupContextLimiter, async (req: Request, res:
 
 // ─── Forgot password ──────────────────────────────────────────────────────────
 router.post("/auth/forgot-password", async (req: Request, res: Response) => {
-  const { email } = req.body as { email?: string };
+  const { email, surface } = req.body as { email?: string; surface?: string };
+
+  // Which surface the reset link should land on. The customer portal
+  // (/portal/reset-password) and the MSP console (/msp-console/forgot-password?token=)
+  // share this one route and the same users table, so the request itself has to
+  // say where it came from — the console's own forgot-password form sends
+  // surface:"console" (msp-console/src/auth/authApi.ts), everything else omits
+  // it and gets the portal link exactly as before (#3910). We key off the
+  // caller-provided origin, NOT the resolved user's mspRole: a single users row
+  // can hold an MSP role while still being reachable via the portal, so forcing
+  // every MSP-role user onto the console link regardless of which form they
+  // actually used would be wrong. req.hostname/Referer were rejected as the
+  // signal — both are unreliable behind the Replit proxy — in favour of an
+  // explicit, deterministic field. Anything other than the literal "console"
+  // falls through to the portal, so a malformed/absent value is never a
+  // regression.
+  const isConsoleSurface = surface === "console";
 
   res.json({ ok: true });
 
@@ -768,9 +784,17 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
 
   await db.insert(passwordResetTokensTable).values({ userId: user.id, token, expiresAt });
 
-  const baseUrl = process.env.PORTAL_BASE_URL
-    ?? `${req.protocol}://${req.hostname}/portal`;
-  const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+  // The MSP console reuses ONE page (/msp-console/forgot-password) for both the
+  // request form and the reset form, keyed on the presence of ?token= (see
+  // msp-console/src/auth/ForgotPasswordPage.tsx), so its reset link points back
+  // at that same path with the token appended — NOT at a /reset-password route,
+  // which the console doesn't have. The portal branch is left byte-for-byte
+  // as it was: this fix only adds the console case and does not touch the
+  // portal's existing URL construction or the surface-agnostic reset-password
+  // validation route below.
+  const resetUrl = isConsoleSurface
+    ? `${getMspConsoleBaseUrl()}/forgot-password?token=${token}`
+    : `${process.env.PORTAL_BASE_URL ?? `${req.protocol}://${req.hostname}/portal`}/reset-password?token=${token}`;
 
   void sendEmailFromTemplate(
     "password-reset",

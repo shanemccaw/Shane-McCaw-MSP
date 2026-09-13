@@ -70,8 +70,13 @@ export function login(email: string, password: string): Promise<LoginResult> {
 // ─── POST /api/auth/forgot-password ─────────────────────────────────────────
 // Always resolves { ok: true } — the route answers before it even looks the
 // account up (see auth.ts). There is nothing to distinguish client-side.
+//
+// surface:"console" tells the shared route to build the reset link back to the
+// console's own /msp-console/forgot-password?token= page rather than the
+// customer portal (#3910) — this route serves every account type, and without
+// the hint an MSP operator resetting from here would be emailed a portal link.
 export function forgotPassword(email: string): Promise<{ ok: true }> {
-  return postJson<{ ok: true }>("/api/auth/forgot-password", { email });
+  return postJson<{ ok: true }>("/api/auth/forgot-password", { email, surface: "console" });
 }
 
 // ─── POST /api/auth/reset-password ──────────────────────────────────────────
