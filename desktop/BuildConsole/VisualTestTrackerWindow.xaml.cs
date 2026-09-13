@@ -76,6 +76,13 @@ namespace BuildConsole
         private string _pinnedCorner = "None"; // "None", "TopRight", "BottomRight", "BottomLeft", "TopLeft"
         private string _timerMode = "Page"; // "Page" or "Session"
 
+        // Phase 11: Visual Diffing, DOM Mutation Tracking & Accessibility state
+        private bool _isDomChangesTrackingActive;
+        private readonly List<DomMutationRecord> _capturedDomMutations = new();
+        private AccessibilityAuditReport _lastA11yReport = new();
+        private string _currentA11yFilter = "All";
+        private bool _a11yMarkersVisible = true;
+
         private ApiHelperWindow? _apiHelperWindow;
 
         public VisualTestTrackerWindow()
@@ -137,6 +144,8 @@ namespace BuildConsole
                 await RefreshLiveTelemetryBadgesAsync();
             };
             _telemetryPollTimer.Start();
+
+            VisualTestTrackerTelemetry.OnDomMutationRecorded += HandleDomMutationRecorded;
 
             var settings = BuildConsoleSettings.Load();
             if (settings.VisualTestTrackerWidth > 0) Width = settings.VisualTestTrackerWidth;
@@ -437,7 +446,10 @@ namespace BuildConsole
             BtnCaptureFull.IsEnabled = enabled;
             BtnCaptureRegion.IsEnabled = enabled;
             BtnCaptureWpfWindow.IsEnabled = enabled;
+            BtnVisualDiff.IsEnabled = enabled;
             BtnInspectDom.IsEnabled = enabled;
+            BtnA11yAudit.IsEnabled = enabled;
+            BtnDomChanges.IsEnabled = enabled;
             BtnSaveEntry.IsEnabled = enabled;
             BtnClearDraft.IsEnabled = enabled;
             BtnNewSession.IsEnabled = enabled;
@@ -1190,6 +1202,24 @@ namespace BuildConsole
                 if (domInfo != null)
                 {
                     Dispatcher.Invoke(() => HandleDomElementInspected(domInfo));
+                    return;
+                }
+
+                var mutation = VisualTestTrackerTelemetry.TryParseDomMutationMessage(message);
+                if (mutation != null)
+                {
+                    HandleDomMutationRecorded(mutation);
+                    return;
+                }
+
+                var a11yClick = VisualTestTrackerTelemetry.TryParseA11yClickMessage(message);
+                if (a11yClick != null)
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        ShowMessage($"Accessibility [{a11yClick.Category}]: {a11yClick.Message}", isError: true);
+                    });
+                    return;
                 }
             }
             catch { }
@@ -1225,6 +1255,28 @@ namespace BuildConsole
             TxtDomDimensions.Text = $"{info.Width:F0} × {info.Height:F0} px";
             TxtDomSelector.Text = info.Selector;
             TxtDomOuterHtml.Text = info.OuterHtml;
+
+            // Evaluate quick accessibility of inspected element
+            string tag = (info.Tag ?? "").ToUpperInvariant();
+            if (tag == "IMG" && !info.Attributes.ContainsKey("alt"))
+            {
+                TxtDomA11yBadge.Text = "⚠️ Missing alt";
+                TxtDomA11yBadge.Foreground = (Brush)FindResource("StatusWarningBrush");
+            }
+            else if ((tag == "BUTTON" || tag == "A" || tag == "INPUT") &&
+                     string.IsNullOrWhiteSpace(info.InnerText) &&
+                     !info.Attributes.ContainsKey("aria-label") &&
+                     !info.Attributes.ContainsKey("aria-labelledby") &&
+                     !info.Attributes.ContainsKey("title"))
+            {
+                TxtDomA11yBadge.Text = "⚠️ Missing label/name";
+                TxtDomA11yBadge.Foreground = (Brush)FindResource("StatusWarningBrush");
+            }
+            else
+            {
+                TxtDomA11yBadge.Text = "♿ a11y: OK";
+                TxtDomA11yBadge.Foreground = (Brush)FindResource("LightGreenBrush");
+            }
 
             DomInspectorDrawer.Visibility = Visibility.Visible;
             ShowMessage($"Inspected: {info.Selector} ({info.Tag})", isError: false);
@@ -1276,6 +1328,444 @@ namespace BuildConsole
             {
                 ShowMessage($"Clipboard copy failed: {ex.Message}", isError: true);
             }
+        }
+
+        private void BtnCopyDomBoth_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(TxtDomSelector.Text)) return;
+            try
+            {
+                string both = $"Selector:\n{TxtDomSelector.Text}\n\nHTML:\n{_inspectedDomElement?.OuterHtml ?? TxtDomOuterHtml.Text}";
+                Clipboard.SetText(both);
+                ShowMessage("Copied selector + HTML to clipboard.", isError: false);
+            }
+            catch (Exception ex)
+            {
+                ShowMessage($"Clipboard copy failed: {ex.Message}", isError: true);
+            }
+        }
+
+        private void BtnVisualDiff_Click(object sender, RoutedEventArgs e)
+        {
+            string fullUrl = _activePagePath.StartsWith("http") ? _activePagePath : (_activeBaseUrl + _activePagePath);
+            string? latestScreenshot = _stagedScreenshots.LastOrDefault();
+            var diffWin = new VisualDiffWindow(fullUrl, latestScreenshot, (diffResult) =>
+            {
+                if (!string.IsNullOrEmpty(diffResult.DiffMapSavedPath) && File.Exists(diffResult.DiffMapSavedPath))
+                {
+                    _stagedScreenshots.Add(diffResult.DiffMapSavedPath);
+                    RenderStagedThumbnails();
+                }
+                if (!string.IsNullOrEmpty(diffResult.Summary))
+                {
+                    if (!string.IsNullOrWhiteSpace(NotesBox.Text))
+                        NotesBox.Text += "\n\n" + diffResult.Summary;
+                    else
+                        NotesBox.Text = diffResult.Summary;
+                }
+                ShowMessage("Diff attached to active bug entry.", isError: false);
+            });
+            diffWin.Owner = this;
+            diffWin.Show();
+        }
+
+        // ── Accessibility Audit Handlers ────────────────────────────────────────
+
+        private async void BtnA11yAudit_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeWebView == null) return;
+            ShowMessage("Running WCAG 2.1 AA accessibility audit...", isError: false);
+            _lastA11yReport = await VisualTestTrackerTelemetry.RunAccessibilityAuditAsync(_activeWebView);
+
+            BtnA11yAudit.Content = $"♿ a11y ({_lastA11yReport.TotalViolations})";
+            if (_lastA11yReport.TotalViolations > 0)
+            {
+                BtnA11yAudit.Foreground = (Brush)FindResource("StatusWarningBrush");
+            }
+            else
+            {
+                BtnA11yAudit.Foreground = (Brush)FindResource("LightGreenBrush");
+            }
+
+            TxtA11ySummaryCounts.Text = $"{_lastA11yReport.TotalViolations} Issues ({_lastA11yReport.MissingAltCount} Alt, {_lastA11yReport.ContrastCount} Contrast, {_lastA11yReport.AriaCount} ARIA)";
+            BtnFilterA11yAlt.Content = $"Missing Alt ({_lastA11yReport.MissingAltCount})";
+            BtnFilterA11yContrast.Content = $"Contrast ({_lastA11yReport.ContrastCount})";
+            BtnFilterA11yAria.Content = $"ARIA ({_lastA11yReport.AriaCount})";
+
+            RenderA11yIssues();
+            A11yDrawer.Visibility = Visibility.Visible;
+            ShowMessage($"Accessibility audit complete: {_lastA11yReport.TotalViolations} violations found.", isError: false);
+        }
+
+        private void BtnFilterA11y_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string cat)
+            {
+                _currentA11yFilter = cat;
+                RenderA11yIssues();
+            }
+        }
+
+        private void RenderA11yIssues()
+        {
+            A11yIssuesContainer.Children.Clear();
+            var filtered = _lastA11yReport.Violations;
+            if (_currentA11yFilter != "All")
+            {
+                filtered = filtered.Where(v => v.Category.Equals(_currentA11yFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            if (filtered.Count == 0)
+            {
+                A11yIssuesContainer.Children.Add(new TextBlock
+                {
+                    Text = _lastA11yReport.TotalViolations == 0 ? "✅ No accessibility violations found on this page!" : "No issues in this category.",
+                    FontSize = 9,
+                    Foreground = (Brush)FindResource("Subtext1Brush"),
+                    Margin = new Thickness(4)
+                });
+                return;
+            }
+
+            foreach (var v in filtered)
+            {
+                var card = new Border
+                {
+                    Background = (Brush)FindResource("Surface0Brush"),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(5, 3, 5, 3),
+                    Margin = new Thickness(0, 0, 0, 3)
+                };
+
+                var sp = new StackPanel();
+
+                var headerGrid = new Grid();
+                headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var leftSp = new StackPanel { Orientation = Orientation.Horizontal };
+                var badgeColor = v.Category == "MissingAlt" ? "#f97316" : v.Category == "Contrast" ? "#ef4444" : "#a855f7";
+                var tagBlock = new TextBlock
+                {
+                    Text = $"[{v.Category.ToUpperInvariant()}]",
+                    FontSize = 8,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(badgeColor)),
+                    Margin = new Thickness(0, 0, 4, 0)
+                };
+                var ruleBlock = new TextBlock
+                {
+                    Text = v.Rule,
+                    FontSize = 8,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("TextBrush")
+                };
+                leftSp.Children.Add(tagBlock);
+                leftSp.Children.Add(ruleBlock);
+
+                var viewBtn = new Button
+                {
+                    Content = "🔍 View",
+                    Style = (Style)FindResource("IconButton"),
+                    FontSize = 8,
+                    Padding = new Thickness(3, 0, 3, 0),
+                    Tag = v.Selector
+                };
+                viewBtn.Click += async (s, e) =>
+                {
+                    if (s is Button b && b.Tag is string sel && !string.IsNullOrEmpty(sel))
+                    {
+                        await VisualTestTrackerTelemetry.ScrollToAndHighlightElementAsync(_activeWebView, sel);
+                    }
+                };
+
+                Grid.SetColumn(leftSp, 0);
+                Grid.SetColumn(viewBtn, 1);
+                headerGrid.Children.Add(leftSp);
+                headerGrid.Children.Add(viewBtn);
+                sp.Children.Add(headerGrid);
+
+                var msgBlock = new TextBlock
+                {
+                    Text = v.Message,
+                    FontSize = 8,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = (Brush)FindResource("Subtext1Brush"),
+                    Margin = new Thickness(0, 1, 0, 0)
+                };
+                sp.Children.Add(msgBlock);
+
+                if (!string.IsNullOrEmpty(v.Selector))
+                {
+                    var selBlock = new TextBlock
+                    {
+                        Text = v.Selector,
+                        FontSize = 8,
+                        FontFamily = new FontFamily("Consolas"),
+                        Foreground = (Brush)FindResource("AccentBrush"),
+                        Margin = new Thickness(0, 1, 0, 0)
+                    };
+                    sp.Children.Add(selBlock);
+                }
+
+                card.Child = sp;
+                A11yIssuesContainer.Children.Add(card);
+            }
+        }
+
+        private async void BtnToggleA11yMarkers_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeWebView == null) return;
+            _a11yMarkersVisible = !_a11yMarkersVisible;
+            await VisualTestTrackerTelemetry.ToggleA11yBadgesAsync(_activeWebView, _a11yMarkersVisible);
+            ShowMessage(_a11yMarkersVisible ? "Accessibility markers shown." : "Accessibility markers hidden.", isError: false);
+        }
+
+        private void BtnRescanA11y_Click(object sender, RoutedEventArgs e) => BtnA11yAudit_Click(sender, e);
+
+        private void BtnCloseA11yDrawer_Click(object sender, RoutedEventArgs e)
+        {
+            A11yDrawer.Visibility = Visibility.Collapsed;
+        }
+
+        private void BtnAddA11yToBug_Click(object sender, RoutedEventArgs e)
+        {
+            if (_lastA11yReport.Violations.Count == 0)
+            {
+                ShowMessage("No accessibility violations to add.", isError: true);
+                return;
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine("### Accessibility Audit Violations (WCAG 2.1 AA)");
+            sb.AppendLine($"Total: {_lastA11yReport.TotalViolations} violations ({_lastA11yReport.MissingAltCount} Missing Alt, {_lastA11yReport.ContrastCount} Contrast, {_lastA11yReport.AriaCount} ARIA)\n");
+
+            foreach (var v in _lastA11yReport.Violations.Take(15))
+            {
+                sb.AppendLine($"- **[{v.Category}]** `{v.Rule}` ({v.Severity}): {v.Message}");
+                if (!string.IsNullOrEmpty(v.Selector)) sb.AppendLine($"  - Element: `{v.Selector}`");
+                if (!string.IsNullOrEmpty(v.Details)) sb.AppendLine($"  - Details: {v.Details}");
+            }
+            if (_lastA11yReport.Violations.Count > 15)
+            {
+                sb.AppendLine($"- ...and {_lastA11yReport.Violations.Count - 15} more accessibility violations.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(NotesBox.Text))
+                NotesBox.Text += "\n\n" + sb.ToString();
+            else
+                NotesBox.Text = sb.ToString();
+
+            // Add Accessibility tag if not present
+            var currentTags = (TagsBox.Text ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (!currentTags.Contains("Accessibility", StringComparer.OrdinalIgnoreCase))
+            {
+                currentTags.Add("Accessibility");
+                TagsBox.Text = string.Join(", ", currentTags);
+            }
+
+            ShowMessage($"Added {_lastA11yReport.TotalViolations} a11y violations to bug entry notes.", isError: false);
+        }
+
+        // ── DOM Mutation Tracking Handlers ─────────────────────────────────────
+
+        private async void BtnDomChanges_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeWebView == null) return;
+
+            if (_isDomChangesTrackingActive)
+            {
+                await VisualTestTrackerTelemetry.DisableDomMutationObserverAsync(_activeWebView);
+                _isDomChangesTrackingActive = false;
+                BtnDomChanges.Foreground = (Brush)FindResource("TextBrush");
+                DomChangesDrawer.Visibility = Visibility.Collapsed;
+                ShowMessage("DOM mutation tracking paused.", isError: false);
+            }
+            else
+            {
+                await VisualTestTrackerTelemetry.EnableDomMutationObserverAsync(_activeWebView);
+                _isDomChangesTrackingActive = true;
+                BtnDomChanges.Foreground = (Brush)FindResource("LightGreenBrush");
+                DomChangesDrawer.Visibility = Visibility.Visible;
+                ShowMessage("Live DOM mutation tracking active. Changes are highlighted on page.", isError: false);
+            }
+        }
+
+        private void HandleDomMutationRecorded(DomMutationRecord record)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                _capturedDomMutations.Add(record);
+                if (_capturedDomMutations.Count > 100) _capturedDomMutations.RemoveAt(0);
+
+                BtnDomChanges.Content = $"⚡ DOM Δ ({_capturedDomMutations.Count})";
+                TxtDomChangesSummary.Text = $"{_capturedDomMutations.Count} mutations";
+
+                RenderDomMutations();
+            });
+        }
+
+        private void RenderDomMutations()
+        {
+            DomMutationsContainer.Children.Clear();
+            if (_capturedDomMutations.Count == 0)
+            {
+                DomMutationsContainer.Children.Add(new TextBlock
+                {
+                    Text = "No DOM mutations recorded yet. Interact with the page to see live updates.",
+                    FontSize = 9,
+                    Foreground = (Brush)FindResource("Subtext1Brush"),
+                    Margin = new Thickness(4)
+                });
+                return;
+            }
+
+            // Show latest 25 mutations
+            foreach (var m in _capturedDomMutations.AsEnumerable().Reverse().Take(25))
+            {
+                var card = new Border
+                {
+                    Background = (Brush)FindResource("Surface0Brush"),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(5, 2, 5, 2),
+                    Margin = new Thickness(0, 0, 0, 2)
+                };
+
+                var sp = new StackPanel();
+                var headerGrid = new Grid();
+                headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var leftSp = new StackPanel { Orientation = Orientation.Horizontal };
+                var actionColor = m.Action == "added" ? "#22c55e" : m.Action == "modified" ? "#f59e0b" : "#ef4444";
+                var actionBlock = new TextBlock
+                {
+                    Text = $"[{m.Action.ToUpperInvariant()}]",
+                    FontSize = 8,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(actionColor)),
+                    Margin = new Thickness(0, 0, 4, 0)
+                };
+                var tagBlock = new TextBlock
+                {
+                    Text = m.Tag,
+                    FontSize = 8,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("TextBrush"),
+                    Margin = new Thickness(0, 0, 4, 0)
+                };
+                var descBlock = new TextBlock
+                {
+                    Text = m.TargetDescription,
+                    FontSize = 8,
+                    Foreground = (Brush)FindResource("Subtext1Brush")
+                };
+                leftSp.Children.Add(actionBlock);
+                leftSp.Children.Add(tagBlock);
+                leftSp.Children.Add(descBlock);
+
+                var viewBtn = new Button
+                {
+                    Content = "🔍",
+                    Style = (Style)FindResource("IconButton"),
+                    FontSize = 8,
+                    Padding = new Thickness(2, 0, 2, 0),
+                    Tag = m.Selector
+                };
+                viewBtn.Click += async (s, e) =>
+                {
+                    if (s is Button b && b.Tag is string sel && !string.IsNullOrEmpty(sel))
+                    {
+                        await VisualTestTrackerTelemetry.ScrollToAndHighlightElementAsync(_activeWebView, sel);
+                    }
+                };
+
+                Grid.SetColumn(leftSp, 0);
+                Grid.SetColumn(viewBtn, 1);
+                headerGrid.Children.Add(leftSp);
+                headerGrid.Children.Add(viewBtn);
+                sp.Children.Add(headerGrid);
+
+                if (!string.IsNullOrEmpty(m.Selector))
+                {
+                    sp.Children.Add(new TextBlock
+                    {
+                        Text = m.Selector,
+                        FontSize = 7,
+                        FontFamily = new FontFamily("Consolas"),
+                        Foreground = (Brush)FindResource("AccentBrush")
+                    });
+                }
+
+                card.Child = sp;
+                DomMutationsContainer.Children.Add(card);
+            }
+        }
+
+        private async void BtnDomTakeSnapshot_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeWebView == null) return;
+            int count = await VisualTestTrackerTelemetry.TakeDomSnapshotAsync(_activeWebView);
+            ShowMessage($"DOM baseline snapshot captured: {count} elements indexed.", isError: false);
+        }
+
+        private async void BtnDomDiffSnapshot_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeWebView == null) return;
+            var diffs = await VisualTestTrackerTelemetry.DiffDomSnapshotAsync(_activeWebView);
+            if (diffs.Count == 0)
+            {
+                ShowMessage("No DOM tree differences detected against baseline snapshot.", isError: false);
+            }
+            else
+            {
+                foreach (var d in diffs) HandleDomMutationRecorded(d);
+                ShowMessage($"Snapshot diff: {diffs.Count} DOM changes detected.", isError: false);
+            }
+        }
+
+        private void BtnClearDomChanges_Click(object sender, RoutedEventArgs e)
+        {
+            _capturedDomMutations.Clear();
+            BtnDomChanges.Content = "⚡ DOM Δ (0)";
+            TxtDomChangesSummary.Text = "0 mutations";
+            RenderDomMutations();
+            ShowMessage("DOM mutations cleared.", isError: false);
+        }
+
+        private void BtnAddDomChangesToSteps_Click(object sender, RoutedEventArgs e)
+        {
+            if (_capturedDomMutations.Count == 0)
+            {
+                ShowMessage("No DOM mutations recorded to add.", isError: true);
+                return;
+            }
+
+            var sb = new StringBuilder();
+            if (!string.IsNullOrWhiteSpace(StepsBox.Text))
+            {
+                sb.AppendLine(StepsBox.Text.TrimEnd());
+            }
+
+            int stepNum = 1;
+            var existingLines = (StepsBox.Text ?? "").Split('\n');
+            foreach (var line in existingLines)
+            {
+                if (Regex.IsMatch(line.Trim(), @"^\d+\.")) stepNum++;
+            }
+
+            foreach (var m in _capturedDomMutations.Take(10))
+            {
+                sb.AppendLine($"{stepNum++}. DOM {m.Action}: <{m.Tag}> {m.Selector} ({m.TargetDescription})");
+            }
+
+            StepsBox.Text = sb.ToString();
+            ShowMessage($"Appended {_capturedDomMutations.Count} DOM mutations to Steps.", isError: false);
+        }
+
+        private void BtnCloseDomChangesDrawer_Click(object sender, RoutedEventArgs e)
+        {
+            DomChangesDrawer.Visibility = Visibility.Collapsed;
         }
 
         private void BtnInsertDomToSteps_Click(object sender, RoutedEventArgs e)
@@ -1390,6 +1880,7 @@ namespace BuildConsole
             var btnRow = new Grid();
             btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var annotateBtn = new Button
             {
@@ -1402,6 +1893,18 @@ namespace BuildConsole
             annotateBtn.Click += StagedAnnotate_Click;
             Grid.SetColumn(annotateBtn, 0);
 
+            var diffBtn = new Button
+            {
+                Content = "⚖️ Diff",
+                Style = (Style)FindResource("IconButton"),
+                FontSize = 9,
+                Padding = new Thickness(4, 1, 4, 1),
+                Margin = new Thickness(2, 0, 0, 0),
+                Tag = filePath
+            };
+            diffBtn.Click += StagedDiff_Click;
+            Grid.SetColumn(diffBtn, 1);
+
             var removeBtn = new Button
             {
                 Content = "✕",
@@ -1412,14 +1915,37 @@ namespace BuildConsole
                 Tag = filePath
             };
             removeBtn.Click += StagedRemove_Click;
-            Grid.SetColumn(removeBtn, 1);
+            Grid.SetColumn(removeBtn, 2);
 
             btnRow.Children.Add(annotateBtn);
+            btnRow.Children.Add(diffBtn);
             btnRow.Children.Add(removeBtn);
             stack.Children.Add(btnRow);
 
             border.Child = stack;
             return border;
+        }
+
+        private void StagedDiff_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not string path) return;
+            string fullUrl = _activePagePath.StartsWith("http") ? _activePagePath : (_activeBaseUrl + _activePagePath);
+            var diffWin = new VisualDiffWindow(fullUrl, path, (diffResult) =>
+            {
+                if (!string.IsNullOrEmpty(diffResult.DiffMapSavedPath) && File.Exists(diffResult.DiffMapSavedPath))
+                {
+                    _stagedScreenshots.Add(diffResult.DiffMapSavedPath);
+                    RenderStagedThumbnails();
+                }
+                if (!string.IsNullOrEmpty(diffResult.Summary))
+                {
+                    if (!string.IsNullOrWhiteSpace(NotesBox.Text))
+                        NotesBox.Text += "\n\n" + diffResult.Summary;
+                    else
+                        NotesBox.Text = diffResult.Summary;
+                }
+            }) { Owner = this };
+            diffWin.Show();
         }
 
         private void StagedAnnotate_Click(object sender, RoutedEventArgs e)

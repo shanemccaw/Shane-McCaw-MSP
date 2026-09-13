@@ -30,6 +30,60 @@ namespace BuildConsole.Services
     }
 
     /// <summary>
+    /// Record of a DOM mutation (added element, modified attribute, or changed text) captured in-page.
+    /// </summary>
+    public sealed class DomMutationRecord
+    {
+        public string Id { get; set; } = Guid.NewGuid().ToString("N");
+        public string Type { get; set; } = ""; // "childList", "attributes", "characterData"
+        public string Action { get; set; } = ""; // "added", "modified", "removed"
+        public string Tag { get; set; } = "";
+        public string Selector { get; set; } = "";
+        public string TargetDescription { get; set; } = "";
+        public string AttributeName { get; set; } = "";
+        public string OldValue { get; set; } = "";
+        public string NewValue { get; set; } = "";
+        public string Timestamp { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Represents an accessibility violation discovered during an in-page WCAG 2.1 AA audit.
+    /// </summary>
+    public sealed class AccessibilityViolation
+    {
+        public string Id { get; set; } = Guid.NewGuid().ToString("N");
+        public string Category { get; set; } = ""; // "MissingAlt", "Contrast", "Aria"
+        public string Rule { get; set; } = ""; // "img-missing-alt", "color-contrast", "interactive-missing-name", etc.
+        public string Severity { get; set; } = "Error"; // "Error", "Warning"
+        public string Selector { get; set; } = "";
+        public string Tag { get; set; } = "";
+        public string Message { get; set; } = "";
+        public string Details { get; set; } = "";
+        public string Snippet { get; set; } = "";
+        public double ContrastRatio { get; set; }
+        public string FgColor { get; set; } = "";
+        public string BgColor { get; set; } = "";
+        public double BoundingTop { get; set; }
+        public double BoundingLeft { get; set; }
+        public double BoundingWidth { get; set; }
+        public double BoundingHeight { get; set; }
+    }
+
+    /// <summary>
+    /// Full audit report containing all detected accessibility violations for a tested page.
+    /// </summary>
+    public sealed class AccessibilityAuditReport
+    {
+        public string Url { get; set; } = "";
+        public string Timestamp { get; set; } = "";
+        public int TotalViolations => Violations.Count;
+        public int MissingAltCount => Violations.Count(v => v.Category == "MissingAlt");
+        public int ContrastCount => Violations.Count(v => v.Category == "Contrast");
+        public int AriaCount => Violations.Count(v => v.Category == "Aria");
+        public List<AccessibilityViolation> Violations { get; set; } = new();
+    }
+
+    /// <summary>
     /// Automatic Telemetry, Chrome DevTools Protocol (CDP) &amp; Diagnostics Capture for WebView2 in Visual Test Tracker.
     /// Captures:
     /// 1. Console logs (Runtime.consoleAPICalled, Console.messageAdded with stack traces).
@@ -790,6 +844,667 @@ namespace BuildConsole.Services
 })('{escapedSelector}');
 ";
 
+        private const string DomMutationScript = @"
+(function() {
+    if (window.__vttDomMutationObserver) return;
+    window.__vttDomMutations = window.__vttDomMutations || [];
+
+    var styleId = '__vtt_mutation_styles';
+    if (!document.getElementById(styleId)) {
+        var style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+            .__vtt_mutated_added {
+                outline: 2px solid #22c55e !important;
+                outline-offset: 1px !important;
+                transition: outline 0.3s ease-out !important;
+            }
+            .__vtt_mutated_modified {
+                outline: 2px solid #f59e0b !important;
+                outline-offset: 1px !important;
+                transition: outline 0.3s ease-out !important;
+            }
+        `;
+        (document.head || document.documentElement).appendChild(style);
+    }
+
+    function getSelector(el) {
+        if (!el || el.nodeType !== 1) return '';
+        if (el.id) return '#' + CSS.escape(el.id);
+        var path = [];
+        var curr = el;
+        while (curr && curr.nodeType === 1 && curr !== document.body && curr !== document.documentElement) {
+            var sel = curr.tagName.toLowerCase();
+            if (curr.id) {
+                path.unshift('#' + CSS.escape(curr.id));
+                break;
+            }
+            if (curr.getAttribute && curr.getAttribute('data-testid')) {
+                path.unshift('[data-testid=""' + curr.getAttribute('data-testid') + '""]');
+                break;
+            }
+            var parent = curr.parentNode;
+            if (parent && parent.children) {
+                var siblings = Array.from(parent.children).filter(function(c) { return c.tagName === curr.tagName; });
+                if (siblings.length > 1) {
+                    var idx = siblings.indexOf(curr) + 1;
+                    sel += ':nth-of-type(' + idx + ')';
+                }
+            }
+            path.unshift(sel);
+            curr = parent;
+            if (path.length >= 4) break;
+        }
+        return path.join(' > ');
+    }
+
+    function recordMutation(record) {
+        window.__vttDomMutations.push(record);
+        if (window.__vttDomMutations.length > 200) window.__vttDomMutations.shift();
+        if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+            try {
+                window.chrome.webview.postMessage(JSON.stringify({
+                    type: 'VTT_DOM_MUTATION',
+                    data: record
+                }));
+            } catch(e) {}
+        }
+    }
+
+    var observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+            var now = new Date().toISOString();
+            if (m.type === 'childList') {
+                if (m.addedNodes && m.addedNodes.length > 0) {
+                    m.addedNodes.forEach(function(node) {
+                        if (node.nodeType === 1 && (!node.id || !node.id.startsWith('__vtt_'))) {
+                            node.classList.add('__vtt_mutated_added');
+                            recordMutation({
+                                type: 'childList',
+                                action: 'added',
+                                tag: node.tagName ? node.tagName.toUpperCase() : '',
+                                selector: getSelector(node),
+                                targetDescription: 'Node added to ' + (m.target ? m.target.tagName : ''),
+                                timestamp: now
+                            });
+                        }
+                    });
+                }
+                if (m.removedNodes && m.removedNodes.length > 0) {
+                    m.removedNodes.forEach(function(node) {
+                        if (node.nodeType === 1 && (!node.id || !node.id.startsWith('__vtt_'))) {
+                            recordMutation({
+                                type: 'childList',
+                                action: 'removed',
+                                tag: node.tagName ? node.tagName.toUpperCase() : '',
+                                selector: getSelector(m.target),
+                                targetDescription: 'Child removed from ' + (m.target ? m.target.tagName : ''),
+                                timestamp: now
+                            });
+                        }
+                    });
+                }
+            } else if (m.type === 'attributes') {
+                var target = m.target;
+                if (target && target.nodeType === 1 && (!target.id || !target.id.startsWith('__vtt_'))) {
+                    if (m.attributeName !== 'class' || !target.classList.contains('__vtt_mutated_modified')) {
+                        target.classList.add('__vtt_mutated_modified');
+                    }
+                    recordMutation({
+                        type: 'attributes',
+                        action: 'modified',
+                        tag: target.tagName ? target.tagName.toUpperCase() : '',
+                        selector: getSelector(target),
+                        attributeName: m.attributeName || '',
+                        oldValue: m.oldValue || '',
+                        newValue: target.getAttribute(m.attributeName) || '',
+                        targetDescription: 'Attribute ' + m.attributeName + ' modified',
+                        timestamp: now
+                    });
+                }
+            } else if (m.type === 'characterData') {
+                var parent = m.target.parentElement;
+                if (parent && (!parent.id || !parent.id.startsWith('__vtt_'))) {
+                    parent.classList.add('__vtt_mutated_modified');
+                    recordMutation({
+                        type: 'characterData',
+                        action: 'modified',
+                        tag: parent.tagName ? parent.tagName.toUpperCase() : '',
+                        selector: getSelector(parent),
+                        oldValue: m.oldValue || '',
+                        newValue: m.target.nodeValue || '',
+                        targetDescription: 'Text content modified',
+                        timestamp: now
+                    });
+                }
+            }
+        });
+    });
+
+    observer.observe(document.documentElement || document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeOldValue: true,
+        characterData: true,
+        characterDataOldValue: true
+    });
+
+    window.__vttDomMutationObserver = observer;
+})();
+";
+
+        private const string DomMutationStopScript = @"
+(function() {
+    if (window.__vttDomMutationObserver) {
+        window.__vttDomMutationObserver.disconnect();
+        window.__vttDomMutationObserver = null;
+    }
+    document.querySelectorAll('.__vtt_mutated_added, .__vtt_mutated_modified').forEach(function(el) {
+        el.classList.remove('__vtt_mutated_added', '__vtt_mutated_modified');
+    });
+})();
+";
+
+        private const string DomSnapshotScript = @"
+(function() {
+    window.__vttDomSnapshot = [];
+    var all = document.querySelectorAll('*');
+    for (var i = 0; i < all.length; i++) {
+        var el = all[i];
+        if (el.id && el.id.startsWith('__vtt_')) continue;
+        var text = (el.innerText || el.textContent || '').trim().substring(0, 100);
+        window.__vttDomSnapshot.push({
+            tag: el.tagName,
+            id: el.id || '',
+            className: el.className || '',
+            textLength: text.length,
+            childCount: el.children.length
+        });
+    }
+    return window.__vttDomSnapshot.length;
+})();
+";
+
+        private const string DomDiffScript = @"
+(function() {
+    if (!window.__vttDomSnapshot) return JSON.stringify([]);
+    var snapshot = window.__vttDomSnapshot;
+    var currentAll = Array.from(document.querySelectorAll('*')).filter(function(e) { return !e.id || !e.id.startsWith('__vtt_'); });
+    
+    var diffs = [];
+    if (currentAll.length > snapshot.length) {
+        diffs.push({
+            type: 'childList',
+            action: 'added',
+            tag: 'DOM',
+            selector: 'document',
+            targetDescription: (currentAll.length - snapshot.length) + ' elements added since snapshot',
+            timestamp: new Date().toISOString()
+        });
+    } else if (currentAll.length < snapshot.length) {
+        diffs.push({
+            type: 'childList',
+            action: 'removed',
+            tag: 'DOM',
+            selector: 'document',
+            targetDescription: (snapshot.length - currentAll.length) + ' elements removed since snapshot',
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    return JSON.stringify(diffs);
+})();
+";
+
+        private const string AccessibilityScannerScript = @"
+(function() {
+    var violations = [];
+
+    function getSelector(el) {
+        if (!el || el.nodeType !== 1) return '';
+        if (el.id) return '#' + CSS.escape(el.id);
+        var path = [];
+        var curr = el;
+        while (curr && curr.nodeType === 1 && curr !== document.body && curr !== document.documentElement) {
+            var sel = curr.tagName.toLowerCase();
+            if (curr.id) {
+                path.unshift('#' + CSS.escape(curr.id));
+                break;
+            }
+            if (curr.getAttribute && curr.getAttribute('data-testid')) {
+                path.unshift('[data-testid=""' + curr.getAttribute('data-testid') + '""]');
+                break;
+            }
+            var parent = curr.parentNode;
+            if (parent && parent.children) {
+                var siblings = Array.from(parent.children).filter(function(c) { return c.tagName === curr.tagName; });
+                if (siblings.length > 1) {
+                    var idx = siblings.indexOf(curr) + 1;
+                    sel += ':nth-of-type(' + idx + ')';
+                }
+            }
+            path.unshift(sel);
+            curr = parent;
+            if (path.length >= 4) break;
+        }
+        return path.join(' > ');
+    }
+
+    function isVisible(el) {
+        if (!el) return false;
+        var style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+        var rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }
+
+    // ── 1. MISSING ALT CHECKS ──────────────────────────────────────────────
+    var imgs = document.querySelectorAll('img, area[href], input[type=""image""], svg');
+    for (var i = 0; i < imgs.length; i++) {
+        var el = imgs[i];
+        if (!isVisible(el)) continue;
+        var tag = el.tagName.toLowerCase();
+        var rect = el.getBoundingClientRect();
+
+        if (tag === 'img') {
+            if (!el.hasAttribute('alt')) {
+                violations.push({
+                    category: 'MissingAlt',
+                    rule: 'img-missing-alt',
+                    severity: 'Error',
+                    selector: getSelector(el),
+                    tag: 'IMG',
+                    message: 'Image is missing an alt attribute.',
+                    details: 'Images must have an alt attribute describing their content, or alt="""" if decorative.',
+                    snippet: el.outerHTML.substring(0, 200),
+                    boundingTop: Math.round(rect.top),
+                    boundingLeft: Math.round(rect.left),
+                    boundingWidth: Math.round(rect.width),
+                    boundingHeight: Math.round(rect.height)
+                });
+            } else if (el.getAttribute('alt').trim() === '') {
+                var parentLink = el.closest('a, button, [role=""button""]');
+                if (parentLink && (parentLink.innerText || parentLink.textContent || '').trim() === '') {
+                    violations.push({
+                        category: 'MissingAlt',
+                        rule: 'interactive-img-empty-alt',
+                        severity: 'Error',
+                        selector: getSelector(el),
+                        tag: 'IMG',
+                        message: 'Interactive image has empty alt attribute with no surrounding text.',
+                        details: 'Images inside interactive links or buttons must have meaningful alt text.',
+                        snippet: parentLink.outerHTML.substring(0, 200),
+                        boundingTop: Math.round(rect.top),
+                        boundingLeft: Math.round(rect.left),
+                        boundingWidth: Math.round(rect.width),
+                        boundingHeight: Math.round(rect.height)
+                    });
+                }
+            }
+        } else if (tag === 'input' && el.type === 'image') {
+            if (!el.hasAttribute('alt') || !el.getAttribute('alt').trim()) {
+                violations.push({
+                    category: 'MissingAlt',
+                    rule: 'image-input-missing-alt',
+                    severity: 'Error',
+                    selector: getSelector(el),
+                    tag: 'INPUT',
+                    message: 'Image input button is missing alt text.',
+                    details: 'Input buttons of type image must have descriptive alt text.',
+                    snippet: el.outerHTML.substring(0, 200),
+                    boundingTop: Math.round(rect.top),
+                    boundingLeft: Math.round(rect.left),
+                    boundingWidth: Math.round(rect.width),
+                    boundingHeight: Math.round(rect.height)
+                });
+            }
+        } else if (tag === 'area') {
+            if (!el.hasAttribute('alt') || !el.getAttribute('alt').trim()) {
+                violations.push({
+                    category: 'MissingAlt',
+                    rule: 'area-missing-alt',
+                    severity: 'Error',
+                    selector: getSelector(el),
+                    tag: 'AREA',
+                    message: 'Image map area is missing alt text.',
+                    details: 'Active image map areas must have descriptive alt text.',
+                    snippet: el.outerHTML.substring(0, 200),
+                    boundingTop: Math.round(rect.top),
+                    boundingLeft: Math.round(rect.left),
+                    boundingWidth: Math.round(rect.width),
+                    boundingHeight: Math.round(rect.height)
+                });
+            }
+        } else if (tag === 'svg') {
+            if (el.getAttribute('aria-hidden') !== 'true') {
+                var parentBtn = el.closest('button, a, [role=""button""]');
+                if (parentBtn && (parentBtn.innerText || parentBtn.textContent || '').trim() === '' &&
+                    !el.querySelector('title') && !el.getAttribute('aria-label') && !parentBtn.getAttribute('aria-label')) {
+                    violations.push({
+                        category: 'MissingAlt',
+                        rule: 'svg-missing-accessible-name',
+                        severity: 'Warning',
+                        selector: getSelector(el),
+                        tag: 'SVG',
+                        message: 'SVG in interactive button/link is missing title or aria-label.',
+                        details: 'Standalone SVG icons inside interactive buttons need aria-label or <title>.',
+                        snippet: parentBtn.outerHTML.substring(0, 200),
+                        boundingTop: Math.round(rect.top),
+                        boundingLeft: Math.round(rect.left),
+                        boundingWidth: Math.round(rect.width),
+                        boundingHeight: Math.round(rect.height)
+                    });
+                }
+            }
+        }
+    }
+
+    // ── 2. CONTRAST CHECKS (WCAG 2.1 AA) ──────────────────────────────────
+    function parseRgb(colorStr) {
+        if (!colorStr) return null;
+        var m = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+        if (m) {
+            return {
+                r: parseInt(m[1]),
+                g: parseInt(m[2]),
+                b: parseInt(m[3]),
+                a: m[4] !== undefined ? parseFloat(m[4]) : 1.0
+            };
+        }
+        return null;
+    }
+
+    function getsRgb(c) {
+        c = c / 255.0;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+
+    function getLuminance(rgb) {
+        return 0.2126 * getsRgb(rgb.r) + 0.7152 * getsRgb(rgb.g) + 0.0722 * getsRgb(rgb.b);
+    }
+
+    function getEffectiveBg(el) {
+        var curr = el;
+        while (curr && curr !== document.documentElement) {
+            var st = window.getComputedStyle(curr);
+            var bg = parseRgb(st.backgroundColor);
+            if (bg && bg.a > 0.1) return bg;
+            curr = curr.parentElement;
+        }
+        return { r: 255, g: 255, b: 255, a: 1.0 }; // Default white background
+    }
+
+    var textNodes = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, span, a, button, label, li, td, th');
+    for (var j = 0; j < textNodes.length; j++) {
+        var tEl = textNodes[j];
+        if (!isVisible(tEl)) continue;
+        var hasText = false;
+        for (var k = 0; k < tEl.childNodes.length; k++) {
+            if (tEl.childNodes[k].nodeType === 3 && tEl.childNodes[k].nodeValue.trim().length > 0) {
+                hasText = true; break;
+            }
+        }
+        if (!hasText) continue;
+
+        var cStyle = window.getComputedStyle(tEl);
+        var fg = parseRgb(cStyle.color);
+        var bg = getEffectiveBg(tEl);
+
+        if (fg && bg) {
+            var l1 = getLuminance(fg);
+            var l2 = getLuminance(bg);
+            var ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+
+            var fontSize = parseFloat(cStyle.fontSize);
+            var isBold = parseInt(cStyle.fontWeight) >= 700 || cStyle.fontWeight === 'bold';
+            var isLargeText = fontSize >= 24 || (fontSize >= 18.66 && isBold);
+            var requiredRatio = isLargeText ? 3.0 : 4.5;
+
+            if (ratio < requiredRatio) {
+                var tRect = tEl.getBoundingClientRect();
+                var fgHex = '#' + ((1 << 24) + (fg.r << 16) + (fg.g << 8) + fg.b).toString(16).slice(1);
+                var bgHex = '#' + ((1 << 24) + (bg.r << 16) + (bg.g << 8) + bg.b).toString(16).slice(1);
+
+                violations.push({
+                    category: 'Contrast',
+                    rule: 'color-contrast',
+                    severity: ratio < 3.0 ? 'Error' : 'Warning',
+                    selector: getSelector(tEl),
+                    tag: tEl.tagName,
+                    message: 'Low text contrast ratio of ' + ratio.toFixed(2) + ':1 (required ' + requiredRatio + ':1).',
+                    details: 'FG: ' + fgHex + ', BG: ' + bgHex + ', Size: ' + Math.round(fontSize) + 'px' + (isBold ? ' bold' : '') + '.',
+                    snippet: tEl.outerHTML.substring(0, 160),
+                    contrastRatio: Math.round(ratio * 100) / 100,
+                    fgColor: fgHex,
+                    bgColor: bgHex,
+                    boundingTop: Math.round(tRect.top),
+                    boundingLeft: Math.round(tRect.left),
+                    boundingWidth: Math.round(tRect.width),
+                    boundingHeight: Math.round(tRect.height)
+                });
+            }
+        }
+    }
+
+    // ── 3. ARIA VIOLATIONS ────────────────────────────────────────────────
+    var standardRoles = new Set([
+        'alert', 'alertdialog', 'application', 'article', 'banner', 'button', 'cell', 'checkbox',
+        'columnheader', 'combobox', 'complementary', 'contentinfo', 'definition', 'dialog',
+        'directory', 'document', 'feed', 'figure', 'form', 'grid', 'gridcell', 'group',
+        'heading', 'img', 'link', 'list', 'listbox', 'listitem', 'log', 'main', 'marquee',
+        'math', 'menu', 'menubar', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'navigation',
+        'none', 'note', 'option', 'presentation', 'progressbar', 'radio', 'radiogroup', 'region',
+        'row', 'rowgroup', 'rowheader', 'scrollbar', 'search', 'searchbox', 'separator', 'slider',
+        'spinbutton', 'status', 'switch', 'tab', 'table', 'tablist', 'tabpanel', 'term',
+        'textbox', 'timer', 'toolbar', 'tooltip', 'tree', 'treegrid', 'treeitem'
+    ]);
+
+    // Role validation
+    var roleEls = document.querySelectorAll('[role]');
+    for (var r = 0; r < roleEls.length; r++) {
+        var rEl = roleEls[r];
+        if (!isVisible(rEl)) continue;
+        var rRect = rEl.getBoundingClientRect();
+        var roleVal = (rEl.getAttribute('role') || '').trim().toLowerCase();
+        if (roleVal && !standardRoles.has(roleVal)) {
+            violations.push({
+                category: 'Aria',
+                rule: 'invalid-aria-role',
+                severity: 'Error',
+                selector: getSelector(rEl),
+                tag: rEl.tagName,
+                message: 'Invalid ARIA role ""' + roleVal + '"".',
+                details: 'Role must be a standard WAI-ARIA role.',
+                snippet: rEl.outerHTML.substring(0, 160),
+                boundingTop: Math.round(rRect.top),
+                boundingLeft: Math.round(rRect.left),
+                boundingWidth: Math.round(rRect.width),
+                boundingHeight: Math.round(rRect.height)
+            });
+        }
+
+        // Required ARIA attributes check
+        if (roleVal === 'checkbox' || roleVal === 'switch') {
+            if (!rEl.hasAttribute('aria-checked')) {
+                violations.push({
+                    category: 'Aria',
+                    rule: 'missing-aria-checked',
+                    severity: 'Error',
+                    selector: getSelector(rEl),
+                    tag: rEl.tagName,
+                    message: 'Element with role=""' + roleVal + '"" is missing aria-checked attribute.',
+                    details: 'Checkboxes and switches require aria-checked=""true|false|mixed"".',
+                    snippet: rEl.outerHTML.substring(0, 160),
+                    boundingTop: Math.round(rRect.top),
+                    boundingLeft: Math.round(rRect.left),
+                    boundingWidth: Math.round(rRect.width),
+                    boundingHeight: Math.round(rRect.height)
+                });
+            }
+        } else if (roleVal === 'combobox') {
+            if (!rEl.hasAttribute('aria-expanded')) {
+                violations.push({
+                    category: 'Aria',
+                    rule: 'missing-aria-expanded',
+                    severity: 'Error',
+                    selector: getSelector(rEl),
+                    tag: rEl.tagName,
+                    message: 'Element with role=""combobox"" is missing aria-expanded attribute.',
+                    details: 'Comboboxes must communicate expanded/collapsed state via aria-expanded.',
+                    snippet: rEl.outerHTML.substring(0, 160),
+                    boundingTop: Math.round(rRect.top),
+                    boundingLeft: Math.round(rRect.left),
+                    boundingWidth: Math.round(rRect.width),
+                    boundingHeight: Math.round(rRect.height)
+                });
+            }
+        }
+    }
+
+    // Interactive elements missing accessible name
+    var interactive = document.querySelectorAll('button, a[href], input:not([type=""hidden""]), select, textarea, [role=""button""]');
+    for (var m = 0; m < interactive.length; m++) {
+        var intEl = interactive[m];
+        if (!isVisible(intEl)) continue;
+        var text = (intEl.innerText || intEl.textContent || intEl.value || '').trim();
+        var label = intEl.getAttribute('aria-label') || '';
+        var labelledBy = intEl.getAttribute('aria-labelledby') || '';
+        var title = intEl.getAttribute('title') || '';
+        var hasImgAlt = !!intEl.querySelector('img[alt]:not([alt=""""])');
+
+        if (!text && !label && !labelledBy && !title && !hasImgAlt) {
+            var iRect = intEl.getBoundingClientRect();
+            violations.push({
+                category: 'Aria',
+                rule: 'interactive-missing-name',
+                severity: 'Error',
+                selector: getSelector(intEl),
+                tag: intEl.tagName,
+                message: 'Interactive <' + intEl.tagName.toLowerCase() + '> has no accessible name.',
+                details: 'Interactive controls must have visible text, aria-label, aria-labelledby, or title.',
+                snippet: intEl.outerHTML.substring(0, 160),
+                boundingTop: Math.round(iRect.top),
+                boundingLeft: Math.round(iRect.left),
+                boundingWidth: Math.round(iRect.width),
+                boundingHeight: Math.round(iRect.height)
+            });
+        }
+    }
+
+    // Broken ID references
+    var refEls = document.querySelectorAll('[aria-labelledby], [aria-describedby], [aria-controls]');
+    for (var b = 0; b < refEls.length; b++) {
+        var refEl = refEls[b];
+        ['aria-labelledby', 'aria-describedby', 'aria-controls'].forEach(function(attr) {
+            if (refEl.hasAttribute(attr)) {
+                var ids = (refEl.getAttribute(attr) || '').trim().split(/\s+/);
+                ids.forEach(function(id) {
+                    if (id && !document.getElementById(id)) {
+                        var bRect = refEl.getBoundingClientRect();
+                        violations.push({
+                            category: 'Aria',
+                            rule: 'broken-aria-reference',
+                            severity: 'Error',
+                            selector: getSelector(refEl),
+                            tag: refEl.tagName,
+                            message: 'Attribute ' + attr + ' references non-existent ID ""' + id + '"".',
+                            details: 'ARIA ID references must correspond to existing elements in the document.',
+                            snippet: refEl.outerHTML.substring(0, 160),
+                            boundingTop: Math.round(bRect.top),
+                            boundingLeft: Math.round(bRect.left),
+                            boundingWidth: Math.round(bRect.width),
+                            boundingHeight: Math.round(bRect.height)
+                        });
+                    }
+                });
+            }
+        });
+    }
+
+    // ── Inject in-page badges ─────────────────────────────────────────────
+    document.querySelectorAll('.__vtt_a11y_badge').forEach(function(b) { b.remove(); });
+    violations.forEach(function(v, idx) {
+        var badge = document.createElement('div');
+        badge.className = '__vtt_a11y_badge';
+        badge.style.position = 'fixed';
+        badge.style.zIndex = '2147483646';
+        badge.style.top = Math.max(0, v.boundingTop - 12) + 'px';
+        badge.style.left = Math.max(0, v.boundingLeft + v.boundingWidth - 28) + 'px';
+        badge.style.padding = '2px 5px';
+        badge.style.borderRadius = '3px';
+        badge.style.fontFamily = 'Consolas, monospace';
+        badge.style.fontSize = '9px';
+        badge.style.fontWeight = 'bold';
+        badge.style.color = '#ffffff';
+        badge.style.cursor = 'pointer';
+        badge.style.boxShadow = '0 2px 4px rgba(0,0,0,0.5)';
+        badge.title = v.rule + ': ' + v.message;
+
+        if (v.category === 'MissingAlt') {
+            badge.style.backgroundColor = '#f97316'; // Orange
+            badge.innerText = 'ALT?';
+        } else if (v.category === 'Contrast') {
+            badge.style.backgroundColor = '#ef4444'; // Red
+            badge.innerText = v.contrastRatio ? v.contrastRatio + ':1' : 'CONTRAST';
+        } else {
+            badge.style.backgroundColor = '#a855f7'; // Purple
+            badge.innerText = 'ARIA!';
+        }
+
+        badge.onclick = function(e) {
+            e.stopPropagation();
+            if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+                window.chrome.webview.postMessage(JSON.stringify({
+                    type: 'VTT_A11Y_CLICK',
+                    data: v
+                }));
+            }
+        };
+
+        document.documentElement.appendChild(badge);
+    });
+
+    return JSON.stringify({
+        url: window.location.href,
+        timestamp: new Date().toISOString(),
+        violations: violations
+    });
+})();
+";
+
+        private const string ToggleA11yBadgesScript = @"
+(function(visible) {
+    var badges = document.querySelectorAll('.__vtt_a11y_badge');
+    badges.forEach(function(b) {
+        b.style.display = visible ? 'block' : 'none';
+    });
+})({visible});
+";
+
+        private const string ClearA11yBadgesScript = @"
+(function() {
+    var badges = document.querySelectorAll('.__vtt_a11y_badge');
+    badges.forEach(function(b) { b.remove(); });
+})();
+";
+
+        private const string ScrollToAndHighlightScript = @"
+(function(selector) {
+    try {
+        var el = document.querySelector(selector);
+        if (!el) return false;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        var origOutline = el.style.outline;
+        el.style.outline = '3px solid #38bdf8';
+        setTimeout(function() { el.style.outline = origOutline; }, 2500);
+        return true;
+    } catch(e) {
+        return false;
+    }
+})('{escapedSelector}');
+";
+
         public sealed class TelemetrySnapshot
         {
             public string Url { get; set; } = "";
@@ -837,6 +1552,12 @@ namespace BuildConsole.Services
 
         /// <summary>Event raised when an element is inspected in the active WebView2.</summary>
         public static event Action<DomElementInfo>? OnDomElementInspected;
+
+        /// <summary>Event raised when a DOM mutation is observed in the active page.</summary>
+        public static event Action<DomMutationRecord>? OnDomMutationRecorded;
+
+        /// <summary>Event raised when an in-page accessibility violation badge is clicked.</summary>
+        public static event Action<AccessibilityViolation>? OnA11yViolationClicked;
 
         /// <summary>
         /// Attaches Chrome DevTools Protocol (CDP) domains, listeners, and guaranteed early JS injection
@@ -1334,6 +2055,202 @@ namespace BuildConsole.Services
             }
             catch { }
             return null;
+        }
+
+        /// <summary>
+        /// Parses an incoming WebMessage string to check if it contains a VTT_DOM_MUTATION payload.
+        /// Raises OnDomMutationRecorded if valid.
+        /// </summary>
+        public static DomMutationRecord? TryParseDomMutationMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message) || !message.Contains("VTT_DOM_MUTATION")) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(message);
+                if (doc.RootElement.TryGetProperty("type", out var typeEl) &&
+                    typeEl.GetString() == "VTT_DOM_MUTATION" &&
+                    doc.RootElement.TryGetProperty("data", out var dataEl))
+                {
+                    var record = JsonSerializer.Deserialize<DomMutationRecord>(dataEl.GetRawText(), new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                    if (record != null)
+                    {
+                        OnDomMutationRecorded?.Invoke(record);
+                        return record;
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>
+        /// Parses an incoming WebMessage string to check if it contains a VTT_A11Y_CLICK payload.
+        /// Raises OnA11yViolationClicked if valid.
+        /// </summary>
+        public static AccessibilityViolation? TryParseA11yClickMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message) || !message.Contains("VTT_A11Y_CLICK")) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(message);
+                if (doc.RootElement.TryGetProperty("type", out var typeEl) &&
+                    typeEl.GetString() == "VTT_A11Y_CLICK" &&
+                    doc.RootElement.TryGetProperty("data", out var dataEl))
+                {
+                    var violation = JsonSerializer.Deserialize<AccessibilityViolation>(dataEl.GetRawText(), new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                    if (violation != null)
+                    {
+                        OnA11yViolationClicked?.Invoke(violation);
+                        return violation;
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        // ── DOM Mutation Tracking & Snapshot API ────────────────────────────────
+
+        /// <summary>Enables real-time in-page DOM mutation tracking with visual highlight outlines.</summary>
+        public static async Task EnableDomMutationObserverAsync(WebView2? webView)
+        {
+            if (webView?.CoreWebView2 == null) return;
+            try
+            {
+                await webView.ExecuteScriptAsync(DomMutationScript);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(VisualTestTrackerStore.Channel, $"EnableDomMutationObserver error: {ex.Message}");
+            }
+        }
+
+        /// <summary>Disables in-page DOM mutation tracking and removes outline classes.</summary>
+        public static async Task DisableDomMutationObserverAsync(WebView2? webView)
+        {
+            if (webView?.CoreWebView2 == null) return;
+            try
+            {
+                await webView.ExecuteScriptAsync(DomMutationStopScript);
+            }
+            catch { }
+        }
+
+        /// <summary>Takes an in-memory snapshot of the current DOM structure for diffing.</summary>
+        public static async Task<int> TakeDomSnapshotAsync(WebView2? webView)
+        {
+            if (webView?.CoreWebView2 == null) return 0;
+            try
+            {
+                var raw = await webView.ExecuteScriptAsync(DomSnapshotScript);
+                if (int.TryParse(raw, out int count)) return count;
+            }
+            catch { }
+            return 0;
+        }
+
+        /// <summary>Diffs the current live DOM against the previous in-memory snapshot.</summary>
+        public static async Task<List<DomMutationRecord>> DiffDomSnapshotAsync(WebView2? webView)
+        {
+            var list = new List<DomMutationRecord>();
+            if (webView?.CoreWebView2 == null) return list;
+            try
+            {
+                var raw = await webView.ExecuteScriptAsync(DomDiffScript);
+                if (!string.IsNullOrWhiteSpace(raw) && raw != "null")
+                {
+                    string json = raw;
+                    if (raw.StartsWith("\"") && raw.EndsWith("\""))
+                    {
+                        try { json = JsonSerializer.Deserialize<string>(raw) ?? raw; } catch { }
+                    }
+                    var items = JsonSerializer.Deserialize<List<DomMutationRecord>>(json, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                    if (items != null) list = items;
+                }
+            }
+            catch { }
+            return list;
+        }
+
+        // ── Accessibility Audit API ─────────────────────────────────────────────
+
+        /// <summary>Runs an automated WCAG 2.1 AA accessibility audit across missing alt, contrast, and ARIA rules.</summary>
+        public static async Task<AccessibilityAuditReport> RunAccessibilityAuditAsync(WebView2? webView)
+        {
+            var report = new AccessibilityAuditReport();
+            if (webView?.CoreWebView2 == null) return report;
+            try
+            {
+                var raw = await webView.ExecuteScriptAsync(AccessibilityScannerScript);
+                if (!string.IsNullOrWhiteSpace(raw) && raw != "null")
+                {
+                    string json = raw;
+                    if (raw.StartsWith("\"") && raw.EndsWith("\""))
+                    {
+                        try { json = JsonSerializer.Deserialize<string>(raw) ?? raw; } catch { }
+                    }
+
+                    var parsed = JsonSerializer.Deserialize<AccessibilityAuditReport>(json, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                    if (parsed != null) report = parsed;
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(VisualTestTrackerStore.Channel, $"Accessibility audit error: {ex.Message}");
+            }
+            return report;
+        }
+
+        /// <summary>Toggles visibility of on-page accessibility violation badge markers.</summary>
+        public static async Task ToggleA11yBadgesAsync(WebView2? webView, bool visible)
+        {
+            if (webView?.CoreWebView2 == null) return;
+            try
+            {
+                string script = ToggleA11yBadgesScript.Replace("{visible}", visible ? "true" : "false");
+                await webView.ExecuteScriptAsync(script);
+            }
+            catch { }
+        }
+
+        /// <summary>Removes all in-page accessibility violation badges from the DOM.</summary>
+        public static async Task ClearA11yBadgesAsync(WebView2? webView)
+        {
+            if (webView?.CoreWebView2 == null) return;
+            try
+            {
+                await webView.ExecuteScriptAsync(ClearA11yBadgesScript);
+            }
+            catch { }
+        }
+
+        /// <summary>Scrolls the WebView2 viewport to an element and flashes a prominent highlight border.</summary>
+        public static async Task<bool> ScrollToAndHighlightElementAsync(WebView2? webView, string selector)
+        {
+            if (webView?.CoreWebView2 == null || string.IsNullOrWhiteSpace(selector)) return false;
+            try
+            {
+                string escaped = selector.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\"", "\\\"");
+                string script = ScrollToAndHighlightScript.Replace("{escapedSelector}", escaped);
+                var raw = await webView.ExecuteScriptAsync(script);
+                return raw == "true";
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>Injects the observer script into the active WebView2 page and attaches CDP.</summary>

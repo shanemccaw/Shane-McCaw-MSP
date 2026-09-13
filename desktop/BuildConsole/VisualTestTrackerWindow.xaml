@@ -513,6 +513,18 @@
                                     <TextBlock x:Name="TelemetryEventsBadge" Text="👣 0 events" FontSize="9"
                                                Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"
                                                ToolTip="Recent user interaction events recorded"/>
+                                    <Button x:Name="BtnA11yAudit" Content="♿ a11y (0)"
+                                            Style="{StaticResource IconButton}" FontSize="8"
+                                            Padding="3,1,3,1" Margin="0,0,4,0"
+                                            Foreground="{StaticResource AccentBrush}"
+                                            ToolTip="Run in-page WCAG 2.1 AA accessibility audit (missing alt, contrast, ARIA)"
+                                            Click="BtnA11yAudit_Click"/>
+                                    <Button x:Name="BtnDomChanges" Content="⚡ DOM Δ (0)"
+                                            Style="{StaticResource IconButton}" FontSize="8"
+                                            Padding="3,1,3,1" Margin="0,0,6,0"
+                                            Foreground="{StaticResource TextBrush}"
+                                            ToolTip="Toggle real-time DOM mutation tracking &amp; highlight outlines"
+                                            Click="BtnDomChanges_Click"/>
                                     <TextBlock x:Name="TelemetryCdpBadge" Text="🌐 CDP Active" FontSize="9"
                                                Foreground="{StaticResource AccentBrush}"
                                                ToolTip="Chrome DevTools Protocol actively capturing engine console, network, and error events"/>
@@ -526,22 +538,24 @@
                             </Grid>
                         </Border>
 
-                        <!-- Capture & Inspect Buttons Strip -->
+                        <!-- Capture, Diff & Inspect Buttons Strip -->
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="3"/>
+                                <ColumnDefinition Width="2"/>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="3"/>
+                                <ColumnDefinition Width="2"/>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="3"/>
+                                <ColumnDefinition Width="2"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="2"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
                             <Button x:Name="BtnCaptureFull" Grid.Column="0"
                                     Content="📷 Full"
                                     Style="{StaticResource SecondaryButton}"
-                                    FontSize="10" Padding="2,4,2,4"
+                                    FontSize="10" Padding="1,4,1,4"
                                     IsEnabled="False"
                                     ToolTip="Capture full scrollable WebView2 page (Ctrl+Shift+F)"
                                     Click="BtnCaptureFull_Click"/>
@@ -549,7 +563,7 @@
                             <Button x:Name="BtnCaptureRegion" Grid.Column="2"
                                     Content="✂ Region"
                                     Style="{StaticResource SecondaryButton}"
-                                    FontSize="10" Padding="2,4,2,4"
+                                    FontSize="10" Padding="1,4,1,4"
                                     IsEnabled="False"
                                     ToolTip="Select and crop on-screen region (Ctrl+Shift+S)"
                                     Click="BtnCaptureRegion_Click"/>
@@ -557,15 +571,23 @@
                             <Button x:Name="BtnCaptureWpfWindow" Grid.Column="4"
                                     Content="🪟 HUD"
                                     Style="{StaticResource SecondaryButton}"
-                                    FontSize="10" Padding="2,4,2,4"
+                                    FontSize="10" Padding="1,4,1,4"
                                     IsEnabled="False"
                                     ToolTip="Capture full WPF window with HUD and overlays (Ctrl+Shift+W)"
                                     Click="BtnCaptureWpfWindow_Click"/>
 
-                            <Button x:Name="BtnInspectDom" Grid.Column="6"
+                            <Button x:Name="BtnVisualDiff" Grid.Column="6"
+                                    Content="⚖️ Diff"
+                                    Style="{StaticResource SecondaryButton}"
+                                    FontSize="10" Padding="1,4,1,4"
+                                    IsEnabled="False"
+                                    ToolTip="Compare screenshots across builds &amp; baselines (side-by-side, swipe slider, diff heatmap)"
+                                    Click="BtnVisualDiff_Click"/>
+
+                            <Button x:Name="BtnInspectDom" Grid.Column="8"
                                     Content="🔍 Inspect"
                                     Style="{StaticResource SecondaryButton}"
-                                    FontSize="10" Padding="2,4,2,4"
+                                    FontSize="10" Padding="1,4,1,4"
                                     IsEnabled="False"
                                     ToolTip="Interactive DOM element inspector (Ctrl+Shift+I)"
                                     Click="BtnInspectDom_Click"/>
@@ -579,7 +601,7 @@
                                 CornerRadius="4" Padding="6" Margin="0,0,0,5"
                                 Visibility="Collapsed">
                             <StackPanel>
-                                <!-- Header with Tag, Dimensions, Re-inspect, and Close -->
+                                <!-- Header with Tag, Dimensions, a11y status badge, Re-inspect, and Close -->
                                 <Grid Margin="0,0,0,3">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -590,7 +612,8 @@
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="DOM:" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,4,0"/>
                                         <TextBlock x:Name="TxtDomElementTag" Text="&lt;BUTTON&gt;" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,4,0"/>
-                                        <TextBlock x:Name="TxtDomDimensions" Text="120 × 36 px" FontSize="9" Foreground="{StaticResource Subtext1Brush}"/>
+                                        <TextBlock x:Name="TxtDomDimensions" Text="120 × 36 px" FontSize="9" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"/>
+                                        <TextBlock x:Name="TxtDomA11yBadge" Text="♿ a11y: OK" FontSize="8" FontWeight="SemiBold" Foreground="{StaticResource LightGreenBrush}" VerticalAlignment="Center"/>
                                     </StackPanel>
 
                                     <Button x:Name="BtnDomReinspect" Grid.Column="1"
@@ -606,10 +629,11 @@
                                             Click="BtnDomClose_Click"/>
                                 </Grid>
 
-                                <!-- Selector Display with Copy -->
+                                <!-- Selector Display with Copy Buttons -->
                                 <Grid Margin="0,0,0,3">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
@@ -621,10 +645,17 @@
                                              ToolTip="Unique CSS Selector"/>
 
                                     <Button x:Name="BtnCopyDomSelector" Grid.Column="1"
-                                            Content="📋 Copy Sel" Style="{StaticResource IconButton}"
+                                            Content="📋 Sel" Style="{StaticResource IconButton}"
                                             FontSize="8" Padding="4,1,4,1" Margin="3,0,0,0"
                                             ToolTip="Copy CSS selector to clipboard"
                                             Click="BtnCopyDomSelector_Click"/>
+
+                                    <Button x:Name="BtnCopyDomBoth" Grid.Column="2"
+                                            Content="📋 Copy Both" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="4,1,4,1" Margin="3,0,0,0"
+                                            Foreground="{StaticResource AccentBrush}"
+                                            ToolTip="Copy both selector and full HTML together to clipboard"
+                                            Click="BtnCopyDomBoth_Click"/>
                                 </Grid>
 
                                 <!-- OuterHTML Preview Block -->
@@ -666,6 +697,104 @@
                                 </Grid>
                             </StackPanel>
                         </Border>
+
+                        <!-- ACCESSIBILITY AUDIT DRAWER (WCAG 2.1 AA) -->
+                        <Border x:Name="A11yDrawer"
+                                Background="{StaticResource Surface0Brush}"
+                                BorderBrush="{StaticResource AccentBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4" Padding="6" Margin="0,0,0,5"
+                                Visibility="Collapsed">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="♿ a11y Audit:" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,6,0"/>
+                                        <TextBlock x:Name="TxtA11ySummaryCounts" Text="0 Issues" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                    </StackPanel>
+                                    <Button x:Name="BtnCloseA11yDrawer" Grid.Column="1" Content="✕" Style="{StaticResource IconButton}"
+                                            FontSize="9" Width="16" Height="16" Padding="0" Click="BtnCloseA11yDrawer_Click"/>
+                                </Grid>
+
+                                <!-- Category Filter Chips -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <Button x:Name="BtnFilterA11yAll" Content="All" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Margin="0,0,3,0" Click="BtnFilterA11y_Click" Tag="All"/>
+                                    <Button x:Name="BtnFilterA11yAlt" Content="Missing Alt (0)" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Margin="0,0,3,0" Click="BtnFilterA11y_Click" Tag="MissingAlt"/>
+                                    <Button x:Name="BtnFilterA11yContrast" Content="Contrast (0)" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Margin="0,0,3,0" Click="BtnFilterA11y_Click" Tag="Contrast"/>
+                                    <Button x:Name="BtnFilterA11yAria" Content="ARIA (0)" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Click="BtnFilterA11y_Click" Tag="Aria"/>
+                                </StackPanel>
+
+                                <!-- Violations Scroll Area -->
+                                <Border Background="{StaticResource BaseBrush}" CornerRadius="3" MaxHeight="130" Padding="4" Margin="0,0,0,4">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <StackPanel x:Name="A11yIssuesContainer"/>
+                                    </ScrollViewer>
+                                </Border>
+
+                                <!-- Action Buttons: Add to Bug, Toggle Badges, Rescan -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Button x:Name="BtnAddA11yToBug" Grid.Column="0" Content="+ Add to Bug Report" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="4,2" Foreground="{StaticResource AccentBrush}" Click="BtnAddA11yToBug_Click"
+                                            ToolTip="Add detected accessibility violations into the active bug report draft"/>
+                                    <Button x:Name="BtnToggleA11yMarkers" Grid.Column="1" Content="👁️ Markers" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="4,2" Margin="3,0,0,0" Click="BtnToggleA11yMarkers_Click"
+                                            ToolTip="Toggle on-page violation badge overlays"/>
+                                    <Button x:Name="BtnRescanA11y" Grid.Column="2" Content="🔄 Rescan" Style="{StaticResource IconButton}"
+                                            FontSize="8" Padding="4,2" Margin="3,0,0,0" Click="BtnRescanA11y_Click"
+                                            ToolTip="Rerun accessibility audit"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- DOM CHANGES DRAWER (Live DOM Mutation Tracking) -->
+                        <Border x:Name="DomChangesDrawer"
+                                Background="{StaticResource Surface0Brush}"
+                                BorderBrush="{StaticResource AccentBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4" Padding="6" Margin="0,0,0,5"
+                                Visibility="Collapsed">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="⚡ DOM Changes:" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,6,0"/>
+                                        <TextBlock x:Name="TxtDomChangesSummary" Text="0 mutations" FontSize="9" Foreground="{StaticResource TextBrush}"/>
+                                    </StackPanel>
+                                    <Button x:Name="BtnCloseDomChangesDrawer" Grid.Column="1" Content="✕" Style="{StaticResource IconButton}"
+                                            FontSize="9" Width="16" Height="16" Padding="0" Click="BtnCloseDomChangesDrawer_Click"/>
+                                </Grid>
+
+                                <!-- Snapshot & Diff Actions -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <Button x:Name="BtnDomTakeSnapshot" Content="📸 Baseline Snapshot" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Margin="0,0,3,0" Click="BtnDomTakeSnapshot_Click" ToolTip="Record current DOM state as baseline"/>
+                                    <Button x:Name="BtnDomDiffSnapshot" Content="🔍 Diff Snapshot" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Margin="0,0,3,0" Click="BtnDomDiffSnapshot_Click" ToolTip="Check differences since baseline snapshot"/>
+                                    <Button x:Name="BtnClearDomChanges" Content="🗑️ Clear" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Click="BtnClearDomChanges_Click" ToolTip="Clear recorded mutation history"/>
+                                </StackPanel>
+
+                                <!-- Mutations Scroll Area -->
+                                <Border Background="{StaticResource BaseBrush}" CornerRadius="3" MaxHeight="130" Padding="4" Margin="0,0,0,4">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <StackPanel x:Name="DomMutationsContainer"/>
+                                    </ScrollViewer>
+                                </Border>
+
+                                <Button x:Name="BtnAddDomChangesToSteps" Content="+ Add Mutations to Repro Steps" Style="{StaticResource IconButton}"
+                                        FontSize="8" Padding="4,2" Foreground="{StaticResource AccentBrush}" Click="BtnAddDomChangesToSteps_Click"
+                                        ToolTip="Appends captured DOM changes to the reproduction steps"/>
+                            </StackPanel>
+                        </Border>
+
 
                         <!-- Staged Screenshots Preview Bar (Attachments for current draft) -->
                         <Border x:Name="StagedScreenshotsContainer"
