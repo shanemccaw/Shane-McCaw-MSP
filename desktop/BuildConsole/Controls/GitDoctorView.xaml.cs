@@ -56,7 +56,7 @@ namespace BuildConsole.Controls
         private bool _gdLoaded;
         private bool _gdLoading;
         private bool _gdRunning;
-        private readonly List<(string Text, string? Why, bool IsHead)> _gdLog = new();
+        private readonly List<(string Text, string? Why, bool IsHead, bool IsSuccess)> _gdLog = new();
         private GitDoctorCommitInfo? _gdLookupResult;
         private bool _gdLookupNotFound;
         private string _gdLookupQueryShown = "";
@@ -836,17 +836,17 @@ namespace BuildConsole.Controls
         {
             _gdRunning = true;
             _gdLog.Clear();
-            _gdLog.Add((label, null, true));
+            _gdLog.Add((label, null, true, true));
             RenderGitDoctorLog();
 
             await foreach (var result in _gitDoctorService.RunStepsAsync(steps))
             {
-                _gdLog.Add((result.Success ? result.Cmd : $"{result.Cmd}  (failed)", result.Why, false));
+                _gdLog.Add((result.Success ? result.Cmd : $"{result.Cmd}  (failed)", result.Why, false, result.Success));
                 RenderGitDoctorLog();
             }
 
             _gdRunning = false;
-            _gdLog.Add(($"Finished — {steps.Count} command{(steps.Count == 1 ? "" : "s")}.", null, false));
+            _gdLog.Add(($"Finished — {steps.Count} command{(steps.Count == 1 ? "" : "s")}.", null, false, true));
             RenderGitDoctorLog();
             onDone?.Invoke();
         }
@@ -870,14 +870,16 @@ namespace BuildConsole.Controls
                 });
                 return;
             }
-            foreach (var (text, why, isHead) in _gdLog)
+            foreach (var (text, why, isHead, isSuccess) in _gdLog)
             {
                 var row = new StackPanel { Margin = new Thickness(0, 0, 0, 4) };
                 row.Children.Add(new TextBlock
                 {
                     Text = text, TextWrapping = TextWrapping.Wrap,
                     FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5,
-                    Foreground = isHead ? (Brush)FindResource("TextBrush") : (Brush)FindResource("GreenBrush")
+                    Foreground = isHead
+                        ? (Brush)FindResource("TextBrush")
+                        : (isSuccess ? (Brush)FindResource("StatusSuccessBrush") : (Brush)FindResource("StatusErrorBrush"))
                 });
                 if (why != null)
                     row.Children.Add(new TextBlock { Text = why, TextWrapping = TextWrapping.Wrap, FontSize = 9, Foreground = (Brush)FindResource("OverlayBrush") });
