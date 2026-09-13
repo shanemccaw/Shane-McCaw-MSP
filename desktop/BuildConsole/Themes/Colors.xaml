@@ -62,6 +62,7 @@
 
     <SolidColorBrush x:Key="StatusSuccessBrush" Color="{StaticResource StatusSuccessColor}"/>
     <SolidColorBrush x:Key="StatusErrorBrush"   Color="{StaticResource StatusErrorColor}"/>
+    <SolidColorBrush x:Key="StatusFailedBrush"  Color="{StaticResource StatusErrorColor}"/> <!-- alias for compatibility -->
     <SolidColorBrush x:Key="StatusWarningBrush" Color="{StaticResource StatusWarningColor}"/>
     <SolidColorBrush x:Key="StatusRunningBrush" Color="{StaticResource StatusRunningColor}"/>
 

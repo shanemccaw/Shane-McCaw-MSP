@@ -270,11 +270,11 @@
 
                     <Border x:Name="PnlError" Visibility="Collapsed"
                             HorizontalAlignment="Center" VerticalAlignment="Center"
-                            Background="#3A1818" BorderBrush="{StaticResource StatusFailedBrush}"
+                            Background="#3A1818" BorderBrush="{StaticResource StatusErrorBrush}"
                             BorderThickness="1" CornerRadius="6" Padding="20">
                         <StackPanel>
                             <TextBlock Text="&#x26A0; Render Error" FontWeight="Bold" FontSize="14"
-                                       Foreground="{StaticResource StatusFailedBrush}" Margin="0,0,0,8"/>
+                                       Foreground="{StaticResource StatusErrorBrush}" Margin="0,0,0,8"/>
                             <TextBlock x:Name="TxtErrorMessage" Text="" FontFamily="Cascadia Code, Consolas" FontSize="11"
                                        Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" MaxWidth="500"/>
                         </StackPanel>
@@ -357,7 +357,7 @@
                                                                 <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
                                                                 <Style.Triggers>
                                                                     <DataTrigger Binding="{Binding Level}" Value="Error">
-                                                                        <Setter Property="Foreground" Value="{StaticResource StatusFailedBrush}"/>
+                                                                        <Setter Property="Foreground" Value="{StaticResource StatusErrorBrush}"/>
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding Level}" Value="Warning">
                                                                         <Setter Property="Foreground" Value="#F9E2AF"/>
