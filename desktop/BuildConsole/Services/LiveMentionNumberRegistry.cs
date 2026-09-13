@@ -8,8 +8,9 @@ namespace BuildConsole.Services
     /// colored, across every open chat surface: MainWindow's ClaudeWebView + embedded chat tabs,
     /// and the floating chat window's own tabs. <c>BT_ISSUE_MENTIONS_SCAN</c> only reports the
     /// NEW delta per page-load (Git #2066's per-page <c>_reportedMentionNums</c>), so point 3's
-    /// live-queue-state re-push — driven by <see cref="Controls.BuildQueuePanel.QueueRefreshed"/>,
-    /// not a chat-text mutation — needs this accumulated set to know which numbers are actually
+    /// live-queue-state re-push — driven by <see cref="Controls.BuildQueuePanel.QueueDataChanged"/>
+    /// (Git #3804; a genuine-change signal, not a fixed poll tick), not a chat-text mutation —
+    /// needs this accumulated set to know which numbers are actually
     /// on screen somewhere and worth recoloring, since the delta-only set would miss every number
     /// already resolved on an earlier scan. In-memory only, process-lifetime; a page reload's
     /// first scan simply re-adds whatever it finds.

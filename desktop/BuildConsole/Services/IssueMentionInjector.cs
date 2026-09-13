@@ -69,8 +69,9 @@ namespace BuildConsole.Services
     /// BuildQueuePanel.CurrentQueueItems (the same in-memory lookup #2080's hover tip already
     /// resolves through, ChatMentionPopupHelper.BuildSetMentionColorsScript /
     /// LeftSidebar.BuildChatMentionActionPayload), and re-pushed on BuildQueuePanel's own
-    /// existing QueueRefreshed event (its real ~15s poll tick — no new polling loop) so a
-    /// number's color tracks live queue-state changes even with no chat text mutation at all.
+    /// QueueDataChanged event (Git #3804 — fires only when its real 5s poll tick found a genuine
+    /// change, not on every tick; no new polling loop either way) so a number's color tracks live
+    /// queue-state changes even with no chat text mutation at all.
     /// </summary>
     public static class IssueMentionInjector
     {

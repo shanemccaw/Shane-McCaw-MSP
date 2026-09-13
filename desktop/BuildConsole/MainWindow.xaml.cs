@@ -884,10 +884,15 @@ namespace BuildConsole
             // reopen the last remembered one for it. See ActivateOrReopenEpicChat's own doc comment.
             BuildQueuePanel.EpicChipClicked += (s, epic) => ActivateOrReopenEpicChat(epic);
             // Git #2691 — point 3: live queue-state changes (queued → running → verifying) recolor
-            // on-screen #NNN mentions even with no chat text mutation, by reusing this same real
-            // ~15s poll tick that already updates BuildQueuePanel.CurrentQueueItems — no new
-            // polling loop.
-            BuildQueuePanel.QueueRefreshed += async (s, e) => await PushLiveMentionColorsAsync();
+            // on-screen #NNN mentions even with no chat text mutation, by reusing the same real 5s
+            // poll tick that already updates BuildQueuePanel.CurrentQueueItems — no new polling
+            // loop. Git #3804 — rides QueueDataChanged, not QueueRefreshed: the latter fires on
+            // every tick regardless of whether the queue actually changed (including the #3801
+            // change-probe's skip path), which meant this WebView2 broadcast ran unconditionally
+            // twelve times a minute. QueueDataChanged fires only from the branch that found a real
+            // signature change and genuinely re-rendered — exactly the moments a mention's color
+            // could actually be different.
+            BuildQueuePanel.QueueDataChanged += async (s, e) => await PushLiveMentionColorsAsync();
             // Git #1994 — Build Queue card's "Open Git #N" context-menu item.
             BuildQueuePanel.OpenGitIssueRequested += async (s, req) => await OpenGitDetailByNumberAsync(req.Number, req.SideBySide);
             // Git #1836 — this used to call LeftSidebar.PopulateGitTrackerBoard(forceFresh:
@@ -4703,9 +4708,10 @@ namespace BuildConsole
 
         /// <summary>
         /// Git #2691 point 3 — re-resolves and re-pushes mention-span colors for every #NNN
-        /// <see cref="Services.LiveMentionNumberRegistry"/> has ever seen on screen, on every
-        /// <see cref="Controls.BuildQueuePanel.QueueRefreshed"/> tick (the panel's own real ~15s
-        /// poll, no new polling loop here). Broadcasts to ClaudeWebView + every embedded chat tab
+        /// <see cref="Services.LiveMentionNumberRegistry"/> has ever seen on screen, driven by
+        /// <see cref="Controls.BuildQueuePanel.QueueDataChanged"/> (Git #3804 — fires only when the
+        /// panel's real 5s poll tick found a genuine change and re-rendered, not on every tick; see
+        /// that event's own doc comment). Broadcasts to ClaudeWebView + every embedded chat tab
         /// via the existing #942 broadcast helper, plus the floating chat window's own tabs — a
         /// number a given page doesn't currently have a live span for is simply a no-op
         /// (__btSetMentionColors only touches spans that exist), so over-broadcasting is safe.

@@ -153,6 +153,14 @@ namespace BuildConsole.Controls
         /// the probe existed.</summary>
         public event EventHandler? QueueRefreshed;
 
+        /// <summary>Git #3804 — the real "something the queue renders actually changed" signal,
+        /// as distinct from <see cref="QueueRefreshed"/> above (which fires on every 5s poll tick,
+        /// including the change-probe's early-return skip, by design — see that event's own doc
+        /// comment). Fires only from inside the branch that found <c>signature != _lastQueueSignature</c>
+        /// and genuinely re-rendered — i.e. exactly the moments a subscriber whose own cost should be
+        /// change-driven (not clock-driven) cares about, such as MainWindow's mention-color repaint.</summary>
+        public event EventHandler? QueueDataChanged;
+
         /// <summary>Git #3448, narrowed by #3767 — the real, honest Batter Up closed-sweep summary
         /// from the most recent Batter-Up-ONLY refresh, set by MainWindow's
         /// BatterUpOnlyRefreshRequested handler right after it awaits that panel's own refresh.
@@ -452,6 +460,13 @@ namespace BuildConsole.Controls
             _db = db;
             _sessionLimitAutoRestart = sessionLimitAutoRestart;
 
+            // Git #3804 — the two sync-state Postgres reads inside UpdateIssueMirrorSyncStatusAsync
+            // only ever produce a genuinely new value the moment a sync actually completes; every
+            // other 5s tick was re-reading the same two rows purely to recompute a countdown that
+            // wall-clock time alone already tells us. Invalidate the cache on the real completion
+            // signal instead of on a timer.
+            Services.GitHubIssueMirror.SyncCompleted += () => _mirrorSyncStateCacheValid = false;
+
             if (_watcher != null)
             {
                 SyncPauseToggleVisual(_watcher.IsPaused);
@@ -537,7 +552,21 @@ namespace BuildConsole.Controls
         /// (normally the incremental one), and labels it "next board-status sync" instead of the
         /// generic "next sync" on the (rarer) occasions the full walk is actually the nearer event, so
         /// the display never silently implies a board-status refresh is coming sooner than it is.
+        ///
+        /// Git #3804 — the two <c>await GetSyncStateAsync()</c>/<c>GetIncrementalSyncStateAsync()</c>
+        /// Postgres reads used to run on every one of this method's 5s calls, purely to recompute a
+        /// countdown that wall-clock time alone already advances. Those two timestamps only ever
+        /// change the instant a sync genuinely completes (<see cref="GitHubIssueMirror.SyncCompleted"/>,
+        /// subscribed in <see cref="Initialize"/>), so they're read once and cached; every tick in
+        /// between recomputes the same countdown text from the cached values against DateTime.UtcNow
+        /// — no DB round-trip. IsSyncing/LastAttemptUtc stay live reads (already cheap in-memory
+        /// fields, not DB), so the "syncing…"/backoff branches are unaffected.
         /// </summary>
+        private bool _mirrorSyncStateCacheValid;
+        private DateTime? _cachedLastFullSyncAt;
+        private bool _cachedFullOk;
+        private DateTime? _cachedLastIncrSyncAt;
+
         private async Task UpdateIssueMirrorSyncStatusAsync()
         {
             try
@@ -553,7 +582,18 @@ namespace BuildConsole.Controls
                     ? TimeSpan.Zero
                     : GitHubIssueMirror.FailedAttemptBackoff - (DateTime.UtcNow - GitHubIssueMirror.LastAttemptUtc);
 
-                var (lastFullSyncAt, fullOk, fullNote) = await GitHubIssueMirror.GetSyncStateAsync();
+                if (!_mirrorSyncStateCacheValid)
+                {
+                    var (fetchedFullAt, fetchedFullOk, _) = await GitHubIssueMirror.GetSyncStateAsync();
+                    var (fetchedIncrAt, _, _) = await GitHubIssueMirror.GetIncrementalSyncStateAsync();
+                    _cachedLastFullSyncAt = fetchedFullAt;
+                    _cachedFullOk = fetchedFullOk;
+                    _cachedLastIncrSyncAt = fetchedIncrAt;
+                    _mirrorSyncStateCacheValid = true;
+                }
+
+                var lastFullSyncAt = _cachedLastFullSyncAt;
+                var fullOk = _cachedFullOk;
 
                 if (!fullOk && backoffRemaining > TimeSpan.Zero)
                 {
@@ -569,7 +609,7 @@ namespace BuildConsole.Controls
                     return;
                 }
 
-                var (lastIncrSyncAt, _, _) = await GitHubIssueMirror.GetIncrementalSyncStateAsync();
+                var lastIncrSyncAt = _cachedLastIncrSyncAt;
                 var lastAnySyncAt = (lastIncrSyncAt.HasValue && lastIncrSyncAt.Value > lastFullSyncAt.Value)
                     ? lastIncrSyncAt.Value
                     : lastFullSyncAt.Value;
@@ -1327,6 +1367,8 @@ namespace BuildConsole.Controls
                     // Git #1834 — independent of _filter (the rollup summarizes the whole real
                     // queue, not just whatever status the combo/DAG is currently showing).
                     RenderBuildSetRollup(_lastItems);
+                    // Git #3804 — a genuine re-render, exactly what QueueDataChanged exists to signal.
+                    QueueDataChanged?.Invoke(this, EventArgs.Empty);
                 }
                 // Git #3801 — only now, with a full pass genuinely completed against the data this
                 // stamp describes, does it become the baseline the next poll tick may skip on. Null
