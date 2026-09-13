@@ -22,12 +22,14 @@ const customers = [
   { id: 4, name: "Gamma Co", domain: "gamma.example", status: "active", tenantId: "t4", mspId: 1, createdAt: "2026-01-03T00:00:00Z", seats: 500, people: 40, lastScanAt: "2026-09-05T00:00:00Z", openSignals: 6 },
 ];
 
-test("IA has 7 tenant groups and 16 ops pages", () => {
+test("IA has 7 tenant groups and 17 ops pages", () => {
   assert.equal(CHILD_GROUPS.length, 7);
-  // 13 original + dlq, reports, retention (concurrent builds #3814/#3815/#3906)
-  assert.equal(MSP_PAGES.length, 16);
-  // 2 leaf groups (overview, audit) + 3 + 7 + 5 (#3818 added "ou") + 4 + 4 group children = 25
-  assert.equal(CHILD_PAGES.length, 25);
+  // 13 original + dlq, plan, reports, retention, revenue (concurrent builds
+  // #3814/#3815/#3906/#3796)
+  assert.equal(MSP_PAGES.length, 17);
+  // 2 leaf groups (overview, audit) + 3 + 7 + 4 + 5 (#3818 added "ou") + 5
+  // (#3819 added "marketplace") group children = 26
+  assert.equal(CHILD_PAGES.length, 26);
 });
 
 test("selectionToPath / parseLocation round-trip every kind", () => {
@@ -70,7 +72,7 @@ test("collapsed tree shows two roots + operations pages, tenants closed", () => 
   assert.ok(labels.includes("Shane McCaw Consulting"));
   assert.ok(labels.includes("Operations"));
   assert.ok(labels.includes("Managed Tenants"));
-  // 15 operations children (settings lives on the Consulting root)
+  // 16 operations children (settings lives on the Consulting root)
   assert.equal(MSP_PAGES.filter((p) => p.id !== "settings").every((p) => labels.includes(p.label)), true);
   // every tenant node present, no group/child nodes yet
   assert.ok(labels.includes("Alpha Ltd") && labels.includes("Beta Inc") && labels.includes("Gamma Co"));
@@ -109,8 +111,8 @@ test("breadcrumb for a grouped page has root, tenant, group and page", () => {
 
 test("command palette lists root, every ops page, and tenant × page", () => {
   const cmds = buildCommands(customers, handlers);
-  // 1 root + 16 ops + 3 tenants * 25 pages (#3818 added "ou")
-  assert.equal(cmds.length, 1 + 16 + customers.length * 25);
+  // 1 root + 17 ops + 3 tenants * 26 pages (#3818 added "ou", #3819 added "marketplace")
+  assert.equal(cmds.length, 1 + 17 + customers.length * 26);
   assert.ok(cmds.some((c) => c.label === "Alpha Ltd › Risk Register" && c.group === "NODE"));
   assert.ok(cmds.some((c) => c.label === "Operations › Sales" && c.group === "MSP"));
 });

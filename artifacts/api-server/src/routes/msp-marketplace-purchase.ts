@@ -46,6 +46,7 @@ import {
   salesOffersTable,
   tenantsTable,
   mspSubscriptionsTable,
+  fulfillmentTypesTable,
 } from "@workspace/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
@@ -61,6 +62,36 @@ import { CUSTOMER_SERVICE_TYPES, toMarketplaceService, type MarketplaceService }
 const log = logger.child({ channel: "billing" });
 
 const router: IRouter = Router();
+
+/**
+ * Git #3819 — the customer-safe `MarketplaceService` shape (shared with the
+ * customer's own `/api/portal/marketplace/catalog`) deliberately strips
+ * `serviceClass`/`fulfillmentTypeKey`/`internalCostCents`. That's correct for
+ * a customer, but it left the MSP-staff console with no way to tell, before
+ * spending the MSP's card, that a given item (a) is project-class and will
+ * 422, or (b) has a `fulfillmentTypeKey` that matches no real
+ * `fulfillment_types` row (#3404 — 20 `assessment` + 6 `retainer` catalog
+ * rows) and so will charge the card and mark the offer accepted while
+ * provisioning nothing. This route is staff-only (`ladder.msp-operator`), so
+ * exposing these three internal fields here is safe — `fulfillmentKnown` is
+ * computed against the real, live `fulfillment_types` table, not guessed.
+ */
+export interface MspMarketplaceCatalogItem extends MarketplaceService {
+  serviceClass: string;
+  fulfillmentTypeKey: string | null;
+  /** True only when fulfillmentTypeKey resolves to a real, active fulfillment_types row. */
+  fulfillmentKnown: boolean;
+  internalCostCents: number | null;
+}
+
+/** The real set of fulfillment_type keys resolveFulfillment() will actually act on right now. */
+async function loadKnownFulfillmentKeys(): Promise<Set<string>> {
+  const rows = await db
+    .select({ key: fulfillmentTypesTable.key })
+    .from(fulfillmentTypesTable)
+    .where(eq(fulfillmentTypesTable.isActive, true));
+  return new Set(rows.map((r) => r.key));
+}
 
 function apiErr(res: Response, status: number, message: string): void {
   res.status(status).json({ error: message });
@@ -118,7 +149,14 @@ router.get(
         )
         .orderBy(asc(servicesTable.sortOrder), asc(servicesTable.name));
 
-      const services: MarketplaceService[] = rows.map(toMarketplaceService);
+      const knownFulfillmentKeys = await loadKnownFulfillmentKeys();
+      const services: MspMarketplaceCatalogItem[] = rows.map((row) => ({
+        ...toMarketplaceService(row),
+        serviceClass: row.serviceClass ?? "add_on",
+        fulfillmentTypeKey: row.fulfillmentTypeKey ?? null,
+        fulfillmentKnown: row.fulfillmentTypeKey != null && knownFulfillmentKeys.has(row.fulfillmentTypeKey),
+        internalCostCents: row.internalCostCents ?? null,
+      }));
       res.json({ services });
     } catch (err) {
       log.error({ err }, "GET /msp/customers/:customerId/marketplace/catalog failed");
@@ -247,6 +285,10 @@ router.post(
         return;
       }
 
+      // Git #3819 — surfaced to the response (not just the log) so the console
+      // UI can honestly report whether fulfillment actually fired, rather than
+      // reporting a bare "success" over a #3404 no-op.
+      let fulfillmentStatus: "emitted" | "duplicate" | "unknown_type" | "not_applicable" = "not_applicable";
       if (svc.fulfillmentTypeKey) {
         const fulfillmentResult = await resolveFulfillment({
           fulfillmentTypeKey: svc.fulfillmentTypeKey,
@@ -259,6 +301,7 @@ router.post(
             initiatedBy: "msp_staff", staffUserId: actorId, staffEmail: actorEmail,
           },
         });
+        fulfillmentStatus = fulfillmentResult.status;
         // Same visibility discipline as portal-checkout.ts:930-955 — an
         // "unknown_type" result (no fulfillment_types row for this key, e.g.
         // "assessment"/"retainer" — see #3404) must be at least visible in
@@ -282,7 +325,7 @@ router.post(
       });
 
       log.info({ offerId, customerId, targetMspId, serviceId: svc.id }, "msp-marketplace-purchase: free item activated");
-      res.status(201).json({ outcome: "free_activated", offerId, message: `${svc.name} has been activated for this customer.` });
+      res.status(201).json({ outcome: "free_activated", offerId, message: `${svc.name} has been activated for this customer.`, fulfillmentStatus });
       return;
     }
 
@@ -465,6 +508,10 @@ router.post(
         }
       }
 
+      // Git #3819 — same reasoning as the free path above: surfaced to the
+      // response so the console UI can honestly report a #3404 no-op instead
+      // of a bare "success" over silently-discarded fulfillment.
+      let fulfillmentStatus: "emitted" | "duplicate" | "unknown_type" | "not_applicable" = "not_applicable";
       if (svc.fulfillmentTypeKey) {
         const fulfillmentResult = await resolveFulfillment({
           fulfillmentTypeKey: svc.fulfillmentTypeKey,
@@ -481,6 +528,7 @@ router.post(
             initiatedBy: "msp_staff", staffUserId: actorId, staffEmail: actorEmail,
           },
         });
+        fulfillmentStatus = fulfillmentResult.status;
         // Same visibility discipline as portal-checkout.ts:930-955 — an
         // "unknown_type" result (no fulfillment_types row for this key, e.g.
         // "assessment"/"retainer" — see #3404) must be at least visible in
@@ -516,6 +564,9 @@ router.post(
         message: `${svc.name} has been purchased and charged to the MSP's card on file.`,
         subscriptionId,
         paymentIntentId: stripePaymentIntentId,
+        wholesaleCostCents,
+        retailPriceCents,
+        fulfillmentStatus,
       });
     } catch (err) {
       log.error({ err, customerId, serviceId: svc.id }, "msp-marketplace-purchase: billing failed");

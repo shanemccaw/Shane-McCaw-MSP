@@ -70,6 +70,9 @@ export const CHILD_GROUPS: Group[] = [
       { id: "contracts", label: "Contracts", icon: "file-text" },
       { id: "hub", label: "Documents", icon: "files" },
       { id: "billing", label: "Billing", icon: "receipt" },
+      // Marketplace Purchase (Git #3819, README screen 47) — buying a
+      // catalog item on this customer's behalf, charged to the MSP's card.
+      { id: "marketplace", label: "Marketplace", icon: "shopping-cart" },
     ],
   },
   { id: "audit", label: "Audit log", icon: "history", leaf: true },

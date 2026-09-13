@@ -75,6 +75,7 @@ vi.mock("@workspace/db", () => ({
   tenantsTable: { id: "id", mspId: "msp_id" },
   mspStaffCustomerScopesTable: { customerId: "customer_id", staffUserId: "staff_user_id", mspId: "msp_id" },
   mspSubscriptionsTable: { mspId: "msp_id", stripeCustomerId: "stripe_customer_id" },
+  fulfillmentTypesTable: { key: "key", isActive: "is_active" },
 }));
 
 vi.mock("drizzle-orm", () => ({
@@ -209,16 +210,37 @@ describe("GET /msp/customers/:customerId/marketplace/catalog", () => {
     expect(res.status).toBe(403);
   });
 
-  it("returns the catalog for an in-scope customer", async () => {
+  it("returns the catalog for an in-scope customer, including the staff-only classification fields (Git #3819)", async () => {
     queueScopingSelects();
     mockDbSelect.mockReturnValueOnce(selectChain([addOnService]));
+    // fulfillment_types lookup — "assessment" (addOnService's own key) is not among
+    // the active rows, so fulfillmentKnown must come back false (#3404).
+    mockDbSelect.mockReturnValueOnce(selectChain([{ key: "monitoring_subscription" }, { key: "config_pack" }]));
     const app = await makeApp();
     const res = await request(app)
       .get(`/api/msp/customers/${CUSTOMER_ID}/marketplace/catalog`)
       .set("Authorization", `Bearer ${mspToken()}`);
     expect(res.status).toBe(200);
     expect(res.body.services).toHaveLength(1);
-    expect(res.body.services[0].name).toBe("M365 Security Add-On");
+    const item = res.body.services[0];
+    expect(item.name).toBe("M365 Security Add-On");
+    expect(item.serviceClass).toBe("add_on");
+    expect(item.fulfillmentTypeKey).toBe("assessment");
+    expect(item.fulfillmentKnown).toBe(false);
+    expect(item.internalCostCents).toBeNull();
+  });
+
+  it("marks fulfillmentKnown true when the item's fulfillmentTypeKey matches a real, active fulfillment_types row", async () => {
+    queueScopingSelects();
+    mockDbSelect.mockReturnValueOnce(selectChain([{ ...addOnService, fulfillmentTypeKey: "monitoring_subscription", internalCostCents: 4200 }]));
+    mockDbSelect.mockReturnValueOnce(selectChain([{ key: "monitoring_subscription" }]));
+    const app = await makeApp();
+    const res = await request(app)
+      .get(`/api/msp/customers/${CUSTOMER_ID}/marketplace/catalog`)
+      .set("Authorization", `Bearer ${mspToken()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.services[0].fulfillmentKnown).toBe(true);
+    expect(res.body.services[0].internalCostCents).toBe(4200);
   });
 });
 
@@ -317,9 +339,28 @@ describe("POST /msp/customers/:customerId/marketplace/checkout", () => {
     expect(res.body.outcome).toBe("free_activated");
     expect(mockStripePaymentIntentsCreate).not.toHaveBeenCalled();
     expect(mockResolveFulfillment).toHaveBeenCalledOnce();
+    // Git #3819 — the resolveFulfillment status (stubbed "emitted" in beforeEach)
+    // must reach the response, not just the log, so the console UI can report it.
+    expect(res.body.fulfillmentStatus).toBe("emitted");
     expect(mockCreateAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ actionType: "msp.marketplace.purchase_for_customer", clientId: CUSTOMER_ID }),
     );
+  });
+
+  it("Git #3819: reports fulfillmentStatus 'unknown_type' on the response when resolveFulfillment can't match the key (#3404)", async () => {
+    mockResolveFulfillment.mockResolvedValueOnce({ status: "unknown_type", fulfillmentTypeKey: "assessment", idempotencyKey: "x" });
+    queueScopingSelects();
+    mockDbSelect.mockReturnValueOnce(selectChain([freeService]));
+    mockDbInsert.mockReturnValueOnce(insertChain([{ id: 505 }]));
+
+    const app = await makeApp();
+    const res = await request(app)
+      .post(`/api/msp/customers/${CUSTOMER_ID}/marketplace/checkout`)
+      .set("Authorization", `Bearer ${mspToken()}`)
+      .send({ serviceId: SERVICE_ID });
+
+    expect(res.status).toBe(201);
+    expect(res.body.fulfillmentStatus).toBe("unknown_type");
   });
 
   it("paid (add_on): charges the MSP's saved card, records an accepted offer", async () => {
@@ -342,6 +383,11 @@ describe("POST /msp/customers/:customerId/marketplace/checkout", () => {
     expect(piCall["amount"]).toBe(7_000); // 70% default wholesale margin of 10_000
     expect(mockResolveFulfillment).toHaveBeenCalledOnce();
     expect(mockCreateAuditLog).toHaveBeenCalledOnce();
+    // Git #3819 — the console's post-purchase "what now exists" panel needs the
+    // real charged/quoted figures and the real fulfillment outcome, not a guess.
+    expect(res.body.wholesaleCostCents).toBe(7_000);
+    expect(res.body.retailPriceCents).toBe(10_000);
+    expect(res.body.fulfillmentStatus).toBe("emitted");
   });
 
   // #3404 — resolveFulfillment's return value was previously discarded at both

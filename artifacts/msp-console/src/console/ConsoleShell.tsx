@@ -26,6 +26,7 @@ import { AccountSecurity } from "./modules/AccountSecurity";
 import { Dlq } from "./modules/Dlq";
 import { PlanSelfService } from "./modules/PlanSelfService";
 import { Reports } from "./modules/Reports";
+import { MarketplacePurchase } from "./modules/MarketplacePurchase";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
@@ -300,6 +301,12 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     // "SharePoint connectors" tabs all mount from this one shared component.
     const customer = customers.find((c) => c.id === sel.tenant);
     return <Documents scopeCustomerId={sel.tenant} scopeCustomerName={customer?.name} initialTab="hub" />;
+  }
+  if (sel.kind === "page" && sel.page === "marketplace") {
+    // Marketplace Purchase (#3819), README screen 47 — buying a catalog item
+    // on this customer's behalf, charged to the MSP's card.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    return <MarketplacePurchase customerId={sel.tenant} customerName={customer?.name ?? `Customer ${sel.tenant}`} />;
   }
   if (sel.kind === "msp" && sel.page === "docs") {
     // Documents (#2647), README screen 32 — the MSP-wide library, unscoped.

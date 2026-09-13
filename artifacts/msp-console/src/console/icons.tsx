@@ -55,6 +55,8 @@ import {
   FileBarChart2,
   // AD OU Assignment (#3818) — FolderTree.
   FolderTree,
+  // Marketplace Purchase (#3819)
+  ShoppingCart,
   type LucideIcon,
 } from "lucide-react";
 
@@ -221,6 +223,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   "file-bar-chart-2": FileBarChart2,
   // AD OU Assignment (#3818)
   "folder-tree": FolderTree,
+  // Marketplace Purchase (#3819)
+  "shopping-cart": ShoppingCart,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});
