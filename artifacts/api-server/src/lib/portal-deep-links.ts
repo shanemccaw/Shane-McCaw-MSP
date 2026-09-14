@@ -56,6 +56,18 @@ export interface ResolvedPortalDeepLink {
   label: string;
 }
 
+// Dynamic per-id destinations that exist as real, mounted portal routes but
+// can never sit in the static `PORTAL_DEEP_LINK_DESTINATIONS` table above
+// (one id per report, not one fixed rawPath). `notification-center.ts`
+// mints `linkPath: /status-reports/${report.id}` for both the MSP→customer
+// publish fan-out and the customer→MSP comment notification (Git #4038,
+// Feature #3435) — `artifacts/portal` mounts that exact path
+// (`/status-reports/:id`) as of #4038, so this is a real, live destination,
+// not a guess.
+const DYNAMIC_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
+  { pattern: /^\/status-reports\/\d+$/, label: "Status report" },
+];
+
 /**
  * Resolve a raw `deep_link_path` to somewhere real. `null`/unknown paths and
  * paths whose destination hasn't shipped yet resolve to the portal's
@@ -65,6 +77,11 @@ export interface ResolvedPortalDeepLink {
  */
 export function resolvePortalDeepLink(rawPath: string | null | undefined): ResolvedPortalDeepLink {
   if (!rawPath) return { href: "/", available: true, label: "Portal" };
+
+  const dynamic = DYNAMIC_PATTERNS.find((d) => d.pattern.test(rawPath));
+  if (dynamic) {
+    return { href: rawPath, available: true, label: dynamic.label };
+  }
 
   const dest = BY_RAW_PATH.get(rawPath);
   if (!dest) {
