@@ -8,12 +8,42 @@ interface Client {
   email: string;
 }
 
+interface Tenant {
+  id: number;
+  name: string;
+}
+
+interface AuditCatalogue {
+  actionCategories: string[];
+  actorRoles: string[];
+}
+
+interface AuditCoverage {
+  totalRows: number;
+  categorizedRows: number;
+  uncategorizedRows: number;
+  categorizedPercent: number | null;
+}
+
 interface AuditResponse {
   entries: AuditLogEntry[];
   total: number;
   page: number;
   pageSize: number;
+  coverage: AuditCoverage;
+  coverageNote: string;
 }
+
+const ACTION_CATEGORY_LABELS: Record<string, string> = {
+  create: "Create", update: "Update", delete: "Delete", action: "Action",
+  settings: "Settings", auth: "Auth", access: "Access", security: "Security", system: "System",
+};
+
+const ACTOR_ROLE_LABELS: Record<string, string> = {
+  admin: "Admin", client: "Client", customer: "Customer", msp: "MSP",
+  platform_admin: "Platform Admin", service_account: "Service Account",
+  agent: "Agent", microsoft: "Microsoft", system: "System",
+};
 
 function Spinner() {
   return (
@@ -67,10 +97,15 @@ export default function ActivityLogPage() {
   const { fetchWithAuth } = useAuth();
   const [data, setData] = useState<AuditResponse | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [catalogue, setCatalogue] = useState<AuditCatalogue | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [clientFilter, setClientFilter] = useState("");
+  const [tenantFilter, setTenantFilter] = useState("");
   const [entityFilter, setEntityFilter] = useState("all");
+  const [actionCategoryFilter, setActionCategoryFilter] = useState("all");
+  const [actorRoleFilter, setActorRoleFilter] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
@@ -79,7 +114,10 @@ export default function ActivityLogPage() {
     try {
       const params = new URLSearchParams({ page: String(p) });
       if (clientFilter) params.set("clientId", clientFilter);
+      if (tenantFilter) params.set("tenantId", tenantFilter);
       if (entityFilter !== "all") params.set("entityType", entityFilter);
+      if (actionCategoryFilter !== "all") params.set("actionCategory", actionCategoryFilter);
+      if (actorRoleFilter !== "all") params.set("actorRole", actorRoleFilter);
       if (fromDate) params.set("from", fromDate);
       if (toDate) params.set("to", toDate);
 
@@ -88,12 +126,20 @@ export default function ActivityLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [fetchWithAuth, clientFilter, entityFilter, fromDate, toDate]);
+  }, [fetchWithAuth, clientFilter, tenantFilter, entityFilter, actionCategoryFilter, actorRoleFilter, fromDate, toDate]);
 
   useEffect(() => {
     fetchWithAuth("/api/audit-logs/clients")
       .then(r => r.json())
       .then(d => setClients(d as Client[]))
+      .catch(() => null);
+    fetchWithAuth("/api/audit-logs/tenants")
+      .then(r => r.json())
+      .then(d => setTenants(d as Tenant[]))
+      .catch(() => null);
+    fetchWithAuth("/api/audit-logs/catalogue")
+      .then(r => r.json())
+      .then(d => setCatalogue(d as AuditCatalogue))
       .catch(() => null);
   }, [fetchWithAuth]);
 
@@ -101,7 +147,7 @@ export default function ActivityLogPage() {
     setPage(1);
     void fetchLogs(1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientFilter, entityFilter, fromDate, toDate]);
+  }, [clientFilter, tenantFilter, entityFilter, actionCategoryFilter, actorRoleFilter, fromDate, toDate]);
 
   useEffect(() => {
     void fetchLogs(page);
@@ -147,6 +193,49 @@ export default function ActivityLogPage() {
           </select>
         </div>
 
+        <div className="flex flex-col gap-1 min-w-[160px]">
+          <label className="text-xs font-semibold text-foreground">Tenant</label>
+          <select
+            value={tenantFilter}
+            onChange={e => setTenantFilter(e.target.value)}
+            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-card focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="">All Tenants</option>
+            {tenants.map(t => (
+              <option key={t.id} value={String(t.id)}>{t.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1 min-w-[160px]">
+          <label className="text-xs font-semibold text-foreground">Action Category</label>
+          <select
+            value={actionCategoryFilter}
+            onChange={e => setActionCategoryFilter(e.target.value)}
+            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-card focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="all">All Categories</option>
+            <option value="uncategorized">Uncategorized (legacy)</option>
+            {(catalogue?.actionCategories ?? []).map(c => (
+              <option key={c} value={c}>{ACTION_CATEGORY_LABELS[c] ?? c}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1 min-w-[160px]">
+          <label className="text-xs font-semibold text-foreground">Actor Role</label>
+          <select
+            value={actorRoleFilter}
+            onChange={e => setActorRoleFilter(e.target.value)}
+            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-card focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="all">All Roles</option>
+            {(catalogue?.actorRoles ?? []).map(r => (
+              <option key={r} value={r}>{ACTOR_ROLE_LABELS[r] ?? r}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-foreground">From</label>
           <input
@@ -167,15 +256,32 @@ export default function ActivityLogPage() {
           />
         </div>
 
-        {(clientFilter || entityFilter !== "all" || fromDate || toDate) && (
+        {(clientFilter || tenantFilter || entityFilter !== "all" || actionCategoryFilter !== "all" || actorRoleFilter !== "all" || fromDate || toDate) && (
           <button
-            onClick={() => { setClientFilter(""); setEntityFilter("all"); setFromDate(""); setToDate(""); }}
+            onClick={() => {
+              setClientFilter(""); setTenantFilter(""); setEntityFilter("all");
+              setActionCategoryFilter("all"); setActorRoleFilter("all"); setFromDate(""); setToDate("");
+            }}
             className="text-xs text-muted-foreground hover:text-foreground underline mt-5"
           >
             Clear filters
           </button>
         )}
       </div>
+
+      {/* Coverage caveat — real, computed, honest: this is not a claim that
+          every real action is audited, only that what's shown here is real. */}
+      {data?.coverage && (
+        <div className="bg-accent/40 border border-border rounded-xl px-4 py-3 mb-6 text-xs text-muted-foreground">
+          <span className="font-semibold text-foreground">
+            {data.coverage.categorizedPercent != null ? `${data.coverage.categorizedPercent}% categorized` : "No rows in this view"}
+          </span>
+          {data.coverage.totalRows > 0 && (
+            <span> — {data.coverage.categorizedRows} categorized, {data.coverage.uncategorizedRows} uncategorized (legacy, pre-2026-09-14).</span>
+          )}
+          <span className="block mt-1">{data.coverageNote}</span>
+        </div>
+      )}
 
       {/* Log */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
