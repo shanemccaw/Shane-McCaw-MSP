@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>a{color:#60a5fa}a:hover{color:#93c5fd}input::placeholder{color:#64748b}</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <sc-if value="{{ showOwnHeader }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">STAFF ROLES AND ONBOARDING</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Who works for this MSP, and who has been invited</span>
+    </div></sc-if>
+    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPAdmin or above · every route</span>
+    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.24);font-size:11px;font-weight:600;color:#93c5fd">Acting as Priya Raman</span>
+    <sc-if value="{{ showToggles }}" hint-placeholder-val="{{ true }}"><button onClick="{{ toggleLive }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ liveBtnLabel }}</button></sc-if>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+      <button onClick="{{ t.select }}" style="display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+  </div>
+
+  <!-- Roster -->
+  <sc-if value="{{ isRoster }}" hint-placeholder-val="{{ true }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start;min-width:0">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <sc-for list="{{ rosterChips }}" as="c" hint-placeholder-count="2">
+            <button onClick="{{ c.select }}" style="display:inline-flex;align-items:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:{{ c.bg }};border:1px solid {{ c.line }};font-size:11px;font-weight:600;color:{{ c.fg }};cursor:pointer;font-family:inherit">{{ c.label }}</button>
+          </sc-for>
+          <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;flex:1;min-width:160px">{{ rosterCaption }}</span>
+        </div>
+
+        <sc-if value="{{ hasPeople }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+            <sc-for list="{{ people }}" as="p" hint-placeholder-count="4">
+              <button onClick="{{ p.select }}" style="display:flex;flex-direction:column;gap:7px;text-align:left;border:1px solid {{ p.line }};border-radius:10px;background:{{ p.bg }};padding:12px;cursor:pointer;font-family:inherit;min-width:0;opacity:{{ p.opacity }}">
+                <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%">
+                  <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;flex:1;min-width:120px">{{ p.name }}</span>
+                  <span style="display:inline-flex;align-items:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ p.roleTint }};border:1px solid {{ p.roleLine }};font-size:10px;font-weight:600;color:{{ p.roleColor }}">{{ p.role }}</span>
+                </span>
+                <span style="font-size:11px;color:#94a3b8;word-break:break-all">{{ p.email }}</span>
+                <span style="display:flex;gap:6px;flex-wrap:wrap">
+                  <sc-for list="{{ p.tags }}" as="g" hint-placeholder-count="3">
+                    <span style="display:inline-flex;align-items:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ g.tint }};border:1px solid {{ g.line }};font-size:10px;font-weight:600;color:{{ g.color }}">{{ g.label }}</span>
+                  </sc-for>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noPeople }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
+            <span style="font-size:13px;font-weight:700;color:#cbd5e1">No staff yet</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:380px">{{ noPeopleText }}</span>
+          </div>
+        </sc-if>
+        <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">Newest account first. The roster route returns every account carrying this MSP's id and applies no role filter of its own, so the staff-only view is drawn here.</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+        <sc-if value="{{ hasOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0">
+            <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+              <span style="display:flex;flex-direction:column;gap:3px;min-width:170px;flex:1">
+                <span style="font-size:14px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9">{{ openName }}</span>
+                <span style="font-size:11px;color:#94a3b8;word-break:break-all">{{ openEmail }}</span>
+                <span style="font-size:11px;color:#64748b">{{ openMeta }}</span>
+              </span>
+              <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:{{ openTint }};border:1px solid {{ openLine }};font-size:10.5px;font-weight:600;color:{{ openColor }}">{{ openRole }}</span>
+            </div>
+
+            <sc-if value="{{ openScopable }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+                <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;flex-direction:column;gap:8px">
+                  <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">ROLE · ONLY TWO CAN BE GIVEN HERE</span>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <sc-for list="{{ roleChoices }}" as="r" hint-placeholder-count="2">
+                      <button onClick="{{ r.select }}" style="display:inline-flex;align-items:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;background:{{ r.bg }};border:1px solid {{ r.line }};font-size:12px;font-weight:600;color:{{ r.fg }};cursor:pointer;font-family:inherit">{{ r.label }}</button>
+                    </sc-for>
+                  </div>
+                  <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Anything else — PlatformAdmin included — fails validation before the route runs. The response is a bare ok; the new role is not echoed back.</span>
+                </div>
+
+                <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;flex-direction:column;gap:8px">
+                  <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8;flex:1">CUSTOMER SCOPE</span>
+                    <span style="font-size:11px;font-weight:600;color:{{ scopeSummaryColor }}">{{ scopeSummary }}</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px">
+                    <sc-for list="{{ scopeBoxes }}" as="b" hint-placeholder-count="6">
+                      <button onClick="{{ b.toggle }}" style="display:flex;align-items:center;gap:8px;text-align:left;height:32px;padding:0 10px;border-radius:6px;background:{{ b.bg }};border:1px solid {{ b.line }};cursor:pointer;font-family:inherit;min-width:0">
+                        <span style="width:14px;height:14px;flex:none;border-radius:3px;border:1px solid {{ b.boxLine }};background:{{ b.boxBg }}"></span>
+                        <span style="font-size:11.5px;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">{{ b.name }}</span>
+                        <span style="font-size:10px;color:#64748b;white-space:nowrap">{{ b.status }}</span>
+                      </button>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <button onClick="{{ saveScopes }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Save scope</button>
+                    <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;flex:1;min-width:160px">Saving replaces the whole set. Nothing ticked means unrestricted — the entire book — and that is what an empty save does.</span>
+                  </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+                  <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;flex-direction:column;gap:7px">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">PURCHASE APPROVAL</span>
+                    <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ approveText }}</span>
+                    <button onClick="{{ toggleApprove }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;align-self:flex-start;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">{{ approveLabel }}</button>
+                  </div>
+                  <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;flex-direction:column;gap:7px">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">SESSIONS</span>
+                    <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ sessionsText }}</span>
+                    <button onClick="{{ revokeAll }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;align-self:flex-start;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Sign them out everywhere</button>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ openNotScopable }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid rgba(251,191,36,.28);border-radius:10px;background:rgba(251,191,36,.07);padding:12px;display:flex;flex-direction:column;gap:5px">
+                <span style="font-size:11.5px;font-weight:700;color:#fbbf24">Listed, but not staff</span>
+                <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">{{ notScopableText }}</span>
+              </div>
+            </sc-if>
+
+            <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid rgba(148,163,184,.12);padding-top:12px">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">STANDING</span>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <button onClick="{{ toggleActive }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.1);color:#fbbf24;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">{{ activeLabel }}</button>
+                <button onClick="{{ remove }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.12);color:#f87171;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Remove from this MSP</button>
+                <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;flex:1;min-width:180px">Both set the same inactive flag; neither deletes anything. Both refuse your own account.</span>
+              </div>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Password reset, one-time temporary password, MFA reset and MFA enforcement act on this same account from <a href="Account Security.dc.html">Account security</a> — the five credential routes are shared between the two surfaces and are not repeated here.</span>
+            </div>
+
+            <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
+                <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
+                <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+            <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">Pick a person</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:320px">Role, customer scope, purchase approval, sessions and standing are all set here. Credentials are on Account security.</span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- Invites -->
+  <sc-if value="{{ isInvites }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start;min-width:0">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Invite someone</span>
+          <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">One email, one of two roles. Valid 72 hours.</span>
+        </div>
+        <label style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:11px;font-weight:600;color:#94a3b8">Email</span>
+          <input value="{{ inviteEmail }}" onChange="{{ setInviteEmail }}" placeholder="name@shanemccaw.com" style="height:34px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:12.5px;font-family:inherit;outline:none;min-width:0">
+        </label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <sc-for list="{{ inviteRoles }}" as="r" hint-placeholder-count="2">
+            <button onClick="{{ r.select }}" style="display:inline-flex;align-items:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;background:{{ r.bg }};border:1px solid {{ r.line }};font-size:12px;font-weight:600;color:{{ r.fg }};cursor:pointer;font-family:inherit">{{ r.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onClick="{{ sendInvite }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Send invite</button>
+          <button onClick="{{ inviteExisting }}" title="What happens when the address already belongs to an active member" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Try an existing member</button>
+        </div>
+        <sc-if value="{{ hasInviteResult }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid {{ invLine }};border-radius:12px;background:{{ invTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
+            <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ invColor }}">{{ invCode }}</span>
+            <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ invText }}</span>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(148,163,184,.12);padding-top:12px">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">WHAT THE INVITED PERSON GOES THROUGH</span>
+          <sc-for list="{{ acceptSteps }}" as="a" hint-placeholder-count="4">
+            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+              <span style="font-size:10px;font-weight:700;color:#60a5fa;margin-top:2px;flex:none;width:14px">{{ a.n }}</span>
+              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;text-wrap:pretty;min-width:0">{{ a.text }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Waiting to be accepted</span>
+          <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ invitesCaption }}</span>
+        </div>
+        <sc-if value="{{ hasInvites }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+            <sc-for list="{{ invites }}" as="i" hint-placeholder-count="2">
+              <div style="display:flex;flex-direction:column;gap:7px;border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:12px;min-width:0">
+                <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;flex:1;min-width:140px;word-break:break-all">{{ i.email }}</span>
+                  <span style="display:inline-flex;align-items:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.24);font-size:10px;font-weight:600;color:#60a5fa">{{ i.role }}</span>
+                </span>
+                <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ i.meta }}</span>
+                <button onClick="{{ i.revoke }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;align-self:flex-start;height:28px;padding:0 11px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.12);color:#f87171;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Revoke invite</button>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noInvites }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
+            <span style="font-size:13px;font-weight:700;color:#cbd5e1">No pending invites</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:360px">A real empty array. No invite has ever been sent from this MSP, so this is also the live state.</span>
+            <span style="font-size:11px;font-family:Menlo,monospace;color:#64748b">GET /api/msp/settings/invites → []</span>
+          </div>
+        </sc-if>
+        <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">Only pending invites are listed. One that was accepted or that expired drops off this list but is never deleted, and an accepted one cannot be revoked — history is kept by omission rather than by a status.</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- Sessions -->
+  <sc-if value="{{ isSessions }}" hint-placeholder-val="{{ false }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Active sessions across the MSP</span>
+        <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;flex:1;min-width:160px">{{ sessionsCaption }}</span>
+        <input value="{{ sessionQ }}" onChange="{{ setSessionQ }}" placeholder="filter by person — done here, not on the server" style="height:30px;width:280px;max-width:100%;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:12px;font-family:inherit;outline:none">
+      </div>
+      <sc-if value="{{ hasSessions }}" hint-placeholder-val="{{ true }}">
+        <div style="overflow-x:auto;min-width:0">
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:700px">
+            <div style="display:grid;grid-template-columns:1.6fr 1.2fr 1.2fr 1.4fr 110px;gap:12px;padding:0 12px 6px;border-bottom:1px solid rgba(148,163,184,.14)">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">WHO</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">ISSUED</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">EXPIRES</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">TOKEN</span>
+              <span></span>
+            </div>
+            <sc-for list="{{ sessions }}" as="sn" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:1.6fr 1.2fr 1.2fr 1.4fr 110px;gap:12px;align-items:center;border:1px solid rgba(148,163,184,.14);border-radius:9px;background:rgba(2,6,23,.4);padding:10px 12px;min-width:0">
+                <span style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                  <span style="font-size:12px;font-weight:600;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ sn.name }}</span>
+                  <span style="font-size:10.5px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ sn.email }}</span>
+                </span>
+                <span style="font-size:11.5px;color:#cbd5e1;white-space:nowrap">{{ sn.issued }}</span>
+                <span style="font-size:11.5px;color:#cbd5e1;white-space:nowrap">{{ sn.expires }}</span>
+                <span style="font-size:11px;font-family:Menlo,monospace;color:#93c5fd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ sn.hash }}</span>
+                <button onClick="{{ sn.revoke }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:28px;padding:0 10px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.12);color:#f87171;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Revoke</button>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noSessions }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
+          <span style="font-size:13px;font-weight:700;color:#cbd5e1">No live sessions</span>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:360px">Every refresh token for every active account in this MSP is either revoked or expired.</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ hasSessionResult }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(248,113,113,.28);border-radius:12px;background:rgba(248,113,113,.1);padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
+          <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:#f87171">{{ sessionResCode }}</span>
+          <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ sessionResText }}</span>
+        </div>
+      </sc-if>
+      <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">One MSP-wide list, newest first, one hundred at most, active accounts only. There is no per-person session read — the name filter above runs in this screen — while the per-person revoke on the roster is real and returns how many it closed.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these nineteen routes do and don't give this screen</span>
+      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+        <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+          <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+          <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:1000},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
+const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
+const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
+const BLUE = ["rgba(96,165,250,.1)", "rgba(96,165,250,.24)", "#60a5fa"];
+const VIOLET = ["rgba(167,139,250,.1)", "rgba(167,139,250,.26)", "#a78bfa"];
+const GREY = ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"];
+
+const ME = 201;
+const STAFF_ROLES = ["MSPAdmin", "MSPOperator"];
+const CUSTOMERS = [
+  { id: 1, name: "Northwind Logistics", status: "active" }, { id: 2, name: "Halcyon Health", status: "active" },
+  { id: 3, name: "Kestrel Financial", status: "active" }, { id: 4, name: "Contoso Ltd", status: "active" },
+  { id: 5, name: "Fabrikam", status: "trial" }, { id: 6, name: "Mccawsoft2", status: "testbed" }
+];
+
+// The nine live rows: every account that carries this MSP's id, none of them staff.
+const LIVE_PEOPLE = [
+  { id: 1, name: "Shane McCaw", email: "shane@shanemccaw.com", role: "PlatformAdmin", active: true, approves: false, scopes: [], lastLogin: "13 Sep 2026", created: "2025-11-02" },
+  { id: 37, name: null, email: "shanemccaw+assessment1@outlook.com", role: "Assessment", active: true, approves: false, scopes: [], lastLogin: "2 Jun 2026", created: "2026-02-14" },
+  { id: 39, name: null, email: "shanemccaw+buyassessment@outlook.com", role: "CustomerUser", active: true, approves: false, scopes: [], lastLogin: "18 Jul 2026", created: "2026-02-20" },
+  { id: 42, name: null, email: "shanemccaw@outlook.com", role: "CustomerUser", active: true, approves: false, scopes: [], lastLogin: "12 Sep 2026", created: "2026-03-01" },
+  { id: 50, name: null, email: "test@test.com", role: "Assessment", active: true, approves: false, scopes: [], lastLogin: null, created: "2026-04-11" },
+  { id: 55, name: null, email: "shanemccaw@gmail.com", role: "Assessment", active: true, approves: false, scopes: [], lastLogin: "9 Aug 2026", created: "2026-05-03" },
+  { id: 56, name: null, email: "shane@shanemccaw.onmicrosoft.com", role: "Assessment", active: true, approves: false, scopes: [], lastLogin: null, created: "2026-05-03" },
+  { id: 57, name: null, email: "shanemccaw+premier@outlook.com", role: "CustomerUser", active: true, approves: false, scopes: [], lastLogin: "30 Aug 2026", created: "2026-06-19" },
+  { id: 103, name: null, email: "shanemccaw+1317pack@gmail.com", role: "CustomerUser", active: true, approves: false, scopes: [], lastLogin: "11 Sep 2026", created: "2026-09-11" }
+];
+const STAFF = [
+  { id: ME, name: "Priya Raman", email: "priya.raman@shanemccaw.com", role: "MSPAdmin", active: true, approves: true, scopes: [], lastLogin: "13 Sep 2026", created: "2026-07-01" },
+  { id: 202, name: "Marcus Lee", email: "marcus.lee@shanemccaw.com", role: "MSPOperator", active: true, approves: false, scopes: [1, 2], lastLogin: "12 Sep 2026", created: "2026-07-15" },
+  { id: 203, name: "Sam Oyelaran", email: "sam.oyelaran@shanemccaw.com", role: "MSPAdmin", active: true, approves: true, scopes: [], lastLogin: "10 Sep 2026", created: "2026-08-20" },
+  { id: 204, name: "Tobi Okafor", email: "tobi.okafor@shanemccaw.com", role: "MSPOperator", active: false, approves: false, scopes: [], lastLogin: "21 Aug 2026", created: "2026-08-02" }
+];
+const INVITES = [
+  { id: 11, email: "dev@shanemccaw.com", role: "MSPOperator", expires: "15 Sep 2026, 09:12 UTC", by: "Priya Raman" },
+  { id: 12, email: "finance@shanemccaw.com", role: "MSPAdmin", expires: "14 Sep 2026, 17:40 UTC", by: "Sam Oyelaran" }
+];
+const SESSIONS = [
+  { id: 1, userId: ME, name: "Priya Raman", email: "priya.raman@shanemccaw.com", issued: "13 Sep, 08:02", expires: "20 Sep, 08:02", hash: "a91f3c…7c04e" },
+  { id: 2, userId: 202, name: "Marcus Lee", email: "marcus.lee@shanemccaw.com", issued: "12 Sep, 14:31", expires: "19 Sep, 14:31", hash: "d4e08b…19aa2" },
+  { id: 3, userId: 202, name: "Marcus Lee", email: "marcus.lee@shanemccaw.com", issued: "9 Sep, 18:20", expires: "16 Sep, 18:20", hash: "3bf7a1…e58d0" },
+  { id: 4, userId: 203, name: "Sam Oyelaran", email: "sam.oyelaran@shanemccaw.com", issued: "10 Sep, 07:45", expires: "17 Sep, 07:45", hash: "77c2e9…0b3f6" },
+  { id: 5, userId: 1, name: "Shane McCaw", email: "shane@shanemccaw.com", issued: "13 Sep, 16:02", expires: "20 Sep, 16:02", hash: "f10d5a…c92b7" }
+];
+const ROLE_TONE = { PlatformAdmin: VIOLET, MSPAdmin: BLUE, MSPOperator: GREEN, CustomerUser: GREY, Assessment: GREY, Free: GREY, ServiceAccount: GREY };
+
+class Component extends DCLogic {
+  state = { live: false, tab: "roster", staffOnly: true, openId: 202, people: STAFF.concat(LIVE_PEOPLE), draftScopes: null, result: null,
+    inviteEmail: "", inviteRole: "MSPOperator", invites: INVITES, inviteResult: null, sessions: SESSIONS, sessionQ: "", sessionResult: null };
+
+  patch(id, fields) { this.setState(s => ({ people: s.people.map(p => p.id === id ? Object.assign({}, p, fields) : p) })); }
+
+  renderVals() {
+    const st = this.state;
+    const live = this.props.forceEmpty === undefined ? st.live : !!this.props.forceEmpty;
+    const everyone = live ? LIVE_PEOPLE : st.people;
+    const staff = everyone.filter(p => STAFF_ROLES.indexOf(p.role) > -1);
+    const shown = st.staffOnly ? staff : everyone;
+    const invites = live ? [] : st.invites;
+    const sessions = (live ? SESSIONS.filter(x => x.userId === 1) : st.sessions).filter(x => !st.sessionQ.trim() || (x.name + " " + x.email).toLowerCase().indexOf(st.sessionQ.trim().toLowerCase()) > -1);
+
+    const tabs = [["roster", "Roster", shown.length], ["invites", "Invites", invites.length], ["sessions", "Sessions", sessions.length]].map(([k, label, count]) => {
+      const on = st.tab === k;
+      return { label, count: String(count), select: () => this.setState({ tab: k, result: null }),
+        bg: on ? "rgba(37,99,235,.18)" : "transparent", border: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+        fg: on ? "#f1f5f9" : "#94a3b8", countColor: on ? "#60a5fa" : "#94a3b8" };
+    });
+    const chip = (on) => ({ bg: on ? "rgba(37,99,235,.18)" : "rgba(148,163,184,.06)", line: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)", fg: on ? "#f1f5f9" : "#94a3b8" });
+
+    const people = shown.map(p => {
+      const rt = ROLE_TONE[p.role] || GREY;
+      const isStaff = STAFF_ROLES.indexOf(p.role) > -1;
+      const tags = [];
+      if (isStaff) tags.push(p.scopes.length === 0 ? { label: "All customers", tint: GREEN[0], line: GREEN[1], color: GREEN[2] } : { label: p.scopes.length + " of " + CUSTOMERS.length + " customers", tint: AMBER[0], line: AMBER[1], color: AMBER[2] });
+      if (p.approves) tags.push({ label: "approves purchases", tint: BLUE[0], line: BLUE[1], color: BLUE[2] });
+      tags.push(p.active ? { label: p.lastLogin ? "last sign-in " + p.lastLogin : "never signed in", tint: GREY[0], line: GREY[1], color: GREY[2] } : { label: "suspended", tint: RED[0], line: RED[1], color: RED[2] });
+      if (p.id === ME) tags.push({ label: "you", tint: VIOLET[0], line: VIOLET[1], color: VIOLET[2] });
+      return { name: p.name || "No name on the account", email: p.email, role: p.role, roleTint: rt[0], roleLine: rt[1], roleColor: rt[2], tags,
+        opacity: p.active ? "1" : ".7",
+        bg: p.id === st.openId ? "rgba(96,165,250,.09)" : "rgba(2,6,23,.4)", line: p.id === st.openId ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)",
+        select: () => this.setState({ openId: p.id, draftScopes: null, result: null }) };
+    });
+
+    const p = shown.find(x => x.id === st.openId) || null;
+    const pt = p ? (ROLE_TONE[p.role] || GREY) : GREY;
+    const scopable = !!p && STAFF_ROLES.indexOf(p.role) > -1;
+    const draft = p ? (st.draftScopes || p.scopes) : [];
+    const self = !!p && p.id === ME;
+    const res = st.result, inv = st.inviteResult;
+    const mySessions = p ? sessions.filter(x => x.userId === p.id).length : 0;
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      rootBg: this.props.rootBg ?? "transparent",
+      showOwnHeader: !(this.props.embedded ?? false),
+      showToggles: !(this.props.embedded ?? false),
+      showNotes: this.props.showNotes ?? true,
+      toggleLive: () => this.setState(s => ({ live: !s.live, result: null, openId: s.live ? 202 : 1 })),
+      liveBtnLabel: st.live ? "Show a staffed MSP" : "Show the live roster",
+
+      tabs, isRoster: st.tab === "roster", isInvites: st.tab === "invites", isSessions: st.tab === "sessions",
+      rosterChips: [[true, "Staff only"], [false, "Everyone with this MSP id"]].map(([k, label]) => Object.assign({ label, select: () => this.setState({ staffOnly: k }) }, chip(st.staffOnly === k))),
+      rosterCaption: everyone.length + " account" + (everyone.length === 1 ? "" : "s") + " carry this MSP's id · " + staff.length + " " + (staff.length === 1 ? "is" : "are") + " staff",
+      hasPeople: people.length > 0, noPeople: people.length === 0, people,
+      noPeopleText: everyone.length + " accounts carry this MSP's id — a platform administrator, assessment sign-ups and customer logins — and none is an MSPAdmin or MSPOperator. That is the live state: no staff member has ever been invited or accepted. Switch the filter to see the accounts the route actually returns.",
+
+      hasOpen: !!p, noOpen: !p,
+      openName: p ? (p.name || "No name on the account") : "", openEmail: p ? p.email : "",
+      openMeta: p ? "user #" + p.id + " · created " + p.created + " · " + (p.lastLogin ? "last sign-in " + p.lastLogin : "never signed in") : "",
+      openRole: p ? p.role : "", openTint: pt[0], openLine: pt[1], openColor: pt[2],
+      openScopable: scopable, openNotScopable: !!p && !scopable,
+      notScopableText: p ? "This account is " + (p.role === "PlatformAdmin" ? "a platform administrator" : p.role === "CustomerUser" ? "a customer login" : "an assessment sign-up") + " that happens to carry this MSP's id. The roster route returns it, but the role, scope and approval routes refuse it: only MSPAdmin and MSPOperator can be set or scoped here, and nothing on this surface can promote or demote anyone else." : "",
+      roleChoices: STAFF_ROLES.map(r => Object.assign({ label: r, select: () => { if (!p || p.role === r) return; this.patch(p.id, { role: r }); this.setState({ result: ["200 · { ok: true }", "Role written with a fresh updated stamp. The response does not say what the role now is — this screen re-reads the roster to show it.", BLUE] }); } }, chip(!!p && p.role === r))),
+      scopeSummary: draft.length === 0 ? "unrestricted — the whole book" : draft.length + " of " + CUSTOMERS.length + " selected",
+      scopeSummaryColor: draft.length === 0 ? "#34d399" : "#fbbf24",
+      scopeBoxes: CUSTOMERS.map(c => { const on = draft.indexOf(c.id) > -1; return { name: c.name, status: c.status, bg: on ? "rgba(37,99,235,.14)" : "rgba(2,6,23,.4)", line: on ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)", boxBg: on ? "#2563eb" : "transparent", boxLine: on ? "#2563eb" : "rgba(148,163,184,.4)",
+        toggle: () => this.setState({ draftScopes: on ? draft.filter(x => x !== c.id) : draft.concat([c.id]) }) }; }),
+      saveScopes: () => { if (!p) return; const ids = draft.slice().sort(); this.patch(p.id, { scopes: ids }); this.setState({ draftScopes: null, result: ["200 · { ok: true, assignedCustomerIds: [" + ids.join(", ") + "], unrestricted: " + (ids.length === 0) + " }", ids.length === 0 ? "Every scope row for this person was deleted and none written back — they now see the whole book again. Any id not in your MSP would have been refused before the write." : "Every existing scope row was deleted and these " + ids.length + " written in one transaction — a full replace, not a merge. Note the stored scope ids still point at a retired customer table, so on live routes a scoped set may not line up with the tenant ids they compare against.", GREEN] }); },
+      approveText: p ? (p.approves ? "Counts as an eligible approver for SOW charges, alongside every MSPAdmin." : "Cannot approve SOW charges unless they are an MSPAdmin.") : "",
+      approveLabel: p && p.approves ? "Withdraw approval right" : "Grant approval right",
+      toggleApprove: () => { if (!p) return; this.patch(p.id, { approves: !p.approves }); this.setState({ result: ["200 · { ok: true }", "Flag written. This is the one route that touches it; the approval gate on SOW charges reads it live.", BLUE] }); },
+      sessionsText: p ? (mySessions + " live refresh token" + (mySessions === 1 ? "" : "s") + " in the MSP-wide list. Revoking closes every one and the matching browser sessions, and reports the count.") : "",
+      revokeAll: () => { if (!p) return; this.setState(s => ({ sessions: s.sessions.filter(x => x.userId !== p.id), result: ["200 · { ok: true, revokedCount: " + mySessions + " }", "A real count from a real revoke — this route used to answer with a fixed message and close nothing; that was fixed upstream, though no test covers it yet.", RED] })); },
+      activeLabel: p && p.active ? "Suspend" : "Reactivate",
+      toggleActive: () => { if (!p) return; if (self && p.active) return this.setState({ result: ["400 · Cannot suspend your own account", "Refused at the route regardless of role. Someone else has to do it.", AMBER] }); this.patch(p.id, { active: !p.active }); this.setState({ result: ["200 · { ok: true, isActive: " + !p.active + " }", p.active ? "Marked inactive. Their live sessions are not closed by this call — use the sessions action for that." : "Reactivated. The same flag removal set; nothing else about the account changed.", p.active ? AMBER : GREEN] }); },
+      remove: () => { if (!p) return; if (self) return this.setState({ result: ["400 · Cannot remove your own account from the MSP", "Refused at the route regardless of role.", AMBER] }); this.patch(p.id, { active: false }); this.setState({ result: ["200 · removed (soft)", "Not a delete: the account is set inactive, exactly as suspend does, and stays in the roster route's output. Reactivate undoes it.", RED] }); },
+
+      hasResult: !!res, resCode: res ? res[0] : "", resText: res ? res[1] : "", resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
+
+      inviteEmail: st.inviteEmail, setInviteEmail: (e) => this.setState({ inviteEmail: e.target.value }),
+      inviteRoles: STAFF_ROLES.map(r => Object.assign({ label: r, select: () => this.setState({ inviteRole: r }) }, chip(st.inviteRole === r))),
+      sendInvite: () => {
+        const email = st.inviteEmail.trim().toLowerCase();
+        if (!email) return this.setState({ inviteResult: ["400 · validation", "An email and one of the two roles are required.", AMBER] });
+        if (st.invites.some(i => i.email === email)) return this.setState({ inviteResult: ["409 · An unexpired invite already exists for this email. Revoke it first if you need to resend.", "No silent resend. Revoke the pending one, then send again.", AMBER] });
+        if (st.people.some(x => x.email === email && x.active)) return this.setState({ inviteResult: ["409 · This user is already an active member of your MSP", "The address resolves to an active account with this MSP id.", AMBER] });
+        const row = { id: 20 + st.invites.length, email, role: st.inviteRole, expires: "17 Sep 2026, 02:30 UTC", by: "Priya Raman" };
+        this.setState(s => ({ invites: [row].concat(s.invites), inviteEmail: "", inviteResult: ["201 · the full invite row, token included", "The raw token comes back to you in full so you can confirm the send; the email itself goes out fire-and-forget. Valid 72 hours.", GREEN] }));
+      },
+      inviteExisting: () => this.setState({ inviteResult: ["409 · This user is already an active member of your MSP", "marcus.lee@shanemccaw.com already resolves to an active account with this MSP id, so no invite is created.", AMBER] }),
+      hasInviteResult: !!inv, invCode: inv ? inv[0] : "", invText: inv ? inv[1] : "", invTint: inv ? inv[2][0] : "", invLine: inv ? inv[2][1] : "", invColor: inv ? inv[2][2] : "",
+      acceptSteps: [
+        { n: "1", text: "They open the link. The public page shows the MSP's name and colours and the role they were offered; no sign-in yet. A used or expired token is refused, and so is any invite from a suspended MSP — a trial MSP's works." },
+        { n: "2", text: "If the address already has an account, they must sign in as exactly that address first. Holding the invite link is never enough to move an existing account into your MSP." },
+        { n: "3", text: "If it does not, name and a password of eight characters or more are required — accepting is also account creation." },
+        { n: "4", text: "The token is burned inside the same transaction, so two people accepting at once cannot both succeed. They are then signed in, and if MFA is enforced on the account they land in enrolment rather than an open session." }
+      ],
+      invitesCaption: live ? "the route answered with an empty array" : invites.length + " pending · newest first",
+      hasInvites: invites.length > 0, noInvites: invites.length === 0,
+      invites: invites.map(i => ({ email: i.email, role: i.role, meta: "expires " + i.expires + " · invited by " + i.by,
+        revoke: () => this.setState(s => ({ invites: s.invites.filter(x => x.id !== i.id), inviteResult: ["200 · deleted", "A hard delete, scoped to pending invites only. An already-accepted invite answers not-found here and is kept.", GREY] })) })),
+
+      sessionQ: st.sessionQ, setSessionQ: (e) => this.setState({ sessionQ: e.target.value }),
+      sessionsCaption: sessions.length + " live · newest first · 100 at most",
+      hasSessions: sessions.length > 0, noSessions: sessions.length === 0,
+      sessions: sessions.map(x => ({ name: x.name, email: x.email, issued: x.issued, expires: x.expires, hash: x.hash,
+        revoke: () => this.setState(s => ({ sessions: s.sessions.filter(y => y.id !== x.id), sessionResult: ["200 · revoked", "That one refresh token is stamped revoked. A token belonging to another MSP's user answers not-found, never forbidden."] })) })),
+      hasSessionResult: !!st.sessionResult, sessionResCode: st.sessionResult ? st.sessionResult[0] : "", sessionResText: st.sessionResult ? st.sessionResult[1] : "",
+
+      notes: [
+        { dot: "#f87171", text: "No real staff member exists anywhere in this environment. Nine accounts carry the MSP's id — a platform administrator, assessment sign-ups and customer logins — and none is an MSPAdmin or MSPOperator. Nobody has ever been invited, accepted, scoped or managed through these routes, so every populated state here is a first draft." },
+        { dot: "#f87171", text: "The roster route returns every account carrying the MSP's id and applies no role filter, so customer logins sit alongside staff. The staff-only view is drawn here, with the count of what it hides." },
+        { dot: "#fbbf24", text: "Zero assigned customers means unrestricted — the whole book — not no access. The screen renders it as “All customers” and never as an empty badge." },
+        { dot: "#fbbf24", text: "Saving a scope replaces the whole set in one transaction. An empty save is valid and clears the person back to unrestricted. Any customer id outside your MSP is refused before the write." },
+        { dot: "#fbbf24", text: "The stored scope ids still point at a retired customer table, so on live routes a scoped person's set may not line up with the tenant ids those routes compare against. No scope rows exist today, so everyone takes the unrestricted path." },
+        { dot: "#fbbf24", text: "There is no per-person session read. The MSP-wide list is the only source, so the roster's per-person view filters it here; the per-person revoke, by contrast, is real and returns a count." },
+        { dot: "#60a5fa", text: "Only MSPAdmin and MSPOperator can be assigned or invited, enforced by validation at both routes. Nothing here can create or promote a platform administrator, or touch a customer login's role." },
+        { dot: "#60a5fa", text: "MFA enforcement and sign-out-everywhere both persist now — they used to answer success and change nothing. Neither has a test, so a refactor could bring the silent no-op back unnoticed. Filed upstream." },
+        { dot: "#60a5fa", text: "Remove and suspend set the same inactive flag; nothing is ever deleted, and both refuse your own account. Credential actions on the same person live on Account security, which shares its five routes with this surface." },
+        { dot: "#60a5fa", text: "An invite is refused if the address is already an active member or if an unexpired invite exists — there is no silent resend. The creator gets the raw token back in full; the email itself is fire-and-forget." },
+        { dot: "#94a3b8", text: "Only pending invites are listed. Accepted and expired ones drop off but are never deleted, and an accepted invite cannot be revoked — history is kept by omission, not by a status column." },
+        { dot: "#94a3b8", text: "Accepting an invite for an existing address requires signing in as that address; possession of the link alone never reassigns an account. Double acceptance loses by a guarded update, and the sign-in that follows respects MFA enforcement like every other login path." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

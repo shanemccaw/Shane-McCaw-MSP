@@ -234,7 +234,7 @@
 
   <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
     <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these six routes do and don't give this screen</span>
+      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these seven routes do and don't give this screen</span>
       <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
         <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
           <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
@@ -441,7 +441,7 @@ class Component extends DCLogic {
       ous: ouRows, noOus: ouRows.length === 0,
       ouOpen: !st.empty && !!ou && !ou.tenantless,
       ouName: ou ? ou.name : "",
-      ouMeta: ou ? ou.customer + " · unit " + ou.id : "",
+      ouMeta: ou ? ou.customer + " · unit " + ou.id + " · name from the unit lookup for this customer" : "",
       ouCount: members.length + " placed by hand",
       hasMembers: memberRows.length > 0, noMembers: memberRows.length === 0, members: memberRows,
       upn: st.upn, setUpn: (e) => this.setState({ upn: e.target.value }),
@@ -483,10 +483,12 @@ class Component extends DCLogic {
         { dot: "#fbbf24", text: "Approving a request that names a unit which does not exist changes only the status — nothing is placed. The operator has to create the unit and place the person by hand, and the button says so." },
         { dot: "#60a5fa", text: "Approved and fulfilled do exactly the same thing on the server, including writing the real placement. The difference is only what the customer reads, and neither can be undone: an answered request never returns to waiting." },
         { dot: "#60a5fa", text: "Re-placing an object in a different unit moves it rather than duplicating it, enforced by a real uniqueness rule in the database — one object genuinely only ever sits in one unit." },
+        { dot: "#60a5fa", text: "Unit names come from a dedicated lookup that returns only id and name for one customer at a time. It exists because standing policies carry a bare unit id with no name joined on, and it has no whole-book mode — the customer is required, and one outside your book answers not-found." },
+        { dot: "#60a5fa", text: "The request queue can now be narrowed to one customer on the server instead of pulling the whole book and filtering here. The status filter is still a display filter: an unrecognised status is silently ignored rather than refused." },
         { dot: "#94a3b8", text: "This list only ever shows deliberate placements. Everyone matched by the department guess counts for policy but is not readable from any of these routes, so an empty unit here is not an empty unit in practice." },
         { dot: "#94a3b8", text: "Anything outside your own book answers not-found rather than forbidden, so the screen can never tell you that a unit or a placement exists but is not yours." },
         { dot: "#94a3b8", text: "The display name is a convenience captured once and never refreshed; the directory id is the only identity to trust. The audit trail cannot tell an operator from an admin either — the name and the surface are the real signal." },
-        { dot: "#94a3b8", text: "All three tables behind this screen are empty in live data and nothing outside a test file calls these routes. Both the populated and empty views here are first drafts of a surface nobody has used yet." }
+        { dot: "#94a3b8", text: "All three tables behind this screen are empty in live data. A console page for this surface now exists upstream, but nobody has placed or requested anything through it yet — both the populated and empty views here are drawn from the shape the routes return." }
       ]
     };
   }

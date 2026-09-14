@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>a{color:#60a5fa}a:hover{color:#93c5fd}input::placeholder{color:#64748b}</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <sc-if value="{{ showOwnHeader }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">AUDIT LOG</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">{{ title }}</span>
+    </div></sc-if>
+    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPAdmin or above</span>
+    <button onClick="{{ toggleRole }}" title="The allow set is a database row now, not code — MSPAdmin and PlatformAdmin clear it, MSPOperator does not" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.24);font-size:11px;font-weight:600;color:#93c5fd;cursor:pointer;font-family:inherit">{{ roleLabel }}</button>
+    <sc-if value="{{ showToggles }}" hint-placeholder-val="{{ true }}"><button onClick="{{ toggleLive }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ liveBtnLabel }}</button></sc-if>
+  </div>
+
+  <sc-if value="{{ isPlatform }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid rgba(96,165,250,.2);border-radius:10px;background:rgba(96,165,250,.06);padding:10px 12px">
+      <span style="font-size:11px;font-weight:700;letter-spacing:.08em;color:#93c5fd">MSP SCOPE</span>
+      <sc-for list="{{ scopeChips }}" as="c" hint-placeholder-count="2">
+        <button onClick="{{ c.select }}" style="display:inline-flex;align-items:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:{{ c.bg }};border:1px solid {{ c.line }};font-size:11px;font-weight:600;color:{{ c.fg }};cursor:pointer;font-family:inherit">{{ c.label }}</button>
+      </sc-for>
+      <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;flex:1;min-width:200px">A platform administrator sees every MSP unless one is named. An MSP administrator never sees this row: their scope is fixed to their own MSP and the same parameter is silently ignored.</span>
+    </div>
+  </sc-if>
+
+  <!-- Filters -->
+  <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:14px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;min-width:0">
+      <label style="display:flex;flex-direction:column;gap:5px;min-width:0;grid-column:span 2">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">SEARCH</span>
+        <input value="{{ q }}" onChange="{{ setQ }}" placeholder="action, entity, label or role" style="height:34px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:12.5px;font-family:inherit;outline:none;min-width:0">
+        <span style="font-size:10.5px;color:#64748b;text-wrap:pretty">Matches the action, the entity type, its label and the actor's role. Not names, addresses, ids or metadata — a search for a person finds nothing.</span>
+      </label>
+      <label style="display:flex;flex-direction:column;gap:5px;min-width:0">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">ACTION TYPE</span>
+        <input value="{{ actionType }}" onChange="{{ setActionType }}" placeholder="substring, e.g. mcp.tool" style="height:34px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:12.5px;font-family:Menlo,monospace;outline:none;min-width:0">
+        <span style="font-size:10.5px;color:#64748b;text-wrap:pretty">Three spellings coexist: SCREAMING_SNAKE, dot.namespaced and bare words.</span>
+      </label>
+      <label style="display:flex;flex-direction:column;gap:5px;min-width:0">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">FROM</span>
+        <input value="{{ from }}" onChange="{{ setFrom }}" placeholder="2026-09-01" style="height:34px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:12.5px;font-family:inherit;outline:none;min-width:0">
+        <span style="font-size:10.5px;color:#64748b;text-wrap:pretty">An unreadable date is dropped silently.</span>
+      </label>
+      <label style="display:flex;flex-direction:column;gap:5px;min-width:0">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">TO</span>
+        <input value="{{ to }}" onChange="{{ setTo }}" placeholder="2026-09-13" style="height:34px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:12.5px;font-family:inherit;outline:none;min-width:0">
+        <span style="font-size:10.5px;color:#64748b;text-wrap:pretty">Runs to the end of that day, not midnight.</span>
+      </label>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">OUTCOME</span>
+      <sc-for list="{{ outcomeChips }}" as="c" hint-placeholder-count="4">
+        <button onClick="{{ c.select }}" style="display:inline-flex;align-items:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:{{ c.bg }};border:1px solid {{ c.line }};font-size:11px;font-weight:600;color:{{ c.fg }};cursor:pointer;font-family:inherit">{{ c.label }}</button>
+      </sc-for>
+      <sc-if value="{{ hasCustomer }}" hint-placeholder-val="{{ false }}">
+        <span style="display:inline-flex;align-items:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.22);font-size:11px;font-weight:600;color:#6ee7b7">Customer · {{ customerName }}</span>
+        <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Narrowed on the server, inside your MSP scope. Rows never say which customer they belong to — the filter is the only place the customer appears.</span>
+      </sc-if>
+      <div style="flex:1"></div>
+      <button onClick="{{ clearFilters }}" style="display:inline-flex;align-items:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:6px;background:transparent;border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">Clear</button>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;align-items:start;min-width:0">
+    <!-- Entries -->
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0;grid-column:span 2">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Entries</span>
+        <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ listCaption }}</span>
+      </div>
+
+      <sc-if value="{{ hasRows }}" hint-placeholder-val="{{ true }}">
+        <div style="overflow-x:auto;min-width:0">
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:760px">
+            <div style="display:grid;grid-template-columns:150px 1.4fr 1.5fr 1.2fr 120px;gap:12px;padding:0 12px 6px;border-bottom:1px solid rgba(148,163,184,.14)">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">WHEN</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">ACTOR</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">ACTION</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">RESOURCE</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">OUTCOME</span>
+            </div>
+            <sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+              <button onClick="{{ r.select }}" style="display:grid;grid-template-columns:150px 1.4fr 1.5fr 1.2fr 120px;gap:12px;align-items:center;text-align:left;border:1px solid {{ r.line }};border-radius:9px;background:{{ r.bg }};padding:10px 12px;cursor:pointer;font-family:inherit;min-width:0">
+                <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                  <span style="font-size:11.5px;color:#f1f5f9;white-space:nowrap">{{ r.when }}</span>
+                  <span style="font-size:10.5px;color:#64748b;white-space:nowrap">{{ r.clock }}</span>
+                </span>
+                <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                  <span style="font-size:12px;font-weight:600;color:{{ r.actorColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.actor }}</span>
+                  <span style="font-size:10.5px;color:{{ r.actorSubColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.actorSub }}</span>
+                </span>
+                <span style="font-size:11.5px;font-family:Menlo,monospace;color:#93c5fd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.action }}</span>
+                <span style="font-size:11.5px;color:{{ r.resourceColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.resource }}</span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ r.tint }};border:1px solid {{ r.badgeLine }};font-size:10px;font-weight:600;color:{{ r.color }};justify-self:start">{{ r.outcome }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ noRows }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:26px 18px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+          <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">{{ emptyTitle }}</span>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:460px">{{ emptyBody }}</span>
+          <span style="font-size:11px;font-family:Menlo,monospace;color:#64748b">{ entries: [], total: 0, page: 1, limit: 30 }</span>
+        </div>
+      </sc-if>
+
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">
+        <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;flex:1;min-width:200px">{{ pageCaption }}</span>
+        <button onClick="{{ prevPage }}" style="display:inline-flex;align-items:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:6px;background:transparent;border:1px solid rgba(148,163,184,.2);font-size:11.5px;font-weight:600;color:{{ prevColor }};cursor:{{ prevCursor }};font-family:inherit">Newer</button>
+        <button onClick="{{ nextPage }}" style="display:inline-flex;align-items:center;white-space:nowrap;height:28px;padding:0 11px;border-radius:6px;background:transparent;border:1px solid rgba(148,163,184,.2);font-size:11.5px;font-weight:600;color:{{ nextColor }};cursor:{{ nextCursor }};font-family:inherit">Older</button>
+      </div>
+    </div>
+
+    <!-- Detail -->
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <sc-if value="{{ hasOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:13px;min-width:0">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <span style="display:flex;flex-direction:column;gap:4px;min-width:170px;flex:1">
+              <span style="font-size:14px;font-weight:700;letter-spacing:-.01em;font-family:Menlo,monospace;color:#f1f5f9;word-break:break-all">{{ openAction }}</span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ openConvention }}</span>
+            </span>
+            <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:{{ openTint }};border:1px solid {{ openLine }};font-size:10.5px;font-weight:600;color:{{ openColor }}">{{ openOutcome }}</span>
+          </div>
+
+          <sc-if value="{{ openPartial }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(251,191,36,.3);border-radius:10px;background:rgba(251,191,36,.08);padding:12px;display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:11.5px;font-weight:700;color:#fbbf24">Attempted — completion unknown</span>
+              <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">Write tools record an attempt before they run and finalise it afterwards. A row still marked partial means the process died in between. It is not a failure and not a success, and the log cannot say which the action turned out to be.</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ openFallback }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(251,191,36,.3);border-radius:10px;background:rgba(251,191,36,.08);padding:12px;display:flex;flex-direction:column;gap:5px">
+              <span style="font-size:11.5px;font-weight:700;color:#fbbf24">The address slot holds a role name</span>
+              <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">No user row resolved for this actor — a service-driven event, or an account since removed — so the wire fell back to the stored role in the email field. Nothing on the wire marks that it did, which is why this screen checks for it.</span>
+            </div>
+          </sc-if>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;min-width:0">
+            <sc-for list="{{ openFacts }}" as="f" hint-placeholder-count="6">
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">{{ f.label }}</span>
+                <span style="font-size:12px;font-weight:600;color:{{ f.color }};font-family:{{ f.font }};text-wrap:pretty;word-break:break-word">{{ f.value }}</span>
+                <span style="font-size:10.5px;color:#64748b;text-wrap:pretty">{{ f.note }}</span>
+              </span>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(148,163,184,.12);padding-top:12px;min-width:0">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">METADATA · RAW, AS STORED</span>
+            <sc-if value="{{ hasMeta }}" hint-placeholder-val="{{ true }}">
+              <pre style="margin:0;padding:11px;border-radius:8px;border:1px solid rgba(148,163,184,.14);background:rgba(2,6,23,.6);font-size:11px;line-height:1.55;font-family:Menlo,monospace;color:#cbd5e1;white-space:pre-wrap;word-break:break-word;min-width:0">{{ openMeta }}</pre>
+            </sc-if>
+            <sc-if value="{{ noMeta }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:11.5px;color:#64748b">None recorded — both the detail string and the raw object are null for this row.</span>
+            </sc-if>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(148,163,184,.12);padding-top:12px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">STORED BUT NEVER ON THE WIRE</span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{ hiddenCols }}" as="h" hint-placeholder-count="6">
+                <span style="display:inline-flex;align-items:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:rgba(148,163,184,.06);border:1px dashed rgba(148,163,184,.25);font-size:10.5px;font-family:Menlo,monospace;color:#94a3b8">{{ h }}</span>
+              </sc-for>
+            </div>
+            <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Which customer this touched, where it came from and what client sent it are all in the table and all unreadable from here. The customer can be filtered on but never shown.</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ noOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+          <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">Pick an entry</span>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:320px">The row shows the aliased wire fields; the detail shows the raw metadata behind them and what never left the database.</span>
+        </div>
+      </sc-if>
+
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">WHAT THE LIVE TABLE HOLDS TODAY</span>
+        <sc-for list="{{ liveFacts }}" as="f" hint-placeholder-count="4">
+          <div style="display:flex;align-items:baseline;gap:10px;min-width:0">
+            <span style="font-size:14px;font-weight:800;letter-spacing:-.02em;color:#f1f5f9;white-space:nowrap;min-width:44px;text-align:right">{{ f.value }}</span>
+            <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty;min-width:0">{{ f.text }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What this one route does and doesn't give this screen</span>
+      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+        <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+          <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+          <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:980},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;customerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
+const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
+const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
+const BLUE = ["rgba(96,165,250,.1)", "rgba(96,165,250,.24)", "#60a5fa"];
+const GREY = ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"];
+
+// One row per shape the writers really produce. `fallback` marks rows whose actorEmail is the
+// stored role string because no user row resolved — the wire does not mark this itself.
+const SEED = [
+  { id: 535, eventId: "9b1c2f7e-3d44-4a1e-9c0a-6f2e8d1b4c77", at: "2026-09-13T16:02:11Z", actorEmail: "shane@shanemccaw.com", actorName: "Shane McCaw", actorRole: "PlatformAdmin", action: "AUTH_LOGIN", entityType: null, entityLabel: null, outcome: "success", metadata: { method: "password+totp", mfa: true }, customer: null, msp: "Shane McCaw Consulting" },
+  { id: 534, eventId: "2e7a9c10-88b1-4f7d-b3e2-0c5d7a91f6e3", at: "2026-09-13T15:41:07Z", actorEmail: "PlatformAdmin", actorName: null, actorRole: "PlatformAdmin", fallback: true, action: "mcp.tool.create_account", entityType: "mcp_tool", entityLabel: "create_account", outcome: "success", metadata: { toolName: "create_account", args: { email: "ops@fabrikam.example", role: "CustomerUser" }, durationMs: 412 }, customer: null, msp: "Shane McCaw Consulting" },
+  { id: 533, eventId: "c41d0e55-7b9f-4c02-a6d1-3e8f2b7c9a10", at: "2026-09-13T15:40:52Z", actorEmail: "PlatformAdmin", actorName: null, actorRole: "PlatformAdmin", fallback: true, action: "mcp.tool.query_customers", entityType: "mcp_tool", entityLabel: "query_customers", outcome: "partial", metadata: { toolName: "query_customers", args: { status: "active" } }, customer: null, msp: "Shane McCaw Consulting" },
+  { id: 532, eventId: "7f3b8d21-1c6e-4e9a-8b47-5d0a9c2e6f18", at: "2026-09-13T14:12:33Z", actorEmail: "dana.whitfield@northwind.com", actorName: "Dana Whitfield", actorRole: "CustomerUser", action: "portal.route.not_found", entityType: "route", entityLabel: "/portal/reports/2026-q2", outcome: "success", metadata: { path: "/portal/reports/2026-q2", referrer: "/portal/customer-home" }, customer: "Northwind Logistics", msp: "Shane McCaw Consulting" },
+  { id: 531, eventId: "a8e2c6d4-9f01-4b3a-92c7-1e6d5b8a3f04", at: "2026-09-13T11:58:20Z", actorEmail: "shane@shanemccaw.com", actorName: "Shane McCaw", actorRole: "PlatformAdmin", action: "customer.create", entityType: "customer", entityLabel: "Northwind Logistics", outcome: "success", metadata: { tenantId: "5c2f…e91a", industry: "Logistics", isTestbed: false }, customer: "Northwind Logistics", msp: "Shane McCaw Consulting" },
+  { id: 530, eventId: "d05f7a83-2b4c-4d1e-b7a9-8c3e1f6d2b55", at: "2026-09-12T18:30:44Z", actorEmail: "shane@shanemccaw.com", actorName: "Shane McCaw", actorRole: "PlatformAdmin", action: "IMPERSONATION_SESSION_STARTED", entityType: null, entityLabel: null, outcome: "success", metadata: { targetUserId: 42, targetEmail: "shanemccaw@outlook.com", ttlMinutes: 30 }, customer: null, msp: "Shane McCaw Consulting" },
+  { id: 529, eventId: "3b9e1c47-6d2a-4f8b-a1c5-9e7d4b0f8a62", at: "2026-09-12T17:03:09Z", actorEmail: "priya.raman@shanemccaw.com", actorName: "Priya Raman", actorRole: "MSPAdmin", action: "user.mfa.enforcement_toggle", entityType: "msp_user", entityLabel: "marcus.lee@shanemccaw.com", outcome: "success", metadata: { enforced: true, previous: false }, customer: null, msp: "Shane McCaw Consulting" },
+  { id: 528, eventId: "e6c4a2f9-0d7b-4e3c-8f1a-2b5d9c7e4a31", at: "2026-09-12T16:47:51Z", actorEmail: "priya.raman@shanemccaw.com", actorName: "Priya Raman", actorRole: "MSPAdmin", action: "bundle.assigned", entityType: "msp_sales_bundle_assignment", entityLabel: "Managed M365 — Standard → Contoso Ltd", outcome: "success", metadata: { bundleId: "9f10ab", customerId: 2, resalePriceCents: 4500 }, customer: "Contoso Ltd", msp: "Shane McCaw Consulting" },
+  { id: 527, eventId: "51a7d3e8-4c9b-4a2f-9d6e-7b1c3f5a8d29", at: "2026-09-12T09:15:02Z", actorEmail: "PlatformAdmin", actorName: null, actorRole: "PlatformAdmin", fallback: true, action: "mcp.tool.create_account", entityType: "mcp_tool", entityLabel: "create_account", outcome: "failure", metadata: { toolName: "create_account", error: "409 email already registered" }, customer: null, msp: "Shane McCaw Consulting" },
+  { id: 526, eventId: "b2f8e4c1-7a3d-4b6e-a9c2-4d8f1e7b3c96", at: "2026-09-11T22:04:18Z", actorEmail: "shanemccaw+1317pack@gmail.com", actorName: null, actorRole: "CustomerUser", action: "AUTH_ACCOUNT_SETUP", entityType: null, entityLabel: null, outcome: "success", metadata: null, customer: null, msp: "Shane McCaw Consulting" },
+  { id: 525, eventId: "f9d1b6a3-5e8c-4d7a-b2f4-6c9e3a1d8b47", at: "2026-09-11T21:58:40Z", actorEmail: "shane@shanemccaw.com", actorName: "Shane McCaw", actorRole: "PlatformAdmin", action: "AUTH_LOGOUT", entityType: null, entityLabel: null, outcome: "success", metadata: null, customer: null, msp: "Shane McCaw Consulting" },
+  { id: 524, eventId: "0c5e9a7d-3f2b-4c8e-9a1d-5b7f2e4c6a83", at: "2026-09-11T20:11:36Z", actorEmail: "priya.raman@shanemccaw.com", actorName: "Priya Raman", actorRole: "MSPAdmin", action: "session.revoke", entityType: "session", entityLabel: "marcus.lee@shanemccaw.com", outcome: "success", metadata: { tokenHash: "a91f…c04e", reason: "device lost" }, customer: null, msp: "Shane McCaw Consulting" },
+  { id: 523, eventId: "6a3d8f2c-1b9e-4e5a-8c7f-3d2b6e9a1c58", at: "2026-09-11T08:22:05Z", actorEmail: "qa@regression-testbed.example", actorName: "Testbed QA", actorRole: "MSPAdmin", action: "AUTH_LOGIN", entityType: null, entityLabel: null, outcome: "failure", metadata: { reason: "locked", attempts: 5 }, customer: null, msp: "Regression Testbed MSP" }
+];
+
+const CONVENTION = (a) => /^[A-Z_]+$/.test(a) ? "SCREAMING_SNAKE — the sign-in family" : a.indexOf(".") > -1 ? "dot.namespaced — settings, sales, MCP tools" : "a bare word — the oldest writers";
+const fmt = (iso) => { const d = new Date(iso); return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }); };
+const clock = (iso) => new Date(iso).toISOString().slice(11, 19) + " UTC";
+
+class Component extends DCLogic {
+  state = { live: false, role: "MSPAdmin", scope: "all", q: "", outcome: "any", actionType: "", from: "", to: "", page: 1, openId: 534 };
+
+  renderVals() {
+    const st = this.state;
+    const empty = this.props.forceEmpty === undefined ? st.live : !!this.props.forceEmpty;
+    const customer = this.props.customerName || "";
+    const platform = st.role === "PlatformAdmin";
+    const limit = 30;
+
+    let all = empty ? [] : SEED.slice();
+    if (!(platform && st.scope === "all")) all = all.filter(e => e.msp === "Shane McCaw Consulting");
+    if (customer) all = all.filter(e => e.customer === customer);
+    const q = st.q.trim().toLowerCase();
+    if (q) all = all.filter(e => [e.action, e.entityType, e.entityLabel, e.actorRole].some(v => v && v.toLowerCase().indexOf(q) > -1));
+    const at = st.actionType.trim().toLowerCase();
+    if (at) all = all.filter(e => e.action.toLowerCase().indexOf(at) > -1);
+    if (["success", "failure", "partial"].indexOf(st.outcome) > -1) all = all.filter(e => e.outcome === st.outcome);
+    const from = st.from.trim() ? new Date(st.from.trim()) : null;
+    if (from && !isNaN(from)) all = all.filter(e => new Date(e.at) >= from);
+    const to = st.to.trim() ? new Date(st.to.trim()) : null;
+    if (to && !isNaN(to)) { const end = new Date(to); end.setUTCHours(23, 59, 59, 999); all = all.filter(e => new Date(e.at) <= end); }
+
+    const total = all.length;
+    const pages = Math.max(1, Math.ceil(total / limit));
+    const page = Math.min(st.page, pages);
+    const slice = all.slice((page - 1) * limit, page * limit);
+    const TONE = { success: GREEN, failure: RED, partial: AMBER };
+
+    const rows = slice.map(e => {
+      const t = TONE[e.outcome];
+      const on = e.id === st.openId;
+      return {
+        when: fmt(e.at), clock: clock(e.at),
+        actor: e.fallback ? e.actorEmail : (e.actorName || e.actorEmail),
+        actorColor: e.fallback ? "#fbbf24" : "#f1f5f9",
+        actorSub: e.fallback ? "role, not an address" : (e.actorName ? e.actorEmail : e.actorRole),
+        actorSubColor: e.fallback ? "#fbbf24" : "#64748b",
+        action: e.action,
+        resource: e.entityLabel || e.entityType || "—",
+        resourceColor: (e.entityLabel || e.entityType) ? "#cbd5e1" : "#475569",
+        outcome: e.outcome === "partial" ? "partial" : e.outcome,
+        tint: t[0], badgeLine: t[1], color: t[2],
+        bg: on ? "rgba(96,165,250,.09)" : "rgba(2,6,23,.4)",
+        line: on ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)",
+        select: () => this.setState({ openId: e.id })
+      };
+    });
+
+    const e = slice.find(x => x.id === st.openId) || null;
+    const ot = e ? TONE[e.outcome] : GREY;
+    const chip = (on) => ({ bg: on ? "rgba(37,99,235,.18)" : "rgba(148,163,184,.06)", line: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)", fg: on ? "#f1f5f9" : "#94a3b8" });
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      rootBg: this.props.rootBg ?? "transparent",
+      showOwnHeader: !(this.props.embedded ?? false),
+      showToggles: !(this.props.embedded ?? false),
+      showNotes: this.props.showNotes ?? true,
+      title: customer ? "Everything recorded against " + customer : "Everything recorded across your MSP",
+
+      toggleRole: () => this.setState(s => ({ role: s.role === "MSPAdmin" ? "PlatformAdmin" : "MSPAdmin", scope: "all", page: 1 })),
+      roleLabel: "Acting as " + st.role,
+      toggleLive: () => this.setState(s => ({ live: !s.live, page: 1 })),
+      liveBtnLabel: st.live ? "Back to a populated log" : "Show the empty shape",
+
+      isPlatform: platform,
+      scopeChips: [["all", "Every MSP"], ["one", "Shane McCaw Consulting only"]].map(([k, label]) => Object.assign({ label, select: () => this.setState({ scope: k, page: 1 }) }, chip(st.scope === k))),
+
+      q: st.q, setQ: (ev) => this.setState({ q: ev.target.value, page: 1 }),
+      actionType: st.actionType, setActionType: (ev) => this.setState({ actionType: ev.target.value, page: 1 }),
+      from: st.from, setFrom: (ev) => this.setState({ from: ev.target.value, page: 1 }),
+      to: st.to, setTo: (ev) => this.setState({ to: ev.target.value, page: 1 }),
+      outcomeChips: [["any", "Any"], ["success", "Success"], ["failure", "Failure"], ["partial", "Partial"]].map(([k, label]) => Object.assign({ label, select: () => this.setState({ outcome: k, page: 1 }) }, chip(st.outcome === k))),
+      clearFilters: () => this.setState({ q: "", outcome: "any", actionType: "", from: "", to: "", page: 1 }),
+      hasCustomer: !!customer, customerName: customer,
+
+      listCaption: empty ? "the route answered with nothing" : total + " matching · newest first · rows with the same instant have no fixed order",
+      hasRows: rows.length > 0, noRows: rows.length === 0, rows,
+      emptyTitle: empty ? "No entries" : "Nothing matches these filters",
+      emptyBody: empty
+        ? "A real 200 with an empty page. An MSP administrator whose own account carries no MSP id gets exactly this too — not an error, just nothing — so an empty log is not proof that nothing happened."
+        : "The filters are applied on the server and combined with AND. Widen one of them; remember the search never looks at names, addresses or metadata.",
+      pageCaption: "Page " + page + " of " + pages + " · " + limit + " per page, 100 at most · the total is a real count from a second query, so it never disagrees with the rows",
+      prevPage: () => { if (page > 1) this.setState({ page: page - 1 }); }, prevColor: page > 1 ? "#cbd5e1" : "#475569", prevCursor: page > 1 ? "pointer" : "not-allowed",
+      nextPage: () => { if (page < pages) this.setState({ page: page + 1 }); }, nextColor: page < pages ? "#cbd5e1" : "#475569", nextCursor: page < pages ? "pointer" : "not-allowed",
+
+      hasOpen: !!e, noOpen: !e,
+      openAction: e ? e.action : "",
+      openConvention: e ? CONVENTION(e.action) : "",
+      openOutcome: e ? e.outcome : "", openTint: ot[0], openLine: ot[1], openColor: ot[2],
+      openPartial: !!e && e.outcome === "partial",
+      openFallback: !!e && !!e.fallback,
+      openFacts: e ? [
+        { label: "WHEN IT HAPPENED", value: fmt(e.at) + " · " + clock(e.at), note: "Sent as createdAt, but it is the moment the event occurred — for a write tool, the attempt, not the finish.", color: "#f1f5f9", font: "inherit" },
+        { label: "EVENT ID", value: e.eventId, note: "The key a write tool finalises its attempt row against.", color: "#cbd5e1", font: "Menlo,monospace" },
+        { label: "ACTOR", value: e.fallback ? e.actorEmail : (e.actorName || "no name on the user row"), note: e.fallback ? "Resolved from no user row — see above." : e.actorEmail, color: e.fallback ? "#fbbf24" : "#f1f5f9", font: "inherit" },
+        { label: "STORED ROLE", value: e.actorRole, note: "Always the stored value, even when it is also standing in for the address.", color: "#cbd5e1", font: "inherit" },
+        { label: "RESOURCE", value: e.entityLabel || e.entityType || "none", note: e.entityLabel ? (e.entityType ? "The label wins; the type (" + e.entityType + ") is hidden when a label exists." : "A label with no type behind it.") : e.entityType ? "No label was written, so the type shows instead." : "Neither a type nor a label — the sign-in writers set none.", color: (e.entityLabel || e.entityType) ? "#f1f5f9" : "#94a3b8", font: "inherit" },
+        { label: "DETAIL", value: e.metadata ? JSON.stringify(e.metadata) : "null", note: "The same metadata rendered as one string, sent alongside the raw object.", color: "#cbd5e1", font: "Menlo,monospace" }
+      ] : [],
+      hasMeta: !!(e && e.metadata), noMeta: !!e && !e.metadata,
+      openMeta: e && e.metadata ? JSON.stringify(e.metadata, null, 2) : "",
+      hiddenCols: ["customer_id", "entity_id", "correlation_id", "ip_address", "user_agent", "actor_service_account_id"],
+
+      liveFacts: [
+        { value: "535", text: "rows in the table at the last read — 521 succeeded, 14 failed, none partial." },
+        { value: "94%", text: "are sign-in, sign-out and account setup. Thirty are MCP tool calls; four are dead portal links." },
+        { value: "~45", text: "action types from settings, admin, bundles, custom domains and directory writes are real code that has never yet written a row here." },
+        { value: "31", text: "rows carry a customer id at all, so a per-customer view is thin by nature, not by filter." }
+      ],
+
+      notes: [
+        { dot: "#f87171", text: "The email slot can hold a role name. When no user row resolves for an actor, the route falls back to the stored role in the address field and nothing marks that it did — a screen that trusts the field renders \u201cMSPAdmin\u201d where an address should be. This one checks the shape first." },
+        { dot: "#fbbf24", text: "A row left at partial means a write tool recorded its attempt and the process died before finalising it. It is a real, load-bearing state the filter exposes and the route does not explain; there are none in live data today." },
+        { dot: "#fbbf24", text: "Six stored columns never reach the wire: the customer, the entity id, the correlation id, the IP address, the user agent and the service account. The customer can be filtered on \u2014 that landed recently \u2014 but still cannot be shown on a row." },
+        { dot: "#fbbf24", text: "Search covers the action, the entity type, its label and the actor's role. It does not search the actor's name or address, ids or metadata, so \u201cwho did things\u201d is not a question the search box answers." },
+        { dot: "#fbbf24", text: "Action types have no shared vocabulary anywhere. Three spellings coexist and every value is a bare string chosen at its own call site, so any grouping or dropdown built here has to normalise across them." },
+        { dot: "#60a5fa", text: "Who may read this log is a database row now, not code. The allow set is still exactly MSPAdmin and PlatformAdmin, and the refusal reads the same, but widening or narrowing it is an update to that row rather than a deploy. If the row cannot be read the route answers unavailable, never a quiet allow." },
+        { dot: "#60a5fa", text: "An MSP administrator is pinned to their own MSP and the MSP parameter is ignored for them. A platform administrator sees every MSP unless one is named. An MSP administrator with no MSP on their own account gets a real, empty 200." },
+        { dot: "#60a5fa", text: "The end date runs to the last millisecond of that day, so a range ending on the 13th includes the whole of the 13th. An unreadable date, an unknown outcome or a non-numeric customer is dropped silently rather than refused." },
+        { dot: "#94a3b8", text: "This is the MSP trail, not the older platform one. A second, separate table keyed on client and project is read by an admin-only route and is never touched by any writer listed here." },
+        { dot: "#94a3b8", text: "Newest first with no tiebreaker: two rows at the same instant have no fixed order between page loads. Timestamps mark when the event happened, not when the row was written." },
+        { dot: "#94a3b8", text: "Writers never block on the log: a failed insert is swallowed and the action proceeds. The one exception is MCP write tools, which refuse to run if their attempt row cannot be written." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

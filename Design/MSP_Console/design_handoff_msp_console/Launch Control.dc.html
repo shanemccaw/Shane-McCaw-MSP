@@ -73,6 +73,12 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                     <span style="display:inline-flex;padding:2px 9px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:10.5px;font-weight:600;color:#94a3b8;white-space:nowrap">{{ a.tier }}</span>
                   </sc-if>
                 </div>
+                <sc-if value="{{ a.hasLicense }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;gap:7px;align-items:flex-start">
+                    <span data-icon="badge-check" style="width:13px;height:13px;color:{{ a.licColor }};flex:0 0 13px;margin-top:1px"></span>
+                    <span style="font-size:11px;color:{{ a.licColor }};text-wrap:pretty">{{ a.licNote }}</span>
+                  </div>
+                </sc-if>
                 <span style="font-size:11.5px;color:{{ a.readyColor }};text-wrap:pretty">{{ a.ready }}</span>
               </div>
             </sc-for>
@@ -201,6 +207,9 @@ class Component extends DCLogic {
     { domain: "Devices", name: "Wipe a device", surface: "Intune", risk: "gated", tier: "premium", runnable: false, what: "Erases a managed device. There is no undo and no way to recover local data afterwards.", vars: [{ key: "deviceId", label: "Which device", ph: "device id" }], reversible: false },
     { domain: "Devices", name: "Retire a device", surface: "Intune", risk: "gated", tier: "enhanced", runnable: false, what: "Removes company data and management from a device, leaving personal data alone.", vars: [{ key: "deviceId", label: "Which device", ph: "device id" }], reversible: false },
 
+    { domain: "Conditional Access", name: "Require multifactor authentication for administrators", surface: "Entra ID", risk: "gated", tier: "enhanced", runnable: false, license: ["AAD_PREMIUM", "AAD_PREMIUM_P2"], licenseDesc: "Requires Microsoft Entra ID P1 or P2", what: "Creates a Conditional Access policy that makes every privileged role sign in with a second factor.", vars: [{ key: "policyName", label: "Policy name", ph: "Require MFA — admins" }], reversible: false },
+    { domain: "Conditional Access", name: "Block legacy authentication", surface: "Entra ID", risk: "gated", tier: "enhanced", runnable: false, license: ["AAD_PREMIUM", "AAD_PREMIUM_P2"], licenseDesc: "Requires Microsoft Entra ID P1 or P2", what: "Creates a Conditional Access policy that refuses sign-ins from clients that cannot do modern authentication.", vars: [{ key: "policyName", label: "Policy name", ph: "Block legacy auth" }], reversible: false },
+
     { domain: "No safe path", name: "Change the tenant's default domain", surface: "Entra ID", risk: null, tier: null, runnable: false, what: "There is no supported way to do this without breaking sign-in for everyone. It is listed so nobody goes looking for it.", vars: [], reversible: false },
     { domain: "No safe path", name: "Delete an audit log entry", surface: "Purview", risk: null, tier: null, runnable: false, what: "Not possible, and would not be appropriate if it were.", vars: [], reversible: false }
   ];
@@ -209,7 +218,8 @@ class Component extends DCLogic {
     { name: "Turn an account's sign-in off or back on", endpoint: "PATCH /users/svc-scanner@mccawsoft2.onmicrosoft.com", outcome: "executed", source: "simulator", detail: "Sign-in disabled. Variables captured so the change can be inverted.", when: "6 Sep 2026, 11:04", reversible: false },
     { name: "Assign a licence", endpoint: "POST /users/test01@mccawsoft2.onmicrosoft.com/assignLicense", outcome: "executed", source: "simulator", detail: "Licence added from the available pool.", when: "5 Sep 2026, 15:22", reversible: false },
     { name: "Remove someone from a group", endpoint: "DELETE /groups/8f21c904/members/7b10a442/$ref", outcome: "failed", source: "simulator", detail: "Refused for lack of permission — the app registration does not hold the scope this needs.", when: "5 Sep 2026, 15:18", reversible: false },
-    { name: "Set a mailbox forwarding rule", endpoint: "PATCH /users/test02@mccawsoft2.onmicrosoft.com/mailboxSettings", outcome: "failed", source: "simulator", detail: "Rejected as a bad request — the forwarding address was not accepted.", when: "4 Sep 2026, 09:41", reversible: false }
+    { name: "Set a mailbox forwarding rule", endpoint: "PATCH /users/test02@mccawsoft2.onmicrosoft.com/mailboxSettings", outcome: "failed", source: "simulator", detail: "Rejected as a bad request — the forwarding address was not accepted.", when: "4 Sep 2026, 09:41", reversible: false },
+    { name: "Require multifactor authentication for administrators", endpoint: "POST /identity/conditionalAccess/policies", outcome: "failed", source: "simulator", detail: "Classified as a licence gap, not a permission failure — the tenant holds no Entra ID P1 or P2, so the Conditional Access write was refused before it reached Microsoft.", when: "13 Sep 2026, 16:02", reversible: false }
   ];
 
   componentDidMount() { this.icons(); }
@@ -263,20 +273,29 @@ class Component extends DCLogic {
 
   isTestbed() { return this.props.tenantName === "Mccawsoft2"; }
 
+  // What a live read of the tenant's subscribed SKUs would answer. Never stored, never client-supplied.
+  hasLicense() {
+    const map = { "Northwind Logistics": true, "Halcyon Health": false, "Kestrel Financial": false, "Mccawsoft2": true };
+    return map[this.props.tenantName] ?? false;
+  }
+
   availOf(a) {
     if (a.risk === null) return "a_la_carte";
     const need = this.RANK[a.tier];
-    if (need === undefined) return "included";
-    return this.RANK[this.customerTier()] >= need ? "included" : "billable_upsell";
+    if (need !== undefined && this.RANK[this.customerTier()] < need) return "billable_upsell";
+    if (a.license && !this.hasLicense()) return "license_required";
+    return "included";
   }
 
   renderVals() {
     const s = this.state, tab = s.tab;
     const tier = this.customerTier();
     const testbed = this.isTestbed();
+    const licensed = this.hasLicense();
     const AVAIL = {
       included: ["green", "covered by their plan"],
       billable_upsell: ["amber", "needs an upgrade"],
+      license_required: ["violet", "needs a Microsoft licence"],
       a_la_carte: ["slate", "not available"]
     };
     const RISK = { safe: ["green", "low risk", "shield-check"], gated: ["amber", "needs care", "shield-alert"], null: ["slate", "no safe path", "ban"] };
@@ -287,6 +306,7 @@ class Component extends DCLogic {
       { id: "all", label: "Everything", match: () => true },
       { id: "included", label: "Covered", match: (a) => this.availOf(a) === "included" },
       { id: "billable_upsell", label: "Needs an upgrade", match: (a) => this.availOf(a) === "billable_upsell" },
+      { id: "license_required", label: "Needs a licence", match: (a) => this.availOf(a) === "license_required" },
       { id: "a_la_carte", label: "Not available", match: (a) => this.availOf(a) === "a_la_carte" }
     ];
     const active = filterDefs.find(f => f.id === s.filter) || filterDefs[0];
@@ -333,7 +353,7 @@ class Component extends DCLogic {
       actionCount: visible.length + " of " + this.actions.length + " actions",
       domains: domainNames.map(name => ({
         title: name.toUpperCase(),
-        note: name === "No safe path" ? "Listed so nobody goes looking" : "",
+        note: name === "No safe path" ? "Listed so nobody goes looking" : name === "Conditional Access" ? "Licence checked live against the tenant · two more templates (MFA for everyone, MFA for guests) have no catalogue row yet and cannot appear here" : "",
         rows: visible.filter(a => a.domain === name).map(a => {
           const av = AVAIL[this.availOf(a)], avt = this.tone(av[0]);
           const rk = RISK[a.risk === null ? "null" : a.risk], rkt = this.tone(rk[0]);
@@ -345,6 +365,9 @@ class Component extends DCLogic {
             avail: av[1], availColor: avt[0], availTint: avt[1], availLine: avt[2],
             risk: rk[1], riskColor: rkt[0], riskTint: rkt[1], riskLine: rkt[2],
             hasTier: !!a.tier, tier: a.tier ? a.tier + " and up" : "",
+            hasLicense: !!a.license,
+            licNote: a.license ? a.licenseDesc + (licensed ? " — found in their tenant" : " — not found in their tenant") : "",
+            licColor: a.license ? (licensed ? "#6ee7b7" : "#c4b5fd") : "#94a3b8",
             ready: a.risk === null
               ? "There is no supported way to do this"
               : "Not runnable yet — no procedure is attached to it",
@@ -385,6 +408,7 @@ class Component extends DCLogic {
         { label: "RISK", value: RISK[sel.risk === null ? "null" : sel.risk][1], color: this.tone(RISK[sel.risk === null ? "null" : sel.risk][0])[0], font: "inherit" },
         { label: "AVAILABILITY", value: AVAIL[selAvail][1], color: this.tone(AVAIL[selAvail][0])[0], font: "inherit" },
         { label: "PLAN NEEDED", value: sel.tier ? sel.tier + " and up" : "no plan requirement", color: "#cbd5e1", font: "inherit" },
+        { label: "MICROSOFT LICENCE", value: sel.license ? (licensed ? "Entra ID P1 or P2 — present" : "Entra ID P1 or P2 — missing") : "none required", color: sel.license ? (licensed ? "#6ee7b7" : "#c4b5fd") : "#cbd5e1", font: "inherit" },
         { label: "CAN IT BE UNDONE", value: sel.reversible ? "designed to be reversible" : "one way only", color: sel.reversible ? "#6ee7b7" : "#fcd34d", font: "inherit" }
       ] : [],
       hasVars: !!sel && sel.vars.length > 0,
@@ -401,7 +425,8 @@ class Component extends DCLogic {
         { ok: true, title: "You are allowed to act on this customer", body: "Your role and this customer being in your book both check out." },
         { ok: sel.risk !== null, title: sel.risk !== null ? "There is a supported way to do this" : "There is no supported way to do this", body: sel.risk !== null ? "Microsoft exposes a proper path for this change." : "Nothing safe exists to call, so the action is listed but cannot run." },
         { ok: false, title: "No procedure is attached to this action yet", body: "The catalogue knows what the action is, but nothing has been linked to it that could actually carry it out. Every action is in this state today." },
-        { ok: selAvail === "included", title: selAvail === "included" ? "Covered by their plan" : selAvail === "billable_upsell" ? "Their plan does not cover this" : "Not offered on any plan", body: selAvail === "included" ? "Checked again at the moment you run it, never taken on trust from this screen." : "They would need to be on " + (sel.tier || "a higher") + " monitoring or buy it as an add-on." },
+        { ok: selAvail === "included" || selAvail === "license_required", title: (selAvail === "included" || selAvail === "license_required") ? "Covered by their plan" : selAvail === "billable_upsell" ? "Their plan does not cover this" : "Not offered on any plan", body: (selAvail === "included" || selAvail === "license_required") ? "Checked again at the moment you run it, never taken on trust from this screen." : "They would need to be on " + (sel.tier || "a higher") + " monitoring or buy it as an add-on." },
+        { ok: !sel.license || licensed, title: !sel.license ? "No Microsoft licence requirement" : licensed ? "Their tenant holds the licence this needs" : "Their tenant lacks the licence this needs", body: !sel.license ? "This action does not depend on a premium Microsoft SKU." : "Read live from the tenant's subscribed SKUs on every listing and again at run time — never a stored flag, never sent from this screen. Any one of " + sel.license.join(" or ") + " satisfies it, and it is checked last, after the plan." },
         { ok: testbed, title: testbed ? "This is a test tenant" : "This is a live customer tenant", body: testbed ? "Writes are allowed here while the feature is being proven out." : "Writes are deliberately held back on live tenants for now. That limit is temporary and will be lifted separately." },
         { ok: testbed, title: testbed ? "Write-back is switched on and consented" : "Write-back consent has not been confirmed", body: testbed ? "The practice has write-back enabled and the customer has granted it." : "Both the practice switch and the customer's own consent have to be in place before anything is written." }
       ].map(g => ({
@@ -426,7 +451,7 @@ class Component extends DCLogic {
         : "Held back because no procedure is attached to this action yet. Everything else on the list above is checked again at the moment you run it.",
       runNoteColor: "#fcd34d",
 
-      honestNote: "The action list, the plan check and the audit trail are all live. Running an action and undoing one are built and gated but cannot complete yet: no action has a procedure attached, nothing is marked reversible, and writes are limited to a test tenant for now."
+      honestNote: "The action list, the plan check, the live licence check and the audit trail are all live. Running an action and undoing one are built and gated but cannot complete yet: no action has a procedure attached, nothing is marked reversible, and writes are limited to a test tenant for now. Conditional Access actions are additionally refused as a licence gap when the tenant holds no Entra ID P1 or P2."
     };
   }
 }

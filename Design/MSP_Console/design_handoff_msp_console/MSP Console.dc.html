@@ -1313,6 +1313,14 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
           <dc-import name="AD OU Assignment" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,940px"></dc-import>
         </sc-if>
 
+        <sc-if value="{{ isAuditScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Audit Log" customer-name="{{ diagTenantName }}" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,900px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isSowsScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="SOWs" customer-name="{{ diagTenantName }}" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,940px"></dc-import>
+        </sc-if>
+
         <sc-if value="{{ isStatusRepScreen }}" hint-placeholder-val="{{ false }}">
           <dc-import name="Status Reports" customer-name="{{ diagTenantName }}" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,900px"></dc-import>
         </sc-if>
@@ -1335,6 +1343,18 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
 
         <sc-if value="{{ isRetentionScreen }}" hint-placeholder-val="{{ false }}">
           <dc-import name="Retention Queue" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,900px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isConsentScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Consent and Onboarding" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,900px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isStaffScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Staff Roster" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,940px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isMspAuditScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Audit Log" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,900px"></dc-import>
         </sc-if>
 
         <sc-if value="{{ isOffboardScreen }}" hint-placeholder-val="{{ false }}">
@@ -1733,6 +1753,7 @@ class Component extends DCLogic {
     ] },
     { id: "g.comm", label: "Commercial", icon: "receipt", children: [
       { id: "contracts", label: "Contracts", icon: "file-text" },
+      { id: "sows", label: "Offers & SOWs", icon: "file-signature" },
       { id: "status", label: "Status reports", icon: "file-text" },
       { id: "mkt", label: "Marketplace purchase", icon: "shopping-cart" },
       { id: "hub", label: "Documents", icon: "files" },
@@ -1791,7 +1812,10 @@ class Component extends DCLogic {
     { id: "docs", label: "Documents", icon: "files" },
     { id: "connectors", label: "SharePoint connectors", icon: "plug" },
     { id: "policy", label: "Policy engine", icon: "scale" },
+    { id: "consent", label: "Consent & onboarding", icon: "handshake" },
+    { id: "staff", label: "Staff roster", icon: "id-card" },
     { id: "acctsec", label: "Account security", icon: "user-cog" },
+    { id: "mspaudit", label: "Audit log", icon: "history" },
     { id: "reports", label: "Reports", icon: "file-chart-column" },
     { id: "dlq", label: "Dead letter queue", icon: "inbox" },
     { id: "retention", label: "Retention queue", icon: "timer" },
@@ -2161,14 +2185,17 @@ class Component extends DCLogic {
       { name: "Current period", note: "Seats, plan, prorations.", icon: "receipt", span: 5, h: "200px" },
       { name: "Invoice history", note: "Issued, paid, overdue.", icon: "history", span: 7, h: "200px" }
     ] },
-    audit: { eyebrow: "AUDIT LOG", note: "Every console and Graph API action against this tenant.", frames: [
-      { name: "Audit trail", note: "actorSurface: msp · actor, action, target, timestamp.", icon: "history", span: 12, h: "340px" }
-    ] }
+    audit: { eyebrow: "AUDIT LOG", note: "Every console and Graph API action against this tenant.", frames: [] }
   };
 
   packNotes = {
     poam: "Plans of action and milestones for this tenant, each one signed by their own approver before it becomes active.",
     adou: "Manual placements into organisational units, and the placement changes this customer has asked for.",
+    audit: "Every recorded action against this customer, narrowed on the server. Rows never say which customer they belong to — the filter is the only place the customer appears.",
+    sows: "Statements of work and the offers behind them for this customer. Acceptance is recorded against your own login and snapshots the agreement text.",
+    consent: "What each tenant has granted, and who is on their way in. Tenants with nothing granted are dropped by the route, not shown as empty.",
+    staff: "Who works for this MSP and who has been invited. The roster route applies no role filter of its own, so the staff-only view is drawn here.",
+    mspaudit: "Everything recorded across your MSP. Search matches action, entity type, label and role — never a person's name or id.",
     status: "Narrative service reports for this customer. Publishing is one-way — there is no edit and no unpublish afterwards.",
     mkt: "Buy a catalog item for this customer on your own card. The offer is recorded before payment is attempted.",
     acctsec: "Act on another account's credentials: password, MFA, enforcement, suspension and sessions. Every action is audited against your name.",
@@ -2815,8 +2842,8 @@ class Component extends DCLogic {
     const emptyMode = s.ccEmpty;
     // The contract-pack screens that have a real empty state of their own; the shell's
     // STATE chips drive it, since their own toggle is hidden once embedded.
-    const packStateScreen = ["poam", "adou", "status"].indexOf(page) !== -1
-      || ["acctsec", "reports", "dlq", "retention", "revenue"].indexOf(mspSel) !== -1;
+    const packStateScreen = ["poam", "adou", "status", "audit", "sows"].indexOf(page) !== -1
+      || ["acctsec", "reports", "dlq", "retention", "revenue", "consent", "staff", "mspaudit"].indexOf(mspSel) !== -1;
 
     const TONES = {
       blue: { color: "#93c5fd", tint: "rgba(96,165,250,.12)", line: "rgba(96,165,250,.28)" },
@@ -3913,7 +3940,8 @@ class Component extends DCLogic {
       };
       notes = [
         { icon: "clock", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "A 202 means the pipeline started, nothing more", body: "The run is fired without awaiting it. Neither storage, rendering, upload nor publication is confirmed by the response — the only way to see real progress is to poll the document's pipelineStatus.", wire: "202 { documentId, runId } · poll GET /api/msp/documents/:id" },
-        { icon: "repeat", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Manual publish is not idempotent", body: "The pipeline's own publish node detects an already-published document and reports alreadyPublished. The manual route has no such guard — pressing Publish twice rewrites publishedAt with a fresh timestamp.", wire: "POST /api/msp/documents/:id/publish" }
+        { icon: "repeat", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Manual publish is not idempotent", body: "The pipeline's own publish node detects an already-published document and reports alreadyPublished. The manual route has no such guard — pressing Publish twice rewrites publishedAt with a fresh timestamp.", wire: "POST /api/msp/documents/:id/publish" },
+        { icon: "toggle-left", color: "#34d399", tint: "rgba(52,211,153,.08)", line: "rgba(52,211,153,.24)", title: "Auto-publish is a real switch now", body: "Both submitting a document and submitting a new version accept autoPublish, off by default. Off means the pipeline stores, renders, uploads and registers the version but skips the publish step, so the document genuinely stays a draft until someone presses Publish. The field used to be accepted and ignored; that was fixed upstream.", wire: "autoPublish: false → doc_publish skipped · #2724" }
       ];
     } else if (mspSel === "connectors") {
       table = {
@@ -4571,6 +4599,7 @@ class Component extends DCLogic {
           lines: [
             { label: "Dedupe", value: "identical HTML for the same document reuses the existing version", color: "#cbd5e1", font: "inherit" },
             { label: "Archived", value: "409 — an archived document accepts no new versions", color: "#cbd5e1", font: "inherit" },
+            { label: "Auto-publish", value: "off unless you say otherwise — the pipeline then stops short of publishing and the version waits for a manual Publish", color: "#cbd5e1", font: "inherit" },
             { label: "Progress", value: "poll pipelineStatus; there is no webhook", color: "#94a3b8", font: "inherit" }
           ],
           checks: [], disabled: false,
@@ -4863,7 +4892,7 @@ class Component extends DCLogic {
       hasConsentNote: !!consentNote,
       hasScans: tenScans.length > 0, hasServices: tenServices.length > 0, hasUsers: tenUsers.length > 0,
       noScans: isTenantHome && tenScans.length === 0, noServices: isTenantHome && tenServices.length === 0, noUsers: isTenantHome && tenUsers.length === 0,
-      isFrames: !!meta && !isOverview,
+      isFrames: !!meta && !isOverview && page !== "audit",
       frames: meta ? meta.frames : [],
 
       isDocsScreen: (isHub || mspSel === "docs" || mspSel === "connectors") && !emptyMode,
@@ -4927,6 +4956,11 @@ class Component extends DCLogic {
       // emptyMode boolean is passed straight through as forceEmpty.
       isPoamScreen: page === "poam",
       isAdOuScreen: page === "adou",
+      isAuditScreen: page === "audit",
+      isSowsScreen: page === "sows",
+      isConsentScreen: mspSel === "consent",
+      isStaffScreen: mspSel === "staff",
+      isMspAuditScreen: mspSel === "mspaudit",
       isStatusRepScreen: page === "status",
       isMktScreen: page === "mkt",
       isAcctSecScreen: mspSel === "acctsec",

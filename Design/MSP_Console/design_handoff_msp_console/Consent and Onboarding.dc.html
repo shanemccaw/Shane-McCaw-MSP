@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>a{color:#60a5fa}a:hover{color:#93c5fd}input::placeholder{color:#64748b}</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <sc-if value="{{ showOwnHeader }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">CONSENT AND ONBOARDING</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">What each tenant has granted, and who is on their way in</span>
+    </div></sc-if>
+    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPOperator or above</span>
+    <sc-if value="{{ showToggles }}" hint-placeholder-val="{{ true }}"><button onClick="{{ toggleLive }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ liveBtnLabel }}</button></sc-if>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="2">
+      <button onClick="{{ t.select }}" style="display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:7px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit">{{ t.label }}<span style="font-size:10.5px;color:{{ t.countColor }}">{{ t.count }}</span></button>
+    </sc-for>
+  </div>
+
+  <!-- Consent grants -->
+  <sc-if value="{{ isConsent }}" hint-placeholder-val="{{ true }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start;min-width:0">
+      <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Tenants that have started at least one consent flow</span>
+          <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ listCaption }}</span>
+        </div>
+
+        <sc-if value="{{ hasTenants }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+            <sc-for list="{{ tenants }}" as="r" hint-placeholder-count="4">
+              <button onClick="{{ r.select }}" style="display:flex;flex-direction:column;gap:8px;text-align:left;border:1px solid {{ r.line }};border-radius:10px;background:{{ r.bg }};padding:12px;cursor:pointer;font-family:inherit;min-width:0">
+                <span style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;width:100%">
+                  <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;flex:1;min-width:120px">{{ r.name }}</span>
+                  <span style="font-size:10.5px;color:#64748b;white-space:nowrap">row updated {{ r.updated }}</span>
+                </span>
+                <span style="font-size:10.5px;font-family:Menlo,monospace;color:#64748b;word-break:break-all">{{ r.guid }}</span>
+                <span style="display:flex;gap:6px;flex-wrap:wrap">
+                  <sc-for list="{{ r.grants }}" as="g" hint-placeholder-count="3">
+                    <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ g.tint }};border:1px solid {{ g.badgeLine }};font-size:10px;font-weight:600;color:{{ g.color }}">{{ g.label }}</span>
+                  </sc-for>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noTenants }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
+            <span style="font-size:13px;font-weight:700;color:#cbd5e1">No tenant has started a consent flow</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:360px">The list route drops every tenant with three empty grants, so an MSP whose customers have not yet consented to anything sees an empty array here — not the customers with nothing against them.</span>
+            <span style="font-size:11px;font-family:Menlo,monospace;color:#64748b">GET /api/msp/consent → []</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ hasHidden }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px dashed rgba(148,163,184,.22);border-radius:10px;background:rgba(2,6,23,.3);padding:11px 12px;display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:11px;font-weight:700;color:#94a3b8">{{ hiddenTitle }}</span>
+            <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ hiddenText }}</span>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+        <sc-if value="{{ hasOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:13px;min-width:0">
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span style="font-size:14px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9">{{ openName }}</span>
+              <span style="font-size:10.5px;font-family:Menlo,monospace;color:#64748b;word-break:break-all">{{ openGuid }}</span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">One row, three independent grants. The detail route never hides a tenant — a customer who has consented to nothing comes back with all three empty.</span>
+            </div>
+
+            <sc-for list="{{ cards }}" as="c" hint-placeholder-count="3">
+              <div style="border:1px solid {{ c.line }};border-radius:11px;background:rgba(2,6,23,.4);padding:13px;display:flex;flex-direction:column;gap:10px;min-width:0">
+                <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+                  <span style="display:flex;flex-direction:column;gap:2px;min-width:150px;flex:1">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">{{ c.eyebrow }}</span>
+                    <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">{{ c.title }}</span>
+                  </span>
+                  <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:22px;padding:0 9px;border-radius:999px;background:{{ c.tint }};border:1px solid {{ c.badgeLine }};font-size:10.5px;font-weight:600;color:{{ c.color }}">{{ c.status }}</span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+                  <sc-for list="{{ c.facts }}" as="f" hint-placeholder-count="3">
+                    <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                      <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">{{ f.label }}</span>
+                      <span style="font-size:11.5px;font-weight:600;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+                    </span>
+                  </sc-for>
+                </div>
+                <sc-if value="{{ c.hasScopes }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;gap:5px;flex-wrap:wrap">
+                    <sc-for list="{{ c.scopes }}" as="sc" hint-placeholder-count="3">
+                      <span style="display:inline-flex;align-items:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.18);font-size:10px;font-family:Menlo,monospace;color:#cbd5e1">{{ sc }}</span>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid rgba(148,163,184,.1);padding-top:10px">
+                  <sc-if value="{{ c.canInvite }}" hint-placeholder-val="{{ false }}">
+                    <label style="display:flex;align-items:center;gap:6px">
+                      <span style="font-size:11px;color:#94a3b8;white-space:nowrap">Valid for</span>
+                      <input value="{{ ttl }}" onChange="{{ setTtl }}" style="width:56px;height:30px;padding:0 9px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:12px;font-family:inherit;outline:none;text-align:right">
+                      <span style="font-size:11px;color:#94a3b8;white-space:nowrap">hours (1–168)</span>
+                    </label>
+                    <button onClick="{{ invite }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Send a read-consent invite</button>
+                  </sc-if>
+                  <sc-if value="{{ c.noMint }}" hint-placeholder-val="{{ false }}">
+                    <span title="Only the read flow has an MSP-scoped invite route. Write-back and SharePoint consent are started by a platform administrator from the admin panel." style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px dashed rgba(148,163,184,.25);background:transparent;color:#64748b;font-size:12px;font-weight:600;cursor:not-allowed;font-family:inherit">{{ c.noMintLabel }}</span>
+                    <span style="font-size:10.5px;color:#fbbf24;text-wrap:pretty;flex:1;min-width:160px">No MSP-scoped route starts this flow — a platform administrator does it from the admin panel. Filed upstream.</span>
+                  </sc-if>
+                  <sc-if value="{{ c.canRevoke }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ c.revoke }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.12);color:#f87171;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">{{ c.revokeLabel }}</button>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+
+            <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:6px;min-width:0">
+                <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
+                <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
+                <sc-if value="{{ hasLink }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:5px;border-top:1px solid rgba(148,163,184,.12);padding-top:9px;min-width:0">
+                    <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">CONSENT URL · SINGLE USE</span>
+                    <span style="font-size:11px;font-family:Menlo,monospace;color:#93c5fd;word-break:break-all">{{ linkUrl }}</span>
+                    <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ linkMeta }}</span>
+                    <div style="display:flex;gap:5px;flex-wrap:wrap">
+                      <sc-for list="{{ linkScopes }}" as="sc" hint-placeholder-count="4">
+                        <span style="display:inline-flex;align-items:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.18);font-size:10px;font-family:Menlo,monospace;color:#cbd5e1">{{ sc }}</span>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+            <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">Pick a tenant</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:320px">Read access, write-back and SharePoint are three separate grants with their own dates. Only the first can be started from here.</span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- Onboarding links -->
+  <sc-if value="{{ isLinks }}" hint-placeholder-val="{{ false }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Onboarding links this MSP has issued</span>
+        <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ linksCaption }}</span>
+      </div>
+      <sc-if value="{{ hasLinks }}" hint-placeholder-val="{{ true }}">
+        <div style="overflow-x:auto;min-width:0">
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:820px">
+            <div style="display:grid;grid-template-columns:1.1fr 1.5fr 1.1fr 1.4fr 100px 1fr 1fr;gap:12px;padding:0 12px 6px;border-bottom:1px solid rgba(148,163,184,.14)">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">TOKEN</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">FOR</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">SERVICE</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">NOTE</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">STATUS</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">EXPIRES</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">ISSUED</span>
+            </div>
+            <sc-for list="{{ links }}" as="l" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:1.1fr 1.5fr 1.1fr 1.4fr 100px 1fr 1fr;gap:12px;align-items:center;border:1px solid rgba(148,163,184,.14);border-radius:9px;background:rgba(2,6,23,.4);padding:10px 12px;min-width:0">
+                <span style="font-size:11px;font-family:Menlo,monospace;color:#93c5fd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="The full token is on the wire; the link it belongs to is not">{{ l.token }}</span>
+                <span style="font-size:12px;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.email }}</span>
+                <span style="font-size:11.5px;color:{{ l.serviceColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.service }}</span>
+                <span style="font-size:11.5px;color:{{ l.noteColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.note }}</span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:20px;padding:0 8px;border-radius:999px;background:{{ l.tint }};border:1px solid {{ l.badgeLine }};font-size:10px;font-weight:600;color:{{ l.color }};justify-self:start">{{ l.status }}</span>
+                <span style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                  <span style="font-size:11.5px;color:#cbd5e1;white-space:nowrap">{{ l.expires }}</span>
+                  <span style="font-size:10.5px;color:#64748b;white-space:nowrap">{{ l.used }}</span>
+                </span>
+                <span style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                  <span style="font-size:11.5px;color:#cbd5e1;white-space:nowrap">{{ l.created }}</span>
+                  <span style="font-size:10.5px;color:#64748b;white-space:nowrap">{{ l.by }}</span>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noLinks }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
+          <span style="font-size:13px;font-weight:700;color:#cbd5e1">No onboarding links issued</span>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:360px">A real empty array. Links are created by the sibling generate-link route; this list is a straight read of what that route wrote.</span>
+          <span style="font-size:11px;font-family:Menlo,monospace;color:#64748b">GET /api/msp/onboarding/links → []</span>
+        </div>
+      </sc-if>
+      <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">Newest first, two hundred at most, no paging past that. Status is worked out from two timestamps — used, else expired, else pending — nothing is stored. The service and the issuing staff member arrive as bare ids with no name joined on, so the names here are looked up separately.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these five routes do and don't give this screen</span>
+      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+        <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+          <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+          <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:980},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
+const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
+const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
+const BLUE = ["rgba(96,165,250,.1)", "rgba(96,165,250,.24)", "#60a5fa"];
+const GREY = ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"];
+
+const READ_SCOPES = ["User.Read.All", "Directory.Read.All", "AuditLog.Read.All", "Policy.Read.All", "Reports.Read.All", "SecurityEvents.Read.All"];
+const WRITE_SCOPES = ["User.ReadWrite.All", "Group.ReadWrite.All", "Policy.ReadWrite.ConditionalAccess"];
+const SP_SCOPES = ["Sites.ReadWrite.All", "Files.ReadWrite.All"];
+
+// A tenant absent from `consent` entirely never appears on the list route.
+const TENANTS = [
+  { id: 1, name: "Northwind Logistics", guid: "5c2f9a1e-7d43-4b8a-9e61-2f0c8d7a3e91", updated: "2026-09-02",
+    consent: { graph: { status: "granted", consentedAt: "2026-06-12", revokedAt: null, grants: READ_SCOPES }, writeBack: { status: "granted", consentedAt: "2026-08-02", revokedAt: null, grants: WRITE_SCOPES }, sharepoint: null } },
+  { id: 2, name: "Halcyon Health", guid: "a13d7e50-2b9c-4f6e-8a47-9d1e3c5b7f02", updated: "2026-09-09",
+    consent: { graph: { status: "granted", consentedAt: "2026-04-28", revokedAt: null, grants: READ_SCOPES }, writeBack: { status: "pending", consentedAt: null, revokedAt: null, grants: [] }, sharepoint: { status: "declined", consentedAt: null, revokedAt: null, grants: [] } } },
+  { id: 3, name: "Kestrel Financial", guid: "e87b4c29-6f1d-4a3e-b5c8-0a2d9e4f6b13", updated: "2026-09-01",
+    consent: { graph: { status: "revoked", consentedAt: "2026-03-04", revokedAt: "2026-09-01", grants: READ_SCOPES }, writeBack: null, sharepoint: null } },
+  { id: 4, name: "Contoso Ltd", guid: "3f9e2d81-0c7a-4e5b-a6d3-8b1f4c9e2a74", updated: "2026-09-11",
+    consent: { graph: { status: "pending", consentedAt: null, revokedAt: null, grants: [] }, writeBack: null, sharepoint: null } },
+  { id: 5, name: "Fabrikam", guid: "9d4a7b3c-5e2f-4c1a-8f6b-1c3e7a9d5b28", updated: "2026-08-14", consent: { graph: null, writeBack: null, sharepoint: null } },
+  { id: 6, name: "Mccawsoft2", guid: "7b2e5f8a-1d4c-4a9e-b3f7-6e0a2c8d4f19", updated: "2026-07-30", consent: { graph: null, writeBack: null, sharepoint: null } }
+];
+
+const LINKS = [
+  { token: "k8f3a91c2e7d40b6f5a3c9e1d7b2f8a4", email: "it@fabrikam.example", serviceId: 131, serviceName: "M365 Launch Control — Plus Add-On", note: "Fabrikam — monitoring trial", redirect: null, expiresAt: "2026-09-20", usedAt: null, byId: 1, byName: "Shane McCaw", createdAt: "2026-09-13" },
+  { token: "2c7e9b1d4f6a83e0b5d2f7c9a1e4b6d8", email: "ops@kestrel.example", serviceId: 118, serviceName: "Tenant Monitoring — Enhanced", note: null, redirect: "https://app.example/portal/customer-home", expiresAt: "2026-09-05", usedAt: "2026-09-03", byId: 1, byName: "Shane McCaw", createdAt: "2026-09-02" },
+  { token: "e1a4d7c3b9f2065e8c4a1d7b3f9e2c5a", email: "admin@contoso.example", serviceId: null, serviceName: null, note: "Sent twice by mistake — this one expired unused", redirect: null, expiresAt: "2026-08-30", usedAt: null, byId: 1, byName: "Shane McCaw", createdAt: "2026-08-27" }
+];
+
+const KEYS = [
+  { key: "graph", eyebrow: "READ ACCESS · graph", title: "Reading the tenant", mint: true },
+  { key: "writeBack", eyebrow: "WRITE-BACK · writeBack", title: "Writing changes into the tenant", mint: false },
+  { key: "sharepoint", eyebrow: "SHAREPOINT · sharepoint", title: "Publishing documents to their SharePoint", mint: false }
+];
+const TONE = { granted: GREEN, pending: AMBER, declined: RED, revoked: GREY, none: GREY };
+const SHORT = { graph: "Read", writeBack: "Write-back", sharepoint: "SharePoint" };
+
+class Component extends DCLogic {
+  state = { live: false, tab: "consent", openId: 1, ttl: "72", overrides: {}, result: null };
+
+  grantOf(t, key) {
+    const o = this.state.overrides[t.id + ":" + key];
+    return o !== undefined ? o : t.consent[key];
+  }
+
+  invite = () => {
+    const raw = parseInt(this.state.ttl, 10);
+    const ttl = Math.min(Math.max(isNaN(raw) ? 72 : raw, 1), 168);
+    const exp = new Date(Date.now() + ttl * 3600 * 1000).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+    this.setState({ ttl: String(ttl), result: ["200 · invite minted", "One single-use token written for this customer, valid " + ttl + " hours" + (raw !== ttl ? " (clamped from " + this.state.ttl + ")" : "") + ". The tenant id came from the customer row, never from this screen. Audited as consent_invite_created against a fixed role label, not your role name.", BLUE, "https://app.example/consent/start?token=7f3d…c9a1", "Expires " + exp + " · the read app registration only", READ_SCOPES] });
+  };
+
+  revoke = (t, key) => () => {
+    const g = this.grantOf(t, key);
+    if (!g) return;
+    const next = Object.assign({}, g, { status: "revoked", revokedAt: new Date().toISOString().slice(0, 10) });
+    this.setState(s => ({ overrides: Object.assign({}, s.overrides, { [t.id + ":" + key]: next }),
+      result: ["200 · { ok: true, customerId: " + t.id + ", key: \"" + key + "\" }", "Stamped revoked with a server-side timestamp. Ownership was checked twice — once before the read, once inside the write — and a grant that landed nowhere would have answered not-found rather than a quiet success. The scopes stay on the record as history of what was held.", RED] }));
+  };
+
+  renderVals() {
+    const st = this.state;
+    const empty = this.props.forceEmpty === undefined ? st.live : !!this.props.forceEmpty;
+    const active = (t) => KEYS.some(k => this.grantOf(t, k.key) !== null && this.grantOf(t, k.key) !== undefined);
+    const listed = empty ? [] : TENANTS.filter(active);
+    const hidden = empty ? [] : TENANTS.filter(t => !active(t));
+    const links = empty ? [] : LINKS;
+    const today = new Date("2026-09-14");
+
+    const tabs = [["consent", "Consent grants", listed.length], ["links", "Onboarding links", links.length]].map(([k, label, count]) => {
+      const on = st.tab === k;
+      return { label, count: String(count), select: () => this.setState({ tab: k, result: null }),
+        bg: on ? "rgba(37,99,235,.18)" : "transparent", border: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+        fg: on ? "#f1f5f9" : "#94a3b8", countColor: on ? "#60a5fa" : "#94a3b8" };
+    });
+
+    const tenants = listed.map(t => ({
+      name: t.name, guid: t.guid, updated: t.updated,
+      grants: KEYS.map(k => {
+        const g = this.grantOf(t, k.key);
+        const tone = TONE[g ? g.status : "none"];
+        return { label: SHORT[k.key] + " · " + (g ? g.status : "never started"), tint: tone[0], badgeLine: tone[1], color: g ? tone[2] : "#64748b" };
+      }),
+      bg: t.id === st.openId ? "rgba(96,165,250,.09)" : "rgba(2,6,23,.4)",
+      line: t.id === st.openId ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)",
+      select: () => this.setState({ openId: t.id, result: null })
+    }));
+
+    const t = empty ? null : TENANTS.find(x => x.id === st.openId) || null;
+    const cards = t ? KEYS.map(k => {
+      const g = this.grantOf(t, k.key);
+      const tone = TONE[g ? g.status : "none"];
+      return {
+        eyebrow: k.eyebrow, title: k.title,
+        status: g ? g.status : "never started", tint: tone[0], badgeLine: tone[1], color: g ? tone[2] : "#64748b",
+        line: g && g.status === "granted" ? "rgba(52,211,153,.22)" : "rgba(148,163,184,.14)",
+        facts: [
+          { label: "CONSENTED", value: g && g.consentedAt ? g.consentedAt : "—", color: g && g.consentedAt ? "#f1f5f9" : "#64748b" },
+          { label: "REVOKED", value: g && g.revokedAt ? g.revokedAt : "—", color: g && g.revokedAt ? "#f87171" : "#64748b" },
+          { label: "APPROVED BY", value: "not on this wire", color: "#fbbf24" }
+        ],
+        hasScopes: !!(g && g.grants && g.grants.length), scopes: g ? g.grants : [],
+        canInvite: k.mint && (!g || g.status !== "granted"),
+        noMint: !k.mint && (!g || g.status !== "granted"),
+        noMintLabel: "Start " + SHORT[k.key].toLowerCase() + " consent",
+        canRevoke: !!g && g.status === "granted",
+        revokeLabel: "Revoke " + SHORT[k.key].toLowerCase(),
+        revoke: this.revoke(t, k.key)
+      };
+    }) : [];
+
+    const res = st.result;
+    const linkRows = links.map(l => {
+      const status = l.usedAt ? "used" : new Date(l.expiresAt) < today ? "expired" : "pending";
+      const tone = status === "used" ? GREEN : status === "expired" ? GREY : AMBER;
+      return { token: l.token.slice(0, 8) + "…" + l.token.slice(-4), email: l.email,
+        service: l.serviceId === null ? "none named" : "#" + l.serviceId + " · " + l.serviceName, serviceColor: l.serviceId === null ? "#64748b" : "#cbd5e1",
+        note: l.note || "—", noteColor: l.note ? "#cbd5e1" : "#475569",
+        status, tint: tone[0], badgeLine: tone[1], color: tone[2],
+        expires: l.expiresAt, used: l.usedAt ? "used " + l.usedAt : (l.redirect ? "redirect set" : "not used"),
+        created: l.createdAt, by: "user #" + l.byId + " · " + l.byName };
+    });
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      rootBg: this.props.rootBg ?? "transparent",
+      showOwnHeader: !(this.props.embedded ?? false),
+      showToggles: !(this.props.embedded ?? false),
+      showNotes: this.props.showNotes ?? true,
+      toggleLive: () => this.setState(s => ({ live: !s.live, result: null })),
+      liveBtnLabel: st.live ? "Show a populated book" : "Show the empty shape",
+
+      tabs, isConsent: st.tab === "consent", isLinks: st.tab === "links",
+      listCaption: empty ? "the route answered with an empty array" : listed.length + " listed · scoped to your MSP · the row's updated date is the tenant's, not any one grant's",
+      hasTenants: tenants.length > 0, noTenants: tenants.length === 0, tenants,
+      hasHidden: hidden.length > 0,
+      hiddenTitle: hidden.length + " more tenant" + (hidden.length === 1 ? "" : "s") + " in your book " + (hidden.length === 1 ? "is" : "are") + " not in this list",
+      hiddenText: hidden.map(h => h.name).join(", ") + " — never started any of the three flows, so the list route drops " + (hidden.length === 1 ? "it" : "them") + " entirely. Open one from the tree and the detail route returns it with three empty grants.",
+
+      hasOpen: !!t, noOpen: !t,
+      openName: t ? t.name : "", openGuid: t ? t.guid : "",
+      cards,
+      ttl: st.ttl, setTtl: (e) => this.setState({ ttl: e.target.value }),
+      invite: this.invite,
+
+      hasResult: !!res, resCode: res ? res[0] : "", resText: res ? res[1] : "",
+      resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
+      hasLink: !!(res && res[3]), linkUrl: res && res[3] ? res[3] : "", linkMeta: res && res[4] ? res[4] : "", linkScopes: res && res[5] ? res[5] : [],
+
+      linksCaption: empty ? "the route answered with an empty array" : linkRows.length + " issued · newest first",
+      hasLinks: linkRows.length > 0, noLinks: linkRows.length === 0, links: linkRows,
+
+      notes: [
+        { dot: "#f87171", text: "Only the read flow can be started from here. Write-back and SharePoint consent have no MSP-scoped route to mint an invite — an operator can see and revoke all three grants but originate just one. The platform-administrator routes exist and work; they simply have no MSP counterpart. Filed upstream." },
+        { dot: "#fbbf24", text: "Who approved a grant is stored on the record — an admin address and display name — and dropped from every MSP-scope response for all three keys. The admin tier splices it back; this tier does not. Filed upstream alongside the above." },
+        { dot: "#fbbf24", text: "The list hides any tenant with no consent activity, while the detail route returns the same tenant with three empty grants. From the list alone, a tenant that is not yours and a tenant that has never consented look identical." },
+        { dot: "#fbbf24", text: "The updated date on each row belongs to the tenant record, not to any grant. Three grants with three different dates share one updated stamp." },
+        { dot: "#fbbf24", text: "Minting an invite checks that the multi-tenant app is configured before it checks ownership, so that one refusal can fire for a customer outside your book. Nothing about the target leaks — only that the app is not set up." },
+        { dot: "#60a5fa", text: "An invite is one single-use token, valid 72 hours unless you say otherwise, clamped between one hour and a week. The tenant id is read off the customer row and never trusted from the client; the scopes returned are the real manifest, verbatim." },
+        { dot: "#60a5fa", text: "Revoking checks ownership twice — once before the read and again inside the write — and a stamp that matches no row answers not-found rather than a silent success. The response is a bare acknowledgement, not the updated record." },
+        { dot: "#60a5fa", text: "A suspended MSP can still mint a consent invite here; only the onboarding generate-link route refuses a suspended MSP. Below the filing bar, flagged for awareness." },
+        { dot: "#94a3b8", text: "Onboarding links come back newest first, two hundred at most, with the bare token on the wire. The service and the issuing staff member are raw ids with no name joined on, and the status is derived from two timestamps rather than stored." },
+        { dot: "#94a3b8", text: "This tier addresses a customer by its internal id; the admin tier addresses the same revoke by the Microsoft tenant GUID. Both are consistent within themselves, but they are different schemes for one action." },
+        { dot: "#94a3b8", text: "None of the five routes had a caller when the pack was written, and every field here is a bare column projection with no named response type — both states are drawn from the shape the routes return." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

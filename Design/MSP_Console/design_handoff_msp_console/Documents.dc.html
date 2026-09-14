@@ -101,7 +101,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
         <span data-icon="file-plus" style="width:42px;height:42px;border-radius:13px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:11px"></span>
         <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Nothing published yet</span>
-        <span style="font-size:12.5px;color:#94a3b8;max-width:440px;text-wrap:pretty">Write a document here and it is turned into a PDF, filed in SharePoint and published in one pass.</span>
+        <span style="font-size:12.5px;color:#94a3b8;max-width:440px;text-wrap:pretty">Write a document here and it is turned into a PDF, filed in SharePoint and versioned in one pass — and published too, if you ask for that.</span>
       </div>
     </sc-if>
   </sc-if>
@@ -247,7 +247,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
         <div style="display:flex;align-items:flex-start;gap:10px">
           <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
             <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#93c5fd">NEW DOCUMENT</span>
-            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Write and publish</span>
+            <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Write and file</span>
           </div>
           <button onClick="{{ closeAuthor }}" style="width:28px;height:28px;flex:0 0 28px;border-radius:8px;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(148,163,184,.12)"><span data-icon="x" style="width:14px;height:14px"></span></button>
         </div>
@@ -281,16 +281,26 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
           <textarea value="{{ newBody }}" onChange="{{ setNewBody }}" placeholder="Paste or write the content" style="min-height:120px;padding:10px 11px;border-radius:8px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:12.5px;font-family:Menlo,monospace;outline:none;resize:vertical"></textarea>
         </div>
 
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1">When it is ready</span>
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <sc-for list="{{ publishOptions }}" as="o" hint-placeholder-count="2">
+              <button onClick="{{ o.pick }}" style="height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ o.line }};background:{{ o.bg }};color:{{ o.fg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ o.label }}</button>
+            </sc-for>
+          </div>
+          <span style="font-size:11px;color:#64748b;text-wrap:pretty">{{ publishNote }}</span>
+        </div>
+
         <div style="display:flex;gap:10px;padding:12px 13px;border-radius:10px;border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.07)">
           <span data-icon="triangle-alert" style="width:15px;height:15px;color:#fbbf24;flex:0 0 15px;margin-top:2px"></span>
           <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
-            <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">Submitting runs the whole thing through to published</span>
-            <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">There is no draft stop. The PDF it produces is plain text today — layout, images and tables do not survive.</span>
+            <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ submitWarnTitle }}</span>
+            <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">The PDF it produces is plain text today — layout, images and tables do not survive.</span>
           </div>
         </div>
 
         <div style="display:flex;gap:10px;margin-top:auto;padding-top:13px;border-top:1px solid rgba(148,163,184,.12)">
-          <button onClick="{{ submitAuthor }}" title="{{ submitTitle }}" style="flex:1;height:38px;border-radius:8px;border:1px solid {{ submitLine }};background:{{ submitBg }};color:{{ submitFg }};font-size:13px;font-weight:600;cursor:{{ submitCursor }};opacity:{{ submitOpacity }}">Submit and publish</button>
+          <button onClick="{{ submitAuthor }}" title="{{ submitTitle }}" style="flex:1;height:38px;border-radius:8px;border:1px solid {{ submitLine }};background:{{ submitBg }};color:{{ submitFg }};font-size:13px;font-weight:600;cursor:{{ submitCursor }};opacity:{{ submitOpacity }}">{{ submitLabel }}</button>
           <button onClick="{{ closeAuthor }}" style="height:38px;padding:0 15px;border-radius:8px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:13px;cursor:pointer">Cancel</button>
         </div>
       </div>
@@ -308,7 +318,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
 class Component extends DCLogic {
   state = {
     tab: null, filter: "all", hubSel: null, docSel: null,
-    authorOpen: false, newTitle: "", newBody: "", owner: "us", dest: "our own SharePoint",
+    authorOpen: false, newTitle: "", newBody: "", owner: "us", dest: "our own SharePoint", autoPublish: false,
     shared: {}, published: {}
   };
 
@@ -324,7 +334,8 @@ class Component extends DCLogic {
     { id: "a1", title: "Managed services agreement 2026", kind: "general", owner: "us", stage: 7, versions: 3, dest: "our own SharePoint", updated: "published 2 Sep 2026", note: "Annual refresh, new SLA schedule" },
     { id: "a2", title: "Northwind onboarding pack", kind: "branded deliverable", owner: "Northwind Logistics", stage: 4, versions: 1, dest: "our own SharePoint", updated: "started 3 minutes ago", note: "First draft" },
     { id: "a3", title: "Incident response playbook", kind: "general", owner: "us", stage: 7, versions: 5, dest: "platform SharePoint", updated: "published 18 Aug 2026", note: "Added the compromised-app path" },
-    { id: "a4", title: "Halcyon governance charter", kind: "branded deliverable", owner: "Halcyon Health", stage: 2, versions: 2, dest: "our own SharePoint", updated: "started 12 minutes ago", note: "Board feedback incorporated" }
+    { id: "a4", title: "Halcyon governance charter", kind: "branded deliverable", owner: "Halcyon Health", stage: 2, versions: 2, dest: "our own SharePoint", updated: "started 12 minutes ago", note: "Board feedback incorporated" },
+    { id: "a5", title: "Kestrel quarterly review letter", kind: "branded deliverable", owner: "Kestrel Financial", stage: 8, publish: false, versions: 1, dest: "our own SharePoint", updated: "draft ready 4 Sep 2026", note: "Submitted as a draft for partner review" }
   ];
 
   connectors = [
@@ -337,7 +348,7 @@ class Component extends DCLogic {
     { key: "pdf", title: "PDF produced", body: "Plain text only today — layout, images and tables from the source do not carry over." },
     { key: "sharepoint", title: "Filed in SharePoint", body: "Uploaded to the chosen site. Identical content is reused rather than uploaded twice." },
     { key: "version", title: "Version recorded", body: "Becomes the document's current version." },
-    { key: "publish", title: "Published", body: "Marked active and visible. Running this twice is detected and skipped." },
+    { key: "publish", title: "Published", body: "Marked active and visible — only if it was submitted to publish. A draft submission skips this step and waits for you. Running it twice is detected and skipped." },
     { key: "audit", title: "Logged", body: "An export record is raised. If that fails, the document still publishes." },
     { key: "cleanup", title: "Tidied up", body: "Nothing to do yet — reserved for clearing temporary files later." }
   ];
@@ -408,6 +419,8 @@ class Component extends DCLogic {
     const canShare = hubSel ? (hubSel.state === "delivered" || hubSel.state === "approved" || hubSel.kind === "scoped SOW") : false;
     const canPdf = hubSel ? (hubSel.state === "delivered" || hubSel.state === "approved") : false;
     const canSubmit = s.newTitle.trim().length > 0 && s.newBody.trim().length > 0;
+    const docPub = docSel ? (docSel.publish !== false || !!s.published[docSel.id]) : true;
+    const docDraft = !!docSel && docSel.stage >= 7 && !docPub;
 
     return {
       rootPad: this.props.embedded ? "0" : "20px",
@@ -461,22 +474,24 @@ class Component extends DCLogic {
       noAuthored: tab === "authored" && authored.length === 0,
       authoredRows: authored.map(a => {
         const done = a.stage >= 7;
-        const t = this.tone(done ? "green" : "blue");
+        const pub = a.publish !== false || !!s.published[a.id];
+        const t = this.tone(done ? (pub ? "green" : "amber") : "blue");
         return {
           title: a.title,
           meta: a.kind + " · " + (a.owner === "us" ? "ours" : "for " + a.owner) + " · " + a.note,
-          state: done ? "published" : "working through it",
+          state: done ? (pub ? "published" : "waiting as a draft") : "working through it",
           stColor: t[0], stTint: t[1], stLine: t[2],
           color: t[0], tint: t[1], line: t[2],
-          cardLine: done ? "rgba(148,163,184,.16)" : "rgba(96,165,250,.24)",
+          cardLine: done ? (pub ? "rgba(148,163,184,.16)" : "rgba(251,191,36,.24)") : "rgba(96,165,250,.24)",
           steps: this.STEPS.map((st, n) => {
             const at = n + 1;
-            const state = at < a.stage ? "done" : at === a.stage ? "now" : "todo";
+            const skipped = st.key === "publish" && !pub && at <= a.stage;
+            const state = skipped ? "skipped" : at < a.stage ? "done" : at === a.stage ? "now" : "todo";
             const tt = this.tone(state === "done" ? "green" : state === "now" ? "blue" : "slate");
             return {
               label: st.title,
-              icon: state === "done" ? "check" : state === "now" ? "loader" : "circle",
-              color: state === "todo" ? "#475569" : tt[0],
+              icon: state === "done" ? "check" : state === "now" ? "loader" : state === "skipped" ? "minus" : "circle",
+              color: state === "todo" ? "#475569" : state === "skipped" ? "#94a3b8" : tt[0],
               tint: state === "todo" ? "rgba(148,163,184,.05)" : tt[1],
               line: state === "todo" ? "rgba(148,163,184,.14)" : tt[2],
               anim: state === "now" ? "smcDocPulse 1.4s ease-in-out infinite" : "none"
@@ -485,7 +500,7 @@ class Component extends DCLogic {
           versions: a.versions + (a.versions === 1 ? " version" : " versions"),
           dest: "filed in " + a.dest,
           destColor: a.dest === "platform SharePoint" ? "#94a3b8" : "#93c5fd",
-          updated: a.updated,
+          updated: s.published[a.id] ? "published just now" : a.updated,
           open: () => this.setState({ docSel: a.id })
         };
       }),
@@ -551,14 +566,16 @@ class Component extends DCLogic {
       closeDoc: () => this.setState({ docSel: null }),
       docSelTitle: docSel ? docSel.title : "",
       docSelKind: docSel ? (docSel.kind + " · " + (docSel.owner === "us" ? "OURS" : "FOR " + docSel.owner)).toUpperCase() : "",
-      docSelMeta: docSel ? docSel.note + " · " + docSel.updated : "",
+      docSelMeta: docSel ? docSel.note + " · " + (s.published[docSel.id] ? "published just now" : docSel.updated) : "",
       docSelSteps: docSel ? this.STEPS.map((st, n) => {
         const at = n + 1;
-        const state = at < docSel.stage ? "done" : at === docSel.stage ? "now" : "todo";
+        const skipped = st.key === "publish" && !docPub && at <= docSel.stage;
+        const state = skipped ? "skipped" : at < docSel.stage ? "done" : at === docSel.stage ? "now" : "todo";
         return {
-          title: st.title, body: st.body,
-          icon: state === "done" ? "circle-check-big" : state === "now" ? "loader" : "circle",
-          color: state === "done" ? "#34d399" : state === "now" ? "#60a5fa" : "#475569",
+          title: st.title,
+          body: skipped ? "Skipped — this was submitted as a draft. Publish it from the actions below when you are ready." : st.body,
+          icon: state === "done" ? "circle-check-big" : state === "now" ? "loader" : state === "skipped" ? "circle-minus" : "circle",
+          color: state === "done" ? "#34d399" : state === "now" ? "#60a5fa" : state === "skipped" ? "#fbbf24" : "#475569",
           titleColor: state === "todo" ? "#64748b" : "#f1f5f9",
           anim: state === "now" ? "smcDocPulse 1.4s ease-in-out infinite" : "none"
         };
@@ -575,15 +592,23 @@ class Component extends DCLogic {
         };
       }) : [],
       docActions: docSel ? [
-        { label: "New version", icon: "file-plus", line: "#2563eb", bg: "#2563eb", fg: "#fff", cursor: "pointer", opacity: "1", title: "Runs the whole thing again from the new content", run: () => this.setState({ authorOpen: true, docSel: null }) },
-        { label: "Open the filed copy", icon: "external-link", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "", run: () => {} },
-        docSel.stage >= 7
-          ? { label: "Publish again", icon: "upload", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "Re-stamps the published date — it does not warn you it was already published", run: () => {} }
-          : { label: "Still working", icon: "lock", line: "rgba(148,163,184,.2)", bg: "transparent", fg: "#64748b", cursor: "not-allowed", opacity: ".6", title: "Wait for it to finish", run: () => {} }
+        docDraft
+          ? { label: "Publish now", icon: "upload", line: "#2563eb", bg: "#2563eb", fg: "#fff", cursor: "pointer", opacity: "1", title: "Marks it active and stamps the date. Nothing is generated again.", run: () => this.setState({ published: Object.assign({}, s.published, { [docSel.id]: true }) }) }
+          : { label: "New version", icon: "file-plus", line: "#2563eb", bg: "#2563eb", fg: "#fff", cursor: "pointer", opacity: "1", title: "Runs the whole thing again from the new content. You choose again whether it publishes.", run: () => this.setState({ authorOpen: true, docSel: null }) },
+        docDraft
+          ? { label: "New version", icon: "file-plus", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "Runs the whole thing again from the new content. You choose again whether it publishes.", run: () => this.setState({ authorOpen: true, docSel: null }) }
+          : { label: "Open the filed copy", icon: "external-link", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "", run: () => {} },
+        docDraft
+          ? { label: "Open the filed copy", icon: "external-link", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "", run: () => {} }
+          : docSel.stage >= 7
+            ? { label: "Publish again", icon: "upload", line: "rgba(148,163,184,.22)", bg: "transparent", fg: "#cbd5e1", cursor: "pointer", opacity: "1", title: "Re-stamps the published date — it does not warn you it was already published", run: () => {} }
+            : { label: "Still working", icon: "lock", line: "rgba(148,163,184,.2)", bg: "transparent", fg: "#64748b", cursor: "not-allowed", opacity: ".6", title: "Wait for it to finish", run: () => {} }
       ] : [],
-      docActionNote: docSel && docSel.stage >= 7
-        ? "Publishing again re-stamps the date rather than telling you it was already published."
-        : "Progress has to be refreshed to be seen — nothing pushes an update to this screen while it works.",
+      docActionNote: docDraft
+        ? "Filed and versioned, but submitted as a draft, so the pipeline stopped short of publishing. Publishing from here marks it active without running anything again."
+        : docSel && docSel.stage >= 7
+          ? "Publishing again re-stamps the date rather than telling you it was already published."
+          : "Progress has to be refreshed to be seen — nothing pushes an update to this screen while it works.",
 
       authorOpen: s.authorOpen,
       newTitle: s.newTitle,
@@ -607,6 +632,18 @@ class Component extends DCLogic {
       destNote: s.dest === "our own SharePoint"
         ? "Uses one of our own connectors. If none resolves, the whole thing stops rather than filing it somewhere else."
         : "Uses the shared platform library.",
+      publishOptions: [[false, "Stop at a draft"], [true, "Publish when ready"]].map(o => ({
+        label: o[1],
+        bg: s.autoPublish === o[0] ? "rgba(37,99,235,.18)" : "transparent",
+        line: s.autoPublish === o[0] ? "rgba(96,165,250,.32)" : "rgba(148,163,184,.18)",
+        fg: s.autoPublish === o[0] ? "#bfdbfe" : "#94a3b8",
+        pick: () => this.setState({ autoPublish: o[0] })
+      })),
+      publishNote: s.autoPublish
+        ? "Marked active and visible the moment the pipeline finishes."
+        : "The default. Runs through PDF, SharePoint and versioning, then waits for you to publish it from the document.",
+      submitWarnTitle: s.autoPublish ? "Submitting runs the whole thing through to published" : "Submitting stops at a draft you publish later",
+      submitLabel: s.autoPublish ? "Submit and publish" : "Submit as a draft",
       submitLine: canSubmit ? "#2563eb" : "rgba(148,163,184,.2)",
       submitBg: canSubmit ? "#2563eb" : "transparent",
       submitFg: canSubmit ? "#fff" : "#64748b",
@@ -615,7 +652,7 @@ class Component extends DCLogic {
       submitTitle: canSubmit ? "" : "A title and some content are both needed",
       submitAuthor: canSubmit ? () => this.setState({ authorOpen: false, newTitle: "", newBody: "", tab: "authored" }) : () => {},
 
-      honestNote: "All of this runs on live endpoints with no interface wired to them yet, so what is shown here is representative. Submitting a document always publishes it — there is no draft stop — and the PDF it produces is plain text."
+      honestNote: "All of this runs on live endpoints; what is shown here is representative rather than read from them. Whether a submission publishes is a real choice now, for first drafts and new versions alike — the default stops at a draft — and the PDF it produces is plain text."
     };
   }
 }

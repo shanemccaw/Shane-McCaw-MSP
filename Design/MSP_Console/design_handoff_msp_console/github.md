@@ -4,6 +4,18 @@ path: artifacts/api-server/src/routes (plus artifacts/admin-panel/src/components
 
 ## Last sync
 
+date: 2026-09-14T02:53:37Z
+
+### Updated in this project
+
+- Diffed all 38 `docs/msp-console` packs by blob sha against the 2026-09-12 inventory (the commit compare from c10d85919617 is server-truncated and returns no files, so blob diffing is the only reliable signal). Four changed: **active-directory-ou-assignment** (a 7th route, `GET /msp/active-directory/ous?customerId=` returning `{ ous: [{ id, name }] }` for #2591, and an optional `?customerId=` on the request list for #3916), **retention-queue** (§4 and the orphan check superseded by #3909: `msp_poams` is a registered record class since #3451, `portal-poams.ts` soft-deletes and requests acceleration, so the queue is honestly empty rather than structurally unreachable; a real console page `modules/retention/RetentionQueue.tsx` ships at `/ops/retention`, #3817), **msp-launch-control** (#3947/#3937 addendum: `Availability` gains `license_required` as a 4th state checked last from a live `/subscribedSkus` read, `GraphWriteErrorType` gains `license_gap`, each action carries `licenseRequirement: { skus, satisfied, description } | null`, the 9 Conditional Access rows are backfilled to `["AAD_PREMIUM","AAD_PREMIUM_P2"]`, execute re-checks the licence before the write; two CA templates still have no catalog row), **documents** (#2724 fixed in `64e93e5fe`: `autoPublish` is now honoured — `false`, the default, makes `doc_publish` skip the publish writes, and `POST .../versions` reads the same body field instead of hardcoding `false`).
+- Launch Control, AD OU Assignment and Retention Queue were already rebuilt for those changes in the interrupted previous pass (four-state availability with the live licence line and `license_gap` history row; the unit-name lookup and the server-side customer narrowing; the reachable-queue tiles with `msp_poams` rows). Re-checked against the current packs this pass — no further change needed.
+- Documents rebuilt for #2724: the author drawer gains a "Stop at a draft / Publish when ready" choice that defaults to draft like the route, the warning and submit label follow it, a drafted document shows the publish step as skipped and offers "Publish now" through the manual publish route, and the new-version action says the choice is made again. The "there is no draft stop" claims are gone from the empty state, the drawer and the footnote.
+- Mounted the four screens built from the previously partial packs into the console: **Audit Log** at the per-tenant `audit` leaf (replacing the frame grid, narrowed by `customerName`) and again under Operations as the MSP-wide log; **Offers & SOWs** under each tenant's Commercial group; **Consent & onboarding** and **Staff roster** under Operations. All four take `embedded` and `forceEmpty` like the other pack mounts. Handoff README rewritten around the 54-screen set with a "For Claude Code" brief; 27 screenshots added or retaken (console mounts 51–62 and 67–70, standalone 63–66, the Documents drawer 71, and the stale 19/22/24/32/33/44/46).
+- `artifacts/msp-console/` now exists upstream — a real console app (shell, auth pages, 19 console modules, page folders for AD OU assignment, break-glass, change control, config state, executive, POA&Ms, runbooks, SOPs, offboarding, plus `modules/retention` and `modules/risk-register`). Treated as a downstream consumer of these designs, not a build source: the screens here keep tracking the packs and route files. Handoff bundle refreshed (the four screens, the console, `github.md`). Current copies of the four changed packs are kept at `docs/msp-console/` for the next blob diff.
+
+## Previous sync
+
 date: 2026-09-12T18:34:00Z
 
 ### Updated in this project
@@ -257,7 +269,7 @@ date: 2026-09-10T22:43:07Z
 | Client → Data rights (+ root feed) | `msp-data-rights.ts` |
 | Client → Documents (hub) | `msp-documents-hub.ts` |
 | Client → Webhooks | `msp-console-webhooks.ts` |
-| Client → Launch Control | `msp-launch-control.ts` |
+| Client → Launch Control | `msp-launch-control.ts` (+ `lib/license-gate.ts`, `lib/graph.ts` for the `license_gap` classification) |
 | Client → Remediation | `msp-remediation-tracker.ts`, `msp-evidence-attachments.ts`, `msp-remediation-tracker-scores.ts`, `msp-remediation-tracker-export.ts`, `msp-remediation-checklist.ts`, `msp-remediation-fix-routes.ts`, `msp-remediation-reveal.ts`, `msp-remediation-bypass-resolutions.ts` |
 | Client → Risk Register | `msp-rbd.ts`, `msp-rbd-instances.ts`, `msp-rbd-versions.ts` |
 | Client → Ownership | `msp-ownership.ts`, `portal-ownership.ts`, `portal-settings-ownership.ts` |
@@ -277,23 +289,33 @@ date: 2026-09-10T22:43:07Z
 | Marketplace Purchase | `msp-marketplace-purchase.ts` (+ `portal-marketplace.ts`, `catalog-pricing.ts`, `resolve-fulfillment.ts`) |
 | AD OU Assignment | `msp-active-directory.ts` (+ `admin-active-directory.ts` helpers, `policy-compliance-graph.ts`) |
 | Offboarding | `msp-portal.ts` (offboarding routes + dashboard state fields) |
-| Retention Queue | `msp-retention-queue.ts` (+ `lib/retention/lifecycle.ts`, `registry.ts`) |
+| Retention Queue | `msp-retention-queue.ts` (+ `lib/retention/lifecycle.ts`, `registry.ts`, `wiring/msp-poams.ts`; `portal-poams.ts` is the producer) |
 | DLQ | `msp-dlq.ts` (+ `portal-workflow-engine.ts`, `lib/dlq.ts`, `admin-dlq.ts` for the cross-surface comparison) |
 | Reports | `msp-reports.ts` (+ `report-nodes.ts`, `compileReportToHtml.ts`, `rbd-document-render.ts`) |
 | POA&Ms | `msp-poams.ts` (+ `portal-poams.ts`, `poam-ref.ts` for the cross-surface reads) |
 | Operations → Documents, SharePoint connectors | `msp-documents.ts` |
+| Audit Log (per-tenant `audit` leaf with `customerName`; Operations → Audit log MSP-wide) | `msp-audit-log.ts` (built from the audit-log pack) |
+| Consent and Onboarding (Operations) | `msp-consent.ts`, `msp-onboarding.ts` (built from the consent-and-onboarding pack) |
+| Staff Roster (Operations) | `msp-settings.ts` staff and invite routes (built from the msp-staff-roles-and-onboarding pack) |
+| Offers & SOWs (per tenant → Commercial) | `msp-sow.ts`, `msp-sales-offers.ts` (built from the offers-and-sow-acceptance pack) |
+
+## Upstream console app (`artifacts/msp-console/src`, seen 2026-09-14)
+
+A real MSP console now exists in the repo: `console/ConsoleShell.tsx`, `TreeSidebar.tsx`, `CommandPalette.tsx`, `nav.ts`, `treeModel.ts`; `console/modules/` (AccountSecurity, BreakGlassWatchlist, DataRights, Diagnostics, Dlq, Documents, MarketplacePurchase, Overview, Ownership, PartnerRevenue, PlanSelfService, PolicyEngine, Remediation, Reports, Sales, ScopeSla, StatusReports, Team, Webhooks); `pages/` (Offboarding, Sops, ad-ou-assignment, break-glass, change-control, config-state, executive, poams, runbooks); `modules/retention`, `modules/risk-register`; `auth/` (SignIn, TwoFactor, ForgotPassword, ChangeMfa, Sessions); `api/*.ts` per module. Not a build source for this project — the screens here are designed from the packs and route files, and the app is what consumes them. Worth a look when a sync question is "what did they actually build", nothing more.
 
 ## Not yet covered
 
 Route files on main with no screen in this console yet:
 
-`msp-admin-settings` · `msp-alerts` · `msp-audit-log` · `msp-communications-push` · `msp-compliance-frameworks` · `msp-consent` · `msp-custom-domain` · `msp-engine-history` · `msp-engines` · `msp-m365-sla` · `msp-message-center` · `msp-onboarding` · `msp-plan-management` · `msp-plan-self-service` · `msp-policy-decisions` · `msp-policy-engine-settings` · `msp-security-plan` · `msp-sow` · `msp-staff` · `msp-staff-search` · `msp-standing-policies` · `msp-support` · `msp-vip-classifications`
+`msp-admin-settings` · `msp-alerts` · `msp-communications-push` · `msp-compliance-frameworks` · `msp-custom-domain` · `msp-engine-history` · `msp-engines` · `msp-m365-sla` · `msp-message-center` · `msp-plan-management` · `msp-policy-engine-settings` · `msp-security-plan` · `msp-staff` · `msp-staff-search` · `msp-support` · `msp-vip-classifications`
+
+Came off this list on 2026-09-14: `msp-audit-log` (Audit Log), `msp-consent` and `msp-onboarding` (Consent and Onboarding), `msp-sow` (Offers & SOWs), `msp-plan-self-service` (Plan Self-Service), `msp-policy-decisions` and `msp-standing-policies` (Policy Engine).
 
 Deliberately out of scope: `msp-billing-webhook`, `msp-webhooks` (inbound Stripe / app-signature receivers, no operator surface), `msp-signup` (public), `msp-v1` (the `/api/msp/v1/*` programmatic mount — an API surface, not an operator screen).
 
-## Contract packs (docs/msp-console @ main, read 2026-09-12T17:22:30Z)
+## Contract packs (docs/msp-console @ main, read 2026-09-14T02:52:27Z)
 
-Blob sha per pack — a changed sha means the pack was updated upstream.
+Blob sha per pack — a changed sha means the pack was updated upstream. Changed since the 2026-09-12 read and acted on this pass: active-directory-ou-assignment, documents, msp-launch-control, retention-queue.
 
 | Pack | Screen here | Blob |
 |---|---|---|
@@ -303,29 +325,29 @@ Blob sha per pack — a changed sha means the pack was updated upstream.
 | poams | POA&Ms | 2b2180715c58 |
 | reports | Reports | c1203675460e |
 | dlq | DLQ | fcc7caac0670 |
-| retention-queue | Retention Queue | adcf2e013d1a |
+| retention-queue | Retention Queue | 389fad7c054d |
 | offboarding | Offboarding | 33a9b4d1d6f5 |
-| active-directory-ou-assignment | AD OU Assignment | e129cdeea1cf |
+| active-directory-ou-assignment | AD OU Assignment | 91cf69f90e47 |
 | marketplace-purchase | Marketplace Purchase | 788ae58df6f7 |
 | partner-revenue | Partner Revenue | 048759f15dc8 |
 | admin-panel-msp-tenant-management | MSP Console (tenant canvas + MSP settings) | 7cf216c979d0 |
-| audit-log | MSP Console (MSP → Settings activity) — partial | 45224f604f29 |
+| audit-log | Audit Log (per tenant and MSP-wide) | 45224f604f29 |
 | break-glass | Break Glass | 01f55c2150e4 |
 | change-control | Change Control | 0c1395f64821 |
 | config-state | Configuration State | feaafcd4249b |
-| consent-and-onboarding | MSP Console (tenant Consent) — partial | 1c636b4d564b |
+| consent-and-onboarding | Consent and Onboarding (+ tenant Consent rows on the tenant canvas) | 1c636b4d564b |
 | customer-timeline | Activity Timeline | c8850864d6fd |
 | data-rights-and-privacy | Data Rights | 50cd6b41db0d |
 | diagnostics | Diagnostics | d1f94db599dc |
-| documents | Documents | 498454ebfc79 |
+| documents | Documents | a40b9b493758 |
 | managed-tenants-directory | Console Shell / MSP Console | 57d15927b0f0 |
 | msp-console-webhooks | Webhooks | 3c3364766816 |
 | msp-executive | Executive View | c54e5f120490 |
-| msp-launch-control | Launch Control | c9910735a62d |
+| msp-launch-control | Launch Control | d10395be5159 |
 | msp-plan-self-service | Plan Self-Service | bc91da330022 |
 | msp-settings | MSP Console (MSP → Settings) | 2251307f05ee |
-| msp-staff-roles-and-onboarding | Team / Ownership — partial | 6fe470cef94b |
-| offers-and-sow-acceptance | Sales — partial (SOW acceptance not built) | 891188a21142 |
+| msp-staff-roles-and-onboarding | Staff Roster (+ Team / Ownership) | 6fe470cef94b |
+| offers-and-sow-acceptance | Offers & SOWs (+ Sales) | 891188a21142 |
 | policy-decisions | Policy Engine | 16df4a602c2c |
 | remediation-tracking | Remediation | e05426ea83d0 |
 | risk-register | Risk Register | fe05e83fcf84 |
