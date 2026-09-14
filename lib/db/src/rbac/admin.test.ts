@@ -35,7 +35,6 @@ const MSP = 1;
 const OTHER_MSP = 1626;
 const TENANT = 1;
 const MSP_USER = 1; // belongs to MSP
-const CUSTOMER_USER = 39; // belongs to TENANT
 
 class Rollback extends Error {}
 
@@ -207,10 +206,17 @@ describe("RBAC admin CRUD (#2461)", () => {
   });
 
   // Sanity-anchors this file's own real ids against the schema's cross-tenant
-  // reality, mirroring integrity-check.ts's CUSTOMER_USER usage.
+  // reality, mirroring integrity-check.ts's CUSTOMER_USER usage. Resolved at
+  // test time rather than hardcoded, since the seed's real customer user ids
+  // shift as the local database is reseeded.
   it("resolveUserOrgId reads the customer system off tenantId, not mspId", async () => {
     await withSavepoint(async (t) => {
-      const orgId = await resolveUserOrgId(t, "customer", CUSTOMER_USER);
+      const customerUser = (
+        (await t.execute(sql`SELECT id FROM users WHERE tenant_id = ${TENANT} AND msp_role = 'Customer' LIMIT 1`)).rows as Array<{ id: number }>
+      )[0];
+      expect(customerUser, "a real customer user in TENANT must exist in this database").toBeTruthy();
+
+      const orgId = await resolveUserOrgId(t, "customer", customerUser.id);
       expect(orgId).toBe(TENANT);
     });
   });
