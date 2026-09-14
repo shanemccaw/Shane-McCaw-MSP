@@ -1,0 +1,12 @@
+{
+  "StepIndex": 1,
+  "Route": "http://localhost:5175/portal/risk-register",
+  "Selector": "/portal/risk-register",
+  "Description": "goto /portal/risk-register",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T19:30:30.1974212-04:00"
+}

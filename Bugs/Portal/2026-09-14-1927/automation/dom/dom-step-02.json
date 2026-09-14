@@ -1,0 +1,14 @@
+{
+  "StepIndex": 2,
+  "Route": "http://localhost:5175/portal/team",
+  "Selector": "h1",
+  "Description": "expect h1",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 258,
+  "Changes": [
+    "Captured DOM scope: 258 total element nodes under \u0027h1\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T19:29:03.3141914-04:00"
+}

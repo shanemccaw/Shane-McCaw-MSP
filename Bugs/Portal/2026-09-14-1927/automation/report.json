@@ -1,0 +1,107 @@
+{
+  "testName": "Issue #4013 - Team Management and Invitations - the real artifacts/portal \u0027/team\u0027 page (src/pages/customer-team.tsx), part of #1656 (page itself #3996; Billing/Customer-Admin role surface #4013). Adapted from Design/portal/design_handoff_billing_roles_and_new_modules/screens/Team Management.dc.html using this codebase\u0027s own React/Vite/Tailwind/shadcn/lucide patterns, wired against all 13 real routes on artifacts/api-server/src/routes/portal-team.ts via useTeamLive.ts/teamWire.ts: GET /portal/team (roster), POST /portal/team/invite, PATCH /portal/team/:userId/status, DELETE /portal/team/:userId/sessions, PATCH /portal/team/:userId/mfa-enforcement, POST /portal/team/:userId/unlock, POST /portal/team/:userId/reset-password, POST /portal/team/:userId/temp-password, POST /portal/team/:userId/reset-mfa, POST /portal/team/:userId/emergency-bypass, PATCH /portal/team/:userId/manager, and PATCH /portal/team/:userId/role (#3647, wired #4013). The page\u0027s ROLES block now draws role chips, held/not-held role cards, grant/revoke confirm modals, and the self-revoke refusal for Customer Admin - see test-manifests/portal/team-role-assignment.json for that route\u0027s own auth/validation coverage.",
+  "productName": "Portal",
+  "sessionId": "2026-09-14-1927",
+  "startedAt": "2026-09-14T19:27:59.8501521-04:00",
+  "endedAt": "2026-09-14T19:29:03.3534157-04:00",
+  "durationSeconds": 63.5,
+  "success": false,
+  "summary": "\u274C TEST ABORTED \u2014 critical step 2 (expect h1) failed: h1 \u2014 state \u0027visible\u0027 NOT matched (found=False, visible=False); text contained none of [\u0022Sign in required\u0022] [polled 30000ms / 120 attempts, 30000ms budget exhausted] (1/2 steps ran, 0 skipped)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/team"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/team",
+      "targetUrl": "http://localhost:5175/portal/team",
+      "expected": "navigation to http://localhost:5175/portal/team succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 1062,
+      "detail": "Navigated to http://localhost:5175/portal/team",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4013-20260914192739\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "h1",
+      "targetUrl": "http://localhost:5175/portal/team",
+      "expected": "h1 state == \u0027visible\u0027; textContains any of [\u0022Sign in required\u0022]",
+      "actual": "found=False, visible=False; text=\u0022\u0022",
+      "passed": false,
+      "durationMs": 30016,
+      "detail": "h1 \u2014 state \u0027visible\u0027 NOT matched (found=False, visible=False); text contained none of [\u0022Sign in required\u0022] [polled 30000ms / 120 attempts, 30000ms budget exhausted]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4013-20260914192739\\screenshots\\2.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "get-favicon.ico",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/favicon.ico",
+      "statusCode": 404,
+      "durationMs": 0,
+      "reason": "HTTP 404",
+      "timestamp": "2026-09-14T19:28:28.1418001-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /team",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4013-20260914192739\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\team-management\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect h1",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4013-20260914192739\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\team-management\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5175/portal/team",
+      "Selector": "/team",
+      "Description": "goto /team",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-14T19:28:31.6578765-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5175/portal/team",
+      "Selector": "h1",
+      "Description": "expect h1",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 258,
+      "Changes": [
+        "Captured DOM scope: 258 total element nodes under \u0027h1\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-14T19:29:03.3141914-04:00"
+    }
+  ],
+  "recommendations": "Run aborted: critical step 2 (expect h1) failed: h1 \u2014 state \u0027visible\u0027 NOT matched (found=False, visible=False); text contained none of [\u0022Sign in required\u0022] [polled 30000ms / 120 attempts, 30000ms budget exhausted]. Check prerequisite selectors, authentication, or network connectivity."
+}

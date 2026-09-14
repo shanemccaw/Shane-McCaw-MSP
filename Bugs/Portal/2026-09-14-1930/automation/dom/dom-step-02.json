@@ -1,0 +1,14 @@
+{
+  "StepIndex": 2,
+  "Route": "http://localhost:5175/portal/risk-register",
+  "Selector": "body",
+  "Description": "expect body",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 233,
+  "Changes": [
+    "Captured DOM scope: 233 total element nodes under \u0027body\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T19:30:31.8875952-04:00"
+}
