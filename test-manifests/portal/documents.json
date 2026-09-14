@@ -1,0 +1,84 @@
+{
+  "issue": 4003,
+  "feature": "Documents (#4003, Feature #1658) -- the real customer-facing Documents page in artifacts/portal (/documents), wired against the 6 authenticated portal-documents.ts endpoints (reports, insights-documents, view, pdf, share, report download) -- see Design/portal/design_handoff_full_site/docs/documents-contract-pack.md. No fixture module: every row on screen comes from these endpoints. The public share-viewer route (/shared-documents/:shareToken) is owned by shared-document-public.tsx (#4001, Feature #1663) and is not covered by this manifest.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "TBD-fill-at-DONE",
+
+  "notes": [
+    "WHAT THIS COVERS: the honest-empty list contract for both real endpoints -- contract pack §5 -- and that the page renders that state without fabricating data.",
+
+    "REAL LOCAL DB STATE AT THIS BUILD: `reports` and `insights_generated_documents` are both 0 rows across every tenant (confirmed via direct query against DATABASE_URL). A1/A2 below assert the real, honest empty-array response this produces on the testbed account, not a placeholder standing in for real data. Once either table has real rows for the testbed tenant, this manifest should be extended with a non-empty-list assertion (status badges, gated View/PDF/Share buttons per doc.status/docType).",
+
+    "NO UI LOGIN FLOW EXISTS YET FOR artifacts/portal -- same known, already-documented cross-cutting gap test-manifests/portal/my-architect.json's own notes describe. UI1/UI2 below only assert what is honestly reachable today: the route mounts and RequireAuth's honest 'Sign in required' panel renders for an unauthenticated visitor.",
+
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated testbed portal account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- GET /api/portal/reports returns a real 200 array (empty is honest, not a 500) for an account with zero report rows.",
+      "method": "GET",
+      "path": "/api/portal/reports",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$", "isArray": true },
+      "sessionTag": "documents-4003"
+    },
+    {
+      "name": "A2 -- GET /api/portal/insights-documents returns a real 200 array for an account with zero generated-document rows.",
+      "method": "GET",
+      "path": "/api/portal/insights-documents",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$", "isArray": true },
+      "sessionTag": "documents-4003"
+    },
+    {
+      "name": "A3 -- GET /api/portal/reports with no bearer is a real 401, not silently empty.",
+      "method": "GET",
+      "path": "/api/portal/reports",
+      "expect": { "status": 401 },
+      "sessionTag": "documents-4003"
+    },
+    {
+      "name": "A4 -- GET /api/portal/insights-documents/:id/view for a non-numeric id is a real 400, matching the archived page's validation this build carries forward.",
+      "method": "GET",
+      "path": "/api/portal/insights-documents/not-a-number/view",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 400 },
+      "sessionTag": "documents-4003"
+    },
+    {
+      "name": "A5 -- POST /api/portal/documents/:id/share against a document id that does not exist is a real 404, not a fabricated share link.",
+      "method": "POST",
+      "path": "/api/portal/documents/999999999/share",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 404 },
+      "sessionTag": "documents-4003"
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "UI1 -- an unauthenticated visitor to /documents sees the app's own honest sign-in-required panel (no login page exists yet -- see notes), not a crash or a silently-empty page.",
+      "action": "goto",
+      "target": "/portal/documents",
+      "sessionTag": "documents-4003"
+    },
+    {
+      "name": "UI2 -- the honest gate renders.",
+      "action": "expect",
+      "selector": "body",
+      "textContains": "Sign in required",
+      "critical": true,
+      "sessionTag": "documents-4003"
+    }
+  ]
+}
