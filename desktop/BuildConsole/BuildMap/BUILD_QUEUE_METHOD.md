@@ -291,6 +291,86 @@ Never default to the top tier without a reason.
 
 &#x20;
 
+\### 4.4 Bug lifecycle dispatch (`--bug <entry_uuid>`)
+
+&#x20;
+
+An optional dispatch flag, alongside `--model`/`--effort`/`--title`/`--blocked-by`/`--buildSet`,
+present only when the issue being dispatched traces back to a local Visual Test Tracker bug:
+
+&#x20;
+
+```
+
+--model <model> --effort <effort> --title <issueNumber> --bug <entry_uuid>
+
+```
+
+&#x20;
+
+`entry_uuid` is the real, stable key from `visual\_test\_tracker\_entries` — never `bug\_number`,
+since the friendly number isn't reliably populated (Git #3979). Like every other dispatch flag
+in this document, it's a plain instruction a Claude Code session reads and acts on itself; there
+is no code-parsed argument parser for any of these flags anywhere in this repo.
+
+&#x20;
+
+A `BUILD:` comment carrying `--bug` adds these standing rules:
+
+&#x20;
+
+\- \*\*At start of the build\*\*, run against the real local Postgres (`DATABASE\_URL`, same
+&#x20; resolution `VisualTestTrackerStore.ResolveConnectionString()` documents — config file then
+&#x20; `.env.local`), direct SQL, same as this codebase's existing convention for local dev-tooling
+&#x20; tables:
+
+&#x20; ```
+
+&#x20; UPDATE visual\_test\_tracker\_entries SET git\_issue\_number = <this issue's real number> WHERE entry\_uuid = '<uuid>';
+
+&#x20; ```
+
+\- \*\*At DONE, in the same commit as the bookend\*\*, run:
+
+&#x20; ```
+
+&#x20; UPDATE visual\_test\_tracker\_entries SET status = 'Verifying', closing\_build\_id = '<real commit hash>' WHERE entry\_uuid = '<uuid>';
+
+&#x20; ```
+
+&#x20; Never `'Closed'` — that state is explicitly pending Shane's own confirmation (Git #3982).
+
+&#x20;
+
+\*\*Whoever files the issue\*\* (a chat reading bugs out of a committed `/Bugs/.../report.json`)
+includes a `Local bug: <uuid>` line in the issue body — belt-and-suspenders alongside the
+`--bug` dispatch flag: it survives a re-dispatch that drops the original flags, and gives Shane
+a visible cross-reference on the GitHub issue itself without needing to check Postgres.
+
+&#x20;
+
+When reviewing bugs out of a committed `/Bugs/.../report.json` to decide what to file as GitHub
+issues, an entry with `is\_design = true` (Git #3978's new column) is handled one of two ways:
+
+\- \*\*Not blocking anything else\*\* — skip it entirely. Never file a GitHub issue for it, never
+&#x20; dispatch it. It's explicitly not engineering work; it's routed to Claude Design instead, and
+&#x20; stays `Open` in Postgres indefinitely by design.
+
+\- \*\*Genuinely blocking a real engineering fix\*\* — file both, matching the same pattern this repo
+&#x20; already uses everywhere else a Design decision blocks real work (e.g. #1685, #1689, #1653:
+&#x20; the blocked issue states "Blocked on a real Design export/input (#N)" and wires a real
+&#x20; `blocked\_by` edge to a separate `Shane To-Do`-labeled, Shane-assigned issue):
+
+&#x20; 1. The engineering issue, body stating "Blocked on Claude Design input — local bug `<uuid>`".
+&#x20; 2. A companion issue, titled `<short description>: Claude Design input needed (bug <uuid>)`,
+&#x20;    labeled `Shane To-Do`, assigned to `shanemccaw` — same convention as every other real
+&#x20;    Design-blocker issue in this repo.
+&#x20; 3. A real `blocked\_by` edge from (1) to (2), via the standard dependency API. The engineering
+&#x20;    issue is not dispatched until (2) closes — the same live claim check as any other blocker,
+&#x20;    nothing new mechanically (per `BUILD_QUEUE_BLOCKING_AND_GATING.md`).
+
+&#x20;
+
 \---
 
 &#x20;

@@ -172,8 +172,14 @@ export const usersTable = pgTable("users", {
   index("users_msp_id_idx").on(t.mspId),
   index("users_tenant_id_idx").on(t.tenantId),
   index("users_manager_user_id_idx").on(t.managerUserId),
+  // #3971 — `RetainerConsented` has a tenant (same requirement shape as `Customer`/`Free`);
+  // `RetainerNoConsent` has no tenant, ever, while in that state (its own OR branch, no
+  // scope column required). `Free`'s own requirement is untouched — still strictly
+  // tenant-required. Kept in sync with the manual migration of the same name.
   check("users_role_scope_check", sql`
-    (${t.mspRole} IN ('Customer', 'Free') AND ${t.tenantId} IS NOT NULL)
+    (${t.mspRole} IN ('Customer', 'Free', 'RetainerConsented') AND ${t.tenantId} IS NOT NULL)
+    OR
+    (${t.mspRole} = 'RetainerNoConsent')
     OR
     (${t.mspRole} IN ('MSPAdmin', 'MSPOperator', 'ServiceAccount') AND ${t.mspId} IS NOT NULL)
     OR

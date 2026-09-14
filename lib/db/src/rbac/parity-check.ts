@@ -130,6 +130,43 @@ const KNOWN_FAIL_CLOSED_DIVERGENCES: readonly KnownDivergence[] = [
     issue: "#3590",
     why: "the old catalog branch compared the raw claim to one string, so any value that was not the pre-payment tier got the full catalog",
   },
+  // #3974 — RetainerNoConsent and RetainerConsented (#3971) are two BRAND NEW
+  // rungs with no old-model correspondent at all: LEGACY_CAPABILITY_RULES is a
+  // transcription of code that predates them, so its `team.manage`/`changes.
+  // approve` rules can only answer via the same isCustomerTier/named-role
+  // catchalls that already produced the #3360/#3590 divergences above — for a
+  // role the old code never named, the catchall's "not this specific tier"
+  // branch fires and allows. The new model correctly denies both rungs on
+  // team.manage (no tenant to manage a team for, and #3974 does not grant
+  // either rung this capability — same as a bare Customer today) and denies
+  // RetainerNoConsent on changes.approve (no tenant, no change request to
+  // approve — #3974 explicitly denies this, overriding any stray canApprove
+  // Changes/customerAdmin grant on purpose, the same fail-closed direction
+  // every entry here takes). RetainerConsented is NOT listed for
+  // changes.approve: its decision is left to the same canApproveChanges/
+  // customerAdmin flags Customer already uses, and both sides agree on those
+  // by construction (no explicit deny row was added for it).
+  {
+    shape: "RetainerNoConsent",
+    system: "customer",
+    capability: "team.manage",
+    issue: "#3974",
+    why: "brand new rung, no old-model correspondent — the old isCustomerTier catchall allows what it doesn't name; the new model denies since #3974 grants this rung no tenant to manage a team for",
+  },
+  {
+    shape: "RetainerNoConsent",
+    system: "customer",
+    capability: "changes.approve",
+    issue: "#3974",
+    why: "brand new rung, no old-model correspondent — #3974 explicitly denies RetainerNoConsent this capability (no tenant, no change request to approve), overriding any stray canApproveChanges/customerAdmin grant on purpose",
+  },
+  {
+    shape: "RetainerConsented",
+    system: "customer",
+    capability: "team.manage",
+    issue: "#3974",
+    why: "brand new rung, no old-model correspondent — the old isCustomerTier catchall allows what it doesn't name; #3974 scoped RetainerConsented's capability decisions to parity with a bare Customer, which doesn't have this either",
+  },
 ];
 
 const divergenceKey = (shape: string, system: RbacSystem, capability: string) => `${shape}|${system}:${capability}`;

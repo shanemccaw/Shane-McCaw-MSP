@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Npgsql;
 
@@ -299,7 +300,7 @@ namespace BuildConsole.Services
                 await using var cmd = new NpgsqlCommand(
                     "SELECT id, entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at, " +
                     "COALESCE(bug_number, id) as bug_num, git_issue_number, site_name, epic_name, closing_build_id, " +
-                    "steps_to_reproduce, expected_behavior, actual_behavior " +
+                    "steps_to_reproduce, expected_behavior, actual_behavior, resolution, resolution_reason, is_design " +
                     "FROM visual_test_tracker_entries WHERE page_id = @pid ORDER BY bug_num DESC, created_at DESC", conn);
                 cmd.Parameters.AddWithValue("@pid", pageId);
                 await using var reader = await cmd.ExecuteReaderAsync();
@@ -357,7 +358,7 @@ namespace BuildConsole.Services
                 await using var cmd = new NpgsqlCommand(
                     "SELECT id, entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at, " +
                     "COALESCE(bug_number, id) as bug_num, git_issue_number, site_name, epic_name, closing_build_id, " +
-                    "steps_to_reproduce, expected_behavior, actual_behavior " +
+                    "steps_to_reproduce, expected_behavior, actual_behavior, resolution, resolution_reason, is_design " +
                     "FROM visual_test_tracker_entries ORDER BY site_name ASC, epic_name ASC, bug_num DESC, created_at DESC", conn);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 var dbList = new List<VisualTestTrackerEntry>();
@@ -455,6 +456,51 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>One entry's real, currently-live lifecycle state, straight from Postgres —
+        /// no local-JSON overlay. See <see cref="GetLifecycleSnapshotAsync"/>.</summary>
+        public sealed class LifecycleSnapshot
+        {
+            public string Status = "Open";
+            public int? GitIssueNumber;
+            public string? Resolution;
+            public string? ResolutionReason;
+        }
+
+        /// <summary>
+        /// Git #3980 — direct-from-Postgres lifecycle read for the given entry_uuids, deliberately
+        /// bypassing the local-JSON-overlay merge that <see cref="ListEntriesAsync"/>/<see cref="ListAllBugsAsync"/>
+        /// do. Those two exist to let the composer UI show a bug's rich (screenshots/console/notes)
+        /// data before it's ever reached Postgres; local JSON is never the source of truth for
+        /// status/git_issue_number/resolution once a bug has been synced, and a build dispatched per
+        /// #3985 writes those fields directly to Postgres with no local JSON involved at all — so a
+        /// reconcile pass that went through the merge would miss exactly the writes it exists to
+        /// detect. Returns only uuids that still exist; the caller treats a missing uuid as "nothing
+        /// to compare" rather than an error (the bug row may have been deleted).
+        /// </summary>
+        public async Task<Dictionary<string, LifecycleSnapshot>> GetLifecycleSnapshotAsync(IReadOnlyCollection<string> entryUuids)
+        {
+            var result = new Dictionary<string, LifecycleSnapshot>(StringComparer.OrdinalIgnoreCase);
+            if (entryUuids == null || entryUuids.Count == 0) return result;
+
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT entry_uuid, status, git_issue_number, resolution, resolution_reason " +
+                "FROM visual_test_tracker_entries WHERE entry_uuid = ANY(@uuids)", conn);
+            cmd.Parameters.AddWithValue("@uuids", entryUuids.ToArray());
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                result[reader.GetString(0)] = new LifecycleSnapshot
+                {
+                    Status = reader.GetString(1),
+                    GitIssueNumber = reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                    Resolution = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    ResolutionReason = reader.IsDBNull(4) ? null : reader.GetString(4),
+                };
+            }
+            return result;
+        }
+
         /// <summary>Saves or updates a bug entry to both local JSON and PostgreSQL.</summary>
         public async Task SaveEntryAsync(VisualTestTrackerEntry entry)
         {
@@ -474,11 +520,13 @@ namespace BuildConsole.Services
                 await using var conn = await OpenAsync();
                 await using var cmd = new NpgsqlCommand(
                     "INSERT INTO visual_test_tracker_entries (entry_uuid, page_id, base_url, page_path, title, notes, severity, status, " +
+                    "resolution, resolution_reason, is_design, " +
                     "git_issue_number, site_name, epic_name, closing_build_id, steps_to_reproduce, expected_behavior, actual_behavior, created_at, updated_at) " +
-                    "VALUES (@u, @pid, @b, @p, @t, @n, @sev, @st, @git, @site, @epic, @close, @steps, @exp, @act, @c, @up) " +
+                    "VALUES (@u, @pid, @b, @p, @t, @n, @sev, @st, @res, @resr, @isd, @git, @site, @epic, @close, @steps, @exp, @act, @c, @up) " +
                     "ON CONFLICT (entry_uuid) DO UPDATE SET " +
                     "title = EXCLUDED.title, notes = EXCLUDED.notes, severity = EXCLUDED.severity, " +
-                    "status = EXCLUDED.status, git_issue_number = EXCLUDED.git_issue_number, site_name = EXCLUDED.site_name, " +
+                    "status = EXCLUDED.status, resolution = EXCLUDED.resolution, resolution_reason = EXCLUDED.resolution_reason, " +
+                    "is_design = EXCLUDED.is_design, git_issue_number = EXCLUDED.git_issue_number, site_name = EXCLUDED.site_name, " +
                     "epic_name = EXCLUDED.epic_name, closing_build_id = EXCLUDED.closing_build_id, " +
                     "steps_to_reproduce = EXCLUDED.steps_to_reproduce, expected_behavior = EXCLUDED.expected_behavior, " +
                     "actual_behavior = EXCLUDED.actual_behavior, updated_at = EXCLUDED.updated_at " +
@@ -491,6 +539,9 @@ namespace BuildConsole.Services
                 cmd.Parameters.AddWithValue("@n", entry.Notes ?? "");
                 cmd.Parameters.AddWithValue("@sev", entry.Severity ?? "Bug");
                 cmd.Parameters.AddWithValue("@st", entry.Status ?? "Open");
+                cmd.Parameters.AddWithValue("@res", (object?)entry.Resolution ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@resr", (object?)entry.ResolutionReason ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@isd", entry.IsDesign);
                 cmd.Parameters.AddWithValue("@git", (object?)entry.GitIssueNumber ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@site", entry.SiteName ?? "");
                 cmd.Parameters.AddWithValue("@epic", entry.EpicName ?? "");
@@ -543,8 +594,13 @@ namespace BuildConsole.Services
             }
         }
 
-        /// <summary>Updates an entry's status (e.g. 'Open' or 'Resolved').</summary>
-        public async Task UpdateEntryStatusAsync(string entryUuid, string status)
+        /// <summary>
+        /// Updates an entry's status ("Open", "Verifying", "Closed" — Git #3981) and, optionally,
+        /// its resolution/resolutionReason. Pass null for resolution/resolutionReason to clear them
+        /// (e.g. re-opening a bug). The DB's chk_vtt_resolution_reason CHECK constraint requires a
+        /// non-null resolutionReason whenever resolution == "NotABug".
+        /// </summary>
+        public async Task UpdateEntryStatusAsync(string entryUuid, string status, string? resolution = null, string? resolutionReason = null)
         {
             if (string.IsNullOrWhiteSpace(entryUuid)) return;
 
@@ -553,6 +609,8 @@ namespace BuildConsole.Services
             if (target != null)
             {
                 target.Status = status;
+                target.Resolution = resolution;
+                target.ResolutionReason = resolutionReason;
                 target.UpdatedAt = DateTime.Now;
                 PersistLocalEntries(all);
             }
@@ -561,14 +619,45 @@ namespace BuildConsole.Services
             {
                 await using var conn = await OpenAsync();
                 await using var cmd = new NpgsqlCommand(
-                    "UPDATE visual_test_tracker_entries SET status = @st, updated_at = now() WHERE entry_uuid = @u", conn);
+                    "UPDATE visual_test_tracker_entries SET status = @st, resolution = @res, resolution_reason = @resr, updated_at = now() WHERE entry_uuid = @u", conn);
                 cmd.Parameters.AddWithValue("@st", status);
+                cmd.Parameters.AddWithValue("@res", (object?)resolution ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@resr", (object?)resolutionReason ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@u", entryUuid);
                 await cmd.ExecuteNonQueryAsync();
             }
             catch (Exception ex)
             {
                 ActivityLog.Log(Channel, $"DB status update skipped: {ex.Message}");
+            }
+        }
+
+        /// <summary>Updates an entry's IsDesign flag (Git #3978/#3981 addendum — coexists with Status, doesn't gate it).</summary>
+        public async Task UpdateEntryDesignFlagAsync(string entryUuid, bool isDesign)
+        {
+            if (string.IsNullOrWhiteSpace(entryUuid)) return;
+
+            var all = LoadLocalEntries();
+            var target = all.Find(e => string.Equals(e.EntryUuid, entryUuid, StringComparison.OrdinalIgnoreCase));
+            if (target != null)
+            {
+                target.IsDesign = isDesign;
+                target.UpdatedAt = DateTime.Now;
+                PersistLocalEntries(all);
+            }
+
+            try
+            {
+                await using var conn = await OpenAsync();
+                await using var cmd = new NpgsqlCommand(
+                    "UPDATE visual_test_tracker_entries SET is_design = @isd, updated_at = now() WHERE entry_uuid = @u", conn);
+                cmd.Parameters.AddWithValue("@isd", isDesign);
+                cmd.Parameters.AddWithValue("@u", entryUuid);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"DB design flag update skipped: {ex.Message}");
             }
         }
 
@@ -722,6 +811,16 @@ namespace BuildConsole.Services
                 entry.StepsToReproduce = reader.IsDBNull(16) ? "" : reader.GetString(16);
                 entry.ExpectedBehavior = reader.IsDBNull(17) ? "" : reader.GetString(17);
                 entry.ActualBehavior = reader.IsDBNull(18) ? "" : reader.GetString(18);
+            }
+
+            // Git #3978/#3980/#3981 — resolution/resolution_reason/is_design only exist on installs
+            // that have already run 2026-09-14-bug-lifecycle-3978.sql; guard the same way the trio
+            // above guards a pre-2026-09-13 table.
+            if (reader.FieldCount > 21)
+            {
+                entry.Resolution = reader.IsDBNull(19) ? null : reader.GetString(19);
+                entry.ResolutionReason = reader.IsDBNull(20) ? null : reader.GetString(20);
+                entry.IsDesign = !reader.IsDBNull(21) && reader.GetBoolean(21);
             }
 
             return entry;

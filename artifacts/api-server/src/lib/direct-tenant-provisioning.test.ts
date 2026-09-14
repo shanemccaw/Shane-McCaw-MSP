@@ -23,7 +23,7 @@ vi.mock("@workspace/db", () => {
   };
 
   const updateChain: any = {
-    set: () => updateChain,
+    set: vi.fn().mockImplementation(() => updateChain),
     where: () => updateChain,
     then: (onfulfilled: any) => Promise.resolve({}).then(onfulfilled),
   };
@@ -135,5 +135,74 @@ describe("ensureClientMspUser — cross-MSP customerId patch backstop", () => {
     await ensureClientMspUser(92, "tenant-ok");
 
     expect(db.update).not.toHaveBeenCalled();
+  });
+});
+
+// #3973 (step 3 of #3970) — the real RetainerNoConsent -> RetainerConsented
+// role swap at the point a tenant actually gets connected. Same function,
+// same single UPDATE that links tenant_id/mspId — the contract is that the
+// role flips in that exact statement, never as a separate write, and never
+// only sometimes (it must NOT depend on the caller's desiredRole, which
+// carries product-type defaults unrelated to this ladder transition).
+describe("ensureClientMspUser — RetainerNoConsent -> RetainerConsented swap (#3973)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSelectResultsQueue = [];
+    mockDefaultSelectResult = [];
+  });
+
+  it("swaps RetainerNoConsent to RetainerConsented in the SAME update that links the tenant, ignoring desiredRole", async () => {
+    mockSelectResultsQueue = [
+      // 1. explicitCustomerId → tenants lookup: tenant 7 under msp 3
+      [{ id: 7, mspId: 3 }],
+      // 2. the user's own row: RetainerNoConsent, no tenant/msp yet
+      [{ existingCustomerId: null, existingMspId: null, existingRole: LEGACY_ROLE.retainerNoConsent }],
+    ];
+
+    // desiredRole passed as Customer (the caller's product-type default) to
+    // prove the retainer swap wins regardless — it is not a desiredRole path.
+    await ensureClientMspUser(50, "guid-123", 7, LEGACY_ROLE.customer);
+
+    expect(db.update).toHaveBeenCalledWith(usersTable);
+    const updateChainInstance = (db.update as any).mock.results[0].value;
+    expect(updateChainInstance.set).toHaveBeenCalledWith({
+      tenantId: 7,
+      mspId: 3,
+      mspRole: LEGACY_ROLE.retainerConsented,
+      updatedAt: expect.any(Date),
+    });
+  });
+
+  it("does not touch mspRole for a role that is neither the unbridged-Free default nor RetainerNoConsent", async () => {
+    mockSelectResultsQueue = [
+      [{ id: 7, mspId: 3 }],
+      [{ existingCustomerId: null, existingMspId: null, existingRole: LEGACY_ROLE.mspOperator }],
+    ];
+
+    await ensureClientMspUser(51, "guid-456", 7);
+
+    const updateChainInstance = (db.update as any).mock.results[0].value;
+    expect(updateChainInstance.set).toHaveBeenCalledWith({
+      tenantId: 7,
+      mspId: 3,
+      updatedAt: expect.any(Date),
+    });
+  });
+
+  it("still applies desiredRole for the unbridged-Free default (unchanged pre-#3973 behavior)", async () => {
+    mockSelectResultsQueue = [
+      [{ id: 7, mspId: 3 }],
+      [{ existingCustomerId: null, existingMspId: null, existingRole: LEGACY_ROLE.free }],
+    ];
+
+    await ensureClientMspUser(52, "guid-789", 7, LEGACY_ROLE.customer);
+
+    const updateChainInstance = (db.update as any).mock.results[0].value;
+    expect(updateChainInstance.set).toHaveBeenCalledWith({
+      tenantId: 7,
+      mspId: 3,
+      mspRole: LEGACY_ROLE.customer,
+      updatedAt: expect.any(Date),
+    });
   });
 });

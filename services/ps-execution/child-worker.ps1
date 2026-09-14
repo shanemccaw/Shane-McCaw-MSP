@@ -243,6 +243,25 @@ catch {
 
 $invocation = Resolve-CmdletInvocation -CmdletKey $cmdletKey -RequestParams $requestParams
 
+# #3948 — writes fail CLOSED on unexpected params, before any session is
+# established. Resolve-CmdletInvocation silently drops request params outside
+# the entry's AllowedParams; for a read that is harmless narrowing, but for a
+# write a dropped parameter can change what the cmdlet DOES (the canonical
+# case: dropping a transport-rule condition param would turn a scoped rule
+# into an org-wide one). Organization/TenantId stay reserved connection
+# fields, never counted against the cmdlet's own list.
+if ($catalogEntry.IsWrite) {
+    $reservedFields = @("Organization", "TenantId")
+    $unexpected = @($requestParams.Keys | Where-Object {
+        $reservedFields -notcontains $_ -and $catalogEntry.AllowedParams -notcontains $_
+    })
+    if ($unexpected.Count -gt 0) {
+        Write-Log -Level "warn" -Message "write request rejected: params outside AllowedParams" -Extra @{ cmdletKey = $cmdletKey; unexpected = ($unexpected -join ",") }
+        Send-ChildResult -Payload @{ ok = $false; statusCode = 400; kind = "bad_request"; message = "write request for '$cmdletKey' carries parameter(s) not in its allowlist: $($unexpected -join ', ')." }
+        exit 1
+    }
+}
+
 try {
     if ($sessionType -eq "exchange") {
         Connect-ExchangeOnline -Organization $organization -AppId $mtAppClientId -Certificate $appOnlyCertificate -ShowBanner:$false -ErrorAction Stop | Out-Null
@@ -278,6 +297,14 @@ catch {
 # logging) plus idempotent handling of a duplicate add.
 if ($catalogEntry.IsWrite) {
     Write-Log -Level "info" -Channel "audit" -Message "write action attempted" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; organization = $organization; identity = $invocation.Params["Identity"]; member = $invocation.Params["Member"] }
+
+    # #3948 — this process is unattended and one-shot, and several of the
+    # Exchange write cmdlets (Add-RecipientPermission notably; Set-Mailbox on
+    # high-impact changes) prompt for confirmation by default, which would
+    # hang the child until its wall-clock timeout. Suppressing confirmation
+    # process-wide is safe HERE precisely because the process serves exactly
+    # one already-allowlisted request and then exits.
+    $ConfirmPreference = "None"
 }
 
 $writeOutcome = $null

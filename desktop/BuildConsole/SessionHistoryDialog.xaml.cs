@@ -155,7 +155,10 @@ namespace BuildConsole
                     Tags = r.Tags ?? new(),
                     Screenshots = r.Screenshots ?? new(),
                     CreatedAt = r.CreatedAt,
-                    IsResolved = r.IsResolved,
+                    Status = r.Status,
+                    Resolution = r.Resolution,
+                    ResolutionReason = r.ResolutionReason,
+                    IsDesign = r.IsDesign,
                     IsSynced = r.IsSynced,
                     SyncedSessionId = r.SyncedSessionId
                 }).ToList();
@@ -198,7 +201,16 @@ namespace BuildConsole
                         vm.Severity = sev.GetString() ?? vm.Severity;
 
                     if (bugEl.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String)
-                        vm.IsResolved = string.Equals(status.GetString(), "Resolved", StringComparison.OrdinalIgnoreCase);
+                        vm.Status = status.GetString() ?? "Open";
+
+                    if (bugEl.TryGetProperty("resolution", out var resolution) && resolution.ValueKind == JsonValueKind.String)
+                        vm.Resolution = resolution.GetString();
+
+                    if (bugEl.TryGetProperty("resolutionReason", out var resolutionReason) && resolutionReason.ValueKind == JsonValueKind.String)
+                        vm.ResolutionReason = resolutionReason.GetString();
+
+                    if (bugEl.TryGetProperty("isDesign", out var isDesign) && (isDesign.ValueKind == JsonValueKind.True || isDesign.ValueKind == JsonValueKind.False))
+                        vm.IsDesign = isDesign.GetBoolean();
 
                     if (bugEl.TryGetProperty("notes", out var notes) && notes.ValueKind == JsonValueKind.String)
                         vm.Notes = notes.GetString() ?? "";

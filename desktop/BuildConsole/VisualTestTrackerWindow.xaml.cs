@@ -54,7 +54,7 @@ namespace BuildConsole
         private string _selectedSeverity = "Bug";
         private readonly List<string> _stagedScreenshots = new();
         private List<VisualTestTrackerEntry> _currentEntries = new();
-        private string _activeFilter = "All"; // "All", "Open", "Resolved"
+        private string _activeFilter = "All"; // "All", "Open", "Verifying", "Closed" (Git #3981 — was "All"/"Open"/"Resolved")
 
         // Phase 6: Notes & Documentation Tools state
         private string _notesMode = "page"; // "page" or "global"
@@ -2793,8 +2793,10 @@ namespace BuildConsole
                 {
                     if (string.Equals(_activeFilter, "Open", StringComparison.OrdinalIgnoreCase))
                         return string.Equals(e.Status, "Open", StringComparison.OrdinalIgnoreCase);
-                    if (string.Equals(_activeFilter, "Resolved", StringComparison.OrdinalIgnoreCase))
-                        return string.Equals(e.Status, "Resolved", StringComparison.OrdinalIgnoreCase);
+                    if (string.Equals(_activeFilter, "Verifying", StringComparison.OrdinalIgnoreCase))
+                        return string.Equals(e.Status, "Verifying", StringComparison.OrdinalIgnoreCase);
+                    if (string.Equals(_activeFilter, "Closed", StringComparison.OrdinalIgnoreCase))
+                        return string.Equals(e.Status, "Closed", StringComparison.OrdinalIgnoreCase);
                     return true;
                 });
 
@@ -2835,27 +2837,79 @@ namespace BuildConsole
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            // Status Toggle Button (Clickable pill)
-            bool isOpen = string.Equals(entry.Status, "Open", StringComparison.OrdinalIgnoreCase);
+            // Status Toggle Button (Clickable pill) — Git #3981: real 3-state cycle, Open → Verifying → Closed → Open
+            string statusLabel = entry.Status switch
+            {
+                "Verifying" => "◐ Verifying",
+                "Closed" => entry.Resolution == "NotABug" ? "✓ Not a Bug" : "✓ Closed",
+                _ => "● Open"
+            };
+            string statusBrushKey = entry.Status switch
+            {
+                "Verifying" => "StatusWarningBrush",
+                "Closed" => "StatusSuccessBrush",
+                _ => "StatusErrorBrush"
+            };
             var statusBtn = new Button
             {
-                Content = isOpen ? "● Open" : "✓ Resolved",
+                Content = statusLabel,
                 Style = (Style)FindResource("IconButton"),
                 FontSize = 9,
                 Padding = new Thickness(6, 1, 6, 1),
-                Foreground = (Brush)FindResource(isOpen ? "StatusErrorBrush" : "StatusSuccessBrush"),
-                ToolTip = "Click to toggle Open / Resolved status",
+                Foreground = (Brush)FindResource(statusBrushKey),
+                ToolTip = "Click to cycle Open → Verifying → Closed",
                 Tag = entry
             };
             statusBtn.Click += async (s, e) =>
             {
-                string nextStatus = isOpen ? "Resolved" : "Open";
+                string nextStatus;
+                string? nextResolution = null;
+                switch (entry.Status)
+                {
+                    case "Open":
+                        nextStatus = "Verifying";
+                        break;
+                    case "Verifying":
+                        nextStatus = "Closed";
+                        nextResolution = "Fixed";
+                        break;
+                    default: // "Closed"
+                        nextStatus = "Open";
+                        break;
+                }
                 entry.Status = nextStatus;
-                if (_store != null) await _store.UpdateEntryStatusAsync(entry.EntryUuid, nextStatus);
+                entry.Resolution = nextResolution;
+                entry.ResolutionReason = null;
+                if (_store != null) await _store.UpdateEntryStatusAsync(entry.EntryUuid, nextStatus, nextResolution, null);
                 await RefreshBugListAsync();
             };
             Grid.SetColumn(statusBtn, 0);
+
+            // "Not a Bug" quick action — sets Closed + Resolution=NotABug with a required reason
+            var notABugBtn = new Button
+            {
+                Content = "Not a Bug",
+                Style = (Style)FindResource("IconButton"),
+                FontSize = 9,
+                Padding = new Thickness(6, 1, 6, 1),
+                Margin = new Thickness(4, 0, 0, 0),
+                Tag = entry
+            };
+            notABugBtn.Click += async (s, e) =>
+            {
+                string? reason = Controls.SimpleTextPromptDialog.Show(this, "Not a Bug",
+                    $"Why is “{(string.IsNullOrWhiteSpace(entry.Notes) ? entry.PagePath : entry.Notes)}” not a bug? A reason is required.");
+                if (string.IsNullOrWhiteSpace(reason)) return;
+
+                entry.Status = "Closed";
+                entry.Resolution = "NotABug";
+                entry.ResolutionReason = reason.Trim();
+                if (_store != null) await _store.UpdateEntryStatusAsync(entry.EntryUuid, "Closed", "NotABug", reason.Trim());
+                await RefreshBugListAsync();
+            };
+            Grid.SetColumn(notABugBtn, 6);
 
             // Severity Badge
             var sevColor = entry.Severity switch
@@ -2910,6 +2964,24 @@ namespace BuildConsole
                     };
                     midHeader.Children.Add(tagPill);
                 }
+            }
+
+            if (entry.IsDesign)
+            {
+                var designPill = new Border
+                {
+                    Background = (Brush)FindResource("Surface1Brush"),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(3, 0, 3, 0),
+                    Margin = new Thickness(0, 0, 3, 0),
+                    Child = new TextBlock
+                    {
+                        Text = "🎨 Design",
+                        FontSize = 8,
+                        Foreground = (Brush)FindResource("AccentBrush")
+                    }
+                };
+                midHeader.Children.Add(designPill);
             }
 
             if (entry.Performance != null && entry.Performance.PageLoadTimeMs > 0)
@@ -3002,7 +3074,23 @@ namespace BuildConsole
             header.Children.Add(exportBtn);
             header.Children.Add(copyMdBtn);
             header.Children.Add(delBtn);
+            header.Children.Add(notABugBtn);
             stack.Children.Add(header);
+
+            // Resolution display (only when Closed with a reason, e.g. Not a Bug)
+            if (!string.IsNullOrWhiteSpace(entry.ResolutionReason))
+            {
+                string resolutionLabel = entry.Resolution == "NotABug" ? "Not a Bug" : entry.Resolution ?? "";
+                stack.Children.Add(new TextBlock
+                {
+                    Text = $"{resolutionLabel}: {entry.ResolutionReason}",
+                    FontSize = 9,
+                    FontStyle = FontStyles.Italic,
+                    Foreground = (Brush)FindResource("Subtext1Brush"),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 4)
+                });
+            }
 
             // Notes Body
             if (!string.IsNullOrWhiteSpace(entry.Notes))

@@ -5,27 +5,10 @@ import path from "path";
 import fs from "fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-const rawPort = process.env.PORT;
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
-const basePath = process.env.BASE_PATH;
-
-if (!basePath) {
-  throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
-  );
-}
+// This app's canonical mount point (see .replit-artifact/artifact.toml:
+// `previewPath = "/"`, `services.env.BASE_PATH = "/"`) — unlike its sibling
+// front-ends, this one mounts at the root of its own origin, not a path prefix.
+const SHANE_MCCAW_CONSULTING_CANONICAL_BASE = "/";
 
 // Local dev topology: the API server runs as its own process (scripts/dev-all.mjs
 // → api-server on :8080), separate from this front-end's Vite dev server. The SPA
@@ -311,55 +294,83 @@ function perRouteOgPlugin(): Plugin {
   };
 }
 
-export default defineConfig({
-  base: basePath,
-  plugins: [
-    sitemapPlugin(),
-    perRouteOgPlugin(),
-    notFoundStatusPlugin(),
-    react(),
-    tailwindcss(),
-    runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, ".."),
-            }),
-          ),
-          await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "src"),
-      "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
+export default defineConfig(async ({ command }) => {
+  const rawBasePath = process.env.BASE_PATH;
+  const basePath = !rawBasePath
+    ? SHANE_MCCAW_CONSULTING_CANONICAL_BASE
+    : rawBasePath;
+
+  // PORT only matters for `vite dev`/`vite preview` — a real server binds to it.
+  // A plain `vite build` never binds a port, so don't make it required at
+  // config-eval time for a build (Git #3953): it broke `pnpm run build` for every
+  // consumer that doesn't happen to have a PORT already set in its environment.
+  let port: number | undefined;
+  if (command !== "build") {
+    const rawPort = process.env.PORT;
+
+    if (!rawPort) {
+      throw new Error(
+        "PORT environment variable is required but was not provided.",
+      );
+    }
+
+    port = Number(rawPort);
+
+    if (Number.isNaN(port) || port <= 0) {
+      throw new Error(`Invalid PORT value: "${rawPort}"`);
+    }
+  }
+
+  return {
+    base: basePath,
+    plugins: [
+      sitemapPlugin(),
+      perRouteOgPlugin(),
+      notFoundStatusPlugin(),
+      react(),
+      tailwindcss(),
+      runtimeErrorOverlay(),
+      ...(process.env.NODE_ENV !== "production" &&
+      process.env.REPL_ID !== undefined
+        ? [
+            await import("@replit/vite-plugin-cartographer").then((m) =>
+              m.cartographer({
+                root: path.resolve(import.meta.dirname, ".."),
+              }),
+            ),
+            await import("@replit/vite-plugin-dev-banner").then((m) =>
+              m.devBanner(),
+            ),
+          ]
+        : []),
+    ],
+    resolve: {
+      alias: {
+        "@": path.resolve(import.meta.dirname, "src"),
+        "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
+      },
+      dedupe: ["react", "react-dom"],
     },
-    dedupe: ["react", "react-dom"],
-  },
-  root: path.resolve(import.meta.dirname),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true,
-  },
-  server: {
-    port,
-    strictPort: true,
-    host: "0.0.0.0",
-    allowedHosts: true,
-    proxy: apiProxy(),
-    fs: {
-      strict: true,
+    root: path.resolve(import.meta.dirname),
+    build: {
+      outDir: path.resolve(import.meta.dirname, "dist/public"),
+      emptyOutDir: true,
     },
-  },
-  preview: {
-    port,
-    host: "0.0.0.0",
-    allowedHosts: true,
-    proxy: apiProxy(),
-  },
+    server: {
+      port,
+      strictPort: true,
+      host: "0.0.0.0",
+      allowedHosts: true,
+      proxy: apiProxy(),
+      fs: {
+        strict: true,
+      },
+    },
+    preview: {
+      port,
+      host: "0.0.0.0",
+      allowedHosts: true,
+      proxy: apiProxy(),
+    },
+  };
 });

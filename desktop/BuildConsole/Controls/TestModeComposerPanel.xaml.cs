@@ -32,14 +32,27 @@ namespace BuildConsole.Controls
         public List<string> Tags { get; set; } = new();
         public List<string> Screenshots { get; set; } = new();
         public DateTime CreatedAt { get; set; } = DateTime.Now;
-        public bool IsResolved { get; set; }
+        public string Status { get; set; } = "Open"; // "Open", "Verifying", "Closed" (Git #3981 — was IsResolved bool)
+        public string? Resolution { get; set; } // "Fixed", "NotABug" — only meaningful when Status == "Closed"
+        public string? ResolutionReason { get; set; } // required when Resolution == "NotABug"
+        public bool IsDesign { get; set; } // Git #3978/#3981 addendum — flags a design issue; coexists with Status
 
         // Sync tracking – set to true after a successful End & Sync
         public bool IsSynced { get; set; }
         public string SyncedSessionId { get; set; } = "";
 
         public string TimestampDisplay => CreatedAt.ToString("HH:mm:ss");
-        public string StatusButtonLabel => IsResolved ? "✓ Resolved" : "● Open";
+        public string StatusButtonLabel => Status switch
+        {
+            "Verifying" => "◐ Verifying",
+            "Closed" => Resolution == "NotABug" ? "✓ Not a Bug" : "✓ Closed",
+            _ => "● Open"
+        };
+        public string DesignButtonLabel => IsDesign ? "🎨 Design" : "+ Design";
+        public string ResolutionDisplay => !string.IsNullOrWhiteSpace(ResolutionReason)
+            ? $"{(Resolution == "NotABug" ? "Not a Bug" : Resolution)}: {ResolutionReason}"
+            : "";
+        public Visibility ResolutionDisplayVisibility => !string.IsNullOrWhiteSpace(ResolutionReason) ? Visibility.Visible : Visibility.Collapsed;
         public bool HasScreenshot => Screenshots != null && Screenshots.Count > 0;
         public Visibility HasScreenshotVisibility => HasScreenshot ? Visibility.Visible : Visibility.Collapsed;
         public string? FirstScreenshot => Screenshots?.FirstOrDefault();
@@ -619,7 +632,8 @@ namespace BuildConsole.Controls
                 var subtext = (Brush)(TryFindResource("Subtext0Brush") ?? Application.Current?.TryFindResource("Subtext0Brush") ?? Brushes.Gray);
                 BtnFilterAll.Foreground = tag == "all" ? accent : subtext;
                 BtnFilterOpen.Foreground = tag == "open" ? accent : subtext;
-                BtnFilterResolved.Foreground = tag == "resolved" ? accent : subtext;
+                BtnFilterVerifying.Foreground = tag == "verifying" ? accent : subtext;
+                BtnFilterClosed.Foreground = tag == "closed" ? accent : subtext;
                 RefreshBugDrawer();
             }
         }
@@ -628,8 +642,9 @@ namespace BuildConsole.Controls
         {
             var filtered = AllBugs.Where(b =>
             {
-                if (_activeFilter == "open") return !b.IsResolved;
-                if (_activeFilter == "resolved") return b.IsResolved;
+                if (_activeFilter == "open") return b.Status == "Open";
+                if (_activeFilter == "verifying") return b.Status == "Verifying";
+                if (_activeFilter == "closed") return b.Status == "Closed";
                 return true;
             }).ToList();
 
@@ -642,7 +657,48 @@ namespace BuildConsole.Controls
         {
             if (sender is Button btn && btn.Tag is BugCardViewModel bug)
             {
-                bug.IsResolved = !bug.IsResolved;
+                switch (bug.Status)
+                {
+                    case "Open":
+                        bug.Status = "Verifying";
+                        bug.Resolution = null;
+                        bug.ResolutionReason = null;
+                        break;
+                    case "Verifying":
+                        bug.Status = "Closed";
+                        bug.Resolution = "Fixed";
+                        bug.ResolutionReason = null;
+                        break;
+                    default: // "Closed"
+                        bug.Status = "Open";
+                        bug.Resolution = null;
+                        bug.ResolutionReason = null;
+                        break;
+                }
+                RefreshBugDrawer();
+            }
+        }
+
+        private void BtnMarkNotABug_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is BugCardViewModel bug)
+            {
+                string? reason = SimpleTextPromptDialog.Show(this, "Not a Bug",
+                    $"Why is “{(string.IsNullOrWhiteSpace(bug.Notes) ? bug.Route : bug.Notes)}” not a bug? A reason is required.");
+                if (string.IsNullOrWhiteSpace(reason)) return;
+
+                bug.Status = "Closed";
+                bug.Resolution = "NotABug";
+                bug.ResolutionReason = reason.Trim();
+                RefreshBugDrawer();
+            }
+        }
+
+        private void BtnToggleDesign_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is BugCardViewModel bug)
+            {
+                bug.IsDesign = !bug.IsDesign;
                 RefreshBugDrawer();
             }
         }
@@ -653,7 +709,14 @@ namespace BuildConsole.Controls
             {
                 var sb = new StringBuilder();
                 sb.AppendLine($"### [{bug.Severity}] {bug.Route}");
-                sb.AppendLine($"- **Status**: {(bug.IsResolved ? "Resolved" : "Open")}");
+                sb.AppendLine($"- **Status**: {bug.Status}");
+                if (!string.IsNullOrWhiteSpace(bug.Resolution))
+                {
+                    string resolutionLabel = bug.Resolution == "NotABug" ? "Not a Bug" : bug.Resolution;
+                    string reasonSuffix = !string.IsNullOrWhiteSpace(bug.ResolutionReason) ? $" — {bug.ResolutionReason}" : "";
+                    sb.AppendLine($"- **Resolution**: {resolutionLabel}{reasonSuffix}");
+                }
+                if (bug.IsDesign) sb.AppendLine("- **Design Issue**: Yes");
                 sb.AppendLine($"- **Notes**: {bug.Notes}");
                 if (!string.IsNullOrEmpty(bug.Steps)) sb.AppendLine($"- **Steps**: {bug.Steps}");
                 if (!string.IsNullOrEmpty(bug.Expected)) sb.AppendLine($"- **Expected**: {bug.Expected}");

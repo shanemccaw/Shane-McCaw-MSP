@@ -90,6 +90,7 @@ mock.module("@workspace/db", {
     platformAgreementsTable: {},
     mspAgreementAcceptancesTable: {},
     mspSubscriptionsTable: {},
+    tenantSubscriptionsTable: {},
     usersTable: {},
     mspsTable: {},
     contractsTable: {},

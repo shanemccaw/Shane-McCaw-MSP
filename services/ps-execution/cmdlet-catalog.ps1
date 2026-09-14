@@ -1364,6 +1364,96 @@ $script:CmdletCatalog = @{
         AllowedParams  = @()
         Session        = "teams"
     }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # #3948 — Exchange Online WRITE entries for the workflow engine's second
+    # execution transport (baseline_action_templates rows whose endpoint is
+    # an `exchange-online://<Cmdlet>` pseudo-URI, routed here by
+    # runBaselineTemplateAgainstTenant → callPsExecution instead of Graph).
+    # ═══════════════════════════════════════════════════════════════════════
+    #
+    # These are the first Session="exchange" writes in this catalog
+    # (add-role-group-member above is compliance-session). Security posture
+    # is unchanged: cmdlet names are code-owned literals; AllowedParams on
+    # each entry is EXACTLY the union of parameter names the linked
+    # baseline_action_templates rows' body_templates actually send — nothing
+    # speculative — and, new with #3948, child-worker.ps1 REJECTS (400) a
+    # write request carrying any param outside this list instead of silently
+    # dropping it (silent dropping is fine for reads; for a write it can
+    # change what the cmdlet does — see the New-TransportRule note below).
+    #
+    # AllowedParams sources (template_id → params), confirmed against the
+    # live baseline_action_templates rows on 2026-09-14:
+    #   set-mailbox: action.block-outbound-send (Identity, MaxSendSize),
+    #     action.convert-user-to-shared-mailbox (Identity, Type),
+    #     action.enable-archive-and-quota (Identity, ProhibitSendQuota),
+    #     action.set-forwarding-rule / action.remove-forwarding-rule
+    #     (Identity, ForwardingSmtpAddress, DeliverToMailboxAndForward),
+    #     action.toggle-litigation-hold (Identity, LitigationHoldEnabled)
+    #   new-mailbox: action.create-shared-mailbox (Name, Shared,
+    #     PrimarySmtpAddress), action.create-room-mailbox (Name, Room,
+    #     PrimarySmtpAddress)
+    #   new-distribution-group: action.create-distribution-list (Name,
+    #     PrimarySmtpAddress)
+    #   add-mailbox-permission: action.grant-full-access-delegate (Identity,
+    #     User, AccessRights)
+    #   add-recipient-permission: action.grant-send-as (Identity, Trustee,
+    #     AccessRights)
+    #   enable-mailbox: microrem.enable-mailbox-archive (Identity, Archive)
+    #
+    # DELIBERATELY ABSENT: New-TransportRule (action.set-mail-flow-rule).
+    # That template's body names a "Condition" parameter New-TransportRule
+    # does not have (its real conditions are individual predicate params —
+    # From, SubjectContainsWords, SentToScope, ...). Under the silent-drop
+    # param filtering an entry here would fire `New-TransportRule -Name X
+    # -SetSCL n` with NO condition — an org-wide SCL rule applying to ALL
+    # mail. Fail closed (unknown_cmdlet 400) until the template row is
+    # redesigned against the cmdlet's real predicates; filed as its own
+    # finding under #2494.
+    #
+    # Prerequisite, same one #491's exchange-session READ entries already
+    # flag: the app-only identity needs Exchange.ManageAsApp and an Exchange
+    # RBAC role that permits these writes (View-Only Organization Management
+    # is NOT sufficient for writes — recipient-management rights, e.g.
+    # membership in "Organization Management" or a scoped recipient role,
+    # are required). Until granted, these surface as cmdlet_unavailable or a
+    # script_error permission failure — honest, already-classified failures.
+    "set-mailbox" = @{
+        Cmdlet         = "Set-Mailbox"
+        AllowedParams  = @("Identity", "MaxSendSize", "Type", "ProhibitSendQuota", "ForwardingSmtpAddress", "DeliverToMailboxAndForward", "LitigationHoldEnabled")
+        Session        = "exchange"
+        IsWrite        = $true
+    }
+    "new-mailbox" = @{
+        Cmdlet         = "New-Mailbox"
+        AllowedParams  = @("Name", "Shared", "Room", "PrimarySmtpAddress")
+        Session        = "exchange"
+        IsWrite        = $true
+    }
+    "new-distribution-group" = @{
+        Cmdlet         = "New-DistributionGroup"
+        AllowedParams  = @("Name", "PrimarySmtpAddress")
+        Session        = "exchange"
+        IsWrite        = $true
+    }
+    "add-mailbox-permission" = @{
+        Cmdlet         = "Add-MailboxPermission"
+        AllowedParams  = @("Identity", "User", "AccessRights")
+        Session        = "exchange"
+        IsWrite        = $true
+    }
+    "add-recipient-permission" = @{
+        Cmdlet         = "Add-RecipientPermission"
+        AllowedParams  = @("Identity", "Trustee", "AccessRights")
+        Session        = "exchange"
+        IsWrite        = $true
+    }
+    "enable-mailbox" = @{
+        Cmdlet         = "Enable-Mailbox"
+        AllowedParams  = @("Identity", "Archive")
+        Session        = "exchange"
+        IsWrite        = $true
+    }
 }
 
 # Resolves cmdletKey against the allowlist and merges request params into

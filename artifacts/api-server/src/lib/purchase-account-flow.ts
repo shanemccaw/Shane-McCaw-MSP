@@ -69,9 +69,8 @@ import {
   servicesTable,
 } from "@workspace/db";
 import { and, desc, eq, gte, isNotNull, isNull } from "drizzle-orm";
-import { provisionProspectAccount } from "./direct-tenant-provisioning.ts";
+import { provisionProspectAccount, resolveProspectRole } from "./direct-tenant-provisioning.ts";
 import { logger } from "./logger.ts";
-import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "auth" });
 
@@ -313,9 +312,13 @@ export type AttachPasswordResult =
  * this session whose proven address is still the session's own.
  *
  * provisionIfMissing: the generalized Buy.tsx path provisions a missing users
- * row through the SAME provisionProspectAccount the consent flow uses (role
- * `Customer` — these are paid purchases, not assessment prospects). The
- * assessment funnel's own semantics (missing row = upstream defect) are
+ * row through the SAME provisionProspectAccount the consent flow uses — these
+ * are paid purchases, not assessment prospects, so the role is never `Free`.
+ * #3972 — which of `Customer` / `RetainerConsented` / `RetainerNoConsent` it
+ * gets is resolveProspectRole's call, keyed on the session's real product
+ * category and whether session.tenantId is set (null on a skipped-consent
+ * Retainer buy — see public-purchase-payment.ts's read-consent-optional skip).
+ * The assessment funnel's own semantics (missing row = upstream defect) are
  * available by passing false.
  *
  * An account that ALREADY has a password is never overwritten (`already_set`) —
@@ -340,13 +343,18 @@ export async function attachPasswordToAccount(
   if (!user) {
     if (!opts.provisionIfMissing) return { outcome: "account_missing" };
 
+    // #3972 — real product type decides the role, not a blanket Customer:
+    // Retainer with no tenant (skipped-consent) is RetainerNoConsent, Retainer
+    // with a tenant is RetainerConsented; monitoring/pack (and anything else,
+    // which always carries a tenant by the time payment succeeds) stays Customer.
+    const category = await resolveProductCategory(session.productSlug);
     const result = await provisionProspectAccount({
       email,
       fullName: session.fullName,
       company: session.company,
       industry: session.industry,
       tenantId: session.tenantId,
-      role: LEGACY_ROLE.customer,
+      role: resolveProspectRole(category, !!session.tenantId?.trim()),
     });
     if (!result) return { outcome: "account_missing" };
     provisioned = true;

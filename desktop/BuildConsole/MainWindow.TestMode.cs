@@ -447,7 +447,10 @@ namespace BuildConsole
                     Tags = b.Tags != null ? new List<string>(b.Tags) : new(),
                     Screenshots = b.Screenshots != null ? new List<string>(b.Screenshots) : new(),
                     CreatedAt = b.CreatedAt,
-                    IsResolved = b.IsResolved,
+                    Status = b.Status,
+                    Resolution = b.Resolution,
+                    ResolutionReason = b.ResolutionReason,
+                    IsDesign = b.IsDesign,
                     IsSynced = b.IsSynced,
                     SyncedSessionId = b.SyncedSessionId
                 });
@@ -649,15 +652,26 @@ namespace BuildConsole
 
                 string productName = VisualTestTrackerExportService.DetectArea(url, pagePath);
 
+                // Git #3979 — the only code path that assigns a real bug_number is
+                // VisualTestTrackerStore.SaveEntryAsync's upsert ("RETURNING id, COALESCE(bug_number, id)").
+                // Save each entry through it before it goes into context.Entries/the exported JSON, or
+                // BugNumber/Id stay at their C# default of 0. entry_uuid ON CONFLICT DO UPDATE makes this
+                // idempotent even if the bug was already saved earlier in the session.
+                var connStr = VisualTestTrackerStore.ResolveConnectionString();
+                VisualTestTrackerStore? bugStore = !string.IsNullOrWhiteSpace(connStr) ? new VisualTestTrackerStore(connStr) : null;
+
                 // Convert AllBugs to VisualTestTrackerEntry list
                 var entries = new List<VisualTestTrackerEntry>();
                 foreach (var bug in TestModeComposerPanel.AllBugs)
                 {
-                    entries.Add(new VisualTestTrackerEntry
+                    var entry = new VisualTestTrackerEntry
                     {
                         EntryUuid = bug.Id,
                         Severity = bug.Severity,
-                        Status = bug.IsResolved ? "Resolved" : "Open",
+                        Status = bug.Status,
+                        Resolution = bug.Resolution,
+                        ResolutionReason = bug.ResolutionReason,
+                        IsDesign = bug.IsDesign,
                         Notes = bug.Notes,
                         PagePath = !string.IsNullOrWhiteSpace(bug.Route) ? bug.Route : pagePath,
                         CurrentUrl = !string.IsNullOrWhiteSpace(url) ? url : bug.Route,
@@ -668,7 +682,12 @@ namespace BuildConsole
                         ScreenshotPaths = bug.Screenshots != null ? new List<string>(bug.Screenshots) : new(),
                         CreatedAt = bug.CreatedAt,
                         UpdatedAt = bug.CreatedAt
-                    });
+                    };
+                    if (bugStore != null)
+                    {
+                        await bugStore.SaveEntryAsync(entry);
+                    }
+                    entries.Add(entry);
                 }
 
                 // If composer has unsaved notes, also include as an entry
@@ -677,7 +696,7 @@ namespace BuildConsole
                 {
                     if (!entries.Any(e => string.Equals(e.Notes, currentNotes, StringComparison.OrdinalIgnoreCase)))
                     {
-                        entries.Add(new VisualTestTrackerEntry
+                        var notesEntry = new VisualTestTrackerEntry
                         {
                             Severity = TestModeComposerPanel.SelectedSeverity,
                             Status = "Open",
@@ -691,7 +710,12 @@ namespace BuildConsole
                             ScreenshotPaths = TestModeComposerPanel.GetStagedScreenshotPaths(),
                             CreatedAt = DateTime.Now,
                             UpdatedAt = DateTime.Now
-                        });
+                        };
+                        if (bugStore != null)
+                        {
+                            await bugStore.SaveEntryAsync(notesEntry);
+                        }
+                        entries.Add(notesEntry);
                     }
                 }
 

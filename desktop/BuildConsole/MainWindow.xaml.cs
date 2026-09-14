@@ -247,6 +247,15 @@ namespace BuildConsole
         private BuildConsole.Services.PostgresServiceStatus? _lastPostgresStatus;
         private BuildConsole.Services.PostgresServiceState? _lastKnownPostgresState;
 
+        // ── Git #3980: Visual Test Tracker re-export reconcile poll — keeps a
+        // committed session's report.json/summary.md a live mirror of Postgres after
+        // End & Sync (status/git_issue_number/resolution/resolution_reason can all
+        // change later, from a source with no BuildConsole process running at all —
+        // e.g. a dispatched build's own direct psql write per Git #3985). See
+        // VisualTestTrackerReExportService for the full rationale.
+        private DispatcherTimer? _visualTestTrackerReExportTimer;
+        private bool _visualTestTrackerReExportRunning;
+
         // ── Epic #803: auto deploy+verify+test on build completion ────────────────
         // The missing automation between "a queue build finished" and "its code is live
         // and tested". On QueueWatcherService.BuildFinished (success) it reuses the exact
@@ -538,6 +547,31 @@ namespace BuildConsole
                     "No builds are claimed, launched, deployed or tested and no pipe is taken.");
             }
 
+            // Git #3975 — self-heal for a --dev/--agent shaneapp:// courier cold start (Git #1889)
+            // that turns out to be Shane's real interactive session, not a transient hand-off. That
+            // launch is deliberately parked off-screen with ShowActivated=false so it can never steal
+            // focus — but if its one job (a runTest/executeScan/etc.) takes long enough that Shane
+            // notices its taskbar entry and clicks it, Windows brings it into real foreground use
+            // despite the flag never having cleared. EnsureTestPadPill()'s only startup call site
+            // (below, gated on the SAME flags) already ran and skipped creating the pill by then, and
+            // nothing else ever re-runs it — hence #3975's "pill never appears, only the Settings
+            // checkbox toggle fixes it for the rest of that process's life."
+            //
+            // A real Activated event (actual focus, not the programmatic Show() this launch
+            // deliberately suppresses) is the "later, more reliable point" #3975 asks for: only fires
+            // here at all if something outside our own startup code brought the window forward. Scoped
+            // to QuietProtocolCourierLaunch ONLY — a deliberate bare --agent/--dev screenshot/
+            // verification launch (no protocol payload) must keep the pill absent for its whole life
+            // regardless of activation, which is exactly what leaving that flag alone here preserves.
+            this.Activated += (_, _) =>
+            {
+                if (App.QuietProtocolCourierLaunch)
+                {
+                    App.QuietProtocolCourierLaunch = false;
+                    EnsureTestPadPill();
+                }
+            };
+
             // Clock
             _clockTimer = new DispatcherTimer(DispatcherPriority.Background)
             {
@@ -770,11 +804,32 @@ namespace BuildConsole
                         BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
                             "Quiet --dev cold start — handling its one shaneapp:// URI without opening the pipe listener, then exiting.");
                         await HandleShaneAppUriAsync(pendingUri!);
-                        System.Windows.Application.Current.Shutdown(0);
-                        return;
+
+                        // Git #3975 — re-check AFTER the (possibly slow) await, not before: the
+                        // Activated self-heal handler above may have cleared this flag while this was
+                        // running, meaning Shane genuinely brought this window forward and started
+                        // using it as his real session. Shutting the whole app down out from under him
+                        // the moment the courier payload finishes would be worse than the original bug.
+                        if (App.QuietProtocolCourierLaunch)
+                        {
+                            System.Windows.Application.Current.Shutdown(0);
+                            return;
+                        }
+
+                        // Git #3975 — the self-heal above cleared the flag: this URI was already
+                        // handled (not dropped), and the window is staying open as Shane's real
+                        // session. Say so plainly instead of falling into the "dropping" log below,
+                        // which no longer describes what happened.
+                        BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
+                            "Git #3975 self-heal — this quiet courier cold start was activated (real " +
+                            "foreground use) before its payload finished; staying open as a real " +
+                            "session instead of shutting down.");
                     }
-                    BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
-                        $"Agent mode — NOT opening the shaneapp:// pipe listener; dropping pending cold-start URI: {pendingUri}");
+                    else
+                    {
+                        BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
+                            $"Agent mode — NOT opening the shaneapp:// pipe listener; dropping pending cold-start URI: {pendingUri}");
+                    }
                 }
 
                 // Git #2532 — the Test Pad pill is an always-visible bottom-right floaty, same
@@ -1262,6 +1317,24 @@ namespace BuildConsole
             _persistTabsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
             _persistTabsTimer.Tick += (_, _) => PersistOpenChatTabs();
             _persistTabsTimer.Start();
+
+            // Git #3980 — Visual Test Tracker re-export reconcile. 60s cadence (same order of
+            // magnitude as QueueWatcherService's 30s tick; this only does a single batched SELECT
+            // plus a git commit+push on real drift, so no need for anything tighter). Fires an
+            // immediate first pass on launch too — not just after the first interval — so a
+            // BuildConsole session opened after Postgres changed while it was closed (or while a
+            // dispatched build wrote directly via psql per #3985) catches up right away instead of
+            // waiting a full tick. This is the real, deliberate answer to the open question on
+            // #3980: BuildConsole does NOT need a separate standalone startup-reconcile mechanism
+            // beyond this — an immediate on-launch tick already covers "catch up on start." The one
+            // remaining, accepted gap is unchanged from the issue's own framing: if Postgres changes
+            // while BuildConsole is fully closed and it is never reopened again before chat next
+            // reads the file, no process exists to commit the update — this poll only runs while
+            // BuildConsole itself is running.
+            _visualTestTrackerReExportTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
+            _visualTestTrackerReExportTimer.Tick += async (_, _) => await RunVisualTestTrackerReExportAsync();
+            _visualTestTrackerReExportTimer.Start();
+            _ = RunVisualTestTrackerReExportAsync();
             _postgresStatusTimer.Start();
             _ = RefreshPostgresStatusAsync();
 
@@ -4879,6 +4952,46 @@ namespace BuildConsole
                     $"{status.Summary}\n\nClick to start it.",
                     ToastKind.Error,
                     onClick: () => _ = StartPostgresServiceAsync());
+            }
+        }
+
+        /// <summary>
+        /// Git #3980 — one Visual Test Tracker re-export reconcile pass, on the
+        /// _visualTestTrackerReExportTimer tick (and once immediately at startup — see the
+        /// comment where the timer is created). Re-entrancy guarded the same way other
+        /// long-running periodic ticks in this file are (a slow git push must never let a
+        /// second tick pile a second pass on top of one still running).
+        /// </summary>
+        private async System.Threading.Tasks.Task RunVisualTestTrackerReExportAsync()
+        {
+            if (_visualTestTrackerReExportRunning) return;
+            _visualTestTrackerReExportRunning = true;
+            try
+            {
+                var connStr = BuildConsole.Services.VisualTestTrackerStore.ResolveConnectionString();
+                if (string.IsNullOrWhiteSpace(connStr)) return; // No DATABASE_URL resolvable — nothing to reconcile against.
+
+                var store = new BuildConsole.Services.VisualTestTrackerStore(connStr);
+                string repoRoot = BuildConsole.Services.VisualTestTrackerExportService.ResolveRepoRoot();
+
+                var result = await BuildConsole.Services.VisualTestTrackerReExportService.ReconcileAsync(repoRoot, store);
+                if (!string.IsNullOrEmpty(result.Error))
+                {
+                    BuildConsole.Services.ActivityLog.Log("visual-test-tracker", $"ReExport reconcile pass failed: {result.Error}");
+                }
+                else if (result.SessionsUpdated > 0)
+                {
+                    BuildConsole.Services.ActivityLog.Log("visual-test-tracker",
+                        $"ReExport reconcile: re-committed {result.SessionsUpdated} session(s) with live lifecycle changes: {string.Join(", ", result.UpdatedSessionDirs)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("visual-test-tracker", $"ReExport reconcile pass errored: {ex.Message}");
+            }
+            finally
+            {
+                _visualTestTrackerReExportRunning = false;
             }
         }
 
