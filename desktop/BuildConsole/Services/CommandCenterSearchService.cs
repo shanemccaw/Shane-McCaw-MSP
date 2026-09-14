@@ -147,7 +147,7 @@ namespace BuildConsole.Services
                                 'MaxFragments=2, MaxWords=15, MinWords=4, ShortWord=3') AS snippet,
                             ts_rank_cd(c.search_vector, q.tsq) AS rank
                         FROM bt_chats c, q
-                        WHERE c.search_vector @@ q.tsq
+                        WHERE c.search_vector @@ q.tsq AND c.archived IS NOT TRUE
                     ) results
                     ORDER BY rank DESC
                     LIMIT @limit;";
