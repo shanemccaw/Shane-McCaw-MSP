@@ -52,6 +52,20 @@ vi.mock("@workspace/db", () => ({
   clientScoresTable: {},
   botInstancesTable: { id: "id", slug: "slug" },
   botConversationsTable: { sessionId: "session_id", transcript: "transcript" },
+  // #4126 Batch B — Account & Service cluster: team/mfa/password (userId- or
+  // customerId-scoped), retainer/burndown, break-glass, documents, settings.
+  usersTable: { id: "id", tenantId: "tenant_id", isActive: "is_active", mfaEnforced: "mfa_enforced", email: "email", passwordHash: "password_hash", lockedUntil: "locked_until", department: "department" },
+  mfaEnrollmentsTable: { userId: "user_id", method: "method", phone: "phone", enabled: "enabled" },
+  webauthnCredentialsTable: { userId: "user_id", id: "id" },
+  retainerSettingsTable: { customerId: "customer_id" },
+  retainerWorkLogTable: { customerId: "customer_id", item: "item", minutes: "minutes", periodMonth: "period_month", occurredAt: "occurred_at" },
+  breakGlassPendingSecretsTable: { id: "id", runId: "run_id", customerId: "customer_id", status: "status", createdAt: "created_at", breakGlassAccountId: "break_glass_account_id" },
+  breakGlassVerificationAttemptsTable: { pendingSecretId: "pending_secret_id", linkStatus: "link_status" },
+  wfRunsTable: { id: "id", status: "status" },
+  insightsGeneratedDocumentsTable: { id: "id", mspCustomerId: "msp_customer_id", docType: "doc_type", title: "title", status: "status", sowTotalPrice: "sow_total_price", createdAt: "created_at" },
+  customerAlertPreferencesTable: { customerId: "customer_id", category: "category", enabled: "enabled" },
+  portalDepartmentMappingsTable: { customerId: "customer_id", departmentName: "department_name" },
+  CUSTOMER_ALERT_CATEGORIES: ["findings", "drift", "progress", "reviews", "remediation", "billing", "support"],
 }));
 
 vi.mock("./logger.ts", () => ({
@@ -89,6 +103,15 @@ import {
   policyTopic,
   conditionalAccessTopic,
   signalTopic,
+  teamTopic,
+  ticketsTopic,
+  slaTopic,
+  retainerTopic,
+  mfaTopic,
+  passwordTopic,
+  breakglassTopic,
+  documentsTopic,
+  settingsTopic,
 } from "./shanebot-engine.ts";
 import { db } from "@workspace/db";
 
@@ -103,7 +126,7 @@ describe("BOT_INSTANCES — the two permanent instances", () => {
     expect(pub.personaSurface).toBe("public");
   });
 
-  it("ShaneBot Paid: portal-authenticated, customer_entitlements, both actions, all 14 card types (#4125 Batch A), msp cost", () => {
+  it("ShaneBot Paid: portal-authenticated, customer_entitlements, both actions, all 23 card types (#4125 Batch A + #4126 Batch B), msp cost", () => {
     const paid = resolveInstance("shanebot_paid");
     expect(paid.authMode).toBe("portal_authenticated");
     expect(paid.groundingSource).toBe("customer_entitlements");
@@ -111,6 +134,7 @@ describe("BOT_INSTANCES — the two permanent instances", () => {
     expect(paid.allowedCardTypes).toEqual([
       "invoice", "subscription", "score", "data-answer",
       "risk", "changes", "findings", "poams", "secplan", "raci", "raci-workload", "policy", "conditional-access", "signal",
+      "team", "tickets", "sla", "retainer", "mfa", "password", "breakglass", "documents", "settings",
     ]);
     expect(paid.costOwner).toBe("msp");
     expect(paid.personaSurface).toBe("portal");
@@ -350,8 +374,12 @@ describe("customer_entitlements grounding (#362): buildCustomerContext", () => {
     const grounding = await buildGrounding(paid, { customerId: 42, mspId: 7, isCustomerUser: true, userId: null });
     expect(grounding.cardData?.invoice).toBeUndefined();
     expect(grounding.cardData?.score).toBeUndefined();
-    // Only the 6 tenant-scoped queries ran — no 7th/8th call consumed a queued value.
-    expect(mockDb["limit"].mock.calls.length).toBe(6);
+    // The 6 original tenant-scoped queries, plus #4126 Batch B's 8 unconditional
+    // (customerId-scoped, not userId-gated) queries: team roster, retainer
+    // settings, retainer work log, break-glass handoffs, documents, alert
+    // preferences, and department users/mappings. userId-gated Batch B queries
+    // (userAccountRows, mfaEnrollRows, passkeyRows) correctly did NOT fire.
+    expect(mockDb["limit"].mock.calls.length).toBe(14);
   });
 
   it("with a userId, populates invoice/subscription/score cardData from real rows", async () => {
@@ -451,11 +479,29 @@ describe("customer_entitlements grounding (#362): buildCustomerContext", () => {
     expect(grounding.cardData?.conditionalAccess).toBeUndefined();
     expect(grounding.cardData?.signal).toBeUndefined();
 
-    // No resolvable scope means every scope-gated second-wave query
-    // short-circuits to Promise.resolve — the only new call beyond the
-    // original 6 is the always-run findings check, which itself short-
-    // circuits (lastCompleted is undefined) without querying.
-    expect(mockDb["limit"].mock.calls.length).toBe(callsBefore + 6);
+    // #4126 Batch B — these ARE customerId-scoped, so they run and can carry
+    // real (mocked-empty) cardData even with no resolvable M365 tenant scope;
+    // only the honest-empty-state ones stay undefined here since every mocked
+    // row set is [].
+    expect(grounding.cardData?.team).toBeUndefined();
+    expect(grounding.cardData?.tickets).toBeUndefined();
+    expect(grounding.cardData?.retainer).toBeUndefined();
+    expect(grounding.cardData?.breakglass).toBeUndefined();
+    expect(grounding.cardData?.documents).toBeUndefined();
+    // No slaOutput (the mocked db has no SLA tables, so runSlaEngineForTenant
+    // throws and is caught) — sla stays undefined too.
+    expect(grounding.cardData?.sla).toBeUndefined();
+    // mfa/password/settings always carry a card (even a "nothing set up yet" one).
+    expect(grounding.cardData?.mfa).toBeDefined();
+    expect(grounding.cardData?.password).toBeDefined();
+    expect(grounding.cardData?.settings).toBeDefined();
+
+    // No resolvable scope means every Batch A scope-gated second-wave query
+    // short-circuits to Promise.resolve — but #4126 Batch B's 8 topics are
+    // customerId-scoped (not scope-gated) and fire regardless of scope, same
+    // as the original 6. No userId here either, so Batch B's userId-gated
+    // queries (userAccountRows, mfaEnrollRows, passkeyRows) also short-circuit.
+    expect(mockDb["limit"].mock.calls.length).toBe(callsBefore + 14);
   });
 });
 
@@ -568,6 +614,93 @@ describe("#4125 Batch A — Governance & Risk cluster topic builders (pure, DB-f
 
     const match = signalTopic(areas, "How many groups without an owner do I have?");
     expect(match.card?.head).toEqual({ value: "12", label: "Groups without an owner" });
+  });
+});
+
+describe("#4126 Batch B — Account & Service cluster topic builders (pure, DB-free)", () => {
+  it("teamTopic: active/Customer Admin/without-MFA counts, honest empty state", () => {
+    expect(teamTopic(0, 0, 0).card).toBeNull();
+    const t = teamTopic(14, 2, 1);
+    expect(t.card?.head).toEqual({ value: "14", label: "active members" });
+    expect(t.card?.rows[0]).toMatchObject({ left: "Customer Admins", right: "2 people" });
+    expect(t.card?.rows[1]).toMatchObject({ right: "1 account", tone: "gold" });
+  });
+
+  it("ticketsTopic: filters closed tickets, honest 'not configured' and 'none open' states", () => {
+    expect(ticketsTopic(false, []).card).toBeNull();
+    expect(ticketsTopic(true, []).card).toBeNull();
+    const t = ticketsTopic(true, [
+      { id: "1", ticketNumber: "100", subject: "Break-glass invite never arrived", status: "Open", statusType: "Open", createdTime: "2026-09-01T00:00:00Z", modifiedTime: null, webUrl: null },
+      { id: "2", ticketNumber: "99", subject: "Old resolved request", status: "Closed", statusType: "Closed", createdTime: "2026-08-01T00:00:00Z", modifiedTime: null, webUrl: null },
+    ]);
+    expect(t.card?.head?.value).toBe("1");
+    expect(t.summary).toContain("Break-glass invite never arrived");
+    expect(t.summary).not.toContain("Old resolved request");
+  });
+
+  it("slaTopic: overdue beats approaching, honest 'no open requests' state", () => {
+    expect(slaTopic({ runningTimers: 0, activeBreaches: 0, warningTimers: 0, compliancePct: 100 }).card).toBeNull();
+    const overdue = slaTopic({ runningTimers: 5, activeBreaches: 2, warningTimers: 1, compliancePct: 40 });
+    expect(overdue.card?.rows[0]).toMatchObject({ right: "Overdue", tone: "red" });
+    const onTrack = slaTopic({ runningTimers: 3, activeBreaches: 0, warningTimers: 0, compliancePct: 100 });
+    expect(onTrack.card?.rows[0]).toMatchObject({ right: "On track", tone: "green" });
+  });
+
+  it("retainerTopic: used/allotted/remaining hours, honest 'not configured' state", () => {
+    expect(retainerTopic(false, 0, 0, 0, []).card).toBeNull();
+    const t = retainerTopic(true, 5.5, 9.5, 4.0, [{ title: "Conditional Access consolidation", minutes: 300 }]);
+    expect(t.card?.head).toEqual({ value: "5.5h", label: "used of 9.5h allotted this month" });
+    expect(t.card?.rows.find((r) => r.left === "Remaining this month")?.right).toBe("4h");
+  });
+
+  it("mfaTopic: method count, flags a missing backup method, honest zero-methods state", () => {
+    const none = mfaTopic([], 0);
+    expect(none.card?.head).toEqual({ value: "0", label: "methods registered" });
+    expect(none.card?.rows[0].tone).toBe("red");
+
+    const one = mfaTopic([{ method: "totp", phone: null }], 0);
+    expect(one.card?.head?.label).toContain("add a backup");
+    expect(one.card?.rows.find((r) => r.left === "Backup method")).toBeTruthy();
+
+    const two = mfaTopic([{ method: "totp", phone: null }], 1);
+    expect(two.card?.head).toEqual({ value: "2", label: "methods registered" });
+    expect(two.card?.rows.find((r) => r.left === "Backup method")).toBeUndefined();
+  });
+
+  it("passwordTopic: real hasPassword/isLocked state, authored 'no forced expiry' fact carried as the head value", () => {
+    const pending = passwordTopic(false, false);
+    expect(pending.card?.rows[0]).toMatchObject({ sub: "Not yet set — invitation pending", tone: "blue" });
+    const set = passwordTopic(true, false);
+    expect(set.card?.head).toEqual({ value: "No forced expiry", label: "on this portal login" });
+    expect(set.card?.rows[0]).toMatchObject({ right: "Change", tone: "blue" });
+    const locked = passwordTopic(true, true);
+    expect(locked.card?.rows[0]).toMatchObject({ right: "Locked", tone: "red" });
+  });
+
+  it("breakglassTopic: sums live invite counts across pending handoffs, honest empty state", () => {
+    expect(breakglassTopic([]).card).toBeNull();
+    const t = breakglassTopic([
+      { accountLabel: "it.director@contoso.com", liveInviteCount: 2 },
+      { accountLabel: "Break-glass account", liveInviteCount: 0 },
+    ]);
+    expect(t.card?.head).toEqual({ value: "2", label: "verification links currently live" });
+    expect(t.card?.rows[1]).toMatchObject({ right: "Waiting", tone: "slate" });
+  });
+
+  it("documentsTopic: real dollar amounts (sowTotalPrice is already dollars, not cents), honest empty state", () => {
+    expect(documentsTopic([]).card).toBeNull();
+    const t = documentsTopic([{ title: "Conditional Access hardening — scoped SOW", amountDollars: 6400, createdAt: new Date("2026-09-12T00:00:00Z") }]);
+    expect(t.card?.head?.value).toBe("1");
+    expect(t.summary).toContain("$6,400");
+    expect(t.card?.rows[0].sub).toContain("$6,400");
+  });
+
+  it("settingsTopic: enabled-category count out of the real catalog, department availability", () => {
+    const t = settingsTopic(["findings", "billing"], 7, 3, 1);
+    expect(t.card?.head).toEqual({ value: "2", label: "alert categories enabled of 7" });
+    expect(t.card?.rows[1]).toMatchObject({ left: "Departments", right: "Available", tone: "green" });
+    const noDepts = settingsTopic([], 7, 0, 0);
+    expect(noDepts.card?.rows[1]).toMatchObject({ right: "None yet", tone: "slate" });
   });
 });
 

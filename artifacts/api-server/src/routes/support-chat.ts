@@ -223,6 +223,25 @@ function resolveCardData(
       return cardData.conditionalAccess ? (cardData.conditionalAccess as unknown as Record<string, unknown>) : null;
     case "signal":
       return cardData.signal ? (cardData.signal as unknown as Record<string, unknown>) : null;
+    // #4126 Batch B — Account & Service cluster generic cards.
+    case "team":
+      return cardData.team ? (cardData.team as unknown as Record<string, unknown>) : null;
+    case "tickets":
+      return cardData.tickets ? (cardData.tickets as unknown as Record<string, unknown>) : null;
+    case "sla":
+      return cardData.sla ? (cardData.sla as unknown as Record<string, unknown>) : null;
+    case "retainer":
+      return cardData.retainer ? (cardData.retainer as unknown as Record<string, unknown>) : null;
+    case "mfa":
+      return cardData.mfa ? (cardData.mfa as unknown as Record<string, unknown>) : null;
+    case "password":
+      return cardData.password ? (cardData.password as unknown as Record<string, unknown>) : null;
+    case "breakglass":
+      return cardData.breakglass ? (cardData.breakglass as unknown as Record<string, unknown>) : null;
+    case "documents":
+      return cardData.documents ? (cardData.documents as unknown as Record<string, unknown>) : null;
+    case "settings":
+      return cardData.settings ? (cardData.settings as unknown as Record<string, unknown>) : null;
     default:
       return null;
   }
@@ -316,6 +335,15 @@ When your answer is about one of these, prefer the specific card for it over any
 - Policy decisions (overdue reviews, licence-blocked items) → [SHOW_CARD:policy]
 - Conditional Access (read across Change Control + the Risk Register — there is no standalone CA inventory) → [SHOW_CARD:conditional-access]
 - A specific Governance pillar signal/check (e.g. guest accounts, ownerless groups) → [SHOW_CARD:signal]
+- Team & roles (active members, Customer Admins, MFA enforcement) → [SHOW_CARD:team]
+- Support requests / tickets you've opened with Shane → [SHOW_CARD:tickets]
+- Service levels / SLA (response time compliance for your open requests) → [SHOW_CARD:sla]
+- My Architect retainer or its burn-down (hours used/remaining this month) → [SHOW_CARD:retainer]
+- Your own MFA enrollment / backup method → [SHOW_CARD:mfa]
+- Your own portal password / account lockout → [SHOW_CARD:password]
+- Break-glass access handoffs (live verification links) → [SHOW_CARD:breakglass]
+- Documents waiting on your review (a scoped SOW, etc.) → [SHOW_CARD:documents]
+- Settings (alert categories, departments) → [SHOW_CARD:settings]
 Only if none of the above fit, and the question is still a structured platform-data question you can answer from the data above, you may fall back to [SHOW_CARD:data-answer]. Treat data-answer as the fallback of last resort, not a first choice.
 Append the marker on its own line, alone, after your written answer.
 === END DATA CARDS ===

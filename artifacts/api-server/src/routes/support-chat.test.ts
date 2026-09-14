@@ -63,11 +63,17 @@ vi.mock("@workspace/db", () => ({
   mspDiagnosticFindingsTable: { runId: "run_id", severity: "severity", title: "title", createdAt: "created_at" },
   notificationsTable: { id: "id", userId: "user_id", title: "title", body: "body", type: "type", read: "read", linkPath: "link_path" },
   messagesTable: { id: "id", clientUserId: "client_user_id", senderUserId: "sender_user_id", body: "body", readByAdmin: "read_by_admin", readByClient: "read_by_client" },
-  usersTable: { id: "id", role: "role", email: "email", mspId: "msp_id", tenantId: "tenant_id", mspRole: "msp_role", isActive: "is_active", canApprovePurchases: "can_approve_purchases" },
+  usersTable: {
+    id: "id", role: "role", email: "email", mspId: "msp_id", tenantId: "tenant_id", mspRole: "msp_role",
+    isActive: "is_active", canApprovePurchases: "can_approve_purchases",
+    // #4126 Batch B — team/mfa/password/settings topics.
+    mfaEnforced: "mfa_enforced", passwordHash: "password_hash", lockedUntil: "locked_until", department: "department",
+  },
   // #363 — action layer (regenerate document / rerun scan) eligibility lookups.
   insightsGeneratedDocumentsTable: {
     id: "id", mspCustomerId: "msp_customer_id", status: "status", docType: "doc_type",
     projectId: "project_id", title: "title", createdAt: "created_at",
+    sowTotalPrice: "sow_total_price", // #4126 Batch B — documents topic.
   },
   documentTypesTable: { key: "key", pipelineCategory: "pipeline_category", isActive: "is_active" },
   clientServicesTable: { clientUserId: "client_user_id", serviceId: "service_id", status: "status", id: "id" },
@@ -82,6 +88,18 @@ vi.mock("@workspace/db", () => ({
     clientId: "client_id", identity: "identity", security: "security", collaboration: "collaboration",
     compliance: "compliance", copilotReadiness: "copilot_readiness", updatedAt: "updated_at",
   },
+  // #4126 Batch B — Account & Service cluster: team/mfa/password (userId- or
+  // customerId-scoped), retainer/burndown, break-glass, documents, settings.
+  mfaEnrollmentsTable: { userId: "user_id", method: "method", phone: "phone", enabled: "enabled" },
+  webauthnCredentialsTable: { userId: "user_id", id: "id" },
+  retainerSettingsTable: { customerId: "customer_id" },
+  retainerWorkLogTable: { customerId: "customer_id", item: "item", minutes: "minutes", periodMonth: "period_month", occurredAt: "occurred_at" },
+  breakGlassPendingSecretsTable: { id: "id", runId: "run_id", customerId: "customer_id", status: "status", createdAt: "created_at", breakGlassAccountId: "break_glass_account_id" },
+  breakGlassVerificationAttemptsTable: { pendingSecretId: "pending_secret_id", linkStatus: "link_status" },
+  wfRunsTable: { id: "id", status: "status" },
+  customerAlertPreferencesTable: { customerId: "customer_id", category: "category", enabled: "enabled" },
+  portalDepartmentMappingsTable: { customerId: "customer_id", departmentName: "department_name" },
+  CUSTOMER_ALERT_CATEGORIES: ["findings", "drift", "progress", "reviews", "remediation", "billing", "support"],
 }));
 
 vi.mock("../lib/sse-channels.ts", () => ({

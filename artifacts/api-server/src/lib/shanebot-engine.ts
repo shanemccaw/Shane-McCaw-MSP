@@ -67,6 +67,18 @@ import {
   clientScoresTable,
   botInstancesTable,
   botConversationsTable,
+  usersTable,
+  mfaEnrollmentsTable,
+  webauthnCredentialsTable,
+  retainerSettingsTable,
+  retainerWorkLogTable,
+  breakGlassPendingSecretsTable,
+  breakGlassVerificationAttemptsTable,
+  wfRunsTable,
+  insightsGeneratedDocumentsTable,
+  customerAlertPreferencesTable,
+  portalDepartmentMappingsTable,
+  CUSTOMER_ALERT_CATEGORIES,
   type BotAction,
   type BotAuthMode,
   type BotCostOwner,
@@ -82,6 +94,16 @@ import { assembleOwnershipPayload } from "../routes/portal-ownership.ts";
 import { getCurrentSecurityPlanVersion } from "./security-plan-versioning.ts";
 import { getSecurityPlanDrift } from "./security-plan-drift.ts";
 import { GOV_AREA_CHECK_DEFS, buildGovArea, type GovProfileRow } from "./portal-governance-areas.ts";
+// #4126 Batch B — Account & Service cluster.
+import { resolveDeskContactIdForEmail, listDeskTicketsForContact, type CustomerTicketSummary } from "./zoho-desk.ts";
+import { ZohoNotConnectedError } from "./zoho-client.ts";
+import { runSlaEngineForTenant } from "./sla-engine.ts";
+import { periodKeyOf, computeMonthBucket, usedMinutesByPeriod, minutesToHours } from "./retainer-hours.ts";
+import { resolveRetainerAnchorDay } from "./retainer-period-anchor.ts";
+import { groupByDepartment } from "./portal-settings-departments.ts";
+import { CUSTOMER_ALERT_BALANCED_DEFAULTS } from "./customer-alert-delivery.ts";
+import { usersHoldingGrantRole } from "../middlewares/rbac-capability.ts";
+import { CUSTOMER_PLATFORM_ROLE_KEYS } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "engine.shanebot" });
 
@@ -93,10 +115,11 @@ export type BotSlug = "shanebot_public" | "shanebot_paid";
 
 /**
  * Active Cards (#366) — the four v1 card types, plus #4125 Batch A's ten
- * "generic card" types (Governance & Risk cluster), shaped after the
- * `gen:<key>` card the ShaneBot Card Gallery design (`Design/portal/
- * design_handoff_full_site/screens/ShaneBot Card Gallery.dc.html`) already
- * specifies for every topic beyond the original four. shanebot_paid only.
+ * "generic card" types (Governance & Risk cluster) and #4126 Batch B's nine
+ * (Account & Service cluster), shaped after the `gen:<key>` card the ShaneBot
+ * Card Gallery design (`Design/portal/design_handoff_full_site/screens/
+ * ShaneBot Card Gallery.dc.html`) already specifies for every topic beyond
+ * the original four. shanebot_paid only.
  */
 export type BotCardType =
   | "invoice"
@@ -112,7 +135,17 @@ export type BotCardType =
   | "raci-workload"
   | "policy"
   | "conditional-access"
-  | "signal";
+  | "signal"
+  // #4126 Batch B — Account & Service cluster.
+  | "team"
+  | "tickets"
+  | "sla"
+  | "retainer"
+  | "mfa"
+  | "password"
+  | "breakglass"
+  | "documents"
+  | "settings";
 
 export interface BotInstanceConfig {
   slug: BotSlug;
@@ -160,6 +193,16 @@ export const BOT_INSTANCES: Record<BotSlug, BotInstanceConfig> = {
       "policy",
       "conditional-access",
       "signal",
+      // #4126 Batch B — Account & Service cluster.
+      "team",
+      "tickets",
+      "sla",
+      "retainer",
+      "mfa",
+      "password",
+      "breakglass",
+      "documents",
+      "settings",
     ],
     costOwner: "msp",
     personaSurface: "portal",
@@ -271,6 +314,16 @@ export interface BotGrounding {
     policy?: GenericCardData;
     conditionalAccess?: GenericCardData;
     signal?: GenericCardData;
+    // #4126 Batch B — Account & Service cluster generic cards.
+    team?: GenericCardData;
+    tickets?: GenericCardData;
+    sla?: GenericCardData;
+    retainer?: GenericCardData;
+    mfa?: GenericCardData;
+    password?: GenericCardData;
+    breakglass?: GenericCardData;
+    documents?: GenericCardData;
+    settings?: GenericCardData;
   };
 }
 
@@ -987,6 +1040,261 @@ export function signalTopic(
   };
 }
 
+// ── #4126 Batch B — Account & Service cluster topic builders ─────────────────
+// Same pure-function-over-already-fetched-rows split #4125 Batch A established.
+// Unlike Batch A's MSP-era topics, every one of these nine is a portal-owned
+// table keyed directly on `customerId` (tenants.id) or `userId` (users.id) —
+// none of them need the (mspId, tenantId M365) `scope` Batch A's topics
+// required, so they run unconditionally once `customer` above is confirmed to
+// exist (`tickets` additionally needs the caller's own email, resolved in
+// buildCustomerContext below). Eyebrow/navLabel/note copy matches the Card
+// Gallery design's own `GEN.team` / `GEN.tickets` / etc. entries verbatim
+// (`Design/portal/design_handoff_full_site/screens/ShaneBot Card Gallery.dc.html`)
+// — only the VALUES are real, queried data.
+
+export function teamTopic(activeCount: number, customerAdminCount: number, withoutMfaCount: number): GenericTopic {
+  if (activeCount === 0) {
+    return { summaryLabel: "Team & roles", summary: "No active team members yet.", card: null };
+  }
+  return {
+    summaryLabel: "Team & roles",
+    summary: `${activeCount} active member(s), ${customerAdminCount} Customer Admin(s), ${withoutMfaCount} account(s) without MFA enforced.`,
+    card: {
+      eyebrow: "TEAM & ROLES",
+      navLabel: "Open Team Management",
+      head: { value: String(activeCount), label: "active members" },
+      rows: [
+        { left: "Customer Admins", sub: "Full billing, team and change-approval capability", right: `${customerAdminCount} people`, tone: "slate" },
+        { left: "Without MFA enforced", sub: "Accounts that haven't completed enrollment", right: `${withoutMfaCount} account${withoutMfaCount === 1 ? "" : "s"}`, tone: withoutMfaCount > 0 ? "gold" : "green" },
+      ],
+      note: "Billing access is auto-granted to whoever a bill is addressed to.",
+    },
+  };
+}
+
+export function ticketsTopic(configured: boolean, tickets: readonly CustomerTicketSummary[]): GenericTopic {
+  if (!configured) {
+    return { summaryLabel: "Requests & support", summary: "Ticketing is not connected for your account yet.", card: null };
+  }
+  const open = tickets.filter((t) => t.statusType !== "Closed");
+  if (open.length === 0) {
+    return { summaryLabel: "Requests & support", summary: "No open tickets with Shane right now.", card: null };
+  }
+  return {
+    summaryLabel: "Requests & support",
+    summary: `${open.length} open ticket(s) with Shane.\n${open.slice(0, 5).map((t) => `• ${t.subject} (${t.status ?? t.statusType ?? "Open"})`).join("\n")}`,
+    card: {
+      eyebrow: "REQUESTS & SUPPORT",
+      navLabel: "Open Requests",
+      head: { value: String(open.length), label: `open ticket${open.length === 1 ? "" : "s"} with Shane` },
+      rows: open.slice(0, 5).map((t) => ({
+        left: t.subject,
+        sub: t.createdTime ? `Opened ${relativeDate(new Date(t.createdTime))}` : "",
+        right: t.status ?? t.statusType ?? "Open",
+        tone: "blue" as GenericCardTone,
+      })),
+      note: "I can raise a new one, but can't check status changes beyond what's shown here.",
+    },
+  };
+}
+
+export function slaTopic(output: { runningTimers: number; activeBreaches: number; warningTimers: number; compliancePct: number }): GenericTopic {
+  if (output.runningTimers === 0) {
+    return { summaryLabel: "Scope & SLA", summary: "No open requests at the moment — nothing to track against your response targets.", card: null };
+  }
+  const attention = output.activeBreaches + output.warningTimers;
+  const headLabel = attention > 0
+    ? `${attention} of ${output.runningTimers} open request${output.runningTimers === 1 ? "" : "s"} are approaching or past their response target`
+    : `all ${output.runningTimers} open request${output.runningTimers === 1 ? "" : "s"} are within target`;
+  return {
+    summaryLabel: "Scope & SLA",
+    summary: `${output.runningTimers} open request(s), ${output.activeBreaches} overdue, ${output.warningTimers} approaching the limit, ${output.compliancePct}% resolved within target this period.`,
+    card: {
+      eyebrow: "SCOPE & SLA",
+      navLabel: "Open Service and Scope",
+      head: { value: attention > 0 ? `${attention} of ${output.runningTimers}` : String(output.runningTimers), label: headLabel },
+      rows: [{
+        left: "Response time compliance",
+        sub: "Live reading, compared against your agreement's targets",
+        right: output.activeBreaches > 0 ? "Overdue" : output.warningTimers > 0 ? "Attention" : "On track",
+        tone: output.activeBreaches > 0 ? "red" : output.warningTimers > 0 ? "gold" : "green",
+      }],
+      note: "This is a live reading — can differ from the stored Overview snapshot.",
+    },
+  };
+}
+
+export interface RetainerEntryRow {
+  readonly title: string;
+  readonly minutes: number;
+}
+
+export function retainerTopic(
+  configured: boolean,
+  usedHours: number,
+  allottedHours: number,
+  remainingHours: number,
+  recentEntries: readonly RetainerEntryRow[],
+): GenericTopic {
+  if (!configured) {
+    return { summaryLabel: "My Architect (retainer)", summary: "No active retainer is set up on your account.", card: null };
+  }
+  const rows: GenericCardRow[] = recentEntries.slice(0, 3).map((e) => ({
+    left: e.title,
+    sub: "Recent retainer activity",
+    right: `${minutesToHours(e.minutes)}h`,
+    tone: "blue" as GenericCardTone,
+  }));
+  rows.push({ left: "Remaining this month", sub: "Resets each period", right: `${remainingHours}h`, tone: remainingHours > 0 ? "green" : "slate" });
+  return {
+    summaryLabel: "My Architect (retainer)",
+    summary: `${usedHours}h used of ${allottedHours}h allotted this month, ${remainingHours}h remaining.`,
+    card: {
+      eyebrow: "MY ARCHITECT",
+      navLabel: "Open My Architect",
+      head: { value: `${usedHours}h`, label: `used of ${allottedHours}h allotted this month` },
+      rows,
+      note: "Hours only — the money side lives on Billing.",
+    },
+  };
+}
+
+export function mfaTopic(methods: readonly { method: string; phone: string | null }[], passkeyCount: number): GenericTopic {
+  const registered = [
+    ...methods.map((m) => ({ label: m.method === "totp" ? "Authenticator app" : m.method === "sms" ? "Text message" : m.method, tone: "green" as GenericCardTone })),
+    ...(passkeyCount > 0 ? [{ label: "Passkey / security key", tone: "green" as GenericCardTone }] : []),
+  ];
+  const methodCount = registered.length;
+  if (methodCount === 0) {
+    return {
+      summaryLabel: "Account security — MFA",
+      summary: "No MFA method is registered on this login yet.",
+      card: {
+        eyebrow: "ACCOUNT SECURITY — MFA",
+        navLabel: "Open Account Security",
+        head: { value: "0", label: "methods registered" },
+        rows: [{ left: "Multi-factor authentication", sub: "Not set up — the account is not protected by MFA", right: "Not set up", tone: "red" }],
+        note: "Adding or removing a method happens on the page itself.",
+      },
+    };
+  }
+  const rows: GenericCardRow[] = registered.map((r) => ({ left: r.label, sub: "Registered on this login", right: "Registered", tone: r.tone }));
+  if (methodCount < 2) {
+    rows.push({ left: "Backup method", sub: "Not set up — the weakest configuration", right: "Not set up", tone: "gold" });
+  }
+  return {
+    summaryLabel: "Account security — MFA",
+    summary: `${methodCount} MFA method(s) registered${methodCount < 2 ? " — no backup method yet" : ""}.`,
+    card: {
+      eyebrow: "ACCOUNT SECURITY — MFA",
+      navLabel: "Open Account Security",
+      head: { value: String(methodCount), label: methodCount < 2 ? "method registered — add a backup for resilience" : "methods registered" },
+      rows,
+      note: "Adding or removing a method happens on the page itself.",
+    },
+  };
+}
+
+export function passwordTopic(hasPassword: boolean, isLocked: boolean): GenericTopic {
+  return {
+    summaryLabel: "Account security — password",
+    summary: hasPassword
+      ? `A portal password is set on this login. No forced expiry applies — that is real platform policy, not a per-tenant setting.${isLocked ? " The account is currently locked out from repeated failed attempts." : ""}`
+      : "No portal password has been set yet — the invitation to this login is still pending.",
+    card: {
+      eyebrow: "ACCOUNT SECURITY — PASSWORD",
+      navLabel: "Open Account Security",
+      head: { value: "No forced expiry", label: "on this portal login" },
+      rows: [{
+        left: "Portal password",
+        sub: hasPassword ? "Changed from Account Security, not from here" : "Not yet set — invitation pending",
+        right: isLocked ? "Locked" : "Change",
+        tone: isLocked ? "red" : "blue",
+      }],
+      note: "Separate from any Microsoft 365 password policy on your tenant.",
+    },
+  };
+}
+
+export interface BreakglassHandoff {
+  readonly accountLabel: string;
+  readonly liveInviteCount: number;
+}
+
+export function breakglassTopic(handoffs: readonly BreakglassHandoff[]): GenericTopic {
+  const totalLive = handoffs.reduce((sum, h) => sum + h.liveInviteCount, 0);
+  if (handoffs.length === 0) {
+    return { summaryLabel: "Break-glass access", summary: "No break-glass handoffs are pending right now.", card: null };
+  }
+  return {
+    summaryLabel: "Break-glass access",
+    summary: `${totalLive} verification link(s) currently live across ${handoffs.length} pending handoff(s).`,
+    card: {
+      eyebrow: "BREAK-GLASS ACCESS",
+      navLabel: "Open Break-glass Access",
+      head: { value: String(totalLive), label: `verification link${totalLive === 1 ? "" : "s"} currently live` },
+      rows: handoffs.slice(0, 5).map((h) => ({
+        left: h.accountLabel,
+        sub: h.liveInviteCount > 0 ? "Verification link sent" : "No live link yet",
+        right: h.liveInviteCount > 0 ? "Pending" : "Waiting",
+        tone: h.liveInviteCount > 0 ? "gold" : "slate",
+      })),
+      note: "Nothing changes on your tenant until a verification succeeds.",
+    },
+  };
+}
+
+export interface DocumentAwaitingReview {
+  readonly title: string;
+  /** insights_generated_documents.sowTotalPrice — already whole dollars, NOT cents (unlike invoicesTable.amount). */
+  readonly amountDollars: number | null;
+  readonly createdAt: Date;
+}
+
+export function documentsTopic(rows: readonly DocumentAwaitingReview[]): GenericTopic {
+  if (rows.length === 0) {
+    return { summaryLabel: "Documents", summary: "No documents are waiting on your review.", card: null };
+  }
+  return {
+    summaryLabel: "Documents",
+    summary: `${rows.length} document(s) waiting on your review.\n${rows.slice(0, 5).map((r) => `• ${r.title}${r.amountDollars != null ? ` — $${r.amountDollars.toLocaleString("en-US")}` : ""}`).join("\n")}`,
+    card: {
+      eyebrow: "DOCUMENTS",
+      navLabel: "Open Documents",
+      head: { value: String(rows.length), label: `document${rows.length === 1 ? "" : "s"} waiting on your review` },
+      rows: rows.slice(0, 5).map((r) => ({
+        left: r.title,
+        sub: `Scoped ${relativeDate(r.createdAt)}${r.amountDollars != null ? ` · $${r.amountDollars.toLocaleString("en-US")}` : ""}`,
+        right: "Review",
+        tone: "gold" as GenericCardTone,
+      })),
+      note: "Some reports render live with no stored copy.",
+    },
+  };
+}
+
+export function settingsTopic(
+  enabledCategories: readonly string[],
+  totalCategories: number,
+  departmentCount: number,
+  unmappedCount: number,
+): GenericTopic {
+  return {
+    summaryLabel: "Settings",
+    summary: `${enabledCategories.length} of ${totalCategories} alert categories enabled (${enabledCategories.join(", ") || "none"}). ${departmentCount} department(s) detected, ${unmappedCount} team member(s) unmapped.`,
+    card: {
+      eyebrow: "SETTINGS",
+      navLabel: "Open Settings",
+      head: { value: String(enabledCategories.length), label: `alert categories enabled of ${totalCategories}` },
+      rows: [
+        { left: "Alert preferences", sub: enabledCategories.join(", ") || "None enabled", right: enabledCategories.length > 0 ? "Configured" : "Default", tone: "slate" },
+        { left: "Departments", sub: `${departmentCount} department${departmentCount === 1 ? "" : "s"} detected`, right: departmentCount > 0 ? "Available" : "None yet", tone: departmentCount > 0 ? "green" : "slate" },
+      ],
+      note: "Settings covers alerts, notifications, webhooks, departments, privacy and email auth.",
+    },
+  };
+}
+
 async function buildCustomerContext(
   customerId: number,
   mspId: number | null,
@@ -1324,6 +1632,225 @@ async function buildCustomerContext(
   const conditionalAccess = conditionalAccessTopic(changeRows, riskRows);
   const signal = signalTopic(govAreaRows, lastUserMessage);
 
+  // #4126 Batch B — Account & Service cluster: a third wave. Every one of
+  // these nine topics is a portal-owned table keyed directly on `customerId`
+  // (tenants.id) or `userId` (users.id) — no `scope` gating needed, unlike
+  // Batch A's MSP-era-table topics above.
+  const [
+    activeTeamRows,
+    userAccountRows,
+    slaOutput,
+    retainerSettingsRow,
+    retainerEntryRows,
+    mfaEnrollRows,
+    passkeyRows,
+    breakglassSecretRows,
+    documentRows,
+    alertPrefRows,
+    departmentUserRows,
+    departmentMappingRows,
+  ] = await Promise.all([
+    db.select({ id: usersTable.id, mfaEnforced: usersTable.mfaEnforced })
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.isActive, true)))
+      .limit(1000),
+
+    // The requesting login's own email/password/lockout state — mfa/password
+    // topics are per-login, not per-tenant, same scoping /auth/mfa/enrollments
+    // and users.failedLoginAttempts already use.
+    userId
+      ? db.select({
+          email: usersTable.email,
+          passwordHash: usersTable.passwordHash,
+          lockedUntil: usersTable.lockedUntil,
+        })
+          .from(usersTable)
+          .where(eq(usersTable.id, userId))
+          .limit(1)
+      : Promise.resolve([]),
+
+    // SLA — the exact same engine GET /portal/customer/sla-status calls.
+    runSlaEngineForTenant(customerId).catch((err: unknown) => {
+      log.error({ err, customerId }, "shanebot-engine: failed to run SLA engine for sla topic");
+      return null;
+    }),
+
+    // My Architect retainer settings.
+    db.select().from(retainerSettingsTable).where(eq(retainerSettingsTable.customerId, customerId)).limit(1),
+
+    // My Architect retainer work log, for this month's usage + the burn-down
+    // rows. Unlike portal-retainer.ts's own unlimited read, this is capped —
+    // generously, at a volume no real retainer ledger approaches — because
+    // this topic only needs the bucket math computeMonthBucket already bounds
+    // to 24 periods back, not the full historical ledger a billing dispute
+    // might need.
+    db.select({ item: retainerWorkLogTable.item, minutes: retainerWorkLogTable.minutes, periodMonth: retainerWorkLogTable.periodMonth, occurredAt: retainerWorkLogTable.occurredAt })
+      .from(retainerWorkLogTable)
+      .where(eq(retainerWorkLogTable.customerId, customerId))
+      .orderBy(desc(retainerWorkLogTable.occurredAt))
+      .limit(1000),
+
+    // MFA enrollments — userId-scoped, same table portal-team's roster reads,
+    // gated here to the requesting login only (mirrors /auth/mfa/enrollments).
+    userId
+      ? db.select({ method: mfaEnrollmentsTable.method, phone: mfaEnrollmentsTable.phone })
+          .from(mfaEnrollmentsTable)
+          .where(and(eq(mfaEnrollmentsTable.userId, userId), eq(mfaEnrollmentsTable.enabled, true)))
+          .limit(10)
+      : Promise.resolve([]),
+
+    userId
+      ? db.select({ id: webauthnCredentialsTable.id }).from(webauthnCredentialsTable).where(eq(webauthnCredentialsTable.userId, userId)).limit(10)
+      : Promise.resolve([]),
+
+    // Break-glass — the same pending_delivery + awaiting_approval join GET
+    // /portal/break-glass uses, minus the full resolveRunContext() detail this
+    // topic doesn't need.
+    db.select({
+      id: breakGlassPendingSecretsTable.id,
+      breakGlassAccountId: breakGlassPendingSecretsTable.breakGlassAccountId,
+    })
+      .from(breakGlassPendingSecretsTable)
+      .innerJoin(wfRunsTable, eq(wfRunsTable.id, breakGlassPendingSecretsTable.runId))
+      .where(and(
+        eq(breakGlassPendingSecretsTable.customerId, customerId),
+        eq(breakGlassPendingSecretsTable.status, "pending_delivery"),
+        eq(wfRunsTable.status, "awaiting_approval"),
+      ))
+      .orderBy(desc(breakGlassPendingSecretsTable.createdAt))
+      .limit(20),
+
+    // Documents awaiting review — same docType set + "reached the customer
+    // regardless of status" rule GET /portal/insights-documents applies for
+    // scoped_sow, narrowed to NOT YET approved/delivered/archived (the honest
+    // "awaiting your review" state — see portal-documents.ts's own header on
+    // why scoped_sow is included pre-delivery).
+    db.select({
+      id: insightsGeneratedDocumentsTable.id,
+      title: insightsGeneratedDocumentsTable.title,
+      sowTotalPrice: insightsGeneratedDocumentsTable.sowTotalPrice,
+      createdAt: insightsGeneratedDocumentsTable.createdAt,
+    })
+      .from(insightsGeneratedDocumentsTable)
+      .where(and(
+        eq(insightsGeneratedDocumentsTable.mspCustomerId, customerId),
+        inArray(insightsGeneratedDocumentsTable.docType, ["sow", "consolidated_sow", "scoped_sow"]),
+        eq(insightsGeneratedDocumentsTable.status, "draft"),
+      ))
+      .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+      .limit(10),
+
+    // Alert preferences — real rows only; BALANCED_DEFAULTS fills any category
+    // with no row, same convention GET /portal/alert-preferences uses.
+    db.select({ category: customerAlertPreferencesTable.category, enabled: customerAlertPreferencesTable.enabled })
+      .from(customerAlertPreferencesTable)
+      .where(eq(customerAlertPreferencesTable.customerId, customerId))
+      .limit(CUSTOMER_ALERT_CATEGORIES.length),
+
+    // Departments — the same live users.department tally GET
+    // /portal/settings/departments computes.
+    db.select({ department: usersTable.department })
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.isActive, true)))
+      .limit(1000),
+
+    db.select({ departmentName: portalDepartmentMappingsTable.departmentName })
+      .from(portalDepartmentMappingsTable)
+      .where(eq(portalDepartmentMappingsTable.customerId, customerId))
+      .limit(100),
+  ]);
+
+  // Sequential (needs activeTeamRows' ids first) — same "read the rows, then
+  // do a dependent read" shape lastCompletedRows -> findingRows already uses
+  // above.
+  const customerAdminIds = activeTeamRows.length > 0
+    ? await usersHoldingGrantRole("customer", CUSTOMER_PLATFORM_ROLE_KEYS.customerAdmin, activeTeamRows.map((r) => r.id))
+    : new Set<number>();
+
+  // Tickets — a live Zoho Desk read, per-login (Contact resolves off the
+  // caller's own email), same ownership model portal-customer-requests.ts
+  // uses. mspId prefers the freshly-resolved scope's mspId (matches
+  // resolveCustomerMspId's own preference order) and falls back to the mspId
+  // already passed into this function. Never rejects — a Zoho outage or
+  // "not connected" tenant degrades to configured:false, same honest state
+  // the route itself returns.
+  const userAccount = userAccountRows[0];
+  const ticketsMspId = scope?.mspId ?? mspId ?? undefined;
+  let ticketsConfigured = true;
+  let ticketRows: CustomerTicketSummary[] = [];
+  if (userAccount?.email) {
+    try {
+      const contactId = await resolveDeskContactIdForEmail(userAccount.email, ticketsMspId);
+      if (contactId) {
+        ticketRows = await listDeskTicketsForContact(contactId, ticketsMspId);
+      }
+    } catch (err) {
+      if (err instanceof ZohoNotConnectedError) {
+        ticketsConfigured = false;
+      } else {
+        log.error({ err, customerId }, "shanebot-engine: failed to load Zoho Desk tickets for tickets topic");
+      }
+    }
+  }
+
+  const retainerSettingsRowVal = retainerSettingsRow[0];
+  const retainerConfigured = !!retainerSettingsRowVal && retainerSettingsRowVal.active;
+  let retainerUsedHours = 0;
+  let retainerAllottedHours = 0;
+  let retainerRemainingHours = 0;
+  if (retainerConfigured && retainerSettingsRowVal) {
+    // retainedMinutesPerMonth is NOT NULL (schema default 480) — no fallback needed.
+    const retainedMinutes = retainerSettingsRowVal.retainedMinutesPerMonth;
+    const usedByPeriod = usedMinutesByPeriod(retainerEntryRows);
+    const anchorDay = await resolveRetainerAnchorDay(customerId, { settingsCreatedAt: retainerSettingsRowVal.createdAt ?? null });
+    const period = periodKeyOf(anchorDay, new Date());
+    const bucket = computeMonthBucket(anchorDay, period, retainedMinutes, usedByPeriod);
+    retainerUsedHours = minutesToHours(bucket.usedMinutes);
+    retainerAllottedHours = minutesToHours(bucket.retainedMinutes + bucket.rolledMinutes);
+    retainerRemainingHours = minutesToHours(bucket.remainingMinutes);
+  }
+
+  const enabledCategorySet = new Set(alertPrefRows.filter((r) => r.enabled).map((r) => r.category));
+  for (const cat of CUSTOMER_ALERT_CATEGORIES) {
+    if (!alertPrefRows.some((r) => r.category === cat) && CUSTOMER_ALERT_BALANCED_DEFAULTS[cat]?.on) {
+      enabledCategorySet.add(cat);
+    }
+  }
+  const { counts: departmentCounts, unmapped: departmentUnmapped } = groupByDepartment(departmentUserRows);
+  const departmentNames = new Set<string>([...departmentCounts.map((c) => c.name), ...departmentMappingRows.map((m) => m.departmentName)]);
+
+  const breakglassHandoffs: BreakglassHandoff[] = await Promise.all(
+    breakglassSecretRows.map(async (secret) => {
+      const attempts = await db.select({ linkStatus: breakGlassVerificationAttemptsTable.linkStatus })
+        .from(breakGlassVerificationAttemptsTable)
+        .where(eq(breakGlassVerificationAttemptsTable.pendingSecretId, secret.id));
+      return {
+        accountLabel: secret.breakGlassAccountId || "Break-glass account",
+        liveInviteCount: attempts.filter((a) => a.linkStatus === "pending").length,
+      };
+    }),
+  );
+
+  const team = teamTopic(activeTeamRows.length, customerAdminIds?.size ?? 0, activeTeamRows.filter((r) => !r.mfaEnforced).length);
+  const tickets = ticketsTopic(ticketsConfigured, ticketRows);
+  const sla = slaOutput ? slaTopic(slaOutput) : { summaryLabel: "Scope & SLA", summary: "Unable to load your service status right now.", card: null };
+  const retainer = retainerTopic(
+    retainerConfigured,
+    retainerUsedHours,
+    retainerAllottedHours,
+    retainerRemainingHours,
+    retainerEntryRows.slice(0, 3).map((r) => ({ title: r.item, minutes: r.minutes })),
+  );
+  const mfa = mfaTopic(mfaEnrollRows, passkeyRows.length);
+  const password = passwordTopic(!!userAccount?.passwordHash, !!(userAccount?.lockedUntil && userAccount.lockedUntil > new Date()));
+  const breakglass = breakglassTopic(breakglassHandoffs);
+  const documents = documentsTopic(documentRows.map((r) => ({
+    title: r.title,
+    amountDollars: r.sowTotalPrice != null ? Number(r.sowTotalPrice) : null,
+    createdAt: r.createdAt,
+  })));
+  const settings = settingsTopic([...enabledCategorySet], CUSTOMER_ALERT_CATEGORIES.length, departmentNames.size, departmentUnmapped);
+
   // Active Cards (#366) — structured payloads built from the SAME rows the
   // prose summary above already fetched, so requesting a card never triggers
   // a second query. A card type is omitted entirely (undefined) when there is
@@ -1398,6 +1925,16 @@ async function buildCustomerContext(
     policy: policy.card ?? undefined,
     conditionalAccess: conditionalAccess.card ?? undefined,
     signal: signal.card ?? undefined,
+    // #4126 Batch B — same "omitted, not null" contract.
+    team: team.card ?? undefined,
+    tickets: tickets.card ?? undefined,
+    sla: sla.card ?? undefined,
+    retainer: retainer.card ?? undefined,
+    mfa: mfa.card ?? undefined,
+    password: password.card ?? undefined,
+    breakglass: breakglass.card ?? undefined,
+    documents: documents.card ?? undefined,
+    settings: settings.card ?? undefined,
   };
 
   return {
@@ -1448,7 +1985,34 @@ ${conditionalAccess.summaryLabel}:
 ${conditionalAccess.summary}
 
 ${signal.summaryLabel}:
-${signal.summary}`,
+${signal.summary}
+
+${team.summaryLabel}:
+${team.summary}
+
+${tickets.summaryLabel}:
+${tickets.summary}
+
+${sla.summaryLabel}:
+${sla.summary}
+
+${retainer.summaryLabel}:
+${retainer.summary}
+
+${mfa.summaryLabel}:
+${mfa.summary}
+
+${password.summaryLabel}:
+${password.summary}
+
+${breakglass.summaryLabel}:
+${breakglass.summary}
+
+${documents.summaryLabel}:
+${documents.summary}
+
+${settings.summaryLabel}:
+${settings.summary}`,
     cardData,
   };
 }
