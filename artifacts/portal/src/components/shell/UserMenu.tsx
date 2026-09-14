@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users, KeyRound } from "lucide-react";
+import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users, KeyRound, DoorOpen } from "lucide-react";
 import type { AuthUser } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 import { comingSoonHref } from "./moduleNav";
@@ -86,6 +86,9 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
   // holding a `customerId` claim at all (§1 of the contract pack), not on the
   // `customer:team.manage` capability that gates the page's mutating actions.
   const showTeam = !!user.customerId;
+  // Leaving (#4002) — GET/POST /portal/customer/* are `requireCapability("ladder.customer-user")`,
+  // the same customerId-presence gate Team already keys off.
+  const showLeaving = !!user.customerId;
   return (
     <div
       data-testid="user-menu-popover"
@@ -174,6 +177,16 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
           testId="user-menu-account-security"
           onNavigate={onClose}
         />
+        {showLeaving && (
+          <MenuRow
+            href="/offboarding"
+            icon={DoorOpen}
+            label="Leaving"
+            sub="Export your data · end services"
+            testId="user-menu-offboarding"
+            onNavigate={onClose}
+          />
+        )}
       </div>
       <Divider />
       <div style={{ padding: "4px 6px 6px" }}>
