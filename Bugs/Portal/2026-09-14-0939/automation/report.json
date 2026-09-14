@@ -1,0 +1,246 @@
+{
+  "testName": "Issue #4037 - POA\u0026Ms (#4037, Feature #1935) -- the real customer-facing POA\u0026Ms page in artifacts/portal (/poams), wired to the six live artifacts/api-server/src/routes/portal-poams.ts routes -- see docs/portal/poams-contract-pack.md. No fixture module: every row on screen comes from these endpoints. The sibling exit to the Risk Register (\u0027we ARE fixing this, here is the plan\u0027 vs. \u0027we accept the consequence\u0027).",
+  "productName": "Portal",
+  "sessionId": "2026-09-14-0939",
+  "startedAt": "2026-09-14T09:39:22.8434997-04:00",
+  "endedAt": "2026-09-14T09:40:32.4807917-04:00",
+  "durationSeconds": 69.64,
+  "success": false,
+  "summary": "\u274C TEST ABORTED \u2014 critical step 7 (expect body) failed: body \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained none of [\u0022POA\u0026Ms\u0022] [polled 30003ms / 120 attempts, 30000ms budget exhausted] (4/13 steps ran, 6 skipped)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/runbooks",
+    "http://localhost:5175/portal/login"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/portal/login",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "navigation to http://localhost:5175/portal/login succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 2122,
+      "detail": "Navigated to http://localhost:5175/portal/login",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914093914\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "#email",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "#email state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 11422,
+      "detail": "#email \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914093914\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "click",
+      "selector": "[data-testid=\u0027login-submit\u0027]",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "click on \u0027[data-testid=\u0027login-submit\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 103,
+      "detail": "Executed click on [data-testid=\u0027login-submit\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914093914\\screenshots\\5.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 6,
+      "action": "goto",
+      "selector": "/portal/poams",
+      "targetUrl": "http://localhost:5175/portal/poams",
+      "expected": "navigation to http://localhost:5175/portal/poams succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 1083,
+      "detail": "Navigated to http://localhost:5175/portal/poams",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914093914\\screenshots\\6.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 7,
+      "action": "expect",
+      "selector": "body",
+      "targetUrl": "http://localhost:5175/portal/poams",
+      "expected": "body state == \u0027visible\u0027; textContains any of [\u0022POA\u0026Ms\u0022]",
+      "actual": "found=True, visible=True; text=\u0022Sign in required You need to be signed in to view the customer portal. Go to sign in \u2192\u0022",
+      "passed": false,
+      "durationMs": 30026,
+      "detail": "body \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained none of [\u0022POA\u0026Ms\u0022] [polled 30003ms / 120 attempts, 30000ms budget exhausted]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914093914\\screenshots\\7.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-14T09:39:52.1413625-04:00"
+    },
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-14T09:40:00.5454220-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png",
+    "screenshots/screenshot-06.png",
+    "screenshots/screenshot-07.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /portal/login",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914093914\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\poams\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect #email",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914093914\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\poams\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "input #email",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914093914\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\poams\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "input #password",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914093914\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\poams\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "click [data-testid=\u0027login-submit\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914093914\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\poams\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 6,
+      "StepLabel": "goto /portal/poams",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914093914\\screenshots\\6.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\poams\\6.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 7,
+      "StepLabel": "expect body",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914093914\\screenshots\\7.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\poams\\7.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "/portal/login",
+      "Description": "goto /portal/login",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-14T09:39:39.1733126-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "#email",
+      "Description": "expect #email",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027#email\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-14T09:39:52.6685269-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "[data-testid=\u0027login-submit\u0027]",
+      "Description": "click [data-testid=\u0027login-submit\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027login-submit\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-14T09:39:57.9239388-04:00"
+    },
+    {
+      "StepIndex": 6,
+      "Route": "http://localhost:5175/portal/poams",
+      "Selector": "/portal/poams",
+      "Description": "goto /portal/poams",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-06.json",
+      "Timestamp": "2026-09-14T09:40:00.8209721-04:00"
+    },
+    {
+      "StepIndex": 7,
+      "Route": "http://localhost:5175/portal/poams",
+      "Selector": "body",
+      "Description": "expect body",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 8,
+      "Changes": [
+        "Captured DOM scope: 8 total element nodes under \u0027body\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-07.json",
+      "Timestamp": "2026-09-14T09:40:32.4367847-04:00"
+    }
+  ],
+  "recommendations": "Run aborted: critical step 7 (expect body) failed: body \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained none of [\u0022POA\u0026Ms\u0022] [polled 30003ms / 120 attempts, 30000ms budget exhausted]. Check prerequisite selectors, authentication, or network connectivity."
+}
