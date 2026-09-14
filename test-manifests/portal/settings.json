@@ -60,6 +60,7 @@
     { "name": "UI1 — the container renders.", "action": "expect", "selector": "[data-testid='settings-page']", "state": "visible", "critical": true },
     { "name": "UI2 — the left nav's default active tab is Alert preferences (stab defaults to 'alerts', matching the design).", "action": "expect", "selector": "[data-testid='settings-nav-alerts']", "state": "visible", "critical": true },
     { "name": "UI3 (#1736, new) — the Alert preferences tab renders real content, not a placeholder.", "action": "expect", "selector": "[data-testid='alert-preferences-content']", "state": "visible", "critical": true },
+    { "name": "UI3B (#4137) — the categories column shows the real, live-computed rule-count summary line ('All N seeded rules shown — X live, Y awaiting detectors'), not a hardcoded 23/19/4.", "action": "expect", "selector": "[data-testid='alert-preferences-rule-summary']", "state": "visible", "textContains": ["seeded", "awaiting detectors"], "sessionTag": "4137-rule-summary" },
 
     { "name": "UI-DEPT1 — click the Departments nav row.", "action": "click", "selector": "[data-testid='settings-nav-departments']" },
     { "name": "UI-DEPT2 (#1592/#4051, new) — the Departments tab renders real content (the testbed tenant currently has no department-tagged users, so this may be the honest empty state).", "action": "expect", "selector": "[data-testid='departments-content']", "state": "visible", "critical": true },

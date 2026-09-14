@@ -94,6 +94,9 @@ export function AlertPreferencesContent() {
     return map;
   }, [rules]);
 
+  const liveRuleCount = useMemo(() => rules.filter((r) => r.detectorStatus === "live").length, [rules]);
+  const awaitingRuleCount = rules.length - liveRuleCount;
+
   if (dataState === "loading") {
     return (
       <div className="flex flex-col gap-2.5 p-1">
@@ -302,6 +305,11 @@ export function AlertPreferencesContent() {
               </div>
             );
           })}
+          {rules.length > 0 ? (
+            <span className="px-1 py-[2px] text-[11px]" style={{ color: "#475569" }} data-testid="alert-preferences-rule-summary">
+              All {rules.length} seeded {rules.length === 1 ? "rule" : "rules"} shown — {liveRuleCount} live, {awaitingRuleCount} awaiting detectors. The catalogue is fixed vocabulary; instances appear in the alerts dropdown.
+            </span>
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-3">

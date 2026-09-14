@@ -189,6 +189,12 @@ export function AlertsDropdown({
                   style={{ borderBottom: `1px solid ${HAIRLINE_SOFT}` }}
                 >
                   <span className="text-[13.5px] font-semibold text-[#f8fafc]">Alerts</span>
+                  {live ? (
+                    <span className="flex items-center gap-[5px] text-[10px] font-semibold text-[#64748b]" style={{ letterSpacing: ".05em" }} data-testid="alerts-live-badge">
+                      <span className="size-[6px] animate-pulse rounded-full" style={{ background: "#00B4D8" }} />
+                      LIVE
+                    </span>
+                  ) : null}
                   <span className="ml-auto text-[11px] text-[#64748b]">Up to date</span>
                 </div>
                 <div className="flex flex-col items-center gap-[10px] px-6 pb-[26px] pt-[30px] text-center">
@@ -214,7 +220,7 @@ export function AlertsDropdown({
                 >
                   <span className="text-[13.5px] font-semibold text-[#f8fafc]">Alerts</span>
                   {live ? (
-                    <span className="flex items-center gap-[5px] text-[10px] font-semibold text-[#64748b]" style={{ letterSpacing: ".05em" }}>
+                    <span className="flex items-center gap-[5px] text-[10px] font-semibold text-[#64748b]" style={{ letterSpacing: ".05em" }} data-testid="alerts-live-badge">
                       <span className="size-[6px] animate-pulse rounded-full" style={{ background: "#00B4D8" }} />
                       LIVE
                     </span>
