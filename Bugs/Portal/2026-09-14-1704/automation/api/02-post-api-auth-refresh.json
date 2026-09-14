@@ -1,0 +1,41 @@
+{
+  "name": "post-api-auth-refresh",
+  "method": "POST",
+  "requestUrl": "http://localhost:5175/api/auth/refresh",
+  "statusCode": 401,
+  "durationMs": 0,
+  "reason": "HTTP 401",
+  "requestHeaders": {
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+    "Content-Length": "2",
+    "Content-Type": "application/json",
+    "Cookie": "refreshToken=a01f98dd032aa59f15a3c33b219c70c39f7f619ae1986a650706d0f62ffb8982dbecde263023d813a4815e15051e2cff",
+    "Host": "localhost:5175",
+    "Origin": "http://localhost:5175",
+    "Referer": "http://localhost:5175/portal/login",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+    "sec-ch-ua": "\u0022Microsoft Edge\u0022;v=\u0022152\u0022, \u0022Not?A_Brand\u0022;v=\u002224\u0022, \u0022Chromium\u0022;v=\u0022152\u0022, \u0022Microsoft Edge WebView2\u0022;v=\u0022152\u0022",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\u0022Windows\u0022"
+  },
+  "responseHeaders": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-origin": "http://localhost:5175",
+    "connection": "close",
+    "content-length": "44",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Mon, 14 Sep 2026 21:04:38 GMT",
+    "etag": "W/\u00222c-Tn\u002BJiOtD1DNTCSHMHKSbIRCoOzs\u0022",
+    "vary": "Origin",
+    "x-powered-by": "Express",
+    "x-trace-id": "34da3218-2d90-4f6d-9cd6-896cd283e5c4"
+  },
+  "responseBody": "{\u0022error\u0022:\u0022Invalid or expired refresh token\u0022}",
+  "timestamp": "2026-09-14T17:04:38.6069174-04:00"
+}
