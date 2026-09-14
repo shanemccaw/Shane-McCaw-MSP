@@ -1,0 +1,61 @@
+{
+  "issue": 1739,
+  "feature": "Projects (Feature #1570) - the real artifacts/portal '/projects/:id' page (src/pages/project-detail.tsx), by-id only (no list route on the server). Wired to the one real customer route, GET /api/portal/projects/:id (artifacts/api-server/src/routes/portal-projects.ts), plus its kanban-events SSE sibling, per docs/portal/projects-contract-pack.md and Design/portal/design_handoff_billing_roles_and_new_modules/screens/Projects.dc.html. Also covers this build's own addition of a `closure` field to that route's response, read from the pre-existing project_closures table (no migration - the table and columns already existed, the route simply never selected from it), needed to draw the design's real closure-requested dead-end banner (#4025).",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "WHAT THIS COVERS: the auth gate on GET /api/portal/projects/:id, and the real, honest 404 every id currently returns - docs/portal/projects-contract-pack.md §7 confirms `projects` is 0 rows locally (the #1573 fixture rows were cleared and nothing has replaced them), so a 404 for any id is today's true live answer, not a contrived test case. The page's own not-found scene (src/pages/project-detail.tsx's `notFound` branch) is asserted against that real response.",
+
+    "WHAT THIS DOES NOT COVER, AND WHY (no live project row to read): with `projects` at 0 rows, the route's 200/live response shape (project/steps/tasks/previewTasks/documents/updates/statusReports/pendingStatusReport/contract/contracts/appliedCoupon/closure) cannot be exercised against real data in this environment - there is no project id that returns anything but 404 today. The page's live-scene rendering (steps list, kanban board, coupon line, pending-status-report banner, closure banner) is built directly from the pack's cited response shape and this file's own TypeScript types (src/lib/projects-types.ts), not verified end-to-end here. Re-run/extend this manifest once a project-class offer has actually been accepted and fulfilled in this environment (docs/portal/projects-contract-pack.md §3, fulfillAcceptedProjectOffer()) and a real project id exists.",
+
+    "WHAT THIS DOES NOT COVER, AND WHY (no portal login page yet): artifacts/portal has no login page today (#1648) - App.tsx's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor, the same structural gap test-manifests/portal/customer-home-overview.json and test-manifests/portal/offboarding.json already document. A real end-to-end UI login -> navigate to /projects/:id -> see the honest not-found panel cannot be exercised through the browser yet; the uiSteps below only assert what is honestly reachable today (the shell route mounts and RequireAuth's honest empty state renders for an unauthenticated visitor). apiTests exercise the real backend directly with a real bearer token instead.",
+
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use).",
+
+    "NOT YET RUN via shaneapp://runTest as of this build (2026-09-14, session for #1739): real attempt made (`portal/projects.json`), returned 'manifest not found or unparseable: portal/projects.json' - BuildConsole's local instance resolves test-manifests/ against the shared main checkout, which does not yet have this worktree's branch merged/pushed (this file only exists on agent/1739-q2719 so far). Same structural gap test-manifests/portal/offboarding.json's own notes document for the identical reason. Verified instead by a real `tsc --noEmit` pass (0 errors) on both artifacts/portal and artifacts/api-server, a real `vite build` (succeeds) against artifacts/portal with this page + route added, and a direct query against the local DATABASE_URL confirming `projects` and `project_closures` are both 0 rows right now - the exact live state the NOT-FOUND apiTests step and the manifest's own framing depend on. Re-run this manifest via shaneapp://runTest once the dev-server merge/restart cycle has picked up this branch."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE-1 - GET /api/portal/projects/:id with no Authorization header returns 401 (requireAuth)",
+      "method": "GET",
+      "path": "/api/portal/projects/1",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-2 - GET /api/portal/projects/:id/kanban-events with no token query param returns 401",
+      "method": "GET",
+      "path": "/api/portal/projects/1/kanban-events",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP - log in as the designated testbed portal account to obtain a real client bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "NOT-FOUND - an authenticated GET /api/portal/projects/:id for an id nothing matches returns a real 404 (the honest, current answer for every id - `projects` is 0 rows, contract pack §7)",
+      "method": "GET",
+      "path": "/api/portal/projects/999999",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 404, "jsonPath": "$.error", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/projects/999999" },
+    {
+      "name": "Unauthenticated visit: the shell route mounts and RequireAuth's honest sign-in-required panel renders (no portal login page exists yet - see notes)",
+      "action": "expect",
+      "selector": "h1",
+      "state": "visible",
+      "textContains": "Sign in required",
+      "critical": true
+    }
+  ]
+}

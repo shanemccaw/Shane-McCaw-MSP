@@ -11,6 +11,7 @@ import {
   contractsTable,
   servicesTable,
   invoicesTable,
+  projectClosuresTable,
 } from "@workspace/db";
 import { eq, and, or, asc, desc, inArray, isNotNull } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
@@ -164,7 +165,19 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
     ? { couponCode: projectInvoiceCoupon.couponCode, discountAmount: projectInvoiceCoupon.discountAmount ?? null }
     : null;
 
-  res.json({ project, steps, tasks, previewTasks, documents, updates, statusReports, pendingStatusReport: pendingStatusReport ?? null, contract, contracts, appliedCoupon });
+  // #1739: the customer-facing closure-request banner needs to know whether
+  // one exists at all — added here since no field on this response ever
+  // surfaced project_closures before (the #4025 gap is the missing SIGN
+  // route, not this read).
+  const [closureRow] = await db.select({
+    requestedAt: projectClosuresTable.requestedAt,
+    feedback: projectClosuresTable.feedback,
+    permissionGranted: projectClosuresTable.permissionGranted,
+    signedAt: projectClosuresTable.signedAt,
+  }).from(projectClosuresTable).where(eq(projectClosuresTable.projectId, id));
+  const closure = closureRow ?? null;
+
+  res.json({ project, steps, tasks, previewTasks, documents, updates, statusReports, pendingStatusReport: pendingStatusReport ?? null, contract, contracts, appliedCoupon, closure });
 });
 
 export default router;

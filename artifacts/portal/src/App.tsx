@@ -43,6 +43,7 @@ import ChangeControlPage from "@/pages/change-control";
 import ScopeAndSlaPage from "@/pages/scope-and-sla";
 import OffboardingPage from "@/pages/offboarding";
 import PillarPage from "@/pages/pillar";
+import ProjectDetailPage from "@/pages/project-detail";
 import CustomerDiagnosticsPage from "@/pages/customer-diagnostics";
 import BreakGlassStatusPage from "@/pages/break-glass-status";
 import BreakGlassVerifyPage from "@/pages/break-glass-verify";
@@ -139,6 +140,9 @@ function ProtectedRoutes() {
           <Route path="/diagnostics" component={CustomerDiagnosticsPage} />
           <Route path="/offboarding" component={OffboardingPage} />
           <Route path="/pillars/:pillar" component={PillarPage} />
+          {/* Projects (#1739, Feature #1570) — by-id only, no list route on
+              the server, so no sidebar entry; reached from a link. */}
+          <Route path="/projects/:id" component={ProjectDetailPage} />
           <Route path="/break-glass" component={BreakGlassStatusPage} />
           <Route path="/break-glass/:runId" component={BreakGlassStatusPage} />
           <Route path="/coming-soon" component={ComingSoon} />
