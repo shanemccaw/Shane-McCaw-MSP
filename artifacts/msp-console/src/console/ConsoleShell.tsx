@@ -25,6 +25,7 @@ import { ActivityTimeline } from "./modules/ActivityTimeline";
 import { PolicyEngine } from "./modules/PolicyEngine";
 import { ConsentOnboarding } from "./modules/ConsentOnboarding";
 import { AccountSecurity } from "./modules/AccountSecurity";
+import { StaffRoster } from "./modules/StaffRoster";
 import { Dlq } from "./modules/Dlq";
 import { PlanSelfService } from "./modules/PlanSelfService";
 import { Reports } from "./modules/Reports";
@@ -385,6 +386,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "acctsec") {
     return <AccountSecurity />;
+  }
+  if (sel.kind === "msp" && sel.page === "staff") {
+    return <StaffRoster profile={profile} />;
   }
   if (sel.kind === "msp" && sel.page === "dlq") {
     return <Dlq />;
