@@ -31,6 +31,7 @@ import { Dlq } from "./modules/Dlq";
 import { PlanSelfService } from "./modules/PlanSelfService";
 import { Reports } from "./modules/Reports";
 import { MarketplacePurchase } from "./modules/MarketplacePurchase";
+import { OffersAndSows } from "./modules/OffersAndSows";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
@@ -305,6 +306,12 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "page" && sel.page === "status-reports") {
     return <StatusReports customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "offers-sows") {
+    // Offers & SOWs (#4014), README screen 66 — the whole SOW book for this
+    // customer, plus the offers-to-accept and clickwrap surfaces.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    return <OffersAndSows customerId={sel.tenant} customerName={customer?.name ?? `Customer ${sel.tenant}`} mspId={profile.mspId ?? null} />;
   }
   if (sel.kind === "page" && sel.page === "team") {
     const customer = customers.find((c) => c.id === sel.tenant);

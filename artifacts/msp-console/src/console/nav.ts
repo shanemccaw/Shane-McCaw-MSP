@@ -68,6 +68,11 @@ export const CHILD_GROUPS: Group[] = [
   {
     id: "g.comm", label: "Commercial", icon: "receipt", children: [
       { id: "status-reports", label: "Status Reports", icon: "file-pen" },
+      // Offers & SOWs (Git #4014, README screen 66) — the richer 63–66
+      // contract-pack pass's own whole-book SOW lifecycle for this customer,
+      // between Contracts and Status reports per the README tree-placement
+      // table.
+      { id: "offers-sows", label: "Offers & SOWs", icon: "signature" },
       { id: "contracts", label: "Contracts", icon: "file-text" },
       { id: "hub", label: "Documents", icon: "files" },
       { id: "billing", label: "Billing", icon: "receipt" },
