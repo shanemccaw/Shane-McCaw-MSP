@@ -2,7 +2,7 @@
   "issue": 3995,
   "feature": "Email Authentication Setup (#1654, part of #1485) — the real artifacts/portal '/email-auth-setup' page (src/pages/email-auth-setup.tsx), wired to GET /api/portal/email-auth-status via emailAuthSetupLive.ts, per Design/portal/design_handoff_full_site/docs/email-authentication-setup-contract-pack.md and the landed 'Email Authentication Setup.dc.html' export. This manifest replaces the old test-manifests/copilot-readiness/email-auth-setup.json, which covered the retired msp-portal's branded /portal/:slug/email-auth-setup route (a different app, different login flow, different data-testids) — that page and its route no longer exist. Also covers the new in-portal nav entry added to ChecklistItemCard.tsx: a 'Setup instructions' link that appears on the remediation checklist row for check key exchange:dkim-spf-dmarc-status.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING_COMMIT",
+  "lastVerifiedAgainstCommit": "160fead23",
 
   "notes": [
     "WHAT THIS MANIFEST CAN AND CANNOT ASSERT: the testbed portal account's real SPF/DKIM/DMARC configuration state is whatever it genuinely is at run time, not something this manifest controls. apiTests assert the CONTRACT (200, `checked` is a boolean, and the response always carries all five keys) rather than a specific true/false value for any one record. uiSteps assert the page's always-present elements (the state line, the header) rather than which dataState (checked/not-checked/read-failed) or which protocol cards happen to render — that is genuinely state-dependent per the route's own tri-state contract (pack §4).",
