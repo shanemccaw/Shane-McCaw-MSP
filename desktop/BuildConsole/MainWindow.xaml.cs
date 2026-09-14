@@ -139,6 +139,11 @@ namespace BuildConsole
             /// use (#1813). Kept so <see cref="CloseTab"/> can unsubscribe it and let the container be
             /// collected instead of leaking a handler forever.</summary>
             public EventHandler? DetectedRefreshHandler;
+            /// <summary>Git #4131 — the tab header's own title TextBlock (added in <see cref="OpenChatTab"/>),
+            /// kept so <see cref="RefreshForcedEpicChatTitles"/> can update it in place once
+            /// <c>LeftSidebar._lastBoardIssues</c> is populated after this tab already opened, instead of
+            /// requiring Shane to manually close/reopen the tab for the forced epic title to resolve.</summary>
+            public TextBlock? HeaderTitleText;
         }
         private readonly Dictionary<TabItem, ChatTabState> _chatTabs = new();
 
@@ -1093,6 +1098,11 @@ namespace BuildConsole
             // is closed, since a closed tab only detaches the TabItem, not this instance.
             LeftSidebar.BoardRefreshCompleted += async (s, e) => await _batterUpPanel.RefreshAsync();
             LeftSidebar.BoardRefreshCompleted += async (s, e) => await _aiBatterUpPanel.RefreshAsync();
+
+            // Git #4131 — same cascade: re-resolve every open chat tab's forced epic title now that
+            // _lastBoardIssues has just been (re)populated, so a tab that opened before the board
+            // fetch landed self-corrects instead of requiring a manual close/reopen.
+            LeftSidebar.BoardRefreshCompleted += (s, e) => RefreshForcedEpicChatTitles();
 
             // Git #2716 — same cascade, fourth consumer: DispatchPanel's "Dispatch" asked the
             // active chat to write a BUILD: comment for an issue that didn't have one yet, then
@@ -4003,6 +4013,37 @@ namespace BuildConsole
             return epic;
         }
 
+        /// <summary>Git #4131 — <see cref="ResolveForcedEpicForChat"/> only ever ran once, at
+        /// <see cref="OpenChatTab"/> call time. If a tab opened (restore-on-launch, or any reopen)
+        /// before LeftSidebar's async live GitHub board fetch (<c>BuildBoardFromGitHub</c>) had
+        /// populated <c>_lastBoardIssues</c>, resolution failed and the tab was stuck showing the
+        /// bare, unformatted title until Shane manually closed and reopened it. Riding the same
+        /// <see cref="Controls.LeftSidebar.BoardRefreshCompleted"/> cascade every other post-board-load
+        /// consumer already uses (#1813), re-resolve every currently open chat tab's forced epic title
+        /// here and update it in place — a tab that opened too early self-corrects automatically once
+        /// the data it needed arrives, and a tab whose title already resolved (the common case, board
+        /// already loaded) is a same-string no-op, so there's no flicker.</summary>
+        private void RefreshForcedEpicChatTitles()
+        {
+            foreach (var kvp in _chatTabs)
+            {
+                var tab = kvp.Key;
+                var state = kvp.Value;
+                if (state.HeaderTitleText == null) continue;
+                if (tab.Tag is not BuildConsole.Services.BoardChat chat) continue;
+
+                var forcedEpic = ResolveForcedEpicForChat(chat, state.GithubNumber);
+                string headerTitle = forcedEpic?.GithubNumber != null
+                    ? $"[#{forcedEpic.GithubNumber.Value}] - {forcedEpic.Title}"
+                    : (state.GithubNumber.HasValue ? $"[#{state.GithubNumber.Value}] {chat.Title}" : chat.Title);
+
+                if (state.HeaderTitleText.Text != headerTitle)
+                {
+                    state.HeaderTitleText.Text = headerTitle;
+                }
+            }
+        }
+
         /// <param name="selectTab">Git #1636 — false opens/creates the tab as a background tab:
         /// added to <see cref="EditorTabs"/>.Items but never assigned to SelectedItem, and an
         /// already-open match is left focused wherever it currently is. Defaults true so every
@@ -4058,12 +4099,13 @@ namespace BuildConsole
             // Git #2079 — prefix with the linked Git issue number so the tab header
             // reads "[#N] Title" (matches the [#N]/#N formats ExtractTabTitleIssueNumber
             // already parses back out at ~line 1368 for the #1802 epic-highlight fallback).
-            headerPanel.Children.Add(new TextBlock
+            var headerTitleText = new TextBlock
             {
                 Text = headerTitle,
                 FontSize = 13, Margin = new Thickness(0, 0, 6, 0),
                 VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush")
-            });
+            };
+            headerPanel.Children.Add(headerTitleText);
 
             var closeBtn = new Button
             {
@@ -4151,7 +4193,8 @@ namespace BuildConsole
                 BuildOutputBox = buildOutputBox,
                 BuildStatusText = buildStatusText,
                 WebView = wv, // Git #942 — target for live chat-button status pushes
-                Container = container
+                Container = container,
+                HeaderTitleText = headerTitleText
             };
             _chatTabs[newTab] = state;
 
