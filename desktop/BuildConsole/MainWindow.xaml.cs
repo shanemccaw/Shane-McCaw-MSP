@@ -6271,6 +6271,17 @@ namespace BuildConsole
                 }
             });
 
+            // Git #3982 — Reject's evidence hand-off routed through the exact same shared
+            // SendTextToActiveClaudeChatAsync path (#937) as the SQL Runner (#940) and Log Viewer
+            // (#2786). This view never calls GitHub itself — see BtnReject_Click's own doc comment.
+            bugsViewer.SendToChatRequested += async (s, text) =>
+                await SendTextToActiveClaudeChatAsync(
+                    text,
+                    showMessage: (msg, isError) => bugsViewer.ShowSendStatus(msg),
+                    onInserted: null,
+                    logChannel: "testing.bug-lifecycle.reject",
+                    whatSingular: "rejected bug evidence");
+
             var newTab = new TabItem
             {
                 Header = headerPanel,

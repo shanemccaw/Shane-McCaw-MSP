@@ -171,6 +171,18 @@ namespace BuildConsole
                 await ExecuteEndSessionSyncAsync();
             };
 
+            // Git #3982 — Reject's evidence hand-off, same shared #937 SendTextToActiveClaudeChatAsync
+            // path as the Bug Tracker Document View's own Reject. This control never calls GitHub itself.
+            TestModeComposerPanel.SendToChatRequested += async (text) =>
+            {
+                await SendTextToActiveClaudeChatAsync(
+                    text,
+                    showMessage: (msg, isError) => TestModeComposerPanel.ShowToast(msg),
+                    onInserted: null,
+                    logChannel: "testing.bug-lifecycle.reject",
+                    whatSingular: "rejected bug evidence");
+            };
+
             // Auto-persist bugs to AppData whenever the bug list changes so
             // History can load them back even before End & Sync is run.
             TestModeComposerPanel.AllBugs.CollectionChanged += (s, e) =>

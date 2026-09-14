@@ -17,6 +17,14 @@ namespace BuildConsole.Controls
         private VisualTestTrackerEntry? _selectedEntry;
         private bool _suppressDesignCheckboxEvent;
 
+        /// <summary>Git #3982 — Reject packages the entry's real evidence (screenshots, console/network
+        /// logs, repro steps — via <see cref="VisualTestTrackerEntry.ToMarkdown"/>, the same builder
+        /// already used for GitHub/Jira-ready export) and raises this instead of calling GitHub. The
+        /// owning MainWindow wires it to the shared #937 <c>SendTextToActiveClaudeChatAsync</c> path —
+        /// the same one the SQL Runner (#940) and Log Viewer (#2786) already use — so Shane reviews and
+        /// sends it himself from whichever epic chat is active. This view never calls a GitHub API.</summary>
+        public event EventHandler<string>? SendToChatRequested;
+
         public BugsDocumentView()
         {
             InitializeComponent();
@@ -80,16 +88,28 @@ namespace BuildConsole.Controls
             bool openOnly = RadioFilterOpen?.IsChecked == true;
             bool verifyingOnly = RadioFilterVerifying?.IsChecked == true;
             bool closedOnly = RadioFilterClosed?.IsChecked == true;
+            bool designOnly = ChkDesignOnly?.IsChecked == true;
 
             var filtered = _allEntries.Where(e =>
             {
-                // Status Filter (Default Open)
-                if (openOnly && !string.Equals(e.Status, "Open", StringComparison.OrdinalIgnoreCase))
-                    return false;
-                if (verifyingOnly && !string.Equals(e.Status, "Verifying", StringComparison.OrdinalIgnoreCase))
-                    return false;
-                if (closedOnly && !string.Equals(e.Status, "Closed", StringComparison.OrdinalIgnoreCase))
-                    return false;
+                // Design Filter (Git #3982) — "shows every is_design = true bug regardless of its
+                // status," Shane's own words. Deliberately bypasses the status radios entirely: a
+                // design-flagged bug stays Open indefinitely and isn't part of the Open/Verifying/Closed
+                // engineering lifecycle, so this filter is the one place status doesn't gate visibility.
+                if (designOnly)
+                {
+                    if (!e.IsDesign) return false;
+                }
+                else
+                {
+                    // Status Filter (Default Open)
+                    if (openOnly && !string.Equals(e.Status, "Open", StringComparison.OrdinalIgnoreCase))
+                        return false;
+                    if (verifyingOnly && !string.Equals(e.Status, "Verifying", StringComparison.OrdinalIgnoreCase))
+                        return false;
+                    if (closedOnly && !string.Equals(e.Status, "Closed", StringComparison.OrdinalIgnoreCase))
+                        return false;
+                }
 
                 // Site Filter
                 if (!string.Equals(selSite, "All Sites", StringComparison.OrdinalIgnoreCase) &&
@@ -133,6 +153,15 @@ namespace BuildConsole.Controls
         private void Filter_Changed(object sender, RoutedEventArgs e)
         {
             ApplyFilters();
+        }
+
+        /// <summary>Git #3982 — reports the real Send-to-Chat outcome (same pattern as SqlDocumentView's
+        /// own ShowSendStatus) back on this view's own banner, since Reject's evidence hand-off happens
+        /// asynchronously after the status flip already showed its own banner text.</summary>
+        public void ShowSendStatus(string message)
+        {
+            BdrBanner.Visibility = Visibility.Visible;
+            TxtBanner.Text = message;
         }
 
         private async void BtnRefresh_Click(object sender, RoutedEventArgs e)
@@ -188,12 +217,16 @@ namespace BuildConsole.Controls
 
             TxtDetailDiagnostics.Text = diagLines.Count > 0 ? string.Join("\n", diagLines) : "No diagnostic issues attached.";
 
-            BtnToggleStatus.Content = entry.Status switch
-            {
-                "Open" => "Mark as Verifying",
-                "Verifying" => "Mark as Closed",
-                _ => "Re-open Bug"
-            };
+            // Git #3982 — Confirm/Reject are only ever meaningful on a Verifying row (the issue's own
+            // enablement rule); Mark-as-Verifying/Re-open are the manual entry/exit points for the two
+            // ends of that lifecycle until the real dispatch-driven auto-transition (#TBD8) lands.
+            bool isOpen = string.Equals(entry.Status, "Open", StringComparison.OrdinalIgnoreCase);
+            bool isVerifying = string.Equals(entry.Status, "Verifying", StringComparison.OrdinalIgnoreCase);
+            bool isClosed = string.Equals(entry.Status, "Closed", StringComparison.OrdinalIgnoreCase);
+            BtnMarkVerifying.Visibility = isOpen ? Visibility.Visible : Visibility.Collapsed;
+            BtnConfirmFixed.Visibility = isVerifying ? Visibility.Visible : Visibility.Collapsed;
+            BtnReject.Visibility = isVerifying ? Visibility.Visible : Visibility.Collapsed;
+            BtnReopen.Visibility = isClosed ? Visibility.Visible : Visibility.Collapsed;
 
             if (!string.IsNullOrWhiteSpace(entry.ResolutionReason))
             {
@@ -235,25 +268,9 @@ namespace BuildConsole.Controls
             ApplyFilters();
         }
 
-        private async void BtnToggleStatus_Click(object sender, RoutedEventArgs e)
+        private async Task SetStatusAsync(string newStatus, string? newResolution, string bannerText)
         {
             if (_selectedEntry == null || _store == null) return;
-
-            string newStatus;
-            string? newResolution = null;
-            switch (_selectedEntry.Status)
-            {
-                case "Open":
-                    newStatus = "Verifying";
-                    break;
-                case "Verifying":
-                    newStatus = "Closed";
-                    newResolution = "Fixed";
-                    break;
-                default: // "Closed"
-                    newStatus = "Open";
-                    break;
-            }
 
             _selectedEntry.Status = newStatus;
             _selectedEntry.Resolution = newResolution;
@@ -263,9 +280,55 @@ namespace BuildConsole.Controls
             DisplayBugDetail(_selectedEntry);
 
             BdrBanner.Visibility = Visibility.Visible;
-            TxtBanner.Text = $"Status updated to {newStatus.ToUpperInvariant()}.";
+            TxtBanner.Text = bannerText;
 
             ApplyFilters();
+        }
+
+        /// <summary>Git #3982 — manual Open → Verifying entry point (the real automatic dispatch-driven
+        /// transition is a later child issue, #TBD8, not built yet).</summary>
+        private async void BtnMarkVerifying_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedEntry == null || !string.Equals(_selectedEntry.Status, "Open", StringComparison.OrdinalIgnoreCase)) return;
+            await SetStatusAsync("Verifying", null, "Status updated to VERIFYING.");
+        }
+
+        /// <summary>Git #3982 — Confirm: only meaningful on a Verifying row. Closed/Fixed.</summary>
+        private async void BtnConfirmFixed_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedEntry == null || !string.Equals(_selectedEntry.Status, "Verifying", StringComparison.OrdinalIgnoreCase)) return;
+            await SetStatusAsync("Closed", "Fixed", "Confirmed fixed — status updated to CLOSED.");
+        }
+
+        /// <summary>Git #3982 — Re-open: manual Closed → Open override (e.g. correcting a wrong Confirm
+        /// or Not-a-Bug). Plain status flip, no evidence packaging, no GitHub call.</summary>
+        private async void BtnReopen_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedEntry == null || !string.Equals(_selectedEntry.Status, "Closed", StringComparison.OrdinalIgnoreCase)) return;
+            await SetStatusAsync("Open", null, "Re-opened — status updated to OPEN.");
+        }
+
+        /// <summary>Git #3982 — Reject: only meaningful on a Verifying row. Real, explicit non-goal per
+        /// the issue: this NEVER calls any GitHub API. It sets status back to Open, then packages the
+        /// entry's real captured evidence (screenshots, console/network logs, repro steps — via
+        /// <see cref="VisualTestTrackerEntry.ToMarkdown"/>) and raises <see cref="SendToChatRequested"/>
+        /// so the owning MainWindow hands it to the shared #937 send-to-active-chat path. A real person
+        /// (Claude, in that chat) is the one who decides what's actually wrong and reopens/comments on
+        /// the GitHub issue with its own tools — this view has no GitHub client anywhere in it.</summary>
+        private async void BtnReject_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedEntry == null || _store == null) return;
+            if (!string.Equals(_selectedEntry.Status, "Verifying", StringComparison.OrdinalIgnoreCase)) return;
+
+            var entry = _selectedEntry;
+            await SetStatusAsync("Open", null, "Rejected — reopened and evidence sent to chat for review.");
+
+            string issueRef = entry.GitIssueNumber.HasValue ? $" (GitHub #{entry.GitIssueNumber.Value})" : "";
+            string preamble =
+                $"🔴 **Rejected from Verifying** — BUG-{(entry.BugNumber > 0 ? entry.BugNumber : entry.Id)}{issueRef} was reviewed and is NOT actually fixed. " +
+                "Reopened locally (status = Open). Real captured evidence below — please look into it and, if warranted, reopen/comment on the GitHub issue yourself.\n\n";
+            string evidence = preamble + entry.ToMarkdown();
+            SendToChatRequested?.Invoke(this, evidence);
         }
 
         private async void BtnMarkNotABug_Click(object sender, RoutedEventArgs e)
