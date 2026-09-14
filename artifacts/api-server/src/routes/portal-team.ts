@@ -216,6 +216,10 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
       department: usersTable.department,
       jobTitle: usersTable.jobTitle,
       createdAt: usersTable.createdAt,
+      // Git #3996 — the Team Management page's "Reports to" panel needs this
+      // per member; previously selected only by the manager-assignment route
+      // itself (#2527), never projected on the roster read (contract pack §5).
+      managerUserId: usersTable.managerUserId,
     })
     .from(usersTable)
     .where(eq(usersTable.tenantId, customerId));
@@ -286,6 +290,7 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
     activeSessionsCount: activeCountByUser.get(m.userId) ?? 0,
     isCustomerAdmin: customerAdminIds?.has(m.userId) ?? false,
     hasBillingRole: billingRoleIds?.has(m.userId) ?? false,
+    managerUserId: m.managerUserId,
   }));
 
   res.json(result);

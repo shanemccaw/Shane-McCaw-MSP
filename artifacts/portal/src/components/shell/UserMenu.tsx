@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { CreditCard, Webhook, Settings, ShieldCheck, LogOut } from "lucide-react";
+import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users } from "lucide-react";
 import type { AuthUser } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 import { comingSoonHref } from "./moduleNav";
@@ -82,6 +82,10 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
   // hint only — the gate is server-side: every read route in
   // `portal-billing.ts` asks the same `customer:billing.view` (#3465).
   const showBilling = can("customer", "billing.view");
+  // Team Management (#3996) — GET /portal/team is `requireAuth` only, gated on
+  // holding a `customerId` claim at all (§1 of the contract pack), not on the
+  // `customer:team.manage` capability that gates the page's mutating actions.
+  const showTeam = !!user.customerId;
   return (
     <div
       data-testid="user-menu-popover"
@@ -123,6 +127,15 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
             icon={CreditCard}
             label="Billing"
             testId="user-menu-billing"
+            onNavigate={onClose}
+          />
+        )}
+        {showTeam && (
+          <MenuRow
+            href="/team"
+            icon={Users}
+            label="Team"
+            testId="user-menu-team"
             onNavigate={onClose}
           />
         )}
