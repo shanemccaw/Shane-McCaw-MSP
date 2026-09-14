@@ -16,6 +16,7 @@ import {
   Gauge,
   FileText,
   Stethoscope,
+  ClipboardList,
   type LucideProps,
 } from "lucide-react";
 
@@ -49,6 +50,9 @@ export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   // next to Overview and Projects" — Projects has no page yet, so this sits
   // directly after Overview until Projects ships its own row.
   { key: "my-architect", label: "My Architect", icon: Compass, builtPath: "/my-architect" },
+  // Sidebar position per the design_handoff_billing_roles_and_new_modules
+  // README ("Status reports" after My Architect) — Git #4038, Feature #3435.
+  { key: "status-reports", label: "Status reports", icon: ClipboardList, builtPath: "/status-reports" },
   { key: "changes", label: "Microsoft Changes", icon: Megaphone, builtPath: "/microsoft-changes" },
   { key: "change-control", label: "Change Control", icon: Waypoints, builtPath: "/change-control" },
   { key: "scope-sla", label: "Scope and SLA", icon: Gauge, builtPath: "/scope-and-sla" },
