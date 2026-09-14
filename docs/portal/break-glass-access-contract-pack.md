@@ -248,16 +248,38 @@ regardless of which caller invokes it:
   into `"[redacted]"`, so every override reset `/users/[redacted]` and failed 502.
   The replacement row the override inserts carries the same account id forward.
 
-On success, in order (`:829-905`): resets the tenant account's password via
-`graphWriteForTenant` PATCH (`:831-841`, real write-back gate — 502 with
-`errorType` on Graph failure), stores the new plaintext to Key Vault
-**fail-closed** if the store isn't configured (`:849-861`, 503 rather than
-falling back to DB-only storage), supersedes the old pending-secret row and
-inserts a new one plus an audit row in one transaction (`:863-888`), purges
-the old row's now-orphaned vault copy (`:894`), fires the repeated-override
-alert if this is the 2nd+ override in 24h (`:897`, see §7), and re-issues
-invites (`:899-902`). **Does not resume the run** — it stays paused until the
-new secret is separately acknowledged (`:904`).
+In order (Git #4029 — everything that can refuse runs **before** the one
+irreversible step, the tenant reset):
+
+1. **Store configured?** `generatedSecretStoreConfigured()` false → `503`, the
+   tenant credential is not changed (fail-closed, no DB-only fallback).
+2. **Store the replacement first** via `storeGeneratedSecret()`. A store that
+   throws (vault unreachable, RBAC, throttling) → `503`, tenant not changed.
+   Key Vault has no rename and none is needed: the secret name is random, and
+   the binding is the DB row written in step 4.
+3. **Reset** the tenant account's password via `graphWriteForTenant` PATCH
+   (real write-back gate).
+   - Definite refusal (any 4xx result, or a thrown write-back/consent gate
+     error) → the provisional vault copy is purged; `502` with `errorType` in
+     `detail` (gate errors still propagate as thrown errors, see below).
+   - No definite answer (a 5xx, or a transport error after the request may
+     have left) → the vault copy is **kept** (it may be the only copy of a live
+     password; it expires with the store TTL), the old row is left
+     overridable; `502` with `detail: "outcome_unknown"`.
+4. **Record**: supersede the old pending-secret row, insert the new one plus an
+   audit row, in one transaction. On failure it is retried once (after checking
+   the failed attempt did not in fact commit, by `secret_ref->>'secretName'`).
+   If the retry fails too → `500` with `detail: "replacement_unrecorded"`; the
+   vault copy is **not** purged and the old row stays overridable, so running
+   the override again issues a recorded credential.
+5. Purges the old row's now-orphaned vault copy, fires the repeated-override
+   alert if this is the 2nd+ override in 24h (see §7), and re-issues invites.
+   **Does not resume the run** — it stays paused until the new secret is
+   separately acknowledged.
+
+Live-verified on `zz-test-graphwrite-01` by
+`break-glass-admin-override.live-verify.ts`; branch-by-branch ordering is pinned
+by `break-glass-admin-override-ordering-4029.test.ts`.
 
 Response — `AdminOverrideResult` (`:784-786`):
 
@@ -268,7 +290,7 @@ Response — `AdminOverrideResult` (`:784-786`):
 | `reissued` | `number` | `emails.length` actually targeted |
 | `sent` | `number` | how many invite emails actually succeeded |
 
-Failure shape (`ok: false`): `{ ok: false, status: 409 \| 502 \| 503, error: string, detail?: string }`.
+Failure shape (`ok: false`): `{ ok: false, status: 409 \| 500 \| 502 \| 503, error: string, detail?: string }`.
 The portal route JSONs this through unchanged (`:933-935`); §3.4 shows the MSP
 route doing the same.
 

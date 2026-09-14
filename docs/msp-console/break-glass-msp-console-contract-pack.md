@@ -182,7 +182,8 @@ regardless of which of the two routes calls it.
 
 Response on success: `AdminOverrideResult` — `{ ok: true, newPendingSecretId,
 reissued, sent }`, JSONed straight through (`:295`). On `{ ok: false, status: 409 |
-502 | 503, error, detail? }`, this route mirrors that status (`:293`). Write-back gate
+500 | 502 | 503, error, detail? }` (#4029 — `500 replacement_unrecorded` and `502
+outcome_unknown` both mean "run the override again before re-inviting"), this route mirrors that status (`:293`). Write-back gate
 errors (`WriteBackNotEnabledError`, `WriteBackCustomerNotFoundError`,
 `WriteConsentRequiredError`) are caught explicitly (`:297-299`) and surfaced as `409
 { error, blockedBy: err.reason }` — a real, distinct state, not a generic 500.

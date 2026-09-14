@@ -36,7 +36,7 @@ import {
   wfDefinitionsTable,
   configPacksTable,
 } from "@workspace/db";
-import { and, eq, ne, gte, desc, inArray } from "drizzle-orm";
+import { and, eq, ne, gte, desc, inArray, sql } from "drizzle-orm";
 import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth.ts";
 import { resolveCustomerId } from "../lib/portal-customer-scope.ts";
 import { logger } from "../lib/logger.ts";
@@ -886,7 +886,17 @@ router.post("/public/break-glass/:pendingSecretId/acknowledge", publicLimiter, a
  */
 export type AdminOverrideResult =
   | { ok: true; newPendingSecretId: number; reissued: number; sent: number }
-  | { ok: false; status: 409 | 502 | 503; error: string; detail?: string };
+  | { ok: false; status: 409 | 500 | 502 | 503; error: string; detail?: string };
+
+/**
+ * Git #4029 — whether a failed tenant reset can be trusted NOT to have changed
+ * the password. A 4xx (including 429 throttling and a consent/license refusal) is
+ * Graph declining the request. A 5xx, or a transport error thrown after the request
+ * may have left, is no answer at all: the password may or may not have changed.
+ */
+function resetFailureIsDefinite(write: { status: number }): boolean {
+  return write.status >= 400 && write.status < 500;
+}
 
 /**
  * Shared "force reset + reissue" admin-override — the ONE implementation of a
@@ -929,44 +939,98 @@ export async function performBreakGlassAdminOverride(
     return { ok: false, status: 409, error: "This pending secret does not record the break-glass account identity" };
   }
 
-  // 1. Reset the credential on the tenant (same write helper as creation).
-  const newPassword = generateStrongPassword();
-  const write = await graphWriteForTenant(
-    ctx.tenantId,
-    ctx.secret.customerId,
-    `/users/${encodeURIComponent(accountId)}`,
-    "PATCH",
-    { passwordProfile: { password: newPassword, forceChangePasswordNextSignIn: false } },
-  );
-  if (!write.success) {
-    log.error({ pendingSecretId, status: write.status, errorType: write.errorType }, "break-glass: admin-override tenant reset failed");
-    return { ok: false, status: 502, error: "Failed to reset the tenant credential", detail: write.errorType };
+  // Git #4029 — ordering. The tenant reset is the one step that cannot be taken
+  // back: once it lands, the old credential is dead and the new one exists only in
+  // this process. So everything that can refuse runs BEFORE it, and the new
+  // password is already held by the store when the reset is sent. It used to be
+  // the other way round — reset, then store — and a store that was unconfigured
+  // (live-confirmed on #4015's harness) or that threw left the break-glass Global
+  // Administrator on a password nobody held, while this row went on offering the
+  // dead one.
+  //
+  // Store-first rather than rename-later: Key Vault has no rename, and none is
+  // needed. The secret name is random and says nothing about whether the reset
+  // happened; the binding is the database row inserted after the reset. Rolling a
+  // provisional copy back is delete + purge, which the store already does.
+  const { generatedSecretStoreConfigured, storeGeneratedSecret, purgeGeneratedSecret } = await import("../lib/generated-secret-store.ts");
+
+  // 1. #1911 fail-closed: no store, no override — refused with the tenant untouched.
+  if (!generatedSecretStoreConfigured()) {
+    log.error({ pendingSecretId }, "break-glass: admin-override refused — generated-secret store is not configured (tenant credential not changed)");
+    return { ok: false, status: 503, error: "The generated-credential store is not configured — the tenant credential was not changed" };
   }
 
-  // 1b. #1911 — the replacement is a generated credential on the write path
-  // exactly like the original, so it goes to Key Vault and the new row carries
-  // a reference. This runs AFTER the tenant reset succeeded, so a failed reset
-  // cannot leave a secret in the vault for a password the tenant never got.
-  // Fail-closed: if the store cannot take it, the override is refused rather
-  // than falling back to holding the credential only in the database.
-  const { generatedSecretStoreConfigured, storeGeneratedSecret } = await import("../lib/generated-secret-store.ts");
-  let newSecretRef: GeneratedSecretRef | null = null;
-  if (generatedSecretStoreConfigured()) {
+  // 2. Hold the replacement before the tenant is asked to accept it. A vault that
+  // is unreachable, refuses on RBAC, or throttles fails here, not after the reset.
+  const newPassword = generateStrongPassword();
+  let newSecretRef: GeneratedSecretRef;
+  try {
     newSecretRef = await storeGeneratedSecret({
       value: newPassword,
       purpose: "break-glass",
       customerId: ctx.secret.customerId,
       runId: ctx.secret.runId,
     });
-  } else {
-    log.error({ pendingSecretId }, "break-glass: admin-override cannot store the replacement credential — generated-secret store is not configured");
-    return { ok: false, status: 503, error: "The generated-credential store is not configured — the replacement was not issued" };
+  } catch (err) {
+    log.error({ err, pendingSecretId }, "break-glass: admin-override refused — the replacement credential could not be stored (tenant credential not changed)");
+    return { ok: false, status: 503, error: "The replacement credential could not be stored — the tenant credential was not changed" };
   }
 
-  // 2–4. Supersede old, insert new pending secret, write audit — in one tx.
+  const discardProvisional = async (why: string) => {
+    const purged = await purgeGeneratedSecret(newSecretRef, `admin-override provisional replacement discarded: ${why} (pending secret ${pendingSecretId})`);
+    if (!purged) {
+      log.warn({ pendingSecretId, secretName: newSecretRef.secretName }, "break-glass: provisional replacement could not be purged — it holds a password the tenant never accepted and expires with the store TTL");
+    }
+  };
+
+  // 3. Reset the credential on the tenant (same write helper as creation).
+  let write: Awaited<ReturnType<typeof graphWriteForTenant>>;
+  try {
+    write = await graphWriteForTenant(
+      ctx.tenantId,
+      ctx.secret.customerId,
+      `/users/${encodeURIComponent(accountId)}`,
+      "PATCH",
+      { passwordProfile: { password: newPassword, forceChangePasswordNextSignIn: false } },
+    );
+  } catch (err) {
+    if (err instanceof WriteBackNotEnabledError || err instanceof WriteBackCustomerNotFoundError || err instanceof WriteConsentRequiredError) {
+      // Refused by a gate (or by a consent error in Graph's reply) — nothing changed.
+      await discardProvisional("write-back gate refused the reset");
+      throw err;
+    }
+    // A transport failure can happen after the PATCH left. Keep the stored copy:
+    // if the reset did land, it is the only record of the password.
+    log.error({ err, pendingSecretId, secretName: newSecretRef.secretName }, "break-glass: admin-override reset outcome unknown — replacement kept in the store; run the override again");
+    return {
+      ok: false,
+      status: 502,
+      error: "The tenant reset did not return an answer — the credential may have changed. Run the override again before re-inviting anyone.",
+      detail: "outcome_unknown",
+    };
+  }
+  if (!write.success) {
+    if (resetFailureIsDefinite(write)) {
+      log.error({ pendingSecretId, status: write.status, errorType: write.errorType }, "break-glass: admin-override tenant reset refused (credential not changed)");
+      await discardProvisional(`tenant reset refused (${write.status})`);
+      return { ok: false, status: 502, error: "Failed to reset the tenant credential", detail: write.errorType };
+    }
+    log.error({ pendingSecretId, status: write.status, errorType: write.errorType, secretName: newSecretRef.secretName }, "break-glass: admin-override reset outcome unknown — replacement kept in the store; run the override again");
+    return {
+      ok: false,
+      status: 502,
+      error: "The tenant reset failed without a definite answer — the credential may have changed. Run the override again before re-inviting anyone.",
+      detail: "outcome_unknown",
+    };
+  }
+
+  // 4. Supersede old, insert new pending secret, write audit — in one tx. The reset
+  // has landed, so this is the only step left between a live credential and a
+  // recorded one. A failed attempt is retried once; the retry first checks whether
+  // the previous attempt in fact committed (a connection lost after COMMIT).
   const oldPendingSecretId = pendingSecretId;
   let newPendingSecretId = 0;
-  await db.transaction(async (tx) => {
+  const recordReplacement = () => db.transaction(async (tx) => {
     await tx.update(breakGlassPendingSecretsTable)
       .set({ status: "superseded_by_reset" })
       .where(eq(breakGlassPendingSecretsTable.id, oldPendingSecretId));
@@ -992,6 +1056,35 @@ export async function performBreakGlassAdminOverride(
       newPendingSecretId,
     });
   });
+  try {
+    await recordReplacement();
+  } catch (firstErr) {
+    log.warn({ err: firstErr, pendingSecretId }, "break-glass: admin-override could not record the replacement after the reset — retrying once");
+    try {
+      const [already] = await db.select({ id: breakGlassPendingSecretsTable.id })
+        .from(breakGlassPendingSecretsTable)
+        .where(sql`${breakGlassPendingSecretsTable.secretRef} ->> 'secretName' = ${newSecretRef.secretName}`)
+        .limit(1);
+      if (already) newPendingSecretId = already.id;
+      else await recordReplacement();
+    } catch (err) {
+      // The tenant holds the new password and so does the store; only the row is
+      // missing. The vault copy is NOT purged — it is the one place the live
+      // credential exists. The old row is left overridable on purpose: marking it
+      // superseded with no successor would remove the only way to recover through
+      // the platform, and the database just refused a write anyway.
+      log.error(
+        { err, pendingSecretId, secretName: newSecretRef.secretName },
+        "break-glass: admin-override RESET LANDED but the replacement could not be recorded — the credential is held only in the store under secretName; run the override again",
+      );
+      return {
+        ok: false,
+        status: 500,
+        error: "The tenant credential was reset, but the replacement could not be recorded. Its only copy is in the credential store. Run the override again before re-inviting anyone.",
+        detail: "replacement_unrecorded",
+      };
+    }
+  }
 
   // 4b. #1911 — the superseded credential was never delivered and never will
   // be, so its vault copy is an orphan the moment the new row exists. Purge it
