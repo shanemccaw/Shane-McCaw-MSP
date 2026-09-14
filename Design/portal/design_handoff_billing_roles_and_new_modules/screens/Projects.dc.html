@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+<div data-screen-label="Projects" data-projects-scene="{{sceneMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 1120px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Projects</span>
+      <span title="A project is the work your MSP runs after you accept a project-class offer: its steps, the task board, files, updates, status reports and the signed contract behind it. Your MSP runs the board; this page reads it and shows what is waiting on you." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+    </div>
+
+    <sc-if value="{{failed}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:14px 16px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">This project could not be read</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">A failed read, not a missing project. Your MSP's board is unchanged; the server returned its own error rather than an empty page.</span>
+          <span onClick="{{retry}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Try again</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{notFound}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">No project at that address</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:700px">A project id nothing matches, and a project that belongs to another organisation, get this same answer — the server never confirms which. There is no list to fall back to: the only project read a customer has is one project by id, so you arrive here from a link (an email from your MSP, or Overview), never from an index.</span>
+        <span style="font-size:11px;color:#475569;line-height:1.5;max-width:700px">Today this is the answer for every id on the platform. A project is created only when a project-class offer is accepted and fulfilled, and none has been yet — the table is empty, honestly.</span>
+        <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace">404 · GET /api/portal/projects/:id</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isLive}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:16px 20px 18px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:600;color:#94a3b8;border:1px solid rgba(148,163,184,.35);border-radius:999px;padding:2px 9px">{{typeLabel}}</span>
+          <span style="font-size:10px;font-weight:600;color:{{stInk}};border:1px solid {{stBd}};border-radius:999px;padding:2px 9px">{{stLabel}}</span>
+          <span style="font-size:11px;color:#64748b">Phase · {{phase}}</span>
+          <span style="margin-left:auto;font-size:11px;color:#64748b;white-space:nowrap">{{dateLine}}</span>
+        </div>
+        <span style="font-size:18px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;line-height:1.3">{{title}}</span>
+        <span style="font-size:12.5px;color:#cbd5e1;line-height:1.6;max-width:720px">{{description}}</span>
+        <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">PROGRESS</span>
+            <span style="font-size:12px;font-weight:600;color:#f8fafc">{{progressPct}}</span>
+            <span style="font-size:10.5px;color:#64748b">{{progressNote}}</span>
+          </div>
+          <div style="height:6px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden"><div style="height:100%;width:{{progressW}};background:linear-gradient(90deg,#0078D4,#00B4D8);border-radius:999px"></div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">SIGNED CONTRACT</span>
+            <span style="font-size:12px;color:#e2e8f0;line-height:1.5">{{contractLine}}</span>
+            <a href="Documents.dc.html" style="font-size:11px;font-weight:600;text-decoration:none">{{contractFile}}</a>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">PROJECT FILES</span>
+            <span style="font-size:12px;color:#e2e8f0;line-height:1.5">SharePoint folder created by your MSP</span>
+            <a href="#" style="font-size:11px;font-weight:600;text-decoration:none">Open the folder →</a>
+          </div>
+          <sc-if value="{{hasCoupon}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">COUPON</span>
+              <span style="font-size:12px;color:#e2e8f0;line-height:1.5">{{couponLine}}</span>
+              <span style="font-size:10.5px;color:#64748b;line-height:1.5">On the first invoice only — later invoices under the same code are not added up here.</span>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <sc-if value="{{hasPending}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:12px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.06);border-radius:12px;padding:13px 16px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#fbbf24">REVIEW THIS</span>
+          <span style="font-size:12px;color:#cbd5e1;line-height:1.5;flex:1;min-width:220px">{{pendingLine}}</span>
+          <a href="My Architect.dc.html" style="font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap">Review it on My Architect →</a>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{hasClosure}}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(0,120,212,.35);background:rgba(0,120,212,.06);border-radius:14px;padding:16px 20px 17px;display:flex;flex-direction:column;gap:9px">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Your MSP has asked you to sign this project off</span>
+          <span style="font-size:12px;color:#cbd5e1;line-height:1.6;max-width:720px">{{closureLine}} Signing off records your feedback, your permission for the work to be referenced, and your signature against the project.</span>
+          <div style="display:flex;gap:10px;border:1px dashed rgba(251,191,36,.45);background:rgba(251,191,36,.05);border-radius:12px;padding:12px 14px;align-items:flex-start">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span style="font-size:12.5px;font-weight:600;color:#f8fafc">There is no way to sign off here yet</span>
+              <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">The request is real and the email that brought you here is real, but no customer route writes the sign-off — the loop has an MSP half only. Reply to your MSP directly for now; this page will not pretend a signature was recorded.</span>
+              <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace">project_closures · no portal write · #4025</span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;align-items:start">
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:600;color:#f8fafc">Steps</span>
+            <span style="font-size:11px;color:#64748b">{{stepsLine}}</span>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:9px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="width:22px;height:22px;border-radius:999px;border:1px solid {{s.bd}};background:{{s.bg}};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:{{s.ink}};flex:none">{{s.n}}</span>
+                <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{s.title}}</span>
+                    <span style="font-size:10px;font-weight:600;color:{{s.ink}};border:1px solid {{s.bd}};border-radius:999px;padding:1px 8px">{{s.label}}</span>
+                  </div>
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.5">{{s.description}}</span>
+                  <sc-if value="{{s.hasNotes}}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:11px;color:{{s.notesInk}};line-height:1.5">{{s.notes}}</span>
+                  </sc-if>
+                  <span style="font-size:10.5px;color:#64748b">{{s.when}}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <span style="font-size:10.5px;color:#475569;line-height:1.5">Steps come from the work template your MSP chose. Phase names are their own words, not a fixed list.</span>
+        </div>
+
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:600;color:#f8fafc">Updates</span>
+            <span style="font-size:11px;color:#64748b">newest first</span>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{updates}}" as="u" hint-placeholder-count="4">
+              <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;color:{{u.ink}};border:1px solid {{u.bd}};border-radius:999px;padding:2px 7px;flex:none;margin-top:1px">{{u.kind}}</span>
+                <span style="font-size:12px;color:#e2e8f0;line-height:1.5;flex:1;min-width:0">{{u.text}}</span>
+                <span style="font-size:10.5px;color:#64748b;flex:none;white-space:nowrap">{{u.when}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(255,255,255,.06);padding-top:10px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">DOCUMENTS</span>
+            <sc-for list="{{documents}}" as="f" hint-placeholder-count="2">
+              <div style="display:flex;gap:10px;align-items:baseline">
+                <a href="Documents.dc.html" style="font-size:12px;font-weight:600;text-decoration:none;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{f.name}}</a>
+                <span style="font-size:10.5px;color:#64748b;flex:none">{{f.when}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 16px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">Board</span>
+          <span style="font-size:11px;color:#64748b">{{boardLine}}</span>
+          <span style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:10.5px;color:#64748b"><span style="width:6px;height:6px;border-radius:999px;background:#34d399"></span>Live · refreshes when your MSP moves a card</span>
+        </div>
+        <div style="overflow-x:auto;overflow-y:hidden;margin:0 -4px;padding:0 4px 6px">
+          <div style="display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px;align-items:start;min-width:790px">
+          <sc-for list="{{columns}}" as="col" hint-placeholder-count="5">
+            <div style="display:flex;flex-direction:column;gap:8px;border:1px solid {{col.bd}};background:{{col.bg}};border-radius:12px;padding:10px;min-height:120px">
+              <div style="display:flex;align-items:baseline;gap:6px">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:{{col.ink}}">{{col.label}}</span>
+                <span style="margin-left:auto;font-size:10.5px;color:#64748b">{{col.count}}</span>
+              </div>
+              <sc-for list="{{col.cards}}" as="t" hint-placeholder-count="2">
+                <div style="border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);border-radius:9px;padding:9px 10px;display:flex;flex-direction:column;gap:4px">
+                  <span style="font-size:12px;color:#f8fafc;line-height:1.4">{{t.title}}</span>
+                  <span style="font-size:10.5px;color:#64748b;line-height:1.4">{{t.meta}}</span>
+                </div>
+              </sc-for>
+              <sc-if value="{{col.empty}}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:11px;color:#475569;padding:4px 2px">Nothing here</span>
+              </sc-if>
+            </div>
+          </sc-for>
+          </div>
+        </div>
+        <sc-if value="{{hasPreview}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:7px;border-top:1px solid rgba(255,255,255,.06);padding-top:10px">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;color:#475569">COMING UP · FROM THE TEMPLATE, NOT STARTED</span>
+              <span style="font-size:10.5px;color:#64748b">{{previewLine}}</span>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <sc-for list="{{preview}}" as="pv" hint-placeholder-count="3">
+                <div style="border:1px dashed rgba(255,255,255,.14);border-radius:9px;padding:7px 10px;display:flex;flex-direction:column;gap:2px;flex:1 1 200px;min-width:0">
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.4">{{pv.title}}</span>
+                  <span style="font-size:10px;color:#475569">{{pv.groupName}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+        <span style="font-size:10.5px;color:#475569;line-height:1.5">Your MSP moves the cards; the board scrolls sideways when the window is narrow. Dashed items are a preview of what a later step will seed, read from the template — not tasks yet, and not counted in progress. Priority is free text where set.</span>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 16px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">Status reports on this project</span>
+          <span style="font-size:11px;color:#64748b">sent only · drafts never appear</span>
+        </div>
+        <sc-if value="{{hasReports}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{reports}}" as="r" hint-placeholder-count="2">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:9px 0;border-top:1px solid rgba(255,255,255,.05);flex-wrap:wrap">
+                <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:220px">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{r.title}}</span>
+                    <span style="font-size:10px;font-weight:600;color:{{r.ink}};border:1px solid {{r.bd}};border-radius:999px;padding:1px 8px">{{r.label}}</span>
+                  </div>
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.5">{{r.summary}}</span>
+                </div>
+                <span style="font-size:10.5px;color:#64748b;flex:none;white-space:nowrap">{{r.when}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{noReports}}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:12px;color:#64748b">None sent yet.</span>
+        </sc-if>
+        <span style="font-size:10.5px;color:#475569;line-height:1.5">These are the same retainer status reports My Architect shows, filtered to this project. Accepting one or raising a question happens there.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;review-pending&quot;,&quot;closure-requested&quot;,&quot;not-found&quot;,&quot;failed&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;projectStatus&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;active&quot;,&quot;on_hold&quot;],&quot;default&quot;:&quot;active&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+class Component extends DCLogic {
+  state = { ledger: true, retried: false };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    let scene = P.scene || "live";
+    if (S.retried && scene === "failed") scene = "live";
+    const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const fd = (iso) => { const [y, m, d] = iso.slice(0, 10).split("-"); return `${+d} ${MON[+m - 1]} ${y}`; };
+    const failed = scene === "failed", notFound = scene === "not-found", isLive = !failed && !notFound;
+    const closure = scene === "closure-requested", pending = scene === "review-pending";
+    const status = closure ? "completed" : (P.projectStatus || "active");
+
+    const ST = {
+      active: { l: "Active", c: "#34d399", b: "rgba(52,211,153,.45)" },
+      on_hold: { l: "On hold", c: "#fbbf24", b: "rgba(251,191,36,.45)" },
+      completed: { l: "Completed", c: "#60a5fa", b: "rgba(96,165,250,.45)" },
+    };
+    const STEP = {
+      pending: { l: "Pending", c: "#94a3b8", b: "rgba(148,163,184,.35)", bg: "transparent" },
+      in_progress: { l: "In progress", c: "#60a5fa", b: "rgba(96,165,250,.5)", bg: "rgba(96,165,250,.08)" },
+      completed: { l: "Completed", c: "#34d399", b: "rgba(52,211,153,.5)", bg: "rgba(52,211,153,.08)" },
+      blocked: { l: "Blocked", c: "#f87171", b: "rgba(248,113,113,.5)", bg: "rgba(248,113,113,.06)" },
+    };
+    const project = {
+      title: "Legacy authentication retirement", projectType: "project", phase: closure ? "Closure" : "Migration",
+      description: "Retire basic authentication for IMAP and POP across the tenant, moving the finance scanner and the visitor kiosk to modern authentication first so the protocols can be switched off without breaking either.",
+      startDate: "2026-09-01", endDate: "2026-11-30",
+    };
+    const steps = [
+      { title: "Discovery and inventory", phase: "Discovery", status: "completed", description: "Confirm every mailbox still authenticating with a legacy protocol and who owns it.", dueDate: "2026-09-12", completedAt: "2026-09-12", notes: null },
+      { title: "Migration of service mailboxes", phase: "Migration", status: closure ? "completed" : "in_progress", description: "Re-point the finance scanner and the visitor kiosk to Graph and confirm sends.", dueDate: "2026-10-31", completedAt: closure ? "2026-10-29" : null, notes: null },
+      { title: "Protocol switch-off", phase: "Migration", status: closure ? "completed" : "blocked", description: "Disable IMAP and POP tenant-wide and watch sign-ins for seven days.", dueDate: "2026-11-25", completedAt: closure ? "2026-11-24" : null, notes: closure ? null : "Blocked: the kiosk vendor's firmware 4.2 is due 3 October; the switch-off waits on it." },
+      { title: "Verification and closure", phase: "Closure", status: closure ? "completed" : "pending", description: "Final sign-in report, then the closure request to you.", dueDate: "2026-11-30", completedAt: closure ? "2026-11-28" : null, notes: null },
+    ];
+    const tasks = closure ? [
+      { title: "Export mailbox protocol usage (30 days)", stepIdx: 0, column: "completed", priority: null, dueDate: null },
+      { title: "Match the 14 mailboxes to owners", stepIdx: 0, column: "completed", priority: null, dueDate: null },
+      { title: "Agree the two service-mailbox exceptions", stepIdx: 0, column: "completed", priority: "high", dueDate: null },
+      { title: "Scanner re-pointed to Graph — verify send", stepIdx: 1, column: "completed", priority: null, dueDate: null },
+      { title: "Kiosk firmware 4.2 installed", stepIdx: 1, column: "completed", priority: null, dueDate: null },
+      { title: "Disable IMAP and POP tenant-wide", stepIdx: 2, column: "completed", priority: "high", dueDate: null },
+      { title: "Seven clean days of sign-in logs", stepIdx: 2, column: "completed", priority: null, dueDate: null },
+      { title: "Final sign-in report", stepIdx: 3, column: "completed", priority: null, dueDate: null },
+      { title: "Closure request sent", stepIdx: 3, column: "completed", priority: null, dueDate: null },
+    ] : [
+      { title: "Export mailbox protocol usage (30 days)", stepIdx: 0, column: "completed", priority: null, dueDate: null },
+      { title: "Match the 14 mailboxes to owners", stepIdx: 0, column: "completed", priority: null, dueDate: null },
+      { title: "Agree the two service-mailbox exceptions", stepIdx: 0, column: "completed", priority: "high", dueDate: null },
+      { title: "Register the scanner as an app with mail.send", stepIdx: 1, column: "completed", priority: null, dueDate: "2026-09-08" },
+      { title: "Scanner re-pointed to Graph — verify send", stepIdx: 1, column: "review", priority: null, dueDate: "2026-09-16" },
+      { title: "Confirm the kiosk maintenance window", stepIdx: 1, column: "waiting_on_customer", priority: "high", dueDate: "2026-09-19" },
+      { title: "Install kiosk firmware 4.2", stepIdx: 1, column: "in_progress", priority: null, dueDate: "2026-10-06" },
+      { title: "Move the kiosk to modern auth", stepIdx: 1, column: "backlog", priority: null, dueDate: "2026-10-20" },
+      { title: "Remove the two Conditional Access exceptions", stepIdx: 1, column: "backlog", priority: null, dueDate: "2026-10-31" },
+    ];
+    const previewTasks = closure ? [] : [
+      { stepIdx: 2, title: "Disable IMAP tenant-wide", groupName: "Protocol switch-off" },
+      { stepIdx: 2, title: "Disable POP tenant-wide", groupName: "Protocol switch-off" },
+      { stepIdx: 2, title: "Seven clean days of sign-in logs", groupName: "Protocol switch-off" },
+      { stepIdx: 3, title: "Final sign-in report", groupName: "Verification and closure" },
+      { stepIdx: 3, title: "Closure request to the customer", groupName: "Verification and closure" },
+    ];
+    const done = tasks.filter((t) => t.column === "completed").length;
+    const progress = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+
+    const COLS = [
+      ["backlog", "BACKLOG", "#94a3b8"], ["in_progress", "IN PROGRESS", "#60a5fa"], ["waiting_on_customer", "WAITING ON YOU", "#fbbf24"], ["review", "REVIEW", "#a78bfa"], ["completed", "COMPLETED", "#34d399"],
+    ];
+    const columns = COLS.map(([key, label, ink]) => {
+      const cards = tasks.filter((t) => t.column === key).map((t) => ({
+        title: t.title,
+        meta: [steps[t.stepIdx].title, t.priority ? "priority " + t.priority : null, t.dueDate ? "due " + fd(t.dueDate) : null].filter(Boolean).join(" · "),
+      }));
+      const hot = key === "waiting_on_customer" && cards.length > 0;
+      return { label, ink: hot ? "#fbbf24" : ink, count: String(cards.length), cards,
+        empty: cards.length === 0,
+        bd: hot ? "rgba(251,191,36,.4)" : "rgba(255,255,255,.07)", bg: hot ? "rgba(251,191,36,.05)" : "rgba(255,255,255,.015)" };
+    });
+    const waiting = tasks.filter((t) => t.column === "waiting_on_customer").length;
+
+    const updates = (closure ? [
+      { type: "milestone", text: "Project completed — closure request sent to you", when: "2026-11-28" },
+      { type: "update", text: "Seven clean days of sign-in logs; no legacy protocol attempts", when: "2026-11-27" },
+      { type: "milestone", text: "IMAP and POP disabled tenant-wide", when: "2026-11-20" },
+    ] : []).concat([
+      { type: "milestone", text: "Discovery complete — 14 mailboxes confirmed, owners matched", when: "2026-09-12" },
+      { type: "message", text: "Kiosk vendor confirmed modern-auth support arrives in firmware 4.2 on 3 October; step 3 is blocked on it", when: "2026-09-10" },
+      { type: "file", text: "Inventory spreadsheet uploaded to the project folder", when: "2026-09-05" },
+      { type: "update", text: "Project started from the accepted offer; steps and first tasks seeded from the template", when: "2026-09-01" },
+    ]);
+    const UPD = { update: ["UPDATE", "#94a3b8", "rgba(148,163,184,.35)"], milestone: ["MILESTONE", "#34d399", "rgba(52,211,153,.45)"], message: ["MESSAGE", "#60a5fa", "rgba(96,165,250,.45)"], file: ["FILE", "#a78bfa", "rgba(167,139,250,.45)"] };
+
+    const reports = pending ? [
+      { title: "Week 2 status", period: "1–12 Sep 2026", clientStatus: "pending", executiveSummary: "Discovery closed a day early; the kiosk firmware dependency is the one risk to the November date.", sentAt: "2026-09-12" },
+    ] : closure ? [
+      { title: "Closing status", period: "1 Sep – 28 Nov 2026", clientStatus: "accepted", executiveSummary: "All four steps complete. Legacy protocols off since 20 November with seven clean days of logs.", sentAt: "2026-11-28" },
+      { title: "Week 2 status", period: "1–12 Sep 2026", clientStatus: "accepted", executiveSummary: "Discovery closed a day early; the kiosk firmware dependency is the one risk to the November date.", sentAt: "2026-09-12" },
+    ] : [
+      { title: "Week 2 status", period: "1–12 Sep 2026", clientStatus: "accepted", executiveSummary: "Discovery closed a day early; the kiosk firmware dependency is the one risk to the November date.", sentAt: "2026-09-12" },
+    ];
+    const RS = { pending: ["Awaiting your review", "#fbbf24", "rgba(251,191,36,.45)"], has_questions: ["You asked questions", "#60a5fa", "rgba(96,165,250,.45)"], accepted: ["Accepted", "#34d399", "rgba(52,211,153,.45)"] };
+    const pend = reports.find((r) => r.clientStatus === "pending" || r.clientStatus === "has_questions");
+
+    const ledger = [
+      { gap: "No list. The only customer read is one project by id; you arrive from a link (your MSP's email, Overview). A project index does not exist on the server, so none is drawn.", where: "§1a" },
+      { gap: "Sign-off cannot happen here. The closure request is real and its email links to this page, but no customer route writes the closure — the request is drawn as a dead end, never as a form that pretends to record a signature.", where: "§1c · #4025" },
+      { gap: "This route has no caller anywhere yet. The page is designed against the real response shape; wiring is the step after this one.", where: "§1a · #4024" },
+      { gap: "Progress is your MSP's arithmetic — completed tasks over all tasks, recomputed when they change a card. Preview cards do not count and this page does not recompute it.", where: "§1b" },
+      { gap: "Dashed cards are a projection of the template for steps not yet started: read-only, not tasks, gone once the step is seeded.", where: "§1a" },
+      { gap: "Phase and priority are free text. No fixed list is drawn for either; whatever your MSP last wrote stands.", where: "§1b · §6" },
+      { gap: "The board has five columns including Review. The admin API's own type omits Review but the database allows it, so a card can sit there and this page shows it.", where: "§1b · §6" },
+      { gap: "The status reports here are the retainer kind, sent only — the same ones My Architect shows. Accepting or questioning one happens there; this page only raises the flag.", where: "§1a" },
+      { gap: "The coupon line shows the earliest invoice's discount only. The code's own comment promises a sum it does not deliver, so no total is claimed.", where: "§1a finding" },
+      { gap: "A standalone SOW never becomes a project. Only an accepted project-class offer creates one; a signed standalone SOW is an end state on its own.", where: "§3" },
+      { gap: "Today every id answers 404 — the projects table is empty. The live scene is the shape, not the current data.", where: "§7" },
+      { gap: "Live board updates arrive over a token-in-URL event stream; the page refreshes cards on kanban_change rather than polling.", where: "§1a" },
+    ];
+
+    const st = ST[status];
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      sceneMarker: scene + " status:" + status,
+      stateInk: failed ? "#f87171" : notFound ? "#fbbf24" : "#64748b", stateDot: failed ? "#f87171" : notFound ? "#fbbf24" : "#34d399",
+      stateLine: failed ? "Read failed · 500" : notFound ? "Not found · 404 · projects/48" : `Live · projects/48 · ${tasks.length} tasks${waiting ? ` · ${waiting} waiting on you` : ""}`,
+      failed, notFound, isLive, retry: () => this.setState({ retried: true }),
+      typeLabel: { project: "Project", retainer: "Retainer", quick_win: "Quick win" }[project.projectType],
+      stLabel: st.l, stInk: st.c, stBd: st.b, phase: project.phase,
+      dateLine: fd(project.startDate) + " → " + fd(project.endDate),
+      title: project.title, description: project.description,
+      progressPct: progress + "%", progressW: progress + "%",
+      progressNote: `${done} of ${tasks.length} tasks completed · your MSP's count, recomputed when a card moves`,
+      contractLine: "Signed 28 Aug 2026 by Priya Natarajan · Legacy authentication retirement",
+      contractFile: "SOW-6f1c2a90-signed.pdf →",
+      hasCoupon: true, couponLine: "ONBOARD10 · $250.00 off",
+      hasPending: !!pend, pendingLine: pend ? `“${pend.title}” (${pend.period}) was sent on ${fd(pend.sentAt)} and is waiting for your review. It stays flagged until you accept it or ask a question.` : "",
+      hasClosure: closure, closureLine: "The last step closed on 28 Nov 2026 and the project is marked completed.",
+      stepsLine: `${steps.filter((s) => s.status === "completed").length} of ${steps.length} complete`,
+      steps: steps.map((s, i) => { const k = STEP[s.status]; return { n: String(i + 1), title: s.title, description: s.description, label: k.l, ink: k.c, bd: k.b, bg: k.bg,
+        hasNotes: !!s.notes, notes: s.notes || "", notesInk: s.status === "blocked" ? "#f87171" : "#94a3b8",
+        when: s.completedAt ? "Completed " + fd(s.completedAt) : "Due " + fd(s.dueDate) }; }),
+      updates: updates.map((u) => ({ kind: UPD[u.type][0], ink: UPD[u.type][1], bd: UPD[u.type][2], text: u.text, when: fd(u.when) })),
+      documents: [{ name: "Legacy-auth-inventory.xlsx", when: fd("2026-09-05") }, { name: "Kickoff-notes.pdf", when: fd("2026-09-01") }],
+      boardLine: waiting ? `${waiting} card${waiting === 1 ? "" : "s"} waiting on you` : "nothing waiting on you",
+      columns,
+      hasPreview: previewTasks.length > 0,
+      previewLine: `${previewTasks.length} items across ${new Set(previewTasks.map((p) => p.stepIdx)).size} later steps`,
+      preview: previewTasks.map((p) => ({ title: p.title, groupName: p.groupName })),
+      hasReports: reports.length > 0, noReports: reports.length === 0,
+      reports: reports.map((r) => ({ title: r.title, label: RS[r.clientStatus][0], ink: RS[r.clientStatus][1], bd: RS[r.clientStatus][2], summary: r.executiveSummary, when: "Sent " + fd(r.sentAt) + " · " + r.period })),
+      ledgerShow: P.showLedger !== false, ledgerOpen: S.ledger, ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger,
+    };
+  }
+}
+</script>
+</body>
+</html>
