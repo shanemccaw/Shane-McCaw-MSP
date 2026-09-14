@@ -1648,6 +1648,34 @@ export const mspSubscriptionsTable = pgTable("msp_subscriptions", {
 export type MspSubscription = typeof mspSubscriptionsTable.$inferSelect;
 export type InsertMspSubscription = typeof mspSubscriptionsTable.$inferInsert;
 
+// ── MSP Add-On Subscriptions (Git #4036) ───────────────────────────────────────
+//
+// msp_subscriptions is UNIQUE(msp_id) by design — one base platform tier per MSP —
+// so an add-on (e.g. services.id=131, "M365 Launch Control — Plus Add-On",
+// typeAttributes.grantsCapabilityKey = "launch_control_plus") has nowhere to be
+// recorded alongside it. This table is separate and deliberately many-to-many
+// capable (no unique constraint on mspId, or on (mspId, serviceId) either — an MSP
+// re-subscribing to the same add-on after a cancel gets a new row rather than
+// fighting a stale one for the update). Status vocabulary matches
+// MSP_SUBSCRIPTION_STATUSES so `loadTier()` can filter both tables the same way.
+// serviceId is not a TS-level FK for the same cross-schema-file reason
+// mspSubscriptionsTable.serviceId isn't (servicesTable lives in schema/index.ts) —
+// enforced at DB level in the migration instead.
+export const mspAddonSubscriptionsTable = pgTable("msp_addon_subscriptions", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  serviceId: integer("service_id").notNull(),
+  status: text("status", { enum: MSP_SUBSCRIPTION_STATUSES }).notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_addon_subscriptions_msp_id_idx").on(t.mspId),
+  index("msp_addon_subscriptions_service_id_idx").on(t.serviceId),
+  index("msp_addon_subscriptions_status_idx").on(t.status),
+]);
+
+export type MspAddonSubscription = typeof mspAddonSubscriptionsTable.$inferSelect;
+export type InsertMspAddonSubscription = typeof mspAddonSubscriptionsTable.$inferInsert;
+
 // ── Per-customer subscription / billing state (Git #2847) ─────────────────────
 //
 // THE gap #2847 was filed for. #1944 part 8 gates the whole customer portal on
