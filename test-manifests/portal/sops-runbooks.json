@@ -1,16 +1,17 @@
 {
   "feature": "Customer Portal (artifacts/portal) -- SOPs & Runbooks (/sops, /runbooks), wired to real data (#2994, carried forward from #1730/#1493/#1488). /runbooks was rebuilt for #4006 (2026-09-14) against the real standalone design Design/portal/design_handoff_full_site/screens/Runbooks.dc.html -- Shane's reversal of the joint #1488/#1493 'fold into SOPs' decision. /sops still uses SOPs.dc.html. Real endpoints: GET/POST /api/portal/sops, GET /api/portal/sop-runs, POST /api/portal/sops/:sopId/custom-steps (routes/portal-sops.ts, requireRole('Customer')), and GET /api/portal/runbooks + the hold-window writes (routes/portal-runbooks.ts, requireRole('Assessment')) via useRunbooks.ts (#1557 cycle/run-history shape). No fixture data anywhere -- a genuinely empty runbooks/holds table for this tenant renders the design's own honest-empty copy, not a fabricated row.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "3560c098e",
+  "lastVerifiedAgainstCommit": "225aead58",
   "notes": [
     "artifacts/msp-portal (the old '/portal-v2/*' surface, including test-manifests/portal/portal-v2-sops.json) was retired for artifacts/portal in f40438cdc (#1921). This manifest covers the REPLACEMENT pages at the new, un-slugged routes /portal/sops and /portal/runbooks -- it is not an update of portal-v2-sops.json, which tests a page that no longer exists in the tree.",
     "Real login (#2991, Feature #1648) landed in artifacts/portal concurrently with this build -- /portal/login, data-testid login-email/login-password/login-submit, POST /api/auth/login under the hood. The uiSteps below drive that real form rather than asserting only the unauthenticated RequireAuth gate. The testbed account (TEST_PORTAL_EMAIL) has no MFA enrolled, so login navigates straight to '/' with no MFA phase.",
     "apiTests below ARE fully authenticated (via the real POST /api/auth/login + Bearer token, same as every other portal manifest) and were hand-verified live against this environment before being written: GET /api/portal/sops returned 15 real msp_sops rows for the testbed account (customerId 1), GET /api/portal/sop-runs returned an empty queue + 15 real 'Version published' audit rows, GET /api/portal/runbooks returned a genuinely empty {runbooks:[],holds:[],summary:{...,text:'No hold windows'}} for this tenant (0 rows in portal_runbooks/portal_hold_windows at verification time -- a live-empty state, not a bug), and both POST /api/portal/sops and POST /api/portal/sops/:sopId/custom-steps were exercised for real and their written rows re-read back correctly shaped.",
     "A3c/A3d create a real 'ours'-source SOP row and a real custom-step overlay row on it, same pattern portal-v2-sops.json's own A3c/A3d used -- these are additive, idempotent-safe re-runs (a fresh row each time, never deleted), not destructive.",
-    "#4006 REDESIGN NOTE: /runbooks moved from the old 'Active Runbooks' single-stack layout to the design's master-detail layout (list + selected-runbook detail, past-cycle history, hold-window event timeline, a 'what this page deliberately does not do' ledger). The honest-empty copy changed from the old page's 'No active runbooks' to the new design's literal 'No runbooks yet' -- U9 below asserts the new real string. The stale sibling manifest test-manifests/portal/runbooks-hold-windows.json targets retired portal-v2 slug-scoped routes that no longer exist in the tree (see the finding filed against #1488) and is not touched by this build.",
+    "#4006 REDESIGN NOTE: /runbooks moved from the old 'Active Runbooks' single-stack layout to the design's master-detail layout (list + selected-runbook detail, past-cycle history, hold-window event timeline, a 'what this page deliberately does not do' ledger). The honest-empty copy changed from the old page's 'No active runbooks' to the new design's literal 'No runbooks yet' -- U9 below asserts the new real string. The sibling manifest test-manifests/portal/runbooks-hold-windows.json, which drove the retired portal-v2 slug-scoped '/portal-v2/runbooks' route and its own data-testids, was retired and deregistered under Git #4022 -- its still-live API coverage is folded into this file as the B0-B10 block below.",
     "sessionTag: the login flow (goto /portal/login through the primary-login click) carries sessionTag 'setup' so it always runs under an onlyTag-scoped invocation; the #4006 runbooks assertions carry sessionTag '4006-runbooks-redesign' for scoped re-verification (`shaneapp://runTest?file=sops-runbooks.json&onlyTag=4006-runbooks-redesign`).",
     "#4006 VERIFICATION, HONEST STATE: ran shaneapp://runTest scoped to onlyTag=4006-runbooks-redesign against commit 3560c098e. The unauthenticated navigation half passed for real (goto /portal/login, the form hydrated, goto /portal/runbooks after the login click). Steps 3/4/5's login-field inputs and the final runbooks-page assertion failed because TEST_PORTAL_EMAIL/TEST_PORTAL_PASSWORD were not configured as BuildConsole Test Environment Variables in this session ('unresolved variable(s)' -- a real, specific, environment-config gap, not a code failure) -- with no session, /portal/runbooks correctly stayed on the sign-in gate rather than rendering. Direct smoke checks against the live dev server substituted for the credential-gated half: GET http://localhost:5175/portal/runbooks -> 200 (route serves), GET http://localhost:8080/api/portal/runbooks unauthenticated -> 401 (API correctly gated, matches A6 above). tsc --noEmit and `vite build` both passed clean on the new page. The credential gap should be closed by whoever has BuildConsole Settings access before the next full authenticated run of this manifest; it is not something this session could set itself.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD.",
+    "HOLD-WINDOW DERIVATION COVERAGE (B1-B10, folded in from the retired test-manifests/portal/runbooks-hold-windows.json -- Git #4022) targets the same real /api/portal/hold-windows + /api/portal/runbooks endpoints (routes/portal-runbooks.ts, lib/portal-hold-windows.ts) that are still live; only that file's UI half was dead, because it drove the retired slug-scoped '/portal-v2/runbooks' route and portal-v2 data-testids (artifacts/msp-portal, retired for artifacts/portal in f40438cdc, #1921). B0 seeds the design's four hold windows at offsets relative to now via the dev-origin-gated, self-scoped POST /admin/testbed/seed-runbooks (ignores the request body; reads customerId off the caller's own JWT), reproducing the four states deterministically on any day this runs: hold-ca01 closed 1h ago (due), hold-admins 21h out (closing), hold-guest 217h out and clear (early), hold-private 552h out (running). B3-B6 assert the four states land correctly AND that the four defects the original prototype's derivation carried stay fixed: (1) `closing` was unreachable when the verdict was `clear`, because the ternary tested the verdict before proximity; (2) `early` used Math.ceil, so the 217-hour (9d1h) fixture rendered 'Close the window 10 days early' when it should read 9 -- B4 asserts the literal '9 days early' string so a Math.ceil regression fails on a named example; (3) 'closes tomorrow' came from an hours threshold, so a 20-hour remainder at 01:00 UTC claimed tomorrow when it closed the same day; (4) the badge switched state at 24h while the readout switched units at 48h, pairing 'Holding' with an hours figure. B7/B8 are the cross-tenant guard: an unauthenticated read is refused outright (not an empty list, which would look identical to a tenant with no runbooks), and a step write against a runbook id the caller does not own answers 404, not 403. B9/B10 assert the SERVER, not the UI, is the authority gate: closing a `closing` (not `early`) window early is refused 409, and extending with no reason is refused 400 -- the design's own justification is that 'a window that keeps moving is visible rather than quietly permanent'. This coverage is deliberately non-destructive (see the retired file's own note): the close-early path that actually raises a change request was exercised live against the deployed server during the #1488 build and is covered at unit level by portal-hold-windows.test.ts, not baked into this manifest, so all four seeded states survive intact for re-runs. sessionTag 'hold-windows-4022' scopes a re-run of just this block: `shaneapp://runTest?file=sops-runbooks.json&onlyTag=hold-windows-4022`."
   ],
   "apiTests": [
     {
@@ -105,6 +106,108 @@
       "path": "/api/portal/runbooks",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.summary.text", "exists": true }
+    },
+    {
+      "name": "B0 -- SEED the design's four hold windows at offsets relative to now, so the four states are deterministic whenever this runs. Folded in from the retired runbooks-hold-windows.json (#4022).",
+      "method": "POST",
+      "path": "/api/admin/testbed/seed-runbooks",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": {},
+      "expect": { "status": 200, "jsonPath": "$.holdsSeeded", "value": 4 },
+      "sessionTag": "hold-windows-4022"
+    },
+    {
+      "name": "B1 -- extract the CLOSING window's id. Holds come back in id order and the seed writes them in runbook order, so index 1 is hold-admins (21h out, `watch`).",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.holds[1].holdKey", "value": "hold-admins" },
+      "extract": { "as": "closingHoldId", "jsonPath": "$.holds[1].id" },
+      "sessionTag": "hold-windows-4022"
+    },
+    {
+      "name": "B2 -- extract the runbook id used for the cross-tenant step-write guard below.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.runbooks", "isArray": true },
+      "extract": { "as": "runbookId", "jsonPath": "$.runbooks[0].id" },
+      "sessionTag": "hold-windows-4022"
+    },
+    {
+      "name": "B3 -- DEFECT 1 GUARD + `due` state. hold-ca01 closed an hour ago with a `signals` verdict, so it must be `due` and must offer a DECISION rather than a bare release: the scan named something that would break.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "containsAny": ["Decide — release, exclude or extend"] },
+      "sessionTag": "hold-windows-4022"
+    },
+    {
+      "name": "B4 -- DEFECT 2 GUARD, the important one. hold-guest is clear with 217 hours left, i.e. 9 days and 1 hour. Math.ceil renders '10 days early'; the real derivation says 9. Asserting the literal string means a regression to ceil fails on this named fixture.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "containsAny": ["Close the window 9 days early"],
+        "containsNone": ["Close the window 10 days early"]
+      },
+      "sessionTag": "hold-windows-4022"
+    },
+    {
+      "name": "B5 -- DEFECT 3 GUARD + `closing` state. hold-admins closes ~21h out, so its badge must name a real CALENDAR DAY rather than always saying 'tomorrow' off an hours threshold. The exact hour is deliberately NOT asserted: the seed sets the close moment relative to now and minutes elapse before this step runs.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "containsAny": ["closes tomorrow", "closes today"] },
+      "sessionTag": "hold-windows-4022"
+    },
+    {
+      "name": "B6 -- DEFECT 4 GUARD + `running` state. hold-private is ~552h out, so its state is `running` and its readout must be in DAYS, matching the badge -- asserted as absence of an hours readout plus the Holding badge, since the day count legitimately ticks down mid-run.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "containsAny": ["Holding"],
+        "containsNone": ["T-552h", "T-551h"]
+      },
+      "sessionTag": "hold-windows-4022"
+    },
+    {
+      "name": "B7 -- CROSS-TENANT GUARD. A step write against a runbook id this caller does not own answers 404, not 403: another tenant's row must be indistinguishable from one that does not exist.",
+      "method": "PUT",
+      "path": "/api/portal/runbooks/999999/steps/1",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "checked": true },
+      "expect": { "status": 404 },
+      "sessionTag": "hold-windows-4022"
+    },
+    {
+      "name": "B8 -- AUTHORITY GUARD. hold-admins is `closing`, not `early`, so closing it early must be refused by the SERVER with a 409. The UI hides the action; the UI is not the gate.",
+      "method": "POST",
+      "path": "/api/portal/hold-windows/{{closingHoldId}}/close-early",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "note": "should be refused" },
+      "expect": { "status": 409 },
+      "sessionTag": "hold-windows-4022"
+    },
+    {
+      "name": "B9 -- extending REQUIRES a reason. An unexplained extension defeats the design's own justification that 'a window that keeps moving is visible rather than quietly permanent'.",
+      "method": "POST",
+      "path": "/api/portal/hold-windows/{{closingHoldId}}/extend",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "days": 3 },
+      "expect": { "status": 400 },
+      "sessionTag": "hold-windows-4022"
+    },
+    {
+      "name": "B10 -- CROSS-TENANT GUARD on the audit trail too: a hold window this caller does not own reads as absent, not forbidden.",
+      "method": "GET",
+      "path": "/api/portal/hold-windows/999999/events",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 404 },
+      "sessionTag": "hold-windows-4022"
     }
   ],
   "uiSteps": [

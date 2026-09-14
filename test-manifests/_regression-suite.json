@@ -71,7 +71,6 @@
     "portal/change-control.json",
     "portal/scope-and-sla.json",
     "portal/documents.json",
-    "portal/runbooks-hold-windows.json",
     "portal/settings-change-control-departments-persistence.json",
     "portal/account-settings.json",
     "portal/sign-in-help.json",
