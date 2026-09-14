@@ -30,6 +30,7 @@ function useBreadcrumb(): Breadcrumb {
   if (location === "/") return { current: "Overview" };
   if (location === "/support") return { current: "Support" };
   if (location === "/my-architect") return { current: "My Architect" };
+  if (location === "/break-glass" || location.startsWith("/break-glass/")) return { current: "Break-glass access" };
 
   const pillarMatch = PILLAR_KEYS.find((k) => location === `/pillars/${k}`);
   if (pillarMatch) return { parent: "Pillars", current: PILLARS[pillarMatch].label };

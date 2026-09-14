@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users } from "lucide-react";
+import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users, KeyRound } from "lucide-react";
 import type { AuthUser } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 import { comingSoonHref } from "./moduleNav";
@@ -144,6 +144,15 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
           icon={Webhook}
           label="Webhooks"
           testId="user-menu-webhooks"
+          onNavigate={onClose}
+        />
+        {/* #3994 — placement and sub-line are the Shell design's own (Shell.dc.html, openBreakGlass). */}
+        <MenuRow
+          href="/break-glass"
+          icon={KeyRound}
+          label="Break-glass access"
+          sub="Credential handoffs waiting on a run"
+          testId="user-menu-break-glass"
           onNavigate={onClose}
         />
         <MenuRow

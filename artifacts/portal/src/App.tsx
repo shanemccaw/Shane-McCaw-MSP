@@ -35,6 +35,8 @@ import RemediationTrackingPage from "@/pages/remediation-tracking";
 import MicrosoftChangesPage from "@/pages/microsoft-changes";
 import ChangeControlPage from "@/pages/change-control";
 import PillarPage from "@/pages/pillar";
+import BreakGlassStatusPage from "@/pages/break-glass-status";
+import BreakGlassVerifyPage from "@/pages/break-glass-verify";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -106,6 +108,8 @@ function ProtectedRoutes() {
           <Route path="/microsoft-changes" component={MicrosoftChangesPage} />
           <Route path="/change-control" component={ChangeControlPage} />
           <Route path="/pillars/:pillar" component={PillarPage} />
+          <Route path="/break-glass" component={BreakGlassStatusPage} />
+          <Route path="/break-glass/:runId" component={BreakGlassStatusPage} />
           <Route path="/coming-soon" component={ComingSoon} />
           <Route component={NotFound} />
         </Switch>
@@ -144,6 +148,10 @@ export default function App() {
                 <Route path="/signup" component={SignupPage} />
                 <Route path="/signup/success" component={SignupSuccessPage} />
                 <Route path="/invite/:token" component={AcceptInvitePage} />
+                {/* Public break-glass verify landing (#3994) — every invite email
+                    links here, and the recipient may have no portal account at
+                    all. Must stay ahead of ProtectedRoutes' /break-glass/:runId. */}
+                <Route path="/break-glass/verify/:token" component={BreakGlassVerifyPage} />
                 <Route>
                   <ProtectedRoutes />
                 </Route>
