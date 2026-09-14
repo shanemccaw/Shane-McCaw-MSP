@@ -118,6 +118,10 @@ export const MSP_PAGES: LeafPage[] = [
   { id: "plan", label: "Plan & billing", icon: "credit-card" },
   { id: "reports", label: "Reports", icon: "file-bar-chart-2" },
   { id: "retention", label: "Retention Queue", icon: "hourglass" },
+  // Retainer Hours (Git #2618, Feature #2560's real remaining scope) — an
+  // MSP-wide picker page (customer switch lives inside the page itself), same
+  // "Operations, not per-tenant" shape as Retention Queue immediately above.
+  { id: "retainer", label: "Retainer hours", icon: "hourglass" },
   { id: "revenue", label: "Partner Revenue", icon: "handshake" },
   // Audit Log (Git #4012, README screen 63), mounted here unfiltered and
   // again per tenant (CHILD_GROUPS' "audit" leaf above) with customerId set
