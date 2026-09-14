@@ -137,11 +137,19 @@ namespace BuildConsole
 
             TestModeDiagnosticsPanel.ApiHelperRequested += OpenApiHelperForTestMode;
 
-            // Git #3983 — click-through from the DOM inspector popover's status icon opens the
-            // full bug history for that exact element.
+            // Git #3983/#4007 — click-through from the DOM inspector popover's status icon opens
+            // the full bug history for that exact element, reusing #3984's BugScopeHistoryWindow
+            // rather than a second element-scoped window.
             TestModeDiagnosticsPanel.BugHistoryRequested += (element, bugs) =>
             {
-                ElementBugHistoryWindow.Show(this, element, bugs);
+                var dlg = new BugScopeHistoryWindow(
+                    "Bug History",
+                    $"{bugs.Count} bug{(bugs.Count == 1 ? "" : "s")} logged against `{element.Selector}`",
+                    bugs)
+                {
+                    Owner = this
+                };
+                dlg.Show();
             };
 
             // Composer events
