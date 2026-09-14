@@ -22,6 +22,9 @@ import SignInHelpPage from "@/pages/sign-in-help";
 import SignupPage from "@/pages/signup";
 import SignupSuccessPage from "@/pages/signup-success";
 import AcceptInvitePage from "@/pages/accept-invite";
+import SharedDocumentPublicPage from "@/pages/shared-document-public";
+import SharedLiveDocumentsPublicPage from "@/pages/shared-live-documents-public";
+import MspSowPublicPage from "@/pages/msp-sow-public";
 import NotificationPreferencesPage from "@/pages/notification-preferences";
 import WebhooksPage from "@/pages/webhooks";
 import SopsPage from "@/pages/sops";
@@ -144,6 +147,18 @@ export default function App() {
                 <Route path="/signup" component={SignupPage} />
                 <Route path="/signup/success" component={SignupSuccessPage} />
                 <Route path="/invite/:token" component={AcceptInvitePage} />
+                {/*
+                  Public Share Pages (#4001, Feature #1663) — public,
+                  unauthenticated, no session context available. Paths are
+                  load-bearing: the server mints share URLs literally as
+                  `{getMspPortalBaseUrl()}/shared-documents/{shareToken}`,
+                  `/shared-live-documents/{token}`, and the shareUrl
+                  msp-sow.ts's mint routes never construct directly, but the
+                  frontend historically served at `/sow/{shareToken}`.
+                */}
+                <Route path="/shared-documents/:shareToken" component={SharedDocumentPublicPage} />
+                <Route path="/shared-live-documents/:shareToken" component={SharedLiveDocumentsPublicPage} />
+                <Route path="/sow/:shareToken" component={MspSowPublicPage} />
                 <Route>
                   <ProtectedRoutes />
                 </Route>
