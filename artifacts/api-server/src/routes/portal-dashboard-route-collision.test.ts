@@ -97,6 +97,10 @@ vi.mock("@workspace/db", () => {
     mspDiagnosticFindingsTable: tbl([
       "runId", "customerId", "checkKey", "severity", "title", "description", "createdAt",
     ]),
+    // Git #4002 — the servicing-MSP name lookup the route now runs right
+    // after the tenants row (step 6a below), for the Offboarding page's
+    // brokered-customer copy.
+    mspsTable: tbl(["id", "name"]),
   };
 });
 
@@ -170,6 +174,7 @@ function token(mspRole: string, customerId: number | null = 10, id = 1): string 
 }
 
 const REAL_TENANT_NAME = "Contoso Manufacturing Pty Ltd";
+const REAL_MSP_NAME = "Northwind Managed IT";
 
 /** Queue every query the handler runs, in order, for a customer with one snapshot. */
 function queueFullDashboard({ paid = false }: { paid?: boolean } = {}) {
@@ -191,6 +196,8 @@ function queueFullDashboard({ paid = false }: { paid?: boolean } = {}) {
   mockResultQueue.push([]);
   // 6. tenantsTable — status + the real customerName (#315)
   mockResultQueue.push([{ status: "active", customerName: REAL_TENANT_NAME }]);
+  // 6a. mspsTable — the servicing MSP's name (Git #4002; token()'s mspId is always 1)
+  mockResultQueue.push([{ name: REAL_MSP_NAME }]);
   // 7. projectsTable (empty -> no kanbanTasks query is issued)
   mockResultQueue.push([]);
   // 8. clientServicesResult
@@ -252,6 +259,7 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
     mockResultQueue.push([]); // mspDiagnosticFindingsTable latest run (#2500; none)
     mockResultQueue.push([]); // activeServices
     mockResultQueue.push([]); // tenantsTable -> NO ROW
+    mockResultQueue.push([]); // mspsTable (#4002) -> NO ROW
     mockResultQueue.push([]); // projects
     mockResultQueue.push([]); // clientServicesResult
     mockResultQueue.push([]); // invoices
@@ -269,6 +277,7 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
     // portal-dashboard.ts coalesced these to null and the merged route must too.
     expect(res.body).toHaveProperty("customerName", null);
     expect(res.body).toHaveProperty("customerStatus", null);
+    expect(res.body).toHaveProperty("mspName", null);
   });
 
   it("NO REGRESSION: Customer still gets the full engine payload it got before", async () => {
@@ -295,6 +304,8 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
     expect(res.body).toHaveProperty("unreadMessages", 0);
     expect(res.body).toHaveProperty("customerStatus", "active");
     expect(res.body).toHaveProperty("mspId", 1);
+    // Git #4002 — the servicing MSP's real name, not echoed/hardcoded.
+    expect(res.body.mspName).toBe(REAL_MSP_NAME);
     // ...plus the one field it had that this route was missing.
     expect(res.body.customerName).toBe(REAL_TENANT_NAME);
   });

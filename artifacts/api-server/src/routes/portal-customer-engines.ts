@@ -34,7 +34,7 @@ import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine.t
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.portal" });
-import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, usersTable, wfTriggersTable, wfDefinitionsTable, mspRiskDecisionsTable, policyDecisionsTable, mspMessageCenterItemsTable, changeMaintenanceWindowsTable, remediationTrackerStepsTable, portalOwnershipAssignmentsTable } from "@workspace/db";
+import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, usersTable, wfTriggersTable, wfDefinitionsTable, mspRiskDecisionsTable, policyDecisionsTable, mspMessageCenterItemsTable, changeMaintenanceWindowsTable, remediationTrackerStepsTable, portalOwnershipAssignmentsTable, mspsTable } from "@workspace/db";
 import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
 import { createAuditLog } from "../lib/audit.ts";
 import { getStripeKey } from "../lib/stripe.ts";
@@ -638,6 +638,15 @@ router.get(
 
       const telemetryStatus = customer?.status === "onboarding" ? "in_progress" : "completed";
 
+      // Git #4002 (Offboarding): the servicing MSP's name, for the "served by
+      // <name>, not directly by the platform" copy on a brokered customer's
+      // Offboarding page — the JWT's mspId claim alone (already returned below)
+      // names the MSP but not its display name, and no route previously
+      // exposed one to a CustomerUser.
+      const [servicingMsp] = req.user!.mspId
+        ? await db.select({ name: mspsTable.name }).from(mspsTable).where(eq(mspsTable.id, req.user!.mspId)).limit(1)
+        : [];
+
       // ── Merge existing dashboard fields for customer-home.tsx ──
       const projects = await db.select().from(projectsTable)
         .where(and(inArray(projectsTable.clientUserId, customerUserIds), eq(projectsTable.status, "active")))
@@ -909,6 +918,7 @@ router.get(
         customerStatus: customer?.status ?? null,
         customerName: customer?.customerName ?? null,
         mspId: req.user!.mspId ?? null,
+        mspName: servicingMsp?.name ?? null,
         // #3344 — the one real signal the frontend needs to tell "six counts
         // are a true 0 because nothing is due" apart from "six counts are a
         // true 0 because resolveTenantScope(customerId) came back null"

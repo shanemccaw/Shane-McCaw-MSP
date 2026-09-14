@@ -76,6 +76,9 @@ vi.mock("@workspace/db", () => {
     portalOwnershipAssignmentsTable: tbl([
       "id", "customerId", "objectId", "roleKey", "ownerPersonId", "acceptance",
     ]),
+    // Git #4002 — the servicing-MSP name lookup the route now runs right
+    // after the tenants row (step 6a above).
+    mspsTable: tbl(["id", "name"]),
   };
 });
 
@@ -157,6 +160,8 @@ function queueCommonTail() {
   mockResultQueue.push([]);
   // 6. tenantsTable customer status
   mockResultQueue.push([{ status: "active" }]);
+  // 6a. mspsTable — the servicing MSP's name (Git #4002; customerToken()'s mspId is always 1)
+  mockResultQueue.push([]);
   // 7. projectsTable
   mockResultQueue.push([]);
   // 8. clientServicesResult

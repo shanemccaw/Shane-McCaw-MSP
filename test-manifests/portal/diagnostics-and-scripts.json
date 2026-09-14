@@ -1,0 +1,60 @@
+{
+  "issue": 3999,
+  "feature": "Diagnostics and Scripts (#3999, Feature #1660, portal epic #1485) — the real Design (Design/portal/design_handoff_full_site/screens/Diagnostics and Scripts.dc.html) wired into artifacts/portal. Page at artifacts/portal/src/pages/customer-diagnostics.tsx, route /diagnostics, reached from the sidebar's new Diagnostics row (moduleNav.ts). Reads GET /api/portal/diagnostics/latest + GET /api/portal/health-benchmark (useDiagnosticsPage.ts) and reuses the shell's existing useScanState() for the scanning/never-scanned strip. Script downloads (GET /api/portal/scripts/:checkKey/download) are wired but structurally unreachable today — zero monitor_checks are flagged requires_customer_script anywhere on the platform (contract pack #2451 §6, verified live again this session: monitor_checks=204 rows, requires_customer_script=0, script_packages=0).",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING_COMMIT",
+
+  "notes": [
+    "shaneapp://runTest was tried this session and genuinely could not run this manifest yet — 'manifest not found or unparseable', because BuildConsole resolves test-manifests/ and artifacts/portal against the shared dev-server checkout, and this build (per the mandatory worktree isolation rule) works in an isolated worktree that only merges into that checkout on completion. Confirmed by direct inspection: neither test-manifests/portal/diagnostics-and-scripts.json nor artifacts/portal/src/pages/customer-diagnostics.tsx exist yet in the dev-server checkout at build time. This is the same Git #2160 'genuinely unreachable, after a real check' case scan-status-progress.json's own notes document for an unrelated reason (#2546) — not an assumed default limitation. Real verification performed instead: `tsc -p tsconfig.json --noEmit` clean and `vite build` clean on artifacts/portal against the new page/route/nav-entry.",
+    "apiTests prove the real, already-built backend contract directly (unaffected by the worktree-merge gap above, since they hit api-server routes that already exist on main): log in via POST /api/auth/login, extract a bearer token, then exercise GET /api/portal/diagnostics/latest and GET /api/portal/health-benchmark exactly as useDiagnosticsPage.ts's own fetchWithAuth calls do. These were NOT live-executed this session for the same runTest-unreachable reason above — write it up honestly, and re-run once #3999 merges.",
+    "No write assertions: both reads are pure (SELECT-only routes), so there is nothing to round-trip or restore. The script download route is NOT exercised here — the testbed customer has no requires_script finding to download against today (see feature note above), so there is nothing real to hit; adding a fabricated one to make the download path 'pass' would violate the no-fixture-data rule this build is under.",
+    "UI steps assert the honest-state scaffolding (page shell, state line, findings section, pillar-health card, scripts card) rather than exact finding titles or scores, which are real tenant data that changes with every scan run.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD — the same Customer testbed account other portal manifests use."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the testbed Customer account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "TEST1 — GET /api/portal/diagnostics/latest returns the real { run, findings } envelope the page reads.",
+      "method": "GET",
+      "path": "/api/portal/diagnostics/latest",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.findings", "exists": true }
+    },
+    {
+      "name": "TEST2 — GET /api/portal/health-benchmark returns the real { pillars, asOfDate } envelope the Architecture health card reads.",
+      "method": "GET",
+      "path": "/api/portal/health-benchmark",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars", "exists": true }
+    },
+    {
+      "name": "TEST3 — a script download for a checkKey with no live requires_script finding for this customer honestly 404s (§1c step 2) rather than leaking or 500ing.",
+      "method": "GET",
+      "path": "/api/portal/scripts/no-such-check-key/download",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 404 }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "goto the real login page.", "action": "goto", "target": "/portal/login" },
+    { "action": "expect", "selector": "[data-testid='login-email']", "state": "visible", "critical": true },
+    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "sign in.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the real Diagnostics page.", "action": "goto", "target": "/portal/diagnostics" },
+    { "name": "UI1 — the page renders.", "action": "expect", "selector": "[data-testid='diagnostics-page']", "state": "visible", "critical": true },
+    { "name": "UI2 — the real state line renders (live / scanning / never-scanned honesty line, never a placeholder).", "action": "expect", "selector": "[data-testid='diagnostics-state-line']", "state": "visible", "critical": true },
+    { "name": "UI3 — the ledger card ('what this page deliberately does not do') always renders.", "action": "expect", "selector": "[data-testid='diagnostics-ledger']", "state": "visible" }
+  ]
+}

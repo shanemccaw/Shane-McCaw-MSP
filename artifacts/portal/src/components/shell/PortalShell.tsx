@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useLocation, useSearch } from "wouter";
 import { PILLARS, PILLAR_KEYS } from "@workspace/copilot-scan-scene/journeyTokens";
 import { TopBar, type Breadcrumb } from "./TopBar";
@@ -10,15 +10,25 @@ import { TenantStatusCard } from "./TenantStatusCard";
 import { ScanLogPanel } from "./ScanLogPanel";
 import { useScanState } from "./useScanState";
 
-/** README's own breakpoint: "Below 760px the panel becomes a bottom sheet." */
-function useNarrowViewport(): boolean {
-  const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 760px)").matches);
+/**
+ * Git #4004 / Shell.dc.html's own `_rz` resize handler: "measured against
+ * its own width" (Mobile Preview.dc.html), not the window's — the real
+ * source measures `rootRef.current.getBoundingClientRect().width`, not
+ * `window.innerWidth` / a media query, so an embedded or letterboxed shell
+ * still gets its own drawer/bottom-sheet breakpoint. Same 760px threshold
+ * the ScanLogPanel bottom sheet already used.
+ */
+function useNarrowShell(ref: RefObject<HTMLDivElement | null>): boolean {
+  const [narrow, setNarrow] = useState(false);
   useEffect(() => {
-    const mql = window.matchMedia("(max-width: 760px)");
-    const listener = () => setNarrow(mql.matches);
-    mql.addEventListener("change", listener);
-    return () => mql.removeEventListener("change", listener);
-  }, []);
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setNarrow(el.getBoundingClientRect().width < 760);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
   return narrow;
 }
 
@@ -29,6 +39,9 @@ function useBreadcrumb(): Breadcrumb {
 
   if (location === "/") return { current: "Overview" };
   if (location === "/support") return { current: "Support" };
+  if (location === "/requests") return { current: "Requests" };
+  if (location === "/my-architect") return { current: "My Architect" };
+  if (location === "/break-glass" || location.startsWith("/break-glass/")) return { current: "Break-glass access" };
 
   const pillarMatch = PILLAR_KEYS.find((k) => location === `/pillars/${k}`);
   if (pillarMatch) return { parent: "Pillars", current: PILLARS[pillarMatch].label };
@@ -58,8 +71,16 @@ export function PortalShell({ children }: { children: ReactNode }) {
   const breadcrumb = useBreadcrumb();
   const { scores, overallSeverity } = usePillarSummaryShell();
   const scan = useScanState();
-  const narrow = useNarrowViewport();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const narrow = useNarrowShell(rootRef);
   const [scanLogOpen, setScanLogOpen] = useState(false);
+  // Shell.dc.html's own `drawer` state is raw ("open/closed, as last
+  // requested"); `drawerOpen` is always the *derived* `narrow && drawer` —
+  // so widening back past 760px silently closes the drawer without a
+  // separate reset effect, and re-narrowing never reopens a stale request.
+  const [drawerRequested, setDrawerRequested] = useState(false);
+  const drawerOpen = narrow && drawerRequested;
+  const sidebarShow = !narrow || drawerOpen;
 
   // The frame-level score isn't a separate fetch — it's the same real
   // per-pillar scores the tab strip already reads, averaged the identical
@@ -81,6 +102,7 @@ export function PortalShell({ children }: { children: ReactNode }) {
 
   return (
     <div
+      ref={rootRef}
       className="relative w-full overflow-hidden"
       style={{ height: "100dvh", background: "#020617", fontFamily: "Inter, system-ui, sans-serif" }}
     >
@@ -104,19 +126,38 @@ export function PortalShell({ children }: { children: ReactNode }) {
       ))}
 
       <div className="relative flex h-full flex-col">
-        <TopBar breadcrumb={breadcrumb} />
+        <TopBar
+          breadcrumb={breadcrumb}
+          narrow={narrow}
+          drawerOpen={drawerOpen}
+          onToggleDrawer={() => setDrawerRequested((v) => !v)}
+        />
         <PillarTabStrip scores={scores} />
-        <div className="flex min-h-0 flex-1">
-          <SidebarNav
-            footerSlot={
-              <TenantStatusCard
-                scan={scan}
-                overallScore={overallScore}
-                overallSeverity={overallSeverity}
-                onOpenLog={() => setScanLogOpen(true)}
-              />
-            }
-          />
+        <div className="relative flex min-h-0 flex-1">
+          {/* Shell.dc.html: scrim sits behind the drawer, closes it on click,
+              only ever mounted while the drawer is actually open. */}
+          {drawerOpen ? (
+            <div
+              className="absolute inset-0"
+              style={{ zIndex: 56, background: "rgba(2,6,23,.62)" }}
+              onClick={() => setDrawerRequested(false)}
+              aria-hidden="true"
+            />
+          ) : null}
+          {sidebarShow ? (
+            <SidebarNav
+              narrow={narrow}
+              onNavigate={() => setDrawerRequested(false)}
+              footerSlot={
+                <TenantStatusCard
+                  scan={scan}
+                  overallScore={overallScore}
+                  overallSeverity={overallSeverity}
+                  onOpenLog={() => setScanLogOpen(true)}
+                />
+              }
+            />
+          ) : null}
           <div className="relative flex min-h-0 flex-1 overflow-y-auto">{children}</div>
         </div>
         {/* README "Right-slide detail panel": content is derived at render

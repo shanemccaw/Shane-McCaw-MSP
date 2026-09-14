@@ -68,6 +68,11 @@ export const CHILD_GROUPS: Group[] = [
   {
     id: "g.comm", label: "Commercial", icon: "receipt", children: [
       { id: "status-reports", label: "Status Reports", icon: "file-pen" },
+      // Offers & SOWs (Git #4014, README screen 66) — the richer 63–66
+      // contract-pack pass's own whole-book SOW lifecycle for this customer,
+      // between Contracts and Status reports per the README tree-placement
+      // table.
+      { id: "offers-sows", label: "Offers & SOWs", icon: "signature" },
       { id: "contracts", label: "Contracts", icon: "file-text" },
       { id: "hub", label: "Documents", icon: "files" },
       { id: "billing", label: "Billing", icon: "receipt" },
@@ -82,11 +87,11 @@ export const CHILD_GROUPS: Group[] = [
 /**
  * The MSP-wide Operations pages, in tree order. The original nine are the
  * "Operations (9 MSP-wide pages)" README calls its own cross-tenant group;
- * `offboarding`, `policy` and `acctsec` are three of the thirteen
- * contract-pack screens (README screens 38-50) to land here — Account
- * Security sits under Operations rather than per-tenant on purpose, because
- * its routes resolve their target by MSP id, never by tenant (README "Where
- * they sit in the tree").
+ * `offboarding`, `policy`, `staff` and `acctsec` are four of the seventeen
+ * contract-pack screens (README screens 38-50, 63-66) to land here — Staff
+ * Roster (#2662) and Account Security both sit under Operations rather than
+ * per-tenant on purpose, because their routes resolve their target by MSP
+ * id, never by tenant (README "Where they sit in the tree").
  */
 export const MSP_PAGES: LeafPage[] = [
   { id: "settings", label: "MSP settings", icon: "settings" },
@@ -100,12 +105,21 @@ export const MSP_PAGES: LeafPage[] = [
   { id: "connectors", label: "SharePoint connectors", icon: "plug" },
   { id: "offboarding", label: "Offboarding", icon: "log-out" },
   { id: "policy", label: "Policy engine", icon: "shield-check" },
+  { id: "staff", label: "Staff Roster", icon: "user-plus" },
   { id: "acctsec", label: "Account Security", icon: "key-round" },
+  // Consent and Onboarding (Git #2627, README screen 64) — its routes resolve
+  // their target by mspId's own book, same "Operations, not per-tenant"
+  // reasoning acctsec's own comment above documents for that page.
+  { id: "consent", label: "Consent & Onboarding", icon: "user-check" },
   { id: "dlq", label: "Dead Letter Queue", icon: "trash-2" },
   { id: "plan", label: "Plan & billing", icon: "credit-card" },
   { id: "reports", label: "Reports", icon: "file-bar-chart-2" },
   { id: "retention", label: "Retention Queue", icon: "hourglass" },
   { id: "revenue", label: "Partner Revenue", icon: "handshake" },
+  // Audit Log (Git #4012, README screen 63), mounted here unfiltered and
+  // again per tenant (CHILD_GROUPS' "audit" leaf above) with customerId set
+  // — same component, one prop, per the README's tree-placement table.
+  { id: "audit", label: "Audit log", icon: "history" },
 ];
 
 /** Flattened tenant pages (leaf groups + every group child). */

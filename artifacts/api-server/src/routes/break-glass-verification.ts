@@ -33,9 +33,12 @@ import {
   tenantsTable,
   mspsTable,
   wfRunsTable,
+  wfDefinitionsTable,
+  configPacksTable,
 } from "@workspace/db";
-import { and, eq, ne, gte, desc } from "drizzle-orm";
+import { and, eq, ne, gte, desc, inArray } from "drizzle-orm";
 import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth.ts";
+import { resolveCustomerId } from "../lib/portal-customer-scope.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "auth" });
 import { decryptSecret, encryptSecret } from "../lib/secret-crypto.ts";
@@ -215,7 +218,8 @@ async function sendBreakGlassInvites(
       linkStatus: "pending",
       failedAttemptCount: 0,
     });
-    // Points at the msp-portal landing page (Prompt 6), NOT the backend redirect
+    // Points at the portal landing page (artifacts/portal, pages/break-glass-verify.tsx,
+    // #3994), NOT the backend redirect
     // endpoint directly — the recipient sees context copy + a "Sign in with
     // Microsoft" button before the OAuth redirect fires, rather than landing on
     // Microsoft's login screen with zero context.
@@ -443,8 +447,10 @@ router.get("/portal/break-glass/by-run/:runId", requireAuth, async (req: Request
     // gate right now — a break_glass_pending_secrets row with status "pending_delivery"
     // is sufficient evidence of that; no need to inspect the workflow definition's
     // node types directly.
+    const runContext = await resolveRunContext(run);
+
     if (run.status !== "awaiting_approval" || !secret || secret.status !== "pending_delivery") {
-      return res.json({ pending: false });
+      return res.json({ pending: false, run: runContext });
     }
 
     const attempts = await db
@@ -454,6 +460,7 @@ router.get("/portal/break-glass/by-run/:runId", requireAuth, async (req: Request
         linkStatus: breakGlassVerificationAttemptsTable.linkStatus,
         verificationOutcome: breakGlassVerificationAttemptsTable.verificationOutcome,
         attemptedAt: breakGlassVerificationAttemptsTable.attemptedAt,
+        createdAt: breakGlassVerificationAttemptsTable.createdAt,
       })
       .from(breakGlassVerificationAttemptsTable)
       .where(eq(breakGlassVerificationAttemptsTable.pendingSecretId, secret.id))
@@ -461,13 +468,108 @@ router.get("/portal/break-glass/by-run/:runId", requireAuth, async (req: Request
 
     return res.json({
       pending: true,
+      run: runContext,
       pendingSecretId: secret.id,
       status: secret.status,
-      attempts,
+      createdAt: secret.createdAt,
+      // #3994 — expiresAt is the same createdAt + BREAK_GLASS_LINK_TTL_MS the
+      // public verify endpoint enforces, served so the portal never restates the
+      // TTL as a second hardcoded number that could drift from this constant.
+      attempts: attempts.map((a) => ({
+        ...a,
+        expiresAt: new Date(a.createdAt.getTime() + BREAK_GLASS_LINK_TTL_MS),
+      })),
     });
   } catch (err) {
     req.log.error({ err, runId }, "break-glass: by-run status lookup failed");
     return res.status(500).json({ error: "Failed to load status" });
+  }
+});
+
+/**
+ * Non-secret run identity for the portal's Break-glass Access header (#3994):
+ * the workflow definition's name and, for a Config Pack run, the pack's own
+ * label. A pack run's triggerRef is `config-pack:<packKey>:customer:<id>`
+ * (config-pack-orchestrator.ts). Never reads the run payload — the break-glass
+ * account identity on it is redacted at rest (SENSITIVE_PAYLOAD_KEYS).
+ */
+async function resolveRunContext(run: typeof wfRunsTable.$inferSelect): Promise<{
+  id: number;
+  definitionName: string | null;
+  packKey: string | null;
+  packLabel: string | null;
+}> {
+  const [definition] = await db
+    .select({ name: wfDefinitionsTable.name })
+    .from(wfDefinitionsTable)
+    .where(eq(wfDefinitionsTable.id, run.definitionId))
+    .limit(1);
+  const packKey = /^config-pack:([^:]+):/.exec(run.triggerRef ?? "")?.[1] ?? null;
+  let packLabel: string | null = null;
+  if (packKey) {
+    const [pack] = await db
+      .select({ label: configPacksTable.label })
+      .from(configPacksTable)
+      .where(eq(configPacksTable.packKey, packKey))
+      .limit(1);
+    packLabel = pack?.label ?? null;
+  }
+  return { id: run.id, definitionName: definition?.name ?? null, packKey, packLabel };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /portal/break-glass — every handoff currently waiting on a run for the
+// caller's own customer (#3994). The portal's Break-glass Access entry has no
+// run in view, so this is how it finds one; each row then drills into the
+// by-run read above. Same "live pause" rule as by-run: the run is
+// awaiting_approval AND its secret is pending_delivery. Never returns
+// linkToken, the secret, or its vault reference.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/portal/break-glass", requireAuth, async (req: Request, res: Response) => {
+  const customerId = resolveCustomerId(req);
+  if (customerId == null) return res.status(403).json({ error: "Customer context required" });
+
+  try {
+    if (!(await assertCustomerAccess(req.user!, customerId))) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    const rows = await db
+      .select({ secret: breakGlassPendingSecretsTable, run: wfRunsTable })
+      .from(breakGlassPendingSecretsTable)
+      .innerJoin(wfRunsTable, eq(wfRunsTable.id, breakGlassPendingSecretsTable.runId))
+      .where(and(
+        eq(breakGlassPendingSecretsTable.customerId, customerId),
+        eq(breakGlassPendingSecretsTable.status, "pending_delivery"),
+        eq(wfRunsTable.status, "awaiting_approval"),
+      ))
+      .orderBy(desc(breakGlassPendingSecretsTable.createdAt));
+
+    if (rows.length === 0) return res.json({ handoffs: [] });
+
+    const attempts = await db
+      .select({
+        pendingSecretId: breakGlassVerificationAttemptsTable.pendingSecretId,
+        linkStatus: breakGlassVerificationAttemptsTable.linkStatus,
+      })
+      .from(breakGlassVerificationAttemptsTable)
+      .where(inArray(breakGlassVerificationAttemptsTable.pendingSecretId, rows.map((r) => r.secret.id)));
+
+    const handoffs = await Promise.all(rows.map(async ({ secret, run }) => {
+      const mine = attempts.filter((a) => a.pendingSecretId === secret.id);
+      return {
+        run: await resolveRunContext(run),
+        pendingSecretId: secret.id,
+        createdAt: secret.createdAt,
+        liveInviteCount: mine.filter((a) => a.linkStatus === "pending").length,
+        totalInviteCount: mine.length,
+      };
+    }));
+
+    return res.json({ handoffs });
+  } catch (err) {
+    req.log.error({ err, customerId }, "break-glass: pending handoff list failed");
+    return res.status(500).json({ error: "Failed to load handoffs" });
   }
 });
 

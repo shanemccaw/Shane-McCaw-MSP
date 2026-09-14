@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { CreditCard, Webhook, Settings, ShieldCheck, LogOut } from "lucide-react";
+import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users, KeyRound, DoorOpen, Lock, Ticket } from "lucide-react";
 import type { AuthUser } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 import { comingSoonHref } from "./moduleNav";
@@ -82,6 +82,13 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
   // hint only — the gate is server-side: every read route in
   // `portal-billing.ts` asks the same `customer:billing.view` (#3465).
   const showBilling = can("customer", "billing.view");
+  // Team Management (#3996) — GET /portal/team is `requireAuth` only, gated on
+  // holding a `customerId` claim at all (§1 of the contract pack), not on the
+  // `customer:team.manage` capability that gates the page's mutating actions.
+  const showTeam = !!user.customerId;
+  // Leaving (#4002) — GET/POST /portal/customer/* are `requireCapability("ladder.customer-user")`,
+  // the same customerId-presence gate Team already keys off.
+  const showLeaving = !!user.customerId;
   return (
     <div
       data-testid="user-menu-popover"
@@ -126,11 +133,37 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
             onNavigate={onClose}
           />
         )}
+        {showTeam && (
+          <MenuRow
+            href="/team"
+            icon={Users}
+            label="Team"
+            testId="user-menu-team"
+            onNavigate={onClose}
+          />
+        )}
+        <MenuRow
+          href="/requests"
+          icon={Ticket}
+          label="Requests"
+          sub="Open tickets · ShaneBot handoffs"
+          testId="user-menu-requests"
+          onNavigate={onClose}
+        />
         <MenuRow
           href="/webhooks"
           icon={Webhook}
           label="Webhooks"
           testId="user-menu-webhooks"
+          onNavigate={onClose}
+        />
+        {/* #3994 — placement and sub-line are the Shell design's own (Shell.dc.html, openBreakGlass). */}
+        <MenuRow
+          href="/break-glass"
+          icon={KeyRound}
+          label="Break-glass access"
+          sub="Credential handoffs waiting on a run"
+          testId="user-menu-break-glass"
           onNavigate={onClose}
         />
         <MenuRow
@@ -150,6 +183,26 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
           label="Account security"
           sub="Password · MFA · active sessions"
           testId="user-menu-account-security"
+          onNavigate={onClose}
+        />
+        {showLeaving && (
+          <MenuRow
+            href="/offboarding"
+            icon={DoorOpen}
+            label="Leaving"
+            sub="Export your data · end services"
+            testId="user-menu-offboarding"
+            onNavigate={onClose}
+          />
+        )}
+        {/* #4005 (part of #1652) — standalone Privacy & Data page, Shane's
+            2026-09-14 reversal of the earlier fold-into-Account-Security call. */}
+        <MenuRow
+          href="/privacy"
+          icon={Lock}
+          label="Privacy and your data"
+          sub="Export or delete your account's data"
+          testId="user-menu-data-rights-privacy"
           onNavigate={onClose}
         />
       </div>

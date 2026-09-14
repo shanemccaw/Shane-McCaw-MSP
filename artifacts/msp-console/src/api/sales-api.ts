@@ -202,6 +202,10 @@ export interface MspSow {
   signatureData: string | null;
   signedAt: string | null;
   signedIp: string | null;
+  /** Non-null when the MSP's own customer-agreement template was snapshotted
+   * into this SOW's document at creation; null means the built-in five-clause
+   * fallback terms were used instead (msp-sow.ts generateSowDocument()). */
+  customerAgreementSnapshotText: string | null;
   stripePaymentIntentId: string | null;
   chargeAttemptedAt: string | null;
   chargeConfirmedAt: string | null;

@@ -65,6 +65,8 @@ import {
   namesForPersonIds,
   resolveRiskAuthority,
   resolveRiskWorkload,
+  resolveAuthorizedByAsOf,
+  resolveRiskAuthoritiesBatch,
   type RiskAuthority,
   type RiskAuthorizedBy,
 } from "../lib/risk-authority.ts";
@@ -171,6 +173,7 @@ function toWirePoam(
   row: PoamRow,
   milestones: readonly MilestoneRow[],
   authority: RiskAuthority | null,
+  authorizedBy: RiskAuthorizedBy | null,
 ): WirePoam {
   const signedAt = iso(row.signedAt);
   const approver = (row.signedBy ?? null) as ClientApprover | null;
@@ -183,7 +186,7 @@ function toWirePoam(
           by: approver.name,
           on: signedAt,
           statement: row.signedStatement ?? null,
-          authorizedBy: null, // point-in-time authority attached by the caller when available (see routes below)
+          authorizedBy: toWirePoamAuthority(authorizedBy),
         }
       : undefined;
 
@@ -261,12 +264,15 @@ router.get(
         }
       }
 
-      const authorities = await Promise.all(
-        rows.map((r) => resolveRiskAuthority(scope.customerId, r.checkKey)),
+      const { current, authorizedBy } = await resolveRiskAuthoritiesBatch(
+        scope.customerId,
+        rows.map((r) => ({ checkKey: r.checkKey, acceptedAt: r.signedAt })),
       );
 
       res.json({
-        poams: rows.map((row, i) => toWirePoam(row, milestonesByPoam.get(row.id) ?? [], authorities[i] ?? null)),
+        poams: rows.map((row, i) =>
+          toWirePoam(row, milestonesByPoam.get(row.id) ?? [], current[i] ?? null, authorizedBy[i] ?? null),
+        ),
       });
     } catch (err: unknown) {
       log.error({ err }, "GET /portal/poams failed");
@@ -316,7 +322,10 @@ router.get(
         .orderBy(asc(mspPoamMilestonesTable.sortOrder), asc(mspPoamMilestonesTable.id));
 
       const authority = await resolveRiskAuthority(scope.customerId, existing.checkKey);
-      res.json(toWirePoam(existing, milestones, authority));
+      const authorizedBy = existing.signedAt
+        ? await resolveAuthorizedByAsOf(scope.customerId, existing.checkKey, existing.signedAt)
+        : null;
+      res.json(toWirePoam(existing, milestones, authority, authorizedBy));
     } catch (err: unknown) {
       log.error({ err, customerId }, "GET /portal/poams/:poamId failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));

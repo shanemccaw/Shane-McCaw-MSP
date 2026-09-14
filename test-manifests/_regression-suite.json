@@ -16,6 +16,8 @@
     "portal/policy-decisions.json",
     "portal/ownership.json",
     "portal/security-plan.json",
+    "portal/my-architect.json",
+    "portal/consent-onboarding.json",
     "chat/support-chat-active-cards.json",
     "crm/zoho-lead-and-invoice-sync.json",
     "crm/zoho-lead-field-verification.json",
@@ -36,7 +38,7 @@
     "marketing/service-status.json",
     "marketing/404-page.json",
     "copilot-readiness/assessment-monitoring-rescan.json",
-    "copilot-readiness/email-auth-setup.json",
+    "portal/email-auth-setup.json",
     "copilot-readiness/live-document-pdf-export.json",
     "copilot-readiness/live-document-share-links.json",
     "billing/retainer-signup.json",
@@ -67,6 +69,8 @@
     "portal/customer-home-landing.json",
     "portal/identity-interstitial.json",
     "portal/change-control.json",
+    "portal/scope-and-sla.json",
+    "portal/documents.json",
     "portal/runbooks-hold-windows.json",
     "portal/settings-change-control-departments-persistence.json",
     "portal/account-settings.json",
@@ -86,11 +90,14 @@
     "portal/webhooks.json",
     "portal/billing.json",
     "portal/team-role-assignment.json",
+    "portal/team-management.json",
     "portal/sops-runbooks.json",
     "portal/microsoft-changes.json",
     "portal/config-state.json",
     "portal/pillar-pages.json",
+    "portal/diagnostics-and-scripts.json",
     "portal/remediation-tracking.json",
-    "portal/remediation-tracking-checklist.json"
+    "portal/remediation-tracking-checklist.json",
+    "portal/offboarding.json"
   ]
 }

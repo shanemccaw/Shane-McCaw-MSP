@@ -63,6 +63,8 @@ import {
   ListTodo,
   // Configuration State diff view (#3836) — CircleHelp for the "unattributed" verdict.
   CircleHelp,
+  // Launch Control (#2615)
+  BadgeCheck, FlaskConical, Variable,
   type LucideIcon,
 } from "lucide-react";
 
@@ -238,6 +240,10 @@ const REGISTRY: Record<string, LucideIcon> = {
   "list-todo": ListTodo,
   // Configuration State diff view (#3836)
   "circle-help": CircleHelp,
+  // Launch Control (#2615)
+  "badge-check": BadgeCheck,
+  "flask-conical": FlaskConical,
+  variable: Variable,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

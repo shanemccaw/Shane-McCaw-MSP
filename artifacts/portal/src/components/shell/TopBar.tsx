@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Eye, ListChecks, User } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, ListChecks, Menu, User } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { SopTray } from "./SopTray";
 import { useSopRunsShell } from "./useSopRuns";
@@ -19,7 +19,7 @@ const HAIRLINE = "rgba(255,255,255,.10)";
  * placeholder. Sits above the top bar and pushes its popover offset from
  * 64px to 100px, per the README.
  */
-function ImpersonationBanner() {
+function ImpersonationBanner({ narrow }: { narrow: boolean }) {
   const { isImpersonating, returnToAdmin } = useAuth();
   if (!isImpersonating) return null;
 
@@ -30,9 +30,11 @@ function ImpersonationBanner() {
     >
       <Eye size={14} color="#fff" />
       <span className="text-[12.5px] font-semibold text-white">Impersonation active</span>
-      <span className="text-xs" style={{ color: "rgba(255,255,255,.75)" }}>
-        An MSP operator is viewing this portal as the customer
-      </span>
+      {narrow ? null : (
+        <span className="text-xs" style={{ color: "rgba(255,255,255,.75)" }}>
+          An MSP operator is viewing this portal as the customer
+        </span>
+      )}
       <button
         type="button"
         onClick={() => void returnToAdmin()}
@@ -53,8 +55,23 @@ function ImpersonationBanner() {
  * "State" §`openPopover`). The SOP trigger's badge is real
  * (`useSopRunsShell`'s own live queue count); the alerts trigger's badge and
  * popover are `AlertsDropdown`'s own real unread count / notification feed.
+ *
+ * `narrow`/`drawerOpen`/`onToggleDrawer` are Git #4004's own addition —
+ * Shell.dc.html shows the menu button, and hides the SOP trigger + the
+ * brand mark's "Customer portal" subtitle, only below its own 760px
+ * breakpoint; the alerts and account triggers stay visible at every width.
  */
-export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
+export function TopBar({
+  breadcrumb,
+  narrow,
+  drawerOpen,
+  onToggleDrawer,
+}: {
+  breadcrumb: Breadcrumb;
+  narrow: boolean;
+  drawerOpen: boolean;
+  onToggleDrawer: () => void;
+}) {
   const [openPopover, setOpenPopover] = useState<null | "user" | "sop" | "alerts">(null);
   const { user, logout } = useAuth();
   const { queue, loading } = useSopRunsShell();
@@ -62,7 +79,7 @@ export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
 
   return (
     <>
-      <ImpersonationBanner />
+      <ImpersonationBanner narrow={narrow} />
       {openPopover ? (
         <div
           className="fixed inset-0 z-40"
@@ -71,9 +88,27 @@ export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
         />
       ) : null}
       <div
-        className="flex flex-none items-center gap-[14px] border-b"
-        style={{ height: 56, padding: "0 16px 0 20px", borderColor: HAIRLINE }}
+        className="flex flex-none items-center border-b"
+        style={{
+          height: 56,
+          gap: narrow ? 10 : 14,
+          padding: narrow ? "0 10px 0 8px" : "0 16px 0 20px",
+          borderColor: HAIRLINE,
+        }}
       >
+        {narrow ? (
+          <button
+            type="button"
+            data-testid="topbar-drawer-trigger"
+            aria-label="Open navigation"
+            aria-expanded={drawerOpen}
+            onClick={onToggleDrawer}
+            className="flex size-9 flex-none items-center justify-center rounded-md transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
+            style={{ background: drawerOpen ? "rgba(255,255,255,.08)" : "transparent" }}
+          >
+            <Menu size={18} strokeWidth={1.9} color="#cbd5e1" />
+          </button>
+        ) : null}
         <div className="flex items-center gap-[10px]">
           <div
             className="flex size-[28px] items-center justify-center rounded-md text-[13px] font-bold text-white"
@@ -81,12 +116,14 @@ export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
           >
             S
           </div>
-          <div className="flex flex-col gap-px">
-            <span className="text-[13.5px] font-semibold text-[#f8fafc]">Shane McCaw</span>
-            <span className="text-[10px] uppercase text-[#64748b]" style={{ letterSpacing: ".08em" }}>
-              Customer portal
-            </span>
-          </div>
+          {narrow ? null : (
+            <div className="flex flex-col gap-px">
+              <span className="text-[13.5px] font-semibold text-[#f8fafc]">Shane McCaw</span>
+              <span className="text-[10px] uppercase text-[#64748b]" style={{ letterSpacing: ".08em" }}>
+                Customer portal
+              </span>
+            </div>
+          )}
         </div>
         <div className="h-5 w-px" style={{ background: HAIRLINE }} />
         <div className="flex items-center gap-2">
@@ -99,32 +136,34 @@ export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
           <span className="text-sm font-semibold text-[#f8fafc]">{breadcrumb.current}</span>
         </div>
         <div className="ml-auto flex items-center gap-[6px]">
-          <div className="relative">
-            <button
-              type="button"
-              data-testid="topbar-sop-trigger"
-              aria-label="SOP runs"
-              aria-haspopup="true"
-              aria-expanded={openPopover === "sop"}
-              onClick={() => setOpenPopover((p) => (p === "sop" ? null : "sop"))}
-              className="relative z-50 flex size-8 items-center justify-center rounded-md transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
-              style={{ background: openPopover === "sop" ? "rgba(255,255,255,.06)" : undefined }}
-            >
-              <ListChecks size={17} strokeWidth={1.75} color="#94a3b8" />
-              {sopCount > 0 ? (
-                <span
-                  data-testid="sop-tray-badge"
-                  className="absolute flex min-w-[15px] items-center justify-center rounded-full px-1 text-[10px] font-bold"
-                  style={{ top: -3, right: -3, height: 15, background: "#00B4D8", color: "#020617" }}
-                >
-                  {sopCount}
-                </span>
+          {narrow ? null : (
+            <div className="relative">
+              <button
+                type="button"
+                data-testid="topbar-sop-trigger"
+                aria-label="SOP runs"
+                aria-haspopup="true"
+                aria-expanded={openPopover === "sop"}
+                onClick={() => setOpenPopover((p) => (p === "sop" ? null : "sop"))}
+                className="relative z-50 flex size-8 items-center justify-center rounded-md transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
+                style={{ background: openPopover === "sop" ? "rgba(255,255,255,.06)" : undefined }}
+              >
+                <ListChecks size={17} strokeWidth={1.75} color="#94a3b8" />
+                {sopCount > 0 ? (
+                  <span
+                    data-testid="sop-tray-badge"
+                    className="absolute flex min-w-[15px] items-center justify-center rounded-full px-1 text-[10px] font-bold"
+                    style={{ top: -3, right: -3, height: 15, background: "#00B4D8", color: "#020617" }}
+                  >
+                    {sopCount}
+                  </span>
+                ) : null}
+              </button>
+              {openPopover === "sop" ? (
+                <SopTray onClose={() => setOpenPopover(null)} queue={queue} loading={loading} />
               ) : null}
-            </button>
-            {openPopover === "sop" ? (
-              <SopTray onClose={() => setOpenPopover(null)} queue={queue} loading={loading} />
-            ) : null}
-          </div>
+            </div>
+          )}
           <AlertsDropdown
             open={openPopover === "alerts"}
             onToggle={() => setOpenPopover((p) => (p === "alerts" ? null : "alerts"))}

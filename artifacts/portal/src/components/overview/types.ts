@@ -100,6 +100,8 @@ export interface DashboardResponseWire {
   customerStatus: string | null;
   customerName: string | null;
   mspId: number | null;
+  /** Git #4002 — the servicing MSP's display name, for a brokered customer's Offboarding page. */
+  mspName: string | null;
   /**
    * #3344 — false when `resolveTenantScope(customerId)` came back null: the
    * six `tenantScope`-scoped fields in `overviewCounts` (everything but

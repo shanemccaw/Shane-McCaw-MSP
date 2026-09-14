@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Link } from "wouter";
 import { Bot, LifeBuoy, Loader2, Send } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -139,6 +140,9 @@ export default function SupportPage() {
           Ask ShaneBot about your billing, subscriptions, scores, or monitoring — grounded in
           your account's real data.
         </p>
+        <Link href="/requests" className="mt-1 inline-block text-xs font-semibold text-primary hover:underline" data-testid="support-view-requests-link">
+          View your requests →
+        </Link>
       </div>
 
       <Card className="flex flex-col overflow-hidden">

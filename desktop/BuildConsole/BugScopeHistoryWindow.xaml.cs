@@ -103,6 +103,17 @@ namespace BuildConsole
             topRow.Children.Add(statusBadge);
             stack.Children.Add(topRow);
 
+            if (entry.IsDesign)
+            {
+                stack.Children.Add(new TextBlock
+                {
+                    Text = "🎨 Design",
+                    FontSize = 10,
+                    Foreground = (Brush)FindResource("Subtext0Brush"),
+                    Margin = new Thickness(0, 4, 0, 0)
+                });
+            }
+
             // Resolution line (only once closed)
             if (!string.IsNullOrWhiteSpace(entry.Resolution))
             {

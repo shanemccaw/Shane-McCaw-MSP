@@ -21,12 +21,17 @@ import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
 import { ScopeSla } from "./modules/ScopeSla";
 import { Ownership } from "./modules/Ownership";
 import { Sales } from "./modules/Sales";
+import { ActivityTimeline } from "./modules/ActivityTimeline";
+import { AuditLog } from "./modules/AuditLog";
 import { PolicyEngine } from "./modules/PolicyEngine";
+import { ConsentOnboarding } from "./modules/ConsentOnboarding";
 import { AccountSecurity } from "./modules/AccountSecurity";
+import { StaffRoster } from "./modules/StaffRoster";
 import { Dlq } from "./modules/Dlq";
 import { PlanSelfService } from "./modules/PlanSelfService";
 import { Reports } from "./modules/Reports";
 import { MarketplacePurchase } from "./modules/MarketplacePurchase";
+import { OffersAndSows } from "./modules/OffersAndSows";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
@@ -49,6 +54,7 @@ import { RiskRegister } from "@/modules/risk-register/RiskRegister";
 import { RetentionQueue } from "@/modules/retention/RetentionQueue";
 import { PartnerRevenue } from "./modules/PartnerRevenue";
 import { Overview } from "./modules/Overview";
+import { LaunchControl } from "./modules/LaunchControl";
 
 function roleLabelFor(p: MspUserProfile): string {
   if (p.mspRole === "PlatformAdmin") return "PlatformAdmin — full access";
@@ -285,6 +291,13 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     const isAdmin = profile.role === "admin" || profile.mspRole === "PlatformAdmin" || profile.mspRole === "MSPAdmin";
     return <PoamsPage customer={customer ? { name: customer.name, tenantId: customer.tenantId, domain: customer.domain } : undefined} isAdmin={isAdmin} />;
   }
+  if (sel.kind === "page" && sel.page === "lc") {
+    // Launch Control (#2615), README screen 19. The routes are path-scoped by
+    // mspId, taken from the customer's own directory row so a PlatformAdmin
+    // session (no mspId claim) still addresses the right MSP.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    return customer ? <LaunchControl mspId={customer.mspId} customerId={sel.tenant} customerName={customer.name} /> : undefined;
+  }
   if (sel.kind === "page" && sel.page === "wh") {
     return <Webhooks customerId={sel.tenant} />;
   }
@@ -293,6 +306,12 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "page" && sel.page === "status-reports") {
     return <StatusReports customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "offers-sows") {
+    // Offers & SOWs (#4014), README screen 66 — the whole SOW book for this
+    // customer, plus the offers-to-accept and clickwrap surfaces.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    return <OffersAndSows customerId={sel.tenant} customerName={customer?.name ?? `Customer ${sel.tenant}`} mspId={profile.mspId ?? null} />;
   }
   if (sel.kind === "page" && sel.page === "team") {
     const customer = customers.find((c) => c.id === sel.tenant);
@@ -331,6 +350,22 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     const customer = customers.find((c) => c.id === sel.tenant);
     return <MarketplacePurchase customerId={sel.tenant} customerName={customer?.name ?? `Customer ${sel.tenant}`} />;
   }
+  if (sel.kind === "page" && sel.page === "audit") {
+    // Audit Log (#4012, README screen 63), per-tenant leaf — narrowed
+    // server-side by customerId (#3671). Same component as the Operations
+    // mount below, one prop.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    const isPlatformAdmin = profile.mspRole === "PlatformAdmin";
+    return (
+      <AuditLog
+        customerId={sel.tenant}
+        customerName={customer?.name ?? `Customer ${sel.tenant}`}
+        isPlatformAdmin={isPlatformAdmin}
+        ownMspId={profile.mspId ?? null}
+        ownMspLabel={profile.mspSlug ?? "your MSP"}
+      />
+    );
+  }
   if (sel.kind === "msp" && sel.page === "docs") {
     // Documents (#2647), README screen 32 — the MSP-wide library, unscoped.
     return <Documents initialTab="hub" />;
@@ -352,6 +387,16 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     // of scope (snapshots/baselines/registry, each their own separate module).
     return <ConfigState />;
   }
+  if (sel.kind === "msp" && sel.page === "timeline") {
+    // Activity Timeline (#4011, README screen 27) — cross-tenant feed over
+    // GET /api/msp/timeline. Staff scoping is resolved server-side.
+    return (
+      <ActivityTimeline
+        customers={customers}
+        onOpenTenant={(customerId) => navigate({ kind: "tenant", tenant: customerId })}
+      />
+    );
+  }
   if (sel.kind === "msp" && sel.page === "exec") {
     return <ExecutiveView onOpenTenant={(customerId) => navigate({ kind: "tenant", tenant: customerId })} />;
   }
@@ -366,6 +411,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   if (sel.kind === "msp" && sel.page === "acctsec") {
     return <AccountSecurity />;
   }
+  if (sel.kind === "msp" && sel.page === "staff") {
+    return <StaffRoster profile={profile} />;
+  }
   if (sel.kind === "msp" && sel.page === "dlq") {
     return <Dlq />;
   }
@@ -378,6 +426,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "policy") {
     return <PolicyEngine />;
+  }
+  if (sel.kind === "msp" && sel.page === "consent") {
+    return <ConsentOnboarding />;
   }
   if (sel.kind === "msp" && sel.page === "plan") {
     return <PlanSelfService />;
@@ -393,6 +444,18 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "revenue") {
     return <PartnerRevenue embedded />;
+  }
+  if (sel.kind === "msp" && sel.page === "audit") {
+    // Audit Log (#4012, README screen 63), Operations mount — no customer
+    // filter, the whole MSP. Same component as the per-tenant leaf above.
+    const isPlatformAdmin = profile.mspRole === "PlatformAdmin";
+    return (
+      <AuditLog
+        isPlatformAdmin={isPlatformAdmin}
+        ownMspId={profile.mspId ?? null}
+        ownMspLabel={profile.mspSlug ?? "your MSP"}
+      />
+    );
   }
   if (sel.kind === "page" && (CHANGE_CONTROL_TABS as readonly string[]).includes(sel.page)) {
     // Change Control (#2579) needs the full customer row too — its Register,

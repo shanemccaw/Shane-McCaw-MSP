@@ -68,6 +68,17 @@ export interface AccountSecurityUser {
   readonly tenantId: number | null;
   readonly lastLoginAt: string | null;
   readonly createdAt: string;
+  /** Membership of the platform `cap.purchases.approve` role (post-#2460 —
+   * no longer a plain column, but the wire field name is unchanged). Read by
+   * `staff-roster-api.ts`'s Staff Roster page; Account Security does not
+   * surface it today. */
+  readonly canApprovePurchases: boolean;
+  /** Whether granting `canApprovePurchases` to this row is even possible —
+   * a customer-tier user carrying this MSP's id is never eligible (#3570). */
+  readonly approvePurchasesGrantable: boolean;
+  /** Real per-staff customer-scope row count. `0` means UNRESTRICTED (full
+   * MSP access), never "no access" — render as "All customers". */
+  readonly assignedCustomersCount: number;
 }
 
 export interface MspSession {

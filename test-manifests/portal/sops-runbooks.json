@@ -1,12 +1,15 @@
 {
-  "feature": "Customer Portal (artifacts/portal) -- SOPs & Runbooks (/sops, /runbooks), wired to real data (#2994, carried forward from #1730/#1493/#1488). Design: Design/portal/design_handoff_full_site/screens/SOPs.dc.html. Real endpoints: GET/POST /api/portal/sops, GET /api/portal/sop-runs, POST /api/portal/sops/:sopId/custom-steps (routes/portal-sops.ts, requireRole('Customer')), and GET /api/portal/runbooks + the hold-window writes (routes/portal-runbooks.ts, requireRole('Assessment')) via the pre-existing, previously-unconsumed useRunbooks.ts/useHoldBadge.ts hooks. No fixture data anywhere -- a genuinely empty runbooks/holds table for this tenant renders the design's own honest-empty copy, not a fabricated row.",
+  "feature": "Customer Portal (artifacts/portal) -- SOPs & Runbooks (/sops, /runbooks), wired to real data (#2994, carried forward from #1730/#1493/#1488). /runbooks was rebuilt for #4006 (2026-09-14) against the real standalone design Design/portal/design_handoff_full_site/screens/Runbooks.dc.html -- Shane's reversal of the joint #1488/#1493 'fold into SOPs' decision. /sops still uses SOPs.dc.html. Real endpoints: GET/POST /api/portal/sops, GET /api/portal/sop-runs, POST /api/portal/sops/:sopId/custom-steps (routes/portal-sops.ts, requireRole('Customer')), and GET /api/portal/runbooks + the hold-window writes (routes/portal-runbooks.ts, requireRole('Assessment')) via useRunbooks.ts (#1557 cycle/run-history shape). No fixture data anywhere -- a genuinely empty runbooks/holds table for this tenant renders the design's own honest-empty copy, not a fabricated row.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "0231b1938",
+  "lastVerifiedAgainstCommit": "3560c098e",
   "notes": [
     "artifacts/msp-portal (the old '/portal-v2/*' surface, including test-manifests/portal/portal-v2-sops.json) was retired for artifacts/portal in f40438cdc (#1921). This manifest covers the REPLACEMENT pages at the new, un-slugged routes /portal/sops and /portal/runbooks -- it is not an update of portal-v2-sops.json, which tests a page that no longer exists in the tree.",
     "Real login (#2991, Feature #1648) landed in artifacts/portal concurrently with this build -- /portal/login, data-testid login-email/login-password/login-submit, POST /api/auth/login under the hood. The uiSteps below drive that real form rather than asserting only the unauthenticated RequireAuth gate. The testbed account (TEST_PORTAL_EMAIL) has no MFA enrolled, so login navigates straight to '/' with no MFA phase.",
     "apiTests below ARE fully authenticated (via the real POST /api/auth/login + Bearer token, same as every other portal manifest) and were hand-verified live against this environment before being written: GET /api/portal/sops returned 15 real msp_sops rows for the testbed account (customerId 1), GET /api/portal/sop-runs returned an empty queue + 15 real 'Version published' audit rows, GET /api/portal/runbooks returned a genuinely empty {runbooks:[],holds:[],summary:{...,text:'No hold windows'}} for this tenant (0 rows in portal_runbooks/portal_hold_windows at verification time -- a live-empty state, not a bug), and both POST /api/portal/sops and POST /api/portal/sops/:sopId/custom-steps were exercised for real and their written rows re-read back correctly shaped.",
     "A3c/A3d create a real 'ours'-source SOP row and a real custom-step overlay row on it, same pattern portal-v2-sops.json's own A3c/A3d used -- these are additive, idempotent-safe re-runs (a fresh row each time, never deleted), not destructive.",
+    "#4006 REDESIGN NOTE: /runbooks moved from the old 'Active Runbooks' single-stack layout to the design's master-detail layout (list + selected-runbook detail, past-cycle history, hold-window event timeline, a 'what this page deliberately does not do' ledger). The honest-empty copy changed from the old page's 'No active runbooks' to the new design's literal 'No runbooks yet' -- U9 below asserts the new real string. The stale sibling manifest test-manifests/portal/runbooks-hold-windows.json targets retired portal-v2 slug-scoped routes that no longer exist in the tree (see the finding filed against #1488) and is not touched by this build.",
+    "sessionTag: the login flow (goto /portal/login through the primary-login click) carries sessionTag 'setup' so it always runs under an onlyTag-scoped invocation; the #4006 runbooks assertions carry sessionTag '4006-runbooks-redesign' for scoped re-verification (`shaneapp://runTest?file=sops-runbooks.json&onlyTag=4006-runbooks-redesign`).",
+    "#4006 VERIFICATION, HONEST STATE: ran shaneapp://runTest scoped to onlyTag=4006-runbooks-redesign against commit 3560c098e. The unauthenticated navigation half passed for real (goto /portal/login, the form hydrated, goto /portal/runbooks after the login click). Steps 3/4/5's login-field inputs and the final runbooks-page assertion failed because TEST_PORTAL_EMAIL/TEST_PORTAL_PASSWORD were not configured as BuildConsole Test Environment Variables in this session ('unresolved variable(s)' -- a real, specific, environment-config gap, not a code failure) -- with no session, /portal/runbooks correctly stayed on the sign-in gate rather than rendering. Direct smoke checks against the live dev server substituted for the credential-gated half: GET http://localhost:5175/portal/runbooks -> 200 (route serves), GET http://localhost:8080/api/portal/runbooks unauthenticated -> 401 (API correctly gated, matches A6 above). tsc --noEmit and `vite build` both passed clean on the new page. The credential gap should be closed by whoever has BuildConsole Settings access before the next full authenticated run of this manifest; it is not something this session could set itself.",
     "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
   ],
   "apiTests": [
@@ -120,29 +123,34 @@
     {
       "name": "goto the real login page.",
       "action": "goto",
-      "target": "/portal/login"
+      "target": "/portal/login",
+      "sessionTag": "setup"
     },
     {
       "name": "WAIT for the login form to hydrate.",
       "action": "expect",
       "selector": "[data-testid='login-email']",
-      "state": "visible"
+      "state": "visible",
+      "sessionTag": "setup"
     },
     {
       "action": "input",
       "selector": "[data-testid='login-email']",
-      "value": "{{TEST_PORTAL_EMAIL}}"
+      "value": "{{TEST_PORTAL_EMAIL}}",
+      "sessionTag": "setup"
     },
     {
       "action": "input",
       "selector": "[data-testid='login-password']",
-      "value": "{{TEST_PORTAL_PASSWORD}}"
+      "value": "{{TEST_PORTAL_PASSWORD}}",
+      "sessionTag": "setup"
     },
     {
       "name": "Primary login. The testbed account has no MFA enrolled, so this lands straight on '/'.",
       "action": "click",
       "selector": "[data-testid='login-submit']",
-      "critical": true
+      "critical": true,
+      "sessionTag": "setup"
     },
     {
       "name": "goto the SOPs page.",
@@ -177,24 +185,51 @@
       "critical": true
     },
     {
-      "name": "goto Active Runbooks.",
+      "name": "goto Runbooks (#4006 standalone redesign).",
       "action": "goto",
       "target": "/portal/runbooks",
-      "critical": true
+      "critical": true,
+      "sessionTag": "4006-runbooks-redesign"
     },
     {
       "name": "U8 -- the real page renders.",
       "action": "expect",
       "selector": "[data-testid='runbooks-page']",
       "state": "visible",
-      "critical": true
+      "critical": true,
+      "sessionTag": "4006-runbooks-redesign"
     },
     {
-      "name": "U9 -- the honest empty state renders for this tenant (0 portal_runbooks rows) rather than a fabricated card.",
+      "name": "U9 -- the honest empty state renders for this tenant (0 portal_runbooks rows) rather than a fabricated card -- the new design's own literal copy, not the old page's 'No active runbooks'.",
       "action": "expect",
       "selector": "[data-testid='runbooks-page']",
-      "textContains": "No active runbooks",
-      "critical": true
+      "textContains": "No runbooks yet",
+      "critical": true,
+      "sessionTag": "4006-runbooks-redesign"
+    },
+    {
+      "name": "U10 -- the new page's title is 'Runbooks', not the old 'Active runbooks'.",
+      "action": "expect",
+      "selector": "[data-testid='runbooks-page']",
+      "textContains": "Runbooks",
+      "critical": true,
+      "sessionTag": "4006-runbooks-redesign"
+    },
+    {
+      "name": "U11 -- the 'Procedure library' link to /sops is real, on-page real-copy from the design (not the old page, which had no such link).",
+      "action": "expect",
+      "selector": "[data-testid='runbooks-page']",
+      "textContains": "Procedure library",
+      "critical": true,
+      "sessionTag": "4006-runbooks-redesign"
+    },
+    {
+      "name": "U12 -- the 'what this page deliberately does not do' ledger (new in #4006) renders, proving the real accuracy-ledger section is wired, not just the empty-state branch.",
+      "action": "expect",
+      "selector": "[data-testid='runbooks-page']",
+      "textContains": "What this page deliberately does not do",
+      "critical": true,
+      "sessionTag": "4006-runbooks-redesign"
     }
   ]
 }
