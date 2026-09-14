@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>a{color:#60a5fa}a:hover{color:#93c5fd}input::placeholder,textarea::placeholder{color:#64748b}select{font-family:inherit}</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <sc-if value="{{ showOwnHeader }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">RETAINER HOURS</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Hours ledger against a rolling allotment</span>
+    </div></sc-if>
+    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPOperator · reopen needs MSPAdmin</span>
+    <sc-if value="{{ showToggles }}" hint-placeholder-val="{{ true }}"><button onClick="{{ toggleDemo }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ demoBtnLabel }}</button></sc-if>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start;min-width:0">
+
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0">
+      <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Customers on retainer</span>
+      <sc-for list="{{ customers }}" as="c" hint-placeholder-count="4">
+        <button onClick="{{ c.select }}" style="display:flex;flex-direction:column;gap:6px;text-align:left;border:1px solid {{ c.line }};border-radius:10px;background:{{ c.bg }};padding:11px;cursor:pointer;font-family:inherit;min-width:0">
+          <span style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;flex:1;min-width:100px">{{ c.name }}</span>
+            <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:19px;padding:0 8px;border-radius:999px;background:{{ c.tint }};border:1px solid {{ c.badgeLine }};font-size:10px;font-weight:600;color:{{ c.color }}">{{ c.tag }}</span>
+          </span>
+          <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ c.summary }}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+
+      <sc-if value="{{ notConfigured }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+          <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">{{ noConfigTitle }}</span>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:380px">{{ noConfigBody }}</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isConfigured }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:13px;min-width:0">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <span style="font-size:14px;font-weight:700;color:#f1f5f9;flex:1;min-width:160px">{{ selName }}</span>
+            <span style="font-size:11px;color:#94a3b8">Anchor day {{ anchorDay }} · current period {{ currentPeriod }}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px">
+            <sc-for list="{{ settingsFacts }}" as="f" hint-placeholder-count="4">
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">{{ f.label }}</span>
+                <span style="font-size:12.5px;font-weight:600;color:{{ f.color }};text-wrap:pretty">{{ f.value }}</span>
+              </span>
+            </sc-for>
+          </div>
+          <span style="font-size:10.5px;color:#94a3b8;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">Allotment, rate and architect are written only from AdminV2 — this screen reads them but cannot change them.</span>
+        </div>
+
+        <div style="border:1px solid {{ bucketLine }};border-radius:14px;background:{{ bucketTint }};padding:16px;display:flex;flex-direction:column;gap:13px;min-width:0">
+          <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">This period's bucket</span>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px">
+            <sc-for list="{{ bucketFacts }}" as="f" hint-placeholder-count="5">
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">{{ f.label }}</span>
+                <span style="font-size:16px;font-weight:800;letter-spacing:-.02em;color:{{ f.color }}">{{ f.value }}</span>
+              </span>
+            </sc-for>
+          </div>
+          <sc-if value="{{ isOverMonth }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:11.5px;color:#f87171;text-wrap:pretty;border-top:1px solid rgba(248,113,113,.18);padding-top:10px">Over this month's allotment. Remaining hours floor at zero — this over figure is the only honest signal of how far past the line the customer is; it is never inferred from remaining hitting zero.</span>
+          </sc-if>
+        </div>
+
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0">
+          <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Periods</span>
+          <sc-for list="{{ periods }}" as="p" hint-placeholder-count="2">
+            <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:11px;display:flex;flex-direction:column;gap:8px;min-width:0">
+              <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                <span style="font-size:12px;font-weight:700;color:#f1f5f9;font-family:Menlo,monospace">{{ p.periodKey }}</span>
+                <span style="font-size:10.5px;color:#94a3b8;flex:1;min-width:100px">ends {{ p.endsAt }} · {{ p.entryCount }} entries</span>
+                <sc-if value="{{ p.showCurrent }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:19px;padding:0 8px;border-radius:999px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.24);font-size:10px;font-weight:600;color:#60a5fa">CURRENT</span></sc-if>
+                <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:19px;padding:0 8px;border-radius:999px;background:{{ p.tint }};border:1px solid {{ p.badgeLine }};font-size:10px;font-weight:600;color:{{ p.color }}">{{ p.tag }}</span>
+              </div>
+              <span style="font-size:11px;color:#cbd5e1">{{ p.bucketLine }}</span>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <sc-if value="{{ p.canClose }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ p.close }}" style="height:28px;padding:0 11px;border-radius:6px;border:1px solid rgba(96,165,250,.3);background:rgba(96,165,250,.1);color:#93c5fd;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Close period</button>
+                </sc-if>
+                <sc-if value="{{ p.canReopen }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ p.reopen }}" style="height:28px;padding:0 11px;border-radius:6px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.1);color:#fbbf24;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Reopen (MSPAdmin)</button>
+                </sc-if>
+                <sc-if value="{{ p.note }}" hint-placeholder-val="{{ false }}"><span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty">{{ p.note }}</span></sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;flex:1">Ledger</span>
+            <button onClick="{{ toggleAddEntry }}" style="height:28px;padding:0 11px;border-radius:6px;border:1px solid rgba(96,165,250,.3);background:rgba(96,165,250,.1);color:#93c5fd;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">{{ addEntryLabel }}</button>
+          </div>
+
+          <sc-if value="{{ addingEntry }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:8px;border:1px solid rgba(96,165,250,.25);border-radius:10px;background:rgba(96,165,250,.05);padding:12px;min-width:0">
+              <input value="{{ newItem }}" onChange="{{ setNewItem }}" placeholder="Item (what was done)" style="padding:7px 9px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.7);color:#f1f5f9;font-size:12px;font-family:inherit;outline:none;min-width:0" />
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <input value="{{ newHours }}" onChange="{{ setNewHours }}" placeholder="Hours" style="width:100px;padding:7px 9px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.7);color:#f1f5f9;font-size:12px;font-family:inherit;outline:none" />
+                <select value="{{ newState }}" onChange="{{ setNewState }}" style="padding:7px 9px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.7);color:#e2e8f0;font-size:12px;outline:none">
+                  <sc-for list="{{ stateOptions }}" as="o" hint-placeholder-count="4"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
+                </select>
+              </div>
+              <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty">Logged with source "unscoped" and today's date, straight into the current open period. Back-dating into a past period is possible on this route but not exposed here.</span>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button onClick="{{ saveNewEntry }}" style="height:28px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Log hours</button>
+                <button onClick="{{ toggleAddEntry }}" style="height:28px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:transparent;color:#94a3b8;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-for list="{{ entries }}" as="e" hint-placeholder-count="4">
+            <div style="border:1px solid {{ e.line }};border-radius:10px;background:{{ e.bg }};padding:11px;display:flex;flex-direction:column;gap:8px;min-width:0">
+              <sc-if value="{{ e.editing }}" hint-placeholder-val="{{ false }}">
+                <input value="{{ e.draftItem }}" onChange="{{ e.onItemChange }}" style="padding:7px 9px;border-radius:6px;border:1px solid rgba(96,165,250,.35);background:rgba(2,6,23,.7);color:#f1f5f9;font-size:12px;font-family:inherit;outline:none;min-width:0" />
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <input value="{{ e.draftHours }}" onChange="{{ e.onHoursChange }}" style="width:100px;padding:7px 9px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.7);color:#f1f5f9;font-size:12px;font-family:inherit;outline:none" />
+                  <select value="{{ e.draftState }}" onChange="{{ e.onStateChange }}" style="padding:7px 9px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.7);color:#e2e8f0;font-size:12px;outline:none">
+                    <sc-for list="{{ stateOptions }}" as="o" hint-placeholder-count="4"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
+                  </select>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button onClick="{{ e.onSave }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>
+                  <button onClick="{{ e.onCancel }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:transparent;color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+                  <button onClick="{{ e.onDelete }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(248,113,113,.24);background:rgba(248,113,113,.08);color:#f87171;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Delete</button>
+                </div>
+              </sc-if>
+              <sc-if value="{{ e.notEditing }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                  <span style="font-size:12px;font-weight:600;color:#f1f5f9;flex:1;min-width:140px;text-wrap:pretty">{{ e.item }}</span>
+                  <span style="font-size:12px;font-weight:700;color:#f1f5f9">{{ e.hoursLabel }}</span>
+                  <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:19px;padding:0 8px;border-radius:999px;background:{{ e.stateTint }};border:1px solid {{ e.stateLine }};font-size:10px;font-weight:600;color:{{ e.stateColor }}">{{ e.stateLabel }}</span>
+                </div>
+                <span style="font-size:10.5px;color:#94a3b8">{{ e.meta }}</span>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <sc-if value="{{ e.locked }}" hint-placeholder-val="{{ false }}"><span style="font-size:10.5px;color:#fbbf24">Period closed — this row is frozen; reopen the period to change it.</span></sc-if>
+                  <sc-if value="{{ e.editable }}" hint-placeholder-val="{{ true }}">
+                    <button onClick="{{ e.onEdit }}" style="height:24px;padding:0 9px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Adjust</button>
+                  </sc-if>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+          <sc-if value="{{ noEntries }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:11.5px;color:#94a3b8;text-align:center;padding:14px 0">No entries logged this customer, on any period.</span>
+          </sc-if>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What this router does and doesn't give this screen</span>
+      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+        <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+          <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+          <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
+const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
+const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
+const BLUE = ["rgba(96,165,250,.1)", "rgba(96,165,250,.24)", "#60a5fa"];
+const GREY = ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"];
+
+const STATE_DISPLAY = { in_progress: "In progress", closed: "Closed", in_review: "In review", scheduled: "Scheduled" };
+const STATE_OPTIONS = [["in_progress", "In progress"], ["closed", "Closed"], ["in_review", "In review"], ["scheduled", "Scheduled"]];
+
+const CUSTOMERS = [
+  { id: 1, name: "Fabrikam" }, { id: 2, name: "Contoso" },
+  { id: 3, name: "Northwind Traders" }, { id: 4, name: "Halcyon HG" }
+];
+
+function seedFor(id) {
+  if (id === 1) {
+    return {
+      configured: true, active: true, architectName: "Dana Oyelaran", retainedHours: 10, hourlyRateCents: 22000,
+      anchorDay: 5, currentPeriod: "2026-09-05",
+      periods: [
+        { periodKey: "2026-09-05", endsAt: "2026-10-05", isCurrent: true, hasEnded: false, closed: false, close: null,
+          entries: [
+            { id: "e1", item: "Conditional Access review", hours: 3, state: "closed", source: "unscoped", occurredAt: "2026-09-08", periodClosed: false },
+            { id: "e2", item: "Mailbox permissions cleanup", hours: 2, state: "in_progress", source: "unscoped", occurredAt: "2026-09-10", periodClosed: false },
+            { id: "e3", item: "Quarterly access review kickoff", hours: 1.5, state: "scheduled", source: "unscoped", occurredAt: "2026-09-12", periodClosed: false }
+          ] },
+        { periodKey: "2026-08-05", endsAt: "2026-09-05", isCurrent: false, hasEnded: true, closed: true,
+          close: { closedAt: "2026-09-06 09:20", closedByUserId: 14, note: "Closed on schedule", hourlyRateCents: 22000, entryCount: 5 },
+          entries: [
+            { id: "e4", item: "Break-glass drill", hours: 4, state: "closed", source: "unscoped", occurredAt: "2026-08-14", periodClosed: true },
+            { id: "e5", item: "Change control walkthrough", hours: 7.5, state: "closed", source: "change_control", occurredAt: "2026-08-28", periodClosed: true }
+          ] }
+      ]
+    };
+  }
+  if (id === 2) {
+    return {
+      configured: true, active: true, architectName: "Priya Nair", retainedHours: 6, hourlyRateCents: 19500,
+      anchorDay: 20, currentPeriod: "2026-08-20",
+      periods: [
+        { periodKey: "2026-08-20", endsAt: "2026-09-20", isCurrent: true, hasEnded: false, closed: false, close: null,
+          entries: [
+            { id: "e6", item: "Guest access sweep", hours: 5, state: "closed", source: "unscoped", occurredAt: "2026-08-25", periodClosed: false },
+            { id: "e7", item: "MFA gap remediation", hours: 4.5, state: "in_review", source: "remediation_tracker", occurredAt: "2026-09-02", periodClosed: false }
+          ] }
+      ]
+    };
+  }
+  return { configured: false };
+}
+
+function bucketForPeriod(seed, p) {
+  const retained = seed.retainedHours;
+  const used = p.entries.reduce((n, e) => n + e.hours, 0);
+  const remaining = Math.max(0, retained - used);
+  const over = Math.max(0, used - retained);
+  return { retainedHours: retained, rolledHours: 0, usedHours: used, remainingHours: remaining, overHours: over, isOverMonth: over > 0 };
+}
+
+let nextEntryId = 900;
+
+class Component extends DCLogic {
+  state = {
+    demo: false,
+    selCustomer: 1,
+    data: {},
+    addingEntry: false, newItem: "", newHours: "", newState: "in_progress",
+    editingEntryId: null, draft: { item: "", hours: "", state: "in_progress" }
+  };
+
+  liveOrSeed(id) {
+    if (this.state.data[id]) return this.state.data[id];
+    return this.state.demo ? seedFor(id) : { configured: false };
+  }
+
+  selectCustomer = (id) => () => this.setState({ selCustomer: id, addingEntry: false, editingEntryId: null });
+
+  ensureCustomerInState(id) {
+    if (!this.state.data[id]) {
+      const seed = this.state.demo ? seedFor(id) : { configured: false };
+      this.setState(s => ({ data: Object.assign({}, s.data, { [id]: seed }) }));
+      return seed;
+    }
+    return this.state.data[id];
+  }
+
+  toggleAddEntry = () => this.setState(s => ({ addingEntry: !s.addingEntry, newItem: "", newHours: "" }));
+  setNewItem = (e) => this.setState({ newItem: e.target.value });
+  setNewHours = (e) => this.setState({ newHours: e.target.value });
+  setNewState = (e) => this.setState({ newState: e.target.value });
+
+  saveNewEntry = () => {
+    const item = this.state.newItem.trim();
+    const hours = parseFloat(this.state.newHours);
+    if (!item || isNaN(hours)) return;
+    const id = this.state.selCustomer;
+    this.setState(s => {
+      const cur = s.data[id] || this.ensureCustomerInState(id);
+      const periods = cur.periods.map((p, i) => i === 0 ? Object.assign({}, p, { entries: p.entries.concat([{ id: "ne" + (nextEntryId++), item, hours, state: s.newState, source: "unscoped", occurredAt: "2026-09-14", periodClosed: false }]) }) : p);
+      return { data: Object.assign({}, s.data, { [id]: Object.assign({}, cur, { periods }) }), addingEntry: false, newItem: "", newHours: "" };
+    });
+  };
+
+  startEdit = (e) => () => this.setState({ editingEntryId: e.id, draft: { item: e.item, hours: String(e.hours), state: e.state } });
+  cancelEdit = () => this.setState({ editingEntryId: null });
+  setDraftItem = (ev) => this.setState(s => ({ draft: Object.assign({}, s.draft, { item: ev.target.value }) }));
+  setDraftHours = (ev) => this.setState(s => ({ draft: Object.assign({}, s.draft, { hours: ev.target.value }) }));
+  setDraftState = (ev) => this.setState(s => ({ draft: Object.assign({}, s.draft, { state: ev.target.value }) }));
+
+  saveEdit = (entryId) => () => {
+    const id = this.state.selCustomer;
+    const hours = parseFloat(this.state.draft.hours);
+    this.setState(s => {
+      const cur = s.data[id];
+      const periods = cur.periods.map(p => Object.assign({}, p, { entries: p.entries.map(e => e.id === entryId ? Object.assign({}, e, { item: s.draft.item.trim() || e.item, hours: isNaN(hours) ? e.hours : hours, state: s.draft.state }) : e) }));
+      return { data: Object.assign({}, s.data, { [id]: Object.assign({}, cur, { periods }) }), editingEntryId: null };
+    });
+  };
+
+  deleteEntry = (entryId) => () => {
+    const id = this.state.selCustomer;
+    this.setState(s => {
+      const cur = s.data[id];
+      const periods = cur.periods.map(p => Object.assign({}, p, { entries: p.entries.filter(e => e.id !== entryId) }));
+      return { data: Object.assign({}, s.data, { [id]: Object.assign({}, cur, { periods }) }), editingEntryId: null };
+    });
+  };
+
+  closePeriod = (periodKey) => () => {
+    const id = this.state.selCustomer;
+    this.setState(s => {
+      const cur = s.data[id];
+      const periods = cur.periods.map(p => p.periodKey === periodKey
+        ? Object.assign({}, p, { closed: true, close: { closedAt: "just now", closedByUserId: 1, note: null, hourlyRateCents: cur.hourlyRateCents, entryCount: p.entries.length }, entries: p.entries.map(e => Object.assign({}, e, { periodClosed: true })) })
+        : p);
+      return { data: Object.assign({}, s.data, { [id]: Object.assign({}, cur, { periods }) }) };
+    });
+  };
+
+  reopenPeriod = (periodKey) => () => {
+    const id = this.state.selCustomer;
+    this.setState(s => {
+      const cur = s.data[id];
+      const periods = cur.periods.map(p => p.periodKey === periodKey
+        ? Object.assign({}, p, { closed: false, close: null, entries: p.entries.map(e => Object.assign({}, e, { periodClosed: false })) })
+        : p);
+      return { data: Object.assign({}, s.data, { [id]: Object.assign({}, cur, { periods }) }) };
+    });
+  };
+
+  renderVals() {
+    const forced = this.props.forceEmpty;
+    const st = forced === undefined ? this.state : Object.assign({}, this.state, { demo: !forced });
+    const allData = {};
+    CUSTOMERS.forEach(c => { allData[c.id] = st.data[c.id] || (st.demo ? seedFor(c.id) : { configured: false }); });
+
+    const usd = (cents) => "$" + (cents / 100).toFixed(2) + "/hr";
+
+    const customers = CUSTOMERS.map(c => {
+      const d = allData[c.id];
+      const on = c.id === st.selCustomer;
+      let summary = "Not configured — no retainer_settings row";
+      let tag = "not configured", tone = GREY;
+      if (d.configured) {
+        const cur = d.periods[0];
+        const b = bucketForPeriod(d, cur);
+        summary = b.usedHours.toFixed(1) + "h used of " + b.retainedHours.toFixed(1) + "h · " + (b.isOverMonth ? b.overHours.toFixed(1) + "h over" : b.remainingHours.toFixed(1) + "h left");
+        tag = b.isOverMonth ? "over" : "on retainer"; tone = b.isOverMonth ? RED : GREEN;
+      }
+      return { name: c.name, select: this.selectCustomer(c.id), summary, tag, tint: tone[0], badgeLine: tone[1], color: tone[2],
+        bg: on ? "rgba(37,99,235,.1)" : "transparent", line: on ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)" };
+    });
+
+    const sel = allData[st.selCustomer];
+    const configured = !!sel.configured;
+
+    let periods = [], settingsFacts = [], bucketFacts = [], entries = [], bucket = null;
+    if (configured) {
+      const cur = sel.periods[0];
+      bucket = bucketForPeriod(sel, cur);
+
+      settingsFacts = [
+        { label: "RETAINED HOURS", value: sel.retainedHours.toFixed(1) + "h / period", color: "#f1f5f9" },
+        { label: "RATE", value: usd(sel.hourlyRateCents), color: "#f1f5f9" },
+        { label: "ARCHITECT", value: sel.architectName, color: "#f1f5f9" },
+        { label: "ACTIVE", value: sel.active ? "yes" : "no", color: sel.active ? "#34d399" : "#f87171" }
+      ];
+
+      bucketFacts = [
+        { label: "RETAINED", value: bucket.retainedHours.toFixed(1) + "h", color: "#f1f5f9" },
+        { label: "ROLLED IN", value: bucket.rolledHours.toFixed(1) + "h", color: "#f1f5f9" },
+        { label: "USED", value: bucket.usedHours.toFixed(1) + "h", color: "#f1f5f9" },
+        { label: "REMAINING", value: bucket.remainingHours.toFixed(1) + "h", color: bucket.remainingHours === 0 ? "#94a3b8" : "#34d399" },
+        { label: "OVER", value: bucket.overHours.toFixed(1) + "h", color: bucket.overHours > 0 ? "#f87171" : "#94a3b8" }
+      ];
+
+      periods = sel.periods.map(p => {
+        const b = bucketForPeriod(sel, p);
+        const canClose = !p.closed && p.hasEnded;
+        const canReopen = p.closed;
+        const tone = p.closed ? GREY : p.hasEnded ? AMBER : BLUE;
+        return {
+          periodKey: p.periodKey, endsAt: p.endsAt, entryCount: p.entries.length,
+          showCurrent: p.isCurrent,
+          tag: p.closed ? "closed" : p.hasEnded ? "ended, open" : "open",
+          tint: tone[0], badgeLine: tone[1], color: tone[2],
+          bucketLine: b.usedHours.toFixed(1) + "h used of " + b.retainedHours.toFixed(1) + "h" + (b.isOverMonth ? " · " + b.overHours.toFixed(1) + "h over" : "") + (p.closed ? " · frozen at close" : " · live, recomputed from the ledger"),
+          canClose, canReopen,
+          close: this.closePeriod(p.periodKey), reopen: this.reopenPeriod(p.periodKey),
+          note: !p.hasEnded ? "Cannot close before the period ends." : ""
+        };
+      });
+
+      const currentEntries = sel.periods[0].entries;
+      entries = currentEntries.concat(sel.periods.slice(1).flatMap(p => p.entries)).map(e => {
+        const editing = st.editingEntryId === e.id;
+        const tone = e.state === "closed" ? GREEN : e.state === "in_review" ? AMBER : e.state === "scheduled" ? BLUE : GREY;
+        return {
+          editing, notEditing: !editing, locked: e.periodClosed, editable: !e.periodClosed,
+          item: e.item, hoursLabel: e.hours.toFixed(1) + "h",
+          stateLabel: STATE_DISPLAY[e.state] || e.state, stateTint: tone[0], stateLine: tone[1], stateColor: tone[2],
+          meta: e.occurredAt + " · source: " + e.source,
+          line: editing ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)", bg: editing ? "rgba(96,165,250,.05)" : "rgba(2,6,23,.4)",
+          draftItem: editing ? st.draft.item : e.item, draftHours: editing ? st.draft.hours : String(e.hours), draftState: editing ? st.draft.state : e.state,
+          onItemChange: this.setDraftItem, onHoursChange: this.setDraftHours, onStateChange: this.setDraftState,
+          onEdit: this.startEdit(e), onSave: this.saveEdit(e.id), onCancel: this.cancelEdit, onDelete: this.deleteEntry(e.id)
+        };
+      });
+    }
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      showOwnHeader: !(this.props.embedded ?? false),
+      showToggles: !(this.props.embedded ?? false),
+      rootBg: this.props.rootBg ?? "transparent",
+      showNotes: this.props.showNotes ?? true,
+
+      toggleDemo: () => this.setState(s => ({ demo: !s.demo, data: {} })),
+      demoBtnLabel: st.demo ? "Back to the live (unconfigured) state" : "Show an illustrative, configured customer",
+
+      customers,
+      notConfigured: !configured, isConfigured: configured,
+      noConfigTitle: "No retainer configured for " + (CUSTOMERS.find(c => c.id === st.selCustomer) || {}).name,
+      noConfigBody: "There is no retainer_settings row for this customer, so there is no allotment, rate or period to show — and, per the route's own rule, no period could ever be closed here either: a close attempt against an unconfigured customer is refused outright rather than snapshotting a default allotment nobody bought.",
+
+      selName: (CUSTOMERS.find(c => c.id === st.selCustomer) || {}).name,
+      anchorDay: configured ? sel.anchorDay : "", currentPeriod: configured ? sel.currentPeriod : "",
+      settingsFacts, bucketFacts,
+      bucketLine: bucket && bucket.isOverMonth ? RED[1] : "rgba(148,163,184,.16)",
+      bucketTint: bucket && bucket.isOverMonth ? RED[0] : "rgba(15,23,42,.6)",
+      isOverMonth: !!(bucket && bucket.isOverMonth),
+
+      periods,
+
+      addingEntry: st.addingEntry, addEntryLabel: st.addingEntry ? "Cancel" : "Log hours",
+      toggleAddEntry: this.toggleAddEntry, newItem: st.newItem, setNewItem: this.setNewItem,
+      newHours: st.newHours, setNewHours: this.setNewHours, newState: st.newState, setNewState: this.setNewState,
+      stateOptions: STATE_OPTIONS.map(([v, l]) => ({ value: v, label: l })),
+      saveNewEntry: this.saveNewEntry,
+
+      entries, noEntries: configured && entries.length === 0,
+
+      notes: [
+        { dot: "#f87171", text: "Every retainer table reads zero rows in every environment today — settings, ledger and period-closes alike. Every customer in the real, live state is genuinely \"not configured\", not a loading or error state; the illustrative customer above is clearly a demo, never presented as real data." },
+        { dot: "#fbbf24", text: "overHours is the honest, uncapped over-allotment signal. remainingHours floors at zero and is also true for a customer who used exactly their allotment — over-month must be read from overHours, never inferred from remaining hitting zero." },
+        { dot: "#fbbf24", text: "Periods are anniversary-anchored to each customer's own subscription start day, not calendar months, and unused retained hours roll forward once before expiring. A customer whose anchor day shifts mid-history can end up with period keys that don't line up across the change — a known edge case, not a bug to fix here." },
+        { dot: "#fbbf24", text: "A known gap (filed, not re-investigated here): the period-close lock is enforced only on this router. AdminV2's own retainer-entry routes and the tracker byproduct hook that logs closed-ticket hours automatically can both still write into an already-closed period." },
+        { dot: "#60a5fa", text: "Allotment, hourly rate and architect name are read-only here — they are written only from AdminV2. This screen can log, adjust, delete and move entries between open periods, and close or reopen a period, but never touch settings." },
+        { dot: "#60a5fa", text: "Reopening a period hard-deletes its frozen snapshot rather than archiving it — there is no history table. Once reopened, the only surviving trace of who closed it and when lives in the audit log, not in the retainer data itself." },
+        { dot: "#94a3b8", text: "Moving an entry's date into a different period requires that target period to also be open — a move between two open periods succeeds, but nothing can be moved into a closed one, even from an open one." },
+        { dot: "#94a3b8", text: "The error envelope on every route here is a bare { error } string, with no error code field — unlike some other MSP-console surfaces that carry a structured code alongside the message." }
+      ]
+    };
+  }
+}
+
+</script>
+</body>
+</html>

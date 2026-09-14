@@ -4,6 +4,18 @@ path: artifacts/api-server/src/routes (plus artifacts/admin-panel/src/components
 
 ## Last sync
 
+date: 2026-09-14T15:15:17Z
+
+### Updated in this project
+
+- Diffed `docs/msp-console` (40 packs, was 38) against the 2026-09-14T02:53 inventory. Two new packs, no screen yet: **projects** (Kanban buckets/cards, `msp-kanban.ts`, 7 routes, Phase 1 — no type/status field, zero live rows, a separate unrelated "Kanban" already ships elsewhere) and **retainer-hours** (`msp-retainer.ts`, 7 routes — customer list with a rolling anniversary-anchored hour bucket, settings read-only here, period close/reopen, zero live rows). **break-glass**'s blob sha changed but the pack itself states "Findings filed: None" — a re-verification pass with no drift, so `Break Glass.dc.html` needed no rebuild.
+- Built **Projects** (`Projects.dc.html`) — a per-customer picker over a free-form bucket/card board: add/rename/delete a bucket, add/edit/move/delete a card, honest empty board by default (real state), a labelled illustrative board to show the shape once populated. Notes cover the Phase 1 scope (no type/status), the same-customer-only move rule, unrenumbered positions, and the naming collision with the pre-existing fixed-pipeline Kanban.
+- Built **Retainer Hours** (`Retainer Hours.dc.html`) — customer list (configured / not configured, current bucket) drilling into one customer's settings (read-only), anchor day/current period, this period's bucket (retained/rolled/used/remaining/over with the uncapped over-month signal), a periods list with close/reopen actions, and a ledger with log/adjust/delete respecting the per-period close lock. Notes cover the anniversary-anchor edge case, the known AdminV2/tracker close-lock bypass gap, and the read-only settings boundary.
+- Wired both into `MSP Console.dc.html` under Operations (nav entries, page notes, the shared STATE-chip empty/populated toggle, mounts).
+- `github.md` refreshed; commit sha not recorded (tree calls resolve a tree hash, not a commit).
+
+## Previous sync
+
 date: 2026-09-14T02:53:37Z
 
 ### Updated in this project
@@ -298,6 +310,8 @@ date: 2026-09-10T22:43:07Z
 | Consent and Onboarding (Operations) | `msp-consent.ts`, `msp-onboarding.ts` (built from the consent-and-onboarding pack) |
 | Staff Roster (Operations) | `msp-settings.ts` staff and invite routes (built from the msp-staff-roles-and-onboarding pack) |
 | Offers & SOWs (per tenant → Commercial) | `msp-sow.ts`, `msp-sales-offers.ts` (built from the offers-and-sow-acceptance pack) |
+| Projects (Operations) | `msp-kanban.ts` |
+| Retainer Hours (Operations) | `msp-retainer.ts` (+ `admin-retainer.ts` for the shared wire mapping, `retainer-hours.ts`, `retainer-period-anchor.ts`, `retainer-period-close.ts`) |
 
 ## Upstream console app (`artifacts/msp-console/src`, seen 2026-09-14)
 
@@ -320,6 +334,8 @@ Blob sha per pack — a changed sha means the pack was updated upstream. Changed
 | Pack | Screen here | Blob |
 |---|---|---|
 | msp-webhooks-inbound | none — deliberately out of scope (inbound receivers) | eb7637149782 |
+| projects | Projects | b4e2b35e8f6d |
+| retainer-hours | Retainer Hours | 4c1e15bb6209 |
 | account-security | Account Security | 2f24fa872f0a |
 | status-reports | Status Reports | 2184761bb38c |
 | poams | POA&Ms | 2b2180715c58 |
@@ -332,7 +348,7 @@ Blob sha per pack — a changed sha means the pack was updated upstream. Changed
 | partner-revenue | Partner Revenue | 048759f15dc8 |
 | admin-panel-msp-tenant-management | MSP Console (tenant canvas + MSP settings) | 7cf216c979d0 |
 | audit-log | Audit Log (per tenant and MSP-wide) | 45224f604f29 |
-| break-glass | Break Glass | 01f55c2150e4 |
+| break-glass | Break Glass | 7b2c105271ab |
 | change-control | Change Control | 0c1395f64821 |
 | config-state | Configuration State | feaafcd4249b |
 | consent-and-onboarding | Consent and Onboarding (+ tenant Consent rows on the tenant canvas) | 1c636b4d564b |

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>a{color:#60a5fa}a:hover{color:#93c5fd}input::placeholder,textarea::placeholder{color:#64748b}select{font-family:inherit}</style>
+</helmet>
+
+<div style="font-family:Inter,system-ui,sans-serif;color:#e2e8f0;display:flex;flex-direction:column;gap:14px;min-width:0;padding:{{ rootPad }};background:{{ rootBg }}">
+
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <sc-if value="{{ showOwnHeader }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:4px;min-width:200px;flex:1">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">PROJECTS · KANBAN (PHASE 1)</span>
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Free-form boards, no card types yet</span>
+    </div></sc-if>
+    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPOperator or above</span>
+    <sc-if value="{{ showToggles }}" hint-placeholder-val="{{ true }}"><button onClick="{{ toggleDemo }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ demoBtnLabel }}</button></sc-if>
+  </div>
+
+  <div style="border:1px solid rgba(251,191,36,.22);border-radius:12px;background:rgba(251,191,36,.06);padding:14px;display:flex;flex-direction:column;gap:6px;min-width:0">
+    <span style="font-size:12px;font-weight:700;color:#fbbf24">Backend shipped, nothing has ever called it</span>
+    <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">Seven routes exist — buckets and cards, per customer — and every table is genuinely empty in every environment. There is no card type or status yet; that is Phase 2. A second, unrelated system already called "Kanban" ships today (fixed 5-column pipeline, tied to a project record, used from the CRM) — this board is a separate, free-form, customer-scoped model and shares no table or route with it.</span>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+    <sc-for list="{{ customers }}" as="c" hint-placeholder-count="4">
+      <button onClick="{{ c.select }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;gap:7px;height:30px;padding:0 12px;border-radius:7px;border:1px solid {{ c.border }};background:{{ c.bg }};color:{{ c.fg }};font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">{{ c.name }}<span style="font-size:10.5px;color:{{ c.countColor }}">{{ c.cardCount }}</span></button>
+    </sc-for>
+  </div>
+
+  <div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:4px;min-width:0">
+    <sc-for list="{{ buckets }}" as="bkt" hint-placeholder-count="3">
+      <div style="display:flex;flex-direction:column;gap:10px;width:260px;flex:none;border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:12px;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12.5px;font-weight:700;color:#f1f5f9;flex:1;text-wrap:pretty">{{ bkt.name }}</span>
+          <span style="font-size:10.5px;color:#94a3b8">{{ bkt.count }}</span>
+          <button onClick="{{ bkt.remove }}" style="width:20px;height:20px;border-radius:5px;border:1px solid rgba(248,113,113,.2);background:rgba(248,113,113,.08);color:#f87171;font-size:11px;cursor:pointer;font-family:inherit">×</button>
+        </div>
+
+        <sc-for list="{{ bkt.cards }}" as="c" hint-placeholder-count="2">
+          <div style="border:1px solid {{ c.line }};border-radius:9px;background:{{ c.bg }};padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0">
+            <sc-if value="{{ c.editing }}" hint-placeholder-val="{{ false }}">
+              <input value="{{ c.draftTitle }}" onChange="{{ c.onTitleChange }}" placeholder="Card title" style="padding:7px 9px;border-radius:6px;border:1px solid rgba(96,165,250,.35);background:rgba(2,6,23,.7);color:#f1f5f9;font-size:12px;font-family:inherit;outline:none;min-width:0" />
+              <textarea value="{{ c.draftDesc }}" onChange="{{ c.onDescChange }}" placeholder="Description (optional)" rows="3" style="padding:7px 9px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.7);color:#e2e8f0;font-size:11.5px;line-height:1.5;font-family:inherit;outline:none;resize:vertical;min-width:0"></textarea>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#94a3b8">MOVE TO</span>
+              <select value="{{ c.draftBucketId }}" onChange="{{ c.onBucketChange }}" style="padding:6px 8px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.7);color:#e2e8f0;font-size:11.5px;outline:none">
+                <sc-for list="{{ c.moveOptions }}" as="o" hint-placeholder-count="2">
+                  <option value="{{ o.value }}">{{ o.label }}</option>
+                </sc-for>
+              </select>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button onClick="{{ c.onSave }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>
+                <button onClick="{{ c.onCancel }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:transparent;color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+                <button onClick="{{ c.onDelete }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(248,113,113,.24);background:rgba(248,113,113,.08);color:#f87171;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Delete</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ c.notEditing }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ c.onEdit }}" style="display:flex;flex-direction:column;gap:4px;text-align:left;border:none;background:transparent;cursor:pointer;font-family:inherit;padding:0;min-width:0">
+                <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;text-wrap:pretty">{{ c.title }}</span>
+                <sc-if value="{{ c.hasDesc }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">{{ c.description }}</span>
+                </sc-if>
+              </button>
+            </sc-if>
+          </div>
+        </sc-for>
+
+        <sc-if value="{{ bkt.adding }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <input value="{{ bkt.newCardTitle }}" onChange="{{ bkt.onNewCardChange }}" placeholder="Card title" style="padding:7px 9px;border-radius:6px;border:1px solid rgba(96,165,250,.35);background:rgba(2,6,23,.7);color:#f1f5f9;font-size:12px;font-family:inherit;outline:none;min-width:0" />
+            <div style="display:flex;gap:6px">
+              <button onClick="{{ bkt.addCard }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Add</button>
+              <button onClick="{{ bkt.cancelAddCard }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:transparent;color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ bkt.notAdding }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ bkt.startAddCard }}" style="height:28px;border-radius:6px;border:1px dashed rgba(148,163,184,.25);background:transparent;color:#94a3b8;font-size:11.5px;cursor:pointer;font-family:inherit">+ Add card</button>
+        </sc-if>
+      </div>
+    </sc-for>
+
+    <div style="display:flex;flex-direction:column;gap:8px;width:220px;flex:none;border:1px dashed rgba(148,163,184,.22);border-radius:12px;padding:12px;min-width:0">
+      <span style="font-size:11px;font-weight:700;color:#94a3b8">New bucket</span>
+      <input value="{{ newBucketName }}" onChange="{{ setNewBucketName }}" placeholder="Bucket name" style="padding:7px 9px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(2,6,23,.7);color:#f1f5f9;font-size:12px;font-family:inherit;outline:none;min-width:0" />
+      <button onClick="{{ addBucket }}" style="height:28px;border-radius:6px;border:1px solid rgba(96,165,250,.3);background:rgba(96,165,250,.1);color:#93c5fd;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Add bucket</button>
+    </div>
+  </div>
+
+  <sc-if value="{{ noBuckets }}" hint-placeholder-val="{{ false }}">
+    <div style="border:1px dashed rgba(148,163,184,.25);border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
+      <span style="font-size:13px;font-weight:700;color:#cbd5e1">No buckets on this customer's board</span>
+      <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:380px">This is the real, honest state for every customer today — the route returns an empty board rather than a fixture. Add one above to see the shape a populated board would take.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these seven routes do and don't give this screen</span>
+      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
+        <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
+          <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
+          <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const BLUE = "rgba(96,165,250,";
+
+const CUSTOMERS = [
+  { id: 1, name: "Fabrikam" },
+  { id: 2, name: "Contoso" },
+  { id: 3, name: "Northwind Traders" },
+  { id: 4, name: "Halcyon HG" }
+];
+
+const DEMO_BOARD_FOR_CUSTOMER_1 = [
+  { id: "b1", name: "Backlog", cards: [
+    { id: "c1", title: "Migrate legacy DLP policies", description: "Carry over the three custom rules before the old tenant is decommissioned." },
+    { id: "c2", title: "Confirm Teams retention labels", description: null }
+  ] },
+  { id: "b2", name: "In progress", cards: [
+    { id: "c3", title: "Conditional Access pilot group", description: "Rolling out to IT first, per the customer's own request." }
+  ] },
+  { id: "b3", name: "Done", cards: [] }
+];
+
+let nextId = 100;
+
+class Component extends DCLogic {
+  state = {
+    demo: false,
+    selCustomer: 1,
+    boards: { 1: [], 2: [], 3: [], 4: [] },
+    newBucketName: "",
+    addingCardFor: null,
+    newCardTitle: "",
+    editingCardId: null,
+    draft: { title: "", desc: "", bucketId: null }
+  };
+
+  boardFor(st, custId) {
+    if (st.demo && custId === 1 && st.boards[1].length === 0 && !st._demoSeeded) {
+      // seeded lazily below in renderVals instead of here to avoid setState-in-render
+    }
+    return st.boards[custId] || [];
+  }
+
+  selectCustomer = (id) => () => this.setState({ selCustomer: id, addingCardFor: null, editingCardId: null, newBucketName: "" });
+
+  setNewBucketName = (e) => this.setState({ newBucketName: e.target.value });
+
+  addBucket = () => {
+    const name = this.state.newBucketName.trim();
+    if (!name) return;
+    const id = "nb" + (nextId++);
+    this.setState(s => {
+      const cur = s.boards[s.selCustomer] || [];
+      return { boards: Object.assign({}, s.boards, { [s.selCustomer]: cur.concat([{ id, name, cards: [] }]) }), newBucketName: "" };
+    });
+  };
+
+  removeBucket = (bucketId) => () => this.setState(s => {
+    const cur = s.boards[s.selCustomer] || [];
+    return { boards: Object.assign({}, s.boards, { [s.selCustomer]: cur.filter(b => b.id !== bucketId) }),
+      editingCardId: null, addingCardFor: s.addingCardFor === bucketId ? null : s.addingCardFor };
+  });
+
+  startAddCard = (bucketId) => () => this.setState({ addingCardFor: bucketId, newCardTitle: "" });
+  cancelAddCard = () => this.setState({ addingCardFor: null, newCardTitle: "" });
+  setNewCardTitle = (e) => this.setState({ newCardTitle: e.target.value });
+
+  addCard = (bucketId) => () => {
+    const title = this.state.newCardTitle.trim();
+    if (!title) return;
+    const id = "nc" + (nextId++);
+    this.setState(s => {
+      const cur = s.boards[s.selCustomer] || [];
+      return { boards: Object.assign({}, s.boards, { [s.selCustomer]: cur.map(b => b.id === bucketId ? Object.assign({}, b, { cards: b.cards.concat([{ id, title, description: null }]) }) : b) }),
+        addingCardFor: null, newCardTitle: "" };
+    });
+  };
+
+  startEditCard = (bucketId, card) => () => this.setState({ editingCardId: card.id, draft: { title: card.title, desc: card.description || "", bucketId } });
+  cancelEditCard = () => this.setState({ editingCardId: null });
+  setDraftTitle = (e) => this.setState(s => ({ draft: Object.assign({}, s.draft, { title: e.target.value }) }));
+  setDraftDesc = (e) => this.setState(s => ({ draft: Object.assign({}, s.draft, { desc: e.target.value }) }));
+  setDraftBucket = (e) => this.setState(s => ({ draft: Object.assign({}, s.draft, { bucketId: e.target.value }) }));
+
+  saveCard = (fromBucketId, cardId) => () => {
+    this.setState(s => {
+      const cur = s.boards[s.selCustomer] || [];
+      const title = s.draft.title.trim() || "Untitled card";
+      const desc = s.draft.desc.trim() || null;
+      const toBucket = s.draft.bucketId;
+      let moved = null;
+      const stripped = cur.map(b => {
+        if (b.id !== fromBucketId) return b;
+        const found = b.cards.find(c => c.id === cardId);
+        if (found) moved = Object.assign({}, found, { title, description: desc });
+        return Object.assign({}, b, { cards: b.cards.filter(c => c.id !== cardId) });
+      });
+      const placed = stripped.map(b => b.id === toBucket ? Object.assign({}, b, { cards: b.cards.concat([moved || { id: cardId, title, description: desc }]) }) : b);
+      return { boards: Object.assign({}, s.boards, { [s.selCustomer]: placed }), editingCardId: null };
+    });
+  };
+
+  deleteCard = (bucketId, cardId) => () => this.setState(s => {
+    const cur = s.boards[s.selCustomer] || [];
+    return { boards: Object.assign({}, s.boards, { [s.selCustomer]: cur.map(b => b.id === bucketId ? Object.assign({}, b, { cards: b.cards.filter(c => c.id !== cardId) }) : b) }),
+      editingCardId: null };
+  });
+
+  renderVals() {
+    const forced = this.props.forceEmpty;
+    const st = forced === undefined ? this.state : Object.assign({}, this.state, { demo: !forced });
+    let effectiveBoards = st.boards;
+    if (st.demo && st.boards[1].length === 0) {
+      effectiveBoards = Object.assign({}, st.boards, { 1: DEMO_BOARD_FOR_CUSTOMER_1 });
+    }
+
+    const cardCountFor = (custId) => (effectiveBoards[custId] || []).reduce((n, b) => n + b.cards.length, 0);
+
+    const customers = CUSTOMERS.map(c => {
+      const on = c.id === st.selCustomer;
+      return { name: c.name, select: this.selectCustomer(c.id), cardCount: cardCountFor(c.id),
+        bg: on ? "rgba(37,99,235,.18)" : "transparent", border: on ? "rgba(96,165,250,.45)" : "rgba(148,163,184,.16)",
+        fg: on ? "#f1f5f9" : "#94a3b8", countColor: on ? "#60a5fa" : "#94a3b8" };
+    });
+
+    const boardBuckets = effectiveBoards[st.selCustomer] || [];
+    const allBucketOptions = boardBuckets.map(b => ({ value: b.id, label: b.name }));
+
+    const buckets = boardBuckets.map(b => {
+      const cards = b.cards.map(c => {
+        const editing = st.editingCardId === c.id;
+        return {
+          editing, notEditing: !editing,
+          title: c.title, description: c.description || "", hasDesc: !!c.description,
+          line: editing ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)",
+          bg: editing ? "rgba(96,165,250,.06)" : "rgba(2,6,23,.4)",
+          onEdit: this.startEditCard(b.id, c),
+          draftTitle: editing ? st.draft.title : c.title,
+          draftDesc: editing ? st.draft.desc : (c.description || ""),
+          draftBucketId: editing ? (st.draft.bucketId || b.id) : b.id,
+          onTitleChange: this.setDraftTitle, onDescChange: this.setDraftDesc, onBucketChange: this.setDraftBucket,
+          moveOptions: allBucketOptions,
+          onSave: this.saveCard(b.id, c.id), onCancel: this.cancelEditCard, onDelete: this.deleteCard(b.id, c.id)
+        };
+      });
+      const adding = st.addingCardFor === b.id;
+      return {
+        name: b.name, count: b.cards.length, remove: this.removeBucket(b.id), cards,
+        adding, notAdding: !adding,
+        newCardTitle: st.newCardTitle, onNewCardChange: this.setNewCardTitle,
+        addCard: this.addCard(b.id), cancelAddCard: this.cancelAddCard, startAddCard: this.startAddCard(b.id)
+      };
+    });
+
+    return {
+      rootPad: this.props.rootPad ?? "0",
+      showOwnHeader: !(this.props.embedded ?? false),
+      showToggles: !(this.props.embedded ?? false),
+      rootBg: this.props.rootBg ?? "transparent",
+      showNotes: this.props.showNotes ?? true,
+
+      toggleDemo: () => this.setState(s => ({ demo: !s.demo })),
+      demoBtnLabel: st.demo ? "Back to the live (empty) state" : "Show an illustrative board",
+
+      customers,
+      buckets,
+      noBuckets: buckets.length === 0,
+      newBucketName: st.newBucketName, setNewBucketName: this.setNewBucketName, addBucket: this.addBucket,
+
+      notes: [
+        { dot: "#f87171", text: "Every table — buckets and cards — is genuinely zero rows in every environment today. This screen's live view is honestly empty for every customer; the illustrative board above is labelled as such, never presented as real data." },
+        { dot: "#fbbf24", text: "There is no card type or status field. Phase 1 is deliberately \"plain title, description, position, bucket\" — a status column, per-type shapes and Project Templates are later phases, not built yet." },
+        { dot: "#fbbf24", text: "A card can only move to another bucket on the same customer's board. Moving it onto a bucket owned by a different customer is refused outright, even for a platform administrator — there is no cross-customer move for anyone." },
+        { dot: "#fbbf24", text: "Position is never renumbered by the server. Reordering is this client's job to compute and send for every affected card — a naive \"just save the one I moved\" write will leave duplicate position values among its untouched siblings." },
+        { dot: "#60a5fa", text: "A second, unrelated \"Kanban\" already ships today: a fixed five-column pipeline tied to a project record, used from the CRM. It shares no table and no route with this board — the name collision is real, but the two systems don't interact." },
+        { dot: "#94a3b8", text: "There is no bulk endpoint — reordering many buckets or moving several cards at once is one call per row. There is also no customer-facing read of this board at all; only an MSP operator can see it, by design for this phase." },
+        { dot: "#94a3b8", text: "A non-numeric bucket or card id answers not-found; a non-numeric customerId answers a validation error instead — two different error shapes for what looks like the same kind of mistake, carried straight through from the route." }
+      ]
+    };
+  }
+}
+
+</script>
+</body>
+</html>

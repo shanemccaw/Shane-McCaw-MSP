@@ -1369,6 +1369,14 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
           <dc-import name="Plan Self-Service" embedded="{{ true }}" hint-size="100%,900px"></dc-import>
         </sc-if>
 
+        <sc-if value="{{ isProjectsScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Projects" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,720px"></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ isRetainerScreen }}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Retainer Hours" embedded="{{ true }}" force-empty="{{ packEmpty }}" hint-size="100%,900px"></dc-import>
+        </sc-if>
+
         <sc-if value="{{ isPolicyScreen }}" hint-placeholder-val="{{ false }}">
           <dc-import name="Policy Engine" customer-name="{{ diagTenantName }}" embedded="{{ true }}" hint-size="100%,900px"></dc-import>
         </sc-if>
@@ -1821,7 +1829,9 @@ class Component extends DCLogic {
     { id: "retention", label: "Retention queue", icon: "timer" },
     { id: "revenue", label: "Partner revenue", icon: "chart-pie" },
     { id: "plan", label: "Plan & billing", icon: "credit-card" },
-    { id: "offboard", label: "Offboarding", icon: "door-open" }
+    { id: "offboard", label: "Offboarding", icon: "door-open" },
+    { id: "projects", label: "Projects", icon: "kanban" },
+    { id: "retainer", label: "Retainer hours", icon: "hourglass" }
   ];
 
   rbds = [
@@ -2205,6 +2215,8 @@ class Component extends DCLogic {
     offboard: "This MSP leaving the platform. Forward-only, and nothing resets it.",
     revenue: "What you pay the platform, kept strictly apart from the resale prices you set yourself.",
     plan: "This MSP's own plan and payment method.",
+    projects: "Free-form buckets and cards per customer. No type or status field yet — that's Phase 2.",
+    retainer: "Hours logged against each customer's rolling allotment, anniversary-anchored and rolled forward once.",
     policy: "Policy decisions your customers signed, and the standing policies this MSP evaluates against their tenants."
   };
 
@@ -2843,7 +2855,7 @@ class Component extends DCLogic {
     // The contract-pack screens that have a real empty state of their own; the shell's
     // STATE chips drive it, since their own toggle is hidden once embedded.
     const packStateScreen = ["poam", "adou", "status", "audit", "sows"].indexOf(page) !== -1
-      || ["acctsec", "reports", "dlq", "retention", "revenue", "consent", "staff", "mspaudit"].indexOf(mspSel) !== -1;
+      || ["acctsec", "reports", "dlq", "retention", "revenue", "consent", "staff", "mspaudit", "projects", "retainer"].indexOf(mspSel) !== -1;
 
     const TONES = {
       blue: { color: "#93c5fd", tint: "rgba(96,165,250,.12)", line: "rgba(96,165,250,.28)" },
@@ -4970,6 +4982,8 @@ class Component extends DCLogic {
       isOffboardScreen: mspSel === "offboard",
       isRevenueScreen: mspSel === "revenue",
       isPlanScreen: mspSel === "plan",
+      isProjectsScreen: mspSel === "projects",
+      isRetainerScreen: mspSel === "retainer",
       isPolicyScreen: mspSel === "policy",
       packEmpty: emptyMode,
       isRiskScreen: isRbd && !emptyMode,

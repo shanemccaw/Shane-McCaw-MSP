@@ -6,7 +6,7 @@ The MSP Console is the operator-side surface of the Shane McCaw M365 governance 
 
 It is deliberately not the customer portal. The customer portal shows a tenant its own posture. This console shows an operator *many* tenants at once, and gives them the write actions the customer cannot perform on themselves: granting and revoking consent, running scans, issuing break-glass credentials, resetting MFA, recording customer signatures on risk-acceptance decisions, and deleting a tenant outright.
 
-The design covers 54 screens across two trees, plus the shell they all mount in:
+The design covers 56 screens across two trees, plus the shell they all mount in:
 
 - **Console Shell** — the chrome itself: header, tenant tree, breadcrumb, screen slot, status bar, command palette, and its five states.
 - **Managed Tenants** — a directory, then per tenant 23 pages grouped into Overview, Monitoring, Change Control, Governance, Access & identity, Commercial, and Audit log, plus Ownership.
@@ -17,6 +17,8 @@ The design covers 54 screens across two trees, plus the shell they all mount in:
 
 Read this first if you already hold an earlier bundle.
 
+- **Two new contract-pack screens (72–75)**: **Projects** (`Projects.dc.html`, from the new `projects` pack, `msp-kanban.ts`) — a free-form bucket/card board per customer. Backend shipped (7 routes) but has zero live rows anywhere and no card type/status field yet (Phase 1); a second, unrelated "Kanban" already ships elsewhere and shares no table with this one. **Retainer Hours** (`Retainer Hours.dc.html`, from the new `retainer-hours` pack, `msp-retainer.ts`) — a per-customer hours ledger against a rolling, anniversary-anchored allotment, with period close/reopen. Settings (allotment, rate, architect) are read-only here — written only from AdminV2. Both are mounted under Operations and support `embedded`/`forceEmpty` like their siblings.
+- **Break Glass** — its contract pack was re-verified against current code with no drift found ("Findings filed: None"); the screen needed no changes.
 - **Documents** — upstream fixed `autoPublish` (#2724). The author drawer now has a "Stop at a draft / Publish when ready" choice that defaults to draft, like the route; the warning and the submit label follow it; a drafted document shows the publish step as skipped and offers **Publish now** through the manual publish route; new versions make the same choice again. Every "there is no draft stop" statement is gone. Screenshot 71 shows the drawer.
 - **Launch Control** — `Availability` is a four-state union (`license_required` joins `included` / `billable_upsell` / `a_la_carte`), checked last from a live `/subscribedSkus` read; every action carries `licenseRequirement: { skus, satisfied, description } | null`; Graph write failures can classify as `license_gap`. The catalog shows a licence line per action, a "Needs a licence" filter, and a licence row in the pre-flight checks. The nine Conditional Access rows require `AAD_PREMIUM` or `AAD_PREMIUM_P2`.
 - **AD OU Assignment** — a seventh route, `GET /msp/active-directory/ous?customerId=` → `{ ous: [{ id, name }] }`, is the unit-name lookup; the request list takes an optional `?customerId=` so the page narrows on the server instead of filtering the whole book.
@@ -307,6 +309,7 @@ Sixteen are real nodes in `MSP Console.dc.html`. Authentication is deliberately 
 | Per tenant → Commercial | Offers & SOWs, Status reports, Marketplace purchase |
 | Per tenant → Audit log (leaf) | Audit Log, narrowed to the tenant |
 | Operations (MSP-wide) | Policy engine, Consent & onboarding, Staff roster, Account security, Audit log, Reports, Dead letter queue, Retention queue, Partner revenue, Plan & billing, Offboarding |
+| Operations (MSP-wide) | Projects, Retainer hours |
 | Not in the tree | Authentication |
 
 Audit Log is mounted twice on purpose: the per-tenant leaf passes `customerName`, which the route honours as a server-side filter, and the Operations node passes nothing and shows the whole MSP. Same file, one prop.
@@ -318,7 +321,7 @@ Account security sits under Operations rather than per tenant on purpose: its ro
 Each screen carries `showNotes`, `rootPad`, `rootBg`, plus two props the console passes when it mounts them:
 
 - **`embedded`** — suppresses the screen's own page header (the shell already renders eyebrow, title and note from the tree node) and hides its **data-state** toggle, because the shell's own STATE chip group drives that instead. The standalone file keeps both, which is why the screenshots show a header these mounts do not.
-- **`forceEmpty`** — a boolean the console passes straight through from its STATE chips, so Populated/Empty is chosen once in the shell rather than per screen. Passed to the twelve screens that have a real empty state: POA&Ms, OU assignment, Status reports, Account security, Reports, DLQ, Retention queue, Partner revenue, Audit log, Offers & SOWs, Consent & onboarding, Staff roster.
+- **`forceEmpty`** — a boolean the console passes straight through from its STATE chips, so Populated/Empty is chosen once in the shell rather than per screen. Passed to the fourteen screens that have a real empty state: POA&Ms, OU assignment, Status reports, Account security, Reports, DLQ, Retention queue, Partner revenue, Audit log, Offers & SOWs, Consent & onboarding, Staff roster, Projects, Retainer Hours.
 
 **`embedded` deliberately does not hide the permission simulators** — the role pill on POA&Ms, Reports and Offboarding, and the card-on-file switch on Marketplace Purchase. Those gate real branches (the cancel-bypass, the admin-only delete, the declined payment), so hiding them would make those paths unreachable inside the console. They are still review affordances and still must not ship; they are simply a different kind of control from a data-state toggle.
 
@@ -354,6 +357,15 @@ Built from the packs that earlier bundles covered only partially. Same conventio
 | 66 | Offers & SOWs | `SOWs.dc.html` | `offers-and-sow-acceptance` pack (`msp-sow.ts`, `msp-sales-offers.ts`) | Statements of work with their status ladder (draft, sent, signed, paid, failed, expired), the offers awaiting acceptance, and the customer agreement. Recording an acceptance attributes it to the operator's own login and snapshots the agreement text. The card-on-file switch gates what a charge attempt can do. Per tenant it scopes to that customer; standalone it shows the whole book. |
 
 Screenshots `63-audit-log.png` through `66-sows.png` are standalone; `67-console-sows-mounted.png` through `70-console-audit-log-mounted.png` are the console mounts. `71-documents-author-drawer.png` is the Documents author drawer with the new draft-or-publish choice.
+
+#### 72–75. Projects and Retainer Hours
+
+| # | Screen | File | Built from | What the design turns on |
+|---|---|---|---|---|
+| 72 | Projects | `Projects.dc.html` | `projects` pack (`msp-kanban.ts`, 7 routes) | Per-customer picker over a free-form bucket/card board — add, rename, delete a bucket; add, edit, move, delete a card. Every board reads honestly empty today; the illustrative board is clearly labelled as such. A card can only move within its own customer's board, and the server never renumbers sibling positions on insert/delete. |
+| 73 | Retainer Hours | `Retainer Hours.dc.html` | `retainer-hours` pack (`msp-retainer.ts`, 7 routes) | Customer list (configured / not configured, current bucket) drilling into settings (read-only), this period's bucket with the uncapped `overHours` signal, a periods list with close/reopen, and a ledger with log/adjust/delete respecting the per-period close lock. A known, filed gap: AdminV2's own retainer routes and the tracker byproduct hook can still write into an already-closed period — this screen's lock is the only one enforced anywhere. |
+
+Screenshots `72-projects.png` and `73-retainer-hours.png` are standalone; `74-console-projects-mounted.png` and `75-console-retainer-hours-mounted.png` are the console mounts.
 
 **A pattern shared by all seventeen.** Where a route is missing a guard, these screens supply it in the UI and say so on the face of the screen rather than hiding it. When the corresponding upstream issue lands (#3032, #3400, #3403, #3404, #3405, #3445, #3446, #3452), the guard can move to the server — but until then, removing it from the UI removes it entirely. Each screen also carries a small toggle or two (role, empty state, card on file) that exist **to review states during design and must not ship**, exactly like the STATE chip group described above.
 
@@ -458,9 +470,10 @@ The thirteen contract-pack screens (38–50) each name their own routes in the U
 | 19 module files | `Diagnostics`, `Remediation`, `Change Control`, `Risk Register`, `Runbooks`, `Ownership`, `Data Rights`, `Team`, `Break Glass`, `Launch Control`, `Webhooks`, `Documents`, `Executive View`, `Activity Timeline`, `Configuration State`, `Sales`, `Scope and SLA`, `SOPs` (`.dc.html` each). Each opens standalone and is also mounted inside `MSP Console.dc.html`. |
 | 13 contract-pack screens | `Authentication`, `Account Security`, `Status Reports`, `POA&Ms`, `Reports`, `DLQ`, `Retention Queue`, `Offboarding`, `AD OU Assignment`, `Marketplace Purchase`, `Partner Revenue`, `Plan Self-Service`, `Policy Engine` (`.dc.html` each). Screens 38–50. Each opens standalone; all but Authentication are mounted inside `MSP Console.dc.html`. |
 | 4 further contract-pack screens | `Audit Log`, `Consent and Onboarding`, `Staff Roster`, `SOWs` (`.dc.html` each). Screens 63–66. Each opens standalone and is mounted inside `MSP Console.dc.html`. |
+| 2 further contract-pack screens | `Projects`, `Retainer Hours` (`.dc.html` each). Screens 72–73. Each opens standalone and is mounted inside `MSP Console.dc.html`. |
 | `support.js` | The prototype runtime. Required for the HTML to run; not for production. |
 | `_ds/` | Design system tokens, stylesheet and component bundle. |
-| `screenshots/` | 71 captures at 909 × 540, numbered to match the Screens section. 38–50 and 63–66 are **standalone**, so they show the page header and toggles that the console mount suppresses; 51–62 and 67–70 are the same screens **mounted** in the shell; 71 is the Documents author drawer. |
+| `screenshots/` | 75 captures at 909 × 540, numbered to match the Screens section. 38–50, 63–66 and 72–73 are **standalone**, so they show the page header and toggles that the console mount suppresses; 51–62, 67–70 and 74–75 are the same screens **mounted** in the shell; 71 is the Documents author drawer. |
 | `github.md` | Repository, branch, last sync, screen-to-source map, and the contract-pack inventory with blob shas. |
 | `README.md` | This document. |
 
