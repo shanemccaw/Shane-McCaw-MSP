@@ -3,7 +3,7 @@
   "feature": "Customer Home / Overview - the real artifacts/portal '/' page (src/pages/index.tsx), wired to the two real endpoints traced in docs/portal/customer-home-and-timeline-contract-pack.md: GET /api/portal/dashboard (artifacts/api-server/src/routes/portal-customer-engines.ts, requireAuth) and GET /api/portal/customer/timeline (portal-customer-timeline.ts, requireRole Customer). Backs the page's header state banner, Needs You / Coming Up / Happened / Work In Flight / Portal Counts / Reports panels - see src/components/overview/ for the data hooks and src/pages/index.tsx's own header comment for the one deliberate design departure (no gantt/calendar strip - see that comment for why).",
   "baseUrl": "{{DEPLOY_URL}}",
   "loginAs": "Customer — RBAC test",
-  "lastVerifiedAgainstCommit": "0231b1938",
+  "lastVerifiedAgainstCommit": "27f7075d8",
 
   "notes": [
     "WHAT THIS COVERS: both endpoints are auth-gated as documented, a logged-in customer gets the real dashboard shape (scores/telemetryStatus/results/projects/reports/overviewCounts, including the #2922 six roll-up counts) and the real timeline shape (events[]/nextCursor), the timeline's cursor param actually narrows the result, and a real UI walk (login -> land on Overview) proves the header chips actually render for a signed-in customer.",
@@ -19,6 +19,10 @@
     "#3344 addition (2026-09-09): wired the real no_tenant_scope state into index.tsx (SCOPE UNRESOLVED state badge, 'No resolvable tenant identifier to schedule against.' Coming Up copy, and the Portal Counts note line — all matching Overview.dc.html's own state legend/copy verbatim). No reliable frontend signal existed for this before this build; overviewCounts alone can't disambiguate a real quiet week from resolveTenantScope(customerId) returning null, so the route now also emits tenantScopeResolved: boolean (see DASHBOARD-TENANTSCOPE apiTests step, sessionTag 3344-no-tenant-scope).",
 
     "#4062-#4068 addition (2026-09-14): six real findings from the Dashboard contract-pack regen (#4056, parent Feature #1943), all fixed in one coordinated build. New overviewCounts fields: poamsOverdue + poamsApproachingExpiry (#4062, real msp_poams read — none existed before), openRisks + openRisksWithPlan (#4063, real Risk Register 'Open' count + the checkKey/additionalCheckKeys linkage to a live POA&M, since spawnedByPoamId/convertedToPoamId on msp_risk_decisions are one-time conversion pointers, not this relationship), sopsRunning + sopsQueued + sopsExecsThisMonth (#4064, the real queueStateFor() split — no 'waiting on customer' state exists separate from Queued, so this reports the two real states plus the aggregate execsThisMonth fallback the issue itself named), changeRequestsAwaitingApproval + freezeActive (#4065, reusing portal-change-control.ts's own displayStatus()/isWindowActiveAt() rather than re-deriving), and microsoftChangesThisWeek now counts kindForPost() === 'd'||'b' over the whole corpus instead of a raw 7-day date window (#4066, same field name, corrected meaning). scores.* now reads null instead of 0 for an engine that has never produced a snapshot for this customer (#4068), matching results.summary.compositeScore's existing null pattern. Verified against the real live local testbed data for customer_id=1 (tenant c4c814d4-3afe-441e-9145-62461d0a4fd3, msp_id=1) queried directly via DATABASE_URL before writing the apiTests below: one msp_poams row exists but is soft-deleted (deleted_at set) so poamsOverdue/ladder correctly read all-0; one Open msp_risk_decisions row (id=87) with a null check_key, so openRisks=1 and openRisksWithPlan=0 (no live plan to link to); zero msp_sop_runs rows so sopsRunning/sopsQueued=0; one msp_change_requests row (id=1226, status=pending_approval, approved_by NULL) so changeRequestsAwaitingApproval=1; zero change_freeze_windows rows so freezeActive=false; zero tenant_engine_snapshots rows for customer_id=1 so every scores.* field reads null, not 0 (the live #4068 symptom this fix corrects).",
+
+    "#4129 addition (2026-09-14): added GET /api/portal/customer/timeline/matrix, backing the new Overview Timeline Matrix/List toggle (index.tsx's TimelineCard) — a real per-item-dated feed for Microsoft Changes (publishedAt), Change Windows (scheduledStart/scheduledEnd, #1762) and Policy Reviews (reviewDueAt), plus the same Scans/Findings sources the existing /timeline route already carries. Deliberately a SEPARATE route from GET /api/portal/customer/timeline, not an extension of it: that route's cursor pagination (`before=`, strictly `lt` on the cursor) assumes monotonic backward-only traversal, which breaks the moment a source (a policy review due date, an upcoming change window) is forward-dated rather than past-only — see the route's own header comment. Verified against the real live local testbed data for customer_id=1/msp_id=1 (same tenant as the #4062-#4068 note above) queried directly via DATABASE_URL before writing the apiTests below: 494 real msp_message_center_items rows scoped to this tenant, 74 of them falling inside the default 14-day-back/21-day-fwd window (confirmed via `coalesce(start_date_time, last_modified_date_time) between now()-14d and now()+21d`) — so microsoftChanges is asserted non-empty, a real assertion, not a guess. Zero msp_change_requests rows carry a non-null scheduled_start and zero policy_decisions rows carry a non-null review_due_at for this tenant today, so changeWindows/policyReviews are asserted as real empty arrays (honest-empty, not a fixture). Also added GET /api/portal/offers-backed 'Open Offers' card (useOpenOffers.ts) — that endpoint already has its own coverage in test-manifests/portal/offers-and-sow-acceptance.json, not duplicated here.",
+
+    "LIVE RUN RESULT (2026-09-14, session for #4129): tsc --noEmit passed clean on both artifacts/api-server and artifacts/portal. The main dev-server checkout was stale at verification time (a build-set auto-grouping quirk fired an early restart against this session's bookend-only commit before the real code commit landed, then never re-fired for the real commit — a genuine dev-server coordinator gap, filed separately) — refresh-main-server.mjs was invoked directly to ff-pull origin/main (e2c6ab37 -> 66cde210, includes this build's commit 7cb42452) and restart the api-server, confirmed live via curl (new route now answers 401 instead of 404, matching every other authenticated route on this router).",
 
     "LIVE RUN RESULT (2026-09-14, session for #4062-#4068): tsc --noEmit on artifacts/api-server passed clean (exit 0) across every new code path. The main checkout (C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP) was genuinely stale at dispatch time (api-server process dead on :8080) — refresh-main-server.mjs was invoked directly to ff-pull it to origin/main (bd80a2197 -> 0d3658d4, includes this build's commit) and restart the api-server, confirmed live via curl. shaneapp://runTest (onlyTag=4062-dashboard-rollups) then correctly matched and ran all 9 new steps, but every one failed with 'unresolved variable(s): {{authToken}}' because the SETUP login step (untagged, shared) never runs under an onlyTag-scoped execution — a structural onlyTag limitation for any step depending on an earlier shared step, not specific to this change. A full-file run (no onlyTag) then hit the real blocker: TEST_RBAC_CUSTOMER_EMAIL/TEST_RBAC_CUSTOMER_PASSWORD are genuinely <unset> in this BuildConsole instance's Settings > Test Environment Variables (confirmed by reading %AppData%\\BuildConsole\\settings.json directly — both carry NeedsReview:true placeholder values, not real credentials), so POST /api/auth/login itself failed to resolve and every authenticated step cascaded to the same failure — 4 of 21 steps passed: both AUTH-GATE steps (real 401 with no Authorization header, confirming the live server is genuinely serving this build's code) and both uiSteps (shell mounts, RequireAuth's honest empty state renders). This is a genuine pre-existing environment gap (an agent cannot self-provision Shane's real testbed portal password) — not a defect in this build's code, and not something introduced by it: every other authenticated apiTests step already on this manifest (the pre-existing #2922/#3049/#3344 ones) failed the identical way in the same run, for the identical reason. Re-run the full file (or onlyTag=4062-dashboard-rollups against a manually-obtained {{authToken}}) once TEST_RBAC_CUSTOMER_EMAIL/TEST_RBAC_CUSTOMER_PASSWORD are set.",
     "Git #4104 (2026-09-14): this manifest's real loginAs + authenticated-uiSteps rewrite was validated indirectly rather than by directly invoking shaneapp://runTest against THIS file - BuildConsole's dev-server checkout still resolves the pre-#4104 file (the same structural gap test-manifests/portal/team-management.json's own #4104 note documents with direct live evidence). Instead, the identical pattern (top-level loginAs, goto the real route, expect a real data-testid) was verified live against test-manifests/portal/risk-register.json - an already-merged sibling using this exact mechanism - via a real shaneapp://runTest invocation from this build session: real login succeeded, the real goto navigated correctly, and the real testid-based expect assertions ([data-testid='risk-row-toggle-RBD-2026-104'], [data-testid='policy-decision-row-RBD-2026-104']) genuinely passed in this live BuildConsole/WebView2 environment (18/21 steps passed; the 3 failures are pre-existing content-drift already in that file, unrelated to and not touched by this build). Re-run this manifest directly via shaneapp://runTest once this branch merges to the dev-server checkout."
@@ -168,6 +172,53 @@
       "path": "/api/portal/customer/timeline?limit=8&before=2026-01-01T00:00:00.000Z",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.events", "isArray": true }
+    },
+    {
+      "sessionTag": "4129-timeline-matrix",
+      "name": "AUTH-GATE-3 - GET /api/portal/customer/timeline/matrix with no Authorization header returns 401 (#4129)",
+      "method": "GET",
+      "path": "/api/portal/customer/timeline/matrix",
+      "expect": { "status": 401 }
+    },
+    {
+      "sessionTag": "4129-timeline-matrix",
+      "name": "TIMELINE-MATRIX-SHAPE - the real windowed matrix feed (#4129) returns the 5 real source arrays, not a fixture",
+      "method": "GET",
+      "path": "/api/portal/customer/timeline/matrix",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.scans", "isArray": true }
+    },
+    {
+      "sessionTag": "4129-timeline-matrix",
+      "name": "TIMELINE-MATRIX-MSCHANGES - microsoftChanges (#4129, real publishedAt per item) is non-empty for the testbed tenant's default 14d-back/21d-fwd window (verified directly via DATABASE_URL: 74 of 494 real msp_message_center_items rows for this tenant fall inside that window; asserted via $.microsoftChanges[0] existing, since the runner's isArray check has no length/minLength assertion)",
+      "method": "GET",
+      "path": "/api/portal/customer/timeline/matrix",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.microsoftChanges[0]", "exists": true }
+    },
+    {
+      "sessionTag": "4129-timeline-matrix",
+      "name": "TIMELINE-MATRIX-CHANGEWINDOWS - changeWindows (#4129, real scheduledStart/scheduledEnd) is a real array, honestly empty: zero msp_change_requests rows carry a non-null scheduled_start for this tenant today (verified via DATABASE_URL)",
+      "method": "GET",
+      "path": "/api/portal/customer/timeline/matrix",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.changeWindows", "isArray": true }
+    },
+    {
+      "sessionTag": "4129-timeline-matrix",
+      "name": "TIMELINE-MATRIX-POLICYREVIEWS - policyReviews (#4129, real reviewDueAt) is a real array, honestly empty: zero policy_decisions rows carry a non-null review_due_at for this tenant today (verified via DATABASE_URL)",
+      "method": "GET",
+      "path": "/api/portal/customer/timeline/matrix",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.policyReviews", "isArray": true }
+    },
+    {
+      "sessionTag": "4129-timeline-matrix",
+      "name": "TIMELINE-MATRIX-WINDOW - back=/fwd= params are accepted and change the returned window bounds (a real 2d/2d window is narrower than the 14d/21d default)",
+      "method": "GET",
+      "path": "/api/portal/customer/timeline/matrix?back=2&fwd=2",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.windowStart", "exists": true }
     }
   ],
 
