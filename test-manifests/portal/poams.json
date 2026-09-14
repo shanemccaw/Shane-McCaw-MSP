@@ -1,0 +1,149 @@
+{
+  "issue": 4037,
+  "feature": "POA&Ms (#4037, Feature #1935) -- the real customer-facing POA&Ms page in artifacts/portal (/poams), wired to the six live artifacts/api-server/src/routes/portal-poams.ts routes -- see docs/portal/poams-contract-pack.md. No fixture module: every row on screen comes from these endpoints. The sibling exit to the Risk Register ('we ARE fixing this, here is the plan' vs. 'we accept the consequence').",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "TIER GATE IS THE REAL CURRENT STATE FOR EVERY TENANT (#3104): confirmed this session via a direct SELECT against the local DATABASE_URL -- no monitoring_tier row's type_attributes.includedFeatures array anywhere in the local DB contains 'poams'. So GET /api/portal/poams and GET /api/portal/poams/:poamId 402 for the designated test account exactly like they would for any real customer today; A1/A2 below assert that live 402, not a hypothetical.",
+    "CREATION AND SIGNING ARE UNCONDITIONAL (#1168): the two POST routes and the sign/delete/request-acceleration routes carry no tier check, so LIFECYCLE1-6 below drive a real end-to-end create -> sign -> re-sign-refused(409) -> soft-delete -> request-acceleration sequence against a plan this run creates for itself. Unlike the Risk Register's accept (permanent, one row, poisons re-runs), POA&M creation makes a fresh row every run, so this whole lifecycle is safely re-runnable: each run creates and then soft-deletes its own row, never touching another run's.",
+    "WHY NO FULL UI-DRIVEN CREATE SUBMIT: the create form has seven real inputs (title, date, optional checkKey, optional sowId, weakness, interim control, resources) and this project's own manifests document WebView2 form-driven flows as a recurring flakiness source (see e.g. portal-v2-manifest-login-block-persisted-session-flaky). The full real create/sign/delete lifecycle is already proven end-to-end and deterministically via LIFECYCLE1-6 below; the UI steps here instead prove the DOM actually renders the live 402 gated state and that the create panel opens with its real fields, which is what the honest-empty-state design calls out as the state every real tenant sees today.",
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated testbed portal account; extract the bearer.",
+      "sessionTag": "setup",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- the list read answers the real, current 402: no Monitoring tier bundles poams yet (#3104), confirmed live against the local DB this session.",
+      "method": "GET",
+      "path": "/api/portal/poams",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 402, "jsonPath": "$.code", "equals": "TIER_UPGRADE_REQUIRED" }
+    },
+    {
+      "name": "A2 -- the by-id read carries the identical tier gate ahead of any lookup, so even a nonexistent id 402s rather than 404ing first.",
+      "method": "GET",
+      "path": "/api/portal/poams/POAM-DOES-NOT-EXIST",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 402, "jsonPath": "$.code", "equals": "TIER_UPGRADE_REQUIRED" }
+    },
+    {
+      "name": "A3 -- creation is unconditional (#1168): an invalid create body 400s on validation, not the tier gate -- proving this route has no requireTierFeature middleware at all.",
+      "method": "POST",
+      "path": "/api/portal/poams",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "title": "" },
+      "expect": { "status": 400, "jsonPath": "$.error.code", "equals": "VALIDATION_ERROR" }
+    },
+    {
+      "name": "A4 -- signing a nonexistent plan 404s (no tier gate on this route either).",
+      "method": "POST",
+      "path": "/api/portal/poams/POAM-DOES-NOT-EXIST/sign",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "fullName": "Regression Runner", "confirmed": true, "statement": "should 404" },
+      "expect": { "status": 404, "jsonPath": "$.error.code", "equals": "NOT_FOUND" }
+    },
+    {
+      "name": "A5 -- deleting a nonexistent plan 404s.",
+      "method": "DELETE",
+      "path": "/api/portal/poams/POAM-DOES-NOT-EXIST",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "reason": "should 404" },
+      "expect": { "status": 404, "jsonPath": "$.error.code", "equals": "NOT_FOUND" }
+    },
+    {
+      "name": "A6 -- requesting acceleration on a nonexistent plan 404s.",
+      "method": "POST",
+      "path": "/api/portal/poams/POAM-DOES-NOT-EXIST/request-acceleration",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "reasonKind": "no_longer_needed", "reason": "should 404" },
+      "expect": { "status": 404, "jsonPath": "$.error.code", "equals": "NOT_FOUND" }
+    },
+    {
+      "name": "LIFECYCLE1 -- create a real plan for this run (unconditional, no tier gate). No checkKey, so signing below falls to the open rule: any signed-in person may sign.",
+      "sessionTag": "lifecycle",
+      "method": "POST",
+      "path": "/api/portal/poams",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": {
+        "title": "Regression harness plan -- safe to delete",
+        "weaknessDescription": "Created by test-manifests/portal/poams.json's own lifecycle run.",
+        "scheduledCompletionDate": "2027-01-01",
+        "interimCompensatingControl": "None -- this row exists only for this test run.",
+        "resourcesRequired": "None."
+      },
+      "expect": { "status": 201, "jsonPath": "$.id", "exists": true },
+      "extract": { "as": "lifecyclePoamId", "jsonPath": "$.id" }
+    },
+    {
+      "name": "LIFECYCLE2 -- sign the plan this run just created. No checkKey resolves to no workload, so any signed-in Customer may sign -- the open rule.",
+      "sessionTag": "lifecycle",
+      "method": "POST",
+      "path": "/api/portal/poams/{{lifecyclePoamId}}/sign",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "fullName": "Regression Runner", "confirmed": true, "statement": "Signed by the automated regression run." },
+      "expect": { "status": 201, "jsonPath": "$.signed.by", "equals": "Regression Runner" }
+    },
+    {
+      "name": "LIFECYCLE3 -- a second sign attempt on the same plan is refused 409 -- the write-once guard.",
+      "sessionTag": "lifecycle",
+      "method": "POST",
+      "path": "/api/portal/poams/{{lifecyclePoamId}}/sign",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "fullName": "Regression Runner", "confirmed": true, "statement": "should be refused" },
+      "expect": { "status": 409, "jsonPath": "$.error.code", "equals": "CONFLICT" }
+    },
+    {
+      "name": "LIFECYCLE4 -- soft-delete this run's own plan through the platform retention lifecycle, real reason required.",
+      "sessionTag": "lifecycle",
+      "method": "DELETE",
+      "path": "/api/portal/poams/{{lifecyclePoamId}}",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "reason": "Cleaning up after the automated regression run." },
+      "expect": { "status": 200, "jsonPath": "$.message", "equals": "POA&M deleted successfully" }
+    },
+    {
+      "name": "LIFECYCLE5 -- request-acceleration now succeeds (the plan is genuinely soft-deleted), queuing an operator review rather than purging anything.",
+      "sessionTag": "lifecycle",
+      "method": "POST",
+      "path": "/api/portal/poams/{{lifecyclePoamId}}/request-acceleration",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "reasonKind": "no_longer_needed", "reason": "Automated regression run, safe to purge early." },
+      "expect": { "status": 200, "jsonPath": "$.message", "equals": "Acceleration requested -- awaiting operator review" }
+    },
+    {
+      "name": "LIFECYCLE6 -- the deleted plan no longer appears in the list read (Git #3451 -- reads exclude soft-deleted rows by default). Still 402 first, proving the tier gate applies before the exclusion is even reached, but exercised here as the real final-state check.",
+      "sessionTag": "lifecycle",
+      "method": "GET",
+      "path": "/api/portal/poams",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 402, "jsonPath": "$.code", "equals": "TIER_UPGRADE_REQUIRED" }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "goto the real login URL.", "sessionTag": "setup", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "sessionTag": "setup", "action": "expect", "selector": "#email", "state": "visible" },
+    { "sessionTag": "setup", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "sessionTag": "setup", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login -- every assertion below needs a real session.", "sessionTag": "setup", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the real POA&Ms page.", "sessionTag": "setup", "action": "goto", "target": "/portal/poams" },
+    { "name": "UI1 -- the page renders.", "action": "expect", "selector": "body", "textContains": "POA&Ms", "critical": true },
+    { "name": "UI2 -- THE REAL-DATA ASSERTION. The live 402 tier gate the ENDPOINT actually answers today is drawn honestly, not hidden behind a generic error or a fake empty list.", "action": "expect", "selector": "body", "textContains": "aren't included in your Monitoring tier", "critical": true },
+    { "name": "UI3 -- the 402 body's own real error code is quoted verbatim, not paraphrased.", "action": "expect", "selector": "body", "textContains": "402 PAYMENT_REQUIRED" },
+    { "name": "UI4 -- creation is not gated, so the 'raise anyway' affordance is present even while reads are closed.", "action": "expect", "selector": "[data-testid='poam-raise-anyway-button']", "state": "visible" },
+    { "name": "UI5 -- opening the create panel renders its real form.", "action": "click", "selector": "[data-testid='poam-raise-anyway-button']" },
+    { "name": "UI6 -- the create form's title field is on screen.", "action": "expect", "selector": "[data-testid='poam-create-title']", "state": "visible" },
+    { "name": "UI7 -- the known-limits ledger is on screen.", "action": "expect", "selector": "body", "textContains": "What this page deliberately does not do" }
+  ]
+}

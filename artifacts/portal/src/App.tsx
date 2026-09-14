@@ -33,6 +33,7 @@ import WebhooksPage from "@/pages/webhooks";
 import SopsPage from "@/pages/sops";
 import RunbooksPage from "@/pages/runbooks";
 import RiskRegisterPage from "@/pages/risk-register";
+import PoamsPage from "@/pages/poams";
 import PolicyDecisionsPage from "@/pages/policy-decisions";
 import OwnershipPage from "@/pages/ownership";
 import SecurityPlanPage from "@/pages/security-plan";
@@ -128,6 +129,7 @@ function ProtectedRoutes() {
           <Route path="/sops" component={SopsPage} />
           <Route path="/runbooks" component={RunbooksPage} />
           <Route path="/risk-register" component={RiskRegisterPage} />
+          <Route path="/poams" component={PoamsPage} />
           <Route path="/policy-decisions" component={PolicyDecisionsPage} />
           <Route path="/ownership" component={OwnershipPage} />
           <Route path="/security-plan" component={SecurityPlanPage} />

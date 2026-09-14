@@ -4,6 +4,7 @@ import {
   Megaphone,
   Waypoints,
   AlertTriangle,
+  ClipboardList,
   Wrench,
   BookOpen,
   BookOpenCheck,
@@ -53,6 +54,10 @@ export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   { key: "scope-sla", label: "Scope and SLA", icon: Gauge, builtPath: "/scope-and-sla" },
   { key: "diagnostics", label: "Diagnostics", icon: Stethoscope, builtPath: "/diagnostics" },
   { key: "risk-register", label: "Risk Register", icon: AlertTriangle, builtPath: "/risk-register" },
+  // #4037 (Feature #1935): design's own Shell nav update puts POA&Ms directly
+  // after Risk Register — the sibling exit ("we are fixing this" vs. "we
+  // accept the consequence").
+  { key: "poams", label: "POA&Ms", icon: ClipboardList, builtPath: "/poams" },
   { key: "remediation", label: "Remediation", icon: Wrench, builtPath: "/remediation-tracking" },
   { key: "sops", label: "SOPs", icon: BookOpen, builtPath: "/sops" },
   { key: "runbooks", label: "Runbooks", icon: BookOpenCheck, builtPath: "/runbooks" },
