@@ -2,13 +2,14 @@
   "issue": 1111,
   "feature": "Security Intelligence: Daily Alert Volume drill-down (part of epic #1045). AlertVolumeCard.tsx (/security-overview page) previously showed only aggregate fired/resolved counts per day. Clicking a day bar now opens a Dialog listing the real per-signal (label + direction) breakdown for that day, sourced from the same GET /api/portal/engines/security/history signalDeltas the aggregate counts were already built from (engine_score_signal_deltas via tenant_engine_snapshots, signalKey/label resolved through signal_rule_groups). No new backend endpoint or query — the label/signalKey fields were already returned by the route, just discarded during per-day aggregation in useSecurityOverviewLive.ts's bucketSignalDeltas().",
   "baseUrl": "{{DEPLOY_URL}}",
+  "loginAs": "Customer — RBAC test",
   "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
     "REAL DATA CONFIRMED (shaneapp://executeSql, 2026-08-17): the testbed tenant (customer_id=1) has real engine_score_signal_deltas rows for engine_key='security' dated 2026-08-15 (within the default 7d chart window, since today is 2026-08-17), including signal_key='security:lacks_defender', direction='fired', which resolves via signal_rule_groups to the real label 'Lacks Defender for Office 365 Conditions' — D1 pins on this exact known signalKey/label pair (same JSONPath filter-expression pattern hero-pillar-score.json's D1 already uses) rather than an array index, since delta ordering across ~19 same-day signals isn't stable.",
     "INTERACTION PATTERN: Dialog (components/ui/dialog.tsx, Radix @radix-ui/react-dialog) — the established 29-call-site convention in this app (e.g. customer-detail.tsx's MarketplacePurchaseDialog) — chosen over a drawer/expand-in-place since no existing chart-click-to-detail pattern exists anywhere in components/m365-health/ or components/security-overview/ to match instead.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (same TESTBED Assessment-role account other copilot-readiness manifests drive; customer_id=1, confirmed via SQL to hold real security engine signal-delta history).",
-    "NOT LIVE-VERIFIABLE WITH THE AVAILABLE TESTBED ACCOUNT (shaneapp://runTest, 2026-08-17, commit 31786a3b): D1/D2/D3/D4/D5 all 403/cascade-fail — GET /api/portal/engines/:key/history (portal-engine-history.ts) is gated requireRole('Customer'), and requireAuth.ts's ROLE_ORDER deliberately places 'Assessment' below 'Customer' ('every requireRole() floor in the codebase is Customer or higher, so both [Assessment, Free] are rejected identically' — the code comment's own words). The one TESTBED account this environment's manifests share (TEST_PORTAL_EMAIL) is Assessment-tier, so it can never clear this floor — same gate applies to every other /security-overview data route (portal-mission-control.ts's 3 Customer-gated endpoints), confirmed live via SQL that 2 real Customer-tier users exist in this environment but their credentials aren't part of the shared testbed setup. This is a pre-existing, deliberate role gate — not introduced by or specific to this change — so D1-D5 are left in place documenting the real intended behavior for a Customer+ account, honestly failing against the only account actually reachable here rather than being weakened to fake a pass. Implementation correctness instead confirmed via: tsc --noEmit clean on both touched files, direct code read of the unchanged data flow (engine_score_signal_deltas -> signal_rule_groups label resolution, already exercised correctly by the existing aggregate fired/resolved counts this same route already powered before this change), and the live SQL query above confirming the real per-signal data this drill-down surfaces actually exists for this tenant."
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD (same TESTBED Assessment-role account other copilot-readiness manifests drive; customer_id=1, confirmed via SQL to hold real security engine signal-delta history).",
+    "ACCOUNT-TIER GAP -- RESOLVED (#4091): this note previously recorded that D1-D5 all 403/cascade-failed because GET /api/portal/engines/:key/history is gated requireRole('Customer') and the single shared testbed login (the old deprecated single-account credential pair, at the time) resolved to an Assessment-tier account, which requireAuth.ts's ROLE_ORDER floor-check rejects. #4091 migrated this manifest onto #4089's real, dedicated Customer-tier RBAC test profile ({{TEST_RBAC_CUSTOMER_EMAIL}}/{{TEST_RBAC_CUSTOMER_PASSWORD}}, AccountTier=Customer) instead, so D1-D5 below should now genuinely clear the Customer floor rather than 403 -- re-run to confirm."
   ],
 
   "apiTests": [
@@ -17,7 +18,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
@@ -47,29 +48,6 @@
   ],
 
   "uiSteps": [
-    {
-      "name": "goto the real login URL (msp-portal's outer WouterRouter has base=BASE_PATH='/portal').",
-      "action": "goto",
-      "target": "/portal/login"
-    },
-    {
-      "name": "WAIT for the login form to hydrate before typing.",
-      "action": "expect",
-      "selector": "#email",
-      "state": "visible"
-    },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    {
-      "name": "Primary login — CRITICAL: every downstream assertion needs a real authenticated session.",
-      "action": "click",
-      "selector": "[data-testid='login-submit']",
-      "critical": true,
-      "captureResponse": {
-        "urlPattern": "/api/auth/login",
-        "expect": { "status": 200 }
-      }
-    },
     {
       "name": "goto the branded, slug-scoped Security Intelligence page (same App.tsx SlugInnerSwitch pattern as /m365-health, confirmed in App.tsx's /security-overview route registration).",
       "action": "goto",

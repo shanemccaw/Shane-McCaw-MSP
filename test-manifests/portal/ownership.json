@@ -2,6 +2,7 @@
   "issue": 3040,
   "feature": "Ownership / RACI -- the real customer-facing read surface in artifacts/portal (/ownership), wired to GET /api/portal/ownership -- see docs/portal/ownership-raci-contract-pack.md §1a. No fixture module: every row, person and honest-empty state on screen comes from that one endpoint. This build is READ-ONLY by design: the five write routes (assign/reorder/accept/decline/delegations/rows, contract pack §1b) are sibling issue #3041's scope and are not exercised here.",
   "baseUrl": "{{DEPLOY_URL}}",
+  "loginAs": "Customer — RBAC test",
   "lastVerifiedAgainstCommit": "2a006806f",
 
   "notes": [
@@ -9,7 +10,7 @@
     "AUTH CORE HAS LANDED since risk-register.json's own note was written (that note said no #email/#password form existed yet for artifacts/portal) -- login.tsx now ships real #email/#password inputs and a login-submit testid (verified this session, login.tsx:230/248/257), so this manifest drives a real login rather than only asserting the honest sign-in-required gate.",
     "WHY NO WRITE APITEST HERE: the five write routes are real and already wired server-side (contract pack §1b), but nothing in this build's own frontend calls them -- assign/reorder/accept/decline/delegate/add-row are #3041's scope. Exercising them here would test code this build didn't ship.",
     "TIER GATE: the route is wrapped in requireTierFeature(PORTAL_TIER_MODULE_KEYS.ownership) (portal-ownership.ts:426) -- a 402 with code TIER_UPGRADE_REQUIRED if the signed-in tenant's plan doesn't bundle Ownership. The UI's own distinct 'Not included in your current plan' state (ownership.tsx) is not asserted here since it depends on which plan the TEST_PORTAL account currently carries; A1 below simply asserts whatever the real account's real entitlement returns.",
-    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD."
   ],
 
   "apiTests": [
@@ -18,7 +19,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
@@ -62,12 +63,6 @@
   ],
 
   "uiSteps": [
-    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
-    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
-
     { "name": "goto the real Ownership page.", "action": "goto", "target": "/portal/ownership" },
     { "name": "OWN1 -- the page resolved to Ownership.", "action": "expect", "selector": "[data-testid='ownership-page-title']", "textContains": "Who owns what", "critical": true },
     { "name": "OWN2 -- a live-state line renders (loading/live/partly-served/error, never a blank header).", "action": "expect", "selector": "[data-testid='ownership-live-state']", "state": "visible" },

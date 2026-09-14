@@ -2,11 +2,12 @@
   "issue": 1156,
   "feature": "Customer Diagnostics: remove quiz-based 'Assessment Scores' section, replace with real tenant scan data (part of epic #1045). The old section rendered marketing-site lead-capture QUIZ results (`latestQuiz` state from GET /api/portal/quiz-results) -- a lead-qualification signal that has no place in the customer Portal and produced the 'No diagnostic completed yet' contradiction for real customers who never went through the marketing quiz funnel. Replaced with an Annual Cost Savings card sourced from GET /api/portal/assessment/status's `stats.licenseWaste` (real Cost Engine license-waste computation, license-waste-source.ts + computeSkuCostBreakdown) -- chosen specifically because it's NOT already shown elsewhere on this page: Health Benchmarking (below it) already renders the same per-pillar `computeDisplayHealth` data the issue's other suggested source (`radar.pillars`/`getPillarCoverage`) would have duplicated.",
   "baseUrl": "{{DEPLOY_URL}}",
+  "loginAs": "Customer — RBAC test",
   "lastVerifiedAgainstCommit": "PENDING_COMMIT",
 
   "notes": [
-    "shaneapp://runTest / shaneapp://executeSql confirmed NOT reachable as tools in this plain-CLI session (checked via ToolSearch, not assumed) -- this manifest is written and typechecked but not executed this session. Whoever next runs it via shaneapp://runTest should also confirm whether the TESTBED account (TEST_PORTAL_EMAIL) has a non-null stats.licenseWaste (i.e. a completed run with priced SKU seat data) -- if it does, D3 below asserts the real populated card; if the testbed tenant genuinely has zero license waste, D3's [\"No license waste data yet\", \"/year\"] any-of match still passes via the honest empty-state copy, so this manifest is correct either way without needing to know that state in advance.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- same testbed Assessment-role account other copilot-readiness manifests (m365-health-pillar-live-scan.json, assessment-monitoring-rescan.json) drive.",
+    "shaneapp://runTest / shaneapp://executeSql confirmed NOT reachable as tools in this plain-CLI session (checked via ToolSearch, not assumed) -- this manifest is written and typechecked but not executed this session. Whoever next runs it via shaneapp://runTest should also confirm whether the TESTBED account (TEST_RBAC_CUSTOMER_EMAIL) has a non-null stats.licenseWaste (i.e. a completed run with priced SKU seat data) -- if it does, D3 below asserts the real populated card; if the testbed tenant genuinely has zero license waste, D3's [\"No license waste data yet\", \"/year\"] any-of match still passes via the honest empty-state copy, so this manifest is correct either way without needing to know that state in advance.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD -- same testbed Assessment-role account other copilot-readiness manifests (m365-health-pillar-live-scan.json, assessment-monitoring-rescan.json) drive.",
     "D1/D2 assert the API shape only (stats key always present, licenseWaste either a real object or null -- both are honest, neither is an error) since this session could not confirm live DB state for the testbed tenant's license-waste numbers.",
     "This manifest does not re-assert Live Diagnostic Findings or Health Benchmarking on the same page -- those are pre-existing sections, out of scope for this issue's change."
   ],
@@ -17,7 +18,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
@@ -38,29 +39,6 @@
   ],
 
   "uiSteps": [
-    {
-      "name": "goto the real login URL (msp-portal's outer WouterRouter has base=BASE_PATH='/portal').",
-      "action": "goto",
-      "target": "/portal/login"
-    },
-    {
-      "name": "WAIT for the login form to hydrate before typing.",
-      "action": "expect",
-      "selector": "#email",
-      "state": "visible"
-    },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    {
-      "name": "Primary login — CRITICAL: every downstream assertion needs a real authenticated session.",
-      "action": "click",
-      "selector": "[data-testid='login-submit']",
-      "critical": true,
-      "captureResponse": {
-        "urlPattern": "/api/auth/login",
-        "expect": { "status": 200 }
-      }
-    },
     {
       "name": "goto the real Customer Diagnostics page (App.tsx route is flat '/customer-diagnostics', not slug-scoped -- unlike /m365-health).",
       "action": "goto",

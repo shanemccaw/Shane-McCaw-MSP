@@ -7,7 +7,7 @@
   "notes": [
     "WHAT THIS COVERS: the auth gates on all 4 state-changing/list routes, the accept/reject id-validation and not-found contracts (§1-§3), that GET /api/portal/presentations/latest always returns a real 'presentation' key (null is a real, honest 'no SOW yet' state -- §10), and a real UI walk confirming the page mounts, the RequireAuth gate still fires for an unauthenticated visitor, and both tabs render for a real logged-in session.",
     "NOT ASSERTED BY EXACT COUNT: this manifest does not assert a specific number of visible offers or a specific presentation id -- the deployed testbed account's real sales_offers/quick_win_presentations rows are live data this manifest doesn't control, and the local dev DATABASE_URL (checked directly for this build: 5 sales_offers rows, all state='draft' for customer_id=1, so 0 customer-visible under the real state filter; 0 quick_win_presentations rows) is a SEPARATE database from whatever backs {{DEPLOY_URL}} -- see the accept/reject 404 tests below for assertions that hold regardless of live data shape.",
-    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use, user id 39).",
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use, user id 39).",
     "UI login uses the real /login page (#2991), same pattern as account-security-change-password.json -- data-testid='login-email'/'login-password'/'login-submit'.",
     "NOT YET RUN via shaneapp://runTest as of this build: BuildConsole's local instance resolves test-manifests/ against the dedicated dev-server checkout, which only receives this worktree's commits at BuildConsole's own end-of-build merge (Git #1371/#1372 worktree isolation) -- the same structural gap test-manifests/portal/account-security-change-password.json's own notes documented for its own build. Verified instead by a real `tsc -p tsconfig.json --noEmit` pass (0 errors) and a real `vite build` (succeeds) against artifacts/portal with this wiring added, plus direct reading of portal-offers.ts / portal-presentations.ts confirming every (status, body) pair this manifest asserts. Re-run this manifest via shaneapp://runTest once merged."
   ],
@@ -45,7 +45,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "offersAuthToken", "jsonPath": "$.accessToken" }
     },
@@ -122,8 +122,8 @@
       "sessionTag": "offers-sow-3997-ui"
     },
     { "action": "expect", "selector": "[data-testid='login-email']", "state": "visible", "sessionTag": "offers-sow-3997-ui" },
-    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_PORTAL_EMAIL}}", "sessionTag": "offers-sow-3997-ui" },
-    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_PORTAL_PASSWORD}}", "sessionTag": "offers-sow-3997-ui" },
+    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "sessionTag": "offers-sow-3997-ui" },
+    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}", "sessionTag": "offers-sow-3997-ui" },
     {
       "name": "UI4 -- submit login, asserting the real response so the landing check below only passes on a genuine authenticated session.",
       "action": "click",

@@ -17,8 +17,8 @@
       "state": "visible",
       "critical": true
     },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}", "critical": true },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}", "critical": true },
+    { "action": "input", "selector": "#email", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "critical": true },
+    { "action": "input", "selector": "#password", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}", "critical": true },
     {
       "name": "Portal login submit",
       "action": "click",

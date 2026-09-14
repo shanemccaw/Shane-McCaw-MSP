@@ -11,7 +11,7 @@
 
     "NO UI LOGIN FLOW EXISTS YET FOR artifacts/portal -- same known, already-documented cross-cutting gap test-manifests/portal/security-plan.json's own notes describe. UI1/UI2 below only assert what is honestly reachable today: the route mounts and RequireAuth's honest 'Sign in required' panel renders for an unauthenticated visitor.",
 
-    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD."
   ],
 
   "apiTests": [
@@ -20,7 +20,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },

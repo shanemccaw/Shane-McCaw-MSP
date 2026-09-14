@@ -32,7 +32,7 @@
 
     "#757 MIGRATION CHECK is read-only SQL for Shane, NOT asserted via the app: the app cannot observe whether the orphan-row DELETE ran, only that s24/s25 are rejected (which this manifest DOES assert as a code-level regression, PUT s24/s25 -> 400). Confirm the DB-level cleanup with lib/db/migrations/manual/archive/diagnostics/2026-08-12-remediation-tracker-s24-s25-cleanup-verify-757.sql.",
 
-    "VARIABLES the runner/config must pre-seed (like 887/889's {{TEST_PORTAL_*}}): {{TEST_PORTAL_EMAIL}}/{{TEST_PORTAL_PASSWORD}} = the SCANNED testbed Assessment-role account (same tenant 887/889 drive); {{TEST_PORTAL_SLUG}} = that tenant's branding slug (its JWT mspSlug, e.g. shane-mccaw-consulting), needed because the document reader lives at the branded /portal/:slug/copilot-readiness/documents route, NOT the flat path (which 404s — Shane's directive 2026-08-14); and for the never-scanned block {{TEST_NEVERSCANNED_EMAIL}}/{{TEST_NEVERSCANNED_PASSWORD}}/{{TEST_NEVERSCANNED_SLUG}}. {{authToken}} is extracted at runtime from the first login apiTest. NOTE (#792 correction, 2026-08-14): there is NO {{TEST_REMEDIATION_DOC_ID}} / {{TEST_NEVERSCANNED_REMEDIATION_DOC_ID}} to configure — BOTH were fabricated. The live Remediation Guide has NO numeric doc id at all (journeyModel.ts:908 injects it with id:null; the reader deep-links only when d.id!==null — copilot-readiness-documents.tsx:385), so it can only be OPENED BY CLICKING ITS RAIL ROW, never by a /documents/:docId URL. Its row index is stable and tenant-independent (buildGeneration()'s hardcoded 9-doc JOURNEY_LIVE_DOCUMENT_SPINE puts the guide at [data-testid='document-row-7'] on every tenant), so no per-tenant id variable is needed or possible. The earlier {{TEST_REMEDIATION_PREVIEW_DOC_ID}} + ?preview=design step was already removed for the same class of reason.",
+    "VARIABLES the runner/config must pre-seed (like 887/889's {{TEST_PORTAL_*}}): {{TEST_RBAC_CUSTOMER_EMAIL}}/{{TEST_RBAC_CUSTOMER_PASSWORD}} = the SCANNED testbed Assessment-role account (same tenant 887/889 drive); {{TEST_PORTAL_SLUG}} = that tenant's branding slug (its JWT mspSlug, e.g. shane-mccaw-consulting), needed because the document reader lives at the branded /portal/:slug/copilot-readiness/documents route, NOT the flat path (which 404s — Shane's directive 2026-08-14); and for the never-scanned block {{TEST_NEVERSCANNED_EMAIL}}/{{TEST_NEVERSCANNED_PASSWORD}}/{{TEST_NEVERSCANNED_SLUG}}. {{authToken}} is extracted at runtime from the first login apiTest. NOTE (#792 correction, 2026-08-14): there is NO {{TEST_REMEDIATION_DOC_ID}} / {{TEST_NEVERSCANNED_REMEDIATION_DOC_ID}} to configure — BOTH were fabricated. The live Remediation Guide has NO numeric doc id at all (journeyModel.ts:908 injects it with id:null; the reader deep-links only when d.id!==null — copilot-readiness-documents.tsx:385), so it can only be OPENED BY CLICKING ITS RAIL ROW, never by a /documents/:docId URL. Its row index is stable and tenant-independent (buildGeneration()'s hardcoded 9-doc JOURNEY_LIVE_DOCUMENT_SPINE puts the guide at [data-testid='document-row-7'] on every tenant), so no per-tenant id variable is needed or possible. The earlier {{TEST_REMEDIATION_PREVIEW_DOC_ID}} + ?preview=design step was already removed for the same class of reason.",
 
     "STATE HYGIENE: apiTests and uiSteps both mutate real tracker rows (s1/s27/s30) and reset each back to not_started, so a clean run leaves the tenant as it found it. apiTests run BEFORE uiSteps (RunManifestAsync order), so uiSteps start from a reset s27.",
 
@@ -43,11 +43,11 @@
 
   "apiTests": [
     {
-      "name": "Log in as the SCANNED testbed Assessment-role account (same {{TEST_PORTAL_EMAIL}}/{{TEST_PORTAL_PASSWORD}} the uiSteps use) so apiTests and browser session drive the SAME real tenant; extract the bearer for every portal call below.",
+      "name": "Log in as the SCANNED testbed Assessment-role account (same {{TEST_RBAC_CUSTOMER_EMAIL}}/{{TEST_RBAC_CUSTOMER_PASSWORD}} the uiSteps use) so apiTests and browser session drive the SAME real tenant; extract the bearer for every portal call below.",
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
@@ -296,8 +296,8 @@
       "selector": "#email",
       "state": "visible"
     },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
     {
       "name": "Primary login — CRITICAL: authenticate before anything else. A failed login makes EVERY downstream guide/tracker/prose assertion meaningless (the page never authenticates), so on failure the run ABORTS here immediately instead of running ~20 more steps that each burn their full poll timeout on a cascade of failures that are all really this one root cause. (The mid-run never-scanned re-login below is deliberately NOT critical — it is documented to WARN-and-continue when {{TEST_NEVERSCANNED_*}} aren't provisioned.)",
       "action": "click",
@@ -456,8 +456,8 @@
       "action": "goto",
       "target": "/login"
     },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}", "sessionTag": "git-1460" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}", "sessionTag": "git-1460" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "sessionTag": "git-1460" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}", "sessionTag": "git-1460" },
     {
       "action": "click",
       "selector": "[data-testid='login-submit']",

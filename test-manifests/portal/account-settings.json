@@ -7,14 +7,14 @@
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/<page>. App.tsx declares each of these plain routes BEFORE '/portal-v2/:pillar' so the param route cannot swallow them. These pages are reached from the ACCOUNT MENU, not the left nav.",
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- all five pages are NEW in Part 12, so the dev server must carry this commit before the routes resolve. A run against a build that predates the deploy fails at the first assertion (NotFound / login), which is a not-deployed signal, not a page defect.",
     "REAL INTERACTIONS DRIVEN: the account-menu -> Billing navigation (AM1-AM3); the billing monthly/yearly interval toggle repricing Premier to its yearly figure (BILL4-BILL5); the alert-preferences category toggle flipping the preset to Custom and raising the Unsaved-changes flag (ALERT3-ALERT5); the webhooks endpoint expand revealing its delivery panel and the delivery-behaviour disclosure (WH4-WH6); the account-security delete-account disclosure revealing its retained-records fact (SEC4-SEC5). The money maths, tier deltas, delete-confirm gate are pinned by the *Model.test.ts unit files rather than re-driven here.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD.",
     "WEBHOOKS IS NOW LIVE (Git #1249) -- portal-v2-webhooks.tsx reads GET /api/portal/webhooks + /api/portal/webhooks/:id/deliveries via useWebhooksLive, no longer the WEBHOOKS fixture. Since the testbed tenant (customerId 1) had zero real webhooks configured, this session seeded ONE real row ('Test SIEM ingestion (Git #1249 seed)', 4 recent deliveries, 3 success/1 failed -> degraded state) directly into outbound_webhooks/outbound_webhook_deliveries so WH4-WH8 have real data to expand and assert against. WH3 asserts the pv2-wh-source indicator reads 'live' (real, possibly-empty data now always wins over the fixture, unlike the old fixed 'Sentinel ingestion / 1 endpoint is failing' fixture-banner assertion this replaced). SETUP-WH extracts the real webhookId (assumes this tenant's only webhook is the one seeded here) for WH4's row selector. Per-event catalogue subscriber counts (WH8's row) are now computed from real eventTypes, not the fixture; only the catalogue's descriptive labels/'fires when'/alert-category text and the verify/retry documentation blocks stay static, since those are taxonomy documentation rather than tenant data.",
-    "BILLING RECEIPTS + MANAGE-PAYMENT ARE NOW LIVE (Git #1237) -- portal-v2-billing.tsx's Receipts section reads GET /api/portal/invoices (useBillingLive), no longer only BILL_RECEIPTS; 'Manage payment in Stripe' calls the real POST /api/portal/billing/customer-portal action. TEST_PORTAL_EMAIL (user 39) genuinely owns one real invoice (ONB-1785335093944-0, $2,500, 'License & Cost Optimization Assessment -- self-service purchase'), so BILL-LIVE-tagged steps assert pv2-bill-receipts-source reads 'live' and that real row's text, not a seed. The Monitoring-plan tier cards (BILL1-BILL6, unchanged) stay on the design fixture on purpose -- blocked on the #1128 Premier price discrepancy and the real monitoring catalog carrying no flat price to wire to (see billingLive.ts header). 'Manage payment in Stripe' 404s with the route's own real 'No active subscription found.' message, since no tenant anywhere in this DB currently holds a recurring_monthly client_services row -- BILL-LIVE-STRIPE asserts that real error surfaces (pv2-bill-portal-error) rather than the button silently doing nothing.",
+    "BILLING RECEIPTS + MANAGE-PAYMENT ARE NOW LIVE (Git #1237) -- portal-v2-billing.tsx's Receipts section reads GET /api/portal/invoices (useBillingLive), no longer only BILL_RECEIPTS; 'Manage payment in Stripe' calls the real POST /api/portal/billing/customer-portal action. TEST_RBAC_CUSTOMER_EMAIL (user 39) genuinely owns one real invoice (ONB-1785335093944-0, $2,500, 'License & Cost Optimization Assessment -- self-service purchase'), so BILL-LIVE-tagged steps assert pv2-bill-receipts-source reads 'live' and that real row's text, not a seed. The Monitoring-plan tier cards (BILL1-BILL6, unchanged) stay on the design fixture on purpose -- blocked on the #1128 Premier price discrepancy and the real monitoring catalog carrying no flat price to wire to (see billingLive.ts header). 'Manage payment in Stripe' 404s with the route's own real 'No active subscription found.' message, since no tenant anywhere in this DB currently holds a recurring_monthly client_services row -- BILL-LIVE-STRIPE asserts that real error surfaces (pv2-bill-portal-error) rather than the button silently doing nothing.",
     "ALERT PREFERENCES IS NOW LIVE (Git #1276) -- portal-v2-alert-preferences.tsx reads/writes GET+PUT /api/portal/alert-preferences (alertPrefsLive.ts), backed by new customer_alert_preferences/customer_alert_settings/customer_alert_recipients/customer_alert_digest_queue tables (lib/db/migrations/manual/2026-08-25-customer-alert-preferences-1276.sql), no longer local-only useState that reset on refresh. Absence of any saved row still degrades to the same Balanced-preset defaults the fixture always opened on (ALERT3 unchanged). ALERT7 asserts pv2-alert-source reads 'live'. The self-contained alert-prefs-1276 tag (ALERT-SAVE*) drives a real save round-trip against the shared testbed tenant and then resets it back to Balanced and saves again (ALERT-SAVE-CLEANUP*) so the run doesn't leave that tenant's real preferences on Custom for the next session. This is also the real persistence the #1278 customer-tenant alert engine's delivery seam (customer-alert-delivery.ts resolveCustomerAlertPreferences) now reads, and where daily/weekly digest batching + the quiet-hours hold live (customer-alert-digest.ts, drained on the same 5-min alert_evaluate_rules pass) -- neither has its own UI surface to assert here, only the preference persistence this page writes.",
     "LOADING-STATE FIXTURE FLASH FIX (Git #1365) -- Account security (posture/MFA/sessions), Webhooks (endpoint list) and Receipt (the whole receipt card) now render PortalV2LoadingState while their real fetch is in flight instead of the design fixture, matching the pattern #1343 established for Ownership/Change Control. Not asserted with a new uiStep here: the loading window is typically sub-200ms against the dev/test API, so gating a step on it would be a flaky race rather than reliable coverage. The settled fixture/live branch these pages render afterward is unchanged and stays covered by the steps above.",
-    "BILLING RECEIPTS 'REAL-BUT-EMPTY' FIX (Git #1463) -- billingLive.ts's dataState previously read 'fixture' (and rendered BILL_RECEIPTS's fake rows) for a tenant whose real GET /api/portal/invoices call succeeded with zero rows, conflating 'the read never resolved' with 'this tenant genuinely has no invoices yet' -- exactly the HARD RULE this strict pass exists to catch. dataState now reads 'live' any time `rows` is a real (possibly empty) array, and only falls back to 'fixture' when the read itself failed or hasn't resolved. TEST_PORTAL_EMAIL's testbed tenant already has one real invoice, so BILL6/BILL-LIVE-STRIPE above are unaffected by this fix (both paths were already 'live' for a non-empty response) -- there is no zero-invoice testbed tenant available to add positive coverage of the empty-array branch here; verified by code reading + the unit-level dataState logic only.",
+    "BILLING RECEIPTS 'REAL-BUT-EMPTY' FIX (Git #1463) -- billingLive.ts's dataState previously read 'fixture' (and rendered BILL_RECEIPTS's fake rows) for a tenant whose real GET /api/portal/invoices call succeeded with zero rows, conflating 'the read never resolved' with 'this tenant genuinely has no invoices yet' -- exactly the HARD RULE this strict pass exists to catch. dataState now reads 'live' any time `rows` is a real (possibly empty) array, and only falls back to 'fixture' when the read itself failed or hasn't resolved. TEST_RBAC_CUSTOMER_EMAIL's testbed tenant already has one real invoice, so BILL6/BILL-LIVE-STRIPE above are unaffected by this fix (both paths were already 'live' for a non-empty response) -- there is no zero-invoice testbed tenant available to add positive coverage of the empty-array branch here; verified by code reading + the unit-level dataState logic only.",
     "ALERT PREFERENCES STRICT PASS (Git #1465) -- confirmed the #1276/#1278/#1279 backend genuinely reaches this page end to end (route mounted in routes/index.ts, real customer_alert_* tables, ALERT7's 'live' assertion was actually run post-deploy per this file's own eaa719355 pin, not just wired in code). Found and fixed one real gap along the way: on a failed GET, `prefs` stays at the ALERT_PREFS_SEED fixture while the page shows an honest error line (pv2-alert-error) -- but the Save button was still enabled the moment the user made any edit, so an edit against that unseen fixture state could PUT and silently overwrite the tenant's real stored preferences. `pv2-alert-save` is now also disabled whenever `error` is set. NOT ASSERTED WITH A NEW uiStep: the harness has no way to force GET /api/portal/alert-preferences to fail from a black-box UI run, so this is documented here per the manifest's own 'genuinely can't be asserted programmatically' allowance rather than faked with an unreachable step.",
-    "CHANGE PASSWORD IS NOW LIVE (Git #1601) -- the Password card's 'Change password' button opens a real inline form wired to POST /api/auth/change-password (useAccountSecurityLive.changePassword), no longer inert design copy. All four of the route's own error states (auth.ts:826/831/838/843) render its own literal error text via accountSecurityModel.ts's changePasswordErrorText -- never a paraphrase. CP-* apiTests (tag change-password-1601) drive missing-fields (400) and incorrect-password (401) directly and non-destructively, then exercise a real success round-trip (200, real revokedOtherSessions count) and immediately revert the testbed account's password back to TEST_PORTAL_PASSWORD in the same tagged block so the shared tenant's real credential is never left changed for the next run. The 'no password set for this account' (400, auth.ts:838) state is NOT covered by an apiTest or uiStep: it requires a real passwordless account (SSO-only, no passwordHash row) and no such testbed account exists in this DB today -- documented here per this manifest's own 'genuinely can't be asserted programmatically' allowance, verified by code reading only (see auth.ts:838's own guard). CP-UI-* uiSteps (tag change-password-1601-ui) drive the wrong-current-password error through the real DOM form without mutating any real state, since that call always fails before any write.",
+    "CHANGE PASSWORD IS NOW LIVE (Git #1601) -- the Password card's 'Change password' button opens a real inline form wired to POST /api/auth/change-password (useAccountSecurityLive.changePassword), no longer inert design copy. All four of the route's own error states (auth.ts:826/831/838/843) render its own literal error text via accountSecurityModel.ts's changePasswordErrorText -- never a paraphrase. CP-* apiTests (tag change-password-1601) drive missing-fields (400) and incorrect-password (401) directly and non-destructively, then exercise a real success round-trip (200, real revokedOtherSessions count) and immediately revert the testbed account's password back to TEST_RBAC_CUSTOMER_PASSWORD in the same tagged block so the shared tenant's real credential is never left changed for the next run. The 'no password set for this account' (400, auth.ts:838) state is NOT covered by an apiTest or uiStep: it requires a real passwordless account (SSO-only, no passwordHash row) and no such testbed account exists in this DB today -- documented here per this manifest's own 'genuinely can't be asserted programmatically' allowance, verified by code reading only (see auth.ts:838's own guard). CP-UI-* uiSteps (tag change-password-1601-ui) drive the wrong-current-password error through the real DOM form without mutating any real state, since that call always fails before any write.",
     "WEBHOOKS ROTATE / EDIT / DELETE ARE NOW WIRED (Git #1605) -- Rotate secret, Edit endpoint, Edit subscription and Delete now call their real routes (rotate-secret, PATCH, DELETE in webhooks.ts) via webhooksMutations.ts, each behind a real confirm/consequence panel (RotateSecretPanel.tsx, DeleteWebhookPanel.tsx) or FormDrawer (edit). The self-contained webhook-mutations-1605 tag drives all three against the same Git #1249-seeded row SETUP-WH already extracts ({{whId}}). Rotate is run for real (WHM8-WHM11) -- it has no destructive effect on any other tagged test's assertions, since none of them assert the secret's exact value, only that the 'Signing secret' label is present. Edit and Delete are deliberately NOT completed against this shared seed row: WH5/WH8 elsewhere in this same file assert the seeded row's exact label and eventTypes, and SETUP-WH assumes the tenant has at least one webhook to extract a webhookId from -- actually renaming the endpoint or deleting it would permanently break every other WH*/SETUP-WH-dependent step for every session after this one, with no re-seed step anywhere to undo it. So WHM1-WHM7 (edit) and WHM12-WHM15 (delete) assert the two flows wire correctly and reach the real endpoint/data (drawer opens with the real endpoint's real name in its title; the delete panel shows the real destructive-consequence copy) and then explicitly cancel out without submitting, leaving the shared fixture untouched -- documented here per the manifest's own 'genuinely can't be asserted programmatically [without breaking shared fixtures]' allowance rather than run destructively."
   ],
   "apiTests": [
@@ -23,7 +23,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
@@ -48,7 +48,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "cpAuthToken", "jsonPath": "$.accessToken" }
     },
@@ -58,7 +58,7 @@
       "method": "POST",
       "path": "/api/auth/change-password",
       "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{cpAuthToken}}" },
-      "body": { "currentPassword": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "currentPassword": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 400, "json": { "error": "currentPassword and newPassword are required" } }
     },
     {
@@ -67,7 +67,7 @@
       "method": "POST",
       "path": "/api/auth/change-password",
       "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{cpAuthToken}}" },
-      "body": { "currentPassword": "{{TEST_PORTAL_PASSWORD}}", "newPassword": "short1" },
+      "body": { "currentPassword": "{{TEST_RBAC_CUSTOMER_PASSWORD}}", "newPassword": "short1" },
       "expect": { "status": 400, "json": { "error": "Password must be at least 8 characters" } }
     },
     {
@@ -85,27 +85,27 @@
       "method": "POST",
       "path": "/api/auth/change-password",
       "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{cpAuthToken}}" },
-      "body": { "currentPassword": "{{TEST_PORTAL_PASSWORD}}", "newPassword": "TempPass9!" },
+      "body": { "currentPassword": "{{TEST_RBAC_CUSTOMER_PASSWORD}}", "newPassword": "TempPass9!" },
       "expect": { "status": 200, "jsonPath": "$.revokedOtherSessions", "exists": true },
       "extract": { "as": "cpRevokedCount", "jsonPath": "$.revokedOtherSessions" }
     },
     {
-      "name": "CP-CLEANUP (Git #1601) -- revert the testbed account's password back to TEST_PORTAL_PASSWORD so this run doesn't leave the shared tenant's real credential changed for the next session. Re-logs in with the temp password first since CP4 revoked this very session's own refresh token along with every other session.",
+      "name": "CP-CLEANUP (Git #1601) -- revert the testbed account's password back to TEST_RBAC_CUSTOMER_PASSWORD so this run doesn't leave the shared tenant's real credential changed for the next session. Re-logs in with the temp password first since CP4 revoked this very session's own refresh token along with every other session.",
       "sessionTag": "change-password-1601",
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "TempPass9!" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "TempPass9!" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "cpCleanupToken", "jsonPath": "$.accessToken" }
     },
     {
-      "name": "CP-CLEANUP2 (Git #1601) -- change back to the original TEST_PORTAL_PASSWORD -- confirms the revert itself round-tripped for real.",
+      "name": "CP-CLEANUP2 (Git #1601) -- change back to the original TEST_RBAC_CUSTOMER_PASSWORD -- confirms the revert itself round-tripped for real.",
       "sessionTag": "change-password-1601",
       "method": "POST",
       "path": "/api/auth/change-password",
       "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{cpCleanupToken}}" },
-      "body": { "currentPassword": "TempPass9!", "newPassword": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "currentPassword": "TempPass9!", "newPassword": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "json": { "ok": true } },
       "critical": true
     }
@@ -113,8 +113,8 @@
   "uiSteps": [
     { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login" },
     { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
     { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
 
     { "name": "AM1 -- go to the Overview so the shell header (account chip) is present.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2" },
@@ -137,8 +137,8 @@
 
     { "name": "SEC6-LOGIN (Git #1235) -- self-contained login so onlyTag=acct-sec-1235 can run standalone without the untagged setup block above.", "sessionTag": "acct-sec-1235", "action": "goto", "target": "/portal/login" },
     { "name": "SEC6-LOGIN2 -- wait for the login form (persisted-session note: these two can legitimately fail if the runner's WebView2 already carries a session -- see SEC6-GOTO below either way).", "sessionTag": "acct-sec-1235", "action": "expect", "selector": "#email", "state": "visible" },
-    { "sessionTag": "acct-sec-1235", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "sessionTag": "acct-sec-1235", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "sessionTag": "acct-sec-1235", "action": "input", "selector": "#email", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}" },
+    { "sessionTag": "acct-sec-1235", "action": "input", "selector": "#password", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
     { "sessionTag": "acct-sec-1235", "action": "click", "selector": "[data-testid='login-submit']" },
     { "name": "SEC6-GOTO -- go straight to Account security regardless of which login path above ran.", "sessionTag": "acct-sec-1235", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/account-security" },
     { "name": "SEC6 (Git #1235) -- the account-security page loaded real MFA/session data, not just the design fixture (useAccountSecurityLive).", "sessionTag": "acct-sec-1235", "action": "expect", "selector": "[data-testid='pv2-sec-data-source']", "textContains": "live", "critical": true },
@@ -154,8 +154,8 @@
 
     { "name": "WHM-LOGIN (Git #1605) -- self-contained login so onlyTag=webhook-mutations-1605 can run standalone.", "sessionTag": "webhook-mutations-1605", "action": "goto", "target": "/portal/login" },
     { "name": "WHM-LOGIN2 -- wait for the login form (persisted-session note applies here too).", "sessionTag": "webhook-mutations-1605", "action": "expect", "selector": "#email", "state": "visible" },
-    { "sessionTag": "webhook-mutations-1605", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "sessionTag": "webhook-mutations-1605", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "sessionTag": "webhook-mutations-1605", "action": "input", "selector": "#email", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}" },
+    { "sessionTag": "webhook-mutations-1605", "action": "input", "selector": "#password", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
     { "sessionTag": "webhook-mutations-1605", "action": "click", "selector": "[data-testid='login-submit']" },
     { "name": "WHM-GOTO -- go straight to Webhooks regardless of which login path above ran.", "sessionTag": "webhook-mutations-1605", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/webhooks" },
     { "name": "WHM-SOURCE -- wait for the real seeded endpoint to load before targeting its row.", "sessionTag": "webhook-mutations-1605", "action": "expect", "selector": "[data-testid='pv2-wh-source']", "textContains": "live", "critical": true },
@@ -190,8 +190,8 @@
 
     { "name": "ALERT-SAVE-LOGIN (Git #1276) -- self-contained login so onlyTag=alert-prefs-1276 can run standalone.", "sessionTag": "alert-prefs-1276", "action": "goto", "target": "/portal/login" },
     { "name": "ALERT-SAVE-LOGIN2 -- wait for the login form (persisted-session note applies here too).", "sessionTag": "alert-prefs-1276", "action": "expect", "selector": "#email", "state": "visible" },
-    { "sessionTag": "alert-prefs-1276", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "sessionTag": "alert-prefs-1276", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "sessionTag": "alert-prefs-1276", "action": "input", "selector": "#email", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}" },
+    { "sessionTag": "alert-prefs-1276", "action": "input", "selector": "#password", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
     { "sessionTag": "alert-prefs-1276", "action": "click", "selector": "[data-testid='login-submit']" },
     { "name": "ALERT-SAVE-GOTO -- go straight to Alert preferences regardless of which login path above ran.", "sessionTag": "alert-prefs-1276", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/alert-preferences" },
     { "name": "ALERT-SAVE1 -- wait for the real profile to load before editing.", "sessionTag": "alert-prefs-1276", "action": "expect", "selector": "[data-testid='pv2-alert-source']", "textContains": "live", "critical": true },
@@ -210,16 +210,16 @@
 
     { "name": "RC6-LOGIN (Git #1242) -- self-contained login so onlyTag=receipt-1242 can run standalone.", "sessionTag": "receipt-1242", "action": "goto", "target": "/portal/login" },
     { "name": "RC6-LOGIN2 -- wait for the login form (persisted-session note applies here too).", "sessionTag": "receipt-1242", "action": "expect", "selector": "#email", "state": "visible" },
-    { "sessionTag": "receipt-1242", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "sessionTag": "receipt-1242", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "sessionTag": "receipt-1242", "action": "input", "selector": "#email", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}" },
+    { "sessionTag": "receipt-1242", "action": "input", "selector": "#password", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
     { "sessionTag": "receipt-1242", "action": "click", "selector": "[data-testid='login-submit']" },
     { "name": "RC6-GOTO -- go straight to the default Receipt route.", "sessionTag": "receipt-1242", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/receipt" },
     { "name": "RC6 (Git #1242) -- useReceiptLive reads GET /api/portal/billing/stripe-receipts; the testbed account has no Stripe subscription so the default route id has no live match and cleanly falls back to the design fixture (dataState='fixture'), proving the fallback path works rather than erroring.", "sessionTag": "receipt-1242", "action": "expect", "selector": "[data-testid='pv2-receipt-source']", "textContains": "fixture", "critical": true },
 
     { "name": "CP-UI-LOGIN (Git #1601) -- self-contained login so onlyTag=change-password-1601-ui can run standalone.", "sessionTag": "change-password-1601-ui", "action": "goto", "target": "/portal/login" },
     { "name": "CP-UI-LOGIN2 -- wait for the login form (persisted-session note applies here too).", "sessionTag": "change-password-1601-ui", "action": "expect", "selector": "#email", "state": "visible" },
-    { "sessionTag": "change-password-1601-ui", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "sessionTag": "change-password-1601-ui", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "sessionTag": "change-password-1601-ui", "action": "input", "selector": "#email", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}" },
+    { "sessionTag": "change-password-1601-ui", "action": "input", "selector": "#password", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
     { "sessionTag": "change-password-1601-ui", "action": "click", "selector": "[data-testid='login-submit']" },
     { "name": "CP-UI-GOTO -- go straight to Account security regardless of which login path above ran.", "sessionTag": "change-password-1601-ui", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/account-security" },
     { "name": "CP-UI1 (Git #1601) -- open the change-password form (real toggle state, not a modal fixture).", "sessionTag": "change-password-1601-ui", "action": "click", "selector": "[data-testid='pv2-sec-password-change']" },
@@ -231,8 +231,8 @@
 
     { "name": "BILL-LIVE-LOGIN (Git #1237) -- self-contained login so onlyTag=bill-live-1237 can run standalone.", "sessionTag": "bill-live-1237", "action": "goto", "target": "/portal/login" },
     { "name": "BILL-LIVE-LOGIN2 -- wait for the login form (persisted-session note applies here too).", "sessionTag": "bill-live-1237", "action": "expect", "selector": "#email", "state": "visible" },
-    { "sessionTag": "bill-live-1237", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "sessionTag": "bill-live-1237", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "sessionTag": "bill-live-1237", "action": "input", "selector": "#email", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}" },
+    { "sessionTag": "bill-live-1237", "action": "input", "selector": "#password", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
     { "sessionTag": "bill-live-1237", "action": "click", "selector": "[data-testid='login-submit']" },
     { "name": "BILL-LIVE-GOTO -- go straight to Billing regardless of which login path above ran.", "sessionTag": "bill-live-1237", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/billing" },
     { "name": "BILL-LIVE-SOURCE (Git #1237) -- the Receipts section reads real invoices off GET /api/portal/invoices, not the design fixture (useBillingLive).", "sessionTag": "bill-live-1237", "action": "expect", "selector": "[data-testid='pv2-bill-receipts-source']", "textContains": "live", "critical": true },

@@ -4,13 +4,13 @@
   "lastVerifiedAgainstCommit": "225aead58",
   "notes": [
     "artifacts/msp-portal (the old '/portal-v2/*' surface, including test-manifests/portal/portal-v2-sops.json) was retired for artifacts/portal in f40438cdc (#1921). This manifest covers the REPLACEMENT pages at the new, un-slugged routes /portal/sops and /portal/runbooks -- it is not an update of portal-v2-sops.json, which tests a page that no longer exists in the tree.",
-    "Real login (#2991, Feature #1648) landed in artifacts/portal concurrently with this build -- /portal/login, data-testid login-email/login-password/login-submit, POST /api/auth/login under the hood. The uiSteps below drive that real form rather than asserting only the unauthenticated RequireAuth gate. The testbed account (TEST_PORTAL_EMAIL) has no MFA enrolled, so login navigates straight to '/' with no MFA phase.",
+    "Real login (#2991, Feature #1648) landed in artifacts/portal concurrently with this build -- /portal/login, data-testid login-email/login-password/login-submit, POST /api/auth/login under the hood. The uiSteps below drive that real form rather than asserting only the unauthenticated RequireAuth gate. The testbed account (TEST_RBAC_CUSTOMER_EMAIL) has no MFA enrolled, so login navigates straight to '/' with no MFA phase.",
     "apiTests below ARE fully authenticated (via the real POST /api/auth/login + Bearer token, same as every other portal manifest) and were hand-verified live against this environment before being written: GET /api/portal/sops returned 15 real msp_sops rows for the testbed account (customerId 1), GET /api/portal/sop-runs returned an empty queue + 15 real 'Version published' audit rows, GET /api/portal/runbooks returned a genuinely empty {runbooks:[],holds:[],summary:{...,text:'No hold windows'}} for this tenant (0 rows in portal_runbooks/portal_hold_windows at verification time -- a live-empty state, not a bug), and both POST /api/portal/sops and POST /api/portal/sops/:sopId/custom-steps were exercised for real and their written rows re-read back correctly shaped.",
     "A3c/A3d create a real 'ours'-source SOP row and a real custom-step overlay row on it, same pattern portal-v2-sops.json's own A3c/A3d used -- these are additive, idempotent-safe re-runs (a fresh row each time, never deleted), not destructive.",
     "#4006 REDESIGN NOTE: /runbooks moved from the old 'Active Runbooks' single-stack layout to the design's master-detail layout (list + selected-runbook detail, past-cycle history, hold-window event timeline, a 'what this page deliberately does not do' ledger). The honest-empty copy changed from the old page's 'No active runbooks' to the new design's literal 'No runbooks yet' -- U9 below asserts the new real string. The sibling manifest test-manifests/portal/runbooks-hold-windows.json, which drove the retired portal-v2 slug-scoped '/portal-v2/runbooks' route and its own data-testids, was retired and deregistered under Git #4022 -- its still-live API coverage is folded into this file as the B0-B10 block below.",
     "sessionTag: the login flow (goto /portal/login through the primary-login click) carries sessionTag 'setup' so it always runs under an onlyTag-scoped invocation; the #4006 runbooks assertions carry sessionTag '4006-runbooks-redesign' for scoped re-verification (`shaneapp://runTest?file=sops-runbooks.json&onlyTag=4006-runbooks-redesign`).",
-    "#4006 VERIFICATION, HONEST STATE: ran shaneapp://runTest scoped to onlyTag=4006-runbooks-redesign against commit 3560c098e. The unauthenticated navigation half passed for real (goto /portal/login, the form hydrated, goto /portal/runbooks after the login click). Steps 3/4/5's login-field inputs and the final runbooks-page assertion failed because TEST_PORTAL_EMAIL/TEST_PORTAL_PASSWORD were not configured as BuildConsole Test Environment Variables in this session ('unresolved variable(s)' -- a real, specific, environment-config gap, not a code failure) -- with no session, /portal/runbooks correctly stayed on the sign-in gate rather than rendering. Direct smoke checks against the live dev server substituted for the credential-gated half: GET http://localhost:5175/portal/runbooks -> 200 (route serves), GET http://localhost:8080/api/portal/runbooks unauthenticated -> 401 (API correctly gated, matches A6 above). tsc --noEmit and `vite build` both passed clean on the new page. The credential gap should be closed by whoever has BuildConsole Settings access before the next full authenticated run of this manifest; it is not something this session could set itself.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD.",
+    "#4006 VERIFICATION, HONEST STATE: ran shaneapp://runTest scoped to onlyTag=4006-runbooks-redesign against commit 3560c098e. The unauthenticated navigation half passed for real (goto /portal/login, the form hydrated, goto /portal/runbooks after the login click). Steps 3/4/5's login-field inputs and the final runbooks-page assertion failed because TEST_RBAC_CUSTOMER_EMAIL/TEST_RBAC_CUSTOMER_PASSWORD were not configured as BuildConsole Test Environment Variables in this session ('unresolved variable(s)' -- a real, specific, environment-config gap, not a code failure) -- with no session, /portal/runbooks correctly stayed on the sign-in gate rather than rendering. Direct smoke checks against the live dev server substituted for the credential-gated half: GET http://localhost:5175/portal/runbooks -> 200 (route serves), GET http://localhost:8080/api/portal/runbooks unauthenticated -> 401 (API correctly gated, matches A6 above). tsc --noEmit and `vite build` both passed clean on the new page. The credential gap should be closed by whoever has BuildConsole Settings access before the next full authenticated run of this manifest; it is not something this session could set itself.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD.",
     "HOLD-WINDOW DERIVATION COVERAGE (B1-B10, folded in from the retired test-manifests/portal/runbooks-hold-windows.json -- Git #4022) targets the same real /api/portal/hold-windows + /api/portal/runbooks endpoints (routes/portal-runbooks.ts, lib/portal-hold-windows.ts) that are still live; only that file's UI half was dead, because it drove the retired slug-scoped '/portal-v2/runbooks' route and portal-v2 data-testids (artifacts/msp-portal, retired for artifacts/portal in f40438cdc, #1921). B0 seeds the design's four hold windows at offsets relative to now via the dev-origin-gated, self-scoped POST /admin/testbed/seed-runbooks (ignores the request body; reads customerId off the caller's own JWT), reproducing the four states deterministically on any day this runs: hold-ca01 closed 1h ago (due), hold-admins 21h out (closing), hold-guest 217h out and clear (early), hold-private 552h out (running). B3-B6 assert the four states land correctly AND that the four defects the original prototype's derivation carried stay fixed: (1) `closing` was unreachable when the verdict was `clear`, because the ternary tested the verdict before proximity; (2) `early` used Math.ceil, so the 217-hour (9d1h) fixture rendered 'Close the window 10 days early' when it should read 9 -- B4 asserts the literal '9 days early' string so a Math.ceil regression fails on a named example; (3) 'closes tomorrow' came from an hours threshold, so a 20-hour remainder at 01:00 UTC claimed tomorrow when it closed the same day; (4) the badge switched state at 24h while the readout switched units at 48h, pairing 'Holding' with an hours figure. B7/B8 are the cross-tenant guard: an unauthenticated read is refused outright (not an empty list, which would look identical to a tenant with no runbooks), and a step write against a runbook id the caller does not own answers 404, not 403. B9/B10 assert the SERVER, not the UI, is the authority gate: closing a `closing` (not `early`) window early is refused 409, and extending with no reason is refused 400 -- the design's own justification is that 'a window that keeps moving is visible rather than quietly permanent'. This coverage is deliberately non-destructive (see the retired file's own note): the close-early path that actually raises a change request was exercised live against the deployed server during the #1488 build and is covered at unit level by portal-hold-windows.test.ts, not baked into this manifest, so all four seeded states survive intact for re-runs. sessionTag 'hold-windows-4022' scopes a re-run of just this block: `shaneapp://runTest?file=sops-runbooks.json&onlyTag=hold-windows-4022`."
   ],
   "apiTests": [
@@ -25,7 +25,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
@@ -34,7 +34,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "Customer" }
     },
     {
@@ -239,13 +239,13 @@
     {
       "action": "input",
       "selector": "[data-testid='login-email']",
-      "value": "{{TEST_PORTAL_EMAIL}}",
+      "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}",
       "sessionTag": "setup"
     },
     {
       "action": "input",
       "selector": "[data-testid='login-password']",
-      "value": "{{TEST_PORTAL_PASSWORD}}",
+      "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}",
       "sessionTag": "setup"
     },
     {

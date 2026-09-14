@@ -2,6 +2,7 @@
   "issue": 1119,
   "feature": "Governance page (/governance) Group & Collaboration Sprawl now surfaces the real governance:ownerless-groups check (signal.governance.ownerless-groups) as a registered dashboard metric ('Ownerless Groups'), distinct from the existing 'Ownerless Teams' row -- previously never registered in lib/dashboard-registry/src/metrics.ts, so only the raw ownerlessGroupCount property name was ever visible anywhere it surfaced.",
   "baseUrl": "{{DEPLOY_URL}}",
+  "loginAs": "Customer — RBAC test",
   "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
@@ -9,7 +10,7 @@
     "data-testid='sprawl-row-governance.ownerlessGroupCount' added to the new <li> (small, scoped addition alongside sibling rows, which also now carry sprawl-row-<metricKey> testids from this same edit).",
     "D2 asserts the row renders SOME value (a real count or the honest em-dash) rather than requiring this shared dev tenant to have live ownerless-group data -- coverage state is a pre-existing property of the tenant's scan history, not something this change controls.",
     "REAL CONTRACT (dashboard-data.ts): POST /api/dashboard/resolve takes body { metrics: string[] }, not metricKeys, and responds { results: Record<metricKey, MetricResult> }, not { metrics: ... }. D1 uses containsAny/containsNone against the raw response body, matching group-sprawl.json's (#1117) documented BuildConsole HttpTestExecutor jsonPath limitation -- its tokenizer only supports dot-propName/bracket-index segments and cannot address a results object keyed by a literal-dot metric key like governance.ownerlessGroupCount.",
-    "KNOWN TEST-ACCOUNT LIMITATION (found live 2026-08-17, not caused by this change): TEST_PORTAL_EMAIL/PASSWORD is an Assessment-tier account (mspRole=Assessment). requireAuth.ts's ROLE_ORDER puts Assessment/Free below Customer deliberately -- 'every requireRole() floor in the codebase is Customer or higher' -- so this shared testbed account 403s on ANY Customer-gated route, including dashboard-data.ts's /api/dashboard/resolve. Live run against this account: D1 (API) 403'd with 'Insufficient privileges -- Customer or above required', and D2 (UI) found the sprawl row absent because the whole /governance page's useTopicHealthLive fetch 403s the same way for this account -- GroupSprawl shows its honest 'AWAITING DATA' empty state with zero rows, not specifically missing the new one. This is a pre-existing, correct-by-design gap (Assessment is the pre-purchase money-path role; the customer-facing Governance dashboard is intentionally Customer+), not a defect in this change, and equally blocks #1117's not-yet-verified group-sprawl.json manifest, which hits the same endpoint with the same account. D1/D2 are left in place as the correct assertions for a Customer-tier account -- this environment currently has none available to this session."
+    "KNOWN TEST-ACCOUNT LIMITATION -- RESOLVED (#4091): this note originally documented that the old single deprecated shared testbed credential pair resolved to an Assessment-tier account, which requireAuth.ts's ROLE_ORDER floor-check rejects on any Customer-gated route including dashboard-data.ts's /api/dashboard/resolve. #4091 migrated this manifest onto #4089's real, dedicated Customer-tier RBAC test profile ({{TEST_RBAC_CUSTOMER_EMAIL}}/{{TEST_RBAC_CUSTOMER_PASSWORD}}, AccountTier=Customer) instead of the old single Assessment-tier account, so D1/D2 below should now genuinely pass a Customer-floor gate rather than 403 -- re-run to confirm."
   ],
 
   "apiTests": [
@@ -18,12 +19,12 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
     {
-      "name": "D1 — POST /api/dashboard/resolve resolves governance.ownerlessGroupCount without an unknown-metric error, and echoes a results entry keyed by it (registered metric, honest not_available/ok status either way). KNOWN GAP: 403s against the current Assessment-tier TEST_PORTAL account -- see notes.",
+      "name": "D1 — POST /api/dashboard/resolve resolves governance.ownerlessGroupCount without an unknown-metric error, and echoes a results entry keyed by it (registered metric, honest not_available/ok status either way).",
       "method": "POST",
       "path": "/api/dashboard/resolve",
       "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
@@ -34,35 +35,12 @@
 
   "uiSteps": [
     {
-      "name": "goto the real login URL (msp-portal's outer WouterRouter has base=BASE_PATH='/portal').",
-      "action": "goto",
-      "target": "/portal/login"
-    },
-    {
-      "name": "WAIT for the login form to hydrate before typing.",
-      "action": "expect",
-      "selector": "#email",
-      "state": "visible"
-    },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    {
-      "name": "Primary login — CRITICAL: every downstream assertion needs a real authenticated session.",
-      "action": "click",
-      "selector": "[data-testid='login-submit']",
-      "critical": true,
-      "captureResponse": {
-        "urlPattern": "/api/auth/login",
-        "expect": { "status": 200 }
-      }
-    },
-    {
       "name": "goto the real Governance page (branded, slug-scoped route inside SlugInnerSwitch).",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/governance"
     },
     {
-      "name": "D2 — the new Ownerless Groups sprawl row renders with its human label, not the raw ownerlessGroupCount property name. KNOWN GAP: the whole page's data fetch 403s against the current Assessment-tier TEST_PORTAL account, so no rows render at all -- see notes.",
+      "name": "D2 — the new Ownerless Groups sprawl row renders with its human label, not the raw ownerlessGroupCount property name.",
       "action": "expect",
       "selector": "[data-testid='sprawl-row-governance.ownerlessGroupCount']",
       "state": "visible",

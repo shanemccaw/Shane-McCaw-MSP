@@ -9,7 +9,7 @@
     "The MSP-side 3-step offboarding console (POST /msp/offboarding/request|export|archive, contract pack §2-4) is a different Feature (the provider's own operator surface) and is NOT drawn by the landed Offboarding.dc.html (a single customer-facing 'Leaving' page with an active/brokered/inactive scene switch) - not wired here, matching the design as shipped.",
     "WHAT THIS COVERS: GET /api/portal/customer/export (auth-gated + real payload shape) and POST /api/portal/customer/offboard (auth-gated). The real write (POST /offboard) is NOT exercised end-to-end here - it immediately, irreversibly pauses every active/paused client_services row and marks the tenant inactive for whichever account authenticates, the same real-write caution billing.json's Stripe-portal POST and account-security-data-rights.json's deletion-request POST document for their own destructive/side-effecting actions.",
     "WHAT THIS DOES NOT COVER, AND WHY (no portal login page yet): artifacts/portal has no login page today (#1648) - App.tsx's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor, the same structural gap test-manifests/portal/billing.json documents. The uiSteps below only assert what is honestly reachable today.",
-    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use).",
+    "ENV VARS required: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use).",
     "NOT YET RUN via shaneapp://runTest as of this build (2026-09-14, session for #4002): real attempt made (both 'portal/offboarding.json' and bare 'offboarding.json'), both returned 'manifest not found or unparseable' - BuildConsole's local instance resolves test-manifests/ against the shared main checkout, which does not yet have this worktree's branch merged/pushed (this file only exists on agent/4002-q2680 so far). Same structural gap test-manifests/portal/billing.json's own notes document for the identical reason. Verified instead by a real `tsc -p tsconfig.json --noEmit` pass (0 errors) on both artifacts/portal and artifacts/api-server, and a real `vite build` (succeeds) against artifacts/portal with this page + route added. Re-run this manifest via shaneapp://runTest once the dev-server merge/restart cycle has picked up this branch."
   ],
 
@@ -31,7 +31,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },

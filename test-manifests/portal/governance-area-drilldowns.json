@@ -1,14 +1,15 @@
 {
   "feature": "Customer Portal v2 Part 11 -- Governance 'generic area' drill-downs: the list shape (/portal-v2/governance/orphaned-teams and /team-owners, isGovListPage 5871-5900), the inventory shape (/governance/device-inventory and /device-lifecycle, isGovInventoryPage 5927-5958) and the drift shape (/governance/sharing-drift-legacy, isGovDriftPage 5902-5925). One page component (portal-v2-gov-area.tsx) reads its slug from the location and picks the shape via govAreaFor; the slug->shape resolution and row derivations are pinned by govAreaModel.test.ts. Design fixtures in govAreaData.ts. Reached from the Governance pillar tiles; declared ABOVE '/portal-v2/governance/:area' so the GOV_PAGES param route does not swallow them. This does NOT touch govPages.ts (Part 2's).",
   "baseUrl": "{{DEPLOY_URL}}",
+  "loginAs": "Customer — RBAC test",
   "lastVerifiedAgainstCommit": "3c3fabac1",
   "notes": [
     "HONEST NO-DATA PASS (Git #1427): #1413's audit found this page read its ENTIRE body -- including the title itself -- from govAreaData.ts's design fixture with ZERO dataState gating anywhere; confirmed no backend exists for any of it (no per-team, per-device, or drift-event producer anywhere in the platform). This is a FULL fixture-strip, not a partial live-wire: all three shapes now render the same static, count-free category title (govAreaTitleFor) plus an honest NoScanDataState block. The fabricated per-shape content (list rows, drift events, stat tiles, inventory rows) is gone from the page entirely -- GOV1/GOV4/GOV7 below now assert the honest static titles, GOV2/GOV3/GOV5/GOV6/GOV8 (which asserted specific fabricated numbers/rows) are replaced by GOV-EMPTY asserting the honest no-scan-data marker on all 3 shapes.",
     "LIVE-DATA (Git #1204, unchanged): the generic governance area page still reads the SAME live war-room-pillars payload the Governance pillar page does, through the shared useLivePillarHero seam -- NO second data path. The clipped pv2-govarea-source marker reads 'live' when a real governance score is on the wire. The A-GOV apiTest proves the real finding counts exist independent of whether the new marker has been deployed to the dev server yet.",
-    "THE LOGIN BLOCK IS NOT OPTIONAL -- see the shared portal manifest note. With only the two #email/#password input steps red on a persisted session and every page assertion green, that is a PASS.",
+    "LOGIN IS VIA THE TOP-LEVEL loginAs FIELD (#4091 migration) -- UiTestExecutor logs in as the real Customer RBAC profile before any step below runs, replacing the old manual goto/input/click login block.",
     "UI ROUTE SHAPE: real URL is /portal/shane-mccaw-consulting/portal-v2/governance/<slug>. These literal routes are declared ABOVE '/portal-v2/governance/:area' in App.tsx; wouter matches in source order, so the specific slug wins over the GOV_PAGES param route (which would render NotFound for these).",
     "shaneapp://runTest hits the DEPLOYED build -- these routes are new in Part 11, so a run against a build predating the deploy fails at the first assertion (a not-deployed signal, not a page defect). Note '/governance/sharing-drift' (no -legacy) is Part 2's rich GOV_PAGES drill-down, a DIFFERENT page, handled separately under Git #1428.",
-    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "ENV VARS required: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD."
   ],
   "apiTests": [
     {
@@ -16,7 +17,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
@@ -29,12 +30,6 @@
     }
   ],
   "uiSteps": [
-    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login", "sessionTag": "setup" },
-    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible", "sessionTag": "setup" },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}", "sessionTag": "setup" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}", "sessionTag": "setup" },
-    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true, "sessionTag": "setup" },
-
     { "name": "goto the LIST-shape drill-down (Orphaned Teams).", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/governance/orphaned-teams", "sessionTag": "gov-1427" },
     { "name": "GOV1 -- the page resolved to the list shape, not NotFound (the ':area' route would 404 this).", "action": "expect", "selector": "[data-testid='pv2-govarea-page']", "state": "present", "critical": true, "sessionTag": "gov-1427" },
     { "name": "GOV2 (Git #1427) -- honest static, count-free title -- NOT the old fabricated '5 Teams have no active members'.", "action": "expect", "selector": "[data-testid='pv2-govarea-heading']", "textContains": "Orphaned Teams", "sessionTag": "gov-1427" },

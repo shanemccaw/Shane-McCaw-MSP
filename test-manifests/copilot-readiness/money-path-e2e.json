@@ -26,7 +26,7 @@
 
     "MUTUALLY-EXCLUSIVE POINT-IN-TIME UI STATES (why some #887/#891 UI selectors are represented at the API level instead of as uiSteps): a single linear WebView2 session holds ONE point in time. #887's live-scan OVERLAY (cj-scan-overlay / cj-scan-streaming-label / cj-scan-checks-done) is only visible DURING an in-progress scan, which is mutually exclusive with the COMPLETED-verdict state #888/#889/#890 need — so #887's Scene-0 honesty contract is preserved via its API assertions in EXECUTE (consentStatus granted, 202 trigger, active.runId, active.checksTotal) and its overlay selectors stay covered by re-running a mid-scan snapshot. Likewise #891's signed-scope happy path is mutually exclusive with its own no-signed-scope negative case; the negative case is what runs here.",
 
-    "ENV VARS required in BuildConsole → Settings → Test Environment Variables: DEPLOY_URL (deployed origin serving both the marketing quiz at '/' and the portal at /login + /copilot-readiness — the same single origin all six source manifests targeted), SECRET_KEY (= BUILD_TRACKER_INGEST_TOKEN; the Bearer that satisfies requireAdminOrIngestToken on the #986 testbed endpoints and the #901 testbed-customers lookup, per requireAuth.ts), TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the designated testbed Assessment account), TEST_PORTAL_SLUG (portal branding slug for the login route). The testbed customerId (tenants.id) is NOT a config var — it is read live from the DB via GET /api/admin/baseline-templates/testbed-customers (the same proven #901 bootstrap), so the reset always targets a real testbed customer, never a guessed literal.",
+    "ENV VARS required in BuildConsole → Settings → Test Environment Variables: DEPLOY_URL (deployed origin serving both the marketing quiz at '/' and the portal at /login + /copilot-readiness — the same single origin all six source manifests targeted), SECRET_KEY (= BUILD_TRACKER_INGEST_TOKEN; the Bearer that satisfies requireAdminOrIngestToken on the #986 testbed endpoints and the #901 testbed-customers lookup, per requireAuth.ts), TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD (the designated testbed Assessment account), TEST_PORTAL_SLUG (portal branding slug for the login route). The testbed customerId (tenants.id) is NOT a config var — it is read live from the DB via GET /api/admin/baseline-templates/testbed-customers (the same proven #901 bootstrap), so the reset always targets a real testbed customer, never a guessed literal.",
 
     "The #986 testbed endpoints are hard-gated to a real .replit.dev dev origin (requireDevOrigin, reusing isReplitDevEnvironment from stripe.ts); against a real deployment they 403 by design. Run this manifest against the .replit.dev dev origin. No raw DB access is used anywhere here — every clean/reset/rollback goes through the gated endpoints, per #987.",
 
@@ -57,13 +57,13 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
 
     {
-      "name": "CREATE — genuine public intake: POST /api/public/checkout-session (the exact call the quiz→details step fires) mints a brand-NEW checkout_sessions row + funnel lead for the assessment product, from scratch this run; extract the new sessionId. This is the 'go through the purchase flow / create' step the harness CAN genuinely drive (see the CREATE honesty caveat in notes for the consent+payment wall past this point). Deliberately NOT {{TEST_PORTAL_EMAIL}} (Git #634 changed checkout-session to 409 already_has_account for that email — see the dedicated 409 test below) — checkout_sessions.email has no uniqueness constraint, so a fixed non-account probe address is safe to reuse every run.",
+      "name": "CREATE — genuine public intake: POST /api/public/checkout-session (the exact call the quiz→details step fires) mints a brand-NEW checkout_sessions row + funnel lead for the assessment product, from scratch this run; extract the new sessionId. This is the 'go through the purchase flow / create' step the harness CAN genuinely drive (see the CREATE honesty caveat in notes for the consent+payment wall past this point). Deliberately NOT {{TEST_RBAC_CUSTOMER_EMAIL}} (Git #634 changed checkout-session to 409 already_has_account for that email — see the dedicated 409 test below) — checkout_sessions.email has no uniqueness constraint, so a fixed non-account probe address is safe to reuse every run.",
       "method": "POST",
       "path": "/api/public/checkout-session",
       "headers": { "Content-Type": "application/json" },
@@ -93,7 +93,7 @@
       "body": {
         "productSlug": "copilot-readiness-assessment",
         "fullName": "Regression Probe",
-        "email": "{{TEST_PORTAL_EMAIL}}",
+        "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}",
         "company": "Money-Path E2E Testbed",
         "industry": "Technology",
         "seats": 1
@@ -186,7 +186,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
     }
   ],
@@ -234,8 +234,8 @@
       "state": "visible",
       "critical": true
     },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}", "critical": true },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}", "critical": true },
+    { "action": "input", "selector": "#email", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "critical": true },
+    { "action": "input", "selector": "#password", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}", "critical": true },
     {
       "name": "Portal login — CRITICAL: authenticate before the copilot-readiness verdict/pillars/documents/proposal/checkout assertions below. A failed login makes every one of those downstream steps meaningless, so the run ABORTS here immediately on failure rather than cascading them all as failures that are really this one root cause.",
       "action": "click",
