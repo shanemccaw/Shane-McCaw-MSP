@@ -184,6 +184,24 @@ export function serviceKeyForGraphPath(graphPath: string | null | undefined): Te
  *     wear this wrapper. `resolveIntuneServiceState` still requires the tenant's
  *     own `/subscribedSkus` entitlement to resolve this to `not_licensed`; the
  *     signature only proves Intune is not answering.
+ *
+ *   intune-not-applicable-400
+ *     400 BadRequest, `"Request not applicable to target tenant."` — DIFFERENT
+ *     wording from `intune-segment-unresolved-400`'s "Resource not found for the
+ *     segment" (that one means the OData path itself doesn't resolve; this one
+ *     means the path resolves but Graph refuses it for this tenant). Reproduced
+ *     live on the testbed 2026-09-13 (Git #3959) on both
+ *     `beta:/deviceManagement/configurationPolicies` and
+ *     `beta:/deviceManagement/configurationSettings` while migrating
+ *     `devices:kfm-configuration` off the beta groupPolicyConfigurations surface
+ *     (which itself fails as `intune-backend-iis-503` on this same tenant) —
+ *     without this signature, the migration would have swapped a RECOGNISED
+ *     never-configured shape for an UNRECOGNISED one and turned a graceful
+ *     `service_not_configured` resolution into a raw check-execution error.
+ *     Same wording already classified for the separate #2115 config-snapshot
+ *     inventory (`not_applicable_to_account_type` in config-snapshot-collector.ts)
+ *     — this is the equivalent signature for the live monitor-check path #1847
+ *     covers, which that classifier does not feed.
  */
 export const INTUNE_WIRE_SIGNATURES = [
   "intune-legacy-devicefe-401",
@@ -191,6 +209,7 @@ export const INTUNE_WIRE_SIGNATURES = [
   "intune-backend-iis-503",
   "intune-forbidden-envelope-401",
   "intune-bare-message-401",
+  "intune-not-applicable-400",
 ] as const;
 export type IntuneWireSignature = typeof INTUNE_WIRE_SIGNATURES[number];
 
@@ -217,6 +236,13 @@ export function matchIntuneWireSignature(
   }
   if (status === 503 && body.includes("<!DOCTYPE HTML") && body.includes("Service Unavailable")) {
     return "intune-backend-iis-503";
+  }
+  if (
+    status === 400 &&
+    body.includes('"code":"BadRequest"') &&
+    body.includes("Request not applicable to target tenant")
+  ) {
+    return "intune-not-applicable-400";
   }
   if (status === 401 && INTUNE_FORBIDDEN_ENVELOPE_RE.test(body) && body.includes("_version")) {
     return "intune-forbidden-envelope-401";

@@ -55,6 +55,12 @@ const FORBIDDEN_ENVELOPE_401 =
 // FORBIDDEN_ENVELOPE_401, but WITHOUT an "ErrorCode" field — just a bare "Message".
 const BARE_MESSAGE_401 =
   '{"error":{"code":"UnknownError","message":"{\\"Message\\":\\"{\\r\\n  \\"_version\\": 3,\\r\\n  \\"Message\\": \\"An error has occurred - Operation ID (for customer support): 00000000-0000-0000-0000-000000000000 - Activity ID: 935b8c4f-98a0-4f24-9c10-338d75f22ac5 - Url: https://proxy.msua01.manage.microsoft.com/DeviceEnrollmentFE/StatelessDeviceEnrollmentFEService/deviceManagement/autopilotEvents?api-version=5026-05-21';
+// Real body from Git #3959's live evidence (testbed tenant, 2026-09-13) —
+// `beta:/deviceManagement/configurationPolicies` and
+// `beta:/deviceManagement/configurationSettings` both returned this exact shape
+// while migrating devices:kfm-configuration off groupPolicyConfigurations.
+const NOT_APPLICABLE_400 =
+  '{"error":{"code":"BadRequest","message":"Request not applicable to target tenant.","innerError":{"date":"2026-09-14T02:05:23","request-id":"e580c06b-eb22-4830-b635-c04ac4837a87","client-request-id":"e580c06b-eb22-4830-b635-c04ac4837a87"}}}';
 
 function entitlement(partial: Partial<IntuneEntitlement>): IntuneEntitlement {
   return {
@@ -107,6 +113,21 @@ describe("matchIntuneWireSignature", () => {
     expect(
       matchIntuneWireSignature("/deviceManagement/autopilotEvents", 401, BARE_MESSAGE_401),
     ).toBe("intune-bare-message-401");
+    // Git #3959: real testbed evidence — different wording from
+    // intune-segment-unresolved-400 (the path resolves; Graph refuses it for
+    // this tenant instead).
+    expect(
+      matchIntuneWireSignature("/deviceManagement/configurationPolicies", 400, NOT_APPLICABLE_400),
+    ).toBe("intune-not-applicable-400");
+  });
+
+  it("does not mismatch intune-not-applicable-400 against the segment-unresolved wording", () => {
+    expect(
+      matchIntuneWireSignature("/deviceManagement/windowsAutopilotDeploymentProfiles", 400, AUTOPILOT_400),
+    ).toBe("intune-segment-unresolved-400");
+    expect(
+      matchIntuneWireSignature("/deviceManagement/configurationPolicies", 400, NOT_APPLICABLE_400),
+    ).not.toBe("intune-segment-unresolved-400");
   });
 
   it("does not mismatch the ErrorCode envelope as the bare-message one", () => {
