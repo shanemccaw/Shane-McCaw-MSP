@@ -22,6 +22,7 @@ import { ScopeSla } from "./modules/ScopeSla";
 import { Ownership } from "./modules/Ownership";
 import { Sales } from "./modules/Sales";
 import { PolicyEngine } from "./modules/PolicyEngine";
+import { ConsentOnboarding } from "./modules/ConsentOnboarding";
 import { AccountSecurity } from "./modules/AccountSecurity";
 import { Dlq } from "./modules/Dlq";
 import { PlanSelfService } from "./modules/PlanSelfService";
@@ -378,6 +379,9 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "policy") {
     return <PolicyEngine />;
+  }
+  if (sel.kind === "msp" && sel.page === "consent") {
+    return <ConsentOnboarding />;
   }
   if (sel.kind === "msp" && sel.page === "plan") {
     return <PlanSelfService />;

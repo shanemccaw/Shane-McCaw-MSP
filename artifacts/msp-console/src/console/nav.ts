@@ -101,6 +101,10 @@ export const MSP_PAGES: LeafPage[] = [
   { id: "offboarding", label: "Offboarding", icon: "log-out" },
   { id: "policy", label: "Policy engine", icon: "shield-check" },
   { id: "acctsec", label: "Account Security", icon: "key-round" },
+  // Consent and Onboarding (Git #2627, README screen 64) — its routes resolve
+  // their target by mspId's own book, same "Operations, not per-tenant"
+  // reasoning acctsec's own comment above documents for that page.
+  { id: "consent", label: "Consent & Onboarding", icon: "user-check" },
   { id: "dlq", label: "Dead Letter Queue", icon: "trash-2" },
   { id: "plan", label: "Plan & billing", icon: "credit-card" },
   { id: "reports", label: "Reports", icon: "file-bar-chart-2" },
