@@ -103,7 +103,7 @@ vi.mock("@workspace/db", () => ({
         update: (...args: unknown[]) => mockUpdate(...args),
       }),
   },
-  consentInviteTokensTable: { token: "cit.token", customerId: "cit.customer_id", clientUserId: "cit.client_user_id", usedAt: "cit.used_at", expiresAt: "cit.expires_at", tenantId: "cit.tenant_id" },
+  consentInviteTokensTable: { token: "cit.token", customerId: "cit.customer_id", clientUserId: "cit.client_user_id", usedAt: "cit.used_at", expiresAt: "cit.expires_at", tenantId: "cit.tenant_id", mspId: "cit.msp_id", invitedEmail: "cit.invited_email", invitedName: "cit.invited_name" },
   mspsTable: { id: "m.id", isDirectBusiness: "m.is_direct_business" },
   // Phase 6 (#99): tenant_consent / tenant_write_consent /
   // tenant_sharepoint_consent and msp_customers are dropped — both graph.ts's
@@ -151,10 +151,12 @@ vi.mock("../lib/audit.ts", () => ({
 // is kept real — it's a pure function with no DB access, and consent.ts calls
 // it directly to pick provisionProspectAccount's role argument.
 const mockResolveOrCreateDirectTenant = vi.fn().mockResolvedValue({ id: 5, mspId: 1 });
+const mockResolveOrCreateTenantForMsp = vi.fn().mockResolvedValue({ id: 7, mspId: 1626 });
 vi.mock("../lib/direct-tenant-provisioning.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/direct-tenant-provisioning.ts")>();
   return {
     resolveOrCreateDirectTenant: (...args: unknown[]) => mockResolveOrCreateDirectTenant(...args),
+    resolveOrCreateTenantForMsp: (...args: unknown[]) => mockResolveOrCreateTenantForMsp(...args),
     provisionProspectAccount: vi.fn().mockResolvedValue(null),
     resolveProspectRole: actual.resolveProspectRole,
   };
@@ -687,6 +689,82 @@ describe("consent route handlers", () => {
       expect(store.redirectUrl).toBeNull();
       expect(store.sentText).toContain("not granted");
       expect(store.sentText).toContain("window.close");
+    });
+  });
+
+  // #4010: an MSP-issued onboarding link mints a consent invite carrying the
+  // issuing MSP's id. The SAME cross-MSP guard the checkout path uses must run
+  // against that mspId, and a brand-new tenant must be created under that MSP —
+  // never the isDirectBusiness one.
+  describe("GET /consent/callback — MSP-scoped onboarding invite (msp_id on the token)", () => {
+    const MSP_INVITE = {
+      customerId: null, clientUserId: null, invitedEmail: "priya@contoso.com", invitedName: null, mspId: 1626,
+    };
+
+    beforeEach(() => {
+      mockResolveOrCreateTenantForMsp.mockClear();
+    });
+
+    it("refuses a tenant already owned by a different MSP, before any write", async () => {
+      dbSelectQueue.push([MSP_INVITE]);                // invite token row
+      dbSelectQueue.push([{ id: 1, mspId: 1 }]);       // tenant already a customer of MSP 1
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-owned-elsewhere", admin_consent: "True", state: "msp-invite-tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/portal/consent/tenant-conflict");
+      // Token not burned, no grant stamped, no customer object created.
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockResolveOrCreateTenantForMsp).not.toHaveBeenCalled();
+      expect(mockResolveOrCreateDirectTenant).not.toHaveBeenCalled();
+    });
+
+    it("creates the new tenant under the issuing MSP, not the direct-business MSP", async () => {
+      dbSelectQueue.push([MSP_INVITE]);
+      dbSelectQueue.push([]);                          // no customer for this tenant yet
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-new-prospect", admin_consent: "True", state: "msp-invite-tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/portal/consent/success");
+      expect(mockResolveOrCreateTenantForMsp).toHaveBeenCalledWith("tenant-new-prospect", 1626, "contoso.com");
+      expect(mockResolveOrCreateDirectTenant).not.toHaveBeenCalled();
+      expect(mockUpdate).toHaveBeenCalled();
+    });
+
+    it("proceeds when the tenant is already a customer of the SAME MSP", async () => {
+      dbSelectQueue.push([MSP_INVITE]);
+      dbSelectQueue.push([{ id: 7, mspId: 1626 }]);
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-same-msp", admin_consent: "True", state: "msp-invite-tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/portal/consent/success");
+    });
+
+    it("fails closed when the resolved tenant belongs to another MSP (raced in after the guard)", async () => {
+      dbSelectQueue.push([MSP_INVITE]);
+      dbSelectQueue.push([]);                          // guard saw no customer
+      mockResolveOrCreateTenantForMsp.mockResolvedValueOnce({ id: 9, mspId: 1 });
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-raced", admin_consent: "True", state: "msp-invite-tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/portal/consent/tenant-conflict");
+      expect(store.redirectUrl).not.toContain("/consent/success");
     });
   });
 

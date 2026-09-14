@@ -244,3 +244,30 @@ export async function fetchOnboardingLink(token: string): Promise<OnboardingLink
     return { state: "error" };
   }
 }
+
+// ── POST /api/public/onboarding/link/:token/start-consent (msp-onboarding.ts, #4010) ──
+// Burns the link and returns the Microsoft admin-consent URL. The link-state
+// failures reuse the GET's exact statuses, so they map onto the same states.
+
+export type StartOnboardingConsentResult =
+  | { state: "redirect"; consentUrl: string }
+  | { state: Exclude<OnboardingLinkResult["state"], "valid"> }
+  | { state: "unavailable"; message: string };
+
+export async function startOnboardingConsent(token: string): Promise<StartOnboardingConsentResult> {
+  try {
+    const res = await fetch(`/api/public/onboarding/link/${encodeURIComponent(token)}/start-consent`, {
+      method: "POST",
+    });
+    const data = (await res.json().catch(() => ({}))) as { consentUrl?: string; error?: string };
+    if (res.ok && data.consentUrl) return { state: "redirect", consentUrl: data.consentUrl };
+    if (res.status === 404) return { state: "missing" };
+    if (res.status === 410) {
+      return { state: /expired/i.test(data.error ?? "") ? "expired" : "used" };
+    }
+    if (res.status === 403) return { state: "suspended" };
+    return { state: "unavailable", message: data.error ?? "The connection could not be started." };
+  } catch {
+    return { state: "error" };
+  }
+}

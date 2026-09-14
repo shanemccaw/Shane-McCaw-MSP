@@ -1097,6 +1097,12 @@ export const consentInviteTokensTable = pgTable("consent_invite_tokens", {
   // these once the tenant admin approves.
   invitedEmail: text("invited_email"),
   invitedName: text("invited_name"),
+  // MSP-issued onboarding links (#4010): the MSP that owns a prospect who has
+  // no tenants row yet. Null means the existing behavior — a new customer
+  // object attaches to the isDirectBusiness MSP. When set, the consent callback
+  // creates the tenants row under THIS MSP and runs the cross-MSP tenant
+  // conflict guard against it. No FK, same as customer_id.
+  mspId: integer("msp_id"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

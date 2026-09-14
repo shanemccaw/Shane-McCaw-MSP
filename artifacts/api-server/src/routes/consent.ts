@@ -78,7 +78,7 @@ import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, getInit
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
 import { startPowerPlatformEnrollmentDeviceCode, pollPowerPlatformEnrollmentDeviceCode } from "../lib/power-platform-admin.ts";
 import { createAuditLog } from "../lib/audit.ts";
-import { resolveOrCreateDirectTenant, provisionProspectAccount, resolveProspectRole } from "../lib/direct-tenant-provisioning.ts";
+import { resolveOrCreateDirectTenant, resolveOrCreateTenantForMsp, provisionProspectAccount, resolveProspectRole } from "../lib/direct-tenant-provisioning.ts";
 import { getReadConsentRequirementForProduct, buildSessionReadConsentUrl } from "../lib/read-consent-flow.ts";
 import { logger } from "../lib/logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
@@ -515,9 +515,47 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     return;
   }
 
-  // ── Cross-MSP tenant boundary guard (direct self-service checkout path only) ──
-  // A checkout session always belongs to the isDirectBusiness MSP (checkout_sessions
-  // has no mspId column). If the Microsoft tenant that just consented is ALREADY
+  // Read (but do not yet burn) the invite token (only for non-UUID state values).
+  // Read ahead of the boundary guard below because an MSP-issued onboarding
+  // invite (#4010) carries the mspId the guard has to check against. It is
+  // burned only after the guard passes — a refused consent grants nothing.
+  let inviteRecord: { customerId: number | null; clientUserId: number | null; invitedEmail: string | null; invitedName: string | null; mspId: number | null } | null = null;
+  if (state && !isCheckoutSession) {
+    const [row] = await db
+      .select({
+        customerId: consentInviteTokensTable.customerId,
+        clientUserId: consentInviteTokensTable.clientUserId,
+        // Admin "add client" invites (#103) carry the identity of a client
+        // with no account yet — provisioned below once consent is granted.
+        invitedEmail: consentInviteTokensTable.invitedEmail,
+        invitedName: consentInviteTokensTable.invitedName,
+        mspId: consentInviteTokensTable.mspId,
+      })
+      .from(consentInviteTokensTable)
+      .where(
+        and(
+          eq(consentInviteTokensTable.token, state),
+          isNull(consentInviteTokensTable.usedAt),
+          gte(consentInviteTokensTable.expiresAt, new Date()),
+        ),
+      )
+      .limit(1);
+
+    if (!row) {
+      log.warn({ state, tenant }, "Consent callback: invite token invalid, expired, or already used");
+      res.status(400).send("This consent link has expired or has already been used. Please request a new link.");
+      return;
+    }
+
+    inviteRecord = row;
+  }
+
+  // ── Cross-MSP tenant boundary guard ──
+  // Runs for every consent whose owning MSP is known up front:
+  //   - a checkout session always belongs to the isDirectBusiness MSP
+  //     (checkout_sessions has no mspId column);
+  //   - an MSP-issued onboarding invite (#4010) names its MSP on the token.
+  // If the Microsoft tenant that just consented is ALREADY
   // registered as a customer under a DIFFERENT MSP, letting this purchase proceed
   // would silently cross-link the buyer to that other MSP's customer record —
   // leaking its engine history, findings, and SOWs across the tenant boundary
@@ -525,13 +563,21 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // Reject BEFORE marking the session consented and before payment ever happens.
   // Do not cross-link, do not create a duplicate customer. The equivalent check in
   // ensureClientMspUser (lib/direct-tenant-provisioning.ts) is a post-payment backstop for this same case.
+  // One guard for both: a second copy for the onboarding path is exactly how
+  // this class of leak comes back.
+  let expectedMspId: number | null = null;
   if (isCheckoutSession && state) {
     const [directMsp] = await db
       .select({ id: mspsTable.id })
       .from(mspsTable)
       .where(eq(mspsTable.isDirectBusiness, true))
       .limit(1);
+    expectedMspId = directMsp?.id ?? null;
+  } else if (inviteRecord?.mspId != null) {
+    expectedMspId = inviteRecord.mspId;
+  }
 
+  if (expectedMspId != null) {
     // tenants.tenant_id is NOT NULL UNIQUE, so this is now an exact lookup —
     // there can be at most one customer object per Microsoft tenant, which is
     // precisely the invariant this guard used to have to enforce by hand.
@@ -541,16 +587,17 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       .where(eq(tenantsTable.tenantId, tenant))
       .limit(1);
 
-    if (directMsp && conflictingCustomer && conflictingCustomer.mspId !== directMsp.id) {
+    if (conflictingCustomer && conflictingCustomer.mspId !== expectedMspId) {
       log.warn(
         {
           tenantId: tenant,
-          sessionId: state,
+          sessionId: isCheckoutSession ? state : undefined,
+          mspInvite: !isCheckoutSession,
           conflictingCustomerId: conflictingCustomer.id,
           existingMspId: conflictingCustomer.mspId,
-          directMspId: directMsp.id,
+          expectedMspId,
         },
-        "Consent callback: REJECTED cross-MSP tenant conflict — this Microsoft tenant is already connected to a customer under a different MSP; not marking the checkout session consented",
+        "Consent callback: REJECTED cross-MSP tenant conflict — this Microsoft tenant is already connected to a customer under a different MSP; not marking the checkout session / invite consented",
       );
       // The only popup ending that deliberately does NOT close itself: this is
       // a terminal refusal the buyer has to actually read, and the flow behind
@@ -574,40 +621,11 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     }
   }
 
-  // Validate and burn the invite token (only for non-UUID state values)
-  let inviteRecord: { customerId: number | null; clientUserId: number | null; invitedEmail: string | null; invitedName: string | null } | null = null;
-  if (state && !isCheckoutSession) {
-    const now = new Date();
-    const [row] = await db
-      .select({
-        customerId: consentInviteTokensTable.customerId,
-        clientUserId: consentInviteTokensTable.clientUserId,
-        // Admin "add client" invites (#103) carry the identity of a client
-        // with no account yet — provisioned below once consent is granted.
-        invitedEmail: consentInviteTokensTable.invitedEmail,
-        invitedName: consentInviteTokensTable.invitedName,
-      })
-      .from(consentInviteTokensTable)
-      .where(
-        and(
-          eq(consentInviteTokensTable.token, state),
-          isNull(consentInviteTokensTable.usedAt),
-          gte(consentInviteTokensTable.expiresAt, now),
-        ),
-      )
-      .limit(1);
-
-    if (!row) {
-      log.warn({ state, tenant }, "Consent callback: invite token invalid, expired, or already used");
-      res.status(400).send("This consent link has expired or has already been used. Please request a new link.");
-      return;
-    }
-
-    inviteRecord = row;
-
+  // Burn the invite token validated above, now that the guard has passed.
+  if (state && inviteRecord) {
     await db
       .update(consentInviteTokensTable)
-      .set({ usedAt: now, tenantId: tenant })
+      .set({ usedAt: new Date(), tenantId: tenant })
       .where(eq(consentInviteTokensTable.token, state));
   }
 
@@ -702,6 +720,28 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       return;
     }
     consentTenant = { id: bound.id };
+  } else if (inviteRecord?.mspId != null) {
+    // (c) An MSP-issued onboarding invite (#4010): no customer yet, but the
+    //     owning MSP is known — create under THAT MSP, never the direct one.
+    //     The guard above already refused a GUID owned by another MSP; this
+    //     re-checks the row actually returned so a tenant raced in under a
+    //     different MSP between the guard and here still fails closed.
+    const inviteMspId = inviteRecord.mspId;
+    const emailDomain = inviteRecord.invitedEmail?.split("@")[1]?.trim();
+    const resolved = await resolveOrCreateTenantForMsp(
+      tenant,
+      inviteMspId,
+      inviteRecord.invitedName?.trim() || emailDomain || "New Customer",
+    );
+    if (resolved && resolved.mspId !== inviteMspId) {
+      log.warn(
+        { tenant, expectedMspId: inviteMspId, existingMspId: resolved.mspId, customerId: resolved.id },
+        "Consent callback: REFUSED — MSP invite's tenant resolved to a customer under a different MSP after the guard; no grant recorded",
+      );
+      res.redirect(`${hostBase}/portal/consent/tenant-conflict?tenant=${encodeURIComponent(tenant)}`);
+      return;
+    }
+    consentTenant = resolved ? { id: resolved.id } : null;
   } else {
     consentTenant = await resolveOrCreateDirectTenant(
       tenant,

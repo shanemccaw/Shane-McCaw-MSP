@@ -126,8 +126,42 @@ export async function resolveOrCreateDirectTenant(
     .limit(1);
   if (!directMsp) return null; // no MSP flagged isDirectBusiness=true — nothing to attach to
 
+  return insertTenantForMsp(tenantGuid, directMsp.id, fallbackCustomerName, industry);
+}
+
+/**
+ * The same door as resolveOrCreateDirectTenant, for a consent invite that
+ * names its owning MSP (#4010 — an MSP-issued onboarding link). Resolves the
+ * existing row for this GUID, or creates it under `mspId`.
+ *
+ * Returns the row as it actually is — including when it already exists, or
+ * was raced in, under a DIFFERENT MSP. The caller must compare `mspId` and
+ * fail closed on a mismatch; this function never re-points a tenant.
+ */
+export async function resolveOrCreateTenantForMsp(
+  tenantGuid: string,
+  mspId: number,
+  fallbackCustomerName: string,
+  industry?: string | null,
+): Promise<{ id: number; mspId: number } | null> {
+  const [existingByTenant] = await db
+    .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantGuid))
+    .limit(1);
+  if (existingByTenant) return existingByTenant;
+
+  return insertTenantForMsp(tenantGuid, mspId, fallbackCustomerName, industry);
+}
+
+async function insertTenantForMsp(
+  tenantGuid: string,
+  mspId: number,
+  fallbackCustomerName: string,
+  industry?: string | null,
+): Promise<{ id: number; mspId: number } | null> {
   const [created] = await db.insert(tenantsTable).values({
-    mspId: directMsp.id,
+    mspId,
     customerName: fallbackCustomerName,
     industry: industry ?? null,
     tenantId: tenantGuid,

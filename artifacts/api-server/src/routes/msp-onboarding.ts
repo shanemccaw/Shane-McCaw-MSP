@@ -15,6 +15,10 @@
  *   GET  /api/public/onboarding/link/:token
  *     Public — customer validates a link, gets MSP branding + pre-selected service info.
  *
+ *   POST /api/public/onboarding/link/:token/start-consent
+ *     Public — customer accepts the link: burns it and returns a Microsoft
+ *     admin-consent URL minted as an MSP-scoped consent invite (#4010).
+ *
  *   POST /api/public/checkout/gate
  *     Public — email gate check. Returns:
  *       - { action: "redirect", portalUrl } if an active MSP already owns this email
@@ -45,6 +49,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { requireCapability } from "../middlewares/requireAuth.ts";
 import { getMspPortalLandingUrl } from "../lib/portal-url.ts";
+import { createConsentInviteForEmail, mtAppCredentialsPresent } from "../lib/consent-invite.ts";
 import { logger } from "../lib/logger.ts";
 import { getActiveMfaMethods } from "./mfa.ts";
 import { mfaEnforcementActive } from "./auth.ts";
@@ -139,8 +144,10 @@ router.post(
 
     log.info({ mspId, customerEmail, serviceId, ttl }, "msp-onboarding: link generated");
 
+    // The accept page lives in the portal SPA, which is mounted at /portal/ in
+    // every environment (#3993/#4010) — nothing serves a bare /onboarding/.
     const baseUrl = process.env.SITE_URL ?? "";
-    const link = `${baseUrl}/onboarding/${token}`;
+    const link = `${baseUrl}/portal/onboarding/${token}`;
 
     res.json({ token, link, expiresAt });
   },
@@ -255,6 +262,100 @@ router.get("/public/onboarding/link/:token", async (req: Request, res: Response)
     },
   });
 });
+
+// ── POST /api/public/onboarding/link/:token/start-consent ──────────────────────
+// #4010 — the accept page's "Connect Microsoft 365". Re-validates the link
+// exactly as the GET above does (same statuses/messages), burns it, and mints
+// a consent invite through createConsentInviteForEmail — the existing
+// consent_invite_tokens + buildAdminConsentUrl + GET /api/consent/callback
+// mechanism — with the issuing MSP's id on the token. The callback's one
+// cross-MSP tenant conflict guard checks against that mspId; nothing here
+// re-implements it.
+//
+// Single use: the link is burned when the consent URL is minted (the page's
+// copy: "Opening the link a second time, after this, shows that it has been
+// used."). The burn and the invite insert share one transaction, and the burn
+// is conditional on used_at still being null, so two concurrent clicks cannot
+// both mint.
+
+router.post(
+  "/public/onboarding/link/:token/start-consent",
+  publicCheckoutLimiter,
+  async (req: Request, res: Response): Promise<void> => {
+    if (!mtAppCredentialsPresent()) {
+      res.status(503).json({
+        error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID / MT_APP_CLIENT_SECRET)",
+      });
+      return;
+    }
+
+    const { token } = req.params as { token: string };
+    if (!token) {
+      res.status(400).json({ error: "Token is required" });
+      return;
+    }
+
+    const now = new Date();
+    const [row] = await db
+      .select({
+        mspId: mspOnboardingLinksTable.mspId,
+        customerEmail: mspOnboardingLinksTable.customerEmail,
+        expiresAt: mspOnboardingLinksTable.expiresAt,
+        usedAt: mspOnboardingLinksTable.usedAt,
+        mspStatus: mspsTable.status,
+      })
+      .from(mspOnboardingLinksTable)
+      .innerJoin(mspsTable, eq(mspsTable.id, mspOnboardingLinksTable.mspId))
+      .where(eq(mspOnboardingLinksTable.token, token))
+      .limit(1);
+
+    if (!row) {
+      res.status(404).json({ error: "This onboarding link does not exist" });
+      return;
+    }
+    if (row.usedAt) {
+      res.status(410).json({ error: "This onboarding link has already been used" });
+      return;
+    }
+    if (row.expiresAt < now) {
+      res.status(410).json({ error: "This onboarding link has expired. Please ask your provider for a new one." });
+      return;
+    }
+    if (row.mspStatus === "suspended") {
+      res.status(403).json({ error: "The MSP associated with this link is not currently active." });
+      return;
+    }
+
+    const minted = await db.transaction(async (tx) => {
+      const [claimed] = await tx
+        .update(mspOnboardingLinksTable)
+        .set({ usedAt: now })
+        .where(
+          and(
+            eq(mspOnboardingLinksTable.token, token),
+            isNull(mspOnboardingLinksTable.usedAt),
+            gte(mspOnboardingLinksTable.expiresAt, now),
+          ),
+        )
+        .returning({ token: mspOnboardingLinksTable.token });
+      if (!claimed) return null;
+      return createConsentInviteForEmail(req, { email: row.customerEmail, mspId: row.mspId }, tx);
+    });
+
+    if (!minted) {
+      // Lost a race with a concurrent click between the read and the claim.
+      res.status(410).json({ error: "This onboarding link has already been used" });
+      return;
+    }
+
+    log.info(
+      { mspId: row.mspId, customerEmail: row.customerEmail, consentExpiresAt: minted.expiresAt },
+      "msp-onboarding: link accepted — consent invite minted for the issuing MSP",
+    );
+
+    res.json({ consentUrl: minted.consentUrl, expiresAt: minted.expiresAt, scopes: minted.scopes });
+  },
+);
 
 // ── POST /api/public/checkout/gate ─────────────────────────────────────────────
 //

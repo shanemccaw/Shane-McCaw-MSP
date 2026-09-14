@@ -4,7 +4,11 @@ import { Loader2 } from "lucide-react";
 import { ConsentOnboardingShell, ConsentCard } from "@/components/consent/ConsentOnboardingShell";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { fetchOnboardingLink, type OnboardingLinkResult } from "@/lib/consent-onboarding-api";
+import {
+  fetchOnboardingLink,
+  startOnboardingConsent,
+  type OnboardingLinkResult,
+} from "@/lib/consent-onboarding-api";
 
 const GONE_COPY: Record<Exclude<OnboardingLinkResult["state"], "valid">, { title: string; body: string; code: string }> = {
   missing: {
@@ -41,27 +45,41 @@ const GONE_COPY: Record<Exclude<OnboardingLinkResult["state"], "valid">, { title
  * called by any of the 5 archived pages — a real, live, currently-
  * unexercised list endpoint").
  *
- * The real minted link (msp-onboarding.ts's own `POST
- * /api/msp/onboarding/generate-link`) is `${SITE_URL}/onboarding/:token` — a
- * bare top-level path, NOT `/portal/onboarding/:token` (contract pack §6).
- * This portal SPA is mounted at a fixed `/portal/` base in every environment
- * (see vite.config.ts's own header comment) and cannot itself serve a bare
- * top-level route, so this page renders at `/portal/onboarding/:token`
- * pending a routing decision on where the bare path actually lives — filed
- * as a sub-issue of #1650 rather than guessed at here.
+ * The minted link (`POST /api/msp/onboarding/generate-link`) is
+ * `${SITE_URL}/portal/onboarding/:token` (#4010) — this portal SPA is mounted
+ * at a fixed `/portal/` base in every environment.
  *
- * "Connect Microsoft 365" has no real backend to call yet either: this
- * link's own token type (mspOnboardingLinksTable) has no bridge into the
- * Microsoft admin-consent redirect machinery (consentInviteTokensTable /
- * buildAdminConsentUrl) the way an MSP-invite-link's `consent-invite-tokens`
- * does — and wiring one touches the exact tenant-ownership logic behind a
- * real, cited past cross-tenant leak (consent.ts's tenant-conflict guard).
- * Rather than hand-roll that scoping decision here, the button is disabled
- * with an honest reason and the gap is filed alongside the routing one.
+ * "Connect Microsoft 365" calls `POST /api/public/onboarding/link/:token/
+ * start-consent` (#4010), which burns the link and returns a Microsoft
+ * admin-consent URL minted as a consent invite scoped to the issuing MSP; the
+ * whole tab navigates there, and GET /api/consent/callback brings the admin
+ * back to /portal/consent/success, /declined or /tenant-conflict.
  */
 export default function OnboardingLinkPage() {
   const { token } = useParams<{ token: string }>();
   const [result, setResult] = useState<OnboardingLinkResult | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  async function connect() {
+    if (!token || connecting) return;
+    setConnecting(true);
+    setConnectError(null);
+    const started = await startOnboardingConsent(token);
+    if (started.state === "redirect") {
+      // Leave `connecting` set — the tab is navigating away to Microsoft.
+      window.location.assign(started.consentUrl);
+      return;
+    }
+    setConnecting(false);
+    if (started.state === "unavailable") {
+      setConnectError(started.message);
+      return;
+    }
+    // The link went used/expired/missing/suspended between reading and
+    // clicking — show the same state the page would show on a fresh load.
+    setResult({ state: started.state });
+  }
 
   useEffect(() => {
     if (!token) return;
@@ -145,18 +163,23 @@ export default function OnboardingLinkPage() {
           </div>
         ) : null}
 
-        <Alert variant="info">
-          <AlertDescription>
-            Connecting Microsoft 365 from this invitation isn't wired up yet — the real endpoint
-            this button needs doesn't exist. Filed as a follow-up so it isn't silently faked here.
-          </AlertDescription>
-        </Alert>
+        {connectError ? (
+          <Alert variant="destructive">
+            <AlertDescription>{connectError}</AlertDescription>
+          </Alert>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-2.5 border-t border-border/60 pt-3.5">
           <span className="max-w-[320px] text-[11px] text-muted-foreground">
             Opening the link a second time, after this, shows that it has been used.
           </span>
-          <Button className="ml-auto" disabled title="Not wired up yet — see the alert above">
+          <Button
+            className="ml-auto"
+            disabled={connecting}
+            onClick={() => void connect()}
+            data-testid="onboarding-link-connect"
+          >
+            {connecting ? <Loader2 className="size-4 animate-spin" /> : null}
             Connect Microsoft 365
           </Button>
         </div>

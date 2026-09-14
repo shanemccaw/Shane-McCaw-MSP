@@ -15,10 +15,18 @@
  * — it is NOT a second consent mechanism. The only addition is that the token
  * row carries invited_email/invited_name for a client who has no users row
  * yet, which the callback hands to provisionProspectAccount.
+ *
+ * #4010: an MSP-issued onboarding link (POST /api/public/onboarding/link/
+ * :token/start-consent) mints through this same function with `mspId` set, so
+ * the callback attaches the new customer to the issuing MSP rather than the
+ * isDirectBusiness one — still the one invite-token mechanism, not a parallel
+ * table or callback.
  */
 import type { Request } from "express";
 import { randomBytes } from "crypto";
 import { db, consentInviteTokensTable } from "@workspace/db";
+
+type InviteInsertExecutor = Pick<typeof db, "insert">;
 import { buildAdminConsentUrl, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "./graph.ts";
 
 export { mtAppCredentialsPresent };
@@ -34,21 +42,26 @@ const INVITE_TTL_HOURS = 72;
  * The callback URL mirrors consent.ts's own getCallbackUrl(): it must be the
  * exact https://<domain>/api/consent/callback URI registered in the Azure App
  * Registration, derived from the same forwarded headers.
+ *
+ * `executor` lets a caller insert inside its own transaction (the onboarding
+ * link burns its own row in the same one).
  */
 export async function createConsentInviteForEmail(
   req: Request,
-  opts: { email: string; name?: string | null },
+  opts: { email: string; name?: string | null; mspId?: number | null },
+  executor: InviteInsertExecutor = db,
 ): Promise<{ token: string; consentUrl: string; expiresAt: Date; scopes: string[] }> {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000);
 
-  await db.insert(consentInviteTokensTable).values({
+  await executor.insert(consentInviteTokensTable).values({
     token,
     tenantId: null, // unknown until consent — the "common" authorize endpoint resolves it
     customerId: null, // no tenants row exists yet — created at consent time
     clientUserId: null, // no users row exists yet — created at consent time
     invitedEmail: opts.email.toLowerCase().trim(),
     invitedName: opts.name?.trim() || null,
+    mspId: opts.mspId ?? null, // null → the callback's isDirectBusiness default
     expiresAt,
   });
 

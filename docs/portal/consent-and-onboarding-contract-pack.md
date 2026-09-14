@@ -331,9 +331,23 @@ banner), a real gap Design should account for.
 
 **Response:** `{ token: string, link: string, expiresAt: Date }` (`:144`) — matches
 the archived page's `GeneratedLink` interface exactly. `link` is
-`${SITE_URL}/onboarding/${token}` (`:141-142`) — **not** `/portal/onboarding/...`
-or any portal-prefixed path; this is a bare top-level route the customer visits
-directly, unauthenticated.
+`${SITE_URL}/portal/onboarding/${token}` — corrected by #4010 from the former bare
+`${SITE_URL}/onboarding/${token}`, which no service served. The accept page lives in
+the portal SPA (mounted at `/portal/` in every environment) and is visited
+unauthenticated.
+
+**Accepting the link — `POST /api/public/onboarding/link/:token/start-consent`**
+(#4010, public, rate-limited like `/public/checkout/gate`). No body. Re-validates the
+link with the GET's exact statuses (`404` missing, `410` used/expired, `403` MSP
+suspended), then — in one transaction — burns the link (`used_at`) and inserts a
+`consent_invite_tokens` row with `invited_email` = the link's `customerEmail` and
+`msp_id` = the issuing MSP. `503` when the MT app credentials are unset.
+**Response:** `{ consentUrl: string, expiresAt: Date, scopes: string[] }` —
+`consentUrl` is `buildAdminConsentUrl("common", <invite token>, <host>/api/consent/callback, MT_APP_CLIENT_ID)`.
+The callback treats a token's `msp_id` as the owning MSP: the cross-MSP tenant
+conflict guard refuses a Microsoft tenant already owned by a different MSP
+(redirect to `/portal/consent/tenant-conflict`), and a new tenants row is created
+under that MSP rather than the direct-business one.
 
 ### 6a. Sibling routes on the same feature (pulled in — not named in #2758, but the direct downstream consumers of the link this route mints)
 
