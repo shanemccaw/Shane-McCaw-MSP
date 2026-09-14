@@ -3414,6 +3414,72 @@ describe("applyMapping — countWhere (#402)", () => {
   });
 });
 
+// ── applyMapping — devices:kfm-configuration Settings Catalog mapping (#3959) ──
+//
+// #3959 migrated this check from beta/deviceManagement/groupPolicyConfigurations
+// (displayName name-match) to beta/deviceManagement/configurationPolicies?$expand=settings
+// (countWhere over each policy's settings[] entries, matched on the real
+// settingDefinitionId rather than an admin-set free-text name). Fixture shape below
+// is a real configurationPolicies?$expand=settings response shape: each policy has a
+// `settings` array of top-level setting instances; a choice setting's dependent
+// dropdown/textbox live nested inside settingInstance.choiceSettingValue.children,
+// NOT as separate settings[] entries — this test also proves that nesting can't be
+// double-counted.
+describe("applyMapping — devices:kfm-configuration Settings Catalog read (#3959)", () => {
+  const KFM_MAPPING: MappingRule[] = [
+    {
+      sourceField: "settings",
+      targetField: "kfmConfiguredProfileCount",
+      transform: `countWhere('{{settingInstance.settingDefinitionId}} contains "onedrivengsc_kfmoptinnowizard"')`,
+    },
+    { sourceField: "id", targetField: "deviceConfigProfileCount", transform: "count" },
+  ];
+
+  it("counts a policy carrying the KFM setting, for either live category-prefix variant", () => {
+    const POLICIES = [
+      {
+        id: "policy-kfm-v2",
+        name: "OneDrive Known Folder Move (KFM) - Silent Redirect",
+        settings: [
+          {
+            settingInstance: {
+              settingDefinitionId: "device_vendor_msft_policy_config_onedrivengscv2~policy~onedrivengsc_kfmoptinnowizard",
+              choiceSettingValue: {
+                value: "device_vendor_msft_policy_config_onedrivengscv2~policy~onedrivengsc_kfmoptinnowizard_1",
+                children: [
+                  { settingInstance: { settingDefinitionId: "..._kfmoptinnowizard_dropdown" } },
+                  { settingInstance: { settingDefinitionId: "..._kfmoptinnowizard_textbox" } },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      {
+        id: "policy-unrelated",
+        name: "Update Rings",
+        settings: [
+          { settingInstance: { settingDefinitionId: "device_vendor_msft_policy_config_update~policy~update_allowautoupdate" } },
+        ],
+      },
+    ];
+    const result = applyMapping(POLICIES, KFM_MAPPING, []);
+    // Exactly 1: the children nested under choiceSettingValue are NOT separate
+    // settings[] entries, so they cannot inflate the count.
+    expect(result.kfmConfiguredProfileCount).toBe(1);
+    expect(result.deviceConfigProfileCount).toBe(2);
+  });
+
+  it("counts 0 on a tenant with no KFM policy — not a false positive off an unrelated setting", () => {
+    const POLICIES = [
+      { id: "p1", settings: [{ settingInstance: { settingDefinitionId: "device_vendor_msft_policy_config_update~policy~update_allowautoupdate" } }] },
+    ];
+    const result = applyMapping(POLICIES, KFM_MAPPING, []);
+    expect(result.kfmConfiguredProfileCount).toBe(0);
+    expect(result.deviceConfigProfileCount).toBe(1);
+  });
+});
+
 // ── executeMonitorCheck — DNS-backed (executorType='dns', #496) ────────────────
 
 describe("executeMonitorCheck — DNS-backed (executorType='dns', #496)", () => {

@@ -169,4 +169,66 @@ describe("runTemplateResolveSteps", () => {
     const out = await runTemplateResolveSteps(steps, {}, async () => ({ value: [{ meta: { inner: "deep" } }] }));
     expect(out.resolvedVars).toEqual({ inner: "deep" });
   });
+
+  // #3959 — the Settings Catalog KFM resolve step: picks the PARENT choice setting
+  // (empty rootDefinitionId) out of a filtered candidate set that also contains its
+  // dropdown/textbox children, without needing to know or match on the exact
+  // "onedrivengsc" vs "onedrivengscv2" category prefix Microsoft currently serves
+  // two live variants of.
+  it("resolves the KFM parent setting via an empty rootDefinitionId, regardless of the onedrivengsc/onedrivengscv2 category prefix", async () => {
+    const steps: BaselineTemplateResolveStep[] = [
+      {
+        endpoint: "https://graph.microsoft.com/beta/deviceManagement/configurationSettings?$filter=contains(id,'onedrivengsc_kfmoptinnowizard')",
+        selectMatch: { rootDefinitionId: "" },
+        assign: { kfmDefinitionId: "id" },
+      },
+    ];
+    const v2Candidates = {
+      value: [
+        {
+          id: "device_vendor_msft_policy_config_onedrivengscv2~policy~onedrivengsc_kfmoptinnowizard_kfmoptinnowizard_dropdown",
+          rootDefinitionId: "device_vendor_msft_policy_config_onedrivengscv2~policy~onedrivengsc_kfmoptinnowizard",
+        },
+        {
+          id: "device_vendor_msft_policy_config_onedrivengscv2~policy~onedrivengsc_kfmoptinnowizard_kfmoptinnowizard_textbox",
+          rootDefinitionId: "device_vendor_msft_policy_config_onedrivengscv2~policy~onedrivengsc_kfmoptinnowizard",
+        },
+        {
+          id: "device_vendor_msft_policy_config_onedrivengscv2~policy~onedrivengsc_kfmoptinnowizard",
+          rootDefinitionId: "",
+        },
+      ],
+    };
+    const out = await runTemplateResolveSteps(steps, {}, async () => v2Candidates);
+    expect(out.failed).toBe(false);
+    expect(out.resolvedVars).toEqual({
+      kfmDefinitionId: "device_vendor_msft_policy_config_onedrivengscv2~policy~onedrivengsc_kfmoptinnowizard",
+    });
+  });
+
+  it("resolves the same way for the non-v2 category prefix", async () => {
+    const steps: BaselineTemplateResolveStep[] = [
+      {
+        endpoint: "https://graph.microsoft.com/beta/deviceManagement/configurationSettings?$filter=contains(id,'onedrivengsc_kfmoptinnowizard')",
+        selectMatch: { rootDefinitionId: "" },
+        assign: { kfmDefinitionId: "id" },
+      },
+    ];
+    const v1Candidates = {
+      value: [
+        {
+          id: "device_vendor_msft_policy_config_onedrivengsc~policy~onedrivengsc_kfmoptinnowizard_kfmoptinnowizard_dropdown",
+          rootDefinitionId: "device_vendor_msft_policy_config_onedrivengsc~policy~onedrivengsc_kfmoptinnowizard",
+        },
+        {
+          id: "device_vendor_msft_policy_config_onedrivengsc~policy~onedrivengsc_kfmoptinnowizard",
+          rootDefinitionId: "",
+        },
+      ],
+    };
+    const out = await runTemplateResolveSteps(steps, {}, async () => v1Candidates);
+    expect(out.resolvedVars).toEqual({
+      kfmDefinitionId: "device_vendor_msft_policy_config_onedrivengsc~policy~onedrivengsc_kfmoptinnowizard",
+    });
+  });
 });
