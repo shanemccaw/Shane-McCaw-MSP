@@ -336,6 +336,7 @@ export function BreakGlassPage({ customerId }: { customerId: number }) {
                 <Fact label="CREATED" value={formatDateTime(detail.createdAt)} color={text.muted} />
                 <Fact label="CLAIMED" value={detail.deliveredAt ? formatDateTime(detail.deliveredAt) : "not claimed"} color={detail.deliveredAt ? "#6ee7b7" : "#fcd34d"} />
                 <Fact label="CLAIMED BY" value={detail.deliveredToEmail ?? "nobody"} color={detail.deliveredToEmail ? text.secondary : text.label} />
+                <Fact label="ACCOUNT" value={detail.breakGlassAccountId ?? "not recorded"} color={detail.breakGlassAccountId ? text.secondary : "#fcd34d"} />
                 <Fact label="INVITES SENT" value={String(detail.attempts.length)} color={text.secondary} />
                 <Fact label="STILL LIVE" value={String(detail.attempts.filter((a) => a.linkStatus === "pending").length)} color={text.secondary} />
               </div>
@@ -352,7 +353,7 @@ export function BreakGlassPage({ customerId }: { customerId: number }) {
               {detail.status === "pending_delivery" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 13, borderTop: `1px solid ${border.faint}` }}>
                   <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", color: text.faint }}>FORCE A RESET</span>
-                  {overridePreflight(detail.attempts).map((p, i) => (
+                  {overridePreflight(detail.attempts, detail.breakGlassAccountId).map((p, i) => (
                     <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
                       <Icon name={p.ok ? "circle-check-big" : "circle-alert"} size={14} color={p.ok ? "#34d399" : "#fbbf24"} style={{ marginTop: 2, flex: "0 0 14px" }} />
                       <span style={{ fontSize: 12, color: p.ok ? text.secondary : "#fcd34d", textWrap: "pretty" }}>{p.label}</span>
@@ -475,10 +476,11 @@ function allTerminal(attempts: readonly BreakGlassAttempt[]): boolean {
   return attempts.length > 0 && attempts.every((a) => a.linkStatus !== "pending");
 }
 
-function overridePreflight(attempts: readonly BreakGlassAttempt[]): { label: string; ok: boolean }[] {
+function overridePreflight(attempts: readonly BreakGlassAttempt[], breakGlassAccountId: string | null): { label: string; ok: boolean }[] {
   return [
     { label: "Still waiting to be claimed", ok: true },
     { label: "Every invite has burned out", ok: allTerminal(attempts) },
+    { label: "Break-glass account identity is present on the paused run", ok: breakGlassAccountId !== null },
     { label: "Only a Global Administrator can claim it", ok: true },
     { label: "The config pack run stays paused", ok: true },
   ];
