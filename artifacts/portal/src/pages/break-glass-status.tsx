@@ -34,8 +34,8 @@ import {
  *
  * Never shows the credential. The ACCOUNT cell the design draws is not rendered:
  * the break-glass account identity is not on the customer read (contract pack
- * §2.2), and the executor redacts `breakGlassAccountId` at rest
- * (SENSITIVE_PAYLOAD_KEYS in workflow-executor.ts).
+ * §2.2). It is persisted since #4015 (`break_glass_pending_secrets.break_glass_account_id`),
+ * but no read route serves it yet.
  *
  * The admin-override control is gated client-side on `can("msp",
  * "ladder.msp-operator")` — the seeded "MSP operator or above" ladder row, the

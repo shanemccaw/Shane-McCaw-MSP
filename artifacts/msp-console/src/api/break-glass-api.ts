@@ -64,6 +64,7 @@ export interface BreakGlassDetail {
   readonly createdAt: string;
   readonly deliveredAt: string | null;
   readonly deliveredToEmail: string | null;
+  readonly breakGlassAccountId: string | null;
   readonly attempts: readonly BreakGlassAttempt[];
 }
 

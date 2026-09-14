@@ -243,6 +243,7 @@ router.get(
         createdAt: ctx.secret.createdAt.toISOString(),
         deliveredAt: ctx.secret.deliveredAt ? ctx.secret.deliveredAt.toISOString() : null,
         deliveredToEmail: ctx.secret.deliveredToEmail,
+        breakGlassAccountId: ctx.secret.breakGlassAccountId,
         attempts: attempts.map((a) => ({
           id: a.id,
           invitedEmail: a.invitedEmail,

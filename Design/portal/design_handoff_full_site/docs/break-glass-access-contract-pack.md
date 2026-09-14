@@ -241,8 +241,12 @@ regardless of which caller invokes it:
 - **every existing verification attempt for this secret must be terminal**
   (`expired` or `superseded` — `:811-817`) — an admin cannot override while a
   link is still live
-- the paused run's payload must carry `breakGlassAccountId` (`:822-827`) — no
-  identity to reset without it, 409 if missing
+- the pending-secret row must record the account to reset —
+  `break_glass_pending_secrets.break_glass_account_id`, written by the gate at
+  insert (§4) — else 409. Until #4015 this was read from
+  `wf_runs.payload.breakGlassAccountId`, which persistence redaction had turned
+  into `"[redacted]"`, so every override reset `/users/[redacted]` and failed 502.
+  The replacement row the override inserts carries the same account id forward.
 
 On success, in order (`:829-905`): resets the tenant account's password via
 `graphWriteForTenant` PATCH (`:831-841`, real write-back gate — 502 with
@@ -475,7 +479,8 @@ upstream of every endpoint in §2 and §3.
 - Inserts one `break_glass_pending_secrets` row: `encryptedValue` (always,
   `encryptSecret(plaintext)`), `secretRef` (the Key Vault pointer if the
   payload already carries one for that field — `:7547`), `gateNodeId:
-  node.id`, `status: "pending_delivery"` (`:7540-7550`).
+  node.id`, `breakGlassAccountId` (the account resolved from
+  `accountIdField`, #4015), `status: "pending_delivery"` (`:7540-7550`).
 - **Deep-redacts the plaintext before it can reach `wf_runs.payload`** —
   strips the configured `secretField`/`secretTemplate`-referenced keys from
   the top-level payload AND from the accumulated `steps.<nodeId>` /
@@ -485,9 +490,12 @@ upstream of every endpoint in §2 and §3.
   sufficient.
 - Stamps the resolved break-glass account identity onto the (non-secret)
   payload under the canonical key `breakGlassAccountId` (`:7570-7574`),
-  regardless of which source field it was configured to read — this is the
-  key both §2.6 and §3.4's admin-override read
-  (`runPayload.breakGlassAccountId`, `break-glass-verification.ts:824`).
+  regardless of which source field it was configured to read. The identity is
+  **not** redacted at rest (#4015 removed it from `SENSITIVE_PAYLOAD_KEYS`): it
+  is an Entra object id, not a credential, and the resumed run needs it —
+  `quickstart-v1.assign-global-admin-role` posts `{{breakGlassUserId}}` as
+  `principalId`. §2.6 and §3.4's admin-override read the copy on the
+  pending-secret row (`break_glass_account_id`), not this payload key.
 - Sets `wf_runs.status = "awaiting_approval"` and returns `pauseForApproval:
   true` (`:7582`, `:7606`) — same pause mechanism the ordinary approval gate
   uses; a design surface treating "awaiting a human" states uniformly across

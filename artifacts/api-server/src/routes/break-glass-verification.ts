@@ -919,14 +919,14 @@ export async function performBreakGlassAdminOverride(
     return { ok: false, status: 409, error: "There are still live verification links for this secret" };
   }
 
-  // The break-glass account identity travels on the (non-secret) run payload
-  // under the canonical `breakGlassAccountId` key, which the gate node stamps
-  // from its configurable accountIdField at pause time.
-  const [run] = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, ctx.secret.runId)).limit(1);
-  const runPayload = (run?.payload as Record<string, unknown>) ?? {};
-  const accountId = runPayload.breakGlassAccountId as string | undefined;
+  // Git #4015 — the account to reset is recorded on the pending-secret row itself,
+  // written by the gate at insert from its configurable accountIdField. It used to
+  // be read back from `wf_runs.payload`, where #1911's persistence redaction had
+  // replaced it with "[redacted]" — so every override PATCHed a user that does not
+  // exist. A row with no identity is refused rather than guessed at.
+  const accountId = ctx.secret.breakGlassAccountId;
   if (!accountId) {
-    return { ok: false, status: 409, error: "Run payload does not carry the break-glass account identity (breakGlassAccountId)" };
+    return { ok: false, status: 409, error: "This pending secret does not record the break-glass account identity" };
   }
 
   // 1. Reset the credential on the tenant (same write helper as creation).
@@ -977,6 +977,9 @@ export async function performBreakGlassAdminOverride(
       encryptedValue: encryptSecret(newPassword),
       secretRef: newSecretRef,
       gateNodeId: ctx.secret.gateNodeId,
+      // #4015 — the replacement credential is for the same account; carry it so a
+      // second override on the new row can still find what to reset.
+      breakGlassAccountId: accountId,
       status: "pending_delivery",
     }).returning({ id: breakGlassPendingSecretsTable.id });
     newPendingSecretId = created.id;
