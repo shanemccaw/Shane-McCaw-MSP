@@ -130,6 +130,12 @@ export const MSP_PAGES: LeafPage[] = [
   // "Operations, not per-tenant" shape as Retention Queue immediately above.
   { id: "retainer", label: "Retainer hours", icon: "hourglass" },
   { id: "revenue", label: "Partner Revenue", icon: "handshake" },
+  // Workflows and Agents (Git #4080, Feature #3768) — real nav slots, generic
+  // `PlaceholderModule` mount. Neither has a defined feature scope yet
+  // (dogfooding on Shane's own tenant drives phase 2); the point of #4080 is
+  // to make the slot itself real, not to guess at the backend.
+  { id: "workflows", label: "Workflows", icon: "workflow" },
+  { id: "agents", label: "Agents", icon: "sparkles" },
   // Audit Log (Git #4012, README screen 63), mounted here unfiltered and
   // again per tenant (CHILD_GROUPS' "audit" leaf above) with customerId set
   // — same component, one prop, per the README's tree-placement table.
