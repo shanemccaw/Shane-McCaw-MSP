@@ -1687,7 +1687,10 @@ export type CustomerTestimonialStatus = typeof CUSTOMER_TESTIMONIAL_STATUSES[num
 //   applied               — an invoice.paid carried the discount (applied_* columns)
 export const CUSTOMER_BILLING_CREDIT_STATUSES = ["pending", "issued", "awaiting_subscription", "failed", "applied"] as const;
 export type CustomerBillingCreditStatus = typeof CUSTOMER_BILLING_CREDIT_STATUSES[number];
-export const CUSTOMER_BILLING_CREDIT_SOURCES = ["testimonial_approval"] as const;
+// `testimonial_approval` (#4032) is the original flow. `msp_operator_discount` and
+// `msp_operator_free_month` (#4110) are the MSP Console operator's own two credit-issuing
+// actions — same table and Stripe mechanism, distinct `source` for audit provenance.
+export const CUSTOMER_BILLING_CREDIT_SOURCES = ["testimonial_approval", "msp_operator_discount", "msp_operator_free_month"] as const;
 
 export const customerBillingCreditsTable = pgTable("customer_billing_credits", {
   id: serial("id").primaryKey(),
@@ -1697,6 +1700,11 @@ export const customerBillingCreditsTable = pgTable("customer_billing_credits", {
   // Same discount shape as coupons: fixed values are dollars, percentage is 0–100.
   discountType: text("discount_type", { enum: ["fixed", "percentage"] }).notNull(),
   discountValue: numeric("discount_value", { precision: 10, scale: 2 }).notNull(),
+  // Git #4110 — null/1 = a single-invoice Stripe "once" coupon (the original #4032
+  // behavior). 2+ = a "repeating" coupon spanning that many consecutive invoices, which
+  // is what makes a multi-month free-month grant a real, distinct Stripe primitive
+  // rather than several "once" credits racing to attach to the same next invoice.
+  durationMonths: integer("duration_months"),
   currency: text("currency").notNull().default("usd"),
   status: text("status").notNull().default("pending"),
   failureReason: text("failure_reason"),
@@ -1716,7 +1724,7 @@ export const customerBillingCreditsTable = pgTable("customer_billing_credits", {
   index("customer_billing_credits_stripe_discount_idx").on(t.stripeDiscountId),
   uniqueIndex("customer_billing_credits_source_testimonial_uq").on(t.sourceTestimonialId),
   check("customer_billing_credits_status_check", sql`${t.status} IN ('pending', 'issued', 'awaiting_subscription', 'failed', 'applied')`),
-  check("customer_billing_credits_source_check", sql`${t.source} IN ('testimonial_approval')`),
+  check("customer_billing_credits_source_check", sql`${t.source} IN ('testimonial_approval', 'msp_operator_discount', 'msp_operator_free_month')`),
   check("customer_billing_credits_discount_type_check", sql`${t.discountType} IN ('fixed', 'percentage')`),
 ]);
 

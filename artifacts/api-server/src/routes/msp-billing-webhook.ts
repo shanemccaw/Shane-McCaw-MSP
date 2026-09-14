@@ -835,8 +835,12 @@ async function provisionMspAdminUser(
  * to a row here (a purchase that does not reach active/trialing is rejected at the point
  * of sale and no row is written), and `paused` has no write path in this codebase —
  * mapping it to `unpaid` would record a payment failure that did not happen.
+ *
+ * Exported for reuse by `msp-subscription-billing.ts` (Git #4110) — the MSP Console
+ * operator's cancel route maps a Stripe response the same way this webhook does, rather
+ * than inventing a second status vocabulary translation.
  */
-function toTenantSubscriptionStatus(status: string): TenantSubscriptionStatus | null {
+export function toTenantSubscriptionStatus(status: string): TenantSubscriptionStatus | null {
   switch (status) {
     case "trialing":
     case "active":
