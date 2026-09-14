@@ -1,0 +1,85 @@
+{
+  "issue": 1746,
+  "feature": "My Architect (#1746, Feature #1569) -- the real customer-facing retainer page in artifacts/portal (/my-architect), wired to the one real, GET-only endpoint GET /api/portal/retainer -- see Design/portal/design_handoff_full_site/docs/my-architect-contract-pack.md. No fixture module: every row on screen (settings, bucket, work log, status reports) comes from this one endpoint. Money (hourlyRateCents) is a real, live field on the response and is never rendered, per contract pack §6.1.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "TBD-fill-at-DONE",
+
+  "notes": [
+    "WHAT THIS COVERS: the honest-empty / unconfigured contract (configured:false, settings:null, bucket computed against the platform default allotment, entries:[], statusReports:[]) -- contract pack §5 -- and that the page renders that state without fabricating data.",
+
+    "REAL LOCAL DB STATE AT THIS BUILD: retainer_settings, retainer_work_log and status_reports (report_status='sent') are all 0 rows on every tenant (confirmed via direct query against DATABASE_URL). A1 below asserts the real, honest unconfigured-shape response this produces on the testbed account -- not a placeholder standing in for real data. Configuring a real retainer (settings + logged hours) is an MSP-side action on admin-retainer.ts, out of scope for this customer-facing manifest -- once a retainer is configured and hours are logged for the testbed tenant, this manifest should be extended with a configured:true / non-empty-entries assertion.",
+
+    "NO UI LOGIN FLOW EXISTS YET FOR artifacts/portal -- same known, already-documented cross-cutting gap test-manifests/portal/security-plan.json's own notes describe. UI1/UI2 below only assert what is honestly reachable today: the route mounts and RequireAuth's honest 'Sign in required' panel renders for an unauthenticated visitor.",
+
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated testbed portal account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- an account with no retainer_settings row reads configured:false, settings:null, real zero entries/statusReports (contract pack §5) -- not a 500, not fabricated data.",
+      "method": "GET",
+      "path": "/api/portal/retainer",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.configured", "equals": false },
+      "sessionTag": "my-architect-1746"
+    },
+    {
+      "name": "A2 -- settings is null (not a zeroed object) when unconfigured.",
+      "method": "GET",
+      "path": "/api/portal/retainer",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.settings", "equals": null },
+      "sessionTag": "my-architect-1746"
+    },
+    {
+      "name": "A3 -- the bucket still computes against the platform default allotment (8h / 480min) with zero used -- a real default, not an absent field.",
+      "method": "GET",
+      "path": "/api/portal/retainer",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.bucket.retainedHours", "equals": 8 },
+      "sessionTag": "my-architect-1746"
+    },
+    {
+      "name": "A4 -- entries is a real empty array, not omitted, on an account with zero work-log rows.",
+      "method": "GET",
+      "path": "/api/portal/retainer",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.entries", "isArray": true },
+      "sessionTag": "my-architect-1746"
+    },
+    {
+      "name": "A5 -- statusReports is independent of configured -- a real empty array here, not conflated with the retainer's own configured state.",
+      "method": "GET",
+      "path": "/api/portal/retainer",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.statusReports", "isArray": true },
+      "sessionTag": "my-architect-1746"
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "UI1 -- an unauthenticated visitor to /my-architect sees the app's own honest sign-in-required panel (no login page exists yet -- see notes), not a crash or a silently-empty page.",
+      "action": "goto",
+      "target": "/portal/my-architect",
+      "sessionTag": "my-architect-1746"
+    },
+    {
+      "name": "UI2 -- the honest gate renders.",
+      "action": "expect",
+      "selector": "body",
+      "textContains": "Sign in required",
+      "critical": true,
+      "sessionTag": "my-architect-1746"
+    }
+  ]
+}

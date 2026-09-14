@@ -11,6 +11,7 @@ import {
   Scale,
   Layers,
   FileCheck2,
+  Compass,
   type LucideProps,
 } from "lucide-react";
 
@@ -40,6 +41,10 @@ export interface ModuleNavItem {
 
 export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard, builtPath: "/" },
+  // #1569's own body: "Sits above the Pillars in the portal IA, ungrouped,
+  // next to Overview and Projects" — Projects has no page yet, so this sits
+  // directly after Overview until Projects ships its own row.
+  { key: "my-architect", label: "My Architect", icon: Compass, builtPath: "/my-architect" },
   { key: "changes", label: "Microsoft Changes", icon: Megaphone, builtPath: "/microsoft-changes" },
   { key: "change-control", label: "Change Control", icon: Waypoints, builtPath: "/change-control" },
   { key: "risk-register", label: "Risk Register", icon: AlertTriangle, builtPath: "/risk-register" },

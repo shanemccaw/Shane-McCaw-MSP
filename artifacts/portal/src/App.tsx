@@ -29,6 +29,7 @@ import RiskRegisterPage from "@/pages/risk-register";
 import PolicyDecisionsPage from "@/pages/policy-decisions";
 import OwnershipPage from "@/pages/ownership";
 import SecurityPlanPage from "@/pages/security-plan";
+import MyArchitectPage from "@/pages/my-architect";
 import RemediationTrackingPage from "@/pages/remediation-tracking";
 import MicrosoftChangesPage from "@/pages/microsoft-changes";
 import ChangeControlPage from "@/pages/change-control";
@@ -98,6 +99,7 @@ function ProtectedRoutes() {
           <Route path="/policy-decisions" component={PolicyDecisionsPage} />
           <Route path="/ownership" component={OwnershipPage} />
           <Route path="/security-plan" component={SecurityPlanPage} />
+          <Route path="/my-architect" component={MyArchitectPage} />
           <Route path="/remediation-tracking" component={RemediationTrackingPage} />
           <Route path="/microsoft-changes" component={MicrosoftChangesPage} />
           <Route path="/change-control" component={ChangeControlPage} />
