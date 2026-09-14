@@ -17,6 +17,9 @@ import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
 import AccountSetupPage from "@/pages/account-setup";
 import SignInHelpPage from "@/pages/sign-in-help";
+import SignupPage from "@/pages/signup";
+import SignupSuccessPage from "@/pages/signup-success";
+import AcceptInvitePage from "@/pages/accept-invite";
 import NotificationPreferencesPage from "@/pages/notification-preferences";
 import WebhooksPage from "@/pages/webhooks";
 import SopsPage from "@/pages/sops";
@@ -126,6 +129,15 @@ export default function App() {
                 <Route path="/reset-password" component={ResetPasswordPage} />
                 <Route path="/account-setup" component={AccountSetupPage} />
                 <Route path="/sign-in-help" component={SignInHelpPage} />
+                {/*
+                  Signup, Agreement and Invite (#3992, Feature #1649) — public,
+                  unauthenticated. Paths are load-bearing: msp-signup.ts's own
+                  Stripe success_url/cancel_url are literally
+                  `${portalBase}/signup/success` and `${portalBase}/signup`.
+                */}
+                <Route path="/signup" component={SignupPage} />
+                <Route path="/signup/success" component={SignupSuccessPage} />
+                <Route path="/invite/:token" component={AcceptInvitePage} />
                 <Route>
                   <ProtectedRoutes />
                 </Route>
