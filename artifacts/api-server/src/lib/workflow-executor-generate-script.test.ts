@@ -306,7 +306,7 @@ describe("executor: generate_script node — service source pauses the run for a
     expect(handoffInsert?.status).toBe("pending");
   });
 
-  it("never calls generateScriptFromService/Document — no AI-generated scriptId in the run's own output", () => {
+  it("never calls the AI script-generation path — no AI-generated scriptId in the run's own output", () => {
     // The node's own paused output carries handoffId, not a scriptId/packageId —
     // those only appear once Shane completes the hand-off and the run resumes.
     const handoffInsert = dbState.capturedInserts.find((i) => i.sourceMode === "service");

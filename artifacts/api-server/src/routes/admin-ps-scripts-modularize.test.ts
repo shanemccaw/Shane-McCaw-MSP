@@ -93,7 +93,6 @@ mock.module("../lib/ps-script-gen.ts", {
     extractEnvelopeJson: () => null,
     hasPsKeywords: () => false,
     hasPsKeywordsFullText: () => false,
-    generateScriptFromService: async () => ({ scriptId: null, packageId: null, title: "" }),
   },
 });
 

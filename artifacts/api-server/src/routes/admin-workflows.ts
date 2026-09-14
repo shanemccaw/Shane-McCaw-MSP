@@ -1553,8 +1553,8 @@ router.post("/admin/workflows/pending-script-handoffs/:id/complete", requireAdmi
     }).where(eq(pendingScriptHandoffsTable.id, id));
 
     // Same shape { scriptId, packageId, title, category } the node used to
-    // produce inline from generateScriptFromService/Document — downstream nodes
-    // reading {{node.scriptId}} etc. see no difference from before the pause.
+    // produce inline from its former AI script-generation path — downstream
+    // nodes reading {{node.scriptId}} etc. see no difference from before the pause.
     const resumePayload = {
       ...((handoff.context as Record<string, unknown>) ?? {}),
       scriptId: body.data.scriptId ?? null,

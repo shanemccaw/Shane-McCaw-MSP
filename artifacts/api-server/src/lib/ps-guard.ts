@@ -6,10 +6,10 @@
  * and /fix endpoints to reject AI responses that contain only prose (i.e. the
  * model skipped the ```powershell fence entirely).
  *
- * hasPsKeywordsFullText() scans the entire string. Used by the
- * /generate-from-service route where the AI is instructed to prepend a
- * multi-line comment block (300–400 chars) before any PS code, which would
- * cause the 200-char window to miss valid scripts.
+ * hasPsKeywordsFullText() scans the entire string. Used by routes where the
+ * AI is instructed to prepend a multi-line comment block (300–400 chars)
+ * before any PS code, which would cause the 200-char window to miss valid
+ * scripts.
  *
  * validatePsSyntax() spawns pwsh to parse the script and returns any
  * syntax errors via the PowerShell language parser. Returns { valid: true,
