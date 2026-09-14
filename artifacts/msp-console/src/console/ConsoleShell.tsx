@@ -21,6 +21,7 @@ import { BreakGlassWatchlist } from "./modules/BreakGlassWatchlist";
 import { ScopeSla } from "./modules/ScopeSla";
 import { Ownership } from "./modules/Ownership";
 import { Sales } from "./modules/Sales";
+import { ActivityTimeline } from "./modules/ActivityTimeline";
 import { PolicyEngine } from "./modules/PolicyEngine";
 import { ConsentOnboarding } from "./modules/ConsentOnboarding";
 import { AccountSecurity } from "./modules/AccountSecurity";
@@ -352,6 +353,16 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     // `pages/config-state/ConfigState.tsx`'s own header for what is deliberately out
     // of scope (snapshots/baselines/registry, each their own separate module).
     return <ConfigState />;
+  }
+  if (sel.kind === "msp" && sel.page === "timeline") {
+    // Activity Timeline (#4011, README screen 27) — cross-tenant feed over
+    // GET /api/msp/timeline. Staff scoping is resolved server-side.
+    return (
+      <ActivityTimeline
+        customers={customers}
+        onOpenTenant={(customerId) => navigate({ kind: "tenant", tenant: customerId })}
+      />
+    );
   }
   if (sel.kind === "msp" && sel.page === "exec") {
     return <ExecutiveView onOpenTenant={(customerId) => navigate({ kind: "tenant", tenant: customerId })} />;
