@@ -4037,7 +4037,7 @@ namespace BuildConsole
             });
             // Git #2534 (widened by #4107) — for any chat that resolves to a real epic
             // (directly via chat.EpicId, or via the linked leaf issue's own parent epic), force
-            // the tab title to "[#<epic github number>] - <Epic Name> <X>% complete",
+            // the tab title to "[#<epic github number>] - <Epic Name>",
             // regardless of the chat's own title or the claude.ai page title. The epic-linked
             // format always wins (req 6) and never depends on a manual rename (Git #4107 —
             // RenameTab only ever wrote to local session-restore state, never the real DB, so
@@ -4049,8 +4049,7 @@ namespace BuildConsole
             string headerTitle;
             if (forcedEpic?.GithubNumber != null)
             {
-                int pct = LeftSidebar?.GetSubIssuePercentForGithubNumber(forcedEpic.GithubNumber.Value) ?? 0;
-                headerTitle = $"[#{forcedEpic.GithubNumber.Value}] - {forcedEpic.Title} {pct}% complete";
+                headerTitle = $"[#{forcedEpic.GithubNumber.Value}] - {forcedEpic.Title}";
             }
             else
             {
