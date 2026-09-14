@@ -307,7 +307,7 @@ export function AlertsDropdown({
                 data-testid="alerts-preferences-link"
                 onClick={() => {
                   onClose();
-                  navigate("/coming-soon?feature=" + encodeURIComponent("Alert preferences"));
+                  navigate("/settings?tab=alerts");
                 }}
                 className="ml-auto flex items-center gap-[6px] text-xs text-[#94a3b8] hover:text-[#cbd5e1]"
               >

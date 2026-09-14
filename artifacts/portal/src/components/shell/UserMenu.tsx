@@ -2,7 +2,6 @@ import { Link } from "wouter";
 import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users, KeyRound, DoorOpen, Lock, Ticket } from "lucide-react";
 import type { AuthUser } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
-import { comingSoonHref } from "./moduleNav";
 
 const HAIRLINE = "rgba(255,255,255,.10)";
 
@@ -64,11 +63,11 @@ function Divider() {
  * section).
  *
  * Scope per #1820: identity, sign-out, and links out to the surfaces that
- * own their own controls. Billing (#2998), Account security (#2996) and
- * Webhooks (#3523) are real pages now, routed directly. Settings has no page
- * in `artifacts/portal` yet, so it still routes through the honest
- * `/coming-soon?feature=` state #1819 established rather than a dead link.
- * This dropdown never duplicates password/MFA/session controls itself. Per
+ * own their own controls. Billing (#2998), Account security (#2996),
+ * Webhooks (#3523) and Settings (#1736, the consolidated container per the
+ * Shell design's own "module-grouped Settings container") are real pages
+ * now, routed directly. This dropdown never duplicates password/MFA/session
+ * controls itself. Per
  * #1751, the signed-in e-mail is NOT presented as a verified M365 identity —
  * it's the account's own contact e-mail.
  */
@@ -167,10 +166,10 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
           onNavigate={onClose}
         />
         <MenuRow
-          href={comingSoonHref("Settings", "account")}
+          href="/settings"
           icon={Settings}
           label="Settings"
-          sub="Alert preferences"
+          sub="Alerts · webhooks · email authentication"
           testId="user-menu-settings"
           onNavigate={onClose}
         />

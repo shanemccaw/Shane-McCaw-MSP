@@ -31,6 +31,7 @@ import SharedLiveDocumentsPublicPage from "@/pages/shared-live-documents-public"
 import MspSowPublicPage from "@/pages/msp-sow-public";
 import NotificationPreferencesPage from "@/pages/notification-preferences";
 import WebhooksPage from "@/pages/webhooks";
+import SettingsPage from "@/pages/settings";
 import SopsPage from "@/pages/sops";
 import RunbooksPage from "@/pages/runbooks";
 import RiskRegisterPage from "@/pages/risk-register";
@@ -129,6 +130,7 @@ function ProtectedRoutes() {
           <Route path="/email-auth-setup" component={EmailAuthSetupPage} />
           <Route path="/notification-preferences" component={NotificationPreferencesPage} />
           <Route path="/webhooks" component={WebhooksPage} />
+          <Route path="/settings" component={SettingsPage} />
           <Route path="/sops" component={SopsPage} />
           <Route path="/runbooks" component={RunbooksPage} />
           <Route path="/risk-register" component={RiskRegisterPage} />

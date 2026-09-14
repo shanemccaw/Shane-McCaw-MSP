@@ -152,7 +152,12 @@ const LEDGER: readonly { readonly gap: string; readonly where: string }[] = [
   },
 ];
 
-export default function EmailAuthSetupPage() {
+/**
+ * Split out from the page wrapper below so the consolidated Settings page
+ * (#1736) can mount it as one tab without re-wiring the fetch logic — same
+ * pattern as NotificationPreferencesContent / WebhooksContent.
+ */
+export function EmailAuthSetupContent() {
   const { dataState, status, refetch } = useEmailAuthSetupLive();
 
   const loading = dataState === "loading";
@@ -321,4 +326,8 @@ export default function EmailAuthSetupPage() {
       ) : null}
     </div>
   );
+}
+
+export default function EmailAuthSetupPage() {
+  return <EmailAuthSetupContent />;
 }

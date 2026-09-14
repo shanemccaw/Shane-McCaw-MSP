@@ -23,6 +23,7 @@ import { requireCapability } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 import {
   db,
+  pool,
   customerAlertPreferencesTable,
   customerAlertSettingsTable,
   customerAlertRecipientsTable,
@@ -224,6 +225,44 @@ router.put("/portal/alert-preferences", requireCapability("ladder.customer-user"
   } catch (err) {
     log.error({ err, customerId }, "portal-alert-preferences: PUT failed");
     res.status(500).json({ error: "Unable to save alert preferences right now. Please try again shortly." });
+  }
+});
+
+// ── GET /api/portal/alert-preferences/rules ───────────────────────────────────
+// The customer-facing read of the rule catalog admin manages at
+// /api/admin/customer-alert-rules (`customer_tenant_alert_rules`) — a fixed
+// vocabulary, not per-customer data, so no customerId scoping is needed.
+// Restricted to rows admin has actually enabled and marked customer-visible;
+// this is what the Settings page's per-category rule chips (and the
+// pending-detector "NO DETECTOR YET" badge) render against. Added for #1736 —
+// no prior portal-facing route served this catalog (zero page consumers).
+
+router.get("/portal/alert-preferences/rules", requireCapability("ladder.customer-user"), async (_req: Request, res: Response) => {
+  try {
+    const result = await pool.query<{
+      rule_key: string;
+      label: string;
+      alert_category: string;
+      severity: string;
+      detector_status: string;
+    }>(`
+      SELECT rule_key, label, alert_category, severity, detector_status
+      FROM customer_tenant_alert_rules
+      WHERE enabled = true AND notify_customer = true
+      ORDER BY alert_category ASC, severity DESC, rule_key ASC
+    `);
+    res.json({
+      rules: result.rows.map((r) => ({
+        ruleKey: r.rule_key,
+        label: r.label,
+        alertCategory: r.alert_category,
+        severity: r.severity,
+        detectorStatus: r.detector_status,
+      })),
+    });
+  } catch (err) {
+    log.error({ err }, "portal-alert-preferences: GET /rules failed");
+    res.status(500).json({ error: "Unable to load alert rules right now. Please try again shortly." });
   }
 });
 

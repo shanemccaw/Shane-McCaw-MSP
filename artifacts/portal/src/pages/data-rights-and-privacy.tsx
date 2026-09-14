@@ -32,7 +32,12 @@ const CONFIRM_PHRASE = "DELETE";
  * data — they describe the fixed shape of the real export/deletion contract,
  * not customer-specific values.
  */
-export default function DataRightsAndPrivacyPage() {
+/**
+ * Split out from the page wrapper below so the consolidated Settings page
+ * (#1736) can mount it as one tab without re-wiring the fetch logic — same
+ * pattern as NotificationPreferencesContent / WebhooksContent.
+ */
+export function DataRightsAndPrivacyContent() {
   const { user } = useAuth();
   const live = useDataRightsPrivacyLive();
   const [armed, setArmed] = useState(false);
@@ -333,6 +338,10 @@ export default function DataRightsAndPrivacyPage() {
       </div>
     </div>
   );
+}
+
+export default function DataRightsAndPrivacyPage() {
+  return <DataRightsAndPrivacyContent />;
 }
 
 const LEGACY_BLOCKS = [
