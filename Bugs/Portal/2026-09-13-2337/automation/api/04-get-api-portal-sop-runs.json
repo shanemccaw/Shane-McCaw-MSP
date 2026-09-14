@@ -1,0 +1,37 @@
+{
+  "name": "get-api-portal-sop-runs",
+  "method": "GET",
+  "requestUrl": "http://localhost:5175/api/portal/sop-runs",
+  "statusCode": 403,
+  "durationMs": 0,
+  "reason": "HTTP 403",
+  "requestHeaders": {
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+    "Host": "localhost:5175",
+    "Referer": "http://localhost:5175/portal/%7B%7BTEST_PORTAL_SLUG%7D%7D/login",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+    "authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiZW1haWwiOiJzaGFuZUBzaGFuZW1jY2F3LmNvbSIsIm5hbWUiOiJTaGFuZSBNY0NhdyIsInJvbGUiOiJhZG1pbiIsIm1zcFJvbGUiOiJQbGF0Zm9ybUFkbWluIiwibXNwSWQiOjEsIm1zcFNsdWciOiJzaGFuZS1tY2Nhdy1jb25zdWx0aW5nIiwiaWF0IjoxNzg5MzU3MDM3LCJleHAiOjE3ODkzNTc5Mzd9.wRafVZSbt8_T7HX9ZTj5gIiDpsKdSregaCTSFx3tF9Q",
+    "sec-ch-ua": "\u0022Microsoft Edge\u0022;v=\u0022152\u0022, \u0022Not?A_Brand\u0022;v=\u002224\u0022, \u0022Chromium\u0022;v=\u0022152\u0022, \u0022Microsoft Edge WebView2\u0022;v=\u0022152\u0022",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\u0022Windows\u0022"
+  },
+  "responseHeaders": {
+    "access-control-allow-credentials": "true",
+    "connection": "close",
+    "content-length": "41",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Mon, 14 Sep 2026 03:37:17 GMT",
+    "etag": "W/\u002229-07InC\u002BRhMWD3j92V4c1pkZbmBGc\u0022",
+    "vary": "Origin",
+    "x-powered-by": "Express",
+    "x-trace-id": "912eb68c-7a53-4f60-ab66-00b0027209cc"
+  },
+  "responseBody": "{\u0022error\u0022:\u0022No customer identity on token\u0022}",
+  "timestamp": "2026-09-13T23:37:18.0599537-04:00"
+}

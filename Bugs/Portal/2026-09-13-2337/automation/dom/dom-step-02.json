@@ -1,0 +1,14 @@
+{
+  "StepIndex": 2,
+  "Route": "http://localhost:5175/portal/%7B%7BTEST_PORTAL_SLUG%7D%7D/login",
+  "Selector": "#email",
+  "Description": "expect #email",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 180,
+  "Changes": [
+    "Captured DOM scope: 180 total element nodes under \u0027#email\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-13T23:37:52.1269809-04:00"
+}

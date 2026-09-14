@@ -1,0 +1,184 @@
+{
+  "testName": "Issue #1041 - Email Authentication Setup Instructions page (SPF/DKIM/DMARC) \u2014 customer self-service",
+  "productName": "Portal",
+  "sessionId": "2026-09-13-2337",
+  "startedAt": "2026-09-13T23:37:00.5146747-04:00",
+  "endedAt": "2026-09-13T23:38:17.2882065-04:00",
+  "durationSeconds": 76.77,
+  "success": false,
+  "summary": "\u274C TEST ABORTED \u2014 critical step 5 (click [data-testid=\u0027login-submit\u0027]) failed: Executed click on [data-testid=\u0027login-submit\u0027] (0/7 steps ran, 2 skipped)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/{{TEST_PORTAL_SLUG}}/login"
+  ],
+  "steps": [
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "#email",
+      "targetUrl": "http://localhost:5175/portal/{{TEST_PORTAL_SLUG}}/login",
+      "expected": "#email state == \u0027visible\u0027",
+      "actual": "found=False, visible=False",
+      "passed": false,
+      "durationMs": 30039,
+      "detail": "#email \u2014 state \u0027visible\u0027 NOT matched (found=False, visible=False) [polled 30002ms / 117 attempts, 30000ms budget exhausted]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1041-20260913233659\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "click",
+      "selector": "[data-testid=\u0027login-submit\u0027]",
+      "targetUrl": "http://localhost:5175/portal/{{TEST_PORTAL_SLUG}}/login",
+      "expected": "click on \u0027[data-testid=\u0027login-submit\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": false,
+      "durationMs": 20079,
+      "detail": "Executed click on [data-testid=\u0027login-submit\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1041-20260913233659\\screenshots\\5.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "get-favicon.ico",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/favicon.ico",
+      "statusCode": 404,
+      "durationMs": 0,
+      "reason": "HTTP 404",
+      "timestamp": "2026-09-13T23:37:17.3709136-04:00"
+    },
+    {
+      "name": "get-api-portal-runbooks",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/runbooks",
+      "statusCode": 403,
+      "durationMs": 0,
+      "reason": "HTTP 403",
+      "timestamp": "2026-09-13T23:37:18.0500187-04:00"
+    },
+    {
+      "name": "get-api-portal-pillars",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/pillars",
+      "statusCode": 403,
+      "durationMs": 0,
+      "reason": "HTTP 403",
+      "timestamp": "2026-09-13T23:37:18.0545551-04:00"
+    },
+    {
+      "name": "get-api-portal-sop-runs",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/sop-runs",
+      "statusCode": 403,
+      "durationMs": 0,
+      "reason": "HTTP 403",
+      "timestamp": "2026-09-13T23:37:18.0599537-04:00"
+    },
+    {
+      "name": "get-api-portal-scan-status",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/scan-status",
+      "statusCode": 403,
+      "durationMs": 0,
+      "reason": "HTTP 403",
+      "timestamp": "2026-09-13T23:37:18.0639151-04:00"
+    },
+    {
+      "name": "get-api-portal-scan-status",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/scan-status",
+      "statusCode": 403,
+      "durationMs": 0,
+      "reason": "HTTP 403",
+      "timestamp": "2026-09-13T23:38:03.2382783-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /portal/{{TEST_PORTAL_SLUG}}/login",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1041-20260913233659\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\copilot-readiness\\email-auth-setup\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect #email",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1041-20260913233659\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\copilot-readiness\\email-auth-setup\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "input #email",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1041-20260913233659\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\copilot-readiness\\email-auth-setup\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "input #password",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1041-20260913233659\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\copilot-readiness\\email-auth-setup\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "click [data-testid=\u0027login-submit\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1041-20260913233659\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\copilot-readiness\\email-auth-setup\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5175/portal/%7B%7BTEST_PORTAL_SLUG%7D%7D/login",
+      "Selector": "#email",
+      "Description": "expect #email",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 180,
+      "Changes": [
+        "Captured DOM scope: 180 total element nodes under \u0027#email\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-13T23:37:52.1269809-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5175/portal/%7B%7BTEST_PORTAL_SLUG%7D%7D/login",
+      "Selector": "[data-testid=\u0027login-submit\u0027]",
+      "Description": "click [data-testid=\u0027login-submit\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 180,
+      "Changes": [
+        "Captured DOM scope: 180 total element nodes under \u0027[data-testid=\u0027login-submit\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-13T23:38:17.222262-04:00"
+    }
+  ],
+  "recommendations": "Run aborted: critical step 5 (click [data-testid=\u0027login-submit\u0027]) failed: Executed click on [data-testid=\u0027login-submit\u0027]. Check prerequisite selectors, authentication, or network connectivity."
+}
