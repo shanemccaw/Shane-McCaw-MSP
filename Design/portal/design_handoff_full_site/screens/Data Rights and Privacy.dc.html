@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+<div data-screen-label="Data Rights and Privacy" data-privacy-state="{{stateMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Privacy and your data</span>
+      <span title="Two rights, two actions: take a copy of everything the platform holds about your organisation, or ask for it to be deleted. Both act on the whole account; neither is selective." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b"><span style="width:6px;height:6px;border-radius:999px;background:#34d399"></span>Live · acts on your own account, priya@contoso.com</span>
+    </div>
+
+    <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 16px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Download a copy of your data</span>
+        <span style="font-size:11px;color:#64748b">one JSON file · export format 2</span>
+        <sc-if value="{{exportIdle}}" hint-placeholder-val="{{ true }}">
+          <span onClick="{{startExport}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:7px 13px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:#005A9E">Prepare export</span>
+        </sc-if>
+        <sc-if value="{{exportLoading}}" hint-placeholder-val="{{ false }}">
+          <span style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 13px;flex:none;white-space:nowrap"><span style="width:11px;height:11px;border-radius:999px;border:2px solid rgba(148,163,184,.3);border-top-color:#94a3b8;animation:spin .9s linear infinite"></span>Preparing export…</span>
+        </sc-if>
+        <sc-if value="{{exportDone}}" hint-placeholder-val="{{ false }}">
+          <span onClick="{{resetExport}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:7px 13px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:rgba(255,255,255,.05)">Prepare another</span>
+        </sc-if>
+        <sc-if value="{{exportError}}" hint-placeholder-val="{{ false }}">
+          <span onClick="{{resetExport}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:7px 13px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:rgba(255,255,255,.05)">Try again</span>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{exportDone}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:10px;border:1px solid rgba(52,211,153,.25);background:rgba(52,211,153,.06);border-radius:12px;padding:12px 14px;align-items:flex-start">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Your export downloaded</span>
+            <span style="font-size:11.5px;color:#94a3b8;font-family:ui-monospace,Menlo,monospace">data-export-priya@contoso.com-2026-09-14.json</span>
+            <span style="font-size:11px;color:#64748b;line-height:1.5">Each download is recorded on your account's audit trail, and your provider can see that a copy was taken.</span>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{exportError}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:12px 14px;align-items:flex-start">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Failed to generate data export</span>
+            <span style="font-size:11px;color:#94a3b8;line-height:1.5">That is the server's own message, shown as it came back. Nothing was downloaded and nothing about your account changed.</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">Everything is gathered at the moment you ask and served as one file — no email, no waiting. It covers every login that shares your organisation, because projects, invoices and messages belong to the organisation, not to one person's sign-in.</span>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:14px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">YOUR ACCOUNT AND ITS HISTORY</span>
+          <sc-for list="{{legacyBlocks}}" as="b" hint-placeholder-count="5">
+            <div style="display:flex;gap:10px;align-items:baseline">
+              <span style="font-size:11.5px;color:#e2e8f0;width:118px;flex:none">{{b.name}}</span>
+              <span style="font-size:11px;color:#64748b;line-height:1.5">{{b.what}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">WHAT MONITORING HAS RECORDED ABOUT YOUR TENANT</span>
+          <sc-for list="{{schemaBlocks}}" as="b" hint-placeholder-count="6">
+            <div style="display:flex;gap:10px;align-items:baseline">
+              <span style="font-size:11.5px;color:#e2e8f0;width:118px;flex:none">{{b.name}}</span>
+              <span style="font-size:11px;color:#64748b;line-height:1.5">{{b.what}}</span>
+            </div>
+          </sc-for>
+          <span style="font-size:10.5px;color:#475569;line-height:1.5;padding-top:2px">Large histories are capped at the newest 2,000 rows each; audit activity at the newest 500. An organisation with nothing recorded gets empty lists, not placeholders.</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 16px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Ask for your data to be deleted</span>
+        <span style="font-size:11px;color:#64748b">whole account · processed by a person within 30 days</span>
+      </div>
+      <sc-if value="{{delIdle}}" hint-placeholder-val="{{ true }}">
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">This sends a request to your provider's operator. It does not delete anything itself — erasure is carried out by a person, and the request is recorded on your account's audit trail so it cannot go missing.</span>
+        <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">KEPT REGARDLESS · LEGAL RETENTION</span>
+          <span style="font-size:12px;color:#cbd5e1;line-height:1.55;max-width:680px">Signed contracts and invoices are retained for 7 years as required by law. Everything else is in scope.</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px;flex-wrap:wrap">
+          <sc-if value="{{confirmOff}}" hint-placeholder-val="{{ true }}">
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:520px">Once submitted there is nothing to look up here later — the page will tell you it was received, and the rest happens by email from a person.</span>
+            <span onClick="{{armDelete}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#f87171;border:1px solid rgba(248,113,113,.4);border-radius:6px;padding:7px 13px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:rgba(248,113,113,.08)">Request deletion…</span>
+          </sc-if>
+          <sc-if value="{{confirmOn}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:8px;flex:1;min-width:260px">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">TYPE DELETE TO CONFIRM</span>
+              <span style="font-size:12.5px;color:#e2e8f0;border:1px solid rgba(248,113,113,.4);border-radius:6px;padding:8px 11px;background:rgba(255,255,255,.02);font-family:ui-monospace,Menlo,monospace;max-width:220px">DELETE</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-left:auto">
+              <span onClick="{{disarm}}" style="font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap" style-hover="background:rgba(255,255,255,.05)">Cancel</span>
+              <span onClick="{{submitDelete}}" style="font-size:12px;font-weight:600;color:#fff;background:#dc2626;border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap" style-hover="background:#b91c1c">Submit deletion request</span>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+      <sc-if value="{{delLoading}}" hint-placeholder-val="{{ false }}">
+        <span style="display:flex;align-items:center;gap:8px;font-size:12px;color:#94a3b8"><span style="width:11px;height:11px;border-radius:999px;border:2px solid rgba(148,163,184,.3);border-top-color:#94a3b8;animation:spin .9s linear infinite"></span>Submitting…</span>
+      </sc-if>
+      <sc-if value="{{delDone}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:10px;border:1px solid rgba(52,211,153,.25);background:rgba(52,211,153,.06);border-radius:12px;padding:13px 15px;align-items:flex-start">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Your deletion request has been received</span>
+            <span style="font-size:12px;color:#94a3b8;line-height:1.6">We will process it within 30 days and send a confirmation to your email address. Note: signed contracts and invoices are retained for 7 years as required by law.</span>
+            <span style="font-size:11px;color:#64748b;line-height:1.5">That confirmation comes from the person handling the request, not from this page. This page has no status to show later — if you reload, the request is still recorded, but this notice will not come back.</span>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{delError}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:12px 14px;align-items:flex-start">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:5px;flex:1">
+            <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Failed to submit deletion request</span>
+            <span style="font-size:11px;color:#94a3b8;line-height:1.5">Nothing was recorded. The server's own message is shown, not a paraphrase.</span>
+            <span onClick="{{disarm}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Try again</span>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:9px">
+      <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Closing your login is a different thing</span>
+      <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">Deleting your own sign-in lives under Account Security. It uses the same deletion request behind the scenes, so the two never disagree about what is kept — but this page is about your organisation's data, and that one is about your access.</span>
+      <a href="Account Security.dc.html" style="font-size:12px;font-weight:600;text-decoration:none">Go to Account Security →</a>
+    </div>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="7">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;exportState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;idle&quot;,&quot;loading&quot;,&quot;done&quot;,&quot;error&quot;],&quot;default&quot;:&quot;idle&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;deletionState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;idle&quot;,&quot;loading&quot;,&quot;done&quot;,&quot;error&quot;],&quot;default&quot;:&quot;idle&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;serverOutcome&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;success&quot;,&quot;error&quot;],&quot;default&quot;:&quot;success&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+class Component extends DCLogic {
+  state = { exp: null, del: null, armed: false, ledger: true };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    const exp = S.exp || P.exportState || "idle";
+    const del = S.del || P.deletionState || "idle";
+    const outcome = P.serverOutcome || "success";
+    const after = (key, ok, bad, ms) => { setTimeout(() => this.setState({ [key]: outcome === "error" ? bad : ok }), ms); };
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      stateMarker: "export:" + exp + " deletion:" + del,
+      exportIdle: exp === "idle", exportLoading: exp === "loading", exportDone: exp === "done", exportError: exp === "error",
+      startExport: () => { this.setState({ exp: "loading" }); after("exp", "done", "error", 1400); },
+      resetExport: () => this.setState({ exp: "idle" }),
+      legacyBlocks: [
+        { name: "Profile", what: "name, email, company, phone, when the account was created" },
+        { name: "Projects & documents", what: "every project on the organisation and the files attached to them" },
+        { name: "Invoices & messages", what: "amounts as billed, status, and the message history with your provider" },
+        { name: "Microsoft 365 profile", what: "the profile snapshot held for your organisation, if one exists" },
+        { name: "Your own activity", what: "what this login did, newest 500 entries — yours only, not the organisation's" },
+        { name: "Quiz results", what: "any diagnostic quiz taken with this email address" },
+      ],
+      schemaBlocks: [
+        { name: "Diagnostic runs", what: "every scan and its findings — severity, title, recommendation" },
+        { name: "Engine scores", what: "score history, daily roll-ups and baseline resets per signal engine" },
+        { name: "Signals", what: "when each signal fired and when it resolved" },
+        { name: "Documents & SOWs", what: "generated documents, statements of work and who signed them" },
+        { name: "Consent & agreements", what: "your Microsoft 365 consent record and clickwrap acceptances" },
+        { name: "Organisation activity", what: "the audit trail across the whole organisation, newest 500 entries" },
+      ],
+      delIdle: del === "idle", delLoading: del === "loading", delDone: del === "done", delError: del === "error",
+      confirmOff: !S.armed, confirmOn: S.armed,
+      armDelete: () => this.setState({ armed: true }),
+      disarm: () => this.setState({ armed: false, del: "idle" }),
+      submitDelete: () => { this.setState({ del: "loading", armed: false }); after("del", "done", "error", 1200); },
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "No deletion status to check later. The request is a single audit entry with no lifecycle; the only states are not-yet-submitted and submitted, and \"submitted\" does not survive a reload.", where: "§1 · §6" },
+        { gap: "No confirmation email to you from this page. Only the operator is notified; the confirmation the message promises is sent by the person who fulfils the request.", where: "§1 · §2" },
+        { gap: "Nothing is erased by the request. Every deletion is a human action outside the platform; the page says so rather than implying an automatic wipe.", where: "§6" },
+        { gap: "No partial export or deletion. Both act on the whole account — there is no \"just my invoices\".", where: "§6" },
+        { gap: "No export for another person. The export is always the signed-in account's own, widened only to the logins that share the organisation.", where: "§1" },
+        { gap: "No placeholder rows. An organisation with nothing recorded gets empty lists in the file, because that is the real answer.", where: "§4" },
+        { gap: "One deletion path, two doors. Account Security's delete-account button calls the same request; this page links there instead of restating it.", where: "§5" },
+        { gap: "The 7-year retention line is the server's wording, kept verbatim, so the two surfaces can never disagree about what is kept.", where: "§1 · §5" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</helmet>
+<div data-screen-label="Diagnostics and Scripts" data-diag-scene="{{sceneMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Diagnostics</span>
+      <span title="What the last scan of your tenant found, check by check. Scans are started by your provider against the monitoring package you hold; this page reads the results and never starts one." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+    </div>
+
+    <sc-if value="{{scanning}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:12px;border:1px solid rgba(96,165,250,.3);background:rgba(96,165,250,.06);border-radius:12px;padding:12px 16px;flex-wrap:wrap">
+        <span style="width:8px;height:8px;border-radius:999px;background:#60a5fa;animation:pulseDot 1.4s ease-in-out infinite;flex:none"></span>
+        <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:200px">
+          <span style="font-size:12.5px;font-weight:600;color:#f8fafc">A scan is running now — started 14:07, 61 of 143 checks done</span>
+          <span style="font-size:11px;color:#94a3b8;line-height:1.5">Results below are still from the previous scan. This page only takes a scan on once it has finished or finished in part; the running one is visible here because the assessment status read reports it separately.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{neverScanned}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Your tenant has not been scanned yet</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:660px">This is a real read of your organisation's scan history and it holds no runs. There are no findings to show because nothing has looked yet — not because your tenant is clean. Scans are started by your provider; ask them when the first one is scheduled.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{noContext}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:14px 16px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">This sign-in is not attached to an organisation</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">Diagnostics are read per organisation, and your session carries none. That is a property of the login, not a missing scan — a staff or unscoped account lands here. Nothing below can be read until the sign-in is linked to a tenant.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{hasRun}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 16px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Latest scan</span>
+          <span style="font-size:10px;font-weight:600;color:#fbbf24;background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.28);border-radius:999px;padding:3px 9px">Partial — some checks could not run</span>
+          <span style="margin-left:auto;font-size:10.5px;color:#64748b;font-family:ui-monospace,Menlo,monospace">core:security-baseline · Thu 11 Sep, 06:12</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+          <sc-for list="{{counts}}" as="c" hint-placeholder-count="5">
+            <div style="display:flex;flex-direction:column;gap:3px;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:11px 13px;background:rgba(255,255,255,.015)">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">{{c.label}}</span>
+              <span style="font-size:20px;font-weight:700;color:{{c.ink}};font-variant-numeric:tabular-nums;letter-spacing:-.02em">{{c.n}}</span>
+              <span style="font-size:10.5px;color:#64748b;line-height:1.4">{{c.note}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <span style="font-size:11px;color:#475569;line-height:1.55;max-width:680px">"Partial" means the scan finished but some checks were blocked — most by licences your tenant does not hold, which is counted apart from technical errors so it never reads as a failure of your setup. Every scan on record for your organisation has ended this way so far.</span>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 20px 14px">
+        <div style="display:flex;align-items:center;gap:10px;padding:13px 0 10px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Findings</span>
+          <span style="font-size:11px;color:#64748b">{{findingMeta}}</span>
+          <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+            <sc-for list="{{filters}}" as="f" hint-placeholder-count="5">
+              <span onClick="{{f.pick}}" style="font-size:10.5px;font-weight:600;color:{{f.ink}};background:{{f.bg}};border:1px solid {{f.bd}};border-radius:999px;padding:3px 10px;cursor:pointer;white-space:nowrap">{{f.label}}</span>
+            </sc-for>
+          </div>
+        </div>
+        <sc-for list="{{findings}}" as="fd" hint-placeholder-count="6">
+          <div style="display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid rgba(255,255,255,.06)">
+            <span style="width:66px;flex:none;margin-top:1px"><span style="display:inline-block;font-size:10px;font-weight:600;color:{{fd.sInk}};background:{{fd.sBg}};border:1px solid {{fd.sBd}};border-radius:999px;padding:3px 0;width:66px;text-align:center">{{fd.severity}}</span></span>
+            <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:0">
+              <span style="font-size:12.5px;color:#e2e8f0;line-height:1.4">{{fd.title}}</span>
+              <span style="font-size:11.5px;color:#94a3b8;line-height:1.5">{{fd.description}}</span>
+              <span style="font-size:10.5px;color:#64748b;font-family:ui-monospace,Menlo,monospace">{{fd.checkLabel}}</span>
+            </div>
+            <span style="font-size:10.5px;color:{{fd.csInk}};flex:none;white-space:nowrap;text-align:right;line-height:1.5;max-width:150px;white-space:normal">{{fd.checkStatus}}</span>
+          </div>
+        </sc-for>
+        <span style="display:block;font-size:10.5px;color:#475569;line-height:1.55;border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:2px">Each finding carries its title, description and the check it came from. The raw data pulled from Microsoft behind a finding, and the provider's remediation notes, are not part of what this page is given.</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px">
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Architecture health by pillar</span>
+            <span style="font-size:11px;color:#64748b">your tenant, from the latest scan</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <sc-for list="{{pillars}}" as="p" hint-placeholder-count="5">
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;align-items:baseline;gap:10px">
+                  <span style="font-size:12px;color:#e2e8f0;flex:1">{{p.name}}</span>
+                  <span style="font-size:12px;font-weight:600;color:#f8fafc;font-variant-numeric:tabular-nums">{{p.score}}</span>
+                </div>
+                <div style="height:5px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden"><div style="height:100%;width:{{p.w}};background:{{p.bar}};border-radius:999px"></div></div>
+              </div>
+            </sc-for>
+          </div>
+          <span style="font-size:11px;color:#475569;line-height:1.55;border-top:1px solid rgba(255,255,255,.06);padding-top:10px">No industry comparison is shown. The reference set it would come from holds no rows yet, so every "industry average" would be blank — the bars are yours alone, and say so.</span>
+        </div>
+
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:11px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Scripts for you to run</span>
+            <span style="font-size:10px;font-weight:600;color:#94a3b8;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.22);border-radius:999px;padding:3px 9px">None</span>
+          </div>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.6">Some checks can only be completed by a PowerShell script run inside your tenant. When a scan marks a check that way, its script downloads from here, scoped to the checks your own scan surfaced.</span>
+          <span style="font-size:12px;color:#cbd5e1;line-height:1.6">No check in your scan needs one, and no check on the platform is flagged that way today. This section is empty because nothing exists to fill it — not because the download is broken, though it also cannot yet succeed: no script has been attached to any check anywhere.</span>
+          <span style="font-size:10.5px;color:#475569;line-height:1.5;border-top:1px solid rgba(255,255,255,.06);padding-top:10px">Attaching a script to a check is missing on the provider side (#2506). Until it lands, this list stays honest and empty.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;scanning&quot;,&quot;never-scanned&quot;,&quot;no-customer-context&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+class Component extends DCLogic {
+  state = { filter: "all", ledger: true };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    const scene = P.scene || "live";
+    const hasRun = scene === "live" || scene === "scanning";
+    const SEV = {
+      critical: { ink: "#f87171", bg: "rgba(248,113,113,.10)", bd: "rgba(248,113,113,.3)" },
+      warning: { ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" },
+      info: { ink: "#60a5fa", bg: "rgba(96,165,250,.10)", bd: "rgba(96,165,250,.3)" },
+      ok: { ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" },
+    };
+    const CS = { ok: ["Ran", "#64748b"], license_gap: ["Blocked — licence not held", "#fbbf24"], service_not_configured: ["Service not configured", "#94a3b8"], partial: ["Ran in part", "#fbbf24"], error: ["Check failed", "#f87171"] };
+    const ALL = [
+      ["critical", "Legacy authentication is still allowed for 12 accounts", "Basic auth protocols accept sign-ins that bypass MFA. Twelve mailboxes signed in this way in the last 30 days.", "Conditional Access — legacy auth block", "ok"],
+      ["critical", "No break-glass account excluded from Conditional Access", "Every Global Administrator is subject to the same policies; a policy mistake could lock the tenant out.", "Identity — emergency access", "ok"],
+      ["warning", "Guest users can invite other guests", "External collaboration settings let any guest bring in more guests without approval.", "External identities — guest invite policy", "ok"],
+      ["warning", "Defender for Office 365 checks could not run", "Safe Links and Safe Attachments policies were not read because the tenant does not hold the licence they need.", "Threat protection — Safe Links", "license_gap"],
+      ["warning", "Unified audit log retention is at the default", "Ninety days of audit history is kept; longer retention needs a policy your licence supports.", "Compliance — audit retention", "partial"],
+      ["info", "Self-service password reset is enabled for all users", "SSPR is on tenant-wide. Two authentication methods are required, which is the recommended setting.", "Identity — SSPR", "ok"],
+      ["info", "Purview DLP policies were not evaluated", "No DLP configuration exists to read, so the check recorded the service as not set up rather than failing.", "Information protection — DLP", "service_not_configured"],
+      ["ok", "Security defaults are off because Conditional Access is in use", "The expected state for a tenant running its own policies.", "Identity — security defaults", "ok"],
+      ["ok", "MFA is registered for every privileged role holder", "All 9 accounts holding a directory role have a strong method registered.", "Identity — privileged MFA", "ok"],
+    ].map(([severity, title, description, checkLabel, cs]) => ({ severity, title, description, checkLabel, checkStatus: CS[cs][0], csInk: CS[cs][1], sInk: SEV[severity].ink, sBg: SEV[severity].bg, sBd: SEV[severity].bd }));
+    const findings = S.filter === "all" ? ALL : ALL.filter((f) => f.severity === S.filter);
+    const filt = (key, label) => {
+      const on = S.filter === key, T = key === "all" ? { ink: "#cbd5e1", bd: "rgba(255,255,255,.18)", bg: "rgba(255,255,255,.06)" } : SEV[key];
+      return { label, pick: () => this.setState({ filter: key }), ink: on ? T.ink : "#64748b", bg: on ? T.bg : "transparent", bd: on ? T.bd : "rgba(255,255,255,.1)" };
+    };
+    const pillar = (name, score) => ({ name, score: String(score), w: score + "%", bar: score >= 80 ? "#34d399" : score >= 60 ? "#fbbf24" : "#f87171" });
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      sceneMarker: scene,
+      hasRun, scanning: scene === "scanning", neverScanned: scene === "never-scanned", noContext: scene === "no-customer-context",
+      stateLine: { live: "Live — latest scan Thu 11 Sep, 143 checks", scanning: "Live — a scan is in progress", "never-scanned": "Live — no scan on record", "no-customer-context": "No organisation on this sign-in" }[scene],
+      stateDot: scene === "no-customer-context" ? "#f87171" : scene === "never-scanned" ? "#475569" : "#34d399",
+      counts: [
+        { label: "CHECKS", n: "143", ink: "#f8fafc", note: "in the security baseline package" },
+        { label: "PASSED", n: "111", ink: "#34d399", note: "ran and returned a result" },
+        { label: "LICENCE-BLOCKED", n: "22", ink: "#fbbf24", note: "need a licence your tenant lacks" },
+        { label: "ERRORS", n: "2", ink: "#f87171", note: "a technical failure, not your setup" },
+        { label: "NEED A SCRIPT", n: "0", ink: "#94a3b8", note: "none flagged on the platform today" },
+      ],
+      findingMeta: findings.length + " of " + ALL.length + " shown · newest scan only",
+      filters: [filt("all", "All"), filt("critical", "Critical"), filt("warning", "Warning"), filt("info", "Info"), filt("ok", "OK")],
+      findings,
+      pillars: [pillar("Identity & access", 71), pillar("Data protection", 58), pillar("Threat protection", 64), pillar("Device & endpoint", 82), pillar("Governance & audit", 77)],
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "No \"run a scan\" button. Scans are triggered by the provider against your monitoring package; the customer read is read-only.", where: "§0 · §1f" },
+        { gap: "A running scan is shown as a strip, not as results. The latest-scan read only takes on a run once it is complete or partial; the in-progress one comes from the assessment status read, which selects differently.", where: "§1a · §1e · §4" },
+        { gap: "No script list. No list endpoint ever existed; downloads are per check, and no check is flagged for a script anywhere today.", where: "§0 · §1c" },
+        { gap: "The empty scripts section names the real cause: nothing can attach a script to a check yet (#2506). It is a wiring gap, not \"no data yet\".", where: "§6" },
+        { gap: "No industry average or Microsoft excellence benchmark on the pillar bars. The reference table is empty, so those fields are null for every tenant.", where: "§1d" },
+        { gap: "No raw Microsoft data or remediation notes behind a finding. The customer read is a deliberately narrower summary than the operator's.", where: "§1a · §1b" },
+        { gap: "No scan history. There is no customer list of runs — only the latest, and a single run by id; the page draws the latest.", where: "§1a · §1b" },
+        { gap: "Licence-blocked checks are counted apart from errors, as the run itself does, so a tenant without a licence is never shown as broken.", where: "§2" },
+        { gap: "Nothing scores the tenant as a single number here. Pillar scores are drawn; the composite lives with the CIO report, not this page.", where: "§2" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

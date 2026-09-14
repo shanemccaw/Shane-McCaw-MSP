@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</helmet>
+<div data-screen-label="Offers and SOW Acceptance" data-offers-scene="{{sceneMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Offers</span>
+      <span title="Work your provider has proposed, priced against what your tenant's signals actually show. Accept or decline from here; a project you accept gets a statement of work generated for you to sign." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}};animation:{{stateAnim}}"></span>{{stateLine}}</span>
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="2">
+          <span onClick="{{t.pick}}" style="font-size:11px;font-weight:600;color:{{t.ink}};background:{{t.bg}};border:1px solid {{t.bd}};border-radius:999px;padding:4px 12px;cursor:pointer;white-space:nowrap">{{t.label}}</span>
+        </sc-for>
+      </div>
+    </div>
+
+    <sc-if value="{{tabOffers}}" hint-placeholder-val="{{ true }}">
+      <sc-if value="{{noOffers}}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">No offers for you right now</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:660px">This is a real read of your offers: none has been sent. Offers your provider is still drafting are not visible until sent, and this page updates on its own the moment one is.</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{hasOffers}}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{offers}}" as="o" hint-placeholder-count="4">
+              <div onClick="{{o.pick}}" style="border:1px solid {{o.bd}};border-radius:12px;background:{{o.bg}};padding:12px 14px;display:flex;flex-direction:column;gap:5px;cursor:pointer">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-size:12.5px;font-weight:600;color:#e2e8f0;flex:1;min-width:0;line-height:1.4">{{o.title}}</span>
+                  <span style="font-size:10px;font-weight:600;color:{{o.stInk}};background:{{o.stBg}};border:1px solid {{o.stBd}};border-radius:999px;padding:2px 8px;flex:none">{{o.state}}</span>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:8px">
+                  <span style="font-size:13px;font-weight:700;color:#f8fafc;font-variant-numeric:tabular-nums">{{o.price}}</span>
+                  <span style="font-size:10.5px;color:#64748b">{{o.when}}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:16px 20px 16px;display:flex;flex-direction:column;gap:12px;align-self:start">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{sel.title}}</span>
+                <span style="font-size:10px;font-weight:600;color:{{sel.stInk}};background:{{sel.stBg}};border:1px solid {{sel.stBd}};border-radius:999px;padding:2px 8px">{{sel.state}}</span>
+              </div>
+              <span style="font-size:11px;color:#64748b">{{sel.timeline}}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">WHY THIS IS PROPOSED</span>
+              <span style="font-size:12px;color:#cbd5e1;line-height:1.6">{{sel.rationale}}</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:10px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">
+              <span style="font-size:22px;font-weight:700;color:#f8fafc;letter-spacing:-.02em;font-variant-numeric:tabular-nums">{{sel.price}}</span>
+              <span style="font-size:11px;color:#64748b;line-height:1.5">the price adjusted to your tenant's signals; there is no other price behind it to show</span>
+            </div>
+            <sc-if value="{{sel.isSent}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;align-items:center;gap:9px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px;flex-wrap:wrap">
+                <span style="font-size:11px;color:#475569;line-height:1.5;max-width:300px">{{sel.expiryLine}}</span>
+                <span onClick="{{openReject}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:8px 13px;cursor:pointer;white-space:nowrap" style-hover="background:rgba(255,255,255,.05)">Decline</span>
+                <span onClick="{{accept}}" style="font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 13px;cursor:pointer;white-space:nowrap" style-hover="background:#005A9E">Accept offer</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{sel.isAccepted}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:5px;border:1px solid rgba(52,211,153,.25);background:rgba(52,211,153,.06);border-radius:12px;padding:12px 14px">
+                <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Accepted {{sel.acceptedAt}}</span>
+                <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">{{sel.acceptedNote}}</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{sel.isRejected}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:5px;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px">
+                <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">Declined {{sel.closedAt}}</span>
+                <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">{{sel.rejectionLine}}</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{sel.isExpired}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">This offer lapsed on {{sel.expiresAt}} and can no longer be accepted or declined. Your provider can send a fresh one.</span>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{tabSow}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:16px 20px 16px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:220px">
+            <span style="font-size:11px;font-weight:600;letter-spacing:.08em;color:#60a5fa">STATEMENT OF WORK</span>
+            <span style="font-size:16px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Conditional Access hardening</span>
+            <span style="font-size:11px;color:#64748b">Contoso Ltd · prepared by Shane McCaw Consulting · version fingerprint {{sowVersion}}</span>
+          </div>
+          <span style="font-size:10px;font-weight:600;color:{{presInk}};background:{{presBg}};border:1px solid {{presBd}};border-radius:999px;padding:3px 9px">{{presStatus}}</span>
+          <span onClick="{{openDoc}}" style="font-size:11px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:6px 11px;cursor:pointer;white-space:nowrap" style-hover="background:rgba(255,255,255,.05)">Open full document ↗</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,.07)">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 0 6px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;flex:1">PHASES · {{phaseMeta}}</span>
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:90px;text-align:right">PRICE</span>
+          </div>
+          <sc-for list="{{phases}}" as="ph" hint-placeholder-count="4">
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:9px 0;border-top:1px solid rgba(255,255,255,.05);opacity:{{ph.opacity}}">
+              <span style="width:14px;height:14px;border-radius:4px;border:1px solid {{ph.boxBd}};background:{{ph.boxBg}};display:flex;align-items:center;justify-content:center;flex:none;margin-top:2px"><sc-if value="{{ph.on}}" hint-placeholder-val="{{ true }}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if></span>
+              <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0">
+                <span style="font-size:12.5px;color:#e2e8f0">{{ph.title}}</span>
+                <span style="font-size:11px;color:#64748b;line-height:1.5">{{ph.desc}}</span>
+              </div>
+              <span style="font-size:12.5px;color:#e2e8f0;width:90px;text-align:right;font-variant-numeric:tabular-nums">{{ph.price}}</span>
+            </div>
+          </sc-for>
+          <sc-for list="{{adjustments}}" as="ad" hint-placeholder-count="2">
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:9px 0;border-top:1px solid rgba(255,255,255,.05)">
+              <span style="width:14px;flex:none"></span>
+              <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0">
+                <span style="font-size:12px;color:#cbd5e1">{{ad.title}}</span>
+                <span style="font-size:11px;color:#64748b;line-height:1.5">{{ad.desc}}</span>
+              </div>
+              <span style="font-size:12px;color:#fbbf24;width:90px;text-align:right;font-variant-numeric:tabular-nums">{{ad.price}}</span>
+            </div>
+          </sc-for>
+          <div style="display:flex;align-items:baseline;gap:12px;padding:12px 0 4px;border-top:1px solid rgba(255,255,255,.1)">
+            <span style="font-size:12px;color:#94a3b8;flex:1;line-height:1.5">{{totalLabel}}</span>
+            <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.02em;font-variant-numeric:tabular-nums">{{total}}</span>
+          </div>
+          <span style="font-size:10.5px;color:#475569;line-height:1.5">Adjustment lines count only when the signal behind them is currently firing on your tenant — re-evaluated each time this page loads, not fixed when the document was written.</span>
+        </div>
+
+        <sc-if value="{{scopeDrift}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:10px;border:1px dashed rgba(251,191,36,.5);background:rgba(251,191,36,.06);border-radius:12px;padding:12px 14px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">Your reduced-scope version of this document no longer matched the live pricing, so it was discarded. What you see is the full scope; a reduced scope can be generated again from these phases.</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{canSign}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:9px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">SIGN · FULL NAME AND A DRAWN SIGNATURE</span>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px">
+              <span style="font-size:12.5px;color:#e2e8f0;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;background:rgba(255,255,255,.02)">Priya Natarajan</span>
+              <span style="font-size:11px;color:#475569;border:1px dashed rgba(255,255,255,.18);border-radius:6px;padding:9px 11px;background:rgba(255,255,255,.01);min-height:38px;display:flex;align-items:center;font-style:italic">Draw your signature here</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-size:11px;color:#475569;line-height:1.5;max-width:420px">Signing records your name, signature and the time against this exact scope and price. Anyone signed in for Contoso Ltd may sign. Payment is arranged separately and nothing is charged by signing.</span>
+              <span onClick="{{sign}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer;white-space:nowrap" style-hover="background:#005A9E">Sign statement of work</span>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{isSigned}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:4px;border:1px solid rgba(52,211,153,.25);background:rgba(52,211,153,.06);border-radius:12px;padding:12px 14px">
+            <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Signed by {{signerName}} · {{signedAt}}</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">Bound at {{total}} for the phases ticked above. Payment is confirmed separately; this page will show "Paid" once it is.</span>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Terms</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:720px">{{contractBody}}</span>
+        <span style="font-size:10.5px;color:#475569;line-height:1.5">These terms come from the service's own contract template with your name, the service, price and date filled in. No separate "accept the platform agreement" step is shown — that agreement is between the platform and your provider, not you, and there is no record it could write for you.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{modalShow}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:60;background:rgba(2,6,23,.72);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="width:480px;max-width:100%;background:#0b1120;border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);padding:20px 22px 18px;display:flex;flex-direction:column;gap:11px">
+        <span style="font-size:14.5px;font-weight:700;color:#f8fafc">{{modalTitle}}</span>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.6">{{modalBody}}</span>
+        <sc-if value="{{modalReject}}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">REASON · OPTIONAL, FREE TEXT</span>
+          <span style="font-size:12px;color:#64748b;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;background:rgba(255,255,255,.02);min-height:40px;line-height:1.5">Not this quarter — budget is committed until January.</span>
+        </sc-if>
+        <span style="font-size:11.5px;color:#c2a63d;line-height:1.55">{{modalNote}}</span>
+        <div style="display:flex;align-items:center;gap:9px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px">
+          <sc-if value="{{modalReject}}" hint-placeholder-val="{{ false }}">
+            <span onClick="{{modalClose}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:8px 14px;cursor:pointer" style-hover="background:rgba(255,255,255,.05)">Keep it open</span>
+            <span onClick="{{reject}}" style="font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer" style-hover="background:#005A9E">Decline offer</span>
+          </sc-if>
+          <sc-if value="{{modalPlain}}" hint-placeholder-val="{{ true }}">
+            <span onClick="{{modalClose}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer">Close</span>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;tab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;offers&quot;,&quot;sow&quot;],&quot;default&quot;:&quot;offers&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;presentationStatus&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;draft&quot;,&quot;signed&quot;,&quot;paid&quot;],&quot;default&quot;:&quot;draft&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;scopeDrift&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+class Component extends DCLogic {
+  state = { tab: null, sel: 0, modal: null, ledger: true, states: {}, signed: false };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    const tab = S.tab || P.tab || "offers";
+    const scene = P.scene || "live";
+    const noOffers = scene === "empty";
+    const usd = (c) => "$" + (c / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    const ST = {
+      sent: { label: "Sent", ink: "#60a5fa", bg: "rgba(96,165,250,.10)", bd: "rgba(96,165,250,.3)" },
+      accepted: { label: "Accepted", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" },
+      rejected: { label: "Declined", ink: "#94a3b8", bg: "rgba(148,163,184,.08)", bd: "rgba(148,163,184,.22)" },
+      expired: { label: "Expired", ink: "#94a3b8", bg: "rgba(148,163,184,.08)", bd: "rgba(148,163,184,.22)" },
+    };
+    const RAW = [
+      { id: 481, title: "Conditional Access hardening project", rationale: "Twelve legacy-auth sign-ins in 30 days and no break-glass exclusion policy. The Security engine has flagged both for two consecutive scans; a scoped project closes them together rather than as separate change requests.", cents: 640000, state: "sent", sentAt: "12 Sep", expiresAt: "26 Sep", project: true },
+      { id: 476, title: "Tenant Monitoring — move to Growth", rationale: "Your remediation backlog crossed eight open items; Growth adds change control and remediation tracking to the hourly signals you already receive.", cents: 0, state: "sent", sentAt: "9 Sep", expiresAt: "9 Oct", perSeat: true },
+      { id: 452, title: "Guest access review", rationale: "Guest-invites-guests was open and 41 stale guests had not signed in for 180 days.", cents: 180000, state: "accepted", sentAt: "20 Aug", acceptedAt: "22 Aug" },
+      { id: 430, title: "Licence optimisation sprint", rationale: "14 E5 seats unused for 60 days.", cents: 120000, state: "rejected", sentAt: "1 Aug", closedAt: "4 Aug", reason: "Handled internally by our licensing team." },
+      { id: 401, title: "Quarterly architecture review", rationale: "Standing offer for a half-day review after the baseline scan.", cents: 95000, state: "expired", sentAt: "1 Jul", expiresAt: "31 Jul" },
+    ];
+    const offers = RAW.map((o, i) => {
+      const state = S.states[o.id] || o.state;
+      const T = ST[state];
+      return { i, id: o.id, title: o.title, rationale: o.rationale, state: T.label, stInk: T.ink, stBg: T.bg, stBd: T.bd,
+        price: o.perSeat ? "Priced per seat" : usd(o.cents),
+        when: state === "sent" ? "sent " + o.sentAt + " · until " + o.expiresAt : state === "accepted" ? "accepted " + (o.acceptedAt || "today") : state === "rejected" ? "declined " + (o.closedAt || "today") : "expired " + o.expiresAt,
+        timeline: "Sent " + o.sentAt + (o.expiresAt ? " · valid until " + o.expiresAt : ""),
+        expiryLine: "Open until " + o.expiresAt + ". After that it lapses on its own.",
+        isSent: state === "sent", isAccepted: state === "accepted", isRejected: state === "rejected", isExpired: state === "expired",
+        acceptedAt: o.acceptedAt || "just now",
+        acceptedNote: o.project ? "A statement of work is being generated for this project from your tenant's live signals. It appears under the SOW tab when ready; if generation fails, the acceptance still stands and your provider is told." : "Your provider has been notified and will follow up on scheduling.",
+        closedAt: o.closedAt || "just now",
+        rejectionLine: o.reason ? "Reason given: \"" + o.reason + "\"" : "No reason given — that is allowed.",
+        expiresAt: o.expiresAt,
+        pick: () => this.setState({ sel: i }),
+        bd: S.sel === i ? "rgba(0,120,212,.5)" : "rgba(255,255,255,.08)", bg: S.sel === i ? "rgba(0,120,212,.06)" : "rgba(255,255,255,.015)" };
+    });
+    const sel = offers[Math.min(S.sel, offers.length - 1)];
+    const setState = (st) => this.setState({ states: Object.assign({}, S.states, { [sel.id]: st }), modal: st === "accepted" && RAW[sel.i].project ? "accepted-project" : null });
+
+    const phase = (title, desc, cents, on) => ({ title, desc, price: usd(cents), on, opacity: on ? 1 : .55, boxBd: on ? "#0078D4" : "rgba(255,255,255,.2)", boxBg: on ? "#0078D4" : "transparent", cents: on ? cents : 0 });
+    const phases = [
+      phase("Policy review and consolidation", "Twelve policies mapped against the agreed baseline; consolidated to a named set of five.", 240000, true),
+      phase("Break-glass exclusion", "Emergency-access accounts excluded, monitored and documented.", 90000, true),
+      phase("Report-only trial", "Two weeks in report-only with a daily sign-in impact digest.", 160000, true),
+      phase("Enforcement and handover", "Staged enforcement with rollback per policy, then a runbook handover.", 150000, false),
+    ];
+    const adjustments = [{ title: "Legacy authentication remediation", desc: "Added because legacy-auth sign-ins are firing on your tenant right now.", price: "+" + usd(60000), cents: 60000 }];
+    const total = phases.reduce((a, p) => a + p.cents, 0) + adjustments.reduce((a, x) => a + x.cents, 0);
+    const pres = S.signed ? "signed" : (P.presentationStatus || "draft");
+    const PT = { draft: { label: "Awaiting your signature", ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" }, signed: { label: "Signed", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" }, paid: { label: "Paid", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" } }[pres];
+
+    const M = S.modal;
+    const spec = !M ? null : {
+      reject: { title: "Decline \"" + sel.title + "\"?", body: "Declining is final for this offer — it moves to Declined and cannot be reopened. Your provider sees the decision straight away.", note: "A reason is optional and stored as you type it.", reject: true },
+      "accepted-project": { title: "Offer accepted", body: "Because this is a project, a statement of work is now being generated from your tenant's live signals — the same pricing pipeline that priced the offer, not a flat catalogue rate. The acceptance is recorded regardless of how that generation goes.", note: "Your provider was notified over the live channel at the same moment this page updated." },
+      doc: { title: "Opening the full document", body: "The statement of work opens in a new tab as a standalone page — the reduced-scope version if one is current, otherwise the full consolidated document.", note: "This prototype stops at the request; the route behind it is live." },
+      signed: { title: "Signed", body: "Your name, signature and the time were recorded against this scope at " + usd(total) + ". No payment was taken and no invoice was raised by signing; that follows once a payment method is confirmed.", note: "The server's reply names its price field in cents but sends dollars (#2511). This page uses the amount shown above and does not trust the field name." },
+    }[M];
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      sceneMarker: scene + ":" + tab + ":" + pres,
+      stateLine: noOffers ? "Live — no offers sent" : "Live — updates arrive as they happen",
+      stateDot: "#34d399", stateAnim: noOffers ? "none" : "pulseDot 2.4s ease-in-out infinite",
+      tabs: [{ key: "offers", label: "Offers" }, { key: "sow", label: "Statement of work" }].map((t) => ({ label: t.label, pick: () => this.setState({ tab: t.key }), ink: tab === t.key ? "#f8fafc" : "#64748b", bg: tab === t.key ? "rgba(255,255,255,.08)" : "transparent", bd: tab === t.key ? "rgba(255,255,255,.2)" : "rgba(255,255,255,.1)" })),
+      tabOffers: tab === "offers", tabSow: tab === "sow",
+      noOffers, hasOffers: !noOffers,
+      offers, sel,
+      accept: () => setState("accepted"),
+      openReject: () => this.setState({ modal: "reject" }),
+      reject: () => setState("rejected"),
+      sowVersion: "sow-1:2400|sow-2:900|sow-3:1600",
+      presStatus: PT.label, presInk: PT.ink, presBg: PT.bg, presBd: PT.bd,
+      openDoc: () => this.setState({ modal: "doc" }),
+      phaseMeta: phases.filter((p) => p.on).length + " of " + phases.length + " selected",
+      phases, adjustments,
+      totalLabel: "Selected phases plus adjustments currently firing",
+      total: usd(total),
+      scopeDrift: P.scopeDrift === true,
+      canSign: pres === "draft", isSigned: pres !== "draft",
+      signerName: "Priya Natarajan", signedAt: "today",
+      sign: () => this.setState({ signed: true, modal: "signed" }),
+      contractBody: "This statement of work between Shane McCaw Consulting and Contoso Ltd (\"Priya Natarajan\") covers Conditional Access hardening for the price of " + usd(total) + " as of 14 September 2026, with the phases selected above. Work begins on signature; invoicing follows the payment plan agreed at checkout.",
+      modalShow: !!M,
+      modalTitle: spec ? spec.title : "", modalBody: spec ? spec.body : "", modalNote: spec ? spec.note : "",
+      modalReject: !!(spec && spec.reject), modalPlain: !!(spec && !spec.reject),
+      modalClose: () => this.setState({ modal: null }),
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "One price per offer. The customer read carries only the signal-adjusted price; base and internal figures never reach this page, so no \"was/now\" is drawn.", where: "§1" },
+        { gap: "No drafts. An offer the provider has not sent is filtered out of the list and 404s by id; the page never hints one is coming.", where: "§1 · §2" },
+        { gap: "Accept and decline only from Sent. Any other state gets no buttons, matching the 422 the server would return.", where: "§3" },
+        { gap: "No platform-agreement checkbox. That agreement is between the platform and the provider; the old page showed it as a UI-only gate that persisted nothing. No customer terms-acceptance record exists to write, so none is faked.", where: "§8 · §9b" },
+        { gap: "The bound price is the total drawn here, not the sign reply's \"effectivePriceCents\" — that field is dollars under a cents name (#2511).", where: "§7 · §9a" },
+        { gap: "Adjustments are live. They count only while their signal fires, and the page says so rather than presenting them as fixed line items.", where: "§5" },
+        { gap: "A discarded reduced scope is reported, not hidden. When the stored scoped version drifts from live pricing the server wipes it; the page shows the full scope and says why.", where: "§5" },
+        { gap: "Signing takes no payment and raises no event. Payment confirmation comes later from the processor, and the status moves to Paid on its own.", where: "§7" },
+        { gap: "Viewing is exact-login; signing is any login of the organisation. The page states who may sign rather than assuming every colleague can open it.", where: "§5 · §7" },
+        { gap: "Live updates come over the existing event channel; the page does not poll and does not claim more than \"accepted\" and \"declined\" arrive that way.", where: "§4" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

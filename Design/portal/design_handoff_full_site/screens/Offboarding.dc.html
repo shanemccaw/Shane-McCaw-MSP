@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+<div data-screen-label="Offboarding" data-offboard-state="{{sceneMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Leaving</span>
+      <span title="Take a copy of your organisation's records, then end your services. Ending them is a single, immediate action with no undo from this page." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+    </div>
+
+    <sc-if value="{{isInactive}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Your services have ended</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:660px">Your organisation is marked inactive. Recurring subscriptions were cancelled, services were paused and bundle access was withdrawn. Your records are kept, and the export below still works — nothing about your history was deleted.</span>
+        <span style="font-size:11px;color:#475569;line-height:1.55;max-width:660px">Coming back is a conversation with your provider; there is no button here that reactivates an organisation.</span>
+      </div>
+    </sc-if>
+
+    <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 16px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Take a copy of your records first</span>
+        <span style="font-size:11px;color:#64748b">one JSON file · every login of your organisation</span>
+        <sc-if value="{{exportIdle}}" hint-placeholder-val="{{ true }}">
+          <span onClick="{{startExport}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:7px 13px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:#005A9E">Download export</span>
+        </sc-if>
+        <sc-if value="{{exportLoading}}" hint-placeholder-val="{{ false }}">
+          <span style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 13px;flex:none"><span style="width:11px;height:11px;border-radius:999px;border:2px solid rgba(148,163,184,.3);border-top-color:#94a3b8;animation:spin .9s linear infinite"></span>Preparing…</span>
+        </sc-if>
+        <sc-if value="{{exportDone}}" hint-placeholder-val="{{ false }}">
+          <span style="margin-left:auto;font-size:11.5px;color:#34d399;flex:none">Downloaded · contoso-export-2026-09-14.json</span>
+        </sc-if>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+        <sc-for list="{{exportBlocks}}" as="b" hint-placeholder-count="5">
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">{{b.label}}</span>
+            <span style="font-size:12.5px;color:#e2e8f0">{{b.count}}</span>
+            <span style="font-size:10.5px;color:#64748b;line-height:1.45">{{b.what}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-size:11px;color:#475569;line-height:1.55;max-width:680px">The export is a snapshot of what you bought and what was measured, as recorded at the time. Prices on past services are the historical figures, not a live quote. Signed contracts and invoices are also under Privacy and your data, which exports more.</span>
+    </div>
+
+    <sc-if value="{{isActive}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(248,113,113,.25);border-radius:14px;background:rgba(248,113,113,.03);padding:15px 20px 16px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">End your services</span>
+          <span style="font-size:10px;font-weight:600;color:#f87171;background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.3);border-radius:999px;padding:3px 9px">Immediate · no undo here</span>
+        </div>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">One action, applied to your whole organisation the moment you confirm. Your provider is notified and the action is recorded twice — once on your account's audit trail and once on theirs.</span>
+        <div style="display:flex;flex-direction:column;gap:7px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">WHAT HAPPENS, IN ORDER</span>
+          <sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <span style="font-size:10.5px;font-weight:700;color:#64748b;width:12px;flex:none;margin-top:2px">{{s.n}}</span>
+              <span style="font-size:12px;color:#cbd5e1;line-height:1.55">{{s.t}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">AFFECTED NOW</span>
+          <sc-for list="{{services}}" as="sv" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:12px;color:#e2e8f0;flex:1">{{sv.name}}</span>
+              <span style="font-size:10.5px;color:#94a3b8">{{sv.billing}}</span>
+              <span style="font-size:10px;font-weight:600;color:{{sv.ink}};background:{{sv.bg}};border:1px solid {{sv.bd}};border-radius:999px;padding:2px 8px">{{sv.status}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px;flex-wrap:wrap">
+          <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:520px">Nothing is deleted. Your records, reports and history stay readable, and the export above keeps working afterwards.</span>
+          <span onClick="{{arm}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#f87171;border:1px solid rgba(248,113,113,.4);border-radius:6px;padding:8px 14px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:rgba(248,113,113,.08)">End services…</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isBrokered}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 16px;display:flex;flex-direction:column;gap:10px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Ending your services goes through your provider</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">Your organisation is served by <span style="color:#e2e8f0;font-weight:600">Northwind Managed IT</span>, not directly by the platform, so the self-service cancellation here is not available to you. The platform refuses it for every provider-served customer, by design — your contract and its notice terms are with your provider.</span>
+        <span style="font-size:11px;color:#f87171;font-family:ui-monospace,Menlo,monospace">403 · Customer offboarding is only available for Shane McCaw Consulting customers.</span>
+        <div style="display:flex;align-items:center;gap:11px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px;flex-wrap:wrap">
+          <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:520px">The export above still works for you — take your copy, then contact your provider to end the services.</span>
+          <span onClick="{{contact}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:8px 14px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:rgba(255,255,255,.05)">Contact Northwind Managed IT</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="7">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{modalShow}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:60;background:rgba(2,6,23,.72);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="width:480px;max-width:100%;background:#0b1120;border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);padding:20px 22px 18px;display:flex;flex-direction:column;gap:11px">
+        <span style="font-size:14.5px;font-weight:700;color:#f8fafc">{{modalTitle}}</span>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.6">{{modalBody}}</span>
+        <sc-if value="{{modalConfirm}}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">TYPE END SERVICES TO CONFIRM</span>
+          <span style="font-size:12.5px;color:#e2e8f0;border:1px solid rgba(248,113,113,.4);border-radius:6px;padding:8px 11px;background:rgba(255,255,255,.02);font-family:ui-monospace,Menlo,monospace">END SERVICES</span>
+        </sc-if>
+        <span style="font-size:11.5px;color:#c2a63d;line-height:1.55">{{modalNote}}</span>
+        <div style="display:flex;align-items:center;gap:9px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px">
+          <sc-if value="{{modalConfirm}}" hint-placeholder-val="{{ false }}">
+            <span onClick="{{modalClose}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:8px 14px;cursor:pointer" style-hover="background:rgba(255,255,255,.05)">Keep my services</span>
+            <span onClick="{{confirmEnd}}" style="font-size:12px;font-weight:600;color:#fff;background:#dc2626;border-radius:6px;padding:8px 14px;cursor:pointer" style-hover="background:#b91c1c">End services now</span>
+          </sc-if>
+          <sc-if value="{{modalPlain}}" hint-placeholder-val="{{ true }}">
+            <span onClick="{{modalClose}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer">Close</span>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;active&quot;,&quot;brokered&quot;,&quot;inactive&quot;],&quot;default&quot;:&quot;active&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+class Component extends DCLogic {
+  state = { modal: null, exp: "idle", ended: false, ledger: true };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    const base = P.scene || "active";
+    const scene = S.ended ? "inactive" : base;
+    const pill = (status) => status === "active" ? { status: "Active → paused", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" } : status === "paused" ? { status: "Paused → paused", ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" } : { status: "Completed · untouched", ink: "#94a3b8", bg: "rgba(148,163,184,.08)", bd: "rgba(148,163,184,.22)" };
+    const svc = (name, billing, status) => Object.assign({ name, billing }, pill(status));
+    const M = S.modal;
+    const spec = !M ? null : M === "confirm"
+      ? { title: "End all services for Contoso Ltd?", body: "Recurring subscriptions are cancelled with the payment processor, every active or paused service is set to paused, bundle access is withdrawn and your organisation is marked inactive. This happens immediately and cannot be reversed from this page.", note: "Records are kept. If a subscription cannot be cancelled with the processor, the rest still proceeds and the failure is logged for your provider.", confirm: true }
+      : M === "contact"
+      ? { title: "Contacting your provider", body: "Ending services for a provider-served organisation is handled by that provider under your contract with them.", note: "This prototype stops at the handoff." }
+      : { title: "", body: "", note: "" };
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      sceneMarker: scene + " export:" + S.exp,
+      isActive: scene === "active", isBrokered: scene === "brokered", isInactive: scene === "inactive",
+      stateLine: scene === "inactive" ? "Live — organisation inactive" : scene === "brokered" ? "Live — served by Northwind Managed IT" : "Live — organisation active, 3 services",
+      stateDot: scene === "inactive" ? "#475569" : "#34d399",
+      exportIdle: S.exp === "idle", exportLoading: S.exp === "loading", exportDone: S.exp === "done",
+      startExport: () => { this.setState({ exp: "loading" }); setTimeout(() => this.setState({ exp: "done" }), 1200); },
+      exportBlocks: [
+        { label: "ORGANISATION", count: "Contoso Ltd", what: "name, domain, industry, tenant id, status" },
+        { label: "SERVICES", count: "3", what: "what was bought, when, billing type, historical price" },
+        { label: "PROJECTS", count: "2", what: "title, status, progress" },
+        { label: "REPORTS", count: "4", what: "title and period of each report filed" },
+        { label: "ENGINE READINGS", count: "1,092", what: "every score snapshot per signal engine, with its breakdown" },
+      ],
+      steps: [
+        { n: "1", t: "Recurring subscriptions are cancelled with the payment processor. One that fails to cancel is logged and skipped; the rest continue." },
+        { n: "2", t: "Every active or paused service is set to paused. Completed one-off work is left as it is." },
+        { n: "3", t: "Access granted through bundles is withdrawn." },
+        { n: "4", t: "Your organisation is marked inactive — the same status the Overview reads, so it shows there straight away." },
+      ],
+      services: [svc("Tenant Monitoring — Growth", "monthly", "active"), svc("Architect retainer — Q3", "monthly", "active"), svc("Identity assessment", "one-off", "completed")],
+      arm: () => this.setState({ modal: "confirm" }),
+      contact: () => this.setState({ modal: "contact" }),
+      confirmEnd: () => this.setState({ modal: null, ended: true }),
+      modalShow: !!M,
+      modalTitle: spec ? spec.title : "", modalBody: spec ? spec.body : "", modalNote: spec ? spec.note : "",
+      modalConfirm: !!(spec && spec.confirm), modalPlain: !!(spec && !spec.confirm),
+      modalClose: () => this.setState({ modal: null }),
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "No cancel-by-service. The action is one call for the whole organisation; there is no per-subscription switch to draw.", where: "§5" },
+        { gap: "No undo and no reactivate. Nothing resets an inactive organisation from the portal; the page says coming back is a conversation.", where: "§5 · §7" },
+        { gap: "Provider-served customers get the real refusal, worded as the server words it, with the export still offered. The route is direct-business only, by design.", where: "§5" },
+        { gap: "\"Paused\", not \"cancelled\", is what services land on. The page uses the real terminal status rather than a friendlier word the data never holds.", where: "§5 · §7" },
+        { gap: "Nothing is deleted, and the page says so. Records are retained; the export keeps working after services end.", where: "§4 · §5" },
+        { gap: "Export prices are the historical figures recorded at purchase, and are labelled as such.", where: "§6" },
+        { gap: "The provider's own three-step offboarding (request → export → archive) is their console's flow with its own roles, and is not drawn here.", where: "§1–§4" },
+        { gap: "A failed subscription cancellation does not stop the rest. The page states that rather than promising a clean all-or-nothing.", where: "§5" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

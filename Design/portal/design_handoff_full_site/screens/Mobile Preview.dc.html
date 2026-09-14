@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#0A2540;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+<div data-screen-label="Mobile preview" style="min-height:100vh;background:radial-gradient(900px 500px at 50% 0%, rgba(0,180,216,.10), transparent), #061a30;display:flex;flex-direction:column;align-items:center;gap:18px;padding:28px 16px 48px;box-sizing:border-box;font-family:Inter,system-ui,sans-serif">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;max-width:520px">
+    <span style="font-size:10.5px;font-weight:600;letter-spacing:.14em;color:#60a5fa">PHONE PREVIEW · 390 × 844</span>
+    <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.02em">The portal at phone width</span>
+    <span style="font-size:12.5px;color:#94a3b8;line-height:1.6">The same Shell, measured against its own width: the sidebar becomes a drawer behind the menu button, settings stack, and wide tables scroll sideways inside their card. Every screen is reachable from the drawer.</span>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+    <sc-for list="{{pages}}" as="p" hint-placeholder-count="3">
+      <span onClick="{{p.pick}}" style="font-size:11.5px;font-weight:600;color:{{p.ink}};background:{{p.bg}};border:1px solid {{p.bd}};border-radius:999px;padding:6px 12px;cursor:pointer">{{p.label}}</span>
+    </sc-for>
+  </div>
+  <div style="width:390px;height:844px;flex:none;max-width:100%;border-radius:44px;border:10px solid #0b1120;box-shadow:0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08);overflow:hidden;background:#020617;position:relative;display:flex;flex-direction:column">
+    <div style="height:34px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px;background:#020617">
+      <span style="font-size:13px;font-weight:600;color:#f8fafc">9:41</span>
+      <span style="width:110px;height:26px;border-radius:999px;background:#0b1120;position:absolute;left:50%;top:6px;transform:translateX(-50%)"></span>
+      <span style="display:flex;align-items:center;gap:5px"><svg width="15" height="11" viewBox="0 0 15 11" fill="#f8fafc"><rect x="0" y="7" width="3" height="4" rx=".6"></rect><rect x="4" y="5" width="3" height="6" rx=".6"></rect><rect x="8" y="2.5" width="3" height="8.5" rx=".6"></rect><rect x="12" y="0" width="3" height="11" rx=".6"></rect></svg><svg width="24" height="11" viewBox="0 0 24 11" fill="none" stroke="#f8fafc" stroke-width="1"><rect x=".5" y=".5" width="20" height="10" rx="2.5"></rect><rect x="2" y="2" width="16" height="7" rx="1.5" fill="#f8fafc" stroke="none"></rect><path d="M22 4v3" stroke-linecap="round"></path></svg></span>
+    </div>
+    <div style="flex:1;min-height:0;display:flex">
+      <sc-if value="{{showShell}}" hint-placeholder-val="{{ true }}">
+        <dc-import name="Shell" style="flex:1;min-width:0;min-height:0" hint-size="100%,100%"></dc-import>
+      </sc-if>
+      <sc-if value="{{showResources}}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-width:0;overflow-y:auto"><dc-import name="Resources Page" style="min-width:0" hint-size="100%,100%"></dc-import></div>
+      </sc-if>
+      <sc-if value="{{showSignIn}}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-width:0;overflow-y:auto"><dc-import name="Auth Sign-In" style="min-width:0" hint-size="100%,100%"></dc-import></div>
+      </sc-if>
+    </div>
+    <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:transparent;position:absolute;bottom:0;left:0;right:0;pointer-events:none"><span style="width:134px;height:5px;border-radius:999px;background:rgba(255,255,255,.7)"></span></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;page&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;shell&quot;,&quot;resources&quot;,&quot;signin&quot;],&quot;default&quot;:&quot;shell&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Preview&quot;}}">
+class Component extends DCLogic {
+  state = { page: "shell" };
+  renderVals() {
+    const S = this.state, P = this.props;
+    const page = S.page || P.page || "shell";
+    const tab = (key, label) => ({ label, pick: () => this.setState({ page: key }), ink: page === key ? "#f8fafc" : "#94a3b8", bg: page === key ? "rgba(255,255,255,.08)" : "transparent", bd: page === key ? "rgba(255,255,255,.2)" : "rgba(255,255,255,.1)" });
+    return {
+      pages: [tab("shell", "Customer portal"), tab("resources", "Resources (marketing)"), tab("signin", "Sign in")],
+      showShell: page === "shell", showResources: page === "resources", showSignIn: page === "signin",
+    };
+  }
+}
+</script>
+</body>
+</html>

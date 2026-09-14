@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+<div data-screen-label="Requests and Support Chat" data-requests-scene="{{sceneMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Requests</span>
+      <span title="Tickets with your provider's support desk: open one, read the thread, reply. ShaneBot handles quick questions; anything it hands to a human lands here as a ticket." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+      <sc-if value="{{canOpen}}" hint-placeholder-val="{{ true }}">
+        <span onClick="{{openForm}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:7px 13px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:#005A9E">Open a request</span>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{notConfigured}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Ticketing is not set up for your provider yet</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:660px">This is a real answer, not an outage: your provider has not connected a support desk to the platform, so there is no request list to show and nothing to open. ShaneBot still works, and "talk to a human" still reaches your provider by email.</span>
+        <a href="ShaneBot.dc.html" style="font-size:12px;font-weight:600;text-decoration:none">Ask ShaneBot instead →</a>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{showForm}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(0,120,212,.35);border-radius:14px;background:rgba(0,120,212,.04);padding:16px 20px 16px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Open a request</span>
+          <span style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" onClick="{{closeForm}}" style-hover="color:#cbd5e1">Cancel</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">SUBJECT · UP TO 200 CHARACTERS</span>
+          <span style="font-size:12.5px;color:#e2e8f0;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;background:rgba(255,255,255,.02)">Break-glass invite email never arrived for it.director@contoso.com</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">DESCRIBE YOUR REQUEST · UP TO 5,000 CHARACTERS</span>
+          <span style="font-size:12.5px;color:#e2e8f0;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;background:rgba(255,255,255,.02);line-height:1.6;min-height:72px">Two invites were sent from the break-glass page at 11:52. The ops lead received hers; the IT director has nothing in inbox or junk. Can you check whether it bounced?</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px">
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">CATEGORY · OPTIONAL, FREE TEXT</span>
+            <span style="font-size:12.5px;color:#e2e8f0;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;background:rgba(255,255,255,.02)">Access</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">PRIORITY · OPTIONAL</span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{priorities}}" as="p" hint-placeholder-count="4">
+                <span onClick="{{p.pick}}" style="font-size:11px;font-weight:600;color:{{p.ink}};background:{{p.bg}};border:1px solid {{p.bd}};border-radius:999px;padding:4px 11px;cursor:pointer">{{p.label}}</span>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px;flex-wrap:wrap">
+          <span style="font-size:11px;color:#475569;line-height:1.5;max-width:460px">Category and priority travel inside the ticket text. Your provider's support desk receives the ticket on its next sweep, usually within a few minutes — it is queued, not instant.</span>
+          <span onClick="{{submit}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer;white-space:nowrap" style-hover="background:#005A9E">Submit request</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{queuedNotice}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px solid rgba(52,211,153,.25);background:rgba(52,211,153,.06);border-radius:12px;padding:12px 14px;align-items:flex-start">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Your request has been submitted. Our team has been notified and will be in touch.</span>
+          <span style="font-size:11px;color:#64748b;line-height:1.5">It will appear in the list below once the support desk has created it — refresh in a few minutes if it is not there yet.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{showList}}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px">
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 16px 12px;align-self:start">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 0 8px">
+            <span style="font-size:13px;font-weight:600;color:#f8fafc">Your requests</span>
+            <span style="font-size:11px;color:#64748b">{{listMeta}}</span>
+          </div>
+          <sc-if value="{{noRequests}}" hint-placeholder-val="{{ false }}">
+            <span style="display:block;font-size:12px;color:#94a3b8;line-height:1.6;border-top:1px solid rgba(255,255,255,.06);padding:14px 0 6px">You have not opened a request yet. This is a real, successful read — the desk is connected and holds nothing for you.</span>
+          </sc-if>
+          <sc-for list="{{requests}}" as="r" hint-placeholder-count="4">
+            <div onClick="{{r.pick}}" style="display:flex;flex-direction:column;gap:4px;padding:10px 10px;margin:0 -10px;border-top:1px solid rgba(255,255,255,.06);cursor:pointer;background:{{r.bg}};border-radius:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:10.5px;color:#64748b;font-family:ui-monospace,Menlo,monospace;flex:none">#{{r.ticketNumber}}</span>
+                <span style="font-size:12.5px;color:#e2e8f0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{r.subject}}</span>
+                <span style="font-size:10px;font-weight:600;color:{{r.stInk}};background:{{r.stBg}};border:1px solid {{r.stBd}};border-radius:999px;padding:2px 8px;flex:none">{{r.status}}</span>
+              </div>
+              <span style="font-size:10.5px;color:#64748b">{{r.when}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:16px 20px 16px;display:flex;flex-direction:column;gap:12px;align-self:start">
+          <sc-if value="{{detailDown}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:12px 14px;align-items:flex-start">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Ticketing is not available right now.</span>
+                <span style="font-size:11px;color:#94a3b8;line-height:1.5">The desk could not be reached for this thread. Your requests still exist; try again shortly. (The list and this thread report the same outage differently — #2512.)</span>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{detailOk}}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:14px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{sel.subject}}</span>
+                <span style="font-size:10px;font-weight:600;color:{{sel.stInk}};background:{{sel.stBg}};border:1px solid {{sel.stBd}};border-radius:999px;padding:2px 8px">{{sel.status}}</span>
+              </div>
+              <span style="font-size:11px;color:#64748b">#{{sel.ticketNumber}} · opened {{sel.created}} · last activity {{sel.modified}} · <a href="#" style="text-decoration:none">open in the support desk ↗</a></span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">
+              <sc-for list="{{thread}}" as="t" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:4px;align-items:{{t.align}}">
+                  <div style="max-width:88%;border:1px solid {{t.bd}};background:{{t.bg}};border-radius:12px;padding:10px 13px;display:flex;flex-direction:column;gap:4px">
+                    <span style="font-size:12px;color:#e2e8f0;line-height:1.6;white-space:pre-line">{{t.content}}</span>
+                  </div>
+                  <span style="font-size:10.5px;color:#64748b">{{t.author}} · {{t.when}}</span>
+                </div>
+              </sc-for>
+              <span style="font-size:10.5px;color:#475569;line-height:1.5">Only messages marked public reach you. Notes your provider's agents keep between themselves are not in this thread.</span>
+            </div>
+            <sc-if value="{{sel.open}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">
+                <span style="font-size:12.5px;color:#64748b;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;background:rgba(255,255,255,.02);min-height:40px;line-height:1.5">Write a reply…</span>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <span style="font-size:10.5px;color:#475569;line-height:1.5;max-width:420px">Your reply is queued to the desk and appears in the thread as "Priya Natarajan (customer) replied" — the desk otherwise credits it to the agent account.</span>
+                  <span onClick="{{reply}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap" style-hover="background:#005A9E">Send reply</span>
+                </div>
+                <sc-if value="{{replied}}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:11.5px;color:#34d399">Your reply has been added to the request.</span>
+                </sc-if>
+              </div>
+            </sc-if>
+            <sc-if value="{{sel.closed}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">This request is closed. Open a new one if the issue comes back — a closed ticket does not take replies from here.</span>
+            </sc-if>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{notBlocked}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:11px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Quick questions go to ShaneBot</span>
+          <a href="ShaneBot.dc.html" style="margin-left:auto;font-size:12px;font-weight:600;text-decoration:none">Open ShaneBot →</a>
+        </div>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:720px">The assistant answers from your own tenant's data. When it cannot help, or when you ask for a person, it hands off to your provider — that handoff becomes a ticket in the list above and a note in your inbox. Three things it may offer, none of which run until you confirm:</span>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:10px">
+          <sc-for list="{{proposals}}" as="pr" hint-placeholder-count="3">
+            <div style="border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:11px 13px;background:rgba(255,255,255,.015);display:flex;flex-direction:column;gap:4px">
+              <span style="font-size:12px;font-weight:600;color:#e2e8f0">{{pr.title}}</span>
+              <span style="font-size:11px;color:#94a3b8;line-height:1.5">{{pr.body}}</span>
+              <span style="font-size:10.5px;color:{{pr.noteInk}};line-height:1.45;padding-top:2px">{{pr.note}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;never-opened&quot;,&quot;not-configured&quot;,&quot;thread-unavailable&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+class Component extends DCLogic {
+  state = { sel: 0, form: false, queued: false, replied: false, priority: "Medium", ledger: true };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    const scene = P.scene || "live";
+    const notConfigured = scene === "not-configured";
+    const noRequests = scene === "never-opened";
+    const detailDown = scene === "thread-unavailable";
+    const ST = { Open: { ink: "#60a5fa", bg: "rgba(96,165,250,.10)", bd: "rgba(96,165,250,.3)" }, "On Hold": { ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" }, Escalated: { ink: "#f87171", bg: "rgba(248,113,113,.10)", bd: "rgba(248,113,113,.3)" }, Closed: { ink: "#94a3b8", bg: "rgba(148,163,184,.08)", bd: "rgba(148,163,184,.22)" } };
+    const req = (ticketNumber, subject, status, statusType, created, modified, thread) => {
+      const T = ST[statusType];
+      return { ticketNumber, subject, status, stInk: T.ink, stBg: T.bg, stBd: T.bd, created, modified, when: "opened " + created + " · updated " + modified, open: statusType !== "Closed", closed: statusType === "Closed", thread };
+    };
+    const msg = (dir, author, content, when) => ({ author, content, when, align: dir === "in" ? "flex-end" : "flex-start", bd: dir === "in" ? "rgba(0,120,212,.35)" : "rgba(255,255,255,.1)", bg: dir === "in" ? "rgba(0,120,212,.08)" : "rgba(255,255,255,.03)" });
+    const RAW = noRequests ? [] : [
+      req("1042", "Support escalation from Priya Natarajan", "Open", "Open", "Today 09:40", "Today 09:41", [
+        msg("in", "You, via ShaneBot", "Can you confirm whether the Saturday maintenance window still applies to the CA change? ShaneBot could not tell me.", "Today 09:40"),
+        msg("out", "Shane McCaw Consulting", "Yes — CR-2026-118 is booked into Saturday 02:00–04:00. We will confirm the night before.", "Today 09:41"),
+      ]),
+      req("1037", "Break-glass invite email never arrived for it.director@contoso.com", "Waiting on you", "On Hold", "Fri 12 Sep", "Fri 12 Sep", [
+        msg("in", "Priya Natarajan", "Two invites were sent from the break-glass page at 11:52. The ops lead received hers; the IT director has nothing in inbox or junk.", "Fri 11:58"),
+        msg("out", "Shane McCaw Consulting", "The send to that address bounced — your mail gateway rejected it as external. Can you allow-list the sender, then we will re-invite?", "Fri 13:20"),
+      ]),
+      req("1019", "Add Marcus Chen as a portal user", "Closed", "Closed", "3 Sep", "4 Sep", [
+        msg("in", "Priya Natarajan", "Please add marcus.chen@contoso.com as a customer user.", "3 Sep 15:02"),
+        msg("out", "Shane McCaw Consulting", "Done — invitation sent; he has 72 hours to set a password.", "4 Sep 08:15"),
+      ]),
+    ];
+    const requests = RAW.map((r, i) => Object.assign({}, r, { pick: () => this.setState({ sel: i, replied: false }), bg: S.sel === i ? "rgba(255,255,255,.04)" : "transparent" }));
+    const sel = requests[Math.min(S.sel, Math.max(0, requests.length - 1))] || { subject: "", status: "", stInk: "#94a3b8", stBg: "transparent", stBd: "transparent", ticketNumber: "", created: "", modified: "", open: false, closed: false, thread: [] };
+    const PR = ["Low", "Medium", "High", "Urgent"];
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      sceneMarker: scene + (S.form ? ":form" : ""),
+      notConfigured, showList: !notConfigured, notBlocked: true,
+      canOpen: !notConfigured && !S.form,
+      stateLine: notConfigured ? "Live — no support desk connected" : noRequests ? "Live — desk connected, no requests yet" : "Live — " + requests.length + " requests · read from the desk each visit",
+      stateDot: notConfigured ? "#475569" : "#34d399",
+      showForm: S.form, openForm: () => this.setState({ form: true, queued: false }), closeForm: () => this.setState({ form: false }),
+      priorities: PR.map((p) => ({ label: p, pick: () => this.setState({ priority: p }), ink: S.priority === p ? "#f8fafc" : "#64748b", bg: S.priority === p ? "rgba(255,255,255,.08)" : "transparent", bd: S.priority === p ? "rgba(255,255,255,.2)" : "rgba(255,255,255,.1)" })),
+      submit: () => this.setState({ form: false, queued: true }),
+      queuedNotice: S.queued,
+      listMeta: noRequests ? "none" : "newest activity first",
+      noRequests, requests,
+      detailDown, detailOk: !detailDown && requests.length > 0,
+      sel, thread: sel.thread || [],
+      reply: () => this.setState({ replied: true }), replied: S.replied,
+      proposals: [
+        { title: "Fix it now", body: "For an offer your provider has sent, the assistant can propose running the remediation pack behind it.", note: "Only on test tenants. On a live tenant this is refused server-side, twice, because it writes to Microsoft 365.", noteInk: "#fbbf24" },
+        { title: "Regenerate a document", body: "Re-runs generation for your current document; the target is re-resolved on the server, never taken from the chat.", note: "Confirm first. Progress streams back as it runs.", noteInk: "#64748b" },
+        { title: "Re-run the scan", body: "Starts a fresh scan of your tenant with your monitoring package.", note: "Confirm first. The run then shows on Diagnostics as it progresses.", noteInk: "#64748b" },
+      ],
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "\"Not set up\" is drawn as a real state, not an error. The list route says configured:false and this page believes it.", where: "§8" },
+        { gap: "Submitting and replying are queued, and the page says \"queued\". The desk picks writes up on a sweep; nothing appears instantly and the page does not fake a row.", where: "§7 · §10" },
+        { gap: "Private agent notes are not shown, and the page says why the thread may look thinner than the provider's copy.", where: "§9" },
+        { gap: "Ticket statuses are the desk's own words. The page does not invent a status vocabulary; the coloured pill keys off the desk's four coarse buckets.", where: "§8 · §12" },
+        { gap: "Priority and category ride inside the ticket text. The page says so rather than implying structured fields the desk does not have.", where: "§7" },
+        { gap: "A reply is prefixed with your name because the desk would otherwise credit it to the agent. The page tells you that before you send.", where: "§10" },
+        { gap: "\"Not yours\" and \"does not exist\" are the same 404, and the page treats them as one.", where: "§9" },
+        { gap: "\"Talk to a human\" always reports success. The server swallows delivery failures, so the page cannot promise more than \"sent\" — and does not.", where: "§2" },
+        { gap: "The chat itself lives on ShaneBot. This page explains the propose-then-confirm contract and the handoff, and links there instead of drawing a second chat.", where: "§1 · §11" },
+        { gap: "Instant remediation is drawn with its test-tenant-only guard on it. On a live tenant the offer is never listed and the action is refused.", where: "§4 · §5" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

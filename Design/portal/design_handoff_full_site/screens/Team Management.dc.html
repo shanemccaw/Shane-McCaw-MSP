@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+<div data-screen-label="Team Management" data-team-scene="{{sceneMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Team</span>
+      <span title="Everyone who can sign in to your organisation's portal, with their sign-in security at a glance. Managing them — inviting, suspending, resetting — needs the team-management grant; everyone can view." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+      <sc-if value="{{canManage}}" hint-placeholder-val="{{ true }}">
+        <span onClick="{{openInvite}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:7px 13px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:#005A9E">Invite a teammate</span>
+      </sc-if>
+      <sc-if value="{{viewOnly}}" hint-placeholder-val="{{ false }}">
+        <span title="Your account can view the roster but does not hold the team-management grant. Ask a team manager to add it — it takes effect on your next request, no sign-out needed." style="margin-left:auto;font-size:10px;font-weight:600;color:#94a3b8;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.22);border-radius:999px;padding:3px 9px;cursor:help">View only</span>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{isEmpty}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">No one else is on your team yet</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:660px">A real read: your organisation has no other portal logins. Invite a colleague and they receive a setup link that works for 72 hours.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{hasTeam}}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px">
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 16px 12px;align-self:start">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 0 8px">
+            <span style="font-size:13px;font-weight:600;color:#f8fafc">Members</span>
+            <span style="font-size:11px;color:#64748b">{{rosterMeta}}</span>
+          </div>
+          <sc-for list="{{members}}" as="m" hint-placeholder-count="5">
+            <div onClick="{{m.pick}}" style="display:flex;align-items:center;gap:11px;padding:10px 10px;margin:0 -10px;border-top:1px solid rgba(255,255,255,.06);cursor:pointer;background:{{m.bg}};border-radius:8px">
+              <span style="width:30px;height:30px;border-radius:999px;background:{{m.avBg}};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#f8fafc;flex:none;opacity:{{m.opacity}}">{{m.initials}}</span>
+              <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                  <span style="font-size:12.5px;color:#e2e8f0;font-weight:600">{{m.name}}</span>
+                  <sc-if value="{{m.isYou}}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-weight:600;color:#60a5fa;border:1px solid rgba(96,165,250,.3);border-radius:999px;padding:1px 6px">You</span></sc-if>
+                  <sc-if value="{{m.suspended}}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(148,163,184,.3);border-radius:999px;padding:1px 6px">Suspended</span></sc-if>
+                  <sc-if value="{{m.isLockedOut}}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-weight:600;color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:999px;padding:1px 6px">Locked out</span></sc-if>
+                </div>
+                <span style="font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{m.sub}}</span>
+              </div>
+              <span style="font-size:10px;font-weight:600;color:{{m.mfaInk}};border:1px solid {{m.mfaBd}};border-radius:999px;padding:2px 8px;flex:none">{{m.mfaStatus}}</span>
+            </div>
+          </sc-for>
+          <span style="display:block;font-size:10.5px;color:#475569;line-height:1.5;border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:2px">Sign-in security shows one reduced status: a passkey outranks an authenticator app, which outranks SMS. Last sign-in is derived from session history.</span>
+        </div>
+
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:16px 20px 16px;display:flex;flex-direction:column;gap:12px;align-self:start">
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:15px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{sel.name}}</span>
+            <span style="font-size:11.5px;color:#94a3b8">{{sel.email}}{{sel.phoneLine}}</span>
+            <span style="font-size:11px;color:#64748b">{{sel.roleLine}}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">SIGN-IN SECURITY</span><span style="font-size:12px;color:{{sel.mfaInk}}">{{sel.mfaLabel}}</span><span style="font-size:10.5px;color:#64748b">{{sel.enforcedLine}}</span></div>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">LAST SIGN-IN</span><span style="font-size:12px;color:#e2e8f0">{{sel.lastLogin}}</span><span style="font-size:10.5px;color:#64748b">{{sel.sessionsLine}}</span></div>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">REPORTS TO</span><span style="font-size:12px;color:#e2e8f0">{{sel.managerName}}</span><span style="font-size:10.5px;color:#64748b">used when they decline an ownership role</span></div>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">MEMBER SINCE</span><span style="font-size:12px;color:#e2e8f0">{{sel.createdAt}}</span><span style="font-size:10.5px;color:#64748b">{{sel.statusLine}}</span></div>
+          </div>
+
+          <sc-if value="{{canManage}}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">ACCESS</span>
+              <div style="display:flex;gap:7px;flex-wrap:wrap">
+                <sc-for list="{{accessActions}}" as="a" hint-placeholder-count="3">
+                  <span onClick="{{a.run}}" title="{{a.title}}" style="font-size:11.5px;font-weight:600;color:{{a.ink}};border:1px solid {{a.bd}};border-radius:6px;padding:6px 11px;cursor:{{a.cursor}};white-space:nowrap">{{a.label}}</span>
+                </sc-for>
+              </div>
+              <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;padding-top:4px">SIGN-IN RECOVERY</span>
+              <div style="display:flex;gap:7px;flex-wrap:wrap">
+                <sc-for list="{{recoveryActions}}" as="a" hint-placeholder-count="5">
+                  <span onClick="{{a.run}}" title="{{a.title}}" style="font-size:11.5px;font-weight:600;color:{{a.ink}};border:1px solid {{a.bd}};border-radius:6px;padding:6px 11px;cursor:{{a.cursor}};white-space:nowrap">{{a.label}}</span>
+                </sc-for>
+              </div>
+              <span style="font-size:10.5px;color:#475569;line-height:1.5;padding-top:2px">Every action is written to the audit trail with your name — except revoking sessions, which leaves none. A temporary password or emergency code is shown to you once, here, and never emailed; you pass it on.</span>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{modalShow}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:60;background:rgba(2,6,23,.72);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="width:490px;max-width:100%;background:#0b1120;border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);padding:20px 22px 18px;display:flex;flex-direction:column;gap:11px">
+        <span style="font-size:14.5px;font-weight:700;color:#f8fafc">{{modalTitle}}</span>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.6">{{modalBody}}</span>
+        <sc-if value="{{modalFields}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{fields}}" as="f" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">{{f.label}}</span>
+                <span style="font-size:12.5px;color:{{f.ink}};border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;background:rgba(255,255,255,.02)">{{f.value}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{modalSecret}}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:15px;color:#f8fafc;border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:12px 14px;background:rgba(251,191,36,.06);font-family:ui-monospace,Menlo,monospace;letter-spacing:.04em;text-align:center">{{secret}}</span>
+        </sc-if>
+        <sc-if value="{{modalPicker}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <sc-for list="{{managerOptions}}" as="o" hint-placeholder-count="4">
+              <span onClick="{{o.pick}}" style="font-size:12px;color:{{o.ink}};border:1px solid {{o.bd}};border-radius:6px;padding:8px 11px;cursor:{{o.cursor}};display:flex;gap:8px;align-items:center"><span style="flex:1">{{o.label}}</span><span style="font-size:10.5px;color:#64748b">{{o.note}}</span></span>
+            </sc-for>
+          </div>
+        </sc-if>
+        <span style="font-size:11.5px;color:#c2a63d;line-height:1.55">{{modalNote}}</span>
+        <div style="display:flex;align-items:center;gap:9px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px">
+          <sc-if value="{{modalConfirmable}}" hint-placeholder-val="{{ false }}">
+            <span onClick="{{modalClose}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:8px 14px;cursor:pointer" style-hover="background:rgba(255,255,255,.05)">Cancel</span>
+            <span onClick="{{modalConfirm}}" style="font-size:12px;font-weight:600;color:#fff;background:{{modalCtaBg}};border-radius:6px;padding:8px 14px;cursor:pointer">{{modalCta}}</span>
+          </sc-if>
+          <sc-if value="{{modalPlain}}" hint-placeholder-val="{{ true }}">
+            <span onClick="{{modalClose}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer">Close</span>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;manager&quot;,&quot;viewer&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;manager&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+class Component extends DCLogic {
+  state = { sel: 1, modal: null, ledger: true, over: {}, managers: {}, result: null };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    const scene = P.scene || "manager";
+    const canManage = scene === "manager";
+    const isEmpty = scene === "empty";
+    const MFA = { FIDO2: { label: "Passkey", ink: "#34d399", bd: "rgba(52,211,153,.3)" }, TOTP: { label: "Authenticator app", ink: "#34d399", bd: "rgba(52,211,153,.3)" }, SMS: { label: "SMS", ink: "#fbbf24", bd: "rgba(251,191,36,.3)" }, Disabled: { label: "No MFA", ink: "#f87171", bd: "rgba(248,113,113,.3)" } };
+    const RAW = [
+      { id: 41, name: "Priya Natarajan", email: "priya@contoso.com", phone: "+61 412 000 118", dept: "IT", title: "Head of IT", active: true, locked: false, mfa: "FIDO2", enforced: true, last: "Today 08:52", sessions: 2, created: "18 May 2026", you: true, manager: null },
+      { id: 52, name: "Marcus Chen", email: "marcus.chen@contoso.com", phone: null, dept: "IT", title: "Systems administrator", active: true, locked: false, mfa: "TOTP", enforced: true, last: "Yesterday 17:20", sessions: 1, created: "4 Sep 2026", manager: 41 },
+      { id: 47, name: "Aisha Rahman", email: "aisha.rahman@contoso.com", phone: "+61 400 771 002", dept: "Finance", title: "Finance manager", active: true, locked: true, mfa: "SMS", enforced: false, last: "9 Sep 14:03", sessions: 0, created: "2 Jul 2026", manager: 41 },
+      { id: 55, name: "Tom Okafor", email: "tom.okafor@contoso.com", phone: null, dept: "", title: "", active: true, locked: false, mfa: "Disabled", enforced: false, last: null, sessions: 0, created: "12 Sep 2026", manager: 52 },
+      { id: 44, name: "Lena Fischer", email: "lena.fischer@contoso.com", phone: null, dept: "Legal", title: "Counsel", active: false, locked: false, mfa: "TOTP", enforced: true, last: "22 Aug 09:10", sessions: 0, created: "3 Jun 2026", manager: null },
+    ];
+    const rows = isEmpty ? RAW.slice(0, 1) : RAW;
+    const eff = (r) => Object.assign({}, r, S.over[r.id] || {}, { manager: S.managers[r.id] !== undefined ? S.managers[r.id] : r.manager });
+    const nameOf = (id) => { const m = RAW.find((x) => x.id === id); return m ? m.name : "—"; };
+    const members = rows.map((r0, i) => {
+      const r = eff(r0), T = MFA[r.mfa];
+      return { name: r.name, initials: r.name.split(" ").map((w) => w[0]).join("").slice(0, 2), avBg: r.active ? "#0A2540" : "#1e293b", opacity: r.active ? 1 : .6,
+        sub: [r.title, r.dept, r.last ? "last sign-in " + r.last : "never signed in"].filter(Boolean).join(" · "),
+        isYou: !!r.you, suspended: !r.active, isLockedOut: r.locked, mfaStatus: T.label, mfaInk: T.ink, mfaBd: T.bd,
+        pick: () => this.setState({ sel: i, result: null }), bg: S.sel === i ? "rgba(255,255,255,.04)" : "transparent" };
+    });
+    const cur = eff(rows[Math.min(S.sel, rows.length - 1)]);
+    const CT = MFA[cur.mfa];
+    const act = (label, key, title, danger, disabled) => ({ label, title, run: () => { if (!disabled) this.setState({ modal: key }); }, ink: disabled ? "#475569" : danger ? "#f87171" : "#cbd5e1", bd: disabled ? "rgba(255,255,255,.07)" : danger ? "rgba(248,113,113,.4)" : "rgba(255,255,255,.14)", cursor: disabled ? "not-allowed" : "pointer" });
+    const set = (patch, result) => this.setState({ over: Object.assign({}, S.over, { [cur.id]: Object.assign({}, S.over[cur.id] || {}, patch) }), modal: result || null });
+    const M = S.modal;
+    const secret = M === "temp" ? "Temp-9F3A1C!9" : M === "bypass" ? "EMERGENCY-7A2F-91C4-0B3E-D5A8" : "";
+    const spec = !M ? null : {
+      invite: { title: "Invite a teammate", body: "They receive a setup link that works for 72 hours and join as a standard member. Making them a team manager is a separate step afterwards.", note: "An email already holding an account anywhere on the platform is refused (409).", fields: [["EMAIL · REQUIRED", "new.colleague@contoso.com", "#e2e8f0"], ["NAME", "Optional", "#64748b"], ["DEPARTMENT", "Optional", "#64748b"], ["JOB TITLE", "Optional", "#64748b"]], cta: "Send invitation", confirm: () => this.setState({ modal: "invited" }) },
+      invited: { title: "Invitation sent", body: "The account exists now, without a password, and the setup email is on its way. If the email fails the account still exists — you can send a password reset instead.", note: "Recorded on the audit trail as team_member_invited." },
+      suspend: { title: "Suspend " + cur.name + "?", body: "They cannot sign in from this moment and every live session is ended immediately. Their account, history and data are kept; you can reactivate later.", note: "You cannot suspend your own account from here.", cta: "Suspend", danger: true, confirm: () => set({ active: false, sessions: 0 }) },
+      reactivate: { title: "Reactivate " + cur.name + "?", body: "They can sign in again with their existing password and MFA.", note: "", cta: "Reactivate", confirm: () => set({ active: true }) },
+      sessions: { title: "Sign " + cur.name + " out everywhere?", body: "Ends every one of their live sessions. They simply sign in again; nothing else changes.", note: "This is the one action here that leaves no audit entry — it looks the same as sessions expiring.", cta: "Sign out all sessions", confirm: () => set({ sessions: 0 }, "sessionsDone") },
+      sessionsDone: { title: "Sessions revoked", body: "revokedCount: " + (RAW.find((r) => r.id === cur.id) || {}).sessions, note: "" },
+      enforce: { title: (cur.enforced ? "Stop requiring" : "Require") + " MFA for " + cur.name + "?", body: cur.enforced ? "They will be able to sign in without a second factor from their next sign-in." : "From their next sign-in they must set up a second factor before they get in. Their current session is unaffected.", note: "", cta: cur.enforced ? "Stop requiring" : "Require MFA", confirm: () => set({ enforced: !cur.enforced }) },
+      unlock: { title: "Unlock " + cur.name + "?", body: "Clears the failed-attempt counter and the lock entirely, not just the timer.", note: "", cta: "Unlock", confirm: () => set({ locked: false }) },
+      reset: { title: "Email a password reset to " + cur.name + "?", body: "They receive the same reset link the sign-in page's \"forgot password\" sends, valid for one hour. Nothing is shown to you.", note: "", cta: "Send reset email", confirm: () => this.setState({ modal: "resetSent" }) },
+      resetSent: { title: "Reset email sent", body: "Valid for one hour, to " + cur.email + ".", note: "" },
+      temp: { title: "Temporary password for " + cur.name, body: "Their password has been replaced with this one. Pass it on out of band — it is not emailed and will not be shown again.", note: "Fixed pattern, generated server-side. Ask them to change it at first sign-in.", secret: true },
+      resetMfa: { title: "Reset all MFA for " + cur.name + "?", body: "Removes every second factor they have — authenticator app, SMS and passkeys — so they enrol again at next sign-in. They are emailed a list of what was cleared.", note: "This is a full teardown, not a per-method reset.", cta: "Reset MFA", danger: true, confirm: () => set({ mfa: "Disabled" }, "mfaCleared") },
+      mfaCleared: { title: "MFA cleared", body: "clearedMethods: " + (cur.mfa === "FIDO2" ? "passkey, totp" : cur.mfa.toLowerCase()) + ". An email listing these has gone to " + cur.email + ".", note: "" },
+      bypass: { title: "Emergency bypass code for " + cur.name, body: "Lets its holder skip MFA on this account for 24 hours, once. Any earlier code for them is now invalid. Pass it on out of band — it is not emailed and will not be shown again.", note: "The highest-privilege action on this page. It is recorded with its expiry.", secret: true },
+      manager: { title: "Who does " + cur.name + " report to?", body: "Used when they decline an ownership role: the decline is escalated to the person chosen here, then up their chain.", note: "Must be a member of this team, not themselves, and must not create a loop.", picker: true },
+    }[M];
+    const managerOptions = M === "manager" ? [{ label: "No one", id: null, note: "clears the reporting line" }].concat(RAW.filter((r) => r.id !== cur.id).map((r) => {
+      let hop = eff(r).manager, cycle = false, guard = 0; while (hop && guard < 50) { if (hop === cur.id) { cycle = true; break; } const nx = RAW.find((x) => x.id === hop); hop = nx ? eff(nx).manager : null; guard++; }
+      return { label: r.name, id: r.id, note: cycle ? "would create a loop" : eff(r).active ? "" : "suspended", disabled: cycle };
+    })).map((o) => ({ label: o.label, note: o.note, cursor: o.disabled ? "not-allowed" : "pointer", ink: o.disabled ? "#475569" : cur.manager === o.id ? "#f8fafc" : "#cbd5e1", bd: cur.manager === o.id ? "rgba(0,120,212,.55)" : "rgba(255,255,255,.1)",
+      pick: () => { if (o.disabled) return; this.setState({ managers: Object.assign({}, S.managers, { [cur.id]: o.id }), modal: null }); } })) : [];
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      sceneMarker: scene,
+      canManage, viewOnly: !canManage && !isEmpty, isEmpty, hasTeam: !isEmpty,
+      stateLine: isEmpty ? "Live — only you" : "Live — " + rows.length + " members · " + rows.filter((r) => eff(r).active).length + " active",
+      stateDot: "#34d399",
+      openInvite: () => this.setState({ modal: "invite" }),
+      rosterMeta: "everyone on Contoso Ltd's portal · read as stored, unsorted",
+      members,
+      sel: { name: cur.name, email: cur.email, phoneLine: cur.phone ? " · " + cur.phone : "", roleLine: [cur.title, cur.dept].filter(Boolean).join(" · ") || "No title or department on file",
+        mfaLabel: CT.label, mfaInk: CT.ink, enforcedLine: cur.enforced ? "MFA required at sign-in" : "MFA not required",
+        lastLogin: cur.last || "Never", sessionsLine: cur.sessions + (cur.sessions === 1 ? " live session" : " live sessions"),
+        managerName: cur.manager ? nameOf(cur.manager) : "No one on file", createdAt: cur.created, statusLine: cur.active ? "Active" : "Suspended" },
+      accessActions: [
+        cur.active ? act("Suspend", "suspend", "Blocks sign-in and ends every live session now", true, !!cur.you) : act("Reactivate", "reactivate", "Allows sign-in again", false, false),
+        act("Sign out everywhere", "sessions", "Ends all live sessions · no audit entry", false, cur.sessions === 0),
+        act("Reports to…", "manager", "Sets who a declined ownership role escalates to", false, false),
+      ],
+      recoveryActions: [
+        act(cur.enforced ? "Stop requiring MFA" : "Require MFA", "enforce", "Takes effect at their next sign-in", false, false),
+        act("Unlock", "unlock", "Clears the failed-attempt lock", false, !cur.locked),
+        act("Email password reset", "reset", "One-hour link, sent to them", false, false),
+        act("Set temporary password", "temp", "Shown to you once, never emailed", false, false),
+        act("Reset all MFA", "resetMfa", "Removes every enrolled method", true, cur.mfa === "Disabled"),
+        act("Emergency bypass code", "bypass", "24-hour one-time MFA bypass · highest privilege", true, false),
+      ],
+      modalShow: !!M, modalTitle: spec ? spec.title : "", modalBody: spec ? spec.body : "", modalNote: spec ? spec.note : "",
+      modalFields: !!(spec && spec.fields), fields: spec && spec.fields ? spec.fields.map(([label, value, ink]) => ({ label, value, ink })) : [],
+      modalSecret: !!(spec && spec.secret), secret,
+      modalPicker: !!(spec && spec.picker), managerOptions,
+      modalConfirmable: !!(spec && spec.confirm), modalPlain: !!(spec && !spec.confirm), modalCta: spec ? spec.cta || "" : "", modalCtaBg: spec && spec.danger ? "#dc2626" : "#0078D4",
+      modalConfirm: () => { if (spec && spec.confirm) spec.confirm(); },
+      modalClose: () => this.setState({ modal: null }),
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "Viewing and managing are separate. Anyone on the organisation sees the roster; the actions appear only with the team-management grant, which is read live on every call.", where: "§0 · §1" },
+        { gap: "Invites create a standard member only. There is no \"invite as manager\"; the page says so instead of drawing a role picker the route does not take.", where: "§2 · §5" },
+        { gap: "Temporary passwords and bypass codes are shown once, to you, and never emailed. The page states that the relay is yours.", where: "§4f · §4h" },
+        { gap: "Sign-out-everywhere is labelled as leaving no audit entry, because it is the one mutating action that writes none.", where: "§4a · §5" },
+        { gap: "One reduced MFA status per member — passkey over app over SMS — not a list of every method.", where: "§1 · §3" },
+        { gap: "\"Reports to\" is written by its own route and not returned by the roster read. The page holds what it set and says the roster does not carry it.", where: "§1 · §4i · §5" },
+        { gap: "The manager picker refuses self, other organisations and loops, mirroring the three server checks; the page cannot show the before/after in the audit because the audit row carries none.", where: "§4i" },
+        { gap: "You cannot suspend yourself here; the button is disabled on your own row.", where: "§4b" },
+        { gap: "Resetting MFA is a full teardown of every method, drawn with that warning, not a per-method toggle.", where: "§4g" },
+        { gap: "The roster is unsorted because the read is; the page keeps the server's order rather than inventing one.", where: "§1" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+<div data-screen-label="Break-glass Access" data-bg-scene="{{sceneMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Break-glass access</span>
+      <span title="A one-time credential handoff. When a Config Pack run needs to set a break-glass admin password, it pauses here until a Global Administrator on your own Microsoft 365 tenant proves who they are by signing in with Microsoft. This page shows the status of that handoff — never the credential." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+      <span style="margin-left:auto;font-size:11px;color:#64748b;font-family:ui-monospace,Menlo,monospace">run #4471 · Config Pack "Tenant hardening baseline"</span>
+    </div>
+
+    <sc-if value="{{notPending}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">No break-glass handoff is waiting on this run</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:660px">This is the run's real answer, read successfully. It is also the only answer the read gives for three different situations: the run never reached the verification gate, the run is paused for a different reason, or the credential was already delivered (or replaced by a reset). This page cannot tell those apart, so it does not pretend to.</span>
+        <span style="font-size:11px;color:#475569;line-height:1.55;max-width:660px">If you expected a handoff, the run's own timeline on the pack-execution page is where the gate step and its outcome are recorded.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isPending}}" hint-placeholder-val="{{ true }}">
+      <sc-if value="{{blocked}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:10px;border:1px dashed rgba(251,191,36,.5);background:rgba(251,191,36,.06);border-radius:12px;padding:14px 16px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:13px;font-weight:600;color:#f8fafc">The reset was refused by the write-back gate</span>
+            <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:640px">Nothing was changed on your tenant. Forcing a reset writes a new password to the break-glass account through Microsoft Graph, and that write is blocked for your organisation right now.</span>
+            <span style="font-size:11px;color:#fbbf24;font-family:ui-monospace,Menlo,monospace">409 · blockedBy: write_consent_required</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:640px">Grant write consent on the Microsoft 365 connection first, then run the reset again. The pending handoff below is unchanged and its links are still dead-ended.</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 16px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">What is waiting</span>
+          <span style="font-size:10px;font-weight:600;color:#fbbf24;background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.28);border-radius:999px;padding:3px 9px">Awaiting tenant-admin verification</span>
+          <span style="margin-left:auto;font-size:10.5px;color:#64748b;font-family:ui-monospace,Menlo,monospace">pendingSecret #{{secretId}}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">ACCOUNT</span>
+            <span style="font-size:12.5px;color:#e2e8f0">breakglass-01@contoso.onmicrosoft.com</span>
+            <span style="font-size:10.5px;color:#64748b">identity stamped on the run; the password is not on this page</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">CREATED</span>
+            <span style="font-size:12.5px;color:#e2e8f0">{{createdAt}}</span>
+            <span style="font-size:10.5px;color:#64748b">when the run reached the gate and paused</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">WHO CAN CLAIM IT</span>
+            <span style="font-size:12.5px;color:#e2e8f0">An active Global Administrator</span>
+            <span style="font-size:10.5px;color:#64748b">proven by a Microsoft sign-in on your tenant, not by this session</span>
+          </div>
+        </div>
+        <span style="font-size:11.5px;color:#94a3b8;line-height:1.6;max-width:680px;border-top:1px solid rgba(255,255,255,.06);padding-top:11px">The password is shown once, on a page the invited person reaches from their email after signing in with Microsoft. When they confirm they have saved it, the stored copy is purged and the paused run continues on its own. Nothing on this page can reveal it, to you or to anyone else.</span>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 20px 14px;overflow-x:auto">
+        <div style="display:flex;align-items:center;gap:12px;padding:13px 0 8px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Verification invites</span>
+          <span style="font-size:11px;color:#64748b">{{inviteMeta}}</span>
+          <span onClick="{{openInvite}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:7px 13px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:#005A9E">Send invites</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding-bottom:5px;min-width:560px">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;min-width:0;flex:1">INVITED</span>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:86px;flex:none">LINK</span>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:210px;flex:none">LAST OUTCOME</span>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:92px;flex:none;text-align:right">ATTEMPTED</span>
+        </div>
+        <sc-for list="{{attempts}}" as="a" hint-placeholder-count="3">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06);min-width:560px">
+            <span style="font-size:12.5px;color:#e2e8f0;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{a.email}}</span>
+            <span style="width:86px;flex:none"><span style="display:inline-block;font-size:10px;font-weight:600;color:{{a.lInk}};background:{{a.lBg}};border:1px solid {{a.lBd}};border-radius:999px;padding:3px 9px">{{a.link}}</span></span>
+            <div style="display:flex;flex-direction:column;gap:2px;width:210px;flex:none">
+              <span style="font-size:11.5px;color:{{a.oInk}};line-height:1.4">{{a.outcome}}</span>
+              <span style="font-size:10.5px;color:#64748b;line-height:1.4">{{a.oNote}}</span>
+            </div>
+            <span style="font-size:11.5px;color:#94a3b8;width:92px;flex:none;text-align:right;white-space:nowrap">{{a.at}}</span>
+          </div>
+        </sc-for>
+        <span style="display:block;font-size:10.5px;color:#475569;line-height:1.55;border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:2px">Most recent invite first. A link that met an eligible-but-not-activated role stays open on purpose: the same person can activate their role in PIM and reopen the same email link. Two people finishing at the same moment cannot both win — the second is told someone else already has.</span>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:11px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Force a reset</span>
+          <span style="font-size:10px;font-weight:600;color:#94a3b8;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.22);border-radius:999px;padding:3px 9px">Admin override · MSP operator or above</span>
+        </div>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">When every link has expired or been superseded, an operator can generate a new password for the account, store it, and send fresh invites. It replaces the handoff above — nothing from the old one is ever delivered — and it needs a written reason that is kept on the audit trail. The run stays paused until someone acknowledges the new credential.</span>
+        <sc-if value="{{overrideLocked}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:11px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px;flex-wrap:wrap">
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:520px">{{lockReason}}</span>
+            <span style="margin-left:auto;font-size:12px;font-weight:600;color:#475569;border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:8px 14px;flex:none;white-space:nowrap;cursor:not-allowed">Reset and re-invite</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{overrideOpen}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:9px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">REASON · REQUIRED, KEPT ON THE AUDIT TRAIL</span>
+            <span style="font-size:12px;color:#64748b;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;background:rgba(255,255,255,.02);min-height:38px;line-height:1.5">Both invited admins let their links expire over the weekend; re-issuing to the on-call GA.</span>
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;padding-top:2px">RE-INVITE · LEAVE EMPTY TO RE-USE THE PREVIOUS RECIPIENTS</span>
+            <span style="font-size:12px;color:#e2e8f0;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;background:rgba(255,255,255,.02);font-family:ui-monospace,Menlo,monospace">oncall.ga@contoso.com</span>
+            <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap;padding-top:2px">
+              <span style="font-size:11px;color:#475569;line-height:1.55;max-width:520px">Writes the new password to your tenant through Microsoft Graph. If that write is blocked for your organisation, nothing changes and you are told why.</span>
+              <span onClick="{{runOverride}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:#005A9E">Reset and re-invite</span>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{modalShow}}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:60;background:rgba(2,6,23,.72);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="width:480px;max-width:100%;background:#0b1120;border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);padding:20px 22px 18px;display:flex;flex-direction:column;gap:11px">
+        <span style="font-size:14.5px;font-weight:700;color:#f8fafc">{{modalTitle}}</span>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.6">{{modalBody}}</span>
+        <sc-if value="{{modalIsInvite}}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">RECIPIENTS · 1 TO 5</span>
+          <span style="font-size:12px;color:#e2e8f0;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;background:rgba(255,255,255,.02);font-family:ui-monospace,Menlo,monospace;line-height:1.6">ops.lead@contoso.com<br>it.director@contoso.com</span>
+        </sc-if>
+        <span style="font-size:11.5px;color:#c2a63d;line-height:1.55">{{modalNote}}</span>
+        <div style="display:flex;align-items:center;gap:9px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px">
+          <span onClick="{{modalClose}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer">{{modalCta}}</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;pending&quot;,&quot;dead-ended&quot;,&quot;write-back-blocked&quot;,&quot;not-pending&quot;],&quot;default&quot;:&quot;pending&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+class Component extends DCLogic {
+  state = { modal: null, ledger: true, override: null };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    const scene = S.override || P.scene || "pending";
+    const notPending = scene === "not-pending";
+    const deadEnded = scene === "dead-ended" || scene === "write-back-blocked";
+    const blocked = scene === "write-back-blocked";
+
+    const L = {
+      pending: { ink: "#60a5fa", bg: "rgba(96,165,250,.10)", bd: "rgba(96,165,250,.30)" },
+      consumed: { ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" },
+      expired: { ink: "#94a3b8", bg: "rgba(148,163,184,.08)", bd: "rgba(148,163,184,.22)" },
+      superseded: { ink: "#94a3b8", bg: "rgba(148,163,184,.08)", bd: "rgba(148,163,184,.22)" },
+    };
+    const row = (email, link, outcome, oNote, at, oInk) => ({ email, link, outcome, oNote, at, oInk: oInk || "#cbd5e1", lInk: L[link].ink, lBg: L[link].bg, lBd: L[link].bd });
+
+    const live = [
+      row("ops.lead@contoso.com", "pending", "Not yet attempted", "link is live; expires 72h after issue", "—", "#94a3b8"),
+      row("it.director@contoso.com", "pending", "Global Administrator eligible, not active", "activate the role in PIM, then reopen the same link", "Today 14:02", "#fbbf24"),
+      row("helpdesk@contoso.com", "expired", "No eligible role on this account", "signed in fine, but not a Global Administrator; link burned after repeated tries", "Yesterday 16:40", "#f87171"),
+    ];
+    const dead = [
+      row("ops.lead@contoso.com", "expired", "Not attempted before the link expired", "72-hour window passed", "—", "#94a3b8"),
+      row("it.director@contoso.com", "expired", "Global Administrator eligible, not active", "role was never activated before the link expired", "Fri 14:02", "#fbbf24"),
+      row("helpdesk@contoso.com", "expired", "No eligible role on this account", "not a Global Administrator; link burned", "Thu 16:40", "#f87171"),
+    ];
+    const attempts = deadEnded ? dead : live;
+    const liveCount = attempts.filter((a) => a.link === "pending").length;
+
+    const M = S.modal;
+    const spec = !M ? null : M === "invite"
+      ? { title: "Send verification invites", body: "Each person receives an email link. Opening it starts a Microsoft sign-in on your tenant; only an account holding Global Administrator, active at that moment, will be shown the credential. The invite itself carries nothing secret.", note: "Up to five addresses per send. Some emails can fail individually — you are told how many were requested and how many actually went out.", cta: "Send", isInvite: true }
+      : M === "invited"
+      ? { title: "Invites sent", body: "2 requested · 2 sent. The new links appear at the top of the list as \"pending\" until each person attempts them.", note: "A request and a send can differ: a recipient whose mail bounced is skipped and logged, not treated as a failure of the whole request.", cta: "Close" }
+      : M === "override-ok"
+      ? { title: "Reset issued", body: "A new password was written to the break-glass account and stored. The previous handoff is marked superseded — nothing from it was ever delivered. 1 invite re-issued · 1 sent. The run is still paused until the new credential is acknowledged.", note: "This is the second override on this account within 24 hours, which is flagged internally to the platform team. That flag is not a customer-facing signal and is not shown here.", cta: "Close" }
+      : { title: "", body: "", note: "", cta: "Close" };
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      sceneMarker: scene,
+      notPending, isPending: !notPending, blocked,
+      stateLine: notPending ? "Live — no break-glass pause on this run" : deadEnded ? "Live — handoff waiting, every link dead-ended" : "Live — handoff waiting, " + liveCount + " links live",
+      stateDot: notPending ? "#475569" : deadEnded ? "#fbbf24" : "#34d399",
+      stateInk: "#64748b",
+      secretId: deadEnded ? "9127" : "9114",
+      createdAt: deadEnded ? "Wed 3 Sep, 09:14" : "Today 11:52",
+      attempts,
+      inviteMeta: attempts.length + " issued · " + liveCount + " live · most recent first",
+      openInvite: () => this.setState({ modal: "invite" }),
+      overrideLocked: !deadEnded,
+      overrideOpen: deadEnded,
+      lockReason: liveCount + " link" + (liveCount === 1 ? " is" : "s are") + " still live. A reset is refused while any invited person could still complete the handoff — let the links expire, or wait for one to be claimed.",
+      runOverride: () => this.setState({ modal: "override-ok" }),
+      modalShow: !!M,
+      modalTitle: spec ? spec.title : "", modalBody: spec ? spec.body : "", modalNote: spec ? spec.note : "", modalCta: spec ? spec.cta : "",
+      modalIsInvite: !!(spec && spec.isInvite),
+      modalClose: () => this.setState({ modal: M === "invite" ? "invited" : null }),
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "Never shows the credential. This is a status read; the reveal happens once, on a server page the invited person reaches from their email after a Microsoft sign-in, and is purged when they acknowledge it.", where: "§2.2 · §2.5" },
+        { gap: "\"Global Administrator\", not \"an administrator role\". One directory role template qualifies today, and the page says so rather than generalising.", where: "§5" },
+        { gap: "No reset while any link is live. The override is refused server-side until every attempt is expired or superseded; the button is locked here for the same reason.", where: "§2.6" },
+        { gap: "A reset does not resume the run. It stays paused until the new credential is acknowledged, so the page never claims the pack is moving again.", where: "§2.6" },
+        { gap: "\"No handoff waiting\" is one answer for three situations — never reached the gate, paused for another reason, already delivered or superseded. The read cannot distinguish them, so the page says that instead of guessing.", where: "§2.2" },
+        { gap: "An eligible-but-inactive role does not burn the link. That outcome is drawn as an open link with a next step, not as a failure.", where: "§5" },
+        { gap: "Requested and sent are reported separately. A bounced invite is skipped and logged, so the two counts can honestly differ.", where: "§2.1" },
+        { gap: "No sign-in identity or failed-try count per link. Those two fields exist only on the MSP operator read, not the customer one.", where: "§3.3" },
+        { gap: "No cross-tenant watchlist, history or audit trail. Those are the operator console's surface, with its own role floor.", where: "§3" },
+        { gap: "A handoff that is not yours looks like one that does not exist. Both answer 404, and the page treats them as the same \"not found\".", where: "§2.1" },
+        { gap: "The repeated-override alert is internal. It goes to the platform mailbox after a second reset in 24 hours and is not rendered as a customer signal.", where: "§7" },
+        { gap: "The public sign-in and reveal pages are left as they are — server-rendered, white-labelled, outside this portal.", where: "§2.3–2.5 · §9" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

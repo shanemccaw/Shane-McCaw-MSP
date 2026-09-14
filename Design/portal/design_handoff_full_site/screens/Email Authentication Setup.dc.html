@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+<div data-screen-label="Email Authentication Setup" data-emailauth-state="{{sceneMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Email authentication</span>
+      <span title="Whether your primary domain publishes the three DNS records that stop your mail being spoofed: SPF, DKIM and DMARC. Read from the most recent scan; this page explains what to publish and never changes DNS for you." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+    </div>
+
+    <sc-if value="{{notChecked}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Your domain has not been checked yet</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:660px">This check runs as part of a scan of your tenant, and no scan has recorded a result for it. Every status below is unknown — not failing — until one does. The setup steps still apply and can be done ahead of the first check.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{failed}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:14px 16px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">Failed to load email authentication status</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">A failed read, not a result. Your records may be perfectly configured — nothing is shown below because nothing could be fetched. The setup steps are still correct.</span>
+          <span onClick="{{retry}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Try again</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{checked}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:12px;border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 20px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:200px">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">DOMAIN CHECKED</span>
+          <span style="font-size:15px;font-weight:600;color:#f8fafc;font-family:ui-monospace,Menlo,monospace">{{domain}}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px;flex:none">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">COLLECTED</span>
+          <span style="font-size:12.5px;color:#e2e8f0">{{collectedAt}}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px;flex:none">
+          <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">OPEN ITEMS</span>
+          <span style="font-size:12.5px;color:{{openInk}}">{{openLine}}</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px">
+      <sc-for list="{{protocols}}" as="p" hint-placeholder-count="3">
+        <div style="border:1px solid {{p.bd}};border-radius:14px;background:{{p.bg}};padding:15px 18px 16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+            <span style="font-size:14px;font-weight:700;color:#f8fafc">{{p.name}}</span>
+            <span style="font-size:10px;font-weight:600;color:{{p.pillInk}};background:{{p.pillBg}};border:1px solid {{p.pillBd}};border-radius:999px;padding:3px 9px">{{p.pill}}</span>
+          </div>
+          <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">{{p.what}}</span>
+          <span style="font-size:12px;color:#cbd5e1;line-height:1.55">{{p.reading}}</span>
+          <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(255,255,255,.07);padding-top:10px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">{{p.stepsLabel}}</span>
+            <sc-for list="{{p.steps}}" as="s" hint-placeholder-count="3">
+              <div style="display:flex;gap:9px;align-items:flex-start">
+                <span style="font-size:10.5px;font-weight:700;color:#64748b;width:12px;flex:none;margin-top:1px">{{s.n}}</span>
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5">{{s.t}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <sc-if value="{{p.hasRecord}}" hint-placeholder-val="{{ true }}">
+            <span style="font-size:10.5px;color:#94a3b8;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 10px;background:rgba(2,6,23,.5);font-family:ui-monospace,Menlo,monospace;line-height:1.55;word-break:break-all">{{p.record}}</span>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:9px">
+      <span style="font-size:13.5px;font-weight:600;color:#f8fafc">After you publish a record</span>
+      <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">DNS changes take up to 48 hours to spread. The status here updates when the next scan of your tenant runs — this page does not re-check on demand. If a record later changes or a DKIM key disappears, it shows up as configuration drift as well as here.</span>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;padding-top:2px">
+        <a href="Configuration State.dc.html" style="font-size:12px;font-weight:600;text-decoration:none">Configuration state →</a>
+        <a href="Diagnostics and Scripts.dc.html" style="font-size:12px;font-weight:600;text-decoration:none">Latest scan →</a>
+      </div>
+    </div>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="7">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;checked&quot;,&quot;all-configured&quot;,&quot;not-checked&quot;,&quot;read-failed&quot;],&quot;default&quot;:&quot;checked&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+class Component extends DCLogic {
+  state = { ledger: true, retried: null };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    const scene = S.retried || P.dataState || "checked";
+    const checked = scene === "checked" || scene === "all-configured";
+    const allOk = scene === "all-configured";
+    const notChecked = scene === "not-checked";
+    const failed = scene === "read-failed";
+    const domain = "contoso.com";
+
+    const TONE = {
+      ok: { ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)", cardBd: "rgba(255,255,255,.09)", cardBg: "rgba(255,255,255,.02)" },
+      warn: { ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)", cardBd: "rgba(251,191,36,.3)", cardBg: "rgba(251,191,36,.03)" },
+      info: { ink: "#60a5fa", bg: "rgba(96,165,250,.10)", bd: "rgba(96,165,250,.3)", cardBd: "rgba(96,165,250,.28)", cardBg: "rgba(96,165,250,.03)" },
+      unknown: { ink: "#94a3b8", bg: "rgba(148,163,184,.08)", bd: "rgba(148,163,184,.22)", cardBd: "rgba(255,255,255,.09)", cardBg: "rgba(255,255,255,.02)" },
+    };
+    const spf = checked ? true : null;
+    const dmarc = checked ? (allOk ? true : false) : null;
+    const dkim = checked ? (allOk ? true : false) : null;
+
+    const proto = (name, what, value, okReading, badReading, badTone, steps, record, unknownReading) => {
+      const tone = value === null ? "unknown" : value ? "ok" : badTone;
+      const T = TONE[tone];
+      return {
+        name, what, bd: T.cardBd, bg: T.cardBg,
+        pill: value === null ? "Not checked yet" : value ? "Found" : badTone === "info" ? "Not found at default selectors" : "Not found",
+        pillInk: T.ink, pillBg: T.bg, pillBd: T.bd,
+        reading: value === null ? unknownReading : value ? okReading : badReading,
+        stepsLabel: value ? "WHAT IS IN PLACE" : "HOW TO SET IT UP",
+        steps: steps.map((t, i) => ({ n: String(i + 1), t })),
+        hasRecord: !value, record,
+      };
+    };
+    const protocols = [
+      proto("SPF", "Lists which servers may send mail as " + domain + ". Receivers reject or flag mail from anywhere else.",
+        spf, "A v=spf1 TXT record is published on " + domain + ".", "No TXT record starting v=spf1 was found on " + domain + ".", "warn",
+        ["Sign in to your DNS provider for " + domain + ".", "Add a TXT record at the root of the domain with the value below (add any other services that send as you).", "Wait for the next scan — the status here is read from it."],
+        "v=spf1 include:spf.protection.outlook.com -all", "Whether a v=spf1 record exists on " + domain + " is unknown until a scan records it."),
+      proto("DKIM", "Signs outgoing mail so receivers can check it was not altered and really came from your tenant.",
+        dkim, "Signing keys were found at Microsoft 365's default selectors, selector1 and selector2.", "No key was found at Microsoft 365's default selectors, selector1 and selector2. A tenant using custom or rotated selector names may still have DKIM — this check cannot see that, so it is not a verdict that DKIM is absent.", "info",
+        ["In the Microsoft Defender portal, open Email authentication settings → DKIM and select " + domain + ".", "Publish the two CNAME records it shows (selector1._domainkey and selector2._domainkey) at your DNS provider.", "Return and switch signing on. If you already sign with custom selectors, nothing here needs to change."],
+        "selector1._domainkey." + domain + "  CNAME  selector1-contoso-com._domainkey.contoso.onmicrosoft.com", "Whether keys exist at the default selectors is unknown until a scan records it."),
+      proto("DMARC", "Tells receivers what to do when SPF or DKIM fails, and where to send reports about it.",
+        dmarc, "A v=DMARC1 TXT record is published at _dmarc." + domain + ".", "No TXT record starting v=DMARC1 was found at _dmarc." + domain + ". Without it, receivers decide for themselves what to do with mail that fails the other two checks.", "warn",
+        ["Get SPF and DKIM in place first — DMARC acts on their results.", "Add a TXT record at _dmarc." + domain + " with the value below. Start with p=none to observe, then move to quarantine or reject.", "Send the reports to a mailbox someone reads."],
+        "v=DMARC1; p=none; rua=mailto:dmarc-reports@" + domain, "Whether a _dmarc record exists is unknown until a scan records it."),
+    ];
+    const openCount = checked ? [spf, dkim, dmarc].filter((v) => v === false).length : null;
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      sceneMarker: scene,
+      checked, notChecked, failed,
+      stateLine: failed ? "Could not read the status" : notChecked ? "Live — never checked for this tenant" : "Live — read from the latest scan",
+      stateDot: failed ? "#f87171" : notChecked ? "#475569" : "#34d399",
+      stateInk: failed ? "#f87171" : "#64748b",
+      retry: () => this.setState({ retried: "checked" }),
+      domain, collectedAt: "Thu 11 Sep, 06:12",
+      openLine: openCount === 0 ? "None — all three found" : openCount + " of 3 to set up",
+      openInk: openCount === 0 ? "#34d399" : "#fbbf24",
+      protocols,
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "Changes nothing. No DNS write, no DKIM signing command, no script run — this page is instructions beside a reading, by design.", where: "§1" },
+        { gap: "DKIM \"not found at the default selectors\" is never shortened to \"not configured\". The check probes selector1 and selector2 only; custom selectors are invisible to it, and the card says so.", where: "§2" },
+        { gap: "The record values shown are the standard Microsoft 365 shapes, not your records. The actual SPF and DMARC strings the scan matched, and which selectors it found, are not forwarded to this page.", where: "§2" },
+        { gap: "\"Never checked\" is drawn as unknown, not as three failures. Every field is null until a scan records this check.", where: "§4" },
+        { gap: "A failed read shows as a failed read. Nothing is guessed in its place.", where: "§4" },
+        { gap: "No severity label. The scan keeps one label per row even when two or three things are wrong; the page counts open items from the three readings instead.", where: "§2" },
+        { gap: "No re-check button. The reading is a point in time from the last scan; drift over time is the Configuration State page's job.", where: "§3" },
+        { gap: "An unresolvable tenant looks like a never-scanned one. The route answers both the same way, and so does this page.", where: "§1" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

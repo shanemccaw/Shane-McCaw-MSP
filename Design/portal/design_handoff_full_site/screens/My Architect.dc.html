@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+<div data-screen-label="My Architect" data-retainer-state="{{sceneMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">My Architect</span>
+      <span title="Your retained architect's hours: what is allotted this month, what has been used, and the work log behind those hours. Hours only — money lives on Billing." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+      <sc-if value="{{configured}}" hint-placeholder-val="{{ true }}">
+        <span style="margin-left:auto;font-size:12px;color:#94a3b8">{{architectName}}</span>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{noScope}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:14px 16px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">No customer scope on this session</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">A retainer is read per organisation, and this sign-in carries none. Nothing was read on anyone's behalf.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{failed}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:14px 16px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">Failed to load your retainer</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">A failed read. Your hours and log are unchanged; nothing is shown below because nothing could be fetched.</span>
+          <span onClick="{{retry}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Try again</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{unconfigured}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">{{unconfTitle}}</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:660px">{{unconfBody}}</span>
+        <span style="font-size:11px;color:#475569;line-height:1.55;max-width:660px">The month figures below are the platform default of 8 hours with nothing used — a real default, not your allotment. Status reports your architect has sent still show, since they do not depend on a retainer.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{showBucket}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid {{bucketBd}};border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 16px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">{{periodLabel}}</span>
+          <sc-if value="{{isOver}}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:10px;font-weight:600;color:#fbbf24;background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.28);border-radius:999px;padding:3px 9px">{{overHours}}h over this month</span>
+          </sc-if>
+          <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+            <sc-for list="{{months}}" as="m" hint-placeholder-count="3">
+              <span onClick="{{m.pick}}" style="font-size:10.5px;font-weight:600;color:{{m.ink}};background:{{m.bg}};border:1px solid {{m.bd}};border-radius:999px;padding:3px 10px;cursor:pointer;white-space:nowrap">{{m.label}}</span>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
+          <sc-for list="{{figures}}" as="f" hint-placeholder-count="5">
+            <div style="display:flex;flex-direction:column;gap:3px;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:11px 13px;background:rgba(255,255,255,.015)">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">{{f.label}}</span>
+              <span style="font-size:20px;font-weight:700;color:{{f.ink}};font-variant-numeric:tabular-nums;letter-spacing:-.02em">{{f.v}}</span>
+              <span style="font-size:10.5px;color:#64748b;line-height:1.4">{{f.note}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="height:6px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden;display:flex">
+          <div style="height:100%;width:{{usedW}};background:{{usedBar}}"></div>
+        </div>
+        <span style="font-size:11px;color:#475569;line-height:1.55;max-width:680px">{{bucketNote}}</span>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 20px 14px">
+        <div style="display:flex;align-items:center;gap:12px;padding:13px 0 8px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Work log</span>
+          <span style="font-size:11px;color:#64748b">{{logMeta}}</span>
+        </div>
+        <sc-if value="{{logEmpty}}" hint-placeholder-val="{{ false }}">
+          <span style="display:block;font-size:12px;color:#94a3b8;line-height:1.6;border-top:1px solid rgba(255,255,255,.06);padding:16px 0 8px">No entries for this month yet. The hours above are a real zero, not a placeholder.</span>
+        </sc-if>
+        <sc-for list="{{entries}}" as="e" hint-placeholder-count="5">
+          <div style="display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid rgba(255,255,255,.06)">
+            <span style="width:4px;align-self:stretch;border-radius:999px;background:{{e.pillarColor}};flex:none"></span>
+            <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:12.5px;color:#e2e8f0;line-height:1.4">{{e.item}}</span>
+                <span style="font-size:10px;font-weight:600;color:{{e.stInk}};background:{{e.stBg}};border:1px solid {{e.stBd}};border-radius:999px;padding:2px 8px">{{e.state}}</span>
+              </div>
+              <sc-if value="{{e.hasOutcome}}" hint-placeholder-val="{{ true }}">
+                <span style="font-size:11.5px;color:#94a3b8;line-height:1.5">{{e.outcome}}</span>
+              </sc-if>
+              <span style="font-size:10.5px;color:#64748b">{{e.meta}}</span>
+            </div>
+            <span style="font-size:13px;font-weight:600;color:{{e.hInk}};flex:none;font-variant-numeric:tabular-nums;white-space:nowrap">{{e.hours}}</span>
+          </div>
+        </sc-for>
+        <span style="display:block;font-size:10.5px;color:#475569;line-height:1.55;border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:2px">Entries marked "from change control" or "from remediation" were logged automatically when that record closed; their hours are set by your architect afterwards, so a fresh one can honestly read 0h. Nothing on this page adds or edits an entry.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{notBlocked}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 20px 14px">
+        <div style="display:flex;align-items:center;gap:12px;padding:13px 0 8px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Status reports</span>
+          <span style="font-size:11px;color:#64748b">{{reportsMeta}}</span>
+        </div>
+        <sc-for list="{{reports}}" as="r" hint-placeholder-count="2">
+          <div style="display:flex;flex-direction:column;gap:9px;padding:12px 0;border-top:1px solid rgba(255,255,255,.06)">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">{{r.title}}</span>
+              <span style="font-size:10px;font-weight:600;color:#94a3b8;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.22);border-radius:999px;padding:2px 8px">{{r.period}}</span>
+              <span style="font-size:10px;font-weight:600;color:{{r.csInk}};background:{{r.csBg}};border:1px solid {{r.csBd}};border-radius:999px;padding:2px 8px">{{r.clientStatus}}</span>
+              <span style="margin-left:auto;font-size:10.5px;color:#64748b">sent {{r.sentAt}}</span>
+            </div>
+            <span style="font-size:12px;color:#cbd5e1;line-height:1.6;max-width:720px">{{r.summary}}</span>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">COMPLETED</span>
+              <sc-for list="{{r.activities}}" as="a" hint-placeholder-count="2">
+                <div style="display:flex;gap:9px;align-items:flex-start"><span style="width:5px;height:5px;border-radius:999px;background:#0078D4;flex:none;margin-top:6px"></span><span style="font-size:11.5px;color:#cbd5e1;line-height:1.5"><span style="color:#e2e8f0;font-weight:600">{{a.title}}</span> — {{a.description}}</span></div>
+              </sc-for>
+            </div>
+            <sc-if value="{{r.hasThread}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:6px;border-left:2px solid rgba(96,165,250,.35);padding:2px 0 2px 12px">
+                <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">YOUR QUESTION AND THE REPLY</span>
+                <sc-for list="{{r.thread}}" as="t" hint-placeholder-count="2">
+                  <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5"><span style="color:{{t.ink}};font-weight:600">{{t.who}}</span> · {{t.content}}</span>
+                </sc-for>
+                <span style="font-size:10.5px;color:#475569;line-height:1.5">Questions are taken by your architect directly for now — this thread is read here, not written here.</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+        <sc-if value="{{noReports}}" hint-placeholder-val="{{ false }}">
+          <span style="display:block;font-size:12px;color:#94a3b8;line-height:1.6;border-top:1px solid rgba(255,255,255,.06);padding:16px 0 8px">No status report has been sent to your organisation yet. Drafts your architect is still writing are not shown.</span>
+        </sc-if>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">How the retainer works</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">Each month starts with your retained hours. Hours you did not use last month roll into this one — once; they are not carried a second time. Work is logged against the month it happened in, at half-hour granularity. Going over the allotment is allowed and is shown plainly rather than hidden; it is settled with your architect, not on this page.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
+          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
+        </div>
+        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
+                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;configured&quot;,&quot;over-month&quot;,&quot;not-configured&quot;,&quot;inactive&quot;,&quot;no-customer-scope&quot;,&quot;read-failed&quot;],&quot;default&quot;:&quot;configured&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+class Component extends DCLogic {
+  state = { month: 0, ledger: true, retried: null };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    const scene = S.retried || P.scene || "configured";
+    const configured = scene === "configured" || scene === "over-month";
+    const unconfigured = scene === "not-configured" || scene === "inactive";
+    const blocked = scene === "no-customer-scope" || scene === "read-failed";
+    const over = scene === "over-month";
+
+    const PC = { Health: "#34d399", Compliance: "#a78bfa", Governance: "#60a5fa", Security: "#f87171", Adoption: "#fbbf24" };
+    const STATE = {
+      closed: { label: "Closed", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" },
+      in_progress: { label: "In progress", ink: "#60a5fa", bg: "rgba(96,165,250,.10)", bd: "rgba(96,165,250,.3)" },
+      in_review: { label: "In review", ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" },
+      scheduled: { label: "Scheduled", ink: "#94a3b8", bg: "rgba(148,163,184,.08)", bd: "rgba(148,163,184,.22)" },
+    };
+    const SRC = { change_control: "from change control", remediation_tracker: "from remediation", unscoped: "logged by your architect" };
+    const entry = (item, minutes, pillar, finding, outcome, st, source, week) => {
+      const T = STATE[st];
+      const hours = Math.round(minutes / 30) / 2;
+      return { item, hours: hours + "h", hInk: minutes === 0 ? "#64748b" : "#f8fafc", pillarColor: PC[pillar] || "#E2E8F0",
+        state: T.label, stInk: T.ink, stBg: T.bg, stBd: T.bd, hasOutcome: !!outcome, outcome: outcome || "",
+        meta: [week, pillar, finding, SRC[source]].filter(Boolean).join(" · ") };
+    };
+    const MONTHS = [
+      { key: "2026-09", label: "Sep 2026", retained: 8, rolled: 1.5, entries: over ? [
+        entry("Conditional Access consolidation — twelve policies to five", 300, "Security", null, "Report-only trial running until 25 Sep; enforcement scheduled after.", "in_progress", "unscoped", "Wk 2"),
+        entry("Break-glass exclusion policy designed and raised as CR-2026-118", 120, "Security", "SEC-04", "Approved; booked into the Saturday window.", "closed", "change_control", "Wk 1"),
+        entry("Guest invite policy tightened", 90, "Governance", "GOV-11", "Guests can no longer invite guests.", "closed", "change_control", "Wk 1"),
+        entry("Remediation step 41 completed", 0, null, "HLT-02", null, "closed", "remediation_tracker", "Wk 2"),
+        entry("Audit retention review with compliance lead", 150, "Compliance", null, null, "scheduled", "unscoped", "Wk 3"),
+      ] : [
+        entry("Break-glass exclusion policy designed and raised as CR-2026-118", 120, "Security", "SEC-04", "Approved; booked into the Saturday window.", "closed", "change_control", "Wk 1"),
+        entry("Guest invite policy tightened", 90, "Governance", "GOV-11", "Guests can no longer invite guests.", "closed", "change_control", "Wk 1"),
+        entry("Remediation step 41 completed", 0, null, "HLT-02", null, "closed", "remediation_tracker", "Wk 2"),
+        entry("Audit retention review with compliance lead", 90, "Compliance", null, null, "scheduled", "unscoped", "Wk 3"),
+      ] },
+      { key: "2026-08", label: "Aug 2026", retained: 8, rolled: 0, entries: [
+        entry("Licence optimisation pass — 14 unused E5 seats identified", 180, "Health", "HLT-02", "Reassigned; saving carried to Q3 summary.", "closed", "unscoped", "Wk 4"),
+        entry("SSPR rollout to remaining 60 users", 120, "Adoption", null, "Complete; two-method registration enforced.", "closed", "change_control", "Wk 2"),
+        entry("Monthly review call and written summary", 90, "Governance", null, null, "closed", "unscoped", "Wk 1"),
+      ] },
+      { key: "2026-07", label: "Jul 2026", retained: 8, rolled: 0, entries: [
+        entry("Tenant onboarding and baseline scan walkthrough", 240, "Health", null, "Baseline agreed 4 Sep.", "closed", "unscoped", "Wk 3"),
+        entry("Identity assessment findings review", 150, "Security", null, null, "closed", "unscoped", "Wk 4"),
+      ] },
+    ];
+    const mi = Math.min(S.month, MONTHS.length - 1);
+    const M = configured ? MONTHS[mi] : { key: "2026-09", label: "Sep 2026", retained: 8, rolled: 0, entries: [] };
+    const used = M.entries.reduce((a, e) => a + parseFloat(e.hours), 0);
+    const cap = M.retained + M.rolled;
+    const remaining = Math.max(0, cap - used), overH = Math.max(0, used - cap);
+    const isOver = overH > 0;
+    const fig = (label, v, note, ink) => ({ label, v: v + "h", note, ink: ink || "#f8fafc" });
+    const CS = { accepted: { label: "Accepted", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" }, pending: { label: "Awaiting your review", ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" }, has_questions: { label: "You asked a question", ink: "#60a5fa", bg: "rgba(96,165,250,.10)", bd: "rgba(96,165,250,.3)" } };
+    const report = (title, period, cs, sentAt, summary, activities, thread) => ({ title, period, sentAt, summary, activities, clientStatus: CS[cs].label, csInk: CS[cs].ink, csBg: CS[cs].bg, csBd: CS[cs].bd, hasThread: thread.length > 0,
+      thread: thread.map((t) => ({ who: t.sender === "client" ? "You" : "Priya", ink: t.sender === "client" ? "#e2e8f0" : "#60a5fa", content: t.content })) });
+    const reports = scene === "not-configured" ? [] : [
+      report("August — monthly status", "Monthly", "has_questions", "2 Sep", "Licence clean-up completed and SSPR rollout finished. Conditional Access consolidation scoped for September; the break-glass gap is the priority.", [
+        { title: "Licence optimisation", description: "14 unused E5 seats reassigned." }, { title: "SSPR", description: "remaining 60 users enrolled, two-method policy enforced." }],
+        [{ sender: "client", content: "Does the CA consolidation need a change freeze around month-end close?" }, { sender: "admin", content: "No — it runs report-only first, so nothing is enforced until we agree a date outside your close window." }]),
+      report("July — monthly status", "Monthly", "accepted", "4 Aug", "Onboarding complete and the baseline scan reviewed together. Identity findings prioritised for August.", [
+        { title: "Baseline scan", description: "143 checks, 22 blocked by licence, reviewed line by line." }], []),
+    ];
+
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      sceneMarker: scene,
+      configured, unconfigured, noScope: scene === "no-customer-scope", failed: scene === "read-failed",
+      showBucket: configured || unconfigured, notBlocked: !blocked,
+      stateLine: { configured: "Live — retainer active", "over-month": "Live — retainer active, over this month", "not-configured": "Live — no retainer on your account", inactive: "Live — retainer paused", "no-customer-scope": "No customer scope on this session", "read-failed": "Could not read your retainer" }[scene],
+      stateDot: blocked ? "#f87171" : unconfigured ? "#475569" : isOver ? "#fbbf24" : "#34d399",
+      stateInk: blocked ? "#f87171" : "#64748b",
+      retry: () => this.setState({ retried: "configured" }),
+      architectName: "Priya Raman · M365 Architect",
+      unconfTitle: scene === "inactive" ? "Your retainer is paused" : "You do not have an architect retainer",
+      unconfBody: scene === "inactive" ? "A retainer exists on your account but is not active, so it is shown as not configured — the same answer the platform gives. Your work log from active months stays on record; this page will pick it up again when the retainer is switched back on by your provider." : "This is a real read of your account: no retainer has been set up. Retained architect hours are arranged with your provider; nothing on this page can start one.",
+      bucketBd: isOver ? "rgba(251,191,36,.3)" : "rgba(255,255,255,.09)",
+      periodLabel: M.label,
+      isOver, overHours: overH,
+      months: configured ? MONTHS.map((m, i) => ({ label: m.label, pick: () => this.setState({ month: i }), ink: i === mi ? "#cbd5e1" : "#64748b", bg: i === mi ? "rgba(255,255,255,.06)" : "transparent", bd: i === mi ? "rgba(255,255,255,.18)" : "rgba(255,255,255,.1)" })) : [],
+      figures: [
+        fig("RETAINED", M.retained, "this month's allotment"),
+        fig("ROLLED IN", M.rolled, M.rolled ? "unused from last month, once" : "nothing carried from last month", M.rolled ? "#f8fafc" : "#64748b"),
+        fig("USED", used, "logged so far, uncapped", isOver ? "#fbbf24" : "#f8fafc"),
+        fig("REMAINING", remaining, remaining === 0 ? (isOver ? "allotment exceeded" : "allotment used exactly") : "of " + cap + "h available", remaining === 0 ? "#94a3b8" : "#34d399"),
+        fig("OVER", overH, isOver ? "a normal, stated state" : "none", isOver ? "#fbbf24" : "#64748b"),
+      ],
+      usedW: Math.min(100, cap ? (used / cap) * 100 : 0) + "%",
+      usedBar: isOver ? "#fbbf24" : "#0078D4",
+      bucketNote: isOver ? "\"Over\" is keyed off the over figure itself, not off remaining hitting zero — a month that lands exactly on its allotment also reads 0h remaining, and is not over." : "Figures are computed once, server-side, from the log. The page does not re-add them.",
+      logMeta: M.entries.length + " entries · " + M.label + " · newest first",
+      logEmpty: M.entries.length === 0,
+      entries: M.entries,
+      reports, reportsMeta: reports.length ? reports.length + " sent · drafts not shown" : "none sent",
+      noReports: reports.length === 0,
+      ledgerShow: P.showLedger !== false,
+      ledgerOpen: S.ledger,
+      ledgerToggle: S.ledger ? "Collapse" : "Expand",
+      toggleLedger: () => this.setState({ ledger: !S.ledger }),
+      ledger: [
+        { gap: "No money. An hourly rate is served on this read and is dropped on the floor: no rate, no dollar total, no derived cost, anywhere on the page. Billing is Billing's.", where: "§6.1" },
+        { gap: "No writing. Hours are not logged, entries are not edited, the allotment is not changed here — every write is the provider's.", where: "§6.2" },
+        { gap: "No reply box under a status report. The thread is served read-only; a customer reply endpoint does not exist yet, so the page says who to ask instead of drawing a field that posts nowhere.", where: "§6.3 · §7.1" },
+        { gap: "\"Configured\" is the server's flag, not \"settings exist\". A paused retainer is drawn as not configured because that is what the read says.", where: "§1.1 · §5" },
+        { gap: "\"Over\" keys off the over figure, never off remaining reaching zero.", where: "§1.2" },
+        { gap: "The month figures are the server's. Nothing re-derives used or remaining from the entries client-side.", where: "§6.4" },
+        { gap: "The architect's name is a live field. It is never typed into the page.", where: "§1.1" },
+        { gap: "Derived entries are shown as what they are. A remediation-derived item carries a generic label and 0h until the architect sets its hours; the page does not dress that up.", where: "§2" },
+        { gap: "No documents section. Nothing on this read references a document, and the page does not pretend one rides along.", where: "§4.4" },
+        { gap: "\"How the retainer works\" is fixed prose, not a served field. Decided: static copy, no backend table.", where: "§6.6" },
+        { gap: "Pillar colours come from the server's derived field; an unknown pillar gets the grey fallback, never a new colour.", where: "§1.3" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
