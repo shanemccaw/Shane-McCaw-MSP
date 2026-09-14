@@ -42,6 +42,7 @@ import ScopeAndSlaPage from "@/pages/scope-and-sla";
 import PillarPage from "@/pages/pillar";
 import BreakGlassStatusPage from "@/pages/break-glass-status";
 import BreakGlassVerifyPage from "@/pages/break-glass-verify";
+import CustomerDocumentsPage from "@/pages/customer-documents";
 import NotFound from "@/pages/not-found";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentDeclinedPage from "@/pages/consent-declined";
@@ -123,6 +124,7 @@ function ProtectedRoutes() {
           <Route path="/policy-decisions" component={PolicyDecisionsPage} />
           <Route path="/ownership" component={OwnershipPage} />
           <Route path="/security-plan" component={SecurityPlanPage} />
+          <Route path="/documents" component={CustomerDocumentsPage} />
           <Route path="/my-architect" component={MyArchitectPage} />
           <Route path="/remediation-tracking" component={RemediationTrackingPage} />
           <Route path="/microsoft-changes" component={MicrosoftChangesPage} />
@@ -185,7 +187,7 @@ export default function App() {
                 <Route path="/consent/declined" component={ConsentDeclinedPage} />
                 <Route path="/consent/tenant-conflict" component={ConsentTenantConflictPage} />
                 <Route path="/onboarding/:token" component={OnboardingLinkPage} />
-                {/*
+{/*
                   Public Share Pages (#4001, Feature #1663) — public,
                   unauthenticated, no session context available. Paths are
                   load-bearing: the server mints share URLs literally as
@@ -193,6 +195,11 @@ export default function App() {
                   `/shared-live-documents/{token}`, and the shareUrl
                   msp-sow.ts's mint routes never construct directly, but the
                   frontend historically served at `/sow/{shareToken}`.
+
+                  #4003 (Feature #1658, Documents) built its own
+                  SharedDocumentPage against this exact route + endpoint
+                  concurrently with this build landing — dropped in favor of
+                  this SharedDocumentPublicPage, which reached main first.
                 */}
                 <Route path="/shared-documents/:shareToken" component={SharedDocumentPublicPage} />
                 <Route path="/shared-live-documents/:shareToken" component={SharedLiveDocumentsPublicPage} />

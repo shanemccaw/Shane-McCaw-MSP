@@ -13,6 +13,7 @@ import {
   FileCheck2,
   Compass,
   Gauge,
+  FileText,
   type LucideProps,
 } from "lucide-react";
 
@@ -57,6 +58,7 @@ export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   { key: "policy", label: "Policy Decisions", icon: Scale, builtPath: "/policy-decisions" },
   { key: "config-state", label: "Configuration State", icon: Layers, builtPath: "/config-state" },
   { key: "security-plan", label: "Security Plan", icon: FileCheck2, builtPath: "/security-plan" },
+  { key: "docs", label: "Documents", icon: FileText, builtPath: "/documents" },
 ];
 
 /** `/coming-soon?feature=<label>&group=<group>` for a not-yet-built destination. */
