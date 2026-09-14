@@ -268,9 +268,18 @@ the `Shane To-Do` section.
 
 ### How
 
+**`gh issue create --milestone` takes the milestone's title, not its number** (Git #4016).
+Run with a bare number it fails before creating anything (`could not add to milestone '5':
+'5' not found`) — resolve the real title first:
+
+```
+gh api repos/shanemccaw/Shane-McCaw-MSP/milestones/5 --jq .title
+# => "v1.1 - Monitoring & Launch Control"
+```
+
 ```
 # create, with milestone 5 (v1.1) — parent to a Feature (primary case) or an area epic (fallback)
-gh issue create --title "<what is actually wrong>" --milestone 5 --label bug --body "<evidence, file:line>"
+gh issue create --title "<what is actually wrong>" --milestone "v1.1 - Monitoring & Launch Control" --label bug --body "<evidence, file:line>"
 # add --label security too if security-relevant
 # prefix the title with "URGENT: " only if it genuinely can't wait (see above)
 
@@ -280,6 +289,13 @@ gh api repos/shanemccaw/Shane-McCaw-MSP/issues/<new> --jq .id
 # otherwise the area epic from the fallback table above
 gh api -X POST repos/shanemccaw/Shane-McCaw-MSP/issues/<parent>/sub_issues -f sub_issue_id=<that id>
 ```
+
+**Check each step's real output before proceeding to the next — do not script create →
+parent → board-status together and assume success.** A failed `gh issue create` (e.g. the
+milestone-title failure above) still leaves `<new>` unset; running the parenting and
+board-status calls anyway fails with unrelated-looking errors (`accepts 1 arg(s), received 9`,
+GraphQL parse errors) that don't obviously point back to the real cause. A session that
+doesn't read each command's output can believe the finding was filed when nothing exists.
 
 Write real evidence in the body — file:line, the query you ran, the actual output. A finding
 filed as "this looks wrong" is not actionable later. Then **list every issue number you filed in
