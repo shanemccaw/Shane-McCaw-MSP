@@ -50,6 +50,8 @@ export type BreakGlassRunStatus =
       readonly pendingSecretId: number;
       readonly status: "pending_delivery";
       readonly createdAt: string;
+      /** #4139 — the break-glass account (Entra object id or UPN); null on rows predating #4015. */
+      readonly breakGlassAccountId: string | null;
       /** #4041 — set while invites and reveals refuse pending a re-run admin-override. */
       readonly credentialUncertainAt: string | null;
       readonly attempts: readonly BreakGlassAttempt[];

@@ -32,10 +32,11 @@ import {
  * link awaiting acknowledgement, and each admin-override refusal (409 / 502 /
  * 503 / 400) with its own server message.
  *
- * Never shows the credential. The ACCOUNT cell the design draws is not rendered:
- * the break-glass account identity is not on the customer read (contract pack
- * §2.2). It is persisted since #4015 (`break_glass_pending_secrets.break_glass_account_id`),
- * but no read route serves it yet.
+ * Never shows the credential. The ACCOUNT cell shows the break-glass account
+ * identity (#4139) — `breakGlassAccountId` on the by-run read (contract pack
+ * §2.2), persisted since #4015 on `break_glass_pending_secrets.break_glass_account_id`
+ * and served only once the caller passes that row's own customer check. Rows
+ * predating #4015 carry no identity and render a dash.
  *
  * The admin-override control is gated client-side on `can("msp",
  * "ladder.msp-operator")` — the seeded "MSP operator or above" ladder row, the
@@ -502,6 +503,13 @@ function RunView({
                 </span>
               </div>
               <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
+                <div className="flex min-w-0 flex-col gap-[3px]">
+                  <Eyebrow>ACCOUNT</Eyebrow>
+                  <span className="break-all text-[12.5px]" style={{ color: "#e2e8f0" }} data-testid="break-glass-account">
+                    {pending.breakGlassAccountId ?? "—"}
+                  </span>
+                  <span className="text-[10.5px]" style={{ color: "#64748b" }}>identity stamped on the run; the password is not on this page</span>
+                </div>
                 <div className="flex flex-col gap-[3px]">
                   <Eyebrow>CREATED</Eyebrow>
                   <span className="text-[12.5px]" style={{ color: "#e2e8f0" }} data-testid="break-glass-created">

@@ -501,6 +501,15 @@ router.get("/portal/break-glass/by-run/:runId", requireAuth, async (req: Request
       return res.json({ pending: false, run: runContext });
     }
 
+    // #4139 — everything below is read off the secret row, which carries its own
+    // customerId (the gate's configurable customerIdField), not necessarily the
+    // payload.customerId checked above. Hold the caller to the row's own customer
+    // too — the same gate the invite route applies to this row — so the account
+    // identity and invite list can never be served across tenants.
+    if (secret.customerId !== customerId && !(await assertCustomerAccess(req.user!, secret.customerId))) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
     const attempts = await db
       .select({
         id: breakGlassVerificationAttemptsTable.id,
@@ -520,6 +529,10 @@ router.get("/portal/break-glass/by-run/:runId", requireAuth, async (req: Request
       pendingSecretId: secret.id,
       status: secret.status,
       createdAt: secret.createdAt,
+      // #4139 — the account this credential belongs to (Entra object id or UPN),
+      // bound to the secret row since #4015. An identifier, never the credential;
+      // null for rows that predate #4015.
+      breakGlassAccountId: secret.breakGlassAccountId,
       // #4041 — non-null while invites and reveals refuse pending a re-run override.
       credentialUncertainAt: secret.credentialUncertainAt,
       // #3994 — expiresAt is the same createdAt + BREAK_GLASS_LINK_TTL_MS the
