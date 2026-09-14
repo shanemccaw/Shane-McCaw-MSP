@@ -23,14 +23,19 @@ const customers = [
   { id: 11, name: "Delta LLC", domain: "delta.example", status: "active", tenantId: "t11", mspId: 1, createdAt: "2026-01-04T00:00:00Z", seats: 60, people: 5, lastScanAt: "2026-09-06T00:00:00Z", openSignals: 3, criticalSignals: 1 },
 ];
 
-test("IA has 7 tenant groups and 18 ops pages", () => {
+test("IA has 7 tenant groups and 20 ops pages", () => {
   assert.equal(CHILD_GROUPS.length, 7);
   // 13 original + dlq, plan, reports, retention, revenue (concurrent builds
-  // #3814/#3815/#3906/#3796) + consent (Git #2627)
-  assert.equal(MSP_PAGES.length, 18);
-  // 2 leaf groups (overview, audit) + 3 + 7 + 5 (#3897 added "poams") + 5
-  // (#3818 added "ou") + 5 (#3819 added "marketplace") group children = 27
-  assert.equal(CHILD_PAGES.length, 27);
+  // #3814/#3815/#3906/#3796) + consent (Git #2627) + audit (Git #4012) = 20.
+  // (This count had already drifted stale to 18 before this build touched the
+  // file — Git #4012's "audit" add landed without updating this assertion.)
+  assert.equal(MSP_PAGES.length, 20);
+  // 2 leaf groups (overview, audit) + 3 (monitor) + 7 (change control) + 5
+  // (governance, #3897 added "poams") + 6 (access & identity: #3818 added
+  // "ou", #3968 added "azurecred") + 6 (commercial: #3819 added
+  // "marketplace") = 29. (g.comm's real count of 6 had also already drifted
+  // stale to the "5" the old comment claimed, before this build.)
+  assert.equal(CHILD_PAGES.length, 29);
 });
 
 test("selectionToPath / parseLocation round-trip every kind", () => {
@@ -113,9 +118,9 @@ test("breadcrumb for a grouped page has root, tenant, group and page", () => {
 
 test("command palette lists root, every ops page, and tenant × page", () => {
   const cmds = buildCommands(customers, handlers);
-  // 1 root + 18 ops + 4 tenants * 27 pages (#3897 added "poams", #3818 added
-  // "ou", #3819 added "marketplace", Git #2627 added "consent")
-  assert.equal(cmds.length, 1 + 18 + customers.length * 27);
+  // 1 root + 20 ops + 4 tenants * 29 pages — see the IA counts test above for
+  // how these totals are made up.
+  assert.equal(cmds.length, 1 + 20 + customers.length * 29);
   assert.ok(cmds.some((c) => c.label === "Alpha Ltd › Risk Register" && c.group === "NODE"));
   assert.ok(cmds.some((c) => c.label === "Operations › Sales" && c.group === "MSP"));
 });

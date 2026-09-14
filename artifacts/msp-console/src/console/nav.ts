@@ -63,6 +63,9 @@ export const CHILD_GROUPS: Group[] = [
       { id: "lc", label: "Launch Control", icon: "rocket" },
       { id: "wh", label: "Webhooks", icon: "webhook" },
       { id: "ou", label: "OU Assignment", icon: "folder-tree" },
+      // Azure Credential (Git #3968, Feature #3966) — the client's app
+      // registration credential for the M365 tenant this customer maps to.
+      { id: "azurecred", label: "Azure Credential", icon: "cloud" },
     ],
   },
   {

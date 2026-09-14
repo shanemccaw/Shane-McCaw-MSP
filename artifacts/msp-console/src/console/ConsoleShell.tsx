@@ -55,6 +55,7 @@ import { RetentionQueue } from "@/modules/retention/RetentionQueue";
 import { PartnerRevenue } from "./modules/PartnerRevenue";
 import { Overview } from "./modules/Overview";
 import { LaunchControl } from "./modules/LaunchControl";
+import { AzureCredential } from "./modules/AzureCredential";
 
 function roleLabelFor(p: MspUserProfile): string {
   if (p.mspRole === "PlatformAdmin") return "PlatformAdmin — full access";
@@ -322,6 +323,13 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "page" && sel.page === "ou") {
     return <AdOuAssignmentPage customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "azurecred") {
+    // Azure Credential (#3968), README screen unassigned in this pass — the
+    // routes are path-scoped by mspId, taken from the directory row, same
+    // reason Launch Control needs it above.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    return <AzureCredential mspId={customer?.mspId ?? null} customerId={sel.tenant} customerName={customer?.name} />;
   }
   if (sel.kind === "page" && sel.page === "raci") {
     // Ownership / RACI (#2594) needs the full customer row for its display

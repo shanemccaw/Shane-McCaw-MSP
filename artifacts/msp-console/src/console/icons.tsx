@@ -65,6 +65,8 @@ import {
   CircleHelp,
   // Launch Control (#2615)
   BadgeCheck, FlaskConical, Variable,
+  // Azure Credential (#3968)
+  Cloud,
   type LucideIcon,
 } from "lucide-react";
 
@@ -244,6 +246,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   "badge-check": BadgeCheck,
   "flask-conical": FlaskConical,
   variable: Variable,
+  // Azure Credential (#3968)
+  cloud: Cloud,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});
