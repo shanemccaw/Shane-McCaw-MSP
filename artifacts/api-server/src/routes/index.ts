@@ -13,6 +13,7 @@ import leadsRouter from "./leads.ts";
 import downloadsRouter from "./downloads.ts";
 import portalTeamRouter from "./portal-team.ts";
 import portalProfileRouter from "./portal-profile.ts";
+import portalAzureCredentialRouter from "./portal-azure-credential.ts";
 import portalOnboardingRouter from "./portal-onboarding.ts";
 import portalProjectsRouter from "./portal-projects.ts";
 import portalDocumentsRouter from "./portal-documents.ts";
@@ -367,6 +368,7 @@ router.use(dashboardExecutiveSummaryRouter);
 router.use(dashboardExportRouter);
 router.use(portalTeamRouter);
 router.use(portalProfileRouter);
+router.use(portalAzureCredentialRouter);
 router.use(portalOnboardingRouter);
 // portalDashboardRouter was mounted here until #327. It registered a second
 // GET /portal/dashboard, which portalCustomerEnginesRouter (mounted above)
