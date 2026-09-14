@@ -51,7 +51,7 @@
  * reverse import would close a cycle.
  */
 
-import { db, monitorChecksTable, tenantMonitorProfilesTable } from "@workspace/db";
+import { db, licenseAssignmentSnapshotsTable, monitorChecksTable, tenantMonitorProfilesTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { lookupSkuMonthlyPriceCents } from "./cost-engine.ts";
 import { logger } from "./logger.ts";
@@ -604,5 +604,137 @@ export async function resolveLicenseSkuLedger(tenantId: string): Promise<License
     excluded,
     checkKey: waste.checkKey,
     collectedAt: waste.collectedAt,
+  };
+}
+
+// ── Active licensed user count (Git #4111) ──────────────────────────────────────
+//
+// Seat-based pricing (#4111): the customer's price is the real, live count of
+// distinct users holding at least one PAID SKU — not a sum of per-SKU
+// consumedUnits, because a user can hold more than one paid SKU and summing
+// would double-count them. That is exactly why this needs the per-USER rows
+// `license_assignment_snapshots` already stores (one row per user x SKU,
+// #1291), not the per-SKU aggregate `resolveLicenseWasteCounts`/
+// `resolvePaidSeatFigures` above compute — those answer "how many seats", this
+// answers "how many people".
+//
+// Same "paid" boundary as `paidSeatFiguresFromLines`: a SKU with no price on
+// file, or priced at zero, does not count — reusing that rule (not
+// reimplementing it) keeps this number and the waste/ledger figures agreeing
+// about which SKUs are billable.
+
+export interface ActiveLicensedUserCount {
+  /** Distinct users with >=1 paid, non-free SKU assigned — the seat-pricing basis. */
+  count: number;
+  /** monitor_checks.key the per-user snapshot run was collected under. */
+  checkKey: string;
+  collectedAt: Date | null;
+  /** skuPartNumbers counted as paid for this computation. */
+  paidSkuPartNumbers: string[];
+  /** SKUs left out of the paid set, and why. */
+  excluded: { skuPartNumber: string; reason: UnpaidSkuReason }[];
+}
+
+/**
+ * Pure: distinct userIds among assignment rows whose skuId is in the paid set.
+ * Exported separately so the counting arithmetic is unit-tested without a
+ * database, the same split every other resolver in this file uses.
+ */
+export function activeLicensedUserCountFromAssignments(
+  assignments: readonly { userId: string; skuId: string }[],
+  paidSkuIds: ReadonlySet<string>,
+): number {
+  const users = new Set<string>();
+  for (const a of assignments) {
+    if (paidSkuIds.has(a.skuId)) users.add(a.userId);
+  }
+  return users.size;
+}
+
+/**
+ * The tenant's real active licensed user count, or null when it cannot be
+ * honestly computed:
+ *   - no `/subscribedSkus` catalog at all (nothing to price against), or
+ *   - the subscribed estate has no SKU with a real, non-zero price on file, or
+ *   - no `license_assignment_snapshots` run exists yet for this tenant. The
+ *     per-SKU catalog's `consumedUnits` cannot substitute here — summing it
+ *     across paid SKUs would double-count a user holding more than one paid
+ *     license, the exact trap this table exists to avoid.
+ */
+export async function resolveActiveLicensedUserCount(
+  tenantId: string,
+): Promise<ActiveLicensedUserCount | null> {
+  const catalog = await resolveSubscribedSkuCatalog(tenantId);
+  if (!catalog) return null;
+
+  const priceBySku = new Map<string, number | null>();
+  for (const entry of catalog.skus) {
+    if (priceBySku.has(entry.skuPartNumber)) continue;
+    const { priceCents } = await lookupSkuMonthlyPriceCents({ skuPartNumber: entry.skuPartNumber });
+    priceBySku.set(entry.skuPartNumber, priceCents);
+  }
+
+  const paidSkuIds = new Set<string>();
+  const paidSkuPartNumbers: string[] = [];
+  const excluded: ActiveLicensedUserCount["excluded"] = [];
+  for (const entry of catalog.skus) {
+    const price = priceBySku.get(entry.skuPartNumber) ?? null;
+    if (price == null || price <= 0) {
+      excluded.push({
+        skuPartNumber: entry.skuPartNumber,
+        reason: price == null ? "no_price_on_file" : "zero_price",
+      });
+      continue;
+    }
+    paidSkuIds.add(entry.skuId);
+    paidSkuPartNumbers.push(entry.skuPartNumber);
+  }
+
+  if (paidSkuIds.size === 0) {
+    log.warn(
+      { tenantId, checkKey: catalog.checkKey },
+      "license-waste-source: no priced SKU subscribed — active licensed user count cannot be sourced",
+    );
+    return null;
+  }
+
+  const [latestRun] = await db
+    .select({
+      runId: licenseAssignmentSnapshotsTable.runId,
+      checkKey: licenseAssignmentSnapshotsTable.checkKey,
+      collectedAt: licenseAssignmentSnapshotsTable.collectedAt,
+    })
+    .from(licenseAssignmentSnapshotsTable)
+    .where(eq(licenseAssignmentSnapshotsTable.tenantId, tenantId))
+    .orderBy(desc(licenseAssignmentSnapshotsTable.collectedAt))
+    .limit(1);
+
+  if (!latestRun) {
+    log.warn(
+      { tenantId },
+      "license-waste-source: no license_assignment_snapshots run for this tenant — active licensed user count cannot be sourced",
+    );
+    return null;
+  }
+
+  const rows = await db
+    .select({
+      userId: licenseAssignmentSnapshotsTable.userId,
+      skuId: licenseAssignmentSnapshotsTable.skuId,
+    })
+    .from(licenseAssignmentSnapshotsTable)
+    .where(
+      and(
+        eq(licenseAssignmentSnapshotsTable.tenantId, tenantId),
+        eq(licenseAssignmentSnapshotsTable.runId, latestRun.runId),
+      ),
+    );
+
+  return {
+    count: activeLicensedUserCountFromAssignments(rows, paidSkuIds),
+    checkKey: latestRun.checkKey,
+    collectedAt: latestRun.collectedAt,
+    paidSkuPartNumbers,
+    excluded,
   };
 }

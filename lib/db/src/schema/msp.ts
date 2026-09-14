@@ -1787,6 +1787,40 @@ export const tenantSubscriptionsTable = pgTable("tenant_subscriptions", {
 export type TenantSubscription = typeof tenantSubscriptionsTable.$inferSelect;
 export type InsertTenantSubscription = typeof tenantSubscriptionsTable.$inferInsert;
 
+// ── Client Billing Overrides (#4111) ─────────────────────────────────────────────
+//
+// Seat-based pricing is automatic: the customer's real, live count of active
+// licensed M365 users (resolveActiveLicensedUserCount, license-waste-source.ts)
+// IS the pricing input, not an operator-picked number. The one manual knob on
+// top of that is this table — a real, operator-set count of "service account"
+// seats to exclude from the billable count before it prices the customer, with
+// a reason.
+//
+// One row per tenant (a current-state correction, not a ledger): there is
+// nothing to "issue" or "apply" against Stripe the way customer_billing_credits
+// tracks a testimonial-approval discount lifecycle — this is just a number
+// subtracted from a live count before every pricing read, so it stays a single
+// mutable row an operator updates in place.
+export const clientBillingOverridesTable = pgTable("client_billing_overrides", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" })
+    .unique(),
+  /** Seats manually excluded from the live licensed-user count before pricing. */
+  excludedServiceAccountSeats: integer("excluded_service_account_seats").notNull().default(0),
+  /** Why — the operator UI requires this whenever the count is set above zero. */
+  reason: text("reason"),
+  setByUserId: integer("set_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("client_billing_overrides_tenant_id_idx").on(t.tenantId),
+]);
+
+export type ClientBillingOverride = typeof clientBillingOverridesTable.$inferSelect;
+export type InsertClientBillingOverride = typeof clientBillingOverridesTable.$inferInsert;
+
 
 // ── MSP Connector Configuration ────────────────────────────────────────────────
 // One row per MSP. Stores connector mode and Exchange Online integration settings.

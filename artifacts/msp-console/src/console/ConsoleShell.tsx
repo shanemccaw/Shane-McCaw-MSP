@@ -31,6 +31,7 @@ import { Dlq } from "./modules/Dlq";
 import { PlanSelfService } from "./modules/PlanSelfService";
 import { Reports } from "./modules/Reports";
 import { MarketplacePurchase } from "./modules/MarketplacePurchase";
+import { SeatPricing } from "./modules/SeatPricing";
 import { OffersAndSows } from "./modules/OffersAndSows";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
@@ -360,6 +361,13 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     // on this customer's behalf, charged to the MSP's card.
     const customer = customers.find((c) => c.id === sel.tenant);
     return <MarketplacePurchase customerId={sel.tenant} customerName={customer?.name ?? `Customer ${sel.tenant}`} />;
+  }
+  if (sel.kind === "page" && sel.page === "billing") {
+    // Seat Pricing (#4111) — automatic pricing from the customer's real,
+    // live M365 licensed-user count, plus the manual service-account
+    // exclusion override.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    return <SeatPricing customerId={sel.tenant} customerName={customer?.name ?? `Customer ${sel.tenant}`} />;
   }
   if (sel.kind === "page" && sel.page === "audit") {
     // Audit Log (#4012, README screen 63), per-tenant leaf — narrowed
