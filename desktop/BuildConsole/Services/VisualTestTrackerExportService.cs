@@ -328,6 +328,9 @@ namespace BuildConsole.Services
                     ["title"] = displayTitle,
                     ["severity"] = entry.Severity,
                     ["status"] = entry.Status,
+                    ["resolution"] = entry.Resolution,
+                    ["resolutionReason"] = entry.ResolutionReason,
+                    ["isDesign"] = entry.IsDesign,
                     ["tags"] = entry.Tags ?? new List<string>(),
 
                     // 1. Metadata

@@ -31,7 +31,8 @@
                     <StackPanel Orientation="Horizontal" Margin="0,0,16,0" VerticalAlignment="Center">
                         <TextBlock Text="Status:" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <RadioButton x:Name="RadioFilterOpen" Content="Open Only" IsChecked="True" GroupName="StatusFilter" Margin="0,0,8,0" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Checked="Filter_Changed"/>
-                        <RadioButton x:Name="RadioFilterClosed" Content="Closed / Resolved" GroupName="StatusFilter" Margin="0,0,8,0" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Checked="Filter_Changed"/>
+                        <RadioButton x:Name="RadioFilterVerifying" Content="Verifying" GroupName="StatusFilter" Margin="0,0,8,0" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Checked="Filter_Changed"/>
+                        <RadioButton x:Name="RadioFilterClosed" Content="Closed" GroupName="StatusFilter" Margin="0,0,8,0" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Checked="Filter_Changed"/>
                         <RadioButton x:Name="RadioFilterAll" Content="All Bugs" GroupName="StatusFilter" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Checked="Filter_Changed"/>
                     </StackPanel>
 
@@ -135,7 +136,9 @@
                                 <DockPanel>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <Button x:Name="BtnRerunTest" Content="▶ Re-run Test to Verify" Style="{StaticResource PrimaryButton}" Padding="12,6" FontWeight="Bold" Click="BtnRerunTest_Click" Margin="0,0,12,0"/>
-                                        <Button x:Name="BtnToggleStatus" Content="Mark as Resolved" Style="{StaticResource SecondaryButton}" Padding="10,6" Click="BtnToggleStatus_Click"/>
+                                        <Button x:Name="BtnToggleStatus" Content="Mark as Verifying" Style="{StaticResource SecondaryButton}" Padding="10,6" Click="BtnToggleStatus_Click" Margin="0,0,8,0"/>
+                                        <Button x:Name="BtnMarkNotABug" Content="Not a Bug" Style="{StaticResource SecondaryButton}" Padding="10,6" Click="BtnMarkNotABug_Click" Margin="0,0,8,0"/>
+                                        <CheckBox x:Name="ChkIsDesign" Content="Design Issue" Foreground="{StaticResource TextBrush}" FontSize="11" VerticalAlignment="Center" Checked="ChkIsDesign_Changed" Unchecked="ChkIsDesign_Changed"/>
                                     </StackPanel>
 
                                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
@@ -160,6 +163,7 @@
 
                                 <TextBlock x:Name="TxtDetailTitle" Text="Bug Title" FontSize="15" FontWeight="Bold" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
                                 <TextBlock x:Name="TxtDetailMeta" Text="Site / Epic details" FontSize="11.5" Foreground="{StaticResource Subtext1Brush}"/>
+                                <TextBlock x:Name="TxtDetailResolution" Text="" FontSize="11" FontStyle="Italic" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
                             </StackPanel>
 
                             <!-- Status/Verification Banner -->

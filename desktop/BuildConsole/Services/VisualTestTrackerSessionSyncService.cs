@@ -309,6 +309,12 @@ namespace BuildConsole.Services
                 {
                     string title = !string.IsNullOrWhiteSpace(b.Title) ? b.Title : b.Notes.Split('\n')[0].Trim();
                     sb.AppendLine($"### [{b.Severity.ToUpperInvariant()}] {title}");
+                    if (!string.IsNullOrWhiteSpace(b.Resolution))
+                    {
+                        string resolutionLabel = b.Resolution == "NotABug" ? "Not a Bug" : b.Resolution;
+                        string reasonSuffix = !string.IsNullOrWhiteSpace(b.ResolutionReason) ? $" — {b.ResolutionReason}" : "";
+                        sb.AppendLine($"- **Resolution**: {resolutionLabel}{reasonSuffix}");
+                    }
                     if (!string.IsNullOrWhiteSpace(b.CurrentUrl)) sb.AppendLine($"- **URL**: `{b.CurrentUrl}`");
                     if (b.Tags != null && b.Tags.Count > 0) sb.AppendLine($"- **Tags**: {string.Join(", ", b.Tags.Select(t => $"`{t}`"))}");
                     if (!string.IsNullOrWhiteSpace(b.Notes))
@@ -587,6 +593,7 @@ namespace BuildConsole.Services
                         gitIssueNumber = b.GitIssueNumber,
                         resolution = b.Resolution,
                         resolutionReason = b.ResolutionReason,
+                        isDesign = b.IsDesign,
                         title = b.Title,
                         notes = b.Notes,
                         stepsToReproduce = b.StepsToReproduce,

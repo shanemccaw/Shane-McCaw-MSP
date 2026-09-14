@@ -15,6 +15,7 @@ namespace BuildConsole.Controls
         private Action<string>? _navigateToUrlHandler;
         private List<VisualTestTrackerEntry> _allEntries = new();
         private VisualTestTrackerEntry? _selectedEntry;
+        private bool _suppressDesignCheckboxEvent;
 
         public BugsDocumentView()
         {
@@ -77,6 +78,7 @@ namespace BuildConsole.Controls
             string selEpic = ComboEpicFilter?.SelectedItem as string ?? "All Epics";
 
             bool openOnly = RadioFilterOpen?.IsChecked == true;
+            bool verifyingOnly = RadioFilterVerifying?.IsChecked == true;
             bool closedOnly = RadioFilterClosed?.IsChecked == true;
 
             var filtered = _allEntries.Where(e =>
@@ -84,7 +86,9 @@ namespace BuildConsole.Controls
                 // Status Filter (Default Open)
                 if (openOnly && !string.Equals(e.Status, "Open", StringComparison.OrdinalIgnoreCase))
                     return false;
-                if (closedOnly && string.Equals(e.Status, "Open", StringComparison.OrdinalIgnoreCase))
+                if (verifyingOnly && !string.Equals(e.Status, "Verifying", StringComparison.OrdinalIgnoreCase))
+                    return false;
+                if (closedOnly && !string.Equals(e.Status, "Closed", StringComparison.OrdinalIgnoreCase))
                     return false;
 
                 // Site Filter
@@ -184,7 +188,29 @@ namespace BuildConsole.Controls
 
             TxtDetailDiagnostics.Text = diagLines.Count > 0 ? string.Join("\n", diagLines) : "No diagnostic issues attached.";
 
-            BtnToggleStatus.Content = string.Equals(entry.Status, "Resolved", StringComparison.OrdinalIgnoreCase) ? "Re-open Bug" : "Mark as Resolved";
+            BtnToggleStatus.Content = entry.Status switch
+            {
+                "Open" => "Mark as Verifying",
+                "Verifying" => "Mark as Closed",
+                _ => "Re-open Bug"
+            };
+
+            if (!string.IsNullOrWhiteSpace(entry.ResolutionReason))
+            {
+                string resolutionLabel = entry.Resolution == "NotABug" ? "Not a Bug" : entry.Resolution ?? "";
+                TxtDetailResolution.Text = $"{resolutionLabel}: {entry.ResolutionReason}";
+                TxtDetailResolution.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                TxtDetailResolution.Text = "";
+                TxtDetailResolution.Visibility = Visibility.Collapsed;
+            }
+
+            _suppressDesignCheckboxEvent = true;
+            ChkIsDesign.IsChecked = entry.IsDesign;
+            _suppressDesignCheckboxEvent = false;
+
             BdrBanner.Visibility = Visibility.Collapsed;
         }
 
@@ -213,9 +239,26 @@ namespace BuildConsole.Controls
         {
             if (_selectedEntry == null || _store == null) return;
 
-            string newStatus = string.Equals(_selectedEntry.Status, "Resolved", StringComparison.OrdinalIgnoreCase) ? "Open" : "Resolved";
+            string newStatus;
+            string? newResolution = null;
+            switch (_selectedEntry.Status)
+            {
+                case "Open":
+                    newStatus = "Verifying";
+                    break;
+                case "Verifying":
+                    newStatus = "Closed";
+                    newResolution = "Fixed";
+                    break;
+                default: // "Closed"
+                    newStatus = "Open";
+                    break;
+            }
+
             _selectedEntry.Status = newStatus;
-            await _store.UpdateEntryStatusAsync(_selectedEntry.EntryUuid, newStatus);
+            _selectedEntry.Resolution = newResolution;
+            _selectedEntry.ResolutionReason = null;
+            await _store.UpdateEntryStatusAsync(_selectedEntry.EntryUuid, newStatus, newResolution, null);
 
             DisplayBugDetail(_selectedEntry);
 
@@ -223,6 +266,36 @@ namespace BuildConsole.Controls
             TxtBanner.Text = $"Status updated to {newStatus.ToUpperInvariant()}.";
 
             ApplyFilters();
+        }
+
+        private async void BtnMarkNotABug_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedEntry == null || _store == null) return;
+
+            string? reason = SimpleTextPromptDialog.Show(this, "Not a Bug",
+                $"Why is “BUG-{(_selectedEntry.BugNumber > 0 ? _selectedEntry.BugNumber : _selectedEntry.Id)}” not a bug? A reason is required.");
+            if (string.IsNullOrWhiteSpace(reason)) return;
+
+            _selectedEntry.Status = "Closed";
+            _selectedEntry.Resolution = "NotABug";
+            _selectedEntry.ResolutionReason = reason.Trim();
+            await _store.UpdateEntryStatusAsync(_selectedEntry.EntryUuid, "Closed", "NotABug", reason.Trim());
+
+            DisplayBugDetail(_selectedEntry);
+
+            BdrBanner.Visibility = Visibility.Visible;
+            TxtBanner.Text = "Marked as Not a Bug.";
+
+            ApplyFilters();
+        }
+
+        private async void ChkIsDesign_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressDesignCheckboxEvent || _selectedEntry == null || _store == null) return;
+
+            bool isDesign = ChkIsDesign.IsChecked == true;
+            _selectedEntry.IsDesign = isDesign;
+            await _store.UpdateEntryDesignFlagAsync(_selectedEntry.EntryUuid, isDesign);
         }
 
         private void BtnRerunTest_Click(object sender, RoutedEventArgs e)

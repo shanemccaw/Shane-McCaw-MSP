@@ -1135,7 +1135,7 @@
                                    Foreground="{StaticResource Subtext1Brush}"
                                    VerticalAlignment="Center"/>
 
-                        <!-- Filter buttons (All / Open / Resolved) -->
+                        <!-- Filter buttons (All / Open / Verifying / Closed) -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
                             <Button x:Name="BtnFilterAll" Content="All"
                                     Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,2,0"
@@ -1143,9 +1143,12 @@
                             <Button x:Name="BtnFilterOpen" Content="Open"
                                     Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,2,0"
                                     Click="BtnFilter_Click" Tag="Open"/>
-                            <Button x:Name="BtnFilterResolved" Content="Resolved"
+                            <Button x:Name="BtnFilterVerifying" Content="Verifying"
+                                    Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,2,0"
+                                    Click="BtnFilter_Click" Tag="Verifying"/>
+                            <Button x:Name="BtnFilterClosed" Content="Closed"
                                     Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1"
-                                    Click="BtnFilter_Click" Tag="Resolved"/>
+                                    Click="BtnFilter_Click" Tag="Closed"/>
                         </StackPanel>
 
                         <!-- Actions: Export to /Bugs/ & Copy Markdown -->

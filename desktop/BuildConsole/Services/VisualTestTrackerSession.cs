@@ -80,7 +80,10 @@ namespace BuildConsole.Services
         public List<string> Tags { get; set; } = new();
         public List<string> Screenshots { get; set; } = new();
         public DateTime CreatedAt { get; set; } = DateTime.Now;
-        public bool IsResolved { get; set; }
+        public string Status { get; set; } = "Open"; // "Open", "Verifying", "Closed" (Git #3981 — was IsResolved bool)
+        public string? Resolution { get; set; } // "Fixed", "NotABug" — only meaningful when Status == "Closed"
+        public string? ResolutionReason { get; set; } // required when Resolution == "NotABug"
+        public bool IsDesign { get; set; }
         public bool IsSynced { get; set; }
         public string SyncedSessionId { get; set; } = "";
     }

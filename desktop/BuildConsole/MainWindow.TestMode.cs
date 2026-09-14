@@ -346,7 +346,10 @@ namespace BuildConsole
                     Tags = b.Tags != null ? new List<string>(b.Tags) : new(),
                     Screenshots = b.Screenshots != null ? new List<string>(b.Screenshots) : new(),
                     CreatedAt = b.CreatedAt,
-                    IsResolved = b.IsResolved,
+                    Status = b.Status,
+                    Resolution = b.Resolution,
+                    ResolutionReason = b.ResolutionReason,
+                    IsDesign = b.IsDesign,
                     IsSynced = b.IsSynced,
                     SyncedSessionId = b.SyncedSessionId
                 });
@@ -564,7 +567,10 @@ namespace BuildConsole
                     {
                         EntryUuid = bug.Id,
                         Severity = bug.Severity,
-                        Status = bug.IsResolved ? "Resolved" : "Open",
+                        Status = bug.Status,
+                        Resolution = bug.Resolution,
+                        ResolutionReason = bug.ResolutionReason,
+                        IsDesign = bug.IsDesign,
                         Notes = bug.Notes,
                         PagePath = !string.IsNullOrWhiteSpace(bug.Route) ? bug.Route : pagePath,
                         CurrentUrl = !string.IsNullOrWhiteSpace(url) ? url : bug.Route,

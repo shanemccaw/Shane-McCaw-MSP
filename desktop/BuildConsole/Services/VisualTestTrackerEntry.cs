@@ -91,11 +91,12 @@ namespace BuildConsole.Services
         public string ExpectedBehavior { get; set; } = "";
         public string ActualBehavior { get; set; } = "";
         public string Severity { get; set; } = "Bug"; // "Blocker", "Critical", "Bug", "UI Glitch", "Functional", "Low"
-        public string Status { get; set; } = "Open"; // "Open", "Verifying", "Closed" (Git #3978)
+        public string Status { get; set; } = "Open"; // "Open", "Verifying", "Closed" (Git #3978/#3981 — was "Open"/"Resolved")
         // Git #3978/#3980 — set only once Status reaches "Closed"; distinguishes a genuinely-fixed
         // close from a dismissed "not a bug" one. Null while still Open/Verifying.
         public string? Resolution { get; set; } // "Fixed", "NotABug"
-        public string? ResolutionReason { get; set; }
+        public string? ResolutionReason { get; set; } // required when Resolution == "NotABug" (DB CHECK constraint)
+        public bool IsDesign { get; set; } // Git #3978/#3981 addendum — flags a design (not functional) issue; coexists with Status, doesn't gate it
         public List<string> Tags { get; set; } = new();
 
         // ── Auto-Collected Metadata ─────────────────────────────────────────────
@@ -130,6 +131,16 @@ namespace BuildConsole.Services
             string bugHeader = BugNumber > 0 ? $"[BUG-{BugNumber}] " : "";
             sb.AppendLine($"### {bugHeader}[{Severity.ToUpperInvariant()}] {displayTitle}");
             sb.AppendLine($"- **Status**: {Status}");
+            if (!string.IsNullOrWhiteSpace(Resolution))
+            {
+                string resolutionLabel = Resolution == "NotABug" ? "Not a Bug" : Resolution;
+                string reasonSuffix = !string.IsNullOrWhiteSpace(ResolutionReason) ? $" — {ResolutionReason}" : "";
+                sb.AppendLine($"- **Resolution**: {resolutionLabel}{reasonSuffix}");
+            }
+            if (IsDesign)
+            {
+                sb.AppendLine("- **Design Issue**: Yes");
+            }
             if (GitIssueNumber.HasValue)
             {
                 sb.AppendLine($"- **Git Issue**: #{GitIssueNumber.Value}");
