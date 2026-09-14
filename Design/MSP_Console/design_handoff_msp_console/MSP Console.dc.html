@@ -235,7 +235,6 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
                 <span data-icon="activity" style="width:42px;height:42px;border-radius:13px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:11px"></span>
                 <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{ tlEmptyTitle }}</span>
                 <span style="font-size:12.5px;color:#94a3b8;max-width:440px;text-wrap:pretty">Nothing has been scanned, generated or offered for this customer yet. A filter that matches nothing returns an empty feed rather than an error.</span>
-                <span style="font-family:Menlo,monospace;font-size:11px;color:#475569;margin-top:2px">GET /api/msp/timeline?customerId=… → { events: [] }</span>
               </div>
             </sc-if>
 
@@ -325,7 +324,6 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
                       <span style="font-size:13px;font-weight:600;color:#f1f5f9">{{ a.title }}</span>
                     </div>
                     <span style="font-size:12.5px;color:#cbd5e1;text-wrap:pretty">{{ a.body }}</span>
-                    <span style="font-family:Menlo,monospace;font-size:11px;color:#94a3b8">{{ a.wire }}</span>
                     <span style="font-size:11.5px;color:#64748b">Requires {{ a.who }}</span>
                   </div>
                 </sc-for>
@@ -662,7 +660,6 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
                     <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
                       <span style="font-size:12.5px;font-weight:600;color:#e2e8f0;text-wrap:pretty">{{ n.title }}</span>
                       <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ n.body }}</span>
-                      <span style="font-family:Menlo,monospace;font-size:10.5px;color:#475569;word-break:break-all">{{ n.wire }}</span>
                     </div>
                   </div>
                 </sc-for>
@@ -712,7 +709,6 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
                 <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
                   <span style="font-size:13px;font-weight:600;color:#f8fafc">{{ bannerTitle }}</span>
                   <span style="font-size:12.5px;color:#cbd5e1;text-wrap:pretty">{{ bannerBody }}</span>
-                  <span style="font-family:Menlo,monospace;font-size:11px;color:#94a3b8;margin-top:4px">{{ bannerWire }}</span>
                 </div>
               </div>
             </sc-if>
@@ -826,9 +822,8 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
               <div style="display:flex;gap:10px;padding:12px 14px;border-radius:11px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.1)">
                 <span data-icon="triangle-alert" style="width:15px;height:15px;color:#fbbf24;margin-top:2px"></span>
                 <div style="display:flex;flex-direction:column;gap:3px">
-                  <span style="font-size:12.5px;font-weight:600;color:#f8fafc">This list can 403 for a PlatformAdmin session</span>
-                  <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">Scope resolves from the session's own mspId claim, never a route param. A PlatformAdmin is cross-MSP by definition and is not guaranteed to carry one — when it doesn't, the list returns "MSP context required". Per-customer views are unaffected.</span>
-                  <span style="font-family:Menlo,monospace;font-size:10.5px;color:#94a3b8">403 · GET /api/msp/break-glass</span>
+                  <span style="font-size:12.5px;font-weight:600;color:#f8fafc">This list can be blocked for a PlatformAdmin session</span>
+                  <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">Scope is tied to a single MSP, and a PlatformAdmin account spans every MSP — when it isn't scoped to one, the list can't resolve and shows an error instead. Per-customer views are unaffected.</span>
                 </div>
               </div>
             </sc-if>
@@ -1420,7 +1415,6 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
                 <span data-icon="{{ emptyIcon }}" style="width:42px;height:42px;border-radius:13px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.22);color:#60a5fa;padding:11px"></span>
                 <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{ emptyTitle }}</span>
                 <span style="font-size:12.5px;color:#94a3b8;max-width:440px;text-wrap:pretty">{{ emptyBody }}</span>
-                <span style="font-family:Menlo,monospace;font-size:11px;color:#475569;margin-top:2px">{{ emptyWire }}</span>
               </div>
             </sc-if>
           </div>
@@ -1504,22 +1498,6 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
                 <button style="height:32px;padding:0 12px;border-radius:8px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:rgba(148,163,184,.1)">Post</button>
               </div>
             </div>
-          </div>
-        </sc-if>
-
-        <sc-if value="{{ hasNotes }}" hint-placeholder-val="{{ false }}">
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <span style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#475569">CONTRACT NOTES</span>
-            <sc-for list="{{ notes }}" as="n" hint-placeholder-count="2">
-              <div style="display:flex;gap:10px;padding:11px 13px;border-radius:10px;border:1px solid {{ n.line }};background:{{ n.tint }}">
-                <span data-icon="{{ n.icon }}" style="width:15px;height:15px;color:{{ n.color }};margin-top:2px"></span>
-                <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
-                  <span style="font-size:12.5px;font-weight:600;color:#e2e8f0;text-wrap:pretty">{{ n.title }}</span>
-                  <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ n.body }}</span>
-                  <span style="font-family:Menlo,monospace;font-size:10.5px;color:#475569;word-break:break-all">{{ n.wire }}</span>
-                </div>
-              </div>
-            </sc-for>
           </div>
         </sc-if>
       </div>
@@ -1631,7 +1609,6 @@ span[data-icon]>svg{width:100%;height:100%;display:block;}
                   <span style="font-size:13.5px;font-weight:600;color:#f8fafc">{{ d.title }}</span>
                 </div>
                 <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ d.body }}</span>
-                <span style="font-family:Menlo,monospace;font-size:10.5px;color:#64748b;word-break:break-all">{{ d.wire }}</span>
                 <button onClick="{{ d.run }}" style="align-self:flex-start;flex:0 0 auto;width:fit-content;white-space:nowrap;height:32px;padding:0 13px;border-radius:7px;border:1px solid {{ d.line }};background:{{ d.iconTint }};color:{{ d.color }};font-size:12px;font-weight:600;cursor:pointer" style-hover="background:{{ d.hover }}">{{ d.cta }}</button>
               </div>
             </sc-for>
@@ -1670,11 +1647,13 @@ class Component extends DCLogic {
     open: { 0: true },
     openCC: {},
     openGroups: {},
+    mspGroupsOpen: {},
     bgTab: "history",
     bgSecret: null,
     drTab: "activity",
     drUser: null,
     mspOpen: true,
+    tenantsOpen: true,
     doc: null,
     hubDoc: null,
     execEmpty: false,
@@ -1700,7 +1679,7 @@ class Component extends DCLogic {
     remStep: null,
     remReveal: null,
     whTenant: 0,
-    whTab: "endpoints",
+    whTab: "actions",
     whSel: null,
     whEmpty: false,
     cr: null,
@@ -1727,6 +1706,12 @@ class Component extends DCLogic {
     { name: "Halcyon Health", domain: "halcyonhg.onmicrosoft.com", seats: "1,240", people: 34, dot: "#fbbf24", last: "2 Sep 22:40", signals: "3 warnings", signalColor: "#fbbf24" },
     { name: "Kestrel Financial", domain: "kestrelfin.onmicrosoft.com", seats: "215", people: 12, dot: "#f87171", last: "5 Sep 06:02", signals: "1 critical", signalColor: "#f87171" },
     { name: "Mccawsoft2", domain: "mccawsoft2.onmicrosoft.com", seats: "18", people: 0, dot: "#64748b", last: "No run", signals: "—", signalColor: "#64748b" }
+  ];
+
+  mspGroups = [
+    { id: "delivery", label: "Client Delivery", icon: "briefcase", children: ["timeline", "sales", "sla", "sops", "config", "policy", "reports"] },
+    { id: "access", label: "Access & Accounts", icon: "shield", children: ["consent", "staff", "acctsec", "docs", "connectors"] },
+    { id: "billing", label: "Billing & Lifecycle", icon: "credit-card", children: ["revenue", "plan", "mspaudit", "retention", "dlq", "offboard"] }
   ];
 
   childGroups = [
@@ -1812,26 +1797,26 @@ class Component extends DCLogic {
   mspPages = [
     { id: "settings", label: "MSP settings", icon: "settings" },
     { id: "exec", label: "Executive view", icon: "chart-line" },
+    { id: "projects", label: "Projects", icon: "kanban" },
+    { id: "retainer", label: "Retainer hours", icon: "hourglass" },
     { id: "timeline", label: "Activity timeline", icon: "activity" },
-    { id: "config", label: "Configuration State", icon: "database" },
     { id: "sales", label: "Sales", icon: "handshake" },
     { id: "sla", label: "Scope & SLA", icon: "gauge" },
     { id: "sops", label: "SOPs", icon: "scroll-text" },
-    { id: "docs", label: "Documents", icon: "files" },
-    { id: "connectors", label: "SharePoint connectors", icon: "plug" },
+    { id: "config", label: "Configuration State", icon: "database" },
     { id: "policy", label: "Policy engine", icon: "scale" },
+    { id: "reports", label: "Reports", icon: "file-chart-column" },
     { id: "consent", label: "Consent & onboarding", icon: "handshake" },
     { id: "staff", label: "Staff roster", icon: "id-card" },
     { id: "acctsec", label: "Account security", icon: "user-cog" },
-    { id: "mspaudit", label: "Audit log", icon: "history" },
-    { id: "reports", label: "Reports", icon: "file-chart-column" },
-    { id: "dlq", label: "Dead letter queue", icon: "inbox" },
-    { id: "retention", label: "Retention queue", icon: "timer" },
+    { id: "docs", label: "Documents", icon: "files" },
+    { id: "connectors", label: "SharePoint connectors", icon: "plug" },
     { id: "revenue", label: "Partner revenue", icon: "chart-pie" },
     { id: "plan", label: "Plan & billing", icon: "credit-card" },
-    { id: "offboard", label: "Offboarding", icon: "door-open" },
-    { id: "projects", label: "Projects", icon: "kanban" },
-    { id: "retainer", label: "Retainer hours", icon: "hourglass" }
+    { id: "mspaudit", label: "Audit log", icon: "history" },
+    { id: "retention", label: "Retention queue", icon: "timer" },
+    { id: "dlq", label: "Dead letter queue", icon: "inbox" },
+    { id: "offboard", label: "Offboarding", icon: "door-open" }
   ];
 
   rbds = [
@@ -2203,8 +2188,8 @@ class Component extends DCLogic {
     adou: "Manual placements into organisational units, and the placement changes this customer has asked for.",
     audit: "Every recorded action against this customer, narrowed on the server. Rows never say which customer they belong to — the filter is the only place the customer appears.",
     sows: "Statements of work and the offers behind them for this customer. Acceptance is recorded against your own login and snapshots the agreement text.",
-    consent: "What each tenant has granted, and who is on their way in. Tenants with nothing granted are dropped by the route, not shown as empty.",
-    staff: "Who works for this MSP and who has been invited. The roster route applies no role filter of its own, so the staff-only view is drawn here.",
+    consent: "What each tenant has granted, and who is on their way in. Tenants with nothing granted are dropped by the system, not shown as empty.",
+    staff: "Who works for this MSP and who has been invited. The roster action applies no role filter of its own, so the staff-only view is drawn here.",
     mspaudit: "Everything recorded across your MSP. Search matches action, entity type, label and role — never a person's name or id.",
     status: "Narrative service reports for this customer. Publishing is one-way — there is no edit and no unpublish afterwards.",
     mkt: "Buy a catalog item for this customer on your own card. The offer is recorded before payment is attempted.",
@@ -2221,11 +2206,11 @@ class Component extends DCLogic {
   };
 
   stateOptions = [
-    { id: "ready", label: "Ready", title: "200 — roster returned" },
+    { id: "ready", label: "Ready", title: "Roster loaded" },
     { id: "loading", label: "Loading", title: "Request in flight" },
-    { id: "empty", label: "Empty", title: "200 — [] for a tenant with zero users" },
-    { id: "e403", label: "403", title: "assertCustomerAccess denied" },
-    { id: "e404", label: "404", title: "Customer not found" }
+    { id: "empty", label: "Empty", title: "No users on a tenant with zero seats" },
+    { id: "e403", label: "Access denied", title: "This session can't access the customer" },
+    { id: "e404", label: "Not found", title: "Customer not found" }
   ];
 
   notifData = [
@@ -2250,7 +2235,7 @@ class Component extends DCLogic {
           { event: "project.completed", attempt: 1, status: "failed", code: 503, when: "4 Sep 21:10", next: "—", snippet: "upstream unavailable" },
           { event: "customer.created", attempt: 1, status: "pending", code: null, when: "5 Sep 09:01", next: "—", snippet: "—" }
         ] },
-      { label: "Ops Slack relay", url: "https://relay.northwind.com/slack", prefix: "whsec_41ab", events: ["msp.suspended", "signal.fired", "service.deactivated", "widget.updated"], unknown: ["widget.updated"], active: false, disabledBy: "Shane McCaw", disabledAt: "2 Sep 15:22 UTC", reason: "Endpoint returned 5xx for six hours straight; paused pending customer fix.", created: "3 Mar 2026",
+      { label: "Ops Slack relay", url: "https://relay.northwind.com/slack", prefix: "whsec_41ab", events: ["msp.suspended", "signal.fired", "service.deactivated", "widget.updated"], unknown: ["widget.updated"], active: false, disabledBy: "Shane McCaw", disabledAt: "2 Sep 15:22 UTC", reason: "action returned 5xx for six hours straight; paused pending customer fix.", created: "3 Mar 2026",
         deliveries: [
           { event: "signal.fired", attempt: 3, status: "failed", code: 500, when: "2 Sep 15:04", next: "—", snippet: "internal error" },
           { event: "signal.fired", attempt: 2, status: "failed", code: 500, when: "2 Sep 14:34", next: "—", snippet: "internal error" }
@@ -2401,7 +2386,7 @@ class Component extends DCLogic {
         { key: "identity.legacy_auth", label: "Legacy authentication", severity: "critical", status: "ok", title: "Basic auth still permitted for IMAP", cls: null },
         { key: "purview.retention", label: "Retention labels", severity: "info", status: "license_gap", title: "Check requires a Purview licence this tenant does not hold", cls: "license_gap · not a fault" },
         { key: "spo.sharing", label: "External sharing", severity: "warning", status: "ok", title: "Anonymous links enabled on four sites", cls: null },
-        { key: "teams.guest", label: "Guest access", severity: "info", status: "error", title: "Graph returned 403 for this endpoint", cls: "missing_scope · Group.Read.All" },
+        { key: "teams.guest", label: "Guest access", severity: "info", status: "error", title: "Missing permission to read guest access", cls: "missing_scope · Group.Read.All" },
         { key: "intune.compliance", label: "Device compliance", severity: "ok", status: "ok", title: "All enrolled devices compliant", cls: null }
       ],
       "run-7b10a442": [
@@ -2447,10 +2432,10 @@ class Component extends DCLogic {
         { id: "s27", title: "Configure DLP for financial data", status: "not_started", verify: "unverified", terminal: "outstanding", updated: "—", pillar: "Compliance" }
       ],
       checklist: [
-        { key: "identity.mfa_admin_gap", finding: "Privileged accounts without enforced MFA", severity: "critical", status: "not_started", route: "we_can_run", cr: "none" },
-        { key: "identity.legacy_auth", finding: "Legacy authentication still permitted", severity: "critical", status: "completed", route: "we_can_run", cr: "CR-2026-116 approved" },
-        { key: "collab.guest_sharing", finding: "Anonymous sharing links enabled tenant-wide", severity: "warning", status: "not_started", route: "you_must_run", cr: "none" },
-        { key: "compliance.audit_log", finding: "Unified audit log disabled", severity: "warning", status: "already_handled", route: "admin_center_only", cr: "n/a" }
+        { key: "identity.mfa_admin_gap", finding: "Privileged accounts without enforced MFA", severity: "critical", status: "not_started", action: "we_can_run", cr: "none" },
+        { key: "identity.legacy_auth", finding: "Legacy authentication still permitted", severity: "critical", status: "completed", action: "we_can_run", cr: "CR-2026-116 approved" },
+        { key: "collab.guest_sharing", finding: "Anonymous sharing links enabled tenant-wide", severity: "warning", status: "not_started", action: "you_must_run", cr: "none" },
+        { key: "compliance.audit_log", finding: "Unified audit log disabled", severity: "warning", status: "already_handled", action: "admin_center_only", cr: "n/a" }
       ],
       fix: [
         { key: "identity.mfa_admin_gap", shape: "we_can_run", affordance: "execute", ceiling: "granted", note: "Config pack template is live and execution-ready" },
@@ -2478,9 +2463,9 @@ class Component extends DCLogic {
         { id: "s26", title: "Enable device compliance for shared tablets", status: "not_started", verify: "unverified", terminal: "outstanding", updated: "—", pillar: "Devices" }
       ],
       checklist: [
-        { key: "collab.guest_sharing", finding: "Anonymous meeting join enabled across clinical Teams", severity: "critical", status: "not_started", route: "we_can_run", cr: "CR-2026-113 pending" },
-        { key: "compliance.retention", finding: "No retention label on clinical records libraries", severity: "warning", status: "not_started", route: "you_must_run", cr: "none" },
-        { key: "identity.locum_lifecycle", finding: "Locum accounts outlive their placements", severity: "warning", status: "not_started", route: "admin_center_only", cr: "n/a" }
+        { key: "collab.guest_sharing", finding: "Anonymous meeting join enabled across clinical Teams", severity: "critical", status: "not_started", action: "we_can_run", cr: "CR-2026-113 pending" },
+        { key: "compliance.retention", finding: "No retention label on clinical records libraries", severity: "warning", status: "not_started", action: "you_must_run", cr: "none" },
+        { key: "identity.locum_lifecycle", finding: "Locum accounts outlive their placements", severity: "warning", status: "not_started", action: "admin_center_only", cr: "n/a" }
       ],
       fix: [
         { key: "collab.guest_sharing", shape: "we_can_run", affordance: "execute", ceiling: "granted", note: "Config pack template is live and execution-ready" },
@@ -2505,8 +2490,8 @@ class Component extends DCLogic {
         { id: "s18", title: "Enable audit retention for finance", status: "completed", verify: "verified", terminal: "verified", updated: "20 Aug 15:40", pillar: "Compliance" }
       ],
       checklist: [
-        { key: "identity.mfa_admin_gap", finding: "12 privileged accounts without enforced MFA", severity: "critical", status: "not_started", route: "we_can_run", cr: "CR-2026-118 approved" },
-        { key: "identity.legacy_auth", finding: "Legacy authentication still permitted", severity: "critical", status: "not_started", route: "we_can_run", cr: "CR-2026-116 pending" }
+        { key: "identity.mfa_admin_gap", finding: "12 privileged accounts without enforced MFA", severity: "critical", status: "not_started", action: "we_can_run", cr: "CR-2026-118 approved" },
+        { key: "identity.legacy_auth", finding: "Legacy authentication still permitted", severity: "critical", status: "not_started", action: "we_can_run", cr: "CR-2026-116 pending" }
       ],
       fix: [
         { key: "identity.mfa_admin_gap", shape: "we_can_run", affordance: "execute", ceiling: "granted", note: "Approved change request on record" },
@@ -2666,7 +2651,7 @@ class Component extends DCLogic {
       uiState: page === "team" && (this.rosters[tenant] || []).length === 0 ? "empty" : "ready",
       rosterQuery: "", rosterFilter: "all", tableFilter: "all", cr: null,
       bgTab: "history", bgSecret: null, drTab: "activity", drUser: null, doc: null, hubDoc: null,
-      whSel: null, whTab: "endpoints", lcTab: "actions", lcAction: null,
+      whSel: null, whTab: "actions", lcTab: "actions", lcAction: null,
       remTab: "tracker", remStep: null, remReveal: null, rbdSel: null,
       runTab: "runbooks", runSel: null, holdSel: null, diagTab: "runs", diagRun: null
     });
@@ -2699,30 +2684,49 @@ class Component extends DCLogic {
       bg: "transparent", fg: "#cbd5e1",
       click: () => this.setState({ mspOpen: !s.mspOpen })
     });
+    const mspMetaFor = (id) => id === "docs" ? String(this.mspDocs.length) : id === "connectors" ? String(this.connectors.length) : id === "sla" ? String(this.operatorTasks.length) : id === "sops" ? String(this.sops.length) : id === "timeline" ? String(this.timelineEvents.length) : id === "config" ? String(this.cfgCoverage.filter(c => c.ever).length) + "/" + String(this.cfgCoverage.length) : id === "sales" ? String(this.offers.length) : "";
+    const pushMspLeaf = (p, indent) => {
+      const active = mspSel === p.id;
+      nodes.push({
+        label: p.label, icon: p.icon, iconColor: active ? "#93c5fd" : "#64748b",
+        chevron: "dot", chevronOpacity: 0,
+        indent: indent, h: "28px", size: "12.5px", weight: active ? 600 : 500,
+        meta: mspMetaFor(p.id), metaColor: "#475569",
+        bg: active ? "rgba(37,99,235,.22)" : "transparent",
+        fg: active ? "#ffffff" : "#94a3b8",
+        click: () => this.setState({ sel: { kind: "msp", page: p.id }, doc: null, rbdSel: null, notifsOpen: false, userOpen: false, drawer: null })
+      });
+    };
     if (s.mspOpen) {
-      this.mspPages.filter(p => p.id !== "settings").forEach(p => {
-        const active = mspSel === p.id;
+      ["exec", "projects", "retainer"].forEach(id => pushMspLeaf(this.mspPages.find(p => p.id === id), "44px"));
+      this.mspGroups.forEach(g => {
+        const key = "msp:" + g.id;
+        const gOpen = !!s.mspGroupsOpen[key];
+        const holdsCurrent = g.children.includes(mspSel);
         nodes.push({
-          label: p.label, icon: p.icon, iconColor: active ? "#93c5fd" : "#64748b",
-          chevron: "dot", chevronOpacity: 0,
-          indent: "44px", h: "28px", size: "12.5px", weight: active ? 600 : 500,
-          meta: p.id === "docs" ? String(this.mspDocs.length) : p.id === "connectors" ? String(this.connectors.length) : p.id === "sla" ? String(this.operatorTasks.length) : p.id === "sops" ? String(this.sops.length) : p.id === "timeline" ? String(this.timelineEvents.length) : p.id === "config" ? String(this.cfgCoverage.filter(c => c.ever).length) + "/" + String(this.cfgCoverage.length) : p.id === "sales" ? String(this.offers.length) : "", metaColor: "#475569",
-          bg: active ? "rgba(37,99,235,.22)" : "transparent",
-          fg: active ? "#ffffff" : "#94a3b8",
-          click: () => this.setState({ sel: { kind: "msp", page: p.id }, doc: null, rbdSel: null, notifsOpen: false, userOpen: false, drawer: null })
+          label: g.label, icon: g.icon, iconColor: holdsCurrent ? "#93c5fd" : "#64748b",
+          chevron: gOpen ? "chevron-down" : "chevron-right", chevronOpacity: 1,
+          indent: "44px", h: "28px", size: "12px", weight: holdsCurrent || gOpen ? 600 : 500,
+          meta: "", metaColor: "#475569",
+          bg: holdsCurrent && !gOpen ? "rgba(37,99,235,.16)" : "transparent",
+          fg: holdsCurrent || gOpen ? "#cbd5e1" : "#94a3b8",
+          click: () => this.setState({ mspGroupsOpen: Object.assign({}, s.mspGroupsOpen, { [key]: !gOpen }) })
         });
+        if (gOpen) {
+          g.children.forEach(id => pushMspLeaf(this.mspPages.find(p => p.id === id), "64px"));
+        }
       });
     }
 
     nodes.push({
-      label: "Managed Tenants", icon: "network", iconColor: "#7dd3fc", chevron: "chevron-down", chevronOpacity: 1,
+      label: "Managed Tenants", icon: "network", iconColor: "#7dd3fc", chevron: s.tenantsOpen ? "chevron-down" : "chevron-right", chevronOpacity: 1,
       indent: "22px", h: "28px", size: "12.5px", weight: 600, meta: this.tenantData.length + "", metaColor: "#475569",
       bg: sel.kind === "root" ? "rgba(37,99,235,.2)" : "transparent",
       fg: sel.kind === "root" ? "#ffffff" : "#cbd5e1",
-      click: () => this.setState({ sel: { kind: "root" } })
+      click: () => this.setState({ sel: { kind: "root" }, tenantsOpen: !s.tenantsOpen })
     });
 
-    this.tenantData.forEach((x, i) => {
+    if (s.tenantsOpen) this.tenantData.forEach((x, i) => {
       if (tq && !x.name.toLowerCase().includes(tq) && !x.domain.toLowerCase().includes(tq)) return;
       const isOpen = !!s.open[i];
       const selectedHere = tIdx === i;
@@ -2828,11 +2832,11 @@ class Component extends DCLogic {
 
     const du = s.dangerUser == null ? null : tenantRoster[s.dangerUser];
     const dangerActions = du ? [
-      { icon: "key-round", title: "Set a temporary password", cta: "Generate temp password", body: "Overwrites the password hash immediately and returns the plaintext once. Relay it out-of-band; no email is sent.", wire: "POST /api/msp/team/:userId/temp-password", color: "#fbbf24", line: "rgba(251,191,36,.3)", tint: "rgba(251,191,36,.06)", iconTint: "rgba(251,191,36,.12)", hover: "rgba(251,191,36,.2)",
+      { icon: "key-round", title: "Set a temporary password", cta: "Generate temp password", body: "Overwrites the password hash immediately and returns the plaintext once. Relay it out-of-band; no email is sent.", wire: "this action", color: "#fbbf24", line: "rgba(251,191,36,.3)", tint: "rgba(251,191,36,.06)", iconTint: "rgba(251,191,36,.12)", hover: "rgba(251,191,36,.2)",
         run: () => this.setState({ result: { eyebrow: "TEMPORARY PASSWORD — SHOWN ONCE", code: "Temp-9C41E7!9", note: "Relay to " + du.name + " out-of-band. Their existing password no longer works.", color: "#fcd34d", line: "rgba(251,191,36,.35)", tint: "rgba(251,191,36,.1)" } }) },
-      { icon: "shield-x", title: "Reset all MFA methods", cta: "Reset MFA", body: "Deletes every enrollment, passkey and pending challenge for this user, then emails them a re-enrollment link.", wire: "POST /api/msp/team/:userId/reset-mfa", color: "#f87171", line: "rgba(248,113,113,.3)", tint: "rgba(248,113,113,.06)", iconTint: "rgba(248,113,113,.12)", hover: "rgba(248,113,113,.2)",
+      { icon: "shield-x", title: "Reset all MFA methods", cta: "Reset MFA", body: "Deletes every enrollment, passkey and pending challenge for this user, then emails them a re-enrollment link.", wire: "this action", color: "#f87171", line: "rgba(248,113,113,.3)", tint: "rgba(248,113,113,.06)", iconTint: "rgba(248,113,113,.12)", hover: "rgba(248,113,113,.2)",
         run: () => this.setState({ result: { eyebrow: "MFA CLEARED", code: du.mfa === "Disabled" ? "No methods to clear" : du.mfa + " removed", note: "The user must re-enroll at next sign-in. Notification email sent.", color: "#fca5a5", line: "rgba(248,113,113,.35)", tint: "rgba(248,113,113,.1)" } }) },
-      { icon: "siren", title: "Emergency MFA bypass code", cta: "Generate bypass code", body: "One active code per user. Its holder can skip MFA on this account for 24 hours. Highest-privilege action on this surface.", wire: "POST /api/msp/team/:userId/emergency-bypass", color: "#f87171", line: "rgba(248,113,113,.3)", tint: "rgba(248,113,113,.06)", iconTint: "rgba(248,113,113,.12)", hover: "rgba(248,113,113,.2)",
+      { icon: "siren", title: "Emergency MFA bypass code", cta: "Generate bypass code", body: "One active code per user. Its holder can skip MFA on this account for 24 hours. Highest-privilege action on this surface.", wire: "this action", color: "#f87171", line: "rgba(248,113,113,.3)", tint: "rgba(248,113,113,.06)", iconTint: "rgba(248,113,113,.12)", hover: "rgba(248,113,113,.2)",
         run: () => this.setState({ result: { eyebrow: "BYPASS CODE — EXPIRES IN 24 HOURS", code: "EMERGENCY-4F2A-91C8-BD07-3E5A", note: "Any previous code for " + du.name + " was destroyed. Expires 10 Sep 17:04 UTC.", color: "#fca5a5", line: "rgba(248,113,113,.35)", tint: "rgba(248,113,113,.1)" } }) }
     ] : [];
 
@@ -2893,11 +2897,11 @@ class Component extends DCLogic {
     let table = null;
     let notes = [];
     const N = {
-      raw: { icon: "file-json", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The list endpoint returns raw Drizzle rows, unshaped", body: "Every column comes back verbatim — payload jsonb, rollback snippet, backupHash, executorRunId. This table picks a subset; the wire step decides the rest.", wire: "GET /api/msp/change-requests · no filters, no pagination" },
-      envelope: { icon: "triangle-alert", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Two error envelope shapes across this module", body: "CR, catalog and calendar routes return { error, code, details }. CAB, executions and PIR routes return a bare { error: string }. The UI has to parse both.", wire: "apiError(ApiErrorCode.X) vs res.status(n).json({ error })" },
-      metrics: { icon: "chart-no-axes-column", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "No MSP-side change metrics endpoint exists", body: "Success rate, lead time, emergency ratio and CAB throughput are computed only on the customer-portal route. Nothing here can show them yet.", wire: "computeChangeMetrics — portal-change-control.ts only" },
-      reject: { icon: "shield-x", color: "#f87171", tint: "rgba(248,113,113,.08)", line: "rgba(248,113,113,.24)", title: "Rejecting through the generic PATCH leaves the ledger stale", body: "This door never calls recordRejection, so pending cr_approvals rows stay pending forever and a routed Microsoft change never flips to declined_risk. The SLA sweep will escalate them on an already-rejected CR.", wire: "PATCH /api/msp/change-requests/:id { status: \"rejected\" }" },
-      rollback: { icon: "undo-2", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Rollback raises an inverse CR — it does not revert the tenant", body: "The inverse change swaps the snapshot and payload and seeds its own approvals. The original CR only flips to rolled_back once the inverse execution is verified.", wire: "POST /msp/change-control/change-requests/:id/rollback" }
+      raw: { icon: "file-json", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The list action returns raw Drizzle rows, unshaped", body: "Every column comes back verbatim — payload jsonb, rollback snippet, backupHash, executorRunId. This table picks a subset; the wire step decides the rest.", wire: "this lookup · no filters, no pagination" },
+      envelope: { icon: "triangle-alert", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Two error envelope shapes across this module", body: "CR, catalog and calendar actions return { error, code, details }. CAB, executions and PIR actions return a bare { error: string }. The UI has to parse both.", wire: "apiError(ApiErrorCode.X) vs res.status(n).json({ error })" },
+      metrics: { icon: "chart-no-axes-column", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "No MSP-side change metrics action exists", body: "Success rate, lead time, emergency ratio and CAB throughput are computed only on the customer-portal action. Nothing here can show them yet.", wire: "computeChangeMetrics — portal-change-control.ts only" },
+      reject: { icon: "shield-x", color: "#f87171", tint: "rgba(248,113,113,.08)", line: "rgba(248,113,113,.24)", title: "Rejecting through the generic PATCH leaves the ledger stale", body: "This door never calls recordRejection, so pending cr_approvals rows stay pending forever and a routed Microsoft change never flips to declined_risk. The SLA sweep will escalate them on an already-rejected CR.", wire: "this update { status: \"rejected\" }" },
+      rollback: { icon: "undo-2", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Rollback raises an inverse CR — it does not revert the tenant", body: "The inverse change swaps the snapshot and payload and seeds its own approvals. The original CR only flips to rolled_back once the inverse execution is verified.", wire: "this action" }
     };
 
     if (ccPage === "cc.register") {
@@ -2922,7 +2926,7 @@ class Component extends DCLogic {
         count: filtered.length + " of " + tenantCrs.length + " change requests",
         emptyIcon: "git-pull-request", emptyTitle: "No change requests for this tenant",
         emptyBody: "Every Change Control table reads zero rows in the live database today. A CR appears here once one is raised against this tenant.",
-        emptyWire: "GET /api/msp/change-requests → []"
+        emptyWire: "this lookup → []"
       };
       notes = [N.raw, N.metrics];
     } else if (ccPage === "cc.catalog") {
@@ -2943,9 +2947,9 @@ class Component extends DCLogic {
         filters: [], count: this.catalogData.length + " catalog items · MSP-wide",
         emptyIcon: "book-open", emptyTitle: "No catalog items yet",
         emptyBody: "An approved catalog item lets a standard change inherit its approval and skip CAB entirely.",
-        emptyWire: "GET /msp/change-catalog → { items: [] }"
+        emptyWire: "this lookup → { items: [] }"
       };
-      notes = [{ icon: "info", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Approve and revoke require MSPAdmin — authoring only needs MSPOperator", body: "Approve has no source-state check, so it is not a one-shot action; revoke requires the item to be exactly approved and a reason of 1–2000 characters.", wire: "POST /msp/change-catalog/:id/approve · /revoke" }, N.envelope];
+      notes = [{ icon: "info", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Approve and revoke require MSPAdmin — authoring only needs MSPOperator", body: "Approve has no source-state check, so it is not a one-shot action; revoke requires the item to be exactly approved and a reason of 1–2000 characters.", wire: "this action · /revoke" }, N.envelope];
     } else if (ccPage === "cc.cab") {
       table = {
         cols: "2.3fr .8fr 1fr 1.3fr 1.1fr 1.2fr", minWidth: "980px",
@@ -2964,9 +2968,9 @@ class Component extends DCLogic {
         filters: [], count: this.cabData.length + " meetings · MSP-wide board",
         emptyIcon: "gavel", emptyTitle: "No CAB meetings scheduled",
         emptyBody: "A meeting can close only once every agenda item carries a recommendation. An empty agenda closes trivially.",
-        emptyWire: "GET /msp/change-control/cab/meetings → []"
+        emptyWire: "this lookup → []"
       };
-      notes = [{ icon: "info", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The board's recommendation is not the approval", body: "A decision writes a real cr_approvals row through the same recordApproval the customer register uses. Standard changes can never reach an agenda — they have no pending approval slot.", wire: "POST /msp/change-control/cab/agenda/:id/decision" }, N.envelope];
+      notes = [{ icon: "info", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The board's recommendation is not the approval", body: "A decision writes a real cr_approvals row through the same recordApproval the customer register uses. Standard changes can never reach an agenda — they have no pending approval slot.", wire: "this action" }, N.envelope];
     } else if (ccPage === "cc.calendars") {
       table = {
         cols: "1fr 2.2fr 1fr 1.8fr 1fr .9fr", minWidth: "1000px",
@@ -2985,9 +2989,9 @@ class Component extends DCLogic {
         filters: [], count: this.calendarData.length + " windows · retire, never delete",
         emptyIcon: "calendar-x", emptyTitle: "No freeze or maintenance windows",
         emptyBody: "Enforcement only applies when the tenant's change-control policy has enforceFreezeCalendar or enforceMaintenanceWindows switched on.",
-        emptyWire: "GET /msp/change-freeze-windows · /msp/change-maintenance-windows"
+        emptyWire: "this lookup · /msp/change-maintenance-windows"
       };
-      notes = [{ icon: "archive", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "There is no delete route for either calendar", body: "A window is retired with PATCH { active: false }. A decided freeze exception still points at its freeze row, and losing that audit trail would be worse than an inactive row.", wire: "PATCH /msp/change-freeze-windows/:id { active: false }" }];
+      notes = [{ icon: "archive", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "There is no delete action for either calendar", body: "A window is retired with PATCH { active: false }. A decided freeze exception still points at its freeze row, and losing that audit trail would be worse than an inactive row.", wire: "this update { active: false }" }];
     } else if (ccPage === "cc.deps") {
       table = {
         cols: "1.1fr 1.1fr 1.2fr 2.6fr 1.1fr", minWidth: "920px",
@@ -3005,9 +3009,9 @@ class Component extends DCLogic {
         filters: [], count: this.depData.length + " edges",
         emptyIcon: "waypoints", emptyTitle: "No dependency edges",
         emptyBody: "An edge blocks the write gate from claiming the change. Rejected and rolled-back blockers do not auto-release — clearing them is a deliberate action.",
-        emptyWire: "GET /msp/change-requests/:id/dependencies → []"
+        emptyWire: "this lookup → []"
       };
-      notes = [{ icon: "git-fork", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Only direct reverse cycles are rejected", body: "A blocks B then B blocks A is caught; a longer transitive cycle is not. Enforcement of the edge itself lives in the write gate, not this router.", wire: "POST /msp/change-requests/:id/dependencies" }];
+      notes = [{ icon: "git-fork", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Only direct reverse cycles are rejected", body: "A blocks B then B blocks A is caught; a longer transitive cycle is not. Enforcement of the edge itself lives in the write gate, not this router.", wire: "this action" }];
     } else if (ccPage === "cc.exec") {
       table = {
         cols: "1.05fr 1.2fr 1fr 1fr 1.2fr 1.3fr", minWidth: "1000px",
@@ -3026,10 +3030,10 @@ class Component extends DCLogic {
         filters: [], count: this.execData.length + " executions",
         emptyIcon: "play", emptyTitle: "Nothing executed yet",
         emptyBody: "A CR authorizes; it does not execute. One row appears here per time an authorized change is actually carried out.",
-        emptyWire: "GET /msp/change-control/executions → []"
+        emptyWire: "this lookup → []"
       };
-      notes = [N.rollback, { icon: "user-check", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "An unattested human action is indistinguishable from drift", body: "A human action recorded without an attestation stays pending until someone attests it. Runbook and write actions settle from the background sweep, not from any route here.", wire: "POST /msp/change-control/executions/:id/attest" },
-        { icon: "image", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "An execution can now carry captured screenshots", body: "Images only — jpg, png, gif, webp, bmp, 20 MB each — with an optional caption and capture time. The execution carries a tenant GUID, so the upload resolves the portal customer before the row is stamped. Files are served back only through the MSP-scoped route, never a public static mount.", wire: "POST /msp/change-control/executions/:id/evidence" }];
+      notes = [N.rollback, { icon: "user-check", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "An unattested human action is indistinguishable from drift", body: "A human action recorded without an attestation stays pending until someone attests it. Runbook and write actions settle from the background sweep, not from any action here.", wire: "this action" },
+        { icon: "image", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "An execution can now carry captured screenshots", body: "Images only — jpg, png, gif, webp, bmp, 20 MB each — with an optional caption and capture time. The execution carries a tenant GUID, so the upload resolves the portal customer before the row is stamped. Files are served back only through the MSP-scoped action, never a public static mount.", wire: "this action" }];
     } else if (ccPage === "cc.pir") {
       table = {
         cols: "1.05fr 1.3fr 1.2fr 1.2fr 1.2fr 2.2fr", minWidth: "1040px",
@@ -3048,9 +3052,9 @@ class Component extends DCLogic {
         filters: [], count: this.pirData.length + " reviews",
         emptyIcon: "clipboard-check", emptyTitle: "No post-implementation reviews",
         emptyBody: "A PIR attaches to the execution it reviews and is never edited. A correction is a new execution plus a new PIR.",
-        emptyWire: "GET /msp/change-control/pirs → []"
+        emptyWire: "this lookup → []"
       };
-      notes = [{ icon: "radar", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The drift re-scan only runs for Conditional Access", body: "Every other category records not_applicable with a note explaining why, rather than a fabricated clean result. A first-run baseline reports zero drift by construction.", wire: "POST /msp/change-control/executions/:id/pir" }];
+      notes = [{ icon: "radar", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The drift re-scan only runs for Conditional Access", body: "Every other category records not_applicable with a note explaining why, rather than a fabricated clean result. A first-run baseline reports zero drift by construction.", wire: "this action" }];
     }
 
     const isBg = page === "bg";
@@ -3087,7 +3091,7 @@ class Component extends DCLogic {
           filters: [], count: rows.length + " overrides",
           emptyIcon: "history", emptyTitle: "No admin overrides for this customer",
           emptyBody: "An append-only log: one row per forced reset, with the operator, their reason, and the secret it replaced.",
-          emptyWire: "GET /api/msp/customers/:customerId/break-glass/audit"
+          emptyWire: "this lookup"
         };
       } else {
         table = {
@@ -3103,7 +3107,7 @@ class Component extends DCLogic {
           filters: [], count: bgList.length + " secrets · full history",
           emptyIcon: "key-round", emptyTitle: "No break-glass secrets for this customer",
           emptyBody: "A row appears the first time a Config Pack run pauses at a break-glass verification gate for this tenant.",
-          emptyWire: "GET /api/msp/customers/:customerId/break-glass → { secrets: [] }"
+          emptyWire: "this lookup → { secrets: [] }"
         };
       }
     }
@@ -3111,7 +3115,7 @@ class Component extends DCLogic {
     if (isBg) {
       notes = [
         { icon: "shield-check", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Only an active Global Administrator can claim a credential", body: "Verification is a Microsoft OAuth round-trip on the customer's own tenant. A PIM-eligible role that is not activated returns role_not_active_pim_eligible and deliberately does not burn the link — the same person can activate and reopen it.", wire: "ELIGIBLE_ROLE_TEMPLATE_IDS · 62e90394-69f5-4237-9190-012177145e10" },
-        { icon: "eye-off", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "The plaintext never reaches this console", body: "It lives in Key Vault behind a secretRef, is revealed once on a server-rendered page, and is purged the moment the winning recipient acknowledges it. This surface reads status only.", wire: "no linkToken, no encryptedValue on any MSP route" },
+        { icon: "eye-off", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "The plaintext never reaches this console", body: "It lives in Key Vault behind a secretRef, is revealed once on a server-rendered page, and is purged the moment the winning recipient acknowledges it. This surface reads status only.", wire: "no linkToken, no encryptedValue on any MSP action" },
         { icon: "triangle-alert", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Override failure modes are distinct states, not one error", body: "409 for a failed precondition, 502 when Graph refuses the password write, 503 when the vault is not configured (fail-closed rather than storing DB-only), and 409 with blockedBy when the write-back gate or consent blocks it.", wire: "409 · 502 · 503 · WriteBackNotEnabledError" }
       ];
     }
@@ -3132,7 +3136,7 @@ class Component extends DCLogic {
           filters: [], count: people.length + " linked accounts · active and inactive alike",
           emptyIcon: "users", emptyTitle: "No portal accounts linked to this customer",
           emptyBody: "The picker lists every users row with this tenant_id, so an admin can choose which teammate a deletion request applies to.",
-          emptyWire: "GET /api/msp/data-rights/customers/:customerId/users → { users: [] }"
+          emptyWire: "this lookup → { users: [] }"
         };
       } else {
         const rows = this.drActivity.filter(a => a.tenant === tIdx);
@@ -3149,13 +3153,13 @@ class Component extends DCLogic {
           filters: [], count: rows.length + " rows · filtered client-side from the MSP-wide feed",
           emptyIcon: "scale", emptyTitle: "No data-rights activity for this customer",
           emptyBody: "The feed carries exactly two action types: data_export_downloaded and deletion_request_submitted. Nothing else in the audit log appears here.",
-          emptyWire: "GET /api/msp/data-rights?limit=50"
+          emptyWire: "this lookup"
         };
       }
       notes = [
-        { icon: "lock", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "This surface is MSPAdmin and above — MSPOperator is refused", body: "Stricter than the MSPOperator floor every other MSP route uses. A staff member with scoped customers only sees activity bridged to their own assignments.", wire: "403 · Insufficient privileges — MSPAdmin or above required" },
+        { icon: "lock", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "This surface is MSPAdmin and above — MSPOperator is refused", body: "Stricter than the MSPOperator floor every other MSP action uses. A staff member with scoped customers only sees activity bridged to their own assignments.", wire: "403 · Insufficient privileges — MSPAdmin or above required" },
         { icon: "circle-slash", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "There is no deletion-request lifecycle to track", body: "Filing a request writes one audit row and sends one notification email. No status column exists, so nothing here can show progress through the 30-day window or mark a request processed.", wire: "audit_logs only · fulfillment is manual" },
-        { icon: "filter", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The feed takes one query param: limit, capped at 200", body: "No offset or cursor, no customer, action-type or date filter, and no bulk action — one userId per deletion request. Any narrowing shown here happens client-side.", wire: "GET /api/msp/data-rights?limit=1..200" }
+        { icon: "filter", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The feed takes one query param: limit, capped at 200", body: "No offset or cursor, no customer, action-type or date filter, and no bulk action — one userId per deletion request. Any narrowing shown here happens client-side.", wire: "this lookup" }
       ];
     }
 
@@ -3332,10 +3336,10 @@ class Component extends DCLogic {
       tenDelete.confirmFg = tenDelete.match ? "#fca5a5" : "#7f5a5a";
 
       notes = [
-        { icon: "shield-x", color: "#f87171", tint: "rgba(248,113,113,.08)", line: "rgba(248,113,113,.24)", title: "Revoking consent stops checks, it does not delete anything", body: "One unified revoke route takes the consent key. Every check that depends on that grant stops for this tenant until they consent again, and the re-consent link is the only way back.", wire: "PATCH /admin/consent/:tenantId/revoke" },
-        { icon: "scan-line", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The package picker only opens when there is a choice", body: "One package, or a catalog that failed to load, runs unprompted and lets the server resolve the customer's own subscription. More than one, and the operator picks — pre-selected to the resolved default.", wire: "POST /msp/customers/:id/diagnostics/run" },
-        { icon: "eye", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "The customer's free-tier paywall does not apply to this console", body: "The customer portal redacts finding and recommendation text behind a paid assessment, but scores are never gated. On the MSP side the operator is the one doing the work, so full finding text shows regardless of the customer's paid status.", wire: "GET /msp/customers/:id/scores" },
-        { icon: "pencil", color: "#94a3b8", tint: "rgba(148,163,184,.06)", line: "rgba(148,163,184,.18)", title: "Business unit is the only editable field here", body: "It backs the Security Plan assembly's scope dimension the same way pillar and framework do. Everything else on this screen is read-only, and the write actions are routes, not fields.", wire: "PATCH /admin/customers/:id/business-unit" }
+        { icon: "shield-x", color: "#f87171", tint: "rgba(248,113,113,.08)", line: "rgba(248,113,113,.24)", title: "Revoking consent stops checks, it does not delete anything", body: "One unified revoke action takes the consent key. Every check that depends on that grant stops for this tenant until they consent again, and the re-consent link is the only way back.", wire: "this update" },
+        { icon: "scan-line", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The package picker only opens when there is a choice", body: "One package, or a catalog that failed to load, runs unprompted and lets the server resolve the customer's own subscription. More than one, and the operator picks — pre-selected to the resolved default.", wire: "this action" },
+        { icon: "eye", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "The customer's free-tier paywall does not apply to this console", body: "The customer portal redacts finding and recommendation text behind a paid assessment, but scores are never gated. On the MSP side the operator is the one doing the work, so full finding text shows regardless of the customer's paid status.", wire: "this lookup" },
+        { icon: "pencil", color: "#94a3b8", tint: "rgba(148,163,184,.06)", line: "rgba(148,163,184,.18)", title: "Business unit is the only editable field here", body: "It backs the Security Plan assembly's scope dimension the same way pillar and framework do. Everything else on this screen is read-only, and the write actions are actions, not fields.", wire: "this update" }
       ];
     }
     if (isOverview && t) {
@@ -3406,19 +3410,19 @@ class Component extends DCLogic {
           row("Generated documents", String(hubT.length), hubT.length ? hubT[0].title : "nothing generated yet", "slate", () => this.selectNode(tIdx, "hub")),
           row("Risk decisions on record", String(rbdsT.length), rbdsT.filter(r => r.status === "active").length + " active · " + rbdsT.filter(r => r.status === "revoked").length + " revoked", "slate", () => this.selectNode(tIdx, "risk")),
           row("Data-rights activity", String(drT.length), drT.length ? drT[0].action : "no export or deletion request", "slate", () => this.selectNode(tIdx, "dr")),
-          row("Outbound webhooks", String(whT.length), whT.length ? whMspDisabled + " disabled by an operator" + (whOwnerOff ? " · " + whOwnerOff + " switched off by the owner" : "") : "no endpoint registered", whMspDisabled ? "amber" : "slate", () => this.selectNode(tIdx, "wh"))
+          row("Outbound webhooks", String(whT.length), whT.length ? whMspDisabled + " disabled by an operator" + (whOwnerOff ? " · " + whOwnerOff + " switched off by the owner" : "") : "no action registered", whMspDisabled ? "amber" : "slate", () => this.selectNode(tIdx, "wh"))
         ] }
       ];
 
       ovNotes = [
-        { icon: "file-json", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The risk register arrives whole, then gets filtered here", body: "The list route takes no query params and returns every risk decision for the MSP as raw table rows with no derived fields, so both risk rows above filter it client-side on the raw tenantId text column. The only statuses are pending_signature, active and revoked — expired was removed from the vocabulary.", wire: "GET /api/msp/rbd" },
-        { icon: "book-open", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Both runbook rows come out of one request", body: "The operator read returns runbooks, hold windows and a summary together for one customer. Cycles are active, complete or abandoned; a hold counts as open until it is closed. No cross-book read exists, so the same roll-up for every tenant is one call each.", wire: "GET /api/msp/runbooks?customerId=" },
-        { icon: "gauge", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "The SLA and scope counts are capped reads, so they are floors", body: "Timers, breaches and detections each accept a customerId filter — three scoped reads, not a filter of the whole book. Timers and detections cap at 200 rows and breaches at 100, so a very noisy tenant's count is the cap, not the total.", wire: "GET /msp/sla/timers · /msp/sla/breaches · /msp/scope-creep/detections" },
-        { icon: "list-checks", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "SOP runs are filtered out of the MSP-wide history", body: "The run history has no customer filter, so this row narrows the whole MSP's runs by tenant. A hybrid run whose automated steps all finish while manual steps are still open settles to Blocked, not Completed — that is the state worth opening.", wire: "GET /api/msp/sop-runs" },
-        { icon: "folder", color: "#94a3b8", tint: "rgba(148,163,184,.06)", line: "rgba(148,163,184,.18)", title: "Documents is the one records row that is a real scoped read", body: "The hub list takes customerId alongside docType, category, status and paging, so this count is the tenant's own rather than a client-side slice.", wire: "GET /api/msp/documents-hub?customerId=" },
-        { icon: "shield-x", color: "#f87171", tint: "rgba(248,113,113,.08)", line: "rgba(248,113,113,.24)", title: "Data-rights activity needs MSPAdmin and only sees the newest rows", body: "An MSPOperator who can read every other row on this page gets a 403 on this one. The feed takes only a limit (200 maximum, no paging, no customer or action filter) and the underlying audit rows carry no status at all, so this is a client-side count of recent activity and can never say how many are outstanding.", wire: "GET /api/msp/data-rights?limit=" },
-        { icon: "webhook", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Disabled by an operator is a different fact from switched off", body: "Who disabled it, when and why are recorded only while an MSP operator holds the endpoint disabled; the owner touching the active flag in either direction clears all three. There is no cross-customer list, so this row is one request per tenant.", wire: "GET /api/msp/customers/:customerId/webhooks" },
-        { icon: "key-round", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Break-glass counts unclaimed credentials, nothing more", body: "Pending delivery is the same filter the cross-tenant list applies server-side. The credential itself never reaches this console on any route, so the tile can only ever say that one is waiting.", wire: "GET /msp/break-glass" }
+        { icon: "file-json", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The risk register arrives whole, then gets filtered here", body: "The list action takes no query params and returns every risk decision for the MSP as raw table rows with no derived fields, so both risk rows above filter it client-side on the raw tenantId text column. The only statuses are pending_signature, active and revoked — expired was removed from the vocabulary.", wire: "this lookup" },
+        { icon: "book-open", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Both runbook rows come out of one request", body: "The operator read returns runbooks, hold windows and a summary together for one customer. Cycles are active, complete or abandoned; a hold counts as open until it is closed. No cross-book read exists, so the same roll-up for every tenant is one call each.", wire: "this lookup" },
+        { icon: "gauge", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "The SLA and scope counts are capped reads, so they are floors", body: "Timers, breaches and detections each accept a customerId filter — three scoped reads, not a filter of the whole book. Timers and detections cap at 200 rows and breaches at 100, so a very noisy tenant's count is the cap, not the total.", wire: "this lookup · /msp/sla/breaches · /msp/scope-creep/detections" },
+        { icon: "list-checks", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "SOP runs are filtered out of the MSP-wide history", body: "The run history has no customer filter, so this row narrows the whole MSP's runs by tenant. A hybrid run whose automated steps all finish while manual steps are still open settles to Blocked, not Completed — that is the state worth opening.", wire: "this lookup" },
+        { icon: "folder", color: "#94a3b8", tint: "rgba(148,163,184,.06)", line: "rgba(148,163,184,.18)", title: "Documents is the one records row that is a real scoped read", body: "The hub list takes customerId alongside docType, category, status and paging, so this count is the tenant's own rather than a client-side slice.", wire: "this lookup" },
+        { icon: "shield-x", color: "#f87171", tint: "rgba(248,113,113,.08)", line: "rgba(248,113,113,.24)", title: "Data-rights activity needs MSPAdmin and only sees the newest rows", body: "An MSPOperator who can read every other row on this page gets a 403 on this one. The feed takes only a limit (200 maximum, no paging, no customer or action filter) and the underlying audit rows carry no status at all, so this is a client-side count of recent activity and can never say how many are outstanding.", wire: "this lookup" },
+        { icon: "webhook", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Disabled by an operator is a different fact from switched off", body: "Who disabled it, when and why are recorded only while an MSP operator holds the action disabled; the owner touching the active flag in either direction clears all three. There is no cross-customer list, so this row is one request per tenant.", wire: "this lookup" },
+        { icon: "key-round", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Break-glass counts unclaimed credentials, nothing more", body: "Pending delivery is the same filter the cross-tenant list applies server-side. The credential itself never reaches this console on any action, so the tile can only ever say that one is waiting.", wire: "this lookup" }
       ];
     }
 
@@ -3441,7 +3445,7 @@ class Component extends DCLogic {
             cell(h.state, { tone: h.state === "open" ? "amber" : "slate" })
           ] })),
           filters: [], count: holdList.length + " windows",
-          emptyIcon: "hourglass", emptyTitle: "No hold windows", emptyBody: "A hold window opens when a runbook step waits on the customer.", emptyWire: "GET /api/msp/hold-windows/:holdId/events"
+          emptyIcon: "hourglass", emptyTitle: "No hold windows", emptyBody: "A hold window opens when a runbook step waits on the customer.", emptyWire: "this lookup"
         };
       } else {
         table = {
@@ -3457,14 +3461,14 @@ class Component extends DCLogic {
           filters: [], count: runList.length + " runbooks for this tenant",
           emptyIcon: "book-open", emptyTitle: "No runbooks for this tenant",
           emptyBody: "Runbook definitions cannot be authored from this console yet — only live cycles can be worked.",
-          emptyWire: "GET /api/msp/runbooks?customerId="
+          emptyWire: "this lookup"
         };
       }
       notes = [
-        { icon: "circle-slash", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Three operator actions have no route yet", body: "Authoring a runbook, reordering its steps and recording a run outcome are all named but unbuilt. Ticking a step and extending a hold are the two that exist.", wire: "PUT …/steps/:position · POST …/hold-windows/:holdId/extend" },
+        { icon: "circle-slash", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Three operator actions have no action yet", body: "Authoring a runbook, reordering its steps and recording a run outcome are all named but unbuilt. Ticking a step and extending a hold are the two that exist.", wire: "PUT …/steps/:position · POST …/hold-windows/:holdId/extend" },
         { icon: "user-x", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Closing a hold early or raising a change stays with the customer", body: "Those decisions are about the customer's own tenant and have no operator equivalent by design. This surface can extend a window, never end one.", wire: "close-early · release · prepare-cr — customer only" },
         { icon: "users", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Nothing records that an operator acted instead of the customer", body: "A step tick and a hold extension write the same actor column either way, so an audit view cannot tell who initiated it. Only the server log line differs.", wire: "checked_by_user_id · actor_user_id" },
-        { icon: "user-search", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "One customer per call", body: "There is no aggregate read across the book, so a whole-book runbook health view would be one request per customer.", wire: "GET /api/msp/runbooks?customerId=<one>" }
+        { icon: "user-search", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "One customer per call", body: "There is no aggregate read across the book, so a whole-book runbook health view would be one request per customer.", wire: "this lookup<one>" }
       ];
     }
 
@@ -3496,7 +3500,7 @@ class Component extends DCLogic {
         return { kind: e.kind, delta: e.delta, reason: e.reason, cr: e.cr, when: e.when, actor: e.actor, color: tn.color, tint: tn.tint, line: tn.line };
       });
       notes = [
-        { icon: "bell", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "An extension accumulates and rearms both reminders", body: "The base wait is never rewritten — extra days add on top, and the day-before and deadline notices both fire again against the new date.", wire: "POST /api/msp/hold-windows/:holdId/extend { days, reason }" }
+        { icon: "bell", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "An extension accumulates and rearms both reminders", body: "The base wait is never rewritten — extra days add on top, and the day-before and deadline notices both fire again against the new date.", wire: "this action { days, reason }" }
       ];
     }
 
@@ -3520,10 +3524,10 @@ class Component extends DCLogic {
         filters: [], count: tenantRbds.length + " decisions for this tenant",
         emptyIcon: "shield-alert", emptyTitle: "No risk decisions for this tenant",
         emptyBody: "A decision belongs to one tenant and is signed off by that customer's own approver. Nothing here is created without a named signer.",
-        emptyWire: "GET /api/msp/rbd → filtered by tenant"
+        emptyWire: "this lookup → filtered by tenant"
       };
       notes = [
-        { icon: "file-json", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The register endpoint is MSP-wide — this view filters it", body: "The list route is scoped to your MSP and returns every customer's decisions in one raw array, with no tenant filter and no curated shape. Narrowing to this tenant happens on the client.", wire: "GET /api/msp/rbd · no customerId parameter" },
+        { icon: "file-json", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The register action is MSP-wide — this view filters it", body: "The list action is scoped to your MSP and returns every customer's decisions in one raw array, with no tenant filter and no curated shape. Narrowing to this tenant happens on the client.", wire: "this lookup · no customerId parameter" },
         { icon: "ban", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "There is no expired status", body: "A decision is pending signature, active, or revoked. Expiry is a review clock advanced elsewhere, never a status this surface writes.", wire: "pending_signature · active · revoked" }
       ];
     }
@@ -3562,7 +3566,7 @@ class Component extends DCLogic {
       if (rbdSel.status !== "revoked") rbdActions.push(act("Share current version", "link", "blue", "rbdshare"));
       if (rbdSel.status !== "revoked") rbdActions.push(act("Revoke", "ban", "red", "rbdrevoke"));
       notes = [
-        { icon: "camera", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Scope is derived at capture, never sent", body: "A version records exactly which line items were active at the moment it was captured. The only way to change scope is to add, accept or resolve line items first.", wire: "POST /api/msp/rbd/:rbdId/versions" },
+        { icon: "camera", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Scope is derived at capture, never sent", body: "A version records exactly which line items were active at the moment it was captured. The only way to change scope is to add, accept or resolve line items first.", wire: "this action" },
         { icon: "lock", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Signatures and acceptances are write-once", body: "A line item cannot be accepted twice, and only the current unsigned version can be signed or shared. A repeat attempt returns a conflict that does not distinguish wrong-version from already-signed.", wire: "409 CONFLICT" }
       ];
     }
@@ -3584,7 +3588,7 @@ class Component extends DCLogic {
             cell(b.assignments ? String(b.assignments) + " active" : "none", { color: b.assignments ? "#cbd5e1" : "#475569" })
           ] })),
           filters: [], count: this.bundles.length + " bundles · MSPAdmin to create, edit, assign or delete",
-          emptyIcon: "package", emptyTitle: "No bundles composed", emptyBody: "", emptyWire: "GET /api/msp/sales-bundles"
+          emptyIcon: "package", emptyTitle: "No bundles composed", emptyBody: "", emptyWire: "this lookup"
         };
         notes = [
           { icon: "lock", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Reading is MSPOperator, changing is MSPAdmin", body: "An operator can list, preview and inspect bundles but cannot create, edit, delete, assign or revoke one. Composing more than one package into a bundle also needs the custom-composition plan feature.", wire: "requireRole(MSPAdmin) on all five mutations" },
@@ -3604,11 +3608,11 @@ class Component extends DCLogic {
             cell(p.status, { tone: "green" })
           ] })),
           filters: [], count: "21 platform packages · only active ones are listed",
-          emptyIcon: "package", emptyTitle: "No packages available", emptyBody: "", emptyWire: "GET /api/msp/monitoring-packages"
+          emptyIcon: "package", emptyTitle: "No packages available", emptyBody: "", emptyWire: "this lookup"
         };
         notes = [
           { icon: "dollar-sign", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Internal cost is live but numerically inert", body: "Every real package currently carries a zero platform cost, so every bundle's internal cost computes to zero. The mechanism is wired; the catalogue data simply has no numbers in it yet.", wire: "platformCostCents: 0 on all 21 packages" },
-          { icon: "eye-off", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "The pricing preview drops keys it does not recognise", body: "A preview built only from the response would silently lose an invalid selection. The create and update routes do reject unknown keys outright.", wire: "GET /sales-bundles/pricing-preview" }
+          { icon: "eye-off", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "The pricing preview drops keys it does not recognise", body: "A preview built only from the response would silently lose an invalid selection. The create and update actions do reject unknown keys outright.", wire: "this lookup" }
         ];
       } else if (s.salesTab === "assignments") {
         table = {
@@ -3623,11 +3627,11 @@ class Component extends DCLogic {
             cell(a.revoked, { color: "#64748b" })
           ] })),
           filters: [], count: this.bundleAssignments.filter(a => a.status === "active").length + " active of " + this.bundleAssignments.length,
-          emptyIcon: "user-check", emptyTitle: "No bundle assignments", emptyBody: "", emptyWire: "GET /api/msp/sales-bundles/:bundleId/assignments"
+          emptyIcon: "user-check", emptyTitle: "No bundle assignments", emptyBody: "", emptyWire: "this lookup"
         };
         notes = [
           { icon: "split", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Assigning fans out one event per package", body: "Each package's own engine listens for the event matching its frequency, so a mixed-frequency bundle activates as several events rather than one. Revoking mirrors it exactly.", wire: "bundle.package.activated · .deactivated" },
-          { icon: "user-search", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Per-staff scoping applies to one of the two list routes", body: "The customer-centric list fences a scoped operator out of an unassigned customer. The bundle-centric list does not, so it can show customers outside that operator's own assignment.", wire: "isCustomerBlockedByStaffScope on the customer route only" },
+          { icon: "user-search", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Per-staff scoping applies to one of the two list actions", body: "The customer-centric list fences a scoped operator out of an unassigned customer. The bundle-centric list does not, so it can show customers outside that operator's own assignment.", wire: "isCustomerBlockedByStaffScope on the customer action only" },
           { icon: "circle-slash", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Suspended is declared and never written", body: "The assignment lifecycle has three states in the schema but only active and revoked are ever set. Do not build a suspended affordance against it.", wire: "active · suspended (unused) · revoked" }
         ];
       } else {
@@ -3643,12 +3647,12 @@ class Component extends DCLogic {
             cell(o.state, { tone: OFFER_TONE[o.state] })
           ] })),
           filters: [], count: this.offers.length + " offers · highest score first, not newest",
-          emptyIcon: "handshake", emptyTitle: "No offers generated", emptyBody: "Generating runs the engine against one customer's signals; a re-run that produces nothing new emits no event at all.", emptyWire: "GET /api/msp/:mspId/sales-offers"
+          emptyIcon: "handshake", emptyTitle: "No offers generated", emptyBody: "Generating runs the engine against one customer's signals; a re-run that produces nothing new emits no event at all.", emptyWire: "this lookup"
         };
         notes = [
-          { icon: "triangle-alert", color: "#f87171", tint: "rgba(248,113,113,.08)", line: "rgba(248,113,113,.24)", title: "Accepting from here fulfils nothing, and there is no way back", body: "The generic state transition knows nothing about the service class: no statement of work, no charge, no monitoring gate. Accepted is terminal, and only drafts can be deleted — so an offer moved this way is stuck for good. Use the proper acceptance route instead.", wire: "PATCH /sales-offers/:id/state" },
+          { icon: "triangle-alert", color: "#f87171", tint: "rgba(248,113,113,.08)", line: "rgba(248,113,113,.24)", title: "Accepting from here fulfils nothing, and there is no way back", body: "The generic state transition knows nothing about the service class: no statement of work, no charge, no monitoring gate. Accepted is terminal, and only drafts can be deleted — so an offer moved this way is stuck for good. Use the proper acceptance action instead.", wire: "this update" },
           { icon: "pencil-off", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Once sent, an offer is frozen", body: "Title and rationale can only be edited while the offer is a draft, and only a draft can be deleted. After that it can only move forward through the state machine.", wire: "422 unless state is draft" },
-          { icon: "clock", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Nothing expires stale offers on a schedule", body: "There is a sweep route, but no job calls it. A sent offer past its expiry sits stale until someone triggers the sweep by hand.", wire: "POST /:mspId/sales-offers/expire-stale" }
+          { icon: "clock", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Nothing expires stale offers on a schedule", body: "There is a sweep action, but no job calls it. A sent offer past its expiry sits stale until someone triggers the sweep by hand.", wire: "this action" }
         ];
       }
     }
@@ -3668,7 +3672,7 @@ class Component extends DCLogic {
             cell(x.resources, { color: "#94a3b8" })
           ] })),
           filters: [], count: this.cfgSnapshots.length + " snapshots across the book",
-          emptyIcon: "camera", emptyTitle: "Nothing collected yet", emptyBody: "", emptyWire: "GET /api/msp/config-state/snapshots"
+          emptyIcon: "camera", emptyTitle: "Nothing collected yet", emptyBody: "", emptyWire: "this lookup"
         };
         notes = [
           { icon: "lock", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "A sealed snapshot is immutable", body: "Only a sealed snapshot counts as the tenant's latest state. A running one is still growing and a failed one recorded not reading the tenant, so neither ever displaces it.", wire: "running · sealed · failed · abandoned" }
@@ -3686,11 +3690,11 @@ class Component extends DCLogic {
             cell(d.verdicts, { color: "#94a3b8" })
           ] })),
           filters: [], count: this.cfgDiffs.length + " comparisons · both sides must be in your book",
-          emptyIcon: "git-compare", emptyTitle: "No comparisons computed", emptyBody: "", emptyWire: "GET /api/msp/config-state/diffs"
+          emptyIcon: "git-compare", emptyTitle: "No comparisons computed", emptyBody: "", emptyWire: "this lookup"
         };
         notes = [
-          { icon: "layers", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Four modes, one route", body: "Drift compares a tenant against its own past. Baseline assessment measures it against a declared reference. Tenant compare and promotion put two tenants side by side. The database itself rejects an incoherent pairing.", wire: "POST /diffs { mode }" },
-          { icon: "scale", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "A change count without verdicts is a confidently incomplete answer", body: "Attribution runs lazily on read and can be forced again at any time — a change request approved after the fact legitimately turns unattributed rows into attributed ones, and a revoked risk acceptance turns them back.", wire: "POST /diffs/:diffId/attribution" },
+          { icon: "layers", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Four modes, one action", body: "Drift compares a tenant against its own past. Baseline assessment measures it against a declared reference. Tenant compare and promotion put two tenants side by side. The database itself rejects an incoherent pairing.", wire: "this action { mode }" },
+          { icon: "scale", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "A change count without verdicts is a confidently incomplete answer", body: "Attribution runs lazily on read and can be forced again at any time — a change request approved after the fact legitimately turns unattributed rows into attributed ones, and a revoked risk acceptance turns them back.", wire: "this action" },
           { icon: "ban", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Promotion computes a difference and stops", body: "There is no apply path anywhere in this module. Nothing here writes to a tenant.", wire: "mode: promotion — compute only" }
         ];
       } else if (s.cfgTab === "baselines") {
@@ -3706,11 +3710,11 @@ class Component extends DCLogic {
             cell(b.state, { tone: b.state === "active" ? "green" : "slate" })
           ] })),
           filters: [], count: this.cfgBaselines.length + " baselines · retired ones stay readable",
-          emptyIcon: "bookmark", emptyTitle: "No baselines declared", emptyBody: "", emptyWire: "GET /api/msp/config-state/baselines"
+          emptyIcon: "bookmark", emptyTitle: "No baselines declared", emptyBody: "", emptyWire: "this lookup"
         };
         notes = [
-          { icon: "bookmark", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "A baseline is a pointer, not a copy", body: "It names one sealed snapshot, and that snapshot cannot change. Its completeness travels with it, because assessing against a half-readable reference is something to see beforehand.", wire: "POST /baselines { snapshotRowId, purpose }" },
-          { icon: "archive", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Retire is the only mutation, and it needs a reason", body: "A baseline can never be repointed at different evidence under the same name — that would rewrite history. Declare a new one instead. There is no delete.", wire: "PATCH /baselines/:id { isActive: false, retiredReason }" }
+          { icon: "bookmark", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "A baseline is a pointer, not a copy", body: "It names one sealed snapshot, and that snapshot cannot change. Its completeness travels with it, because assessing against a half-readable reference is something to see beforehand.", wire: "this action { snapshotRowId, purpose }" },
+          { icon: "archive", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Retire is the only mutation, and it needs a reason", body: "A baseline can never be repointed at different evidence under the same name — that would rewrite history. Declare a new one instead. There is no delete.", wire: "this update { isActive: false, retiredReason }" }
         ];
       } else if (s.cfgTab === "registry") {
         table = {
@@ -3724,11 +3728,11 @@ class Component extends DCLogic {
             cell(r.availability, { tone: r.availability === "available_now" ? "green" : r.availability === "unavailable" ? "red" : r.availability === "unknown" ? "slate" : "amber" })
           ] })),
           filters: [], count: "1,541 resource types · 1,063 collectable",
-          emptyIcon: "database", emptyTitle: "Registry unavailable", emptyBody: "", emptyWire: "GET /api/msp/config-state/registry"
+          emptyIcon: "database", emptyTitle: "Registry unavailable", emptyBody: "", emptyWire: "this lookup"
         };
         notes = [
-          { icon: "globe", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The registry is not tenant data", body: "It describes what this platform can read from Microsoft, identically for every customer, and carries no tenant identifiers — so no scoping applies to it at all.", wire: "GET /registry · no book resolution" },
-          { icon: "refresh-cw", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "These counts move without anyone calling an API", body: "The collectable split is rebuilt by a separate script, not by any route on this surface. Two reads days apart legitimately disagree.", wire: "scripts/config-state/build-resource-model" }
+          { icon: "globe", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The registry is not tenant data", body: "It describes what this platform can read from Microsoft, identically for every customer, and carries no tenant identifiers — so no scoping applies to it at all.", wire: "this lookup · no book resolution" },
+          { icon: "refresh-cw", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "These counts move without anyone calling an API", body: "The collectable split is rebuilt by a separate script, not by any action on this surface. Two reads days apart legitimately disagree.", wire: "scripts/config-state/build-resource-model" }
         ];
       } else {
         table = {
@@ -3743,11 +3747,11 @@ class Component extends DCLogic {
             { text: "Trigger collection", sub: "", color: "#93c5fd", tint: "rgba(37,99,235,.14)", line: "rgba(96,165,250,.32)", pad: "4px 10px", weight: 600, size: "11px", font: "inherit", justify: "flex-end", dir: "row", align: "center", gap: "7px" }
           ] })),
           filters: [], count: this.cfgCoverage.filter(c => c.ever).length + " of " + this.cfgCoverage.length + " tenants ever collected",
-          emptyIcon: "database", emptyTitle: "No tenants in your book", emptyBody: "An empty book is a real state, and it returns nothing rather than everything.", emptyWire: "GET /api/msp/config-state/tenants"
+          emptyIcon: "database", emptyTitle: "No tenants in your book", emptyBody: "An empty book is a real state, and it returns nothing rather than everything.", emptyWire: "this lookup"
         };
         notes = [
           { icon: "circle-help", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Never collected and collected-but-empty are different facts", body: "A tenant with no snapshot returns null rather than a zeroed-out row, because an operator acts on that difference across the whole book at once.", wire: "latestSnapshot: null · everCollected: false" },
-          { icon: "eye", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Collection is a read, run as a visible engine job", body: "Every call the collector makes is a read. It runs through the workflow engine so each collection carries a run record, logs and a concurrency limit rather than happening invisibly inside a route.", wire: "POST /collections → 202 { runId, followUrl }" }
+          { icon: "eye", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Collection is a read, run as a visible engine job", body: "Every call the collector makes is a read. It runs through the workflow engine so each collection carries a run record, logs and a concurrency limit rather than happening invisibly inside an action.", wire: "this action → 202 { runId, followUrl }" }
         ];
       }
     }
@@ -3774,9 +3778,9 @@ class Component extends DCLogic {
         select: () => this.setState({ tlCustomer: o.id })
       }));
       notes = [
-        { icon: "layers", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Five sources merged into one feed", body: "Diagnostic runs, findings, engine score moves, delivered documents and sales offers. Drafts, routine findings and in-flight scans are all deliberately excluded — only settled, meaningful events appear.", wire: "GET /api/msp/timeline?limit=30&before=…" },
+        { icon: "layers", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Five sources merged into one feed", body: "Diagnostic runs, findings, engine score moves, delivered documents and sales offers. Drafts, routine findings and in-flight scans are all deliberately excluded — only settled, meaningful events appear.", wire: "this lookup" },
         { icon: "filter", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "A customer filter narrows, it never widens", body: "A staff member assigned specific customers who filters to one outside that set gets an empty feed rather than an error. Only a score move of five points or more counts as an event.", wire: "customerId narrows within the staff scope" },
-        { icon: "circle-alert", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "This feed and the alert queue do not agree by design", body: "Open policy-engine incidents show on the alert queue and have no source here. A chronological feed and a triage queue are different surfaces.", wire: "GET /api/msp/alerts adds policy_rule_incidents" },
+        { icon: "circle-alert", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "This feed and the alert queue do not agree by design", body: "Open policy-engine incidents show on the alert queue and have no source here. A chronological feed and a triage queue are different surfaces.", wire: "this lookup adds policy_rule_incidents" },
         { icon: "chevrons-down", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Another page is only offered when one really exists", body: "The cursor is returned only if a source hit its own fetch cap, so a full first page on a small book still ends the feed honestly.", wire: "nextCursor: null" }
       ];
     }
@@ -3798,11 +3802,11 @@ class Component extends DCLogic {
             cell(r.cr, { mono: true, color: r.cr === "—" ? "#475569" : "#6ee7b7", sub: r.wf === "—" ? "hand-entered" : r.wf })
           ] })),
           filters: [], count: this.sopRuns.length + " runs across the book",
-          emptyIcon: "history", emptyTitle: "No SOP runs yet", emptyBody: "Every run is one row regardless of what triggered it — the origin is what tells a policy enactment apart from a hand-started run.", emptyWire: "GET /api/msp/sop-runs"
+          emptyIcon: "history", emptyTitle: "No SOP runs yet", emptyBody: "Every run is one row regardless of what triggered it — the origin is what tells a policy enactment apart from a hand-started run.", emptyWire: "this lookup"
         };
         notes = [
           { icon: "fingerprint", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "A missing workflow run means nothing actually fired", body: "Hand-entered rows carry no workflow run and are forced to manual origin, so they can never be mistaken for an authorized enactment in the audit trail.", wire: "wf_run_id null · origin forced to manual" },
-          { icon: "split", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "A hybrid run settles to blocked, not completed", body: "The reconciliation sweep can only close automated steps. Manual steps are closed by hand, and nothing coordinates the two writers.", wire: "PATCH /api/msp/sop-runs/:runId" }
+          { icon: "split", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "A hybrid run settles to blocked, not completed", body: "The reconciliation sweep can only close automated steps. Manual steps are closed by hand, and nothing coordinates the two writers.", wire: "this update" }
         ];
       } else {
         table = {
@@ -3818,12 +3822,12 @@ class Component extends DCLogic {
             cell(x.mins + " min", { color: "#94a3b8" })
           ] })),
           filters: [], count: this.sops.length + " procedures in the library",
-          emptyIcon: "scroll-text", emptyTitle: "No SOPs authored", emptyBody: "", emptyWire: "GET /api/msp/sops"
+          emptyIcon: "scroll-text", emptyTitle: "No SOPs authored", emptyBody: "", emptyWire: "this lookup"
         };
         notes = [
-          { icon: "play", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "A SOP with no automatable step cannot be run", body: "Only steps carrying a real Graph endpoint materialise into a workflow. A manual-only procedure is a document, not something this console can fire.", wire: "sop_not_runnable" },
+          { icon: "play", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "A SOP with no automatable step cannot be run", body: "Only steps carrying a real Graph action materialise into a workflow. A manual-only procedure is a document, not something this console can fire.", wire: "sop_not_runnable" },
           { icon: "shield-check", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Read-only runs skip authorization entirely", body: "A procedure whose materialised steps are all reads needs no change request and no testbed flag. The moment one step writes, the full gate applies.", wire: "hasWrites → CR · standing policy · testbed" },
-          { icon: "copy", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Re-using a SOP id fails as a server error, not a conflict", body: "The library enforces one id per MSP at the database level, but the authoring route does not catch it — a duplicate surfaces as a generic 500.", wire: "POST /api/msp/sops" }
+          { icon: "copy", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Re-using a SOP id fails as a server error, not a conflict", body: "The library enforces one id per MSP at the database level, but the authoring action does not catch it — a duplicate surfaces as a generic 500.", wire: "this action" }
         ];
       }
     }
@@ -3845,11 +3849,11 @@ class Component extends DCLogic {
             cell(x.status, { tone: x.status === "running" ? "green" : x.status === "warning" ? "amber" : "red" })
           ] })),
           filters: [], count: this.slaTimers.length + " timers · running and warning both stay under evaluation",
-          emptyIcon: "timer", emptyTitle: "No SLA timers", emptyBody: "", emptyWire: "GET /msp/sla/timers"
+          emptyIcon: "timer", emptyTitle: "No SLA timers", emptyBody: "", emptyWire: "this lookup"
         };
         notes = [
           { icon: "timer", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "A warned timer is still a live timer", body: "Crossing the warning threshold flips the status once and stamps the time, but the timer keeps being evaluated so it can still reach breached.", wire: "status: running · warning · breached · stopped" },
-          { icon: "circle-help", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Average compliance distinguishes never-computed from zero", body: "The summary returns null rather than 0 when no compliance record exists in the trailing ninety days. Draw those as different states.", wire: "GET /msp/sla/summary · avgCompliancePct: null" }
+          { icon: "circle-help", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Average compliance distinguishes never-computed from zero", body: "The summary returns null rather than 0 when no compliance record exists in the trailing ninety days. Draw those as different states.", wire: "this lookup · avgCompliancePct: null" }
         ];
       } else if (s.slaTab === "scope") {
         const showViolations = s.tableFilter === "violations";
@@ -3866,7 +3870,7 @@ class Component extends DCLogic {
           ] })),
           filters: [{ id: "all", label: "Detections" }, { id: "violations", label: "Violations" }],
           count: this.scopeViolations.length + " open violations",
-          emptyIcon: "trending-up", emptyTitle: "No violations", emptyBody: "", emptyWire: "GET /msp/scope-creep/violations"
+          emptyIcon: "trending-up", emptyTitle: "No violations", emptyBody: "", emptyWire: "this lookup"
         } : {
           cols: "1.5fr 1.1fr 2.4fr .9fr 1fr 1fr", minWidth: "1100px",
           head: head(["CUSTOMER", "TYPE", "SIGNAL", "CHANGE", "THRESHOLD", "STATUS"]),
@@ -3880,11 +3884,11 @@ class Component extends DCLogic {
           ] })),
           filters: [{ id: "all", label: "Detections" }, { id: "violations", label: "Violations" }],
           count: this.scopeDetections.length + " detections",
-          emptyIcon: "trending-up", emptyTitle: "No scope detections", emptyBody: "", emptyWire: "GET /msp/scope-creep/detections"
+          emptyIcon: "trending-up", emptyTitle: "No scope detections", emptyBody: "", emptyWire: "this lookup"
         };
         notes = [
           { icon: "calculator", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The composite score is a flat average of three totals", body: "Drift, expansion and timeline slip each accumulate weighted contributions from their own open detections; the three totals are then averaged, not weighted again.", wire: "min(100, (drift + expansion + slip) / 3)" },
-          { icon: "user-check", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Evaluating scope creep needs one named customer", body: "The scope-creep evaluate action refuses to run without a customer and fires violations for that customer alone. Its SLA sibling still evaluates the whole portfolio.", wire: "POST /msp/scope-creep/evaluate { customerId }" }
+          { icon: "user-check", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Evaluating scope creep needs one named customer", body: "The scope-creep evaluate action refuses to run without a customer and fires violations for that customer alone. Its SLA sibling still evaluates the whole portfolio.", wire: "this action { customerId }" }
         ];
       } else if (s.slaTab === "policies") {
         table = {
@@ -3898,10 +3902,10 @@ class Component extends DCLogic {
             cell(p.owner, { color: "#94a3b8" })
           ] })),
           filters: [], count: this.enginePolicies.length + " policies · your own plus the platform defaults",
-          emptyIcon: "sliders-horizontal", emptyTitle: "No policies", emptyBody: "", emptyWire: "GET /msp/sla/policies · /msp/scope-creep/policies"
+          emptyIcon: "sliders-horizontal", emptyTitle: "No policies", emptyBody: "", emptyWire: "this lookup · /msp/scope-creep/policies"
         };
         notes = [
-          { icon: "copy", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Editing a platform default copies it, never changes it", body: "Both engines write a new MSP-owned override on first edit. Deleting one is a deactivation, so the shared default survives untouched.", wire: "PATCH /policies/:id · copy-on-write" }
+          { icon: "copy", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Editing a platform default copies it, never changes it", body: "Both engines write a new MSP-owned override on first edit. Deleting one is a deactivation, so the shared default survives untouched.", wire: "this update · copy-on-write" }
         ];
       } else {
         table = {
@@ -3917,7 +3921,7 @@ class Component extends DCLogic {
           filters: [], count: this.operatorTasks.length + " open tasks across both engines",
           emptyIcon: "list-checks", emptyTitle: "Nothing waiting on an operator",
           emptyBody: "The queue merges unresolved SLA breaches with open scope-creep violations. An empty queue means both engines are clear.",
-          emptyWire: "GET /msp/operator-tasks"
+          emptyWire: "this lookup"
         };
         notes = [
           { icon: "external-link", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "The queue's own links point at the admin panel", body: "This is a virtual queue assembled from two tables, not a task table of its own — there is nothing here to assign, comment on or close.", wire: "deepLink → /admin-panel/#/sla · /#/scope-creep" }
@@ -3929,9 +3933,9 @@ class Component extends DCLogic {
     const money = (c) => "$" + (c / 100).toLocaleString("en-US", { maximumFractionDigits: 0 });
     if (isExec) {
       notes = [
-        { icon: "list", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Both lists are hard-capped at five", body: "There is no query parameter to widen them. The roll-up totals below the lists count the whole book, not just the five rows shown.", wire: "GET /api/msp/executive · topN fixed at 5" },
+        { icon: "list", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Both lists are hard-capped at five", body: "There is no query parameter to widen them. The roll-up totals below the lists count the whole book, not just the five rows shown.", wire: "this lookup · topN fixed at 5" },
         { icon: "user-search", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "The QBR always covers the whole book", body: "The lists respect a staff member's assigned customers. QBR generation does not — a scoped MSPAdmin still generates a document over every customer in the MSP.", wire: "gatherExecutiveBook(mspId, null)" },
-        { icon: "repeat", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "One QBR per quarter, overwritten in place", body: "Regenerating replaces the existing row. There is no draft history, no diff, and no progress stream — a UI watching for generating to become ready has to poll.", wire: "POST /msp/executive/qbr/generate { force }" }
+        { icon: "repeat", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "One QBR per quarter, overwritten in place", body: "Regenerating replaces the existing row. There is no draft history, no diff, and no progress stream — a UI watching for generating to become ready has to poll.", wire: "this action { force }" }
       ];
     } else if (mspSel === "docs" && !docSel) {
       table = {
@@ -3948,11 +3952,11 @@ class Component extends DCLogic {
         filters: [], count: this.mspDocs.length + " documents · newest first, 100 max, no pagination",
         emptyIcon: "files", emptyTitle: "No authored documents yet",
         emptyBody: "Submitting HTML starts the pipeline: store, render, upload to SharePoint, register the version, publish.",
-        emptyWire: "GET /api/msp/documents → { documents: [] }"
+        emptyWire: "this lookup → { documents: [] }"
       };
       notes = [
-        { icon: "clock", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "A 202 means the pipeline started, nothing more", body: "The run is fired without awaiting it. Neither storage, rendering, upload nor publication is confirmed by the response — the only way to see real progress is to poll the document's pipelineStatus.", wire: "202 { documentId, runId } · poll GET /api/msp/documents/:id" },
-        { icon: "repeat", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Manual publish is not idempotent", body: "The pipeline's own publish node detects an already-published document and reports alreadyPublished. The manual route has no such guard — pressing Publish twice rewrites publishedAt with a fresh timestamp.", wire: "POST /api/msp/documents/:id/publish" },
+        { icon: "clock", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "A 202 means the pipeline started, nothing more", body: "The run is fired without awaiting it. Neither storage, rendering, upload nor publication is confirmed by the response — the only way to see real progress is to poll the document's pipelineStatus.", wire: "202 { documentId, runId } · poll this lookup" },
+        { icon: "repeat", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Manual publish is not idempotent", body: "The pipeline's own publish node detects an already-published document and reports alreadyPublished. The manual action has no such guard — pressing Publish twice rewrites publishedAt with a fresh timestamp.", wire: "this action" },
         { icon: "toggle-left", color: "#34d399", tint: "rgba(52,211,153,.08)", line: "rgba(52,211,153,.24)", title: "Auto-publish is a real switch now", body: "Both submitting a document and submitting a new version accept autoPublish, off by default. Off means the pipeline stores, renders, uploads and registers the version but skips the publish step, so the document genuinely stays a draft until someone presses Publish. The field used to be accepted and ignored; that was fixed upstream.", wire: "autoPublish: false → doc_publish skipped · #2724" }
       ];
     } else if (mspSel === "connectors") {
@@ -3970,11 +3974,11 @@ class Component extends DCLogic {
         filters: [], count: this.connectors.length + " connectors · MSPAdmin to create, edit or deactivate",
         emptyIcon: "plug", emptyTitle: "No SharePoint connectors",
         emptyBody: "Without a connector, the pipeline falls back to the platform hub site — and throws if neither resolves.",
-        emptyWire: "GET /api/msp/sharepoint-connectors → []"
+        emptyWire: "this lookup → []"
       };
       notes = [
-        { icon: "archive", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Delete is a soft delete", body: "The row is only marked inactive. A document already pointed at that connector still resolves it on its next pipeline run, so deactivating one does not retroactively block anything.", wire: "DELETE /api/msp/sharepoint-connectors/:id → { isActive: false }" },
-        { icon: "key-round", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Only the Key Vault reference is ever shown", body: "No route returns a plaintext secret, and writing one is refused outright in production.", wire: "clientSecretRef only · clientSecretPlain 400 in production" }
+        { icon: "archive", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Delete is a soft delete", body: "The row is only marked inactive. A document already pointed at that connector still resolves it on its next pipeline run, so deactivating one does not retroactively block anything.", wire: "this removal → { isActive: false }" },
+        { icon: "key-round", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "Only the Key Vault reference is ever shown", body: "Nothing returns a plaintext secret, and writing one is refused outright in production.", wire: "clientSecretRef only · clientSecretPlain 400 in production" }
       ];
     } else if (isHub && !hubSel) {
       table = {
@@ -3991,10 +3995,10 @@ class Component extends DCLogic {
         filters: [], count: hubList.length + " documents · limit 50, offset paging",
         emptyIcon: "files", emptyTitle: "No generated documents for this customer",
         emptyBody: "The hub is a read-only view over documents the platform generated. Nothing here creates or edits them.",
-        emptyWire: "GET /api/msp/documents-hub?customerId=…"
+        emptyWire: "this lookup"
       };
       notes = [
-        { icon: "link", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Minting a share link destroys the previous one", body: "At most one live link exists per document. A fresh mint deletes the prior row before inserting a 32-byte token with a 30-day expiry.", wire: "POST /api/msp/documents-hub/:id/share" }
+        { icon: "link", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Minting a share link destroys the previous one", body: "At most one live link exists per document. A fresh mint deletes the prior row before inserting a 32-byte token with a 30-day expiry.", wire: "this action" }
       ];
     }
 
@@ -4020,7 +4024,7 @@ class Component extends DCLogic {
         return { n: v.n, hash: v.hash, size: v.size, pdf: v.pdf, note: v.note, status: v.status, color: tn.color, tint: tn.tint, line: tn.line };
       });
       notes = [
-        { icon: "file-text", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Version HTML is only returned one version at a time", body: "The document read and the version list both strip content. Only the single-version route returns real HTML.", wire: "GET /api/msp/documents/:id/versions/:versionId" }
+        { icon: "file-text", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Version HTML is only returned one version at a time", body: "The document read and the version list both strip content. Only the single-version action returns real HTML.", wire: "this lookup" }
       ];
     }
 
@@ -4037,7 +4041,7 @@ class Component extends DCLogic {
         { label: "SOW VALUE", value: hubSel.price, color: "#e2e8f0", font: "inherit" }
       ];
       notes = [
-        { icon: "link", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Minting a share link destroys the previous one", body: "One live link per document, 30-day expiry. Scoped SOWs can be shared at any status; everything else must be approved or delivered.", wire: "POST /api/msp/documents-hub/:id/share" }
+        { icon: "link", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Minting a share link destroys the previous one", body: "One live link per document, 30-day expiry. Scoped SOWs can be shared at any status; everything else must be approved or delivered.", wire: "this action" }
       ];
     }
 
@@ -4081,7 +4085,7 @@ class Component extends DCLogic {
           emptyWire: "GET .../scripts · requires_script findings only"
         };
         notes = [
-          { icon: "shield-check", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "A download needs a matching live finding, not just a check name", body: "Both download routes require a real requires_script finding for this exact customer and check before they resolve anything, so guessing a check name never leaks a script.", wire: "GET .../scripts/:checkKey/download" }
+          { icon: "shield-check", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "A download needs a matching live finding, not just a check name", body: "Both download actions require a real requires_script finding for this exact customer and check before they resolve anything, so guessing a check name never leaks a script.", wire: "GET .../scripts/:checkKey/download" }
         ];
       } else {
         table = {
@@ -4113,20 +4117,20 @@ class Component extends DCLogic {
       if (s.remTab === "checklist") {
         table = {
           cols: "1.7fr 2.4fr 1fr 1.2fr 1.2fr 1.4fr", minWidth: "1100px",
-          head: head(["CHECK KEY", "FINDING", "SEVERITY", "STATUS", "FIX ROUTE", "CHANGE REQUEST"]),
+          head: head(["CHECK KEY", "FINDING", "SEVERITY", "STATUS", "FIX action", "CHANGE REQUEST"]),
           rows: remBundle.checklist.map(c => ({ cursor: "default", click: () => {}, cells: [
             cell(c.key, { mono: true, color: "#93c5fd", weight: 600 }),
             cell(c.finding, { color: "#f1f5f9", weight: 600 }),
             cell(c.severity, { tone: c.severity === "critical" ? "red" : "amber" }),
             cell(c.status, { tone: c.status === "completed" ? "green" : "slate" }),
-            cell(c.route, { mono: true, color: "#cbd5e1" }),
+            cell(c.action, { mono: true, color: "#cbd5e1" }),
             cell(c.cr, { color: c.cr.indexOf("CR-") === 0 ? "#6ee7b7" : "#64748b" })
           ] })),
           filters: [], count: remBundle.checklist.length + " findings-derived items",
           emptyIcon: "list-checks", emptyTitle: "No checklist items", emptyBody: "Items are derived from real findings — an untouched tenant returns an empty array, never a placeholder.", emptyWire: "GET .../remediation/checklist"
         };
         notes = [
-          { icon: "shield-x", color: "#f87171", tint: "rgba(248,113,113,.08)", line: "rgba(248,113,113,.24)", title: "This route accepts accepted_risk with nothing behind it", body: "The s1–s30 tracker refuses that status outright. The checklist write does not, so an item can reach a liability-adjacent state with no signed risk decision, no typed name and no confirmation. Do not offer it as a status option here.", wire: "PUT .../remediation/checklist/:checkKey { status }" }
+          { icon: "shield-x", color: "#f87171", tint: "rgba(248,113,113,.08)", line: "rgba(248,113,113,.24)", title: "this accepts accepted_risk with nothing behind it", body: "The s1–s30 tracker refuses that status outright. The checklist write does not, so an item can reach a liability-adjacent state with no signed risk decision, no typed name and no confirmation. Do not offer it as a status option here.", wire: "PUT .../remediation/checklist/:checkKey { status }" }
         ];
       } else if (s.remTab === "fix") {
         table = {
@@ -4139,12 +4143,12 @@ class Component extends DCLogic {
             cell(f.ceiling, { tone: f.ceiling === "granted" ? "green" : "red" }),
             cell(f.note, { color: "#94a3b8" })
           ] })),
-          filters: [], count: remBundle.fix.length + " fix routes",
-          emptyIcon: "route", emptyTitle: "No fix routes resolved", emptyBody: "", emptyWire: "GET .../remediation/fix-routes"
+          filters: [], count: remBundle.fix.length + " fix actions",
+          emptyIcon: "action", emptyTitle: "No fix actions resolved", emptyBody: "", emptyWire: "GET .../remediation/fix-actions"
         };
         notes = [
           { icon: "lock", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The shape is the lower of two ceilings", body: "A finding can be capped by its own authored capability, and the tenant caps it again through write-back consent. A denied tenant never drops below you_must_run — the customer can always run the script themselves.", wire: "min(findingCeiling, tenantCeiling)" },
-          { icon: "eye-off", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Revealing a script needs an approved change request", body: "Zero change requests, or only pending and rejected ones, withholds the script with a 403. The gate fails closed.", wire: "POST .../fix-routes/:checkKey/reveal" }
+          { icon: "eye-off", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Revealing a script needs an approved change request", body: "Zero change requests, or only pending and rejected ones, withholds the script with a 403. The gate fails closed.", wire: "POST .../fix-actions/:checkKey/reveal" }
         ];
       } else if (s.remTab === "bypass") {
         table = {
@@ -4179,7 +4183,7 @@ class Component extends DCLogic {
           emptyIcon: "wrench", emptyTitle: "Tracker not started for this tenant", emptyBody: "Steps appear once a diagnostic run has something to remediate. An untouched tenant returns an empty array, never a placeholder.", emptyWire: "GET .../remediation-tracker"
         };
         notes = [
-          { icon: "signature", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "An operator cannot accept a risk here", body: "accepted_risk is a signed customer liability record — a risk decision row with a typed full name and an explicit confirmation. There is no decline-to-risk route on this side at all, and the tracker refuses the status directly.", wire: "400 · accepted_risk cannot be set directly" },
+          { icon: "signature", color: "#a78bfa", tint: "rgba(167,139,250,.08)", line: "rgba(167,139,250,.24)", title: "An operator cannot accept a risk here", body: "accepted_risk is a signed customer liability record — a risk decision row with a typed full name and an explicit confirmation. There is no decline-to-risk action on this side at all, and the tracker refuses the status directly.", wire: "400 · accepted_risk cannot be set directly" },
           { icon: "file-check", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The evidence pack only contains verified steps", body: "Terminal state is derived on every read, never stored: verified wins, then accepted, then outstanding. Exports of an accepted step still print the raw status string rather than a label.", wire: "GET .../evidence-pack.pdf" },
           { icon: "camera", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Screenshot evidence attaches to a step that already has state", body: "A step with no tracked status for this tenant refuses the upload and says so — set a status first. The listing side is softer: it returns an empty array rather than a 404.", wire: "POST .../remediation-tracker/steps/:stepId/evidence" }
         ];
@@ -4230,13 +4234,13 @@ class Component extends DCLogic {
             ] };
           }),
           filters: [], count: this.lcActions.length + " of 123 catalog actions · none wired to a template yet",
-          emptyIcon: "rocket", emptyTitle: "No actions available", emptyBody: "", emptyWire: "GET /api/msp/:mspId/launch-control/actions?customerId="
+          emptyIcon: "rocket", emptyTitle: "No actions available", emptyBody: "", emptyWire: "this lookup"
         };
       }
       notes = [
         { icon: "unplug", color: "#f87171", tint: "rgba(248,113,113,.08)", line: "rgba(248,113,113,.24)", title: "No catalog action is wired to a runnable template", body: "All 123 rows carry a null templateId, so every execute attempt stops at a 409 before any entitlement or tenant check matters. 102 real templates exist; nothing links them back to the catalog.", wire: "409 · This action isn't wired to a real executable template yet" },
         { icon: "shield-check", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Six independent gates stand between a click and a live write", body: "Role and MSP scope, customer access, the catalog-to-template link, a freshly recomputed entitlement, the testbed flag, then write-back enabled plus tenant consent. Every one fails closed.", wire: "403 · 404 · 409 · 402 · 403 · WriteConsentRequiredError" },
-        { icon: "undo-2", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Rollback is inert today", body: "No live template is marked reversible, so every rollback throws. The pairing logic — self-inverting toggles, the Teams membership lookup, generic replay — is real but currently unreachable.", wire: "POST /launch-control/rollback/:auditLogId" }
+        { icon: "undo-2", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Rollback is inert today", body: "No live template is marked reversible, so every rollback throws. The pairing logic — self-inverting toggles, the Teams membership lookup, generic replay — is real but currently unreachable.", wire: "this action" }
       ];
     }
 
@@ -4259,7 +4263,7 @@ class Component extends DCLogic {
             cell(e.note || "—", { color: "#94a3b8" })
           ] })),
           filters: [], count: this.eventCatalog.length + " subscribable event types",
-          emptyIcon: "webhook", emptyTitle: "Catalog unavailable", emptyBody: "", emptyWire: "GET /api/msp/webhooks/event-types"
+          emptyIcon: "webhook", emptyTitle: "Catalog unavailable", emptyBody: "", emptyWire: "this lookup"
         };
       } else {
         const rows = s.whEmpty ? [] : whList;
@@ -4273,15 +4277,15 @@ class Component extends DCLogic {
             cell(w.active ? "active" : "disabled", { tone: w.active ? "green" : "red" }),
             cell(w.disabledBy || "—", { color: "#94a3b8", sub: w.disabledAt || "" })
           ] })),
-          filters: [], count: rows.length + " endpoints for " + whTenantName,
+          filters: [], count: rows.length + " actions for " + whTenantName,
           emptyIcon: "webhook", emptyTitle: "No webhooks registered for this customer",
-          emptyBody: "Endpoints are created by the customer themselves. This console can see, inspect and disable them — it cannot register or edit one.",
-          emptyWire: "GET /api/msp/customers/:customerId/webhooks → { webhooks: [] }"
+          emptyBody: "actions are created by the customer themselves. This console can see, inspect and disable them — it cannot register or edit one.",
+          emptyWire: "this lookup → { webhooks: [] }"
         };
       }
       notes = [
-        { icon: "lock", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Operators can disable and re-enable — nothing else", body: "There is no create, edit, delete or secret-rotate route on this side. Label, URL, subscribed events and the secret stay with the customer who owns the endpoint.", wire: "POST …/disable · POST …/enable" },
-        { icon: "user-search", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "There is no cross-customer list", body: "Every route takes an explicit customerId, so a whole-book view would mean one call per customer. That is why this page opens on one customer at a time.", wire: "GET /api/msp/customers/:customerId/webhooks" }
+        { icon: "lock", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Operators can disable and re-enable — nothing else", body: "There is no create, edit, delete or secret-rotate action on this side. Label, URL, subscribed events and the secret stay with the customer who owns the action.", wire: "POST …/disable · POST …/enable" },
+        { icon: "user-search", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "There is no cross-customer list", body: "Every action takes an explicit customerId, so a whole-book view would mean one call per customer. That is why this page opens on one customer at a time.", wire: "this lookup" }
       ];
     }
 
@@ -4307,7 +4311,7 @@ class Component extends DCLogic {
       });
       notes = [
         { icon: "history", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "The delivery log is read-only, one row per attempt", body: "Retries appear as separate rows against the same event. Nothing on this surface retries, cancels or replays a delivery. Default 50 rows, capped at 200.", wire: "GET …/webhooks/:webhookId/deliveries?limit=N" },
-        { icon: "eraser", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Disable tracking is cleared the moment the owner touches isActive", body: "If the customer flips the endpoint themselves — in either direction — who disabled it, when and why are all wiped. The record only survives while the disable is the operator's own.", wire: "PATCH /api/portal/webhooks/:id { isActive }" }
+        { icon: "eraser", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Disable tracking is cleared the moment the owner touches isActive", body: "If the customer flips the action themselves — in either direction — who disabled it, when and why are all wiped. The record only survives while the disable is the operator's own.", wire: "this update { isActive }" }
       ];
     }
 
@@ -4412,7 +4416,7 @@ class Component extends DCLogic {
     })() : [];
     const lcBlocked = lcChecks.some(c => c.color === "#fca5a5");
     const RBD_DRAWERS = {
-      rbdsign: { eyebrow: "PATCH /api/msp/rbd/:rbdId/sign", eyebrowColor: "#6ee7b7", title: "Record the customer's signature", icon: "signature", color: "#34d399", line: "rgba(52,211,153,.3)", tint: "rgba(52,211,153,.1)",
+      rbdsign: { eyebrow: "this update", eyebrowColor: "#6ee7b7", title: "Record the customer's signature", icon: "signature", color: "#34d399", line: "rgba(52,211,153,.3)", tint: "rgba(52,211,153,.1)",
         warnTitle: "You are recording someone else's decision",
         warnBody: "The name, title and email captured here are the customer contact's, not yours. The IP address and signature hash are taken from what you supply, not derived from this session — an operator often records a decision made in a meeting or over the phone.",
         lines: [
@@ -4420,18 +4424,18 @@ class Component extends DCLogic {
           { label: "Writes", value: "status active, and the approver record wholesale", color: "#cbd5e1", font: "inherit" },
           { label: "Authority", value: "no ownership check runs here — the MSPAdmin role is the whole gate", color: "#fcd34d", font: "inherit" }
         ], field: "Customer contact email", ph: "approver@customer.com", cta: "Record signature" },
-      rbdrevoke: { eyebrow: "PATCH /api/msp/rbd/:rbdId/revoke", eyebrowColor: "#fca5a5", title: "Revoke this decision", icon: "ban", color: "#f87171", line: "rgba(248,113,113,.35)", tint: "rgba(248,113,113,.1)",
+      rbdrevoke: { eyebrow: "this update", eyebrowColor: "#fca5a5", title: "Revoke this decision", icon: "ban", color: "#f87171", line: "rgba(248,113,113,.35)", tint: "rgba(248,113,113,.1)",
         warnTitle: "Revoking changes the status and nothing else",
         warnBody: "The approver record, the acceptance timestamp, every line item and every captured version stay exactly as they are. The register keeps the history of what was accepted and by whom.",
         lines: [
           { label: "Allowed from", value: "active or pending signature — 409 otherwise", color: "#cbd5e1", font: "inherit" },
           { label: "Writes", value: "status revoked", color: "#cbd5e1", font: "inherit" }
         ], field: "Reason (for your own records)", ph: "Why this decision no longer stands", cta: "Revoke decision" },
-      rbdversion: { eyebrow: "POST /api/msp/rbd/:rbdId/versions", eyebrowColor: "#7dd3fc", title: "Capture a version", icon: "camera", color: "#60a5fa", line: "rgba(96,165,250,.3)", tint: "rgba(96,165,250,.1)",
+      rbdversion: { eyebrow: "this action", eyebrowColor: "#7dd3fc", title: "Capture a version", icon: "camera", color: "#60a5fa", line: "rgba(96,165,250,.3)", tint: "rgba(96,165,250,.1)",
         warnTitle: "Scope and narrative are read live, not sent",
         warnBody: "The new version records whichever line items are active right now, plus the hazard, controls and residual scores as they currently stand. Nothing in this form can widen the scope.",
         lines: [
-          { label: "Requires", value: "an existing decision — 404 otherwise", color: "#cbd5e1", font: "inherit" },
+          { label: "Requires", value: "an existing decision — refused otherwise", color: "#cbd5e1", font: "inherit" },
           { label: "Signature", value: "whether the new version needs one is computed, never chosen", color: "#94a3b8", font: "inherit" }
         ], field: "Document content note", ph: "The document shape itself is not yet formalised", cta: "Capture version" },
       rbdshare: { eyebrow: "POST .../versions/:versionUid/share", eyebrowColor: "#7dd3fc", title: "Share the current version", icon: "link", color: "#60a5fa", line: "rgba(96,165,250,.3)", tint: "rgba(96,165,250,.1)",
@@ -4444,24 +4448,24 @@ class Component extends DCLogic {
     };
     const cfgTargetName = s.cfgTarget != null ? this.tenantData[s.cfgTarget].name : "";
     const RUN_DRAWERS = {
-      offerstate: { eyebrow: "PATCH /api/msp/sales-offers/:id/state", eyebrowColor: "#fca5a5", title: "Move this offer's state", note: offerSel ? offerSel.title + " · " + this.tenantData[offerSel.tenant].name : "",
+      offerstate: { eyebrow: "this update", eyebrowColor: "#fca5a5", title: "Move this offer's state", note: offerSel ? offerSel.title + " · " + this.tenantData[offerSel.tenant].name : "",
         icon: "triangle-alert", color: "#f87171", line: "rgba(248,113,113,.35)", tint: "rgba(248,113,113,.1)",
         warnTitle: "Accepting here fulfils nothing and cannot be undone",
-        warnBody: "This route only writes the state. No statement of work is created, no charge is raised, no monitoring tier is granted — and accepted is terminal, with no delete path for a non-draft offer.",
+        warnBody: "this only writes the state. No statement of work is created, no charge is raised, no monitoring tier is granted — and accepted is terminal, with no delete path for a non-draft offer.",
         lines: [
           { label: "From draft", value: "sent · expired", color: "#cbd5e1", font: "inherit" },
           { label: "From sent", value: "accepted · rejected · expired", color: "#cbd5e1", font: "inherit" },
           { label: "Terminal", value: "accepted · rejected · expired — nothing leaves these", color: "#fcd34d", font: "inherit" },
           { label: "Side effect", value: "the customer's own live stream is notified too", color: "#94a3b8", font: "inherit" },
-          { label: "Instead", value: "use the acceptance route that actually fulfils the service class", color: "#6ee7b7", font: "inherit" }
+          { label: "Instead", value: "use the acceptance action that actually fulfils the service class", color: "#6ee7b7", font: "inherit" }
         ],
         checks: offerSel ? [
           { icon: offerSel.state === "draft" || offerSel.state === "sent" ? "circle-check" : "circle-x", color: offerSel.state === "draft" || offerSel.state === "sent" ? "#6ee7b7" : "#fca5a5", label: offerSel.state === "draft" || offerSel.state === "sent" ? "Current state " + offerSel.state + " has onward transitions" : "Current state " + offerSel.state + " is terminal — nothing can move it" },
-          { icon: "circle-x", color: "#fca5a5", label: "No fulfilment runs on this route, whichever state you pick" }
+          { icon: "circle-x", color: "#fca5a5", label: "No fulfilment runs on this, whichever state you pick" }
         ] : [],
         disabled: !!(offerSel && offerSel.state !== "draft" && offerSel.state !== "sent"),
         field: "Rejection reason (only kept on a rejection)", ph: "Why the customer declined", cta: offerSel && offerSel.state !== "draft" && offerSel.state !== "sent" ? "No transition available" : "Write the new state" },
-      collect: { eyebrow: "POST /api/msp/config-state/collections", eyebrowColor: "#7dd3fc", title: "Trigger a configuration collection", note: cfgTargetName,
+      collect: { eyebrow: "this action", eyebrowColor: "#7dd3fc", title: "Trigger a configuration collection", note: cfgTargetName,
         icon: "database", color: "#60a5fa", line: "rgba(96,165,250,.3)", tint: "rgba(96,165,250,.1)",
         warnTitle: "This reads the tenant — it never writes to it",
         warnBody: "Every call the collector makes is a read. The request starts a workflow run and returns immediately; the snapshot appears when the run seals it.",
@@ -4472,7 +4476,7 @@ class Component extends DCLogic {
           { label: "Attribution", value: "the snapshot is resolved by its own run id, never by \u201cnewest for this tenant\u201d", color: "#94a3b8", font: "inherit" }
         ],
         field: "Resource cap (optional)", ph: "leave blank to collect everything readable", cta: "Start collection" },
-      runsop: { eyebrow: "POST /api/msp/sops/:sopId/run", eyebrowColor: "#fca5a5", title: sopSel ? "Run " + sopSel.code : "Run this SOP", note: sopSel ? sopSel.title : "",
+      runsop: { eyebrow: "this action", eyebrowColor: "#fca5a5", title: sopSel ? "Run " + sopSel.code : "Run this SOP", note: sopSel ? sopSel.title : "",
         icon: "play", color: "#f87171", line: "rgba(248,113,113,.35)", tint: "rgba(248,113,113,.1)",
         warnTitle: "This fires real work against a customer's tenant",
         warnBody: sopSel && sopSel.auto === "manual" ? "This procedure has no automatable step, so the run request is refused outright." : "Automated steps execute through the workflow engine. Manual steps stay open and must be closed by hand afterwards.",
@@ -4485,7 +4489,7 @@ class Component extends DCLogic {
         field: "Target entity or variables", ph: "user@customer.com", cta: sopSel && sopSel.auto === "manual" ? "Not runnable" : "Run against a customer",
         disabled: !!(sopSel && sopSel.auto === "manual"),
         checks: sopSel ? [
-          { icon: sopSel.automated > 0 ? "circle-check" : "circle-x", color: sopSel.automated > 0 ? "#6ee7b7" : "#fca5a5", label: sopSel.automated > 0 ? sopSel.automated + " of " + sopSel.steps + " steps materialise into a workflow" : "No step carries a Graph endpoint — nothing to materialise" },
+          { icon: sopSel.automated > 0 ? "circle-check" : "circle-x", color: sopSel.automated > 0 ? "#6ee7b7" : "#fca5a5", label: sopSel.automated > 0 ? sopSel.automated + " of " + sopSel.steps + " steps materialise into a workflow" : "No step carries a Graph action — nothing to materialise" },
           { icon: "circle-check", color: "#6ee7b7", label: "You are MSPOperator or above on this MSP" },
           { icon: "circle-x", color: "#fca5a5", label: "No customer named yet — pick one before running" },
           { icon: "circle-x", color: "#fca5a5", label: "No approved change request cited, and the tenant is not a testbed" }
@@ -4499,7 +4503,7 @@ class Component extends DCLogic {
           { label: "Last step", value: "completes the cycle and spawns the next one", color: "#cbd5e1", font: "inherit" },
           { label: "Un-ticking", value: "clears the timestamp rather than leaving it stale", color: "#94a3b8", font: "inherit" }
         ], field: "Note (not sent to the API)", ph: "Anything worth recording", cta: "Tick step" },
-      extend: { eyebrow: "POST /msp/hold-windows/:holdId/extend", eyebrowColor: "#fcd34d", title: "Extend this hold window", note: holdSel ? holdSel.label : "",
+      extend: { eyebrow: "this action", eyebrowColor: "#fcd34d", title: "Extend this hold window", note: holdSel ? holdSel.label : "",
         icon: "calendar-plus", color: "#fbbf24", line: "rgba(251,191,36,.32)", tint: "rgba(251,191,36,.1)",
         warnTitle: "Extending adds days — it never rewrites the original wait",
         warnBody: "Both reminders reset and fire again against the new deadline. A closed window cannot be extended.",
@@ -4529,7 +4533,7 @@ class Component extends DCLogic {
       ? { eyebrow: "PUT .../remediation-tracker/steps/:stepId", eyebrowColor: "#7dd3fc", title: remSel ? remSel.title : "Update step", note: remSel ? remSel.id + " · " + (t ? t.name : "") : "",
           icon: "wrench", color: "#60a5fa", line: "rgba(96,165,250,.3)", tint: "rgba(96,165,250,.1)",
           warnTitle: "Writing a status resets verification",
-          warnBody: "Any write clears the step back to unverified. Marking it completed also logs retainer work against the MSP — every caller on this route is an operator by construction.",
+          warnBody: "Any write clears the step back to unverified. Marking it completed also logs retainer work against the MSP — every caller on this is an operator by construction.",
           lines: [
             { label: "Allowed", value: "not_started · completed · already_handled · not_applicable · deferred · shane_handles", color: "#cbd5e1", font: "inherit" },
             { label: "Refused", value: "accepted_risk — 400, it is the customer's own signed decision", color: "#fca5a5", font: "inherit" },
@@ -4539,23 +4543,23 @@ class Component extends DCLogic {
           checks: [], disabled: false,
           fieldLabel: "Note (not sent to the API)", fieldPlaceholder: "What you changed and why", cta: "Save status" }
       : s.drawer === "reveal"
-      ? { eyebrow: "POST .../fix-routes/:checkKey/reveal", eyebrowColor: "#fcd34d", title: "Reveal the fix script", note: revealSel ? revealSel.key : "",
+      ? { eyebrow: "POST .../fix-actions/:checkKey/reveal", eyebrowColor: "#fcd34d", title: "Reveal the fix script", note: revealSel ? revealSel.key : "",
           icon: "eye-off", color: "#fbbf24", line: "rgba(251,191,36,.32)", tint: "rgba(251,191,36,.1)",
           warnTitle: "Blocked until an approved change request exists",
           warnBody: "The gate looks for an approved change request raised against this exact tenant and check. Nothing pending or rejected counts, and an empty result withholds the script.",
           lines: [
             { label: "Shape", value: revealSel ? revealSel.shape + " · the customer runs this themselves" : "", color: "#cbd5e1", font: "inherit" },
             { label: "On success", value: "PowerShell text only — this console never executes it", color: "#cbd5e1", font: "inherit" },
-            { label: "On refusal", value: "403, with no partial disclosure", color: "#fca5a5", font: "inherit" }
+            { label: "On refusal", value: "Refused outright, with no partial disclosure", color: "#fca5a5", font: "inherit" }
           ],
           checks: [
-            { icon: "circle-check", color: "#6ee7b7", label: "Fix route resolves to you_must_run for this tenant" },
+            { icon: "circle-check", color: "#6ee7b7", label: "Fix action resolves to you_must_run for this tenant" },
             { icon: "circle-x", color: "#fca5a5", label: "No approved change request found for this check" }
           ],
           disabled: true,
           fieldLabel: "Change request to cite", fieldPlaceholder: "CR-2026-…", cta: "Blocked — raise a change first" }
       : s.drawer === "execute"
-      ? { eyebrow: "POST /msp/:mspId/launch-control/execute", eyebrowColor: "#fca5a5", title: lcSel ? lcSel.name : "Execute action", note: lcSel ? lcSel.domain + " · " + (t ? t.name : "") : "",
+      ? { eyebrow: "this action", eyebrowColor: "#fca5a5", title: lcSel ? lcSel.name : "Execute action", note: lcSel ? lcSel.domain + " · " + (t ? t.name : "") : "",
           icon: "rocket", color: "#f87171", line: "rgba(248,113,113,.35)", tint: "rgba(248,113,113,.1)",
           warnTitle: "This writes directly to the customer's Microsoft 365 tenant",
           warnBody: "The request runs the same execution path the Simulator proves, against the live tenant. Nothing about it is a preview.",
@@ -4567,7 +4571,7 @@ class Component extends DCLogic {
           checks: lcChecks, disabled: lcBlocked,
           fieldLabel: "Variables (JSON)", fieldPlaceholder: "{\"userPrincipalName\": \"user@customer.com\"}", cta: lcBlocked ? "Blocked by a precondition" : "Execute against the tenant" }
       : s.drawer === "qbr"
-      ? { eyebrow: "POST /msp/executive/qbr/generate", eyebrowColor: "#c4b5fd", title: s.qbrState === "ready" ? "Regenerate the quarterly review" : "Generate the quarterly review", note: "2026-Q3 · Shane McCaw Consulting",
+      ? { eyebrow: "this action", eyebrowColor: "#c4b5fd", title: s.qbrState === "ready" ? "Regenerate the quarterly review" : "Generate the quarterly review", note: "2026-Q3 · Shane McCaw Consulting",
           icon: "sparkles", color: "#a78bfa", line: "rgba(167,139,250,.32)", tint: "rgba(167,139,250,.1)",
           warnTitle: s.qbrState === "ready" ? "This overwrites the existing document in place" : "One document per quarter",
           warnBody: "There is one row per MSP per quarter and no version history. Forcing a regeneration replaces the current document; the previous one is not recoverable.",
@@ -4581,7 +4585,7 @@ class Component extends DCLogic {
           checks: [], disabled: false,
           fieldLabel: "Note for your own records (not sent to the API)", fieldPlaceholder: "Why this quarter is being regenerated", cta: s.qbrState === "ready" ? "Force regenerate" : "Generate" }
       : s.drawer === "whdisable"
-      ? { eyebrow: "POST /msp/customers/:id/webhooks/:id/disable", eyebrowColor: "#fca5a5", title: "Disable this endpoint", note: whSel ? whSel.label + " · " + whTenantName : "",
+      ? { eyebrow: "this action", eyebrowColor: "#fca5a5", title: "Disable this action", note: whSel ? whSel.label + " · " + whTenantName : "",
           icon: "ban", color: "#f87171", line: "rgba(248,113,113,.35)", tint: "rgba(248,113,113,.1)",
           warnTitle: "Reversible, and recorded against you",
           warnBody: "Only isActive changes. The label, URL, subscribed events and secret are untouched — they belong to the customer. Your name, the time and your reason are stored on the row.",
@@ -4591,20 +4595,20 @@ class Component extends DCLogic {
             { label: "Deliveries", value: "history is untouched; nothing is retried or cancelled", color: "#94a3b8", font: "inherit" }
           ],
           checks: [], disabled: false,
-          fieldLabel: "Reason (optional, shown to other operators)", fieldPlaceholder: "Why this endpoint is being paused", cta: "Disable endpoint" }
+          fieldLabel: "Reason (optional, shown to other operators)", fieldPlaceholder: "Why this action is being paused", cta: "Disable action" }
       : s.drawer === "whenable"
-      ? { eyebrow: "POST /msp/customers/:id/webhooks/:id/enable", eyebrowColor: "#6ee7b7", title: "Re-enable this endpoint", note: whSel ? whSel.label + " · " + whTenantName : "",
+      ? { eyebrow: "this action", eyebrowColor: "#6ee7b7", title: "Re-enable this action", note: whSel ? whSel.label + " · " + whTenantName : "",
           icon: "circle-check", color: "#34d399", line: "rgba(52,211,153,.3)", tint: "rgba(52,211,153,.1)",
           warnTitle: "Re-enabling erases the disable record",
-          warnBody: "Who disabled it, when and why are all cleared in the same update. There is no state where an endpoint is active and still carries disable tracking.",
+          warnBody: "Who disabled it, when and why are all cleared in the same update. There is no state where an action is active and still carries disable tracking.",
           lines: [
             { label: "Currently", value: whSel && whSel.disabledBy ? "disabled by " + whSel.disabledBy + " · " + whSel.disabledAt : "disabled", color: "#cbd5e1", font: "inherit" },
             { label: "Reason on record", value: whSel && whSel.reason ? whSel.reason : "none", color: "#94a3b8", font: "inherit" }
           ],
           checks: [], disabled: false,
-          fieldLabel: "Note for your own records (not sent)", fieldPlaceholder: "What was fixed", cta: "Re-enable endpoint" }
+          fieldLabel: "Note for your own records (not sent)", fieldPlaceholder: "What was fixed", cta: "Re-enable action" }
       : s.drawer === "submit"
-      ? { eyebrow: "POST /msp/documents/:id/versions", eyebrowColor: "#7dd3fc", title: "Submit a new version", note: docSel ? docSel.title : "",
+      ? { eyebrow: "this action", eyebrowColor: "#7dd3fc", title: "Submit a new version", note: docSel ? docSel.title : "",
           icon: "clock", color: "#60a5fa", line: "rgba(96,165,250,.3)", tint: "rgba(96,165,250,.1)",
           warnTitle: "The response returns before the work is done",
           warnBody: "A 202 means the pipeline run was created and started. Storage, PDF rendering, SharePoint upload, version registration and publication all happen afterwards, and none of them is confirmed by this call.",
@@ -4617,9 +4621,9 @@ class Component extends DCLogic {
           checks: [], disabled: false,
           fieldLabel: "Change note (optional)", fieldPlaceholder: "What changed in this version", cta: "Start pipeline" }
       : s.drawer === "publish"
-      ? { eyebrow: "POST /msp/documents/:id/publish", eyebrowColor: "#6ee7b7", title: "Publish this document", note: docSel ? docSel.title : "",
+      ? { eyebrow: "this action", eyebrowColor: "#6ee7b7", title: "Publish this document", note: docSel ? docSel.title : "",
           icon: "repeat", color: "#34d399", line: "rgba(52,211,153,.3)", tint: "rgba(52,211,153,.1)",
-          warnTitle: "This route is not idempotent",
+          warnTitle: "this is not idempotent",
           warnBody: "Pressing publish again on an already-active document succeeds a second time and rewrites publishedAt with a fresh timestamp. The pipeline's own publish node behaves differently — it detects and reports an already-published document.",
           lines: [
             { label: "Requires", value: "a current version — 409 if the pipeline has not registered one", color: "#cbd5e1", font: "inherit" },
@@ -4629,7 +4633,7 @@ class Component extends DCLogic {
           checks: [], disabled: false,
           fieldLabel: "Publish note (not sent to the API)", fieldPlaceholder: "Optional record for your own notes", cta: "Publish" }
       : s.drawer === "share"
-      ? { eyebrow: "POST /msp/documents-hub/:id/share", eyebrowColor: "#7dd3fc", title: "Mint a share link", note: hubSel ? hubSel.title : "",
+      ? { eyebrow: "this action", eyebrowColor: "#7dd3fc", title: "Mint a share link", note: hubSel ? hubSel.title : "",
           icon: "link", color: "#60a5fa", line: "rgba(96,165,250,.3)", tint: "rgba(96,165,250,.1)",
           warnTitle: "A new link invalidates the existing one",
           warnBody: "Any live share row for this document is deleted first, so there is only ever one working link. The new token is 32 bytes of hex and expires in 30 days.",
@@ -4641,21 +4645,21 @@ class Component extends DCLogic {
           checks: [], disabled: false,
           fieldLabel: "Recipient note (for your own records)", fieldPlaceholder: "Who this link is going to", cta: "Mint link" }
       : s.drawer === "deletion"
-      ? { eyebrow: "POST /msp/data-rights/customers/:id/deletion-request", eyebrowColor: "#fca5a5", title: "File a deletion request", note: drTarget ? drTarget.name + " · " + drTarget.email : "",
+      ? { eyebrow: "this action", eyebrowColor: "#fca5a5", title: "File a deletion request", note: drTarget ? drTarget.name + " · " + drTarget.email : "",
           icon: "scale", color: "#f87171", line: "rgba(248,113,113,.35)", tint: "rgba(248,113,113,.1)",
           warnTitle: "This records the request — it does not erase anything",
           warnBody: "One audit row and one notification email. Erasure is a manual, out-of-band process, and nothing on this surface can report its progress afterwards.",
           lines: [
             { label: "Actor recorded", value: "actorRole: admin · your name, on the customer's behalf", color: "#cbd5e1", font: "inherit" },
             { label: "Target", value: drTarget ? drTarget.email : "", color: "#93c5fd", font: "Menlo,monospace" },
-            { label: "Guard", value: "404 if the user is not linked to this customer, even inside your own MSP", color: "#cbd5e1", font: "inherit" },
+            { label: "Guard", value: "Refused if the user is not linked to this customer, even inside your own MSP", color: "#cbd5e1", font: "inherit" },
             { label: "Retention", value: "processed within 30 days; contracts and invoices held 7 years", color: "#94a3b8", font: "inherit" },
             { label: "Scope", value: "one userId per request — there is no bulk action", color: "#94a3b8", font: "inherit" }
           ],
           checks: [], disabled: false,
           fieldLabel: "Note for the audit trail (optional)", fieldPlaceholder: "Who asked, and how the request arrived", cta: "Record deletion request" }
       : s.drawer === "override"
-      ? { eyebrow: "POST /break-glass/:id/admin-override", eyebrowColor: "#fca5a5", title: "Force a credential reset", note: bgSel ? bgSel.ref + " · " + (t ? t.name : "") : "",
+      ? { eyebrow: "this action", eyebrowColor: "#fca5a5", title: "Force a credential reset", note: bgSel ? bgSel.ref + " · " + (t ? t.name : "") : "",
           icon: "key-round", color: "#f87171", line: "rgba(248,113,113,.35)", tint: "rgba(248,113,113,.1)",
           warnTitle: "This resets the break-glass account's password in the customer's tenant",
           warnBody: "The old secret is superseded, its vault copy purged, and a new one issued with fresh invites. Two overrides inside 24 hours raise a platform alert.",
@@ -4669,7 +4673,7 @@ class Component extends DCLogic {
           disabled: !overrideOk,
           fieldLabel: "Reason (required, written to the override audit)", fieldPlaceholder: "Why the invited recipients cannot complete verification", cta: overrideOk ? "Override and reissue" : "Preconditions not met" }
       : s.drawer === "bginvite"
-      ? { eyebrow: "POST /portal/break-glass/:id/invite", eyebrowColor: "#7dd3fc", title: "Invite recipients", note: bgSel ? bgSel.ref : "",
+      ? { eyebrow: "this action", eyebrowColor: "#7dd3fc", title: "Invite recipients", note: bgSel ? bgSel.ref : "",
           icon: "info", color: "#60a5fa", line: "rgba(96,165,250,.3)", tint: "rgba(96,165,250,.1)",
           warnTitle: "Control is proven by Microsoft OAuth, not by this session",
           warnBody: "Each recipient must sign in on the customer's own tenant and resolve to an active Global Administrator role. The credential is revealed once, server-rendered, then purged on acknowledgement.",
@@ -4681,7 +4685,7 @@ class Component extends DCLogic {
           checks: [], disabled: false,
           fieldLabel: "Recipient emails", fieldPlaceholder: "one@customer.com, two@customer.com", cta: "Send invites" }
       : s.drawer === "reject"
-      ? { eyebrow: "PATCH /msp/change-requests/:id", eyebrowColor: "#fca5a5", title: "Reject this change", note: activeCr ? activeCr.code + " · " + activeCr.title : "",
+      ? { eyebrow: "this update", eyebrowColor: "#fca5a5", title: "Reject this change", note: activeCr ? activeCr.code + " · " + activeCr.title : "",
           icon: "shield-x", color: "#f87171", line: "rgba(248,113,113,.35)", tint: "rgba(248,113,113,.1)",
           warnTitle: "This door does not update the approval ledger",
           warnBody: "Rejecting here writes the status and a rejected timeline event, but never calls recordRejection — pending cr_approvals rows stay pending and a routed Microsoft change never flips to declined_risk.",
@@ -4692,7 +4696,7 @@ class Component extends DCLogic {
             { label: "m365_change_routings", value: "not updated", color: "#fca5a5", font: "inherit" }
           ],
           fieldLabel: "Reason (recorded on the timeline event)", fieldPlaceholder: "Why this change is not going ahead", cta: "Reject change" }
-      : { eyebrow: "POST /change-requests/:id/rollback", eyebrowColor: "#c4b5fd", title: "Raise a rollback", note: activeCr ? activeCr.code + " · " + activeCr.title : "",
+      : { eyebrow: "this action", eyebrowColor: "#c4b5fd", title: "Raise a rollback", note: activeCr ? activeCr.code + " · " + activeCr.title : "",
           icon: "undo-2", color: "#a78bfa", line: "rgba(167,139,250,.35)", tint: "rgba(167,139,250,.1)",
           warnTitle: "This raises an inverse change request — it does not revert the tenant",
           warnBody: "The inverse CR swaps the pre-change snapshot and proposed payload, copies the rollback snippet, and seeds its own approvals. The original only flips to rolled_back once the inverse execution is verified.",
@@ -4749,10 +4753,10 @@ class Component extends DCLogic {
       };
       const act = (icon, tone, title, body, wire, who) => Object.assign({ icon, title, body, wire, who }, T[tone]);
       mspActions = [
-        act("pencil", "blue", "Edit profile", "Name, domain, testbed flag, primary contact and internal notes. Status is deliberately not part of this form — suspend and reactivate are the only sanctioned way to change it.", "PATCH /admin/msps/:id", "PlatformAdmin"),
-        act("user-round-cog", "amber", "Impersonate this MSP", "Opens the portal in a new tab as this MSP's MSPAdmin. The session expires in 30 minutes.", "POST /admin/msps/:id/impersonate", "PlatformAdmin"),
-        act("ban", "red", "Suspend", "Every user under this MSP loses portal access immediately. Billing continues. The button is armed before it fires.", "POST /admin/msps/:id/suspend", "PlatformAdmin"),
-        act("rotate-ccw", "slate", "Reactivate", "Only offered while the record is suspended, and it restores portal access for every user under it.", "POST /admin/msps/:id/reactivate", "PlatformAdmin")
+        act("pencil", "blue", "Edit profile", "Name, domain, testbed flag, primary contact and internal notes. Status is deliberately not part of this form — suspend and reactivate are the only sanctioned way to change it.", "this update", "PlatformAdmin"),
+        act("user-round-cog", "amber", "Impersonate this MSP", "Opens the portal in a new tab as this MSP's MSPAdmin. The session expires in 30 minutes.", "this action", "PlatformAdmin"),
+        act("ban", "red", "Suspend", "Every user under this MSP loses portal access immediately. Billing continues. The button is armed before it fires.", "this action", "PlatformAdmin"),
+        act("rotate-ccw", "slate", "Reactivate", "Only offered while the record is suspended, and it restores portal access for every user under it.", "this action", "PlatformAdmin")
       ];
       mspAgree = [
         { version: "v3", state: "checkbox confirmed", when: "2 Aug 2026", tone: "#6ee7b7", current: true },
@@ -4768,7 +4772,7 @@ class Component extends DCLogic {
 
       notes = [
         { icon: "layers", color: "#60a5fa", tint: "rgba(96,165,250,.08)", line: "rgba(96,165,250,.24)", title: "Two Active Directory surfaces, and they are not the same", body: "The original admin-panel pane is read-only apart from suspend and reactivate. The AdminV2 object canvas adds profile editing, MSP-level impersonation, the primary-contact and notes fields, a real per-MSP audit trail and the RBAC org-roles panel. This screen mirrors the AdminV2 set, which is the larger one.", wire: "adminv2/screens/ad/canvases/AdMspCanvas.tsx" },
-        { icon: "shield", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Nothing on this screen is editable from the operator console", body: "Every write above is a PlatformAdmin action in the admin panel, against the same msp-admin-settings endpoints. An MSPAdmin sees the record and the audit trail, and can accept an agreement version — nothing else.", wire: "MSPAdmin · read · agreement acceptance only" },
+        { icon: "shield", color: "#fbbf24", tint: "rgba(251,191,36,.08)", line: "rgba(251,191,36,.24)", title: "Nothing on this screen is editable from the operator console", body: "Every write above is a PlatformAdmin action in the admin panel, against the same msp-admin-settings actions. An MSPAdmin sees the record and the audit trail, and can accept an agreement version — nothing else.", wire: "MSPAdmin · read · agreement acceptance only" },
         { icon: "gauge", color: "#94a3b8", tint: "rgba(148,163,184,.06)", line: "rgba(148,163,184,.18)", title: "Entitlements are derived, never stored per MSP", body: "Tenant allowance, AI credit allowance and the overage rate all resolve from the subscription tier on every read. Changing them means changing the tier.", wire: "derived from the subscription tier" }
       ];
     }
@@ -4822,7 +4826,7 @@ class Component extends DCLogic {
       contextPath: isTenantHome ? t.name + " · Tenant control" : isWh ? "Webhooks · " + whTenantName : mspSel ? "Shane McCaw Consulting · " + (this.mspPages.find(x => x.id === mspSel) || {}).label : t ? t.domain + " · " + (this.childPages.find(x => x.id === page) || {}).label : "Directory root",
       crumbs,
 
-      pageEyebrow: isWh ? (whSel ? "WEBHOOK ENDPOINT · " + whTenantName : "WEBHOOKS · OPERATOR VIEW")
+      pageEyebrow: isWh ? (whSel ? "WEBHOOK action · " + whTenantName : "WEBHOOKS · OPERATOR VIEW")
         : isDiag ? (s.diagTab === "findings" && diagSel ? "DIAGNOSTIC RUN · " + diagSel.status.toUpperCase() : "DIAGNOSTICS")
         : isRem ? "REMEDIATION TRACKING"
         : isLc ? "M365 LAUNCH CONTROL · STAGING ONLY"
@@ -4856,9 +4860,9 @@ class Component extends DCLogic {
         : isTenantHome ? t.name
         : mspSel ? ((this.mspPages.find(x => x.id === mspSel) || {}).label || "")
         : !t ? "Managed Tenants" : isHub ? (hubSel ? hubSel.title : "Documents") : isTeam ? "Team" : isDr ? "Data rights" : isBg ? (showBgDetail ? bgSel.ref : "Break-glass") : ccPage ? (showCrDetail ? activeCr.title : ccChild.label) : ((this.childPages.find(x => x.id === page) || this.mspPages.find(x => x.id === mspSel) || {}).label || ""),
-      pageNote: isWh ? (whSel ? "Customer-owned endpoint. You can disable and re-enable it; everything else stays with the owner." : "Outbound endpoints a customer registered. One customer at a time — there is no cross-customer list.")
+      pageNote: isWh ? (whSel ? "Customer-owned action. You can disable and re-enable it; everything else stays with the owner." : "Outbound actions a customer registered. One customer at a time — there is no cross-customer list.")
         : isDiag ? (s.diagTab === "findings" && diagSel ? "Findings from " + diagSel.id + " · " + diagSel.pkg + " · " + diagSel.counts : "Every diagnostic run against " + (t ? t.name : "this tenant") + ", what it could read, and what it found.")
-        : isRem ? "The thirty-step tracker and the findings-derived checklist for " + (t ? t.name : "this tenant") + ", with the fix route each finding actually has."
+        : isRem ? "The thirty-step tracker and the findings-derived checklist for " + (t ? t.name : "this tenant") + ", with the fix action each finding actually has."
         : isLc ? "Real Microsoft 365 write actions against " + (t ? t.name : "this tenant") + ". Availability is recomputed server-side on every execute."
         : isSales ? "Engine-generated offers, and the branded bundles you compose from platform monitoring packages."
         : isCfg ? "What each tenant's configuration actually looks like, what changed, and the references you measure against."
@@ -4915,7 +4919,7 @@ class Component extends DCLogic {
       isBgScreen: isBg && !emptyMode,
       isTeam: isTeam && emptyMode,
       isTeamScreen: isTeam && !emptyMode,
-      showStates: isTeam || !!ccPage || isExec || packStateScreen || (isWh && !whSel && s.whTab === "endpoints"),
+      showStates: isTeam || !!ccPage || isExec || packStateScreen || (isWh && !whSel && s.whTab === "actions"),
       stateChips: (isExec
         ? [{ id: false, label: "Populated" }, { id: true, label: "Empty" }].map(o => ({
             label: o.label, title: o.id ? "Zero health snapshots and zero open offers today" : "Design data",
@@ -4934,7 +4938,7 @@ class Component extends DCLogic {
           }))
         : packStateScreen
         ? [{ id: false, label: "Populated" }, { id: true, label: "Empty" }].map(o => ({
-            label: o.label, title: o.id ? "What this screen's own routes return today" : "Design data",
+            label: o.label, title: o.id ? "What this screen's own actions return today" : "Design data",
             bg: o.id === emptyMode ? "rgba(37,99,235,.2)" : "transparent",
             border: o.id === emptyMode ? "rgba(96,165,250,.35)" : "rgba(148,163,184,.18)",
             fg: o.id === emptyMode ? "#bfdbfe" : "#64748b",
@@ -5121,7 +5125,7 @@ class Component extends DCLogic {
       pdfBg: "transparent",
       pdfCursor: pdfAllowed ? "pointer" : "not-allowed",
       pdfOpacity: pdfAllowed ? "1" : ".6",
-      pdfTitle: pdfAllowed ? "Rendered on every request, never cached" : "403 — only approved or delivered documents can be downloaded",
+      pdfTitle: pdfAllowed ? "Rendered on every request, never cached" : "Only approved or delivered documents can be downloaded",
       pdfHint: pdfAllowed ? "Rendered live on every request" : "Blocked at this status",
 
       notes,
@@ -5207,7 +5211,7 @@ class Component extends DCLogic {
             select: () => this.setState({ runTab: x.id, runSel: null, holdSel: null })
           }))
         : isRem
-        ? [{ id: "tracker", label: "Tracker" }, { id: "checklist", label: "Checklist" }, { id: "fix", label: "Fix routes" }, { id: "bypass", label: "Bypass resolutions" }].map(x => ({
+        ? [{ id: "tracker", label: "Tracker" }, { id: "checklist", label: "Checklist" }, { id: "fix", label: "Fix actions" }, { id: "bypass", label: "Bypass resolutions" }].map(x => ({
             label: x.label,
             bg: s.remTab === x.id ? "rgba(37,99,235,.18)" : "transparent",
             border: s.remTab === x.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
@@ -5223,7 +5227,7 @@ class Component extends DCLogic {
             select: () => this.setState({ lcTab: x.id })
           }))
         : isWh
-        ? [{ id: "endpoints", label: "Endpoints" }, { id: "catalog", label: "Event catalog" }].map(x => ({
+        ? [{ id: "actions", label: "actions" }, { id: "catalog", label: "Event catalog" }].map(x => ({
             label: x.label,
             bg: s.whTab === x.id ? "rgba(37,99,235,.18)" : "transparent",
             border: s.whTab === x.id ? "rgba(96,165,250,.3)" : "rgba(148,163,184,.18)",
@@ -5310,7 +5314,7 @@ class Component extends DCLogic {
       closeDrawer: () => this.setState({ drawer: null, result: null }),
       isInviteDrawer: s.drawer === "invite",
       isDangerDrawer: s.drawer === "danger",
-      drawerEyebrow: s.drawer === "invite" ? "POST /msp/customers/:id/team/invite" : (s.drawer === "danger" ? "HIGH-PRIVILEGE ACTIONS" : confirmSpec.eyebrow),
+      drawerEyebrow: s.drawer === "invite" ? "this action" : (s.drawer === "danger" ? "HIGH-PRIVILEGE ACTIONS" : confirmSpec.eyebrow),
       drawerEyebrowColor: s.drawer === "invite" ? "#7dd3fc" : (s.drawer === "danger" ? "#fca5a5" : confirmSpec.eyebrowColor),
       drawerTitle: s.drawer === "invite" ? "Invite a teammate" : (s.drawer === "danger" ? (du ? du.name : "") : confirmSpec.title),
       drawerNote: s.drawer === "invite" ? "Creates a CustomerUser on " + (t ? t.name : "this tenant") + " and emails a 72-hour setup link." : (s.drawer === "danger" ? (du ? du.email : "") : confirmSpec.note),
@@ -5351,7 +5355,7 @@ class Component extends DCLogic {
       whDisabledBy: whSel && whSel.disabledBy ? whSel.disabledBy : "",
       whDisabledAt: whSel && whSel.disabledAt ? whSel.disabledAt : "",
       whReason: whSel && whSel.reason ? whSel.reason : "No reason recorded.",
-      whToggleLabel: whSel && whSel.active ? "Disable endpoint" : "Re-enable endpoint",
+      whToggleLabel: whSel && whSel.active ? "Disable action" : "Re-enable action",
       whToggleIcon: whSel && whSel.active ? "ban" : "circle-check",
       whToggleColor: whSel && whSel.active ? "#fca5a5" : "#6ee7b7",
       whToggleLine: whSel && whSel.active ? "rgba(248,113,113,.32)" : "rgba(52,211,153,.3)",

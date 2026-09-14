@@ -49,7 +49,7 @@
 
       <div style="border:1px solid rgba(251,191,36,.28);border-radius:10px;background:rgba(251,191,36,.07);padding:13px;display:flex;flex-direction:column;gap:6px">
         <span style="font-size:11.5px;font-weight:700;color:#fbbf24">What the two actions do against a record class that is not registered</span>
-        <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">For a POA&amp;M row, approving purges and restoring restores — both succeed. For any other record class (a hand-inserted risk-decision row, say) the purge first looks up the record class, finds nothing registered, and throws a plain error the route cannot map, so the operator gets an unexplained server failure. Restoring fails at exactly the same lookup. POA&amp;Ms are the only class registered today.</span>
+        <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">For a POA&amp;M row, approving purges and restoring restores — both succeed. For any other record class (a hand-inserted risk-decision row, say) the purge first looks up the record class, finds nothing registered, and throws a plain error the system cannot map, so the operator gets an unexplained server failure. Restoring fails at exactly the same lookup. POA&amp;Ms are the only class registered today.</span>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(148,163,184,.12);padding-top:14px">
@@ -64,7 +64,7 @@
   <sc-if value="{{ isShape }}" hint-placeholder-val="{{ false }}">
     <div style="border:1px solid rgba(251,191,36,.3);border-radius:12px;background:rgba(251,191,36,.07);padding:13px;display:flex;flex-direction:column;gap:5px;min-width:0">
       <span style="font-size:11.5px;font-weight:700;color:#fbbf24">Illustrative rows</span>
-      <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">Every row below is drawn from the shape the routes return, carrying the one record class that is really registered — POA&amp;Ms. No customer has produced a row in this environment yet; this is what the queue holds once one asks for an early purge.</span>
+      <span style="font-size:11.5px;color:#cbd5e1;text-wrap:pretty">Every row below is drawn from the shape the actions return, carrying the one record class that is really registered — POA&amp;Ms. No customer has produced a row in this environment yet; this is what the queue holds once one asks for an early purge.</span>
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:14px;align-items:start;min-width:0">
@@ -190,28 +190,15 @@
 
         <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
           <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
-            <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
             <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
           </div>
         </sc-if>
       </div>
     </div>
   </sc-if>
-
-  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these three routes do and don't give this screen</span>
-      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-        <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-          <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-          <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-        </div>
-      </sc-for>
-    </div>
-  </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
 const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
 const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
@@ -291,7 +278,6 @@ class Component extends DCLogic {
       showOwnHeader: !(this.props.embedded ?? false),
       showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
 
       isLive: live, isShape: !live,
       toggleShape: () => this.setState(s => ({ view: s.view === "live" ? "shape" : "live", result: null })),
@@ -299,8 +285,8 @@ class Component extends DCLogic {
 
       blockers: [
         { label: "RECORD CLASSES REGISTERED", value: "One — POA&Ms", note: "Plans of action plugged into the retention registry. Every other class, risk decisions included, is still unregistered." },
-        { label: "CALLERS OF SOFT DELETE", value: "Two routes", note: "Deleting a POA&M from this console or from the customer portal now starts a holding period and writes the ledger row." },
-        { label: "CALLERS OF THE REQUEST", value: "One route", note: "The customer portal's request for early purge is what moves a deleted POA&M into the pending state this queue filters on." }
+        { label: "CALLERS OF SOFT DELETE", value: "Two actions", note: "Deleting a POA&M from this console or from the customer portal now starts a holding period and writes the ledger row." },
+        { label: "CALLERS OF THE REQUEST", value: "One action", note: "The customer portal's request for early purge is what moves a deleted POA&M into the pending state this queue filters on." }
       ],
 
       listCaption: pending.length + " pending of " + st.rows.length + " shown",
@@ -343,8 +329,8 @@ class Component extends DCLogic {
 
       notes: [
         { dot: "#60a5fa", text: "The queue is reachable now: POA&Ms are a registered record class, both this console and the customer portal call soft-delete for them, and the portal's early-purge request is the producer. It is empty here only because no customer has exercised that path yet — a quiet state, no longer a structural one." },
-        { dot: "#f87171", text: "Approving purges inside the same request. There is no staged approval, no undo and no confirmation step in the route, so whatever guard exists has to be in the screen." },
-        { dot: "#fbbf24", text: "For any record class other than POA&Ms, both approve and restore still fail at the record-class lookup with a plain error the route cannot map, so the operator sees an unexplained server failure rather than the real reason. One class is registered today." },
+        { dot: "#f87171", text: "Approving purges inside the same request. There is no staged approval, no undo and no confirmation step in the system, so whatever guard exists has to be in the screen." },
+        { dot: "#fbbf24", text: "For any record class other than POA&Ms, both approve and restore still fail at the record-class lookup with a plain error the system cannot map, so the operator sees an unexplained server failure rather than the real reason. One class is registered today." },
         { dot: "#fbbf24", text: "The approval field is read strictly: anything other than the exact boolean true is treated as a decline, with no validation error. A malformed approval silently becomes the opposite decision." },
         { dot: "#fbbf24", text: "Restore requires a reason, but a missing one arrives as an empty string and is only caught deeper in, so the refusal surfaces as a late error rather than a form validation." },
         { dot: "#fbbf24", text: "Restoring attaches a fixed, hardcoded note to the record rather than the operator's own words. The reason typed here goes to the restore, not to the declined request." },

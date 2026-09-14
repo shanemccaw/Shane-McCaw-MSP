@@ -13,6 +13,13 @@ The design covers 56 screens across two trees, plus the shell they all mount in:
 - **Operations (MSP-wide)** — 9 cross-tenant pages: MSP settings, Executive view, Activity timeline, Configuration State, Sales, Scope & SLA, SOPs, Documents, SharePoint connectors — plus the eleven contract-pack mounts listed under "Where they sit in the tree".
 - **Contract-pack screens** — 17 further surfaces built one-to-one from the UI contract packs in `docs/msp-console/` (screens 38–50 and 63–66). Each was written from a pack that had been extracted from the real route code, so each states on itself what its routes can and cannot do. **Sixteen of the seventeen are mounted in the console navigation** (see "Where they sit in the tree" below); Authentication is standalone, because sign-in happens before the shell exists.
 
+## Changes since the previous handoff (2026-09-15)
+
+Read this first if you already hold an earlier bundle.
+
+- **All in-app developer documentation was stripped from the console for a clean operator-facing UI.** Every screen previously carried a footer panel ("What these routes do and don't give this screen" / "CONTRACT NOTES" / "STATE OF THE BACKEND"), a raw response-code label next to result banners (e.g. `200 · ...`, `409 · ...`), and inline route/endpoint mentions in caveat copy ("the dedicated route", `PATCH /msp/...`). All of that has been removed from what the operator sees. **The underlying findings are still true and still matter for implementation** — they are simply no longer printed on the screen. This document (the per-screen tables below) and `github.md`'s contract-pack notes are now the only place those caveats live; read them before wiring a screen to its real routes, because the guard/warning the UI used to state out loud may now only be implicit in the layout (e.g. a disabled button with no visible reason).
+- The "Data states" and "contract-pack screens" sections below described the notes panel and route labels as load-bearing on-screen content. That is no longer accurate for the current screens — treat those paragraphs as describing what informed the design, not what is currently painted.
+
 ## Changes since the previous handoff (2026-09-14)
 
 Read this first if you already hold an earlier bundle.
@@ -296,7 +303,7 @@ The shell's only state is the selection plus which nodes are expanded. It holds 
 
 ### 38–50 and 63–66. Contract-pack screens
 
-These seventeen were each built from one contract pack in `docs/msp-console/` — documents extracted from the route code, listing every wire field, every real enum, the honest-empty state, and the gaps. **The notes panel at the foot of each of these screens is not filler.** It records what the routes behind that screen genuinely cannot do, and several layout decisions exist only because of those limits. Where a screen holds a guard the server does not, that is called out below; do not quietly drop it in the rebuild.
+These seventeen were each built from one contract pack in `docs/msp-console/` — documents extracted from the route code, listing every wire field, every real enum, the honest-empty state, and the gaps. **Each screen used to carry a notes panel at its foot recording what the routes behind it genuinely cannot do; that panel has since been removed from the UI for a cleaner operator-facing surface.** The underlying findings are not filler — several layout decisions exist only because of those limits — and now live only in the per-screen table below and in `github.md`. Where a screen holds a guard the server does not, that is called out below; do not quietly drop it in the rebuild.
 
 ### Where they sit in the tree
 
@@ -414,7 +421,7 @@ Five states are designed for every list: Ready, Loading, Empty, 403, 404.
 
 - **Loading** — skeleton rows inside the normal card, animating with `smcPulse`.
 - **Empty** — centred 44px icon tile (`rgba(96,165,250,.1)` on `rgba(96,165,250,.22)`, radius 13) above a short explanation. Copy is specific to the screen, never "No data".
-- **403 / 404** — an advisory panel stating the scope rule that caused it, plus the route. These matter: several of the console's lists legitimately 403 for a PlatformAdmin session because scope resolves from the session's MSP claim rather than a route parameter.
+- **Access denied / Not found** — an advisory panel stating the scope rule that caused it, in plain language, with no status code or route path printed. These matter: several of the console's lists legitimately fail this way for a PlatformAdmin session, because scope resolves from the session's MSP claim rather than a parameter passed to the request.
 
 ### Hover and focus
 
@@ -452,7 +459,7 @@ Named explicitly in the design:
 
 `github.md` in this bundle records the repository, branch, last sync and a screen-to-source map. It also carries a **contract-pack inventory**: all 38 packs under `docs/msp-console/` with the screen each maps to and the pack's blob sha, so a later session can tell which packs changed upstream.
 
-The thirteen contract-pack screens (38–50) each name their own routes in the UI, in the same load-bearing way: the route path and its real response are printed next to the control that calls it, and the route log on several of them shows the exact status and message the server returned.
+The thirteen contract-pack screens (38–50) were originally built to name their own routes in the UI this same way — the route path and its real response printed next to the control that calls it, and a log on several of them showing the exact status and message the server returned. That labelling has since been removed from the visible screens; the route each control calls is recorded instead in the per-screen table above and in `github.md`'s screen map.
 
 ## Assets
 

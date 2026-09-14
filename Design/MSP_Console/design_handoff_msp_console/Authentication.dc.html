@@ -51,7 +51,7 @@ input::placeholder{color:#475569}
         </span>
       </div>
 
-      <!-- Login — POST /api/auth/login -->
+      <!-- Login — this action -->
       <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
         <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
           <span style="font-size:16px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Sign in to the console</span>
@@ -94,7 +94,7 @@ input::placeholder{color:#475569}
         </div>
       </sc-if>
 
-      <!-- MFA challenge — POST /api/auth/mfa/verify · /passkey/verify-authentication · /bypass -->
+      <!-- MFA challenge — this action · /passkey/verify-authentication · /bypass -->
       <sc-if value="{{ isChallenge }}" hint-placeholder-val="{{ false }}">
         <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
           <span style="display:flex;flex-direction:column;gap:4px">
@@ -127,7 +127,7 @@ input::placeholder{color:#475569}
           </sc-if>
 
           <button onClick="{{ submitChallenge }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:38px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">{{ challengeCta }}</button>
-          <span style="font-size:11px;color:#64748b;text-wrap:pretty">MFA session token expires 10 minutes after the password step. 20 attempts per IP per 15 minutes across every verify route.</span>
+          <span style="font-size:11px;color:#64748b;text-wrap:pretty">MFA session token expires 10 minutes after the password step. 20 attempts per IP per 15 minutes across every verify action.</span>
         </div>
       </sc-if>
 
@@ -149,7 +149,7 @@ input::placeholder{color:#475569}
           <sc-if value="{{ isPending }}" hint-placeholder-val="{{ false }}">
             <div style="border:1px solid rgba(251,191,36,.25);border-radius:8px;background:rgba(251,191,36,.08);padding:11px 12px;display:flex;flex-direction:column;gap:6px">
               <span style="font-size:11.5px;font-weight:700;color:#fbbf24">mfaSetupPending: true</span>
-              <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">The session is real and usable, but requireAuth refuses every route except the MFA enrollment endpoints until a method is enrolled. The flag is recomputed from live enrollment rows on each refresh, so it clears itself.</span>
+              <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">The session is real and usable, but requireAuth refuses every action except the MFA enrollment actions until a method is enrolled. The flag is recomputed from live enrollment rows on each refresh, so it clears itself.</span>
               <button onClick="{{ goEnroll }}" style="align-self:flex-start;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Set up two-factor</button>
             </div>
           </sc-if>
@@ -157,7 +157,7 @@ input::placeholder{color:#475569}
         </div>
       </sc-if>
 
-      <!-- Forgot password — POST /api/auth/forgot-password -->
+      <!-- Forgot password — this action -->
       <sc-if value="{{ isForgot }}" hint-placeholder-val="{{ false }}">
         <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
           <span style="display:flex;flex-direction:column;gap:4px">
@@ -191,7 +191,7 @@ input::placeholder{color:#475569}
             </div>
           </sc-if>
           <div style="border-top:1px solid rgba(148,163,184,.12);padding-top:13px;display:flex;flex-direction:column;gap:9px">
-            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">THE LINK'S LANDING PAGE — POST /auth/reset-password</span>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">THE LINK'S LANDING PAGE — this action</span>
             <label style="display:flex;flex-direction:column;gap:5px">
               <span style="font-size:11px;font-weight:600;color:#94a3b8">New password</span>
               <input type="password" value="{{ newPassword }}" onChange="{{ setNewPassword }}" placeholder="At least 8 characters" style="height:36px;padding:0 11px;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:rgba(2,6,23,.6);color:#f1f5f9;font-size:13px;font-family:inherit;outline:none;min-width:0" />
@@ -210,7 +210,7 @@ input::placeholder{color:#475569}
         </div>
       </sc-if>
 
-      <!-- Change MFA — GET/DELETE /api/auth/mfa/* -->
+      <!-- Change MFA — GET/this removal -->
       <sc-if value="{{ isMfa }}" hint-placeholder-val="{{ false }}">
         <div style="display:flex;flex-direction:column;gap:15px;min-width:0">
           <span style="display:flex;flex-direction:column;gap:4px">
@@ -245,7 +245,7 @@ input::placeholder{color:#475569}
             <div style="border:1px solid rgba(96,165,250,.3);border-radius:10px;background:rgba(37,99,235,.07);padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0">
               <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Enrol an authenticator app</span>
               <div style="display:flex;gap:13px;flex-wrap:wrap;align-items:flex-start">
-                <span style="width:104px;height:104px;border-radius:8px;border:1px dashed rgba(148,163,184,.35);background:rgba(2,6,23,.5);display:flex;align-items:center;justify-content:center;text-align:center;font-size:10px;color:#64748b;padding:8px;line-height:1.4">QR returned by the route as a data URL</span>
+                <span style="width:104px;height:104px;border-radius:8px;border:1px dashed rgba(148,163,184,.35);background:rgba(2,6,23,.5);display:flex;align-items:center;justify-content:center;text-align:center;font-size:10px;color:#64748b;padding:8px;line-height:1.4">QR returned by the system as a data URL</span>
                 <span style="display:flex;flex-direction:column;gap:6px;min-width:170px;flex:1">
                   <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">MANUAL SECRET</span>
                   <span style="font-size:12.5px;font-family:Menlo,monospace;color:#f1f5f9;word-break:break-all">{{ totpSecret }}</span>
@@ -292,7 +292,7 @@ input::placeholder{color:#475569}
           </sc-if>
 
           <div style="border-top:1px solid rgba(148,163,184,.12);padding-top:13px;display:flex;flex-direction:column;gap:9px">
-            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">OPERATOR SIDE — POST /auth/mfa/admin/reset/:userId</span>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">OPERATOR SIDE — this action</span>
             <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">A PlatformAdmin can clear one method or all of them for a locked-out account. A full reset also deletes pending challenges and every unused emergency bypass code; used codes stay as the record of a real sign-in. The target gets the "mfa-reset" email and an admin_mfa_reset audit entry names the actor.</span>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button onClick="{{ adminResetAll }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.1);color:#f87171;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Reset all methods</button>
@@ -302,7 +302,7 @@ input::placeholder{color:#475569}
         </div>
       </sc-if>
 
-      <!-- Logout — POST /api/auth/logout + /auth/sessions -->
+      <!-- Logout — this action + /auth/sessions -->
       <sc-if value="{{ isLogout }}" hint-placeholder-val="{{ false }}">
         <div style="display:flex;flex-direction:column;gap:15px;min-width:0">
           <span style="display:flex;flex-direction:column;gap:4px">
@@ -344,7 +344,7 @@ input::placeholder{color:#475569}
           </sc-if>
 
           <div style="border-top:1px solid rgba(148,163,184,.12);padding-top:13px;display:flex;flex-direction:column;gap:6px">
-            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">LOGIN HISTORY — GET /auth/login-history</span>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">LOGIN HISTORY — this lookup</span>
             <sc-for list="{{ history }}" as="h" hint-placeholder-count="3">
               <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
                 <span style="font-size:11px;font-family:Menlo,monospace;color:{{ h.color }};min-width:62px">{{ h.method }}</span>
@@ -356,10 +356,10 @@ input::placeholder{color:#475569}
       </sc-if>
     </div>
 
-    <!-- ─── Route log + the branches this screen is answerable for ──────── -->
+    <!-- ─── action log + the branches this screen is answerable for ──────── -->
     <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
       <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-        <span style="font-size:12px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9">Route log</span>
+        <span style="font-size:12px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9">action log</span>
         <sc-if value="{{ hasLog }}" hint-placeholder-val="{{ false }}">
           <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
             <sc-for list="{{ log }}" as="l" hint-placeholder-count="2">
@@ -374,26 +374,14 @@ input::placeholder{color:#475569}
           </div>
         </sc-if>
         <sc-if value="{{ noLog }}" hint-placeholder-val="{{ true }}">
-          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Nothing called yet. Every button on the left names the route it hits and what came back.</span>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Nothing called yet. Every button on the left names the system it hits and what came back.</span>
         </sc-if>
       </div>
-
-      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-          <span style="font-size:12px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9">What the routes do and don't give this screen</span>
-          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-            </div>
-          </sc-for>
-        </div>
-      </sc-if>
     </div>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
 const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
 const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
@@ -411,7 +399,7 @@ const SCENARIOS = [
 const FORGOT_CASES = [
   ["normal", "Has a password", GREEN, "A password_reset_tokens row is written and the reset email goes out. The link is good for 1 hour."],
   ["setup", "Passwordless, entitled", AMBER, "client_services has a row, so this is a real buyer mid-setup: an account_setup_tokens row is written instead and the setup email goes out, good for 72 hours."],
-  ["prospect", "Passwordless, no purchase", RED, "A consent-time prospect with nothing in client_services. The route refuses to issue a setup link and logs the refusal — the caller still sees the same { ok: true }."],
+  ["prospect", "Passwordless, no purchase", RED, "A consent-time prospect with nothing in client_services. the system refuses to issue a setup link and logs the refusal — the caller still sees the same { ok: true }."],
   ["missing", "No such account", GREY, "The lookup returns nothing and the handler returns early. No email, no row, no timing difference — the 200 was already sent before the lookup ran."]
 ];
 
@@ -454,7 +442,7 @@ class Component extends DCLogic {
   });
 
   submitLogin = () => {
-    const p = "POST /api/auth/login";
+    const p = "this action";
     if (!this.state.email || !this.state.password) {
       this.setState({ loginErr: "missing" });
       return this.push(400, p, "email and password are required. The field-level check runs before the account lookup, so a blank form never touches the users table.");
@@ -483,7 +471,7 @@ class Component extends DCLogic {
     const pending = this.state.gate;
     this.setState({ screen: "session", sessionKind: pending ? "pending" : "full", loginErr: null });
     this.push(200, p, pending
-      ? "Session issued with mfaSetupPending true — real tokens, but requireAuth refuses everything except the enrollment routes until a method exists."
+      ? "Session issued with mfaSetupPending true — real tokens, but requireAuth refuses everything except the enrollment actions until a method exists."
       : "Full session: 15-minute access token, 7-day sliding refresh cookie scoped to /api/auth, plus an AUTH_LOGIN event and audit row.");
   };
 
@@ -491,47 +479,47 @@ class Component extends DCLogic {
     const m = this.state.method;
     if (this.state.admin && (m === "totp" || m === "sms")) {
       this.setState({ challengeMsg: "adminBlocked" });
-      return this.push(403, "POST /api/auth/mfa/verify", "\"Admins must use passkey authentication only\" — the role is re-read from the users row here, after the mfaToken is verified.");
+      return this.push(403, "this action", "\"Admins must use passkey authentication only\" — the role is re-read from the users row here, after the mfaToken is verified.");
     }
     if (m === "passkey") {
       this.setState({ screen: "session", sessionKind: "full", challengeMsg: null });
-      return this.push(200, "POST /api/auth/mfa/passkey/verify-authentication", "Signature verified against the stored credential, the counter is advanced and the challenge row deleted. Full session issued with loginMethod passkey.");
+      return this.push(200, "this action", "Signature verified against the stored credential, the counter is advanced and the challenge row deleted. Full session issued with loginMethod passkey.");
     }
     if (m === "bypass") {
       if (!this.state.code) {
         this.setState({ challengeMsg: "noCode" });
-        return this.push(400, "POST /api/auth/mfa/bypass", "mfaToken and code are required.");
+        return this.push(400, "this action", "mfaToken and code are required.");
       }
       this.setState({ screen: "session", sessionKind: "bypass", challengeMsg: null });
-      return this.push(200, "POST /api/auth/mfa/bypass", "usedAt flipped only if still null, so two concurrent attempts with the same code can never both win. Audited as team_member_emergency_bypass_used with the IP.");
+      return this.push(200, "this action", "usedAt flipped only if still null, so two concurrent attempts with the same code can never both win. Audited as team_member_emergency_bypass_used with the IP.");
     }
     if (this.state.code.replace(/\s/g, "").length !== 6) {
       this.setState({ challengeMsg: "badCode" });
-      return this.push(401, "POST /api/auth/mfa/verify", m === "totp"
+      return this.push(401, "this action", m === "totp"
         ? "Invalid code. A \u00b130s epoch tolerance was already applied, so the code was genuinely outside the window."
         : "Invalid or expired code. The challenge row is single-use — a correct code re-submitted after success fails too.");
     }
     this.setState({ screen: "session", sessionKind: "full", challengeMsg: null });
-    this.push(200, "POST /api/auth/mfa/verify", "Code verified, full session issued with loginMethod " + m + ". This is where the refresh cookie is finally set.");
+    this.push(200, "this action", "Code verified, full session issued with loginMethod " + m + ". This is where the refresh cookie is finally set.");
   };
 
-  sendSms = () => this.push(200, "POST /api/auth/mfa/sms/send", "Returns only phoneLast4, never the full number. A fresh 6-digit code replaces any pending SMS challenge and lasts 10 minutes.");
+  sendSms = () => this.push(200, "this action", "Returns only phoneLast4, never the full number. A fresh 6-digit code replaces any pending SMS challenge and lasts 10 minutes.");
 
   submitForgot = () => {
     const c = FORGOT_CASES.find(x => x[0] === this.state.forgotCase);
     this.setState({ forgotSent: true });
-    this.push(200, "POST /api/auth/forgot-password", "{ ok: true } is returned before the account is even looked up. Everything after that — token, email, or refusal — happens with the response already sent. " + c[3]);
+    this.push(200, "this action", "{ ok: true } is returned before the account is even looked up. Everything after that — token, email, or refusal — happens with the response already sent. " + c[3]);
   };
 
   submitReset = () => {
-    const p = "POST /api/auth/reset-password";
+    const p = "this action";
     if (!this.state.tokenValid) {
       this.setState({ resetMsg: "token" });
       return this.push(400, p, "\"This reset link is invalid or has expired. Please request a new one.\" One message covers three states: unknown token, already used, past expiry.");
     }
     if (this.state.newPassword.length < 8) {
       this.setState({ resetMsg: "short" });
-      return this.push(400, p, "Password must be at least 8 characters. Length is the only rule the route enforces.");
+      return this.push(400, p, "Password must be at least 8 characters. Length is the only rule the system enforces.");
     }
     this.setState({ resetMsg: "ok" });
     this.push(200, p, "Hash written, token marked used. No session is issued and no other session is revoked — the user lands back on sign-in, and any session opened with the old password stays live.");
@@ -540,76 +528,76 @@ class Component extends DCLogic {
   startSetup = (kind) => () => {
     if (kind === "sms" && this.state.admin) {
       this.setState({ mfaMsg: "smsAdmin" });
-      return this.push(403, "POST /api/auth/mfa/sms/setup", "\"Admins must use passkey or authenticator app authentication\" — SMS is refused for admin accounts at setup and again at verify-setup.");
+      return this.push(403, "this action", "\"Admins must use passkey or authenticator app authentication\" — SMS is refused for admin accounts at setup and again at verify-setup.");
     }
     this.setState({ setup: kind, code: "", mfaMsg: null });
-    if (kind === "totp") this.push(200, "POST /api/auth/mfa/totp/setup", "Returns the secret, the otpauth URI and a QR data URL. Nothing is stored yet — the secret only becomes an enrollment once a code verifies.");
-    if (kind === "sms") this.push(200, "POST /api/auth/mfa/sms/setup", "A hashed 6-digit code and the target phone are written to mfa_challenges; the response carries phoneLast4 only.");
+    if (kind === "totp") this.push(200, "this action", "Returns the secret, the otpauth URI and a QR data URL. Nothing is stored yet — the secret only becomes an enrollment once a code verifies.");
+    if (kind === "sms") this.push(200, "this action", "A hashed 6-digit code and the target phone are written to mfa_challenges; the response carries phoneLast4 only.");
   };
 
   verifyTotp = () => {
     if (this.state.code.replace(/\s/g, "").length !== 6) {
       this.setState({ mfaMsg: "badSetup" });
-      return this.push(400, "POST /api/auth/mfa/totp/verify-setup", "\"Invalid verification code. Please try again.\" No enrollment row is written.");
+      return this.push(400, "this action", "\"Invalid verification code. Please try again.\" No enrollment row is written.");
     }
     this.setState({ totp: true, setup: null, code: "", mfaMsg: "totpOn" });
-    this.push(200, "POST /api/auth/mfa/totp/verify-setup", "Any prior TOTP row is deleted and a new enabled enrollment written with the encrypted secret.");
+    this.push(200, "this action", "Any prior TOTP row is deleted and a new enabled enrollment written with the encrypted secret.");
   };
 
   verifySms = () => {
     if (!this.state.phone) {
       this.setState({ mfaMsg: "noPhone" });
-      return this.push(400, "POST /api/auth/mfa/sms/verify-setup", "phone and code are required.");
+      return this.push(400, "this action", "phone and code are required.");
     }
     if (this.state.code.replace(/\s/g, "").length !== 6) {
       this.setState({ mfaMsg: "badSetup" });
-      return this.push(400, "POST /api/auth/mfa/sms/verify-setup", "Invalid or expired code — the same message covers a wrong code, an expired challenge and a phone number that does not match the one the code went to.");
+      return this.push(400, "this action", "Invalid or expired code — the same message covers a wrong code, an expired challenge and a phone number that does not match the one the code went to.");
     }
     this.setState({ sms: true, setup: null, code: "", mfaMsg: "smsOn" });
-    this.push(200, "POST /api/auth/mfa/sms/verify-setup", "Challenge marked used, prior SMS enrollment replaced, phone stored on the new row.");
+    this.push(200, "this action", "Challenge marked used, prior SMS enrollment replaced, phone stored on the new row.");
   };
 
   addPasskey = () => {
     this.setState(s => ({ passkeys: s.passkeys + 1, mfaMsg: "passkeyOn" }));
-    this.push(200, "POST /api/auth/mfa/passkey/verify-registration", "Credential id, public key, counter, device type and transports stored; the passkey enrollment row is re-created so the two tables agree.");
+    this.push(200, "this action", "Credential id, public key, counter, device type and transports stored; the passkey enrollment row is re-created so the two tables agree.");
   };
 
   remove = (kind) => () => {
     if (kind === "totp") this.setState({ totp: false, mfaMsg: "off" });
     if (kind === "sms") this.setState({ sms: false, mfaMsg: "off" });
     if (kind === "passkey") this.setState({ passkeys: 0, mfaMsg: "passkeyAllOff" });
-    this.push(200, "DELETE /api/auth/mfa/" + kind, kind === "passkey"
-      ? "Deletes every webauthn credential for the account, not one — the route takes no credential id, so removing one key is not expressible."
+    this.push(200, "this removal" + kind, kind === "passkey"
+      ? "Deletes every webauthn credential for the account, not one — the system takes no credential id, so removing one key is not expressible."
       : "Enrollment row deleted. No password re-entry, no re-authentication, and no check that a method is left behind.");
   };
 
   adminResetAll = () => {
     this.setState({ totp: false, sms: false, passkeys: 0, mfaMsg: "adminReset" });
-    this.push(200, "POST /api/auth/mfa/admin/reset/:userId", "clearedMethods echoes what the account actually held. Pending challenges and unused bypass codes are purged too; used ones are kept as audit history.");
+    this.push(200, "this action", "clearedMethods echoes what the account actually held. Pending challenges and unused bypass codes are purged too; used ones are kept as audit history.");
   };
 
   adminResetBad = () => {
     this.setState({ mfaMsg: "badMethod" });
-    this.push(400, "POST /api/auth/mfa/admin/reset/:userId", "\"method must be one of: totp, sms, passkey\" — email is not an MFA method in this system.");
+    this.push(400, "this action", "\"method must be one of: totp, sms, passkey\" — email is not an MFA method in this system.");
   };
 
   doLogout = () => {
     this.setState({ signedOut: true, logoutMsg: "out" });
-    this.push(200, "POST /api/auth/logout", "This refresh token is revoked and its session row closed, the cookie is cleared, and AUTH_LOGOUT is dispatched. Other devices are untouched. The 15-minute access token already issued stays valid until it expires.");
+    this.push(200, "this action", "This refresh token is revoked and its session row closed, the cookie is cleared, and AUTH_LOGOUT is dispatched. Other devices are untouched. The 15-minute access token already issued stays valid until it expires.");
   };
 
   revokeOthers = () => {
     this.setState({ revoked: { s2: true, s3: true }, logoutMsg: "others" });
-    this.push(200, "POST /api/auth/sessions/revoke-others", "revokedCount returned. The current device is identified by the hash of its own refresh cookie — a client that holds no cookie revokes everything, itself included.");
+    this.push(200, "this action", "revokedCount returned. The current device is identified by the hash of its own refresh cookie — a client that holds no cookie revokes everything, itself included.");
   };
 
   revokeOne = (id, current) => () => {
     if (current) {
       this.setState({ logoutMsg: "self" });
-      return this.push(404, "DELETE /api/auth/sessions/:id", "Nothing stops a user revoking the session they are sitting in; the route just returns ok and the next refresh fails. Shown here as the guard this screen has to supply itself.");
+      return this.push(404, "this removal", "Nothing stops a user revoking the session they are sitting in; the system just returns ok and the next refresh fails. Shown here as the guard this screen has to supply itself.");
     }
     this.setState(s => ({ revoked: Object.assign({}, s.revoked, { [id]: true }), logoutMsg: "one" }));
-    this.push(200, "DELETE /api/auth/sessions/:id", "Session revoked and audited as AUTH_SESSION_REVOKED. A session id belonging to someone else returns 404, not 403 — ownership is part of the lookup.");
+    this.push(200, "this removal", "Session revoked and audited as AUTH_SESSION_REVOKED. A session id belonging to someone else returns 404, not 403 — ownership is part of the lookup.");
   };
 
   renderVals() {
@@ -636,7 +624,7 @@ class Component extends DCLogic {
     const errs = {
       missing: ["400 · email and password are required", "Enter both fields.", ""],
       wrong: ["401 · Invalid email or password", "Invalid email or password.", "Deliberately ambiguous: the same text answers an unknown address and a bad password."],
-      locked: ["423 · accountLocked", "This account is locked due to repeated failed login attempts. Contact your administrator to unlock it.", "lockedUntil is returned, so this screen can show the remaining time — but there is no self-service unlock route to offer."],
+      locked: ["423 · accountLocked", "This account is locked due to repeated failed login attempts. Contact your administrator to unlock it.", "lockedUntil is returned, so this screen can show the remaining time — but there is no self-service unlock action to offer."],
       locked5: ["423 · accountLocked", "This account has been locked due to repeated failed login attempts. Contact your administrator to unlock it.", "Fifth failure within 15 minutes. Threshold, window and duration are all env-tunable, so the copy cannot hard-code \"5\" or \"15 minutes\"."],
       nopass: ["401 · no password set", "No password set for this account. Check your email for a setup link.", "The account exists but was never set up. Forgot-password will re-send that link only if the purchase is real."]
     };
@@ -684,18 +672,18 @@ class Component extends DCLogic {
     const enrolledCount = (st.totp ? 1 : 0) + (st.sms ? 1 : 0) + (passkeyOn ? 1 : 0);
     const methods = [
       { key: "totp", name: "Authenticator app (TOTP)", on: st.totp,
-        detail: st.totp ? "Enrolled. Secret held AES-256-GCM encrypted; the enrollments route never returns it." : "Not enrolled. Works for both operator and client accounts.",
+        detail: st.totp ? "Enrolled. Secret held AES-256-GCM encrypted; the enrollments action never returns it." : "Not enrolled. Works for both operator and client accounts.",
         btnLabel: st.totp ? "Replace app" : "Set up",
         primary: this.startSetup("totp"), removeLabel: "Remove",
         note: st.totp && enrolledCount === 1 && st.gate ? "This is the only method on the account. Removing it is allowed — the next token refresh simply comes back mfaSetupPending and locks the console until something is enrolled again." : "" },
       { key: "sms", name: "Text message", on: st.sms,
-        detail: st.sms ? "Enrolled on a number ending 0142. Only the last four digits are ever returned." : (st.admin ? "Blocked for admin accounts — the route refuses it at setup." : "Not enrolled. 6-digit codes, 10-minute lifetime."),
+        detail: st.sms ? "Enrolled on a number ending 0142. Only the last four digits are ever returned." : (st.admin ? "Blocked for admin accounts — the system refuses it at setup." : "Not enrolled. 6-digit codes, 10-minute lifetime."),
         btnLabel: st.sms ? "Change number" : "Set up",
         primary: this.startSetup("sms"), removeLabel: "Remove", note: "" },
       { key: "passkey", name: "Passkey or security key", on: passkeyOn,
-        detail: passkeyOn ? st.passkeys + " credential" + (st.passkeys === 1 ? "" : "s") + " registered. The list route returns the count only — no names, no dates, no per-key detail." : "Not enrolled. Required for admin accounts.",
+        detail: passkeyOn ? st.passkeys + " credential" + (st.passkeys === 1 ? "" : "s") + " registered. The list action returns the count only — no names, no dates, no per-key detail." : "Not enrolled. Required for admin accounts.",
         btnLabel: "Add a passkey", primary: this.addPasskey, removeLabel: "Remove all",
-        note: st.passkeys > 1 ? "Removing is all-or-nothing: the delete route is keyed by user, not credential, so there is no way to retire one lost key and keep the other." : "" }
+        note: st.passkeys > 1 ? "Removing is all-or-nothing: the delete action is keyed by user, not credential, so there is no way to retire one lost key and keep the other." : "" }
     ].map(m => {
       const t = m.on ? GREEN : GREY;
       return {
@@ -716,7 +704,7 @@ class Component extends DCLogic {
       smsOn: ["200 · enrolled", "Text-message codes are now active.", GREEN],
       passkeyOn: ["200 · registered", "Passkey added.", GREEN],
       off: ["200 · removed", "Method removed. No re-authentication was required to do it.", AMBER],
-      passkeyAllOff: ["200 · all passkeys removed", "Every registered credential for this account was deleted — the route cannot target just one.", AMBER],
+      passkeyAllOff: ["200 · all passkeys removed", "Every registered credential for this account was deleted — the system cannot target just one.", AMBER],
       badSetup: ["400 · invalid code", "Invalid verification code. Please try again.", RED],
       noPhone: ["400 · phone required", "phone and code are required.", AMBER],
       smsAdmin: ["403 · not for admins", "Admins must use passkey or authenticator app authentication.", RED],
@@ -747,7 +735,7 @@ class Component extends DCLogic {
       out: ["200 · { success: true }", "Signed out on this device. The access token already in hand keeps working until its 15 minutes are up — there is no server-side access-token revocation.", AMBER],
       others: ["200 · revoke-others", "Every other session is closed. Changing your password does exactly the same thing, silently.", GREEN],
       one: ["200 · session revoked", "That device is out. It keeps API access until its current access token expires.", GREEN],
-      self: ["Guard supplied by this screen", "The route would happily revoke the session you are using and return ok. Nothing server-side stops it, so the UI has to.", AMBER]
+      self: ["Guard supplied by this screen", "the system would happily revoke the session you are using and return ok. Nothing server-side stops it, so the UI has to.", AMBER]
     };
     const lo = logoutMsgs[st.logoutMsg];
 
@@ -761,7 +749,7 @@ class Component extends DCLogic {
       pending: [
         { label: "ACCESS TOKEN", value: "15 minutes", color: "#f1f5f9" },
         { label: "REFRESH", value: "7 days, sliding", color: "#f1f5f9" },
-        { label: "REACHABLE", value: "Enrollment routes only", color: "#fbbf24" },
+        { label: "REACHABLE", value: "Enrollment actions only", color: "#fbbf24" },
         { label: "LOGIN METHOD", value: "password", color: "#f1f5f9" }
       ],
       bypass: [
@@ -775,7 +763,6 @@ class Component extends DCLogic {
     return {
       rootPad: this.props.rootPad ?? "0",
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
 
       roleLabel: st.admin ? "Admin account" : "Client / operator account",
       roleBg: st.admin ? AMBER[0] : GREY[0], roleLine: st.admin ? AMBER[1] : GREY[1], roleFg: st.admin ? "#fbbf24" : "#94a3b8",
@@ -838,7 +825,7 @@ class Component extends DCLogic {
       inTotpSetup: st.setup === "totp", inSmsSetup: st.setup === "sms",
       totpSecret: "JBSWY3DPEHPK3PXP",
       verifyTotp: this.verifyTotp, verifySms: this.verifySms, cancelSetup: () => this.setState({ setup: null, code: "" }),
-      sendSetupSms: () => this.push(200, "POST /api/auth/mfa/sms/setup", "Code re-sent. Any pending SMS challenge for this user is deleted first, so only the newest code works."),
+      sendSetupSms: () => this.push(200, "this action", "Code re-sent. Any pending SMS challenge for this user is deleted first, so only the newest code works."),
       hasMfaMsg: !!mf, mfCode: mf ? mf[0] : "", mfText: mf ? mf[1] : "",
       mfTint: mf ? mf[2][0] : "", mfLine: mf ? mf[2][1] : "", mfColor: mf ? mf[2][2] : "",
       adminResetAll: this.adminResetAll, adminResetBad: this.adminResetBad,
@@ -862,16 +849,16 @@ class Component extends DCLogic {
         codeColor: l.code === 200 ? "#34d399" : l.code === 400 ? "#fbbf24" : "#f87171" })),
 
       notes: [
-        { dot: "#f87171", text: "Nothing unlocks a locked account except waiting out lockedUntil or an administrator. The 423 carries the timestamp but there is no self-service unlock route, so the copy can only point at a person." },
-        { dot: "#f87171", text: "Removing your last MFA method is allowed with no re-authentication and no warning. The account only discovers it on the next refresh, when mfaSetupPending comes back true and every route but enrollment starts refusing." },
-        { dot: "#f87171", text: "DELETE /auth/mfa/passkey is keyed by user, not credential. The enrollments route reports passkeyCount but there is no per-credential delete, so a lost key can only be handled by removing all of them." },
+        { dot: "#f87171", text: "Nothing unlocks a locked account except waiting out lockedUntil or an administrator. The 423 carries the timestamp but there is no self-service unlock action, so the copy can only point at a person." },
+        { dot: "#f87171", text: "Removing your last MFA method is allowed with no re-authentication and no warning. The account only discovers it on the next refresh, when mfaSetupPending comes back true and every action but enrollment starts refusing." },
+        { dot: "#f87171", text: "this removal is keyed by user, not credential. The enrollments action reports passkeyCount but there is no per-credential delete, so a lost key can only be handled by removing all of them." },
         { dot: "#fbbf24", text: "Forgot-password answers { ok: true } before it looks anything up, which is right for enumeration but means the UI can never say \"check your inbox\" truthfully — the entitlement refusal for an unpaid prospect is invisible to the caller." },
         { dot: "#fbbf24", text: "Signing out revokes the refresh token, not the access token. A signed-out device keeps working against the API for up to 15 minutes; anything that must stop immediately needs a different mechanism." },
         { dot: "#fbbf24", text: "Reset-password issues no session and revokes nothing. Change-password, by contrast, silently ends every other session — the same act of changing a password has two different session outcomes depending on which door it came through." },
         { dot: "#60a5fa", text: "Admin accounts are passkey-only at every gate: SMS setup is refused, and TOTP or SMS verification at login is refused too. An admin whose only method was TOTP cannot complete a challenge." },
         { dot: "#60a5fa", text: "Emergency bypass codes are issued by an MSP admin from the team screen, never self-service, and a full MFA reset deletes the unused ones. There is nothing here for a user to generate or view." },
         { dot: "#94a3b8", text: "The sessions list has no device names or labels, only user agent and IP as captured at issue time, and the mobile client sends its refresh token in the body rather than a cookie — so \"this device\" is a hash comparison that a cookie-less client always loses." },
-        { dot: "#94a3b8", text: "gateRequired on the enrollments route reflects the deployment, not the account; the per-account mfaEnforced flag is set elsewhere (the team screen) and is not readable from here." }
+        { dot: "#94a3b8", text: "gateRequired on the enrollments action reflects the deployment, not the account; the per-account mfaEnforced flag is set elsewhere (the team screen) and is not readable from here." }
       ]
     };
   }

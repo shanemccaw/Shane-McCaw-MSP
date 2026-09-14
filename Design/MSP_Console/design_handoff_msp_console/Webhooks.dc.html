@@ -38,7 +38,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
         <div style="min-width:1020px">
           <div style="display:grid;grid-template-columns:2.2fr 1.4fr 1.1fr 1.3fr 1.2fr 110px;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
-            <span>ENDPOINT</span><span>CUSTOMER</span><span>STATE</span><span>SUBSCRIBED TO</span><span>LAST DELIVERY</span><span style="text-align:right"></span>
+            <span>action</span><span>CUSTOMER</span><span>STATE</span><span>SUBSCRIBED TO</span><span>LAST DELIVERY</span><span style="text-align:right"></span>
           </div>
           <sc-for list="{{ endpointRows }}" as="e" hint-placeholder-count="4">
             <div onClick="{{ e.open }}" style="display:grid;grid-template-columns:2.2fr 1.4fr 1.1fr 1.3fr 1.2fr 110px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(148,163,184,.08);cursor:pointer;opacity:{{ e.opacity }};transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
@@ -73,7 +73,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
             <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
               <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
                 <span style="font-family:Menlo,monospace;font-size:12px;font-weight:600;color:#93c5fd;white-space:nowrap">{{ d.event }}</span>
-                <span style="font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">{{ d.endpoint }}</span>
+                <span style="font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">{{ d.action }}</span>
               </div>
               <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ d.detail }}</span>
               <span style="font-size:11px;color:#475569">{{ d.when }}</span>
@@ -197,7 +197,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
 class Component extends DCLogic {
   state = { tab: "outbound", filter: "all", sel: null, disabled: {} };
 
-  endpoints = [
+  actions = [
     {
       id: "wh-1", label: "Service desk intake", url: "https://hooks.northwindlogistics.com/msp/events",
       customer: "Northwind Logistics", enabled: true, created: "14 Jun 2026", owner: "Dana Whitfield",
@@ -315,14 +315,14 @@ class Component extends DCLogic {
 
   allDeliveries() {
     const out = [];
-    this.endpoints.forEach(e => e.deliveries.forEach(d => out.push({ endpoint: e.label, customer: e.customer, d })));
+    this.actions.forEach(e => e.deliveries.forEach(d => out.push({ action: e.label, customer: e.customer, d })));
     return out;
   }
 
   renderVals() {
     const s = this.state, tab = s.tab;
     const scopeName = this.props.tenantName || null;
-    const scoped = scopeName ? this.endpoints.filter(e => e.customer === scopeName) : this.endpoints;
+    const scoped = scopeName ? this.actions.filter(e => e.customer === scopeName) : this.actions;
     const sel = s.sel ? scoped.find(e => e.id === s.sel) : null;
     const deliveries = this.allDeliveries().filter(x => !scopeName || x.customer === scopeName);
     const failing = deliveries.filter(x => !x.d.ok).length;
@@ -340,7 +340,7 @@ class Component extends DCLogic {
       stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
 
       tabs: [
-        { id: "outbound", label: "Customer endpoints", count: String(scoped.length) },
+        { id: "outbound", label: "Customer actions", count: String(scoped.length) },
         { id: "deliveries", label: "Deliveries", count: String(deliveries.length) },
         { id: "inbound", label: "What comes in to us", count: String(this.inbound.length) }
       ].map(t => ({
@@ -386,11 +386,11 @@ class Component extends DCLogic {
         const t = this.tone(x.d.ok ? "green" : "red");
         return {
           event: x.d.event,
-          endpoint: x.endpoint + (scopeName ? "" : " · " + x.customer),
+          action: x.action + (scopeName ? "" : " · " + x.customer),
           result: x.d.ok ? "accepted " + x.d.result : x.d.result,
           detail: x.d.ok
-            ? "The endpoint accepted it."
-            : "The endpoint did not accept it. It was retried on a backoff and then given up on.",
+            ? "The action accepted it."
+            : "The action did not accept it. It was retried on a backoff and then given up on.",
           when: x.d.when,
           icon: x.d.ok ? "circle-check-big" : "circle-x",
           color: t[0], tint: t[1], line: t[2],
@@ -437,24 +437,24 @@ class Component extends DCLogic {
         icon: d.ok ? "circle-check-big" : "circle-x",
         color: d.ok ? "#6ee7b7" : "#fca5a5"
       })) : [],
-      toggleLabel: sel && this.isEnabled(sel) ? "Switch this endpoint off" : "Switch this endpoint back on",
+      toggleLabel: sel && this.isEnabled(sel) ? "Switch this action off" : "Switch this action back on",
       toggleIcon: sel && this.isEnabled(sel) ? "power-off" : "power",
       toggleLine: sel && this.isEnabled(sel) ? "rgba(248,113,113,.3)" : "rgba(52,211,153,.3)",
       toggleBg: sel && this.isEnabled(sel) ? "rgba(248,113,113,.1)" : "rgba(52,211,153,.12)",
       toggleFg: sel && this.isEnabled(sel) ? "#fca5a5" : "#6ee7b7",
       toggleNote: sel && this.isEnabled(sel)
-        ? "Deliveries stop immediately. The endpoint and its settings stay exactly as they are, and the customer can see it was switched off here."
+        ? "Deliveries stop immediately. The action and its settings stay exactly as they are, and the customer can see it was switched off here."
         : "Deliveries resume from the next event. Nothing that was missed while it was off gets sent.",
       toggleEndpoint: sel ? () => this.setState({
         disabled: Object.assign({}, s.disabled, { [sel.id]: this.isEnabled(sel) })
       }) : () => {},
       lockedActions: [
-        { label: "Edit", title: "The customer owns the endpoint's settings — editing stays with them" },
+        { label: "Edit", title: "The customer owns the action's settings — editing stays with them" },
         { label: "Rotate the secret", title: "Rotating the signing secret stays with the customer" },
-        { label: "Delete", title: "Only the customer can remove their own endpoint" }
+        { label: "Delete", title: "Only the customer can remove their own action" }
       ],
 
-      honestNote: "Reading a customer's endpoints and switching one off has no server-side route yet, so this list is representative. What comes in to us is real and properly signed, but nothing acts on those calls once they arrive."
+      honestNote: "Reading a customer's actions and switching one off has no server-side action yet, so this list is representative. What comes in to us is real and properly signed, but nothing acts on those calls once they arrive."
     };
   }
 }

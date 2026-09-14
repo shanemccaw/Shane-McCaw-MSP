@@ -29,7 +29,7 @@
   </div>
 
   <div style="border:1px solid rgba(248,113,113,.3);border-radius:12px;background:rgba(248,113,113,.07);padding:14px;display:flex;flex-direction:column;gap:7px;min-width:0">
-    <span style="font-size:12px;font-weight:700;color:#f87171">No route here checks the target's role</span>
+    <span style="font-size:12px;font-weight:700;color:#f87171">Nothing here checks the target's role</span>
     <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">The middleware is a floor on the caller only, and PlatformAdmin sits above MSPAdmin in the same order. The owning PlatformAdmin's row carries this MSP's id, so an MSPAdmin can call temp-password against it and be handed a plaintext password for the highest-privileged account in the system. Filed upstream as #3032. Until it lands, the ceiling below is enforced by this screen alone.</span>
   </div>
 
@@ -101,7 +101,7 @@
                   </span>
                   <button onClick="{{ a.run }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid {{ a.btnLine }};background:{{ a.btnBg }};color:{{ a.btnFg }};font-size:12px;font-weight:600;cursor:{{ a.cursor }};font-family:inherit">{{ a.btnLabel }}</button>
                 </div>
-                <span style="font-size:10.5px;font-family:Menlo,monospace;color:#475569;word-break:break-all">{{ a.route }}</span>
+                <span style="font-size:10.5px;font-family:Menlo,monospace;color:#475569;word-break:break-all">{{ a.action }}</span>
                 <sc-if value="{{ a.hasNote }}" hint-placeholder-val="{{ false }}">
                   <span style="font-size:11px;color:{{ a.noteColor }};text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:8px">{{ a.note }}</span>
                 </sc-if>
@@ -119,7 +119,6 @@
 
           <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
             <div style="border:1px solid {{ resLine }};border-radius:10px;background:{{ resTint }};padding:12px;display:flex;flex-direction:column;gap:4px">
-              <span style="font-size:11.5px;font-weight:700;color:{{ resColor }}">{{ resCode }}</span>
               <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
             </div>
           </sc-if>
@@ -174,23 +173,11 @@
           <span style="font-size:11.5px;color:#64748b;text-wrap:pretty">Nothing written yet. Every one of these actions writes an audit row naming you, the target and what changed — including the enforcement toggle when it silently matched no rows.</span>
         </sc-if>
       </div>
-
-      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-          <span style="font-size:12px;font-weight:700;color:#f1f5f9">What this surface can and cannot do</span>
-          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-            </div>
-          </sc-for>
-        </div>
-      </sc-if>
     </div>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
 const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
 const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
@@ -205,7 +192,7 @@ const USERS = [
   { id: 39, email: "dana.whitfield@northwindtraders.com", role: "CustomerUser", scope: "tenantId 4 · legacy mspId 1", enforced: true, active: true, sessions: 1,
     flag: "A real customer account. It appears here only because of the Phase-0 leftover." },
   { id: 42, email: "marcus.lee@northwindtraders.com", role: "CustomerUser", scope: "tenantId 4 · legacy mspId 1", enforced: false, active: true, sessions: 0,
-    flag: "Same leftover. Nothing on the wire tells you which of the two ids the route matched on." },
+    flag: "Same leftover. Nothing on the wire tells you which of the two ids the system matched on." },
   { id: 57, email: "priya.raman@contosoltd.com", role: "CustomerUser", scope: "tenantId 7 · legacy mspId 1", enforced: false, active: false, sessions: 0, flag: "" },
   { id: 103, email: "t.okafor@fabrikam.example", role: "CustomerUser", scope: "tenantId 9 · legacy mspId 1", enforced: false, active: true, sessions: 3, flag: "" },
   { id: 118, email: "assessment-lead-4471@inbound", role: "Assessment", scope: "tenantId 12 · legacy mspId 1", enforced: false, active: true, sessions: 0,
@@ -261,7 +248,7 @@ class Component extends DCLogic {
     const next = !this.isEnforced(u);
     this.setState(s => ({ enforced: Object.assign({}, s.enforced, { [u.id]: next }),
       result: ["200 · { ok: true, enforced: " + next + " }", next
-        ? "Their next sign-in must clear MFA, and a session with no enrollment comes back pending until they enrol. This route never looks the target up first — a userId that does not exist returns this same response with zero rows changed."
+        ? "Their next sign-in must clear MFA, and a session with no enrollment comes back pending until they enrol. this never looks the target up first — a userId that does not exist returns this same response with zero rows changed."
         : "Enforcement off for this account. Production still enforces MFA globally, so this flag only ever relaxes a non-production deployment.", BLUE] }));
     this.audit("user.mfa.enforcement_toggle", "Target " + u.email + " · mfa_enforced " + next + " · audit row is written even when the update matches nothing", "#60a5fa");
   };
@@ -320,22 +307,22 @@ class Component extends DCLogic {
 
     const actions = has ? [
       Object.assign({ name: "Send a password reset email", detail: "They set their own password from a one-hour link. The only action here that never puts a credential in your hands.",
-        route: "POST /msp/settings/users/" + u.id + "/reset-password", btnLabel: "Send link", run: gate(this.resetPassword),
+        action: "this action" + u.id + "/reset-password", btnLabel: "Send link", run: gate(this.resetPassword),
         line: "rgba(148,163,184,.14)", hasNote: false, note: "", noteColor: "#fbbf24" }, btn()),
       Object.assign({ name: "Set a temporary password", detail: "Generated, hashed and written directly to their account. Returned to you in plaintext, once.",
-        route: "POST /msp/settings/users/" + u.id + "/temp-password", btnLabel: "Generate", run: gate(this.tempPassword),
+        action: "this action" + u.id + "/temp-password", btnLabel: "Generate", run: gate(this.tempPassword),
         line: "rgba(251,191,36,.2)", hasNote: true, noteColor: "#fbbf24",
-        note: "Nothing forces a change at next login. requireChange in the response is advisory and no route in the system reads it." }, btn("danger")),
+        note: "Nothing forces a change at next login. requireChange in the response is advisory and no action in the system reads it." }, btn("danger")),
       Object.assign({ name: "Clear their MFA", detail: st.mfaCleared[u.id] ? "Already cleared this session. They have nothing enrolled." : "Deletes every enrollment, challenge and passkey credential so they can start again.",
-        route: "POST /msp/settings/users/" + u.id + "/reset-mfa", btnLabel: "Clear MFA", run: gate(this.resetMfa),
+        action: "this action" + u.id + "/reset-mfa", btnLabel: "Clear MFA", run: gate(this.resetMfa),
         line: "rgba(248,113,113,.2)", hasNote: true, noteColor: "#f87171",
         note: "Irreversible, and it strips a passkey they may still physically hold. Pair it with enforcement on, or the account can sign in with a password alone." }, btn("danger")),
       Object.assign({ name: "Require MFA on this account", detail: enforced ? "On. Sign-in is gated until a method is enrolled." : "Off. They can sign in with a password alone outside production.",
-        route: "PATCH /msp/settings/users/" + u.id + "/mfa-enforcement", btnLabel: enforced ? "Turn off" : "Turn on", run: gate(this.toggleEnforcement),
+        action: "this update" + u.id + "/mfa-enforcement", btnLabel: enforced ? "Turn off" : "Turn on", run: gate(this.toggleEnforcement),
         line: enforced ? "rgba(52,211,153,.18)" : "rgba(148,163,184,.14)", hasNote: true, noteColor: "#94a3b8",
-        note: "This route performs no existence check. A bogus or wrong-MSP id still answers ok, so this screen can never confirm the write landed." }, btn()),
+        note: "this performs no existence check. A bogus or wrong-MSP id still answers ok, so this screen can never confirm the write landed." }, btn()),
       Object.assign({ name: activeNow ? "Suspend the account" : "Reactivate the account", detail: activeNow ? "A boolean flag. No reason field, no expiry, no scheduled restore." : "Currently suspended. Reactivating restores access immediately.",
-        route: "PATCH /msp/settings/users/" + u.id + "/status", btnLabel: activeNow ? "Suspend" : "Reactivate", run: gate(this.toggleStatus),
+        action: "this update" + u.id + "/status", btnLabel: activeNow ? "Suspend" : "Reactivate", run: gate(this.toggleStatus),
         line: activeNow ? "rgba(148,163,184,.14)" : "rgba(251,191,36,.2)", hasNote: false, note: "", noteColor: "#fbbf24" }, btn(activeNow ? "danger" : ""))
     ] : [];
 
@@ -351,7 +338,6 @@ class Component extends DCLogic {
       showOwnHeader: !(this.props.embedded ?? false),
       showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
 
       rosterCaption: "Resolved by the MSP id on the account and nothing else. No role filter, no tenant filter.",
       hasRoster: roster.length > 0, noRoster: roster.length === 0, roster,
@@ -383,9 +369,9 @@ class Component extends DCLogic {
       hasLog: st.log.length > 0, noLog: st.log.length === 0, log: st.log,
 
       notes: [
-        { dot: "#f87171", text: "The five credential routes and the session revoke are the entire surface. They are shared verbatim with the MSP staff roster feature, so this screen and any staff-management screen are two views of one set of routes — a fix to one changes both." },
+        { dot: "#f87171", text: "The five credential actions and the session revoke are the entire surface. They are shared verbatim with the MSP staff roster feature, so this screen and any staff-management screen are two views of one set of actions — a fix to one changes both." },
         { dot: "#f87171", text: "No role ceiling exists on any of them. The role check is a floor on the caller, and PlatformAdmin ranks above MSPAdmin in the same order, so the platform owner's own account is reachable. The ceiling in this design is a UI-only guard until #3032 lands." },
-        { dot: "#f87171", text: "Nothing here is scoped by tenant. There is no route anywhere that resolves a managed-tenant customer's account for any of these actions, so \"help a customer with their security settings\" is not buildable yet — only accounts carrying this MSP's id are reachable." },
+        { dot: "#f87171", text: "Nothing here is scoped by tenant. There is no action anywhere that resolves a managed-tenant customer's account for any of these actions, so \"help a customer with their security settings\" is not buildable yet — only accounts carrying this MSP's id are reachable." },
         { dot: "#fbbf24", text: "Four of the nine reachable accounts are real customer users caught by a leftover id from the users-table merge. Treating this list as \"our staff\" or as \"our customers\" would both be wrong; the screen has to show the scope on each row." },
         { dot: "#fbbf24", text: "The temp password is handed to the operator, not the account, and no forced change is enforced anywhere. Any screen offering it should push the emailed reset link first — that one never exposes a credential." },
         { dot: "#fbbf24", text: "MFA reset is a hard delete across four tables with no undo, and the notice it sends is inline HTML rather than the templated email the rest of the system uses, so it will not match the brand." },

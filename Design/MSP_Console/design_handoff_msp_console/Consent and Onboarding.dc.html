@@ -65,8 +65,8 @@
         <sc-if value="{{ noTenants }}" hint-placeholder-val="{{ false }}">
           <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
             <span style="font-size:13px;font-weight:700;color:#cbd5e1">No tenant has started a consent flow</span>
-            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:360px">The list route drops every tenant with three empty grants, so an MSP whose customers have not yet consented to anything sees an empty array here — not the customers with nothing against them.</span>
-            <span style="font-size:11px;font-family:Menlo,monospace;color:#64748b">GET /api/msp/consent → []</span>
+            <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:360px">The list action drops every tenant with three empty grants, so an MSP whose customers have not yet consented to anything sees an empty array here — not the customers with nothing against them.</span>
+            <span style="font-size:11px;font-family:Menlo,monospace;color:#64748b">this lookup → []</span>
           </div>
         </sc-if>
 
@@ -84,7 +84,7 @@
             <div style="display:flex;flex-direction:column;gap:3px">
               <span style="font-size:14px;font-weight:700;letter-spacing:-.01em;color:#f1f5f9">{{ openName }}</span>
               <span style="font-size:10.5px;font-family:Menlo,monospace;color:#64748b;word-break:break-all">{{ openGuid }}</span>
-              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">One row, three independent grants. The detail route never hides a tenant — a customer who has consented to nothing comes back with all three empty.</span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">One row, three independent grants. The detail action never hides a tenant — a customer who has consented to nothing comes back with all three empty.</span>
             </div>
 
             <sc-for list="{{ cards }}" as="c" hint-placeholder-count="3">
@@ -121,8 +121,8 @@
                     <button onClick="{{ invite }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Send a read-consent invite</button>
                   </sc-if>
                   <sc-if value="{{ c.noMint }}" hint-placeholder-val="{{ false }}">
-                    <span title="Only the read flow has an MSP-scoped invite route. Write-back and SharePoint consent are started by a platform administrator from the admin panel." style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px dashed rgba(148,163,184,.25);background:transparent;color:#64748b;font-size:12px;font-weight:600;cursor:not-allowed;font-family:inherit">{{ c.noMintLabel }}</span>
-                    <span style="font-size:10.5px;color:#fbbf24;text-wrap:pretty;flex:1;min-width:160px">No MSP-scoped route starts this flow — a platform administrator does it from the admin panel. Filed upstream.</span>
+                    <span title="Only the read flow has an MSP-scoped invite action. Write-back and SharePoint consent are started by a platform administrator from the admin panel." style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px dashed rgba(148,163,184,.25);background:transparent;color:#64748b;font-size:12px;font-weight:600;cursor:not-allowed;font-family:inherit">{{ c.noMintLabel }}</span>
+                    <span style="font-size:10.5px;color:#fbbf24;text-wrap:pretty;flex:1;min-width:160px">No MSP-scoped action starts this flow — a platform administrator does it from the admin panel. Filed upstream.</span>
                   </sc-if>
                   <sc-if value="{{ c.canRevoke }}" hint-placeholder-val="{{ false }}">
                     <button onClick="{{ c.revoke }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.12);color:#f87171;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">{{ c.revokeLabel }}</button>
@@ -133,7 +133,6 @@
 
             <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
               <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:6px;min-width:0">
-                <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
                 <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
                 <sc-if value="{{ hasLink }}" hint-placeholder-val="{{ false }}">
                   <div style="display:flex;flex-direction:column;gap:5px;border-top:1px solid rgba(148,163,184,.12);padding-top:9px;min-width:0">
@@ -203,28 +202,16 @@
       <sc-if value="{{ noLinks }}" hint-placeholder-val="{{ false }}">
         <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
           <span style="font-size:13px;font-weight:700;color:#cbd5e1">No onboarding links issued</span>
-          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:360px">A real empty array. Links are created by the sibling generate-link route; this list is a straight read of what that route wrote.</span>
-          <span style="font-size:11px;font-family:Menlo,monospace;color:#64748b">GET /api/msp/onboarding/links → []</span>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:360px">A real empty array. Links are created by the sibling generate-link action; this list is a straight read of what that action wrote.</span>
+          <span style="font-size:11px;font-family:Menlo,monospace;color:#64748b">this lookup → []</span>
         </div>
       </sc-if>
       <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">Newest first, two hundred at most, no paging past that. Status is worked out from two timestamps — used, else expired, else pending — nothing is stored. The service and the issuing staff member arrive as bare ids with no name joined on, so the names here are looked up separately.</span>
     </div>
   </sc-if>
-
-  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these five routes do and don't give this screen</span>
-      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-        <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-          <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-          <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-        </div>
-      </sc-for>
-    </div>
-  </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:980},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:980},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
 const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
 const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
@@ -235,7 +222,7 @@ const READ_SCOPES = ["User.Read.All", "Directory.Read.All", "AuditLog.Read.All",
 const WRITE_SCOPES = ["User.ReadWrite.All", "Group.ReadWrite.All", "Policy.ReadWrite.ConditionalAccess"];
 const SP_SCOPES = ["Sites.ReadWrite.All", "Files.ReadWrite.All"];
 
-// A tenant absent from `consent` entirely never appears on the list route.
+// A tenant absent from `consent` entirely never appears on the list action.
 const TENANTS = [
   { id: 1, name: "Northwind Logistics", guid: "5c2f9a1e-7d43-4b8a-9e61-2f0c8d7a3e91", updated: "2026-09-02",
     consent: { graph: { status: "granted", consentedAt: "2026-06-12", revokedAt: null, grants: READ_SCOPES }, writeBack: { status: "granted", consentedAt: "2026-08-02", revokedAt: null, grants: WRITE_SCOPES }, sharepoint: null } },
@@ -354,16 +341,15 @@ class Component extends DCLogic {
       rootBg: this.props.rootBg ?? "transparent",
       showOwnHeader: !(this.props.embedded ?? false),
       showToggles: !(this.props.embedded ?? false),
-      showNotes: this.props.showNotes ?? true,
       toggleLive: () => this.setState(s => ({ live: !s.live, result: null })),
       liveBtnLabel: st.live ? "Show a populated book" : "Show the empty shape",
 
       tabs, isConsent: st.tab === "consent", isLinks: st.tab === "links",
-      listCaption: empty ? "the route answered with an empty array" : listed.length + " listed · scoped to your MSP · the row's updated date is the tenant's, not any one grant's",
+      listCaption: empty ? "the system answered with an empty array" : listed.length + " listed · scoped to your MSP · the row's updated date is the tenant's, not any one grant's",
       hasTenants: tenants.length > 0, noTenants: tenants.length === 0, tenants,
       hasHidden: hidden.length > 0,
       hiddenTitle: hidden.length + " more tenant" + (hidden.length === 1 ? "" : "s") + " in your book " + (hidden.length === 1 ? "is" : "are") + " not in this list",
-      hiddenText: hidden.map(h => h.name).join(", ") + " — never started any of the three flows, so the list route drops " + (hidden.length === 1 ? "it" : "them") + " entirely. Open one from the tree and the detail route returns it with three empty grants.",
+      hiddenText: hidden.map(h => h.name).join(", ") + " — never started any of the three flows, so the list action drops " + (hidden.length === 1 ? "it" : "them") + " entirely. Open one from the tree and the detail action returns it with three empty grants.",
 
       hasOpen: !!t, noOpen: !t,
       openName: t ? t.name : "", openGuid: t ? t.guid : "",
@@ -375,21 +361,21 @@ class Component extends DCLogic {
       resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
       hasLink: !!(res && res[3]), linkUrl: res && res[3] ? res[3] : "", linkMeta: res && res[4] ? res[4] : "", linkScopes: res && res[5] ? res[5] : [],
 
-      linksCaption: empty ? "the route answered with an empty array" : linkRows.length + " issued · newest first",
+      linksCaption: empty ? "the system answered with an empty array" : linkRows.length + " issued · newest first",
       hasLinks: linkRows.length > 0, noLinks: linkRows.length === 0, links: linkRows,
 
       notes: [
-        { dot: "#f87171", text: "Only the read flow can be started from here. Write-back and SharePoint consent have no MSP-scoped route to mint an invite — an operator can see and revoke all three grants but originate just one. The platform-administrator routes exist and work; they simply have no MSP counterpart. Filed upstream." },
+        { dot: "#f87171", text: "Only the read flow can be started from here. Write-back and SharePoint consent have no MSP-scoped action to mint an invite — an operator can see and revoke all three grants but originate just one. The platform-administrator actions exist and work; they simply have no MSP counterpart. Filed upstream." },
         { dot: "#fbbf24", text: "Who approved a grant is stored on the record — an admin address and display name — and dropped from every MSP-scope response for all three keys. The admin tier splices it back; this tier does not. Filed upstream alongside the above." },
-        { dot: "#fbbf24", text: "The list hides any tenant with no consent activity, while the detail route returns the same tenant with three empty grants. From the list alone, a tenant that is not yours and a tenant that has never consented look identical." },
+        { dot: "#fbbf24", text: "The list hides any tenant with no consent activity, while the detail action returns the same tenant with three empty grants. From the list alone, a tenant that is not yours and a tenant that has never consented look identical." },
         { dot: "#fbbf24", text: "The updated date on each row belongs to the tenant record, not to any grant. Three grants with three different dates share one updated stamp." },
         { dot: "#fbbf24", text: "Minting an invite checks that the multi-tenant app is configured before it checks ownership, so that one refusal can fire for a customer outside your book. Nothing about the target leaks — only that the app is not set up." },
         { dot: "#60a5fa", text: "An invite is one single-use token, valid 72 hours unless you say otherwise, clamped between one hour and a week. The tenant id is read off the customer row and never trusted from the client; the scopes returned are the real manifest, verbatim." },
         { dot: "#60a5fa", text: "Revoking checks ownership twice — once before the read and again inside the write — and a stamp that matches no row answers not-found rather than a silent success. The response is a bare acknowledgement, not the updated record." },
-        { dot: "#60a5fa", text: "A suspended MSP can still mint a consent invite here; only the onboarding generate-link route refuses a suspended MSP. Below the filing bar, flagged for awareness." },
+        { dot: "#60a5fa", text: "A suspended MSP can still mint a consent invite here; only the onboarding generate-link action refuses a suspended MSP. Below the filing bar, flagged for awareness." },
         { dot: "#94a3b8", text: "Onboarding links come back newest first, two hundred at most, with the bare token on the wire. The service and the issuing staff member are raw ids with no name joined on, and the status is derived from two timestamps rather than stored." },
         { dot: "#94a3b8", text: "This tier addresses a customer by its internal id; the admin tier addresses the same revoke by the Microsoft tenant GUID. Both are consistent within themselves, but they are different schemes for one action." },
-        { dot: "#94a3b8", text: "None of the five routes had a caller when the pack was written, and every field here is a bare column projection with no named response type — both states are drawn from the shape the routes return." }
+        { dot: "#94a3b8", text: "None of the five actions had a caller when the pack was written, and every field here is a bare column projection with no named response type — both states are drawn from the shape the actions return." }
       ]
     };
   }

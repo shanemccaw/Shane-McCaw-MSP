@@ -99,7 +99,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
               <span style="display:inline-flex;padding:2px 9px;border-radius:999px;background:{{ h.tint }};border:1px solid {{ h.line }};font-size:10.5px;font-weight:600;color:{{ h.color }};white-space:nowrap">{{ h.outcome }}</span>
               <span style="display:inline-flex;padding:2px 9px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:10.5px;font-weight:600;color:#94a3b8;white-space:nowrap">{{ h.source }}</span>
             </div>
-            <span style="font-family:Menlo,monospace;font-size:11px;color:#93c5fd;word-break:break-all">{{ h.endpoint }}</span>
+            <span style="font-family:Menlo,monospace;font-size:11px;color:#93c5fd;word-break:break-all">{{ h.action }}</span>
             <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ h.detail }}</span>
             <span style="font-size:11px;color:#475569">{{ h.when }}</span>
           </div>
@@ -215,11 +215,11 @@ class Component extends DCLogic {
   ];
 
   history = [
-    { name: "Turn an account's sign-in off or back on", endpoint: "PATCH /users/svc-scanner@mccawsoft2.onmicrosoft.com", outcome: "executed", source: "simulator", detail: "Sign-in disabled. Variables captured so the change can be inverted.", when: "6 Sep 2026, 11:04", reversible: false },
-    { name: "Assign a licence", endpoint: "POST /users/test01@mccawsoft2.onmicrosoft.com/assignLicense", outcome: "executed", source: "simulator", detail: "Licence added from the available pool.", when: "5 Sep 2026, 15:22", reversible: false },
-    { name: "Remove someone from a group", endpoint: "DELETE /groups/8f21c904/members/7b10a442/$ref", outcome: "failed", source: "simulator", detail: "Refused for lack of permission — the app registration does not hold the scope this needs.", when: "5 Sep 2026, 15:18", reversible: false },
-    { name: "Set a mailbox forwarding rule", endpoint: "PATCH /users/test02@mccawsoft2.onmicrosoft.com/mailboxSettings", outcome: "failed", source: "simulator", detail: "Rejected as a bad request — the forwarding address was not accepted.", when: "4 Sep 2026, 09:41", reversible: false },
-    { name: "Require multifactor authentication for administrators", endpoint: "POST /identity/conditionalAccess/policies", outcome: "failed", source: "simulator", detail: "Classified as a licence gap, not a permission failure — the tenant holds no Entra ID P1 or P2, so the Conditional Access write was refused before it reached Microsoft.", when: "13 Sep 2026, 16:02", reversible: false }
+    { name: "Turn an account's sign-in off or back on", action: "this update", outcome: "executed", source: "simulator", detail: "Sign-in disabled. Variables captured so the change can be inverted.", when: "6 Sep 2026, 11:04", reversible: false },
+    { name: "Assign a licence", action: "this action", outcome: "executed", source: "simulator", detail: "Licence added from the available pool.", when: "5 Sep 2026, 15:22", reversible: false },
+    { name: "Remove someone from a group", action: "this removal", outcome: "failed", source: "simulator", detail: "Refused for lack of permission — the app registration does not hold the scope this needs.", when: "5 Sep 2026, 15:18", reversible: false },
+    { name: "Set a mailbox forwarding rule", action: "this update", outcome: "failed", source: "simulator", detail: "Rejected as a bad request — the forwarding address was not accepted.", when: "4 Sep 2026, 09:41", reversible: false },
+    { name: "Require multifactor authentication for administrators", action: "this action", outcome: "failed", source: "simulator", detail: "Classified as a licence gap, not a permission failure — the tenant holds no Entra ID P1 or P2, so the Conditional Access write was refused before it reached Microsoft.", when: "13 Sep 2026, 16:02", reversible: false }
   ];
 
   componentDidMount() { this.icons(); }
@@ -382,7 +382,7 @@ class Component extends DCLogic {
         const ok = h.outcome === "executed";
         const t = this.tone(ok ? "green" : "red");
         return {
-          title: h.name, endpoint: h.endpoint, detail: h.detail, when: h.when,
+          title: h.name, action: h.action, detail: h.detail, when: h.when,
           outcome: ok ? "went through" : "failed",
           source: "from the simulator",
           icon: ok ? "circle-check-big" : "circle-x",

@@ -38,8 +38,6 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     </sc-for>
   </div>
 
-  <!-- Tab 1 — GET /api/msp/policy-decisions/:customerId. Signed on create by the customer; this
-       surface reads and resolves manual dependency clearances. There is no MSP-side author route. -->
   <sc-if value="{{ isDecisions }}" hint-placeholder-val="{{ true }}">
     <sc-if value="{{ hasDecisions }}" hint-placeholder-val="{{ true }}">
       <div style="display:flex;flex-direction:column;gap:11px;min-width:0">
@@ -70,9 +68,6 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     </sc-if>
   </sc-if>
 
-  <!-- Tab 2 — GET/POST/PATCH /api/msp/standing-policies. Declarative target state bound to an OU.
-       Default-off: is_active defaults false. Activating fires policy.standing_policy.activated;
-       deactivating fires nothing and waits for the next hourly sweep. -->
   <sc-if value="{{ isPolicies }}" hint-placeholder-val="{{ false }}">
     <sc-if value="{{ hasPolicies }}" hint-placeholder-val="{{ true }}">
       <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
@@ -89,7 +84,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                 </span>
                 <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ p.kindTint }};border:1px solid {{ p.kindLine }};font-size:11px;font-weight:600;color:{{ p.kindColor }};white-space:nowrap">{{ p.kind }}</span>
                 <span style="font-size:12px;color:#94a3b8;white-space:nowrap">{{ p.ou }}</span>
-                <span style="font-size:12px;color:{{ p.routeColor }};white-space:nowrap">{{ p.route }}</span>
+                <span style="font-size:12px;color:{{ p.routeColor }};white-space:nowrap">{{ p.action }}</span>
                 <span style="justify-self:end;font-size:11.5px;font-weight:600;color:{{ p.stateColor }};white-space:nowrap">{{ p.state }}</span>
               </div>
             </sc-for>
@@ -116,10 +111,8 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
               <span style="font-size:11px;color:#fbbf24;text-wrap:pretty">{{ selShapeNote }}</span>
             </div>
 
-            <!-- GET .../:id/enactment — a truth table over three live facts. Two different reasons
-                 can both produce not_evaluated, so the reason is shown next to the route, not folded in. -->
             <div style="display:flex;flex-direction:column;gap:9px;border-top:1px solid rgba(148,163,184,.12);padding-top:13px">
-              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">ENACTMENT ROUTE — PREVIEW ONLY, DETECTS NOTHING</span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">ENACTMENT PREVIEW — DETECTS NOTHING</span>
               <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
                 <span style="display:inline-flex;align-items:center;height:26px;padding:0 11px;border-radius:7px;background:{{ routeTint }};border:1px solid {{ routeLine }};font-family:Menlo,ui-monospace,monospace;font-size:12px;font-weight:700;color:{{ routeColor }};white-space:nowrap">{{ routeValue }}</span>
                 <span style="font-family:Menlo,ui-monospace,monospace;font-size:11.5px;color:#94a3b8;white-space:nowrap">{{ reasonValue }}</span>
@@ -152,8 +145,6 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     </sc-if>
   </sc-if>
 
-  <!-- Honest empty: policy_decisions, standing_policies and policy_evaluation_runs all hold zero
-       rows live. Every list route returns [] for every real customer today. -->
   <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
     <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:26px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
       <span data-icon="inbox" style="display:block;width:30px;height:30px;border-radius:9px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.16);color:#94a3b8;padding:7px"></span>
@@ -162,48 +153,27 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     </div>
   </sc-if>
 
-  <!-- PATCH /api/msp/tenants/:tenantId/policy-engine — the one place the opt-in is set. Response is
-       the bare boolean. No customer-facing surface for it exists anywhere in the codebase. -->
   <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:15px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0">
     <span style="display:flex;flex-direction:column;gap:3px;min-width:200px;flex:1">
       <span style="font-size:13px;font-weight:700;color:#f1f5f9">Policy Engine opt-in — {{ customerName }}</span>
-      <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">Gates the continuous loop and the enactment route. The on-demand Evaluate button above does not check it — a one-off Graph read runs for a tenant that never opted in.</span>
+      <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">Gates the continuous loop and the enactment action. The on-demand Evaluate button above does not check it — a one-off Graph read runs for a tenant that never opted in.</span>
     </span>
     <button onClick="{{ toggleOptIn }}" style="height:30px;padding:0 13px;border-radius:7px;border:1px solid {{ optLine }};background:{{ optBg }};color:{{ optFg }};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">{{ optLabel }}</button>
   </div>
 
   <sc-if value="{{ hasLog }}" hint-placeholder-val="{{ false }}">
-    <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(2,6,23,.4);padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0">
-      <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">WIRE LOG — REAL STATUS CODES AND MESSAGE TEXT</span>
+    <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(2,6,23,.4);padding:14px;display:flex;flex-direction:column;gap:6px;min-width:0">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">RECENT ACTIVITY</span>
       <sc-for list="{{ log }}" as="l" hint-placeholder-count="2">
-        <span style="display:flex;align-items:flex-start;gap:9px;flex-wrap:wrap;min-width:0">
-          <span style="font-family:Menlo,ui-monospace,monospace;font-size:11px;font-weight:700;color:{{ l.codeColor }};white-space:nowrap">{{ l.code }}</span>
-          <span style="font-family:Menlo,ui-monospace,monospace;font-size:11px;color:#64748b;white-space:nowrap">{{ l.path }}</span>
-          <span style="font-size:11.5px;color:#94a3b8;flex:1;min-width:160px;text-wrap:pretty">{{ l.message }}</span>
-        </span>
-      </sc-for>
-    </div>
-  </sc-if>
-
-  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-    <div style="border:1px solid rgba(251,191,36,.2);border-radius:12px;background:rgba(251,191,36,.05);padding:15px;display:flex;flex-direction:column;gap:9px;min-width:0">
-      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#fbbf24">STATE OF THE BACKEND — READ BEFORE BUILDING</span>
-      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-        <span style="display:flex;align-items:flex-start;gap:9px;min-width:0">
-          <span style="width:5px;height:5px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:0 0 5px"></span>
-          <span style="font-size:12px;color:#cbd5e1;flex:1;text-wrap:pretty">{{ n.text }}</span>
-        </span>
+        <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty">{{ l.message }}</span>
       </sc-for>
     </div>
   </sc-if>
 </div>
 
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:900,&quot;height&quot;:1100},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;sample&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;sample&quot;,&quot;tsType&quot;:&quot;\&quot;sample\&quot;|\&quot;empty\&quot;&quot;,&quot;section&quot;:&quot;Live state&quot;},&quot;policyEngineOptIn&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Live state&quot;},&quot;writeConsent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;granted&quot;,&quot;denied&quot;],&quot;default&quot;:&quot;granted&quot;,&quot;tsType&quot;:&quot;\&quot;granted\&quot;|\&quot;denied\&quot;&quot;,&quot;section&quot;:&quot;Live state&quot;},&quot;customerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Traders&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
-// Mirrors msp-policy-decisions.ts (2 routes), msp-standing-policies.ts (6 routes, incl. #3034's
-// PATCH) and msp-policy-engine-settings.ts (2 routes). All 10 are live and mounted; none has a
-// consumer today. Every table below holds zero rows live — the sample rows exist so the layout
-// can be judged, and the dataState tweak switches to the real empty state.
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:900,&quot;height&quot;:1100},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;sample&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;sample&quot;,&quot;tsType&quot;:&quot;\&quot;sample\&quot;|\&quot;empty\&quot;&quot;,&quot;section&quot;:&quot;Live state&quot;},&quot;policyEngineOptIn&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Live state&quot;},&quot;writeConsent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;granted&quot;,&quot;denied&quot;],&quot;default&quot;:&quot;granted&quot;,&quot;tsType&quot;:&quot;\&quot;granted\&quot;|\&quot;denied\&quot;&quot;,&quot;section&quot;:&quot;Live state&quot;},&quot;customerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Traders&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+// Sample rows exist so the layout can be judged; the dataState tweak switches to the real empty state.
 const DECISIONS = [
   {
     id: 41, title: "Retain guest accounts past 90 days in the Vendor OU",
@@ -240,7 +210,6 @@ const POLICIES = [
     isActive: false, sopId: null, catalogItemId: null, createdByName: "Marcus Bell",
     targetState: { labelId: "legal-7y" }, shapeOk: false }
 ];
-// EVALUABLE_TARGET_KINDS (policy-compliance.ts:152) — service_policy is deliberately absent.
 const EVALUABLE = ["mailbox_attribute", "group_membership"];
 
 class Component extends DCLogic {
@@ -284,24 +253,20 @@ class Component extends DCLogic {
   consent() { return this.props.writeConsent ?? "granted"; }
   isActive(p) { return this.state.active[p.id] === undefined ? p.isActive : this.state.active[p.id]; }
 
-  push(code, path, message) {
-    this.setState(s => ({ log: [{ code, path, message }].concat(s.log).slice(0, 4) }));
+  push(message) {
+    this.setState(s => ({ log: [{ message }].concat(s.log).slice(0, 4) }));
   }
 
-  // Four guarded states, in the route's own order. A license_sku row belongs to
-  // advancePolicyClearances(); a human cannot force it.
   resolve = (d) => {
-    const path = "PATCH /msp/policy-decisions/:customerId/" + d.id + "/clearance/resolve";
-    if (!d.clearanceCondition) return this.push(409, path, "No dependency clearance to resolve on this decision");
+    if (!d.clearanceCondition) return this.push("No dependency clearance to resolve on this decision.");
     if (d.clearanceTriggerType !== "manual")
-      return this.push(409, path, "Clearance trigger is license_sku — the platform resolves this when the SKU appears");
-    if (this.state.resolved[d.id]) return this.push(409, path, "Clearance already resolved");
+      return this.push("This clearance resolves automatically once the required licence appears — it can't be resolved manually.");
+    if (this.state.resolved[d.id]) return this.push("Clearance already resolved.");
     this.setState(s => ({ resolved: Object.assign({}, s.resolved, { [d.id]: "2026-09-12" }) }));
-    this.push(200, path, "Resolved. Guarded at the DB by WHERE clearance_resolved_at IS NULL — a concurrent second resolve loses the race.");
+    this.push("Resolved.");
   };
 
-  // resolvePolicyEnactmentRoute — three live facts, four reasons, three routes.
-  route(p) {
+  action(p) {
     if (!this.isActive(p)) return ["not_evaluated", "policy_inactive"];
     if (!this.optedIn()) return ["not_evaluated", "tenant_not_opted_in"];
     if (this.consent() === "granted") return ["engine_enacts", "write_consent_granted"];
@@ -310,39 +275,36 @@ class Component extends DCLogic {
 
   evaluate = () => {
     const p = POLICIES.find(x => x.id === this.state.selectedId);
-    const path = "POST /msp/standing-policies/" + p.id + "/evaluate";
     const add = (run) => this.setState(s => ({
       runs: Object.assign({}, s.runs, { [p.id]: [run].concat(s.runs[p.id] || []) })
     }));
     if (!this.isActive(p)) {
-      add({ outcome: "not_evaluable", trigger: "event", detail: "Policy is not active — the default-off gate, checked independently of route-level ownership" });
-      return this.push(200, path, "runId null, notEvaluableReason: policy is not active");
+      add({ outcome: "not_evaluable", trigger: "event", detail: "Policy is not active." });
+      return this.push("Not evaluable: policy is not active.");
     }
     if (EVALUABLE.indexOf(p.kind) === -1) {
-      add({ outcome: "not_evaluable", trigger: "event", detail: "No evaluator wired for service_policy — likely needs Exchange Online PowerShell, not a Graph read" });
-      return this.push(200, path, "runId null, notEvaluableReason: target kind has no evaluator");
+      add({ outcome: "not_evaluable", trigger: "event", detail: "Nothing knows how to check this kind of policy yet." });
+      return this.push("Not evaluable: this policy kind has no checker yet.");
     }
     if (!p.shapeOk) {
-      add({ outcome: "not_evaluable", trigger: "event", detail: "targetState does not parse for this targetKind — never rejected at author time" });
-      return this.push(200, path, "runId null, notEvaluableReason: malformed target state");
+      add({ outcome: "not_evaluable", trigger: "event", detail: "The target state doesn't match what this policy kind expects." });
+      return this.push("Not evaluable: malformed target state.");
     }
-    add({ outcome: "divergent", trigger: "event", detail: "14 members observed, 11 compliant, 3 divergent — 3 findings written with checkKey policy:" + p.id + ":" + p.kind });
-    this.push(200, path, "Wrote a msp_diagnostic_runs row (package_key policy:compliance) and 3 msp_diagnostic_findings rows.");
+    add({ outcome: "divergent", trigger: "event", detail: "14 members observed, 11 compliant, 3 divergent." });
+    this.push("Evaluated — 3 findings recorded.");
   };
 
   toggleActive = () => {
     const p = POLICIES.find(x => x.id === this.state.selectedId);
     const next = !this.isActive(p);
     this.setState(s => ({ active: Object.assign({}, s.active, { [p.id]: next }) }));
-    this.push(200, "PATCH /msp/standing-policies/" + p.id, next
-      ? "isActive true. Fires policy.standing_policy.activated for the OU's tenant, fire-and-forget."
-      : "isActive false. No deactivation event exists — the next hourly sweep simply skips the policy.");
+    this.push(next ? "Activated." : "Deactivated. Nothing checks it again until the next hourly sweep.");
   };
 
   toggleOptIn = () => {
     const next = !this.optedIn();
     this.setState({ optIn: next });
-    this.push(200, "PATCH /msp/tenants/:tenantId/policy-engine", "{ tenantId, policyEngineOptIn: " + next + " } — the bare boolean, nothing else.");
+    this.push(next ? "Opted in." : "Opted out.");
   };
 
   renderVals() {
@@ -354,7 +316,7 @@ class Component extends DCLogic {
       service_policy: ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"]
     };
     const sel = POLICIES.find(p => p.id === this.state.selectedId);
-    const [routeValue, reasonValue] = this.route(sel);
+    const [routeValue, reasonValue] = this.action(sel);
     const routeTone = { engine_enacts: ["rgba(52,211,153,.1)", "rgba(52,211,153,.24)", "#34d399"],
       checklist_item: ["rgba(251,191,36,.1)", "rgba(251,191,36,.24)", "#fbbf24"],
       not_evaluated: ["rgba(148,163,184,.08)", "rgba(148,163,184,.2)", "#94a3b8"] }[routeValue];
@@ -370,7 +332,7 @@ class Component extends DCLogic {
       if (dependency) { clock = resolvedAt ? "Cleared" : "Dependency"; ct = resolvedAt
         ? ["rgba(52,211,153,.1)", "rgba(52,211,153,.22)", "#34d399"]
         : ["rgba(251,191,36,.1)", "rgba(251,191,36,.22)", "#fbbf24"]; }
-      let note = "Review-cadence row. No clearance condition, so the resolve route 409s.";
+      let note = "Review-cadence row. No clearance condition, so the resolve action 409s.";
       if (dependency && resolvedAt) note = "Resolved " + resolvedAt + " — actionable immediately, no scheduled review to wait for.";
       else if (dependency && manual) note = "Manual trigger: " + d.clearanceCondition;
       else if (dependency) note = "license_sku trigger, watching " + "ENTRAID_P2" + ". Only the platform clears this one.";
@@ -395,13 +357,13 @@ class Component extends DCLogic {
     });
 
     const policies = POLICIES.map(p => {
-      const [r] = this.route(p);
+      const [r] = this.action(p);
       const active = this.isActive(p);
       const kt = kindTone[p.kind];
       return {
         title: p.title, sub: "id " + p.id + " · " + (p.sopId ? p.sopId : "no SOP named") + (p.catalogItemId ? " · catalog " + p.catalogItemId : ""),
         kind: p.kind, kindTint: kt[0], kindLine: kt[1], kindColor: kt[2],
-        ou: p.ou, route: r,
+        ou: p.ou, action: r,
         routeColor: r === "engine_enacts" ? "#34d399" : r === "checklist_item" ? "#fbbf24" : "#94a3b8",
         state: active ? "Active" : "Inactive",
         stateColor: active ? "#34d399" : "#64748b",
@@ -423,7 +385,6 @@ class Component extends DCLogic {
       rootPad: this.props.rootPad ?? "0",
       showOwnHeader: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
       tabs,
       isDecisions: tab === "decisions" && !empty,
       isPolicies: tab === "policies" && !empty,
@@ -432,15 +393,15 @@ class Component extends DCLogic {
       isEmpty: empty,
       emptyTitle: tab === "decisions" ? "No policy decisions on this customer" : "No standing policies on this MSP",
       emptyBody: tab === "decisions"
-        ? "policy_decisions holds zero rows live. Decisions are created and signed by the customer through their own portal; there is no MSP-side author route, by design — an MSP staffer's name in signedBy would misattribute the customer's compliance position."
-        : "standing_policies and policy_evaluation_runs both hold zero rows live. The author route is real and mounted, so the first row comes from this surface once the wire step lands.",
+        ? "Decisions are created and signed by the customer through their own portal, by design — an MSP staffer signing on their behalf would misattribute the customer's own compliance position."
+        : "Nothing has been authored here yet. This surface is ready as soon as the first standing policy is created.",
       hasSelected: true,
       selTitle: sel.title,
-      selMeta: "OU " + sel.ouName + " · authored by " + sel.createdByName + " · createdByPersonId is on the row but not on the wire",
+      selMeta: "OU " + sel.ouName + " · authored by " + sel.createdByName,
       selTargetState: JSON.stringify(sel.targetState, null, 2),
       selShapeNote: sel.shapeOk
-        ? "No per-targetKind shape validation exists on create or edit. This form has to enforce the shape itself."
-        : "This targetState does not match its targetKind. The backend accepted it anyway — the mismatch only surfaces as not_evaluable on evaluate.",
+        ? "Nothing validates the shape of this target state when it's authored — this form has to enforce it itself."
+        : "This target state doesn't match what this policy kind expects. It was saved anyway, and only shows up as not evaluable when checked.",
       evaluate: this.evaluate,
       toggleActive: this.toggleActive,
       activeBtnLabel: this.isActive(sel) ? "Deactivate" : "Activate",
@@ -464,17 +425,7 @@ class Component extends DCLogic {
       optLine: this.optedIn() ? "rgba(52,211,153,.3)" : "rgba(148,163,184,.2)",
       optFg: this.optedIn() ? "#34d399" : "#94a3b8",
       hasLog: this.state.log.length > 0,
-      log: this.state.log.map(l => ({ code: l.code, path: l.path, message: l.message,
-        codeColor: l.code === 200 ? "#34d399" : l.code === 404 ? "#94a3b8" : "#f87171" })),
-      notes: [
-        { dot: "#f87171", text: "All 10 routes are live and mounted; none has a consumer. A repo-wide grep of msp-console, admin-panel and mcp-server found zero references to standing-policies, policy-engine or msp/policy-decisions." },
-        { dot: "#fbbf24", text: "targetState takes any object on both create and edit. A mismatched shape is accepted silently and only surfaces as not_evaluable when evaluate runs, so the author form has to enforce the per-kind shape itself." },
-        { dot: "#fbbf24", text: "service_policy can be authored but never evaluated — EVALUABLE_TARGET_KINDS covers mailbox_attribute and group_membership only, and the code's own comment says the third likely needs Exchange Online PowerShell." },
-        { dot: "#60a5fa", text: "Deactivate is the off-switch; there is no DELETE route. A delete would cascade away the whole evaluation history, which is still an open design question." },
-        { dot: "#60a5fa", text: "Two different reasons both produce the not_evaluated route, so the reason has to be rendered separately from the route rather than folded into one label." },
-        { dot: "#94a3b8", text: "OU membership is not just the ou_id. Manual per-object assignments are read first and a department-match guess second, and neither the policy row nor its wire shape discloses that." },
-        { dot: "#94a3b8", text: "The wire carries ouId only — no OU name — so this screen needs a separate lookup to show anything but a bare id." }
-      ]
+      log: this.state.log,
     };
   }
 }

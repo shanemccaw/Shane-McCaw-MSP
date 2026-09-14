@@ -42,7 +42,7 @@
         <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
           <span style="display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1">
             <span style="font-size:12.5px;font-weight:700;color:#f1f5f9">Report definitions</span>
-            <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Every row, newest first. No pagination on this route.</span>
+            <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Every row, newest first. No pagination on this.</span>
           </span>
           <button onClick="{{ newDef }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">New definition</button>
         </div>
@@ -121,26 +121,13 @@
               <button onClick="{{ createDef }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:34px;padding:0 13px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">Create</button>
               <button onClick="{{ cancelForm }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:34px;padding:0 13px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:rgba(148,163,184,.06);color:#cbd5e1;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
             </div>
-            <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty">Both lists are validated on create. On a later edit they are not — the update route accepts any string for either field, so this form has to keep enforcing them itself.</span>
+            <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty">Both lists are validated on create. On a later edit they are not — the update action accepts any string for either field, so this form has to keep enforcing them itself.</span>
           </div>
         </sc-if>
 
         <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
           <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
-            <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
             <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
-          </div>
-        </sc-if>
-
-        <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-          <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-            <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these nineteen routes do and don't give this screen</span>
-            <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-              <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-                <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-              </div>
-            </sc-for>
           </div>
         </sc-if>
       </div>
@@ -271,7 +258,7 @@
       <sc-if value="{{ wasteEmpty }}" hint-placeholder-val="{{ true }}">
         <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:24px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
           <span style="font-size:13px;font-weight:700;color:#cbd5e1">No licensing data to analyse</span>
-          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:360px">The route returns no-data rather than a zero — a real distinction this screen keeps, because zero waste and no measurement are not the same claim to put in front of a customer.</span>
+          <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:360px">the system returns no-data rather than a zero — a real distinction this screen keeps, because zero waste and no measurement are not the same claim to put in front of a customer.</span>
         </div>
       </sc-if>
       <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:11px">This figure is also one of the eight document types, so the same numbers can be written into a generated report — but the report is produced by a model reading this context, not by this query, and the two can disagree.</span>
@@ -279,7 +266,7 @@
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
 const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
 const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
@@ -362,7 +349,7 @@ class Component extends DCLogic {
 
   trigger = (d) => () => {
     if (!d.isActive) {
-      return this.setState({ result: ["400 · Report definition is inactive", "The only route that checks the active flag. Turning the definition back on and re-triggering is allowed, by design.", AMBER] });
+      return this.setState({ result: ["400 · Report definition is inactive", "The only action that checks the active flag. Turning the definition back on and re-triggering is allowed, by design.", AMBER] });
     }
     const id = "r-" + (8850 + this.state.runs.length);
     const title = LABEL[d.docType] + " — " + (d.customer || "Portfolio");
@@ -375,7 +362,7 @@ class Component extends DCLogic {
   toggleDef = (d) => () => this.setState(s => ({
     defs: s.defs.map(x => x.id === d.id ? Object.assign({}, x, { isActive: !x.isActive }) : x),
     result: ["200 · definition updated", d.isActive
-      ? "Set inactive through the generic edit route. Note the edit route does not re-validate the document type or delivery method the way create does — any string would be accepted there."
+      ? "Set inactive through the standard edit. Note the edit action does not re-validate the document type or delivery method the way create does — any string would be accepted there."
       : "Set active again. Nothing prevents re-activating and re-running a definition that was deactivated.", GREY]
   }));
 
@@ -394,12 +381,12 @@ class Component extends DCLogic {
     if (r.status === "failed") {
       return this.setState({ result: ["422 · nothing to download", "The run failed, so there is no document. The error text is the only artefact.", RED] });
     }
-    this.setState({ result: ["200 · PDF", "Served as a binary attachment. The HTML and the PDF are only ever returned by this route — neither appears on the list or detail responses.", GREEN] });
+    this.setState({ result: ["200 · PDF", "Served as a binary attachment. The HTML and the PDF are only ever returned by this — neither appears on the list or detail responses.", GREEN] });
   };
 
   retry = (r) => () => this.setState(s => ({
     runs: [{ id: "r-" + (8860 + s.runs.length), title: r.title, docType: r.docType, status: "pending", at: "just now", size: null, errorMessage: null, rbd: false }].concat(s.runs),
-    result: ["202 · accepted", "There is no retry route. This is a brand-new run of the same definition — the failed attempt stays as its own row, and nothing links the two.", BLUE]
+    result: ["202 · accepted", "There is no retry action. This is a brand-new run of the same definition — the failed attempt stays as its own row, and nothing links the two.", BLUE]
   }));
 
   sendTest = (c) => () => this.setState({ result: ["200 · test sent", "Compiled to HTML and sent through Exchange Online to your own address. The recipient type stored on the canvas is never consulted — a test always goes to whoever asked for it.", GREEN] });
@@ -493,7 +480,6 @@ class Component extends DCLogic {
       showOwnHeader: !(this.props.embedded ?? false),
       showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
 
       role: "Signed in as " + st.role,
       roleBg: isAdmin ? AMBER[0] : GREY[0], roleLine: isAdmin ? AMBER[1] : GREY[1], roleFg: isAdmin ? "#fbbf24" : "#94a3b8",
@@ -552,7 +538,7 @@ class Component extends DCLogic {
         { dot: "#60a5fa", text: "Retry is not a retry. It is a fresh run of the same definition, with no attempt count and no link back to the failure — so the history is two unrelated rows." },
         { dot: "#60a5fa", text: "A run's title is computed server-side from the type and the customer, never supplied. Whatever this screen shows as a title is that exact string." },
         { dot: "#94a3b8", text: "Risk decision documents arrive in the same run list from a different writer entirely: rendered deterministically, always already generated, with no pending stage and no delivery leg. The list cannot be designed as if every row came from the trigger flow." },
-        { dot: "#94a3b8", text: "Nine of the nineteen routes — every canvas and schedule route — have no consumer anywhere, and four tables hold zero rows. The empty states here are the live truth, not a placeholder." },
+        { dot: "#94a3b8", text: "Nine of the nineteen actions — every canvas and schedule action — have no consumer anywhere, and four tables hold zero rows. The empty states here are the live truth, not a placeholder." },
         { dot: "#94a3b8", text: "A canvas renders four widget types and shows a visible unknown-widget box for anything else, so no fifth type can be invented in the layout. Its stored recipient type is read by nothing." }
       ]
     };

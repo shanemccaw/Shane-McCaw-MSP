@@ -405,7 +405,7 @@ class Component extends DCLogic {
       inviteSubmitTitle: canInvite ? "" : emailTaken ? "That email is already in use" : "A work email is needed",
       submitInvite: canInvite ? () => this.setState({ inviteOpen: false, inEmail: "", inName: "", inDept: "", inTitle: "" }) : () => {},
 
-      honestNote: "These endpoints are live with no interface wired to them yet, so this roster is representative. Who reports to whom can be set on the customer's own portal but not from here, and the roster comes back unsorted and unpaged."
+      honestNote: "These actions are live with no interface wired to them yet, so this roster is representative. Who reports to whom can be set on the customer's own portal but not from here, and the roster comes back unsorted and unpaged."
     };
   }
 }

@@ -32,7 +32,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     <span style="display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24;white-space:nowrap">MSPAdmin or higher</span>
   </div>
 
-  <!-- GET /api/msp/plan/current — returns JSON literal null (200) when the MSP has no row. -->
+  <!-- this lookup — returns JSON literal null (200) when the MSP has no row. -->
   <sc-if value="{{ hasSubscription }}" hint-placeholder-val="{{ true }}">
     <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0">
       <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
@@ -77,7 +77,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     </div>
   </sc-if>
 
-  <!-- GET /api/msp/plan/available — public msp_monthly_subscription tiers, add-ons excluded, ordered by price. -->
+  <!-- this lookup — public msp_monthly_subscription tiers, add-ons excluded, ordered by price. -->
   <div style="display:flex;flex-direction:column;gap:11px;min-width:0">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span style="font-size:13px;font-weight:700;color:#f1f5f9">Available tiers</span>
@@ -111,7 +111,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     </div>
   </div>
 
-  <!-- POST /api/msp/plan/change — order of checks mirrors the route: context, body, subscription, status, no-op, target lookup, downgrade cap, Stripe key, price resolution, schedule, pending columns, audit log. -->
+  <!-- this action — order of checks mirrors the system: context, body, subscription, status, no-op, target lookup, downgrade cap, Stripe key, price resolution, schedule, pending columns, audit log. -->
   <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:13px;min-width:0">
     <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <span style="display:flex;flex-direction:column;gap:3px;min-width:200px;flex:1">
@@ -121,7 +121,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       <button onClick="{{ submitChange }}" disabled="{{ submitDisabled }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 15px;border-radius:8px;border:1px solid {{ submitLine }};background:{{ submitBg }};color:{{ submitFg }};font-size:12.5px;font-weight:600;cursor:{{ submitCursor }};white-space:nowrap">{{ submitLabel }}</button>
     </div>
 
-    <!-- Wire log: every response below is the route's real status code and message text. -->
+    <!-- Wire log: every response below is the system's real status code and message text. -->
     <sc-if value="{{ hasLog }}" hint-placeholder-val="{{ false }}">
       <div style="display:flex;flex-direction:column;gap:7px;border-top:1px solid rgba(148,163,184,.12);padding-top:12px">
         <sc-for list="{{ log }}" as="l" hint-placeholder-count="2">
@@ -134,23 +134,11 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       </div>
     </sc-if>
   </div>
-
-  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-    <div style="border:1px solid rgba(251,191,36,.2);border-radius:12px;background:rgba(251,191,36,.05);padding:15px;display:flex;flex-direction:column;gap:9px;min-width:0">
-      <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#fbbf24">STATE OF THE BACKEND — READ BEFORE BUILDING</span>
-      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="4">
-        <span style="display:flex;align-items:flex-start;gap:9px;min-width:0">
-          <span style="width:5px;height:5px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:0 0 5px"></span>
-          <span style="font-size:12px;color:#cbd5e1;flex:1;text-wrap:pretty">{{ n.text }}</span>
-        </span>
-      </sc-for>
-    </div>
-  </sc-if>
 </div>
 
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:880,&quot;height&quot;:1000},&quot;status&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;active&quot;,&quot;trialing&quot;,&quot;past_due&quot;,&quot;unpaid&quot;,&quot;canceled&quot;,&quot;none&quot;],&quot;default&quot;:&quot;active&quot;,&quot;tsType&quot;:&quot;\&quot;active\&quot;|\&quot;trialing\&quot;|\&quot;past_due\&quot;|\&quot;unpaid\&quot;|\&quot;canceled\&quot;|\&quot;none\&quot;&quot;,&quot;section&quot;:&quot;Subscription state&quot;},&quot;dunningState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;reminder_sent&quot;,&quot;suspended&quot;,&quot;access_revoked&quot;,&quot;archival_flagged&quot;],&quot;default&quot;:&quot;none&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Subscription state&quot;},&quot;activeTenants&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:7,&quot;min&quot;:0,&quot;max&quot;:60,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Subscription state&quot;},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
-// Mirrors artifacts/api-server/src/routes/msp-plan-self-service.ts (4 routes, all real, all
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:880,&quot;height&quot;:1000},&quot;status&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;active&quot;,&quot;trialing&quot;,&quot;past_due&quot;,&quot;unpaid&quot;,&quot;canceled&quot;,&quot;none&quot;],&quot;default&quot;:&quot;active&quot;,&quot;tsType&quot;:&quot;\&quot;active\&quot;|\&quot;trialing\&quot;|\&quot;past_due\&quot;|\&quot;unpaid\&quot;|\&quot;canceled\&quot;|\&quot;none\&quot;&quot;,&quot;section&quot;:&quot;Subscription state&quot;},&quot;dunningState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;reminder_sent&quot;,&quot;suspended&quot;,&quot;access_revoked&quot;,&quot;archival_flagged&quot;],&quot;default&quot;:&quot;none&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Subscription state&quot;},&quot;activeTenants&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:7,&quot;min&quot;:0,&quot;max&quot;:60,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Subscription state&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+// Mirrors artifacts/api-server/src/actions/msp-plan-self-service.ts (4 actions, all real, all
 // currently unconsumed by any app). Prices and tenantAllowance values below are NOT in the
 // contract pack — the pack only captured ids, names and the fulfillment/annual-price columns.
 // They are placeholders and are labelled as such in the UI.
@@ -215,7 +203,7 @@ class Component extends DCLogic {
     this.setState(s => ({ log: [{ code, path, message }].concat(s.log).slice(0, 4) }));
   }
 
-  // Route step 7: downgradeBlockReason — hard cap is targetAllowance * 2, mirroring
+  // action step 7: downgradeBlockReason — hard cap is targetAllowance * 2, mirroring
   // checkTenantAllowance in msp-entitlement.ts. 0/null allowance is unlimited.
   downgradeBlock(target) {
     if (!target.allowance) return null;
@@ -230,7 +218,7 @@ class Component extends DCLogic {
     const st = this.status();
     const target = this.tier(this.state.targetId);
     const interval = this.state.targetInterval;
-    const path = "POST /api/msp/plan/change";
+    const path = "this action";
     if (st === "none") return this.push(404, path, "No platform subscription found for this MSP");
     if (st !== "active" && st !== "trialing")
       return this.push(409, path, "Resolve your billing issue before changing plans");
@@ -246,7 +234,7 @@ class Component extends DCLogic {
   };
 
   cancel = () => {
-    const path = "POST /api/msp/plan/cancel-pending-change";
+    const path = "this action";
     if (!this.state.pending) return this.push(404, path, "No pending plan change to cancel");
     this.setState({ pending: null });
     this.push(200, path, "Pending columns cleared. Schedule release is best-effort — a release failure is logged, not surfaced.");
@@ -324,7 +312,6 @@ class Component extends DCLogic {
       rootPad: this.props.rootPad ?? "0",
       showOwnHeader: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
       hasSubscription: this.hasSub(),
       noSubscription: !this.hasSub(),
       tierName: current ? current.name : "—",
@@ -351,7 +338,7 @@ class Component extends DCLogic {
         codeColor: l.code === 200 ? "#34d399" : l.code === 404 ? "#94a3b8" : "#f87171"
       })),
       notes: [
-        { dot: "#f87171", text: "All four plan routes exist and are real, but no app calls them — a sweep of every artifacts/*/src app on 2026-09-12 found zero references, including inside msp-console. Filed as #3796." },
+        { dot: "#f87171", text: "All four plan actions exist and are real, but no app calls them — a sweep of every artifacts/*/src app on 2026-09-12 found zero references, including inside msp-console. Filed as #3796." },
         { dot: "#fbbf24", text: "Annual billing returns 400 for all three real tiers: annual_price_cents is unset on Free, Growth and Pro. It is an admin data-entry step in Plan Management, not a code fix." },
         { dot: "#60a5fa", text: "Nothing on this surface writes the live tier. It writes stripe_schedule_id plus pending_service_id / pending_billing_interval; the billing webhook flips the live columns once Stripe enters the target phase." },
         { dot: "#94a3b8", text: "Tier prices and tenant allowances shown here are placeholders. The contract pack captured tier ids, names and the fulfillment / annual-price columns only." },

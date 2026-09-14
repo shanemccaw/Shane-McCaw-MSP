@@ -31,7 +31,7 @@
 
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start;min-width:0">
 
-    <!-- List — GET /msp/customers/:customerId/status-reports -->
+    <!-- List — this lookup -->
     <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0">
       <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
         <span style="display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1">
@@ -59,7 +59,7 @@
       <sc-if value="{{ noReports }}" hint-placeholder-val="{{ true }}">
         <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:24px 18px;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
           <span style="font-size:13.5px;font-weight:700;color:#cbd5e1">No status reports yet</span>
-          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;max-width:340px">This is the live state: the table holds zero rows for every tenant, because nothing has ever called these routes. The first report on this tenant will be one you write here.</span>
+          <span style="font-size:11.5px;color:#64748b;text-wrap:pretty;max-width:340px">This is the live state: the table holds zero rows for every tenant, because nothing has ever called these actions. The first report on this tenant will be one you write here.</span>
           <button onClick="{{ newDraft }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 13px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:4px">Write the first one</button>
         </div>
       </sc-if>
@@ -138,7 +138,7 @@
           </div>
 
           <sc-if value="{{ isPublished }}" hint-placeholder-val="{{ false }}">
-            <span style="font-size:11.5px;color:#fbbf24;text-wrap:pretty">Published, and that is final. Edits are refused before the request body is even read, and no route anywhere can move it back to draft or restamp it. A correction has to be a new report.</span>
+            <span style="font-size:11.5px;color:#fbbf24;text-wrap:pretty">Published, and that is final. Edits are refused before the request body is even read, and no action anywhere can move it back to draft or restamp it. A correction has to be a new report.</span>
           </sc-if>
 
           <sc-if value="{{ confirming }}" hint-placeholder-val="{{ false }}">
@@ -163,27 +163,14 @@
 
       <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
         <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
-          <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
           <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
-        </div>
-      </sc-if>
-
-      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-          <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these five routes do and don't give this screen</span>
-          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-            </div>
-          </sc-for>
         </div>
       </sc-if>
     </div>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;customerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Traders&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900},&quot;customerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Traders&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
 const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
 const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
@@ -228,7 +215,7 @@ class Component extends DCLogic {
     const r = this.state.reports.find(x => x.id === this.state.openId);
     if (!r) return;
     if (r.state === "published") {
-      return this.setState({ result: ["409 · Published status reports cannot be edited", "The state is checked before the body is parsed, so there is nothing to send. A correction is a new report — this screen offers no other route out.", RED] });
+      return this.setState({ result: ["409 · Published status reports cannot be edited", "The state is checked before the body is parsed, so there is nothing to send. A correction is a new report — this screen offers no other action out.", RED] });
     }
     this.setState({ editingId: r.id, creating: false, periodLabel: r.periodLabel, asOfDate: r.asOfDate, content: r.content, result: null });
   };
@@ -260,7 +247,7 @@ class Component extends DCLogic {
     this.setState(s => ({
       reports: s.reports.map(r => r.id === id ? Object.assign({}, r, { periodLabel: period, asOfDate: st.asOfDate.trim(), content, updatedAt: new Date().toISOString().slice(0, 16) + ":00Z" }) : r),
       editingId: null, openId: id,
-      result: ["200 · report updated", "Only the fields you sent were written, and updatedAt was bumped. State and published-at are untouched — this route cannot publish.", GREEN]
+      result: ["200 · report updated", "Only the fields you sent were written, and updatedAt was bumped. State and published-at are untouched — this cannot publish.", GREEN]
     }));
   };
 
@@ -281,7 +268,7 @@ class Component extends DCLogic {
     this.setState(s => ({
       reports: s.reports.map(r => r.id === id ? Object.assign({}, r, { state: "published", publishedAt: now, updatedAt: now }) : r),
       confirming: false,
-      result: ["200 · report published", "State moved to published and published-at stamped once. There is no route back — the enum only runs one way.", GREEN]
+      result: ["200 · report published", "State moved to published and published-at stamped once. There is no action back — the enum only runs one way.", GREEN]
     }));
   };
 
@@ -314,7 +301,6 @@ class Component extends DCLogic {
       showOwnHeader: !(this.props.embedded ?? false),
       showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
       customerName: this.props.customerName ?? "Northwind Traders",
 
       toggleEmpty: () => this.setState(s => ({ empty: !s.empty, openId: null, editingId: null, creating: false, result: null })),
@@ -376,8 +362,8 @@ class Component extends DCLogic {
         { dot: "#fbbf24", text: "The as-of date must carry a UTC offset, and it is also the list's sort key. That makes it load-bearing twice over while being the field most likely to be typed wrong, and it cannot be corrected once published." },
         { dot: "#60a5fa", text: "A report that belongs to another MSP's customer answers not-found rather than forbidden, and a malformed id answers not-found too. This screen can never tell a caller that a report exists but is not theirs." },
         { dot: "#60a5fa", text: "An empty save is rejected rather than quietly succeeding, and only the fields actually sent are written, so a form that patches everything on every save would overwrite fields the operator never touched." },
-        { dot: "#94a3b8", text: "Zero rows exist in this table for every tenant today — the empty state is the true current state of the whole feature, not a fixture. Nothing outside this design has ever called these routes." },
-        { dot: "#94a3b8", text: "Nothing in the schema references a status report, and the routes join only the author's name. A report cannot cite a change request, a finding or a runbook, so any link to the work it describes is text." }
+        { dot: "#94a3b8", text: "Zero rows exist in this table for every tenant today — the empty state is the true current state of the whole feature, not a fixture. Nothing outside this design has ever called these actions." },
+        { dot: "#94a3b8", text: "Nothing in the schema references a status report, and the actions join only the author's name. A report cannot cite a change request, a finding or a runbook, so any link to the work it describes is text." }
       ]
     };
   }

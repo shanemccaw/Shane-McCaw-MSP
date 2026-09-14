@@ -69,7 +69,7 @@
         </div>
       </sc-if>
 
-      <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">Newest first by row id. There is no filter, no search and no pagination on this route — the whole book comes back in one call.</span>
+      <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">Newest first. There is no filter, no search and no pagination — the whole book comes back in one call.</span>
     </div>
 
     <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
@@ -195,27 +195,14 @@
 
       <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
         <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
-          <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
           <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
-        </div>
-      </sc-if>
-
-      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-          <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these eight routes do and don't give this screen</span>
-          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-            </div>
-          </sc-for>
         </div>
       </sc-if>
     </div>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
 const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
 const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
@@ -272,10 +259,10 @@ class Component extends DCLogic {
     const st = this.state;
     const req = [st.fTitle, st.fWeakness, st.fTenant, st.fDue, st.fControl, st.fResources];
     if (req.some(v => !v.trim())) {
-      return this.setState({ result: ["400 · Invalid request body", "Six fields are required and the error comes back as a field-by-field breakdown. The primary domain is required too but accepts an empty string, so a blank one will save silently.", AMBER] });
+      return this.setState({ result: ["Missing information", "Six fields are required. The primary domain is required too but accepts an empty string, so a blank one will save silently.", AMBER] });
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(st.fDue.trim())) {
-      return this.setState({ result: ["400 · Invalid request body", "The target date must be a plain calendar date. Anything with a time on it is rejected.", AMBER] });
+      return this.setState({ result: ["Invalid date", "The target date must be a plain calendar date. Anything with a time on it is rejected.", AMBER] });
     }
     const id = 13 + st.plans.length;
     const row = { id, ref: "POAM-2026-0" + id, tenantName: st.fTenant.trim(), tenantId: st.fTenant.trim().toLowerCase().replace(/\s+/g, "-"),
@@ -283,7 +270,7 @@ class Component extends DCLogic {
       control: st.fControl.trim(), resources: st.fResources.trim(), checkKey: null, sowId: null,
       signedAt: null, signedBy: null, signedStatement: null, milestones: [] };
     this.setState(s => ({ plans: [row].concat(s.plans), creating: false, empty: false, openId: id,
-      result: ["201 · " + row.ref, "Created. The reference code was assigned server-side after the insert, and the original target date was stamped identical to the current one — that copy can never be rewritten.", GREEN] }));
+      result: [row.ref + " created", "Created. The reference code was assigned server-side after the insert, and the original target date was stamped identical to the current one — that copy can never be rewritten.", GREEN] }));
   };
 
   patch = (id, changes, res) => this.setState(s => ({
@@ -292,7 +279,7 @@ class Component extends DCLogic {
 
   guardTerminal = (p) => {
     if (p.status === "cancelled" || p.status === "completed") {
-      this.setState({ result: ["409 · POA&M is " + p.status + " and cannot be edited", "Terminal plans are frozen against every field on the edit route. Nothing reopens one.", RED] });
+      this.setState({ result: ["POA&M is " + p.status + " and cannot be edited", "Terminal plans are frozen against every field. Nothing reopens one.", RED] });
       return true;
     }
     return false;
@@ -302,28 +289,28 @@ class Component extends DCLogic {
     const p = this.plans().find(x => x.id === this.state.openId);
     if (!p || this.guardTerminal(p)) return;
     const next = p.due === "2026-10-31" ? "2026-11-30" : "2026-10-31";
-    this.patch(p.id, { due: next }, ["200 · " + p.ref, "Target date moved to " + next + ". The original date is untouched and there is no reason field on this route, so the slip is visible but unexplained.", AMBER]);
+    this.patch(p.id, { due: next }, [p.ref, "Target date moved to " + next + ". The original date is untouched and there is no reason field for it, so the slip is visible but unexplained.", AMBER]);
   };
 
   complete = () => {
     const p = this.plans().find(x => x.id === this.state.openId);
     if (!p || this.guardTerminal(p)) return;
     const open = p.milestones.filter(m => m.status !== "completed").length;
-    this.patch(p.id, { status: "completed" }, ["200 · " + p.ref, open > 0
-      ? "Marked completed with " + open + " milestone" + (open === 1 ? "" : "s") + " still open. Nothing checks them — completion is the generic edit route writing a status, at the operator floor, with no dedicated route and no condition."
-      : "Marked completed. This is the only path to that status anywhere, and it is the same generic edit route an operator uses for a title change.", AMBER]);
+    this.patch(p.id, { status: "completed" }, [p.ref, open > 0
+      ? "Marked completed with " + open + " milestone" + (open === 1 ? "" : "s") + " still open. Nothing checks them — completion is just a status write, at the operator floor, with no dedicated step and no condition."
+      : "Marked completed. This is the only path to that status anywhere, and it is the same edit an operator uses for a title change.", AMBER]);
   };
 
   cancelPlan = () => {
     const p = this.plans().find(x => x.id === this.state.openId);
     if (!p) return;
     if (p.status === "cancelled" || p.status === "completed") {
-      return this.setState({ result: ["409 · already " + p.status, "The dedicated cancel route refuses a plan that is already terminal.", RED] });
+      return this.setState({ result: ["already " + p.status, "Cancelling refuses a plan that is already terminal.", RED] });
     }
     if (this.state.role === "MSPAdmin") {
-      return this.patch(p.id, { status: "cancelled" }, ["200 · PATCH /msp/poams/" + p.ref + "/cancel", "Cancelled through the dedicated route, which requires an admin. Only the status changed — the signature and dates are all left standing.", AMBER]);
+      return this.patch(p.id, { status: "cancelled" }, [p.ref, "Cancelled through the admin-only action. Only the status changed — the signature and dates are all left standing.", AMBER]);
     }
-    this.patch(p.id, { status: "cancelled" }, ["200 · PATCH /msp/poams/" + p.ref + " (generic edit)", "Cancelled as an operator. The dedicated cancel route requires an admin, but the generic edit route accepts the same status at the operator floor with no such check — identical database state, no elevated role. Filed upstream as #3452; this screen shows it rather than hiding it.", RED]);
+    this.patch(p.id, { status: "cancelled" }, [p.ref, "Cancelled as an operator. Cancelling is supposed to require an admin, but the system currently accepts the same change from an operator too — identical result, no elevated check (#3452).", RED]);
   };
 
   addMilestone = () => {
@@ -332,25 +319,25 @@ class Component extends DCLogic {
     const id = 90 + p.milestones.length;
     const row = { id, title: "New milestone", due: "2026-12-01", status: "pending", completedAt: null, sortOrder: p.milestones.length };
     this.patch(p.id, { milestones: p.milestones.concat([row]) },
-      ["201 · milestone " + id, "Added as pending. The status is set server-side and cannot be supplied, so a milestone can never be created already complete.", GREEN]);
+      ["Milestone added", "Added as pending. The status is set server-side and cannot be supplied, so a milestone can never be created already complete.", GREEN]);
   };
 
   completeMilestone = (mid) => () => {
     const p = this.plans().find(x => x.id === this.state.openId);
     const m = p.milestones.find(x => x.id === mid);
     if (m.status === "completed") {
-      return this.setState({ result: ["409 · already completed", "A completed milestone is refused before the update runs, and the update itself independently guards on the completion stamp, so two concurrent attempts cannot both land.", RED] });
+      return this.setState({ result: ["Already completed", "A completed milestone is refused before the update runs, and the update itself independently guards on the completion stamp, so two concurrent attempts cannot both land.", RED] });
     }
     this.patch(p.id, { milestones: p.milestones.map(x => x.id === mid ? Object.assign({}, x, { status: "completed", completedAt: TODAY }) : x) },
-      ["200 · milestone " + mid, "Completed and stamped server-side. There is no way to un-complete it — but it can still be deleted outright, which is the one gap in that write-once discipline.", GREEN]);
+      ["Milestone completed", "Completed and stamped server-side. There is no way to un-complete it — but it can still be deleted outright, which is the one gap in that write-once discipline.", GREEN]);
   };
 
   removeMilestone = (mid) => () => {
     const p = this.plans().find(x => x.id === this.state.openId);
     const m = p.milestones.find(x => x.id === mid);
     this.patch(p.id, { milestones: p.milestones.filter(x => x.id !== mid) },
-      ["200 · milestone " + mid + " deleted", m.status === "completed"
-        ? "A completed milestone was deleted. The delete route has no status check at all, so the record that this step was done is simply gone — no audit, no trace on the plan."
+      ["Milestone deleted", m.status === "completed"
+        ? "A completed milestone was deleted. Deleting has no status check at all, so the record that this step was done is simply gone — no audit, no trace on the plan."
         : "Removed. Deleting the parent plan would cascade its milestones away too.", m.status === "completed" ? RED : AMBER]);
   };
 
@@ -415,8 +402,6 @@ class Component extends DCLogic {
       rootPad: this.props.rootPad ?? "0",
       showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
-
       role: "Signed in as " + st.role,
       showOwnHeader: !(this.props.embedded ?? false),
       roleBg: isAdmin ? AMBER[0] : GREY[0], roleLine: isAdmin ? AMBER[1] : GREY[1], roleFg: isAdmin ? "#fbbf24" : "#94a3b8",
@@ -450,7 +435,7 @@ class Component extends DCLogic {
       sigTitle: signed ? "Signed by the customer" : "Not signed",
       sigText: signed
         ? p.signedBy + " on " + p.signedAt.slice(0, 10) + ". \u201c" + p.signedStatement + "\u201d The signature, the accountable-holder trail and the move to active are all written by the customer's own portal — nothing here can sign, re-sign or undo it."
-        : "This plan has no signature. Only the customer's portal can add one, and that is also the only thing that makes a plan active — no route on this side can set that status.",
+        : "This plan has no signature. Only the customer's portal can add one, and that is also the only thing that makes a plan active — nothing on this side can set that status.",
       sigTint: signed ? GREEN[0] : GREY[0], sigLine: signed ? GREEN[1] : GREY[1], sigColor: signed ? "#34d399" : "#94a3b8",
 
       slip: this.slip, complete: this.complete, cancelPlan: this.cancelPlan,
@@ -463,8 +448,8 @@ class Component extends DCLogic {
       cancelFg: terminal ? "#475569" : "#f87171",
       cancelCursor: terminal ? "not-allowed" : "pointer",
       gateNote: isAdmin
-        ? "Cancelling as an admin goes through the dedicated route, which is the intended path."
-        : "Cancelling as an operator goes through the generic edit route, which accepts the same status without the admin check the dedicated route enforces.",
+        ? "Cancelling as an admin is the intended path."
+        : "Cancelling as an operator currently works too, without the admin check that's supposed to apply.",
       gateColor: isAdmin ? "#64748b" : "#fbbf24",
 
       msCaption: p && p.milestones.length > 0
@@ -473,21 +458,8 @@ class Component extends DCLogic {
       hasMilestones: milestones.length > 0, noMilestones: milestones.length === 0, milestones,
       addMilestone: this.addMilestone,
 
-      hasResult: !!res, resCode: res ? res[0] : "", resText: res ? res[1] : "",
+      hasResult: !!res, resText: res ? res[1] : "",
       resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
-
-      notes: [
-        { dot: "#f87171", text: "Cancelling is supposed to need an admin, and the dedicated route enforces that — but the generic edit route accepts the same status at the operator floor, producing identical state with no elevated check. Filed upstream as #3452. Until it lands, the role gate is this screen's to hold." },
-        { dot: "#f87171", text: "Completed is reachable only through that same generic edit route. There is no dedicated completion route, no elevated role and no condition — a plan can be marked complete with every milestone still open, and nothing anywhere computes progress from the milestones." },
-        { dot: "#f87171", text: "A completed milestone is frozen against edits by two independent guards, yet the delete route has no status check at all, so the record of a finished step can be removed outright with no trace on the plan." },
-        { dot: "#fbbf24", text: "The routes return the bare database row with no derived fields, so overdue and signed are computed here in the client. The customer's own portal computes both server-side for the same table, which means the two surfaces can disagree about the same plan." },
-        { dot: "#fbbf24", text: "Every mutation answers with a bare acknowledgement rather than the updated row, so this screen either re-reads the plan after each action or trusts its own optimistic copy." },
-        { dot: "#60a5fa", text: "The original target date is stamped at creation and can never be rewritten, which makes a slip permanently visible — but there is no reason field on the edit route, so the why of a moved date lives nowhere." },
-        { dot: "#60a5fa", text: "Signature, the accountable-holder trail and the move to active are written exclusively by the customer's portal. This surface authors the plan and reads the signature back; it can never produce one." },
-        { dot: "#94a3b8", text: "The reference code is assigned server-side with a reserved placeholder, so two operators creating at once cannot collide — a deliberate fix over the risk register, where the equivalent id was client-supplied." },
-        { dot: "#94a3b8", text: "The tenant is stored as free text with no real reference, and the check key has no join, so a plan cannot be reliably linked back to the finding or the tenant record it came from." },
-        { dot: "#94a3b8", text: "The list route takes no filter, no search and no pagination, and nothing has ever called any of these eight routes. Every affordance here is the first consumer of them." }
-      ]
     };
   }
 }

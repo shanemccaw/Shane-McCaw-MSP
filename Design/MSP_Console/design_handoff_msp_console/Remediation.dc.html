@@ -146,7 +146,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       <div style="border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(15,23,42,.6);overflow-x:auto">
         <div style="min-width:1080px">
           <div style="display:grid;grid-template-columns:2.4fr .9fr 1.4fr 1.2fr 1.5fr 130px;gap:12px;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.14);font-size:10px;font-weight:700;letter-spacing:.1em;color:#64748b">
-            <span>FINDING</span><span>SEVERITY</span><span>STATUS</span><span>FIX ROUTE</span><span>CHANGE REQUEST</span><span style="text-align:right">ACTION</span>
+            <span>FINDING</span><span>SEVERITY</span><span>STATUS</span><span>FIX action</span><span>CHANGE REQUEST</span><span style="text-align:right">ACTION</span>
           </div>
           <sc-for list="{{ clRows }}" as="c" hint-placeholder-count="4">
             <div style="display:grid;grid-template-columns:2.4fr .9fr 1.4fr 1.2fr 1.5fr 130px;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid rgba(148,163,184,.08);transition:background-color .15s" style-hover="background:rgba(148,163,184,.05)">
@@ -156,7 +156,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
               </span>
               <span style="display:inline-flex;justify-self:start;padding:3px 10px;border-radius:999px;background:{{ c.sevTint }};border:1px solid {{ c.sevLine }};font-size:11px;font-weight:600;color:{{ c.sevColor }};white-space:nowrap">{{ c.severity }}</span>
               <span style="font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.statusLabel }}</span>
-              <span style="display:inline-flex;justify-self:start;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:{{ c.rTint }};border:1px solid {{ c.rLine }};font-size:11px;font-weight:600;color:{{ c.rColor }};white-space:nowrap"><span data-icon="{{ c.rIcon }}" style="width:11px;height:11px"></span>{{ c.route }}</span>
+              <span style="display:inline-flex;justify-self:start;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:{{ c.rTint }};border:1px solid {{ c.rLine }};font-size:11px;font-weight:600;color:{{ c.rColor }};white-space:nowrap"><span data-icon="{{ c.rIcon }}" style="width:11px;height:11px"></span>{{ c.action }}</span>
               <span style="font-size:12px;color:{{ c.crColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.cr }}</span>
               <button onClick="{{ c.raise }}" style="justify-self:end;height:30px;padding:0 11px;border-radius:7px;border:1px solid {{ c.ctaLine }};background:{{ c.ctaBg }};color:{{ c.ctaFg }};font-size:12px;font-weight:600;cursor:{{ c.ctaCursor }};white-space:nowrap;opacity:{{ c.ctaOpacity }}" style-hover="background:rgba(148,163,184,.12)">{{ c.cta }}</button>
             </div>
@@ -317,17 +317,17 @@ class Component extends DCLogic {
 
   checklist = {
     0: [
-      { key: "identity.mfa_admin_gap", finding: "Privileged accounts without enforced MFA", severity: "critical", status: "not_started", route: "we_can_run", cr: null },
-      { key: "identity.legacy_auth", finding: "Legacy authentication still permitted", severity: "critical", status: "completed", route: "we_can_run", cr: "CR-2026-116 approved" },
-      { key: "collab.guest_sharing", finding: "Anonymous sharing links enabled tenant-wide", severity: "warning", status: "not_started", route: "you_must_run", cr: null },
-      { key: "compliance.audit_log", finding: "Unified audit log disabled", severity: "warning", status: "already_handled", route: "admin_center_only", cr: "not applicable" }
+      { key: "identity.mfa_admin_gap", finding: "Privileged accounts without enforced MFA", severity: "critical", status: "not_started", action: "we_can_run", cr: null },
+      { key: "identity.legacy_auth", finding: "Legacy authentication still permitted", severity: "critical", status: "completed", action: "we_can_run", cr: "CR-2026-116 approved" },
+      { key: "collab.guest_sharing", finding: "Anonymous sharing links enabled tenant-wide", severity: "warning", status: "not_started", action: "you_must_run", cr: null },
+      { key: "compliance.audit_log", finding: "Unified audit log disabled", severity: "warning", status: "already_handled", action: "admin_center_only", cr: "not applicable" }
     ],
     1: [
-      { key: "identity.mfa_admin_gap", finding: "Nine privileged accounts without enforced MFA", severity: "critical", status: "not_started", route: "you_must_run", cr: null },
-      { key: "collab.guest_sharing", finding: "Anonymous sharing links enabled tenant-wide", severity: "warning", status: "not_started", route: "you_must_run", cr: "CR-2026-131 pending" }
+      { key: "identity.mfa_admin_gap", finding: "Nine privileged accounts without enforced MFA", severity: "critical", status: "not_started", action: "you_must_run", cr: null },
+      { key: "collab.guest_sharing", finding: "Anonymous sharing links enabled tenant-wide", severity: "warning", status: "not_started", action: "you_must_run", cr: "CR-2026-131 pending" }
     ],
     2: [
-      { key: "identity.mfa_admin_gap", finding: "Twelve privileged accounts without enforced MFA", severity: "critical", status: "not_started", route: "we_can_run", cr: null }
+      { key: "identity.mfa_admin_gap", finding: "Twelve privileged accounts without enforced MFA", severity: "critical", status: "not_started", action: "we_can_run", cr: null }
     ],
     3: []
   };
@@ -465,7 +465,7 @@ class Component extends DCLogic {
     const tabDefs = [
       { id: "tracker", label: "Tracker", count: stepsT.length + " of 30" },
       { id: "checklist", label: "Checklist", count: String(clT.length) },
-      { id: "routes", label: "Fix routes", count: String(fixT.length) },
+      { id: "actions", label: "Fix actions", count: String(fixT.length) },
       { id: "bypass", label: "Outside CR", count: String(bpT.length) }
     ];
 
@@ -572,14 +572,14 @@ class Component extends DCLogic {
       noChecklist: tab === "checklist" && clT.length === 0,
       clRows: clT.map(c => {
         const sv = this.tone(c.severity === "critical" ? "red" : "amber");
-        const shape = SHAPE[c.route], rt = this.tone(shape.tone);
+        const shape = SHAPE[c.action], rt = this.tone(shape.tone);
         const approved = c.cr && c.cr.indexOf("approved") >= 0;
         const raiseable = !c.cr;
         return {
           key: c.key, finding: c.finding, severity: c.severity,
           sevColor: sv[0], sevTint: sv[1], sevLine: sv[2],
           statusLabel: this.STATUS_LABELS[c.status],
-          route: shape.label, rIcon: shape.icon, rColor: rt[0], rTint: rt[1], rLine: rt[2],
+          action: shape.label, rIcon: shape.icon, rColor: rt[0], rTint: rt[1], rLine: rt[2],
           cr: c.cr || "none raised",
           crColor: approved ? "#6ee7b7" : c.cr ? "#fcd34d" : "#64748b",
           cta: raiseable ? "Raise change" : approved ? "View change" : "View request",
@@ -591,7 +591,7 @@ class Component extends DCLogic {
         };
       }),
 
-      isRoutes: tab === "routes",
+      isRoutes: tab === "actions",
       ceilIcon: consent === "granted" ? "shield-check" : "shield-x",
       ceilColor: consent === "granted" ? "#34d399" : "#fbbf24",
       ceilTint: consent === "granted" ? "rgba(52,211,153,.07)" : "rgba(251,191,36,.07)",
@@ -634,7 +634,7 @@ class Component extends DCLogic {
         };
       }),
 
-      honestNote: "Remediation endpoints are built and live but not yet wired to this console, so the states shown here are representative rather than read from " + (this.props.tenantName || "this tenant") + "."
+      honestNote: "Remediation actions are built and live but not yet wired to this console, so the states shown here are representative rather than read from " + (this.props.tenantName || "this tenant") + "."
     };
   }
 }

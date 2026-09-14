@@ -25,7 +25,7 @@
       <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#60a5fa">STAFF ROLES AND ONBOARDING</span>
       <span style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9">Who works for this MSP, and who has been invited</span>
     </div></sc-if>
-    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPAdmin or above · every route</span>
+    <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);font-size:11px;font-weight:600;color:#fbbf24">MSPAdmin or above · every action</span>
     <span style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.24);font-size:11px;font-weight:600;color:#93c5fd">Acting as Priya Raman</span>
     <sc-if value="{{ showToggles }}" hint-placeholder-val="{{ true }}"><button onClick="{{ toggleLive }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:26px;padding:0 10px;border-radius:999px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.2);font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:inherit">{{ liveBtnLabel }}</button></sc-if>
   </div>
@@ -71,7 +71,7 @@
             <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:380px">{{ noPeopleText }}</span>
           </div>
         </sc-if>
-        <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">Newest account first. The roster route returns every account carrying this MSP's id and applies no role filter of its own, so the staff-only view is drawn here.</span>
+        <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">Newest account first. The roster action returns every account carrying this MSP's id and applies no role filter of its own, so the staff-only view is drawn here.</span>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
@@ -95,7 +95,7 @@
                       <button onClick="{{ r.select }}" style="display:inline-flex;align-items:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;background:{{ r.bg }};border:1px solid {{ r.line }};font-size:12px;font-weight:600;color:{{ r.fg }};cursor:pointer;font-family:inherit">{{ r.label }}</button>
                     </sc-for>
                   </div>
-                  <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Anything else — PlatformAdmin included — fails validation before the route runs. The response is a bare ok; the new role is not echoed back.</span>
+                  <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Anything else — PlatformAdmin included — fails validation before the system runs. The response is a bare ok; the new role is not echoed back.</span>
                 </div>
 
                 <div style="border:1px solid rgba(148,163,184,.14);border-radius:10px;background:rgba(2,6,23,.4);padding:12px;display:flex;flex-direction:column;gap:8px">
@@ -147,12 +147,11 @@
                 <button onClick="{{ remove }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.12);color:#f87171;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Remove from this MSP</button>
                 <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;flex:1;min-width:180px">Both set the same inactive flag; neither deletes anything. Both refuse your own account.</span>
               </div>
-              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Password reset, one-time temporary password, MFA reset and MFA enforcement act on this same account from <a href="Account Security.dc.html">Account security</a> — the five credential routes are shared between the two surfaces and are not repeated here.</span>
+              <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">Password reset, one-time temporary password, MFA reset and MFA enforcement act on this same account from <a href="Account Security.dc.html">Account security</a> — the five credential actions are shared between the two surfaces and are not repeated here.</span>
             </div>
 
             <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
               <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
-                <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
                 <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
               </div>
             </sc-if>
@@ -230,7 +229,7 @@
           <div style="border:1px dashed rgba(148,163,184,.25);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
             <span style="font-size:13px;font-weight:700;color:#cbd5e1">No pending invites</span>
             <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:360px">A real empty array. No invite has ever been sent from this MSP, so this is also the live state.</span>
-            <span style="font-size:11px;font-family:Menlo,monospace;color:#64748b">GET /api/msp/settings/invites → []</span>
+            <span style="font-size:11px;font-family:Menlo,monospace;color:#64748b">this lookup → []</span>
           </div>
         </sc-if>
         <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">Only pending invites are listed. One that was accepted or that expired drops off this list but is never deleted, and an accepted one cannot be revoked — history is kept by omission rather than by a status.</span>
@@ -279,28 +278,15 @@
       </sc-if>
       <sc-if value="{{ hasSessionResult }}" hint-placeholder-val="{{ false }}">
         <div style="border:1px solid rgba(248,113,113,.28);border-radius:12px;background:rgba(248,113,113,.1);padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
-          <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:#f87171">{{ sessionResCode }}</span>
           <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ sessionResText }}</span>
         </div>
       </sc-if>
       <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">One MSP-wide list, newest first, one hundred at most, active accounts only. There is no per-person session read — the name filter above runs in this screen — while the per-person revoke on the roster is real and returns how many it closed.</span>
     </div>
   </sc-if>
-
-  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these nineteen routes do and don't give this screen</span>
-      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-        <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-          <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-          <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-        </div>
-      </sc-for>
-    </div>
-  </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:1000},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:1000},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
 const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
 const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
@@ -397,7 +383,6 @@ class Component extends DCLogic {
       rootBg: this.props.rootBg ?? "transparent",
       showOwnHeader: !(this.props.embedded ?? false),
       showToggles: !(this.props.embedded ?? false),
-      showNotes: this.props.showNotes ?? true,
       toggleLive: () => this.setState(s => ({ live: !s.live, result: null, openId: s.live ? 202 : 1 })),
       liveBtnLabel: st.live ? "Show a staffed MSP" : "Show the live roster",
 
@@ -405,28 +390,28 @@ class Component extends DCLogic {
       rosterChips: [[true, "Staff only"], [false, "Everyone with this MSP id"]].map(([k, label]) => Object.assign({ label, select: () => this.setState({ staffOnly: k }) }, chip(st.staffOnly === k))),
       rosterCaption: everyone.length + " account" + (everyone.length === 1 ? "" : "s") + " carry this MSP's id · " + staff.length + " " + (staff.length === 1 ? "is" : "are") + " staff",
       hasPeople: people.length > 0, noPeople: people.length === 0, people,
-      noPeopleText: everyone.length + " accounts carry this MSP's id — a platform administrator, assessment sign-ups and customer logins — and none is an MSPAdmin or MSPOperator. That is the live state: no staff member has ever been invited or accepted. Switch the filter to see the accounts the route actually returns.",
+      noPeopleText: everyone.length + " accounts carry this MSP's id — a platform administrator, assessment sign-ups and customer logins — and none is an MSPAdmin or MSPOperator. That is the live state: no staff member has ever been invited or accepted. Switch the filter to see the accounts the system actually returns.",
 
       hasOpen: !!p, noOpen: !p,
       openName: p ? (p.name || "No name on the account") : "", openEmail: p ? p.email : "",
       openMeta: p ? "user #" + p.id + " · created " + p.created + " · " + (p.lastLogin ? "last sign-in " + p.lastLogin : "never signed in") : "",
       openRole: p ? p.role : "", openTint: pt[0], openLine: pt[1], openColor: pt[2],
       openScopable: scopable, openNotScopable: !!p && !scopable,
-      notScopableText: p ? "This account is " + (p.role === "PlatformAdmin" ? "a platform administrator" : p.role === "CustomerUser" ? "a customer login" : "an assessment sign-up") + " that happens to carry this MSP's id. The roster route returns it, but the role, scope and approval routes refuse it: only MSPAdmin and MSPOperator can be set or scoped here, and nothing on this surface can promote or demote anyone else." : "",
+      notScopableText: p ? "This account is " + (p.role === "PlatformAdmin" ? "a platform administrator" : p.role === "CustomerUser" ? "a customer login" : "an assessment sign-up") + " that happens to carry this MSP's id. The roster action returns it, but the role, scope and approval actions refuse it: only MSPAdmin and MSPOperator can be set or scoped here, and nothing on this surface can promote or demote anyone else." : "",
       roleChoices: STAFF_ROLES.map(r => Object.assign({ label: r, select: () => { if (!p || p.role === r) return; this.patch(p.id, { role: r }); this.setState({ result: ["200 · { ok: true }", "Role written with a fresh updated stamp. The response does not say what the role now is — this screen re-reads the roster to show it.", BLUE] }); } }, chip(!!p && p.role === r))),
       scopeSummary: draft.length === 0 ? "unrestricted — the whole book" : draft.length + " of " + CUSTOMERS.length + " selected",
       scopeSummaryColor: draft.length === 0 ? "#34d399" : "#fbbf24",
       scopeBoxes: CUSTOMERS.map(c => { const on = draft.indexOf(c.id) > -1; return { name: c.name, status: c.status, bg: on ? "rgba(37,99,235,.14)" : "rgba(2,6,23,.4)", line: on ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.14)", boxBg: on ? "#2563eb" : "transparent", boxLine: on ? "#2563eb" : "rgba(148,163,184,.4)",
         toggle: () => this.setState({ draftScopes: on ? draft.filter(x => x !== c.id) : draft.concat([c.id]) }) }; }),
-      saveScopes: () => { if (!p) return; const ids = draft.slice().sort(); this.patch(p.id, { scopes: ids }); this.setState({ draftScopes: null, result: ["200 · { ok: true, assignedCustomerIds: [" + ids.join(", ") + "], unrestricted: " + (ids.length === 0) + " }", ids.length === 0 ? "Every scope row for this person was deleted and none written back — they now see the whole book again. Any id not in your MSP would have been refused before the write." : "Every existing scope row was deleted and these " + ids.length + " written in one transaction — a full replace, not a merge. Note the stored scope ids still point at a retired customer table, so on live routes a scoped set may not line up with the tenant ids they compare against.", GREEN] }); },
+      saveScopes: () => { if (!p) return; const ids = draft.slice().sort(); this.patch(p.id, { scopes: ids }); this.setState({ draftScopes: null, result: ["200 · { ok: true, assignedCustomerIds: [" + ids.join(", ") + "], unrestricted: " + (ids.length === 0) + " }", ids.length === 0 ? "Every scope row for this person was deleted and none written back — they now see the whole book again. Any id not in your MSP would have been refused before the write." : "Every existing scope row was deleted and these " + ids.length + " written in one transaction — a full replace, not a merge. Note the stored scope ids still point at a retired customer table, so on live actions a scoped set may not line up with the tenant ids they compare against.", GREEN] }); },
       approveText: p ? (p.approves ? "Counts as an eligible approver for SOW charges, alongside every MSPAdmin." : "Cannot approve SOW charges unless they are an MSPAdmin.") : "",
       approveLabel: p && p.approves ? "Withdraw approval right" : "Grant approval right",
-      toggleApprove: () => { if (!p) return; this.patch(p.id, { approves: !p.approves }); this.setState({ result: ["200 · { ok: true }", "Flag written. This is the one route that touches it; the approval gate on SOW charges reads it live.", BLUE] }); },
+      toggleApprove: () => { if (!p) return; this.patch(p.id, { approves: !p.approves }); this.setState({ result: ["200 · { ok: true }", "Flag written. This is the one action that touches it; the approval gate on SOW charges reads it live.", BLUE] }); },
       sessionsText: p ? (mySessions + " live refresh token" + (mySessions === 1 ? "" : "s") + " in the MSP-wide list. Revoking closes every one and the matching browser sessions, and reports the count.") : "",
-      revokeAll: () => { if (!p) return; this.setState(s => ({ sessions: s.sessions.filter(x => x.userId !== p.id), result: ["200 · { ok: true, revokedCount: " + mySessions + " }", "A real count from a real revoke — this route used to answer with a fixed message and close nothing; that was fixed upstream, though no test covers it yet.", RED] })); },
+      revokeAll: () => { if (!p) return; this.setState(s => ({ sessions: s.sessions.filter(x => x.userId !== p.id), result: ["200 · { ok: true, revokedCount: " + mySessions + " }", "A real count from a real revoke — this used to answer with a fixed message and close nothing; that was fixed upstream, though no test covers it yet.", RED] })); },
       activeLabel: p && p.active ? "Suspend" : "Reactivate",
-      toggleActive: () => { if (!p) return; if (self && p.active) return this.setState({ result: ["400 · Cannot suspend your own account", "Refused at the route regardless of role. Someone else has to do it.", AMBER] }); this.patch(p.id, { active: !p.active }); this.setState({ result: ["200 · { ok: true, isActive: " + !p.active + " }", p.active ? "Marked inactive. Their live sessions are not closed by this call — use the sessions action for that." : "Reactivated. The same flag removal set; nothing else about the account changed.", p.active ? AMBER : GREEN] }); },
-      remove: () => { if (!p) return; if (self) return this.setState({ result: ["400 · Cannot remove your own account from the MSP", "Refused at the route regardless of role.", AMBER] }); this.patch(p.id, { active: false }); this.setState({ result: ["200 · removed (soft)", "Not a delete: the account is set inactive, exactly as suspend does, and stays in the roster route's output. Reactivate undoes it.", RED] }); },
+      toggleActive: () => { if (!p) return; if (self && p.active) return this.setState({ result: ["400 · Cannot suspend your own account", "Refused at the system regardless of role. Someone else has to do it.", AMBER] }); this.patch(p.id, { active: !p.active }); this.setState({ result: ["200 · { ok: true, isActive: " + !p.active + " }", p.active ? "Marked inactive. Their live sessions are not closed by this call — use the sessions action for that." : "Reactivated. The same flag removal set; nothing else about the account changed.", p.active ? AMBER : GREEN] }); },
+      remove: () => { if (!p) return; if (self) return this.setState({ result: ["400 · Cannot remove your own account from the MSP", "Refused at the system regardless of role.", AMBER] }); this.patch(p.id, { active: false }); this.setState({ result: ["200 · removed (soft)", "Not a delete: the account is set inactive, exactly as suspend does, and stays in the roster action's output. Reactivate undoes it.", RED] }); },
 
       hasResult: !!res, resCode: res ? res[0] : "", resText: res ? res[1] : "", resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
 
@@ -448,7 +433,7 @@ class Component extends DCLogic {
         { n: "3", text: "If it does not, name and a password of eight characters or more are required — accepting is also account creation." },
         { n: "4", text: "The token is burned inside the same transaction, so two people accepting at once cannot both succeed. They are then signed in, and if MFA is enforced on the account they land in enrolment rather than an open session." }
       ],
-      invitesCaption: live ? "the route answered with an empty array" : invites.length + " pending · newest first",
+      invitesCaption: live ? "the system answered with an empty array" : invites.length + " pending · newest first",
       hasInvites: invites.length > 0, noInvites: invites.length === 0,
       invites: invites.map(i => ({ email: i.email, role: i.role, meta: "expires " + i.expires + " · invited by " + i.by,
         revoke: () => this.setState(s => ({ invites: s.invites.filter(x => x.id !== i.id), inviteResult: ["200 · deleted", "A hard delete, scoped to pending invites only. An already-accepted invite answers not-found here and is kept.", GREY] })) })),
@@ -461,15 +446,15 @@ class Component extends DCLogic {
       hasSessionResult: !!st.sessionResult, sessionResCode: st.sessionResult ? st.sessionResult[0] : "", sessionResText: st.sessionResult ? st.sessionResult[1] : "",
 
       notes: [
-        { dot: "#f87171", text: "No real staff member exists anywhere in this environment. Nine accounts carry the MSP's id — a platform administrator, assessment sign-ups and customer logins — and none is an MSPAdmin or MSPOperator. Nobody has ever been invited, accepted, scoped or managed through these routes, so every populated state here is a first draft." },
-        { dot: "#f87171", text: "The roster route returns every account carrying the MSP's id and applies no role filter, so customer logins sit alongside staff. The staff-only view is drawn here, with the count of what it hides." },
+        { dot: "#f87171", text: "No real staff member exists anywhere in this environment. Nine accounts carry the MSP's id — a platform administrator, assessment sign-ups and customer logins — and none is an MSPAdmin or MSPOperator. Nobody has ever been invited, accepted, scoped or managed through these actions, so every populated state here is a first draft." },
+        { dot: "#f87171", text: "The roster action returns every account carrying the MSP's id and applies no role filter, so customer logins sit alongside staff. The staff-only view is drawn here, with the count of what it hides." },
         { dot: "#fbbf24", text: "Zero assigned customers means unrestricted — the whole book — not no access. The screen renders it as “All customers” and never as an empty badge." },
         { dot: "#fbbf24", text: "Saving a scope replaces the whole set in one transaction. An empty save is valid and clears the person back to unrestricted. Any customer id outside your MSP is refused before the write." },
-        { dot: "#fbbf24", text: "The stored scope ids still point at a retired customer table, so on live routes a scoped person's set may not line up with the tenant ids those routes compare against. No scope rows exist today, so everyone takes the unrestricted path." },
+        { dot: "#fbbf24", text: "The stored scope ids still point at a retired customer table, so on live actions a scoped person's set may not line up with the tenant ids those actions compare against. No scope rows exist today, so everyone takes the unrestricted path." },
         { dot: "#fbbf24", text: "There is no per-person session read. The MSP-wide list is the only source, so the roster's per-person view filters it here; the per-person revoke, by contrast, is real and returns a count." },
-        { dot: "#60a5fa", text: "Only MSPAdmin and MSPOperator can be assigned or invited, enforced by validation at both routes. Nothing here can create or promote a platform administrator, or touch a customer login's role." },
+        { dot: "#60a5fa", text: "Only MSPAdmin and MSPOperator can be assigned or invited, enforced by validation at both actions. Nothing here can create or promote a platform administrator, or touch a customer login's role." },
         { dot: "#60a5fa", text: "MFA enforcement and sign-out-everywhere both persist now — they used to answer success and change nothing. Neither has a test, so a refactor could bring the silent no-op back unnoticed. Filed upstream." },
-        { dot: "#60a5fa", text: "Remove and suspend set the same inactive flag; nothing is ever deleted, and both refuse your own account. Credential actions on the same person live on Account security, which shares its five routes with this surface." },
+        { dot: "#60a5fa", text: "Remove and suspend set the same inactive flag; nothing is ever deleted, and both refuse your own account. Credential actions on the same person live on Account security, which shares its five actions with this surface." },
         { dot: "#60a5fa", text: "An invite is refused if the address is already an active member or if an unexpired invite exists — there is no silent resend. The creator gets the raw token back in full; the email itself is fire-and-forget." },
         { dot: "#94a3b8", text: "Only pending invites are listed. Accepted and expired ones drop off but are never deleted, and an accepted invite cannot be revoked — history is kept by omission, not by a status column." },
         { dot: "#94a3b8", text: "Accepting an invite for an existing address requires signing in as that address; possession of the link alone never reassigns an account. Double acceptance loses by a guarded update, and the sign-in that follows respects MFA enforcement like every other login path." }

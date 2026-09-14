@@ -782,7 +782,7 @@ class Component extends DCLogic {
       submitTitle: canSubmit ? "" : "A title and an approver are both needed",
       submitCreate: canSubmit ? () => this.setState({ createOpen: false, newTitle: "", newApprover: "", newLiability: "" }) : () => {},
 
-      honestNote: "The register, its line items and the document versioning all run on live endpoints with no interface wired to them yet, so what is shown here is representative. Risk scores are entered by hand — nothing derives or range-checks them."
+      honestNote: "The register, its line items and the document versioning all run on live actions with no interface wired to them yet, so what is shown here is representative. Risk scores are entered by hand — nothing derives or range-checks them."
     };
   }
 }

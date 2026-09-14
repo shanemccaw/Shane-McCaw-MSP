@@ -72,7 +72,7 @@
         </div>
       </sc-if>
 
-      <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">The route takes no parameters at all — no filter, no page, no resolved flag. Everything above is this screen narrowing a list it already holds in full, which is fine at thirty-two rows and will not be at three thousand.</span>
+      <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:10px">the system takes no parameters at all — no filter, no page, no resolved flag. Everything above is this screen narrowing a list it already holds in full, which is fine at thirty-two rows and will not be at three thousand.</span>
     </div>
 
     <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
@@ -138,7 +138,7 @@
               <button onClick="{{ discard }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid {{ resolveLine }};background:{{ resolveBg }};color:{{ resolveFg }};font-size:12px;font-weight:600;cursor:{{ resolveCursor }};font-family:inherit">Discard</button>
               <button onClick="{{ manual }}" style="display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;height:32px;padding:0 13px;border-radius:6px;border:1px solid {{ resolveLine }};background:{{ resolveBg }};color:{{ resolveFg }};font-size:12px;font-weight:600;cursor:{{ resolveCursor }};font-family:inherit">Handled by hand</button>
             </div>
-            <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">These two are the only resolutions a person can write. Replayed is reserved for the replay route itself, so nobody can claim a job was re-run when it wasn't.</span>
+            <span style="font-size:11px;color:#94a3b8;text-wrap:pretty">These two are the only resolutions a person can write. Replayed is reserved for the replay action itself, so nobody can claim a job was re-run when it wasn't.</span>
           </div>
         </div>
       </sc-if>
@@ -152,27 +152,14 @@
 
       <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
         <div style="border:1px solid {{ resLine }};border-radius:12px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
-          <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
           <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
-        </div>
-      </sc-if>
-
-      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-          <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these four routes do and don't give this screen</span>
-          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-            </div>
-          </sc-for>
         </div>
       </sc-if>
     </div>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
 const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
 const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
@@ -221,7 +208,7 @@ class Component extends DCLogic {
       return this.setState({ result: ["409 · already resolved", "A resolved row cannot be replayed. This one is closed.", RED] });
     }
     if (!this.replayable(i)) {
-      return this.setState({ result: ["500 · DLQ item has no workflowKey in payload", "This is what the route really answers for a row like this one — a bare server error with that sentence as its only explanation. The equivalent platform-admin route checks first and returns a clean refusal instead; this one does not, so the button is held closed here rather than sending a call that always fails.", RED] });
+      return this.setState({ result: ["500 · DLQ item has no workflowKey in payload", "This is what the system really answers for a row like this one — a bare server error with that sentence as its only explanation. The equivalent platform-admin action checks first and returns a clean refusal instead; this one does not, so the button is held closed here rather than sending a call that always fails.", RED] });
     }
     this.setState(s => ({ resolved: Object.assign({}, s.resolved, { [i.id]: "replayed" }),
       result: ["200 · new run wf-7908", "A brand-new workflow run was created and started, and this row was marked replayed. The original run was not re-executed — nothing retried in place, and the only link between the two is the run id in that response. The attempt count on this row stays where it was.", GREEN] }));
@@ -248,14 +235,14 @@ class Component extends DCLogic {
     let parsed;
     try { parsed = JSON.parse(this.state.draftPayload); }
     catch (e) {
-      return this.setState({ result: ["400 · invalid body", "The route validates that the payload is an object, so malformed text is refused before anything is written.", AMBER] });
+      return this.setState({ result: ["400 · invalid body", "the system validates that the payload is an object, so malformed text is refused before anything is written.", AMBER] });
     }
     const id = this.state.openId;
     this.setState(s => ({ items: s.items.map(x => x.id === id ? Object.assign({}, x, { payload: parsed }) : x), editing: false,
       result: ["200 · DLQ item updated", "The stored payload was replaced whole. Replay re-reads whatever is stored at the moment it runs, so a save then a replay is two calls with a gap in between.", GREY] }));
   };
 
-  bulkReplay = () => this.setState({ result: ["404 · route not found", "Bulk replay is registered one level too deep — its path carries an extra prefix, so the address every other route in this file implies does not exist. It answers only at the doubled path, which no client would guess. Filed upstream as #3445; until it is fixed, this control has nothing to call.", RED] });
+  bulkReplay = () => this.setState({ result: ["404 · action not found", "Bulk replay is registered one level too deep — its path carries an extra prefix, so the address every other action in this file implies does not exist. It answers only at the doubled path, which no client would guess. Filed upstream as #3445; until it is fixed, this control has nothing to call.", RED] });
 
   renderVals() {
     const st = this.props.forceEmpty === undefined ? this.state : Object.assign({}, this.state, { empty: this.props.forceEmpty });
@@ -313,7 +300,6 @@ class Component extends DCLogic {
       showOwnHeader: !(this.props.embedded ?? false),
       showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
 
       toggleEmpty: () => this.setState(s => ({ empty: !s.empty, result: null })),
       emptyBtnLabel: st.empty ? "Show the live queue" : "Show an empty queue",
@@ -321,7 +307,7 @@ class Component extends DCLogic {
       bannerTitle: st.empty ? "Nothing parked" : allStuck ? "Every item here is unreplayable" : stuckCount > 0 ? stuckCount + " of these cannot be replayed" : "All items can be replayed",
       bannerText: st.empty
         ? "An empty queue means no job has exhausted its retries. It does not mean integrations are healthy — a job still retrying, or one whose producer never enqueued it, never appears here at all."
-        : "Replay only works for items written by the workflow engine, because it recreates a workflow run from the key in the payload. Items from the job drainers — every Zoho failure below — carry no such key, and the route offers no way to tell before you click. This screen works it out from the payload and holds the button closed, which is the one thing standing between a technician and a bare server error.",
+        : "Replay only works for items written by the workflow engine, because it recreates a workflow run from the key in the payload. Items from the job drainers — every Zoho failure below — carry no such key, and the system offers no way to tell before you click. This screen works it out from the payload and holds the button closed, which is the one thing standing between a technician and a bare server error.",
       bannerTint: st.empty ? GREY[0] : allStuck ? RED[0] : AMBER[0],
       bannerLine: st.empty ? GREY[1] : allStuck ? RED[1] : AMBER[1],
       bannerColor: st.empty ? "#94a3b8" : allStuck ? "#f87171" : "#fbbf24",
@@ -333,7 +319,7 @@ class Component extends DCLogic {
       emptyTitle: st.empty ? "The queue is clear" : "Nothing matches that filter",
       emptyBody: st.empty
         ? "No job has run out of retries. Rows land here from four separate writers — the workflow engine, the generic job queue and two integration drainers — none of which knows about the others."
-        : "Try another filter. The route returns everything in one response, so this is only a view, not a fetch.",
+        : "Try another filter. the system returns everything in one response, so this is only a view, not a fetch.",
       bulkReplay: this.bulkReplay,
 
       hasOpen: !!i, noOpen: !i,
@@ -362,7 +348,7 @@ class Component extends DCLogic {
           ? "This row is closed, so replay is refused regardless of what it holds."
           : ok
             ? "The payload carries a workflow key, so the engine can build a fresh run from it. That is a new run, not a retry of the original — the failed run stays as it was."
-            : "The payload has no workflow key, because a job drainer wrote this row rather than the workflow engine. There is nothing for the engine to rebuild, and the route would answer with a bare server error rather than a useful refusal. Close it out below, or fix the underlying job at its source.",
+            : "The payload has no workflow key, because a job drainer wrote this row rather than the workflow engine. There is nothing for the engine to rebuild, and the system would answer with a bare server error rather than a useful refusal. Close it out below, or fix the underlying job at its source.",
       replayTint: ok && !r ? BLUE[0] : r ? GREY[0] : RED[0],
       replayLine: ok && !r ? BLUE[1] : r ? GREY[1] : RED[1],
       replayColor: ok && !r ? "#60a5fa" : r ? "#94a3b8" : "#f87171",
@@ -383,14 +369,14 @@ class Component extends DCLogic {
       resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
 
       notes: [
-        { dot: "#f87171", text: "Replay fails for every row currently in the table. Only the workflow engine writes a payload it can rebuild from, and every live row came from an integration drainer instead — so the headline action on this surface is the one that does not work. The route also gives no signal about which rows those are; this screen derives it from the payload." },
+        { dot: "#f87171", text: "Replay fails for every row currently in the table. Only the workflow engine writes a payload it can rebuild from, and every live row came from an integration drainer instead — so the headline action on this surface is the one that does not work. the system also gives no signal about which rows those are; this screen derives it from the payload." },
         { dot: "#f87171", text: "Bulk replay is unreachable. Its path is registered with an extra prefix, so it answers only at a doubled address and returns not-found at the one its own siblings imply. The control is drawn disabled rather than pretending otherwise." },
-        { dot: "#f87171", text: "When replay does fail, the route answers with a bare server error carrying only the raw message. The platform-admin version of the same action checks first and refuses cleanly, which is the behaviour this screen imitates client-side." },
+        { dot: "#f87171", text: "When replay does fail, the system answers with a bare server error carrying only the raw message. The platform-admin version of the same action checks first and refuses cleanly, which is the behaviour this screen imitates client-side." },
         { dot: "#fbbf24", text: "Replaying creates a new workflow run rather than retrying the original, and the attempt count on the row is never incremented by anything. A row reading three attempts after several replays is telling the truth about the job queue, not about this screen." },
         { dot: "#fbbf24", text: "Editing a payload replaces it whole rather than merging, and there is no fix-and-replay in one step — the two calls are separate with no atomicity, so a row can be edited and left unreplayed, or replayed against a payload someone else just changed." },
         { dot: "#fbbf24", text: "A patch with an empty body validates and returns success while changing nothing. Any save here has to be sure it is actually sending something." },
-        { dot: "#60a5fa", text: "Resolution is write-once and a person can only write discarded or handled-by-hand. Replayed is reserved for the replay route, so the record cannot claim a re-run that never happened." },
-        { dot: "#94a3b8", text: "The list route takes no parameters — no filter, no page, no cap — and returns a bare array rather than a counted envelope. Every filter above is this screen narrowing what it already holds, which does not survive real volume." },
+        { dot: "#60a5fa", text: "Resolution is write-once and a person can only write discarded or handled-by-hand. Replayed is reserved for the replay action, so the record cannot claim a re-run that never happened." },
+        { dot: "#94a3b8", text: "The list action takes no parameters — no filter, no page, no cap — and returns a bare array rather than a counted envelope. Every filter above is this screen narrowing what it already holds, which does not survive real volume." },
         { dot: "#94a3b8", text: "Customer is null on every live row and the MSP id can be null too, with no database constraint behind either. A row without an MSP is invisible to this surface entirely, because the scope filter is the only thing narrowing the query." },
         { dot: "#94a3b8", text: "Three separate surfaces read this same table with three different ideas of what is safe: this one shows everything, the platform-admin one crosses MSPs, and a third sees only workflow rows. A row can look replayable in one and not exist in another." }
       ]

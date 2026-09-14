@@ -31,7 +31,7 @@
 
   <div style="border:1px solid rgba(248,113,113,.28);border-radius:12px;background:rgba(248,113,113,.07);padding:14px;display:flex;flex-direction:column;gap:6px;min-width:0">
     <span style="font-size:12px;font-weight:700;color:#f87171">This is the whole MSP, and it only runs one way</span>
-    <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">Every customer under this MSP is in scope, not one account. No route anywhere resets the state once it is set — there is no cancel-the-cancellation, no undo and no route back to the beginning. A separate, customer-facing action lets a single customer close their own account; it shares the word offboarding and nothing else.</span>
+    <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">Every customer under this MSP is in scope, not one account. Nothing anywhere resets the state once it is set — there is no cancel-the-cancellation, no undo and no action back to the beginning. A separate, customer-facing action lets a single customer close their own account; it shares the word offboarding and nothing else.</span>
   </div>
 
   <!-- Stepper -->
@@ -88,7 +88,6 @@
 
       <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
         <div style="border:1px solid {{ resLine }};border-radius:10px;background:{{ resTint }};padding:13px;display:flex;flex-direction:column;gap:4px;min-width:0">
-          <span style="font-size:11.5px;font-weight:700;font-family:Menlo,monospace;color:{{ resColor }}">{{ resCode }}</span>
           <span style="font-size:12px;color:#cbd5e1;text-wrap:pretty">{{ resText }}</span>
         </div>
       </sc-if>
@@ -134,23 +133,11 @@
           <span style="font-size:11px;color:#94a3b8;text-wrap:pretty;border-top:1px solid rgba(148,163,184,.12);padding-top:11px">Regenerating gives a fresh package from current data — never a cached copy — but only the first generation is recorded in the audit trail. Later downloads leave no trace, which keeps the log clean and means the log cannot tell you how many times this data left the building.</span>
         </div>
       </sc-if>
-
-      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-          <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these routes do and don't give this screen</span>
-          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-            </div>
-          </sc-for>
-        </div>
-      </sc-if>
     </div>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;mspName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Shane McCaw Consulting&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;mspName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Shane McCaw Consulting&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
 const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
 const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
@@ -177,11 +164,11 @@ class Component extends DCLogic {
     const isPlatform = st.role === "PlatformAdmin";
     if (st.stateValue === null) {
       return this.setState({ stateValue: "cancellation_requested", requestedAt: this.now(),
-        result: ["200 · cancellation_requested", "Recorded, with an event and an audit row naming you. Asking again now answers with a conflict rather than doing nothing quietly — and there is no route that puts this back.", AMBER] });
+        result: ["200 · cancellation_requested", "Recorded, with an event and an audit row naming you. Asking again now answers with a conflict rather than doing nothing quietly — and there is no action that puts this back.", AMBER] });
     }
     if (st.stateValue === "cancellation_requested") {
       return this.setState({ stateValue: "export_ready", exportReadyAt: this.now(), exportedAt: this.now(),
-        result: ["200 · export_ready", "The package was built from live data and the state advanced. Worth knowing: this route does not actually check that the cancellation step happened — it refuses only an already-archived MSP, so it would have run straight from the beginning too.", BLUE] });
+        result: ["200 · export_ready", "The package was built from live data and the state advanced. Worth knowing: this does not actually check that the cancellation step happened — it refuses only an already-archived MSP, so it would have run straight from the beginning too.", BLUE] });
     }
     if (st.stateValue === "export_ready") {
       if (!isPlatform) {
@@ -231,7 +218,7 @@ class Component extends DCLogic {
         title: "Request cancellation",
         sub: "The first and only step available from here.",
         warnTitle: "This starts a process with no way back",
-        warnText: "There is no undo. Once recorded, the state can only move forward through export and archival — no route in the system returns this MSP to normal, so a mistaken click has to be resolved by someone outside this product.",
+        warnText: "There is no undo. Once recorded, the state can only move forward through export and archival — no action in the system returns this MSP to normal, so a mistaken click has to be resolved by someone outside this product.",
         btn: "Request cancellation", tone: AMBER
       },
       cancellation_requested: {
@@ -252,7 +239,7 @@ class Component extends DCLogic {
         title: "Archived",
         sub: "Terminal. There is nothing further to do here.",
         warnTitle: "The end of the line",
-        warnText: "No route reopens an archived MSP. Repeating the archival call simply reports success again.",
+        warnText: "Nothing reopens an archived MSP. Repeating the archival call simply reports success again.",
         btn: "Already archived", tone: GREY
       }
     }[v === null ? "null" : v];
@@ -265,7 +252,6 @@ class Component extends DCLogic {
       showOwnHeader: !(this.props.embedded ?? false),
       showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
       mspName: this.props.mspName ?? "Shane McCaw Consulting",
 
       role: "Signed in as " + st.role,
@@ -312,17 +298,17 @@ class Component extends DCLogic {
       resTint: res ? res[2][0] : "", resLine: res ? res[2][1] : "", resColor: res ? res[2][2] : "",
 
       notes: [
-        { dot: "#f87171", text: "Nothing resets this state. Once cancellation is recorded, no route in the system returns the MSP to normal — which is why the first step carries the heaviest warning on the screen rather than a quiet confirm." },
-        { dot: "#f87171", text: "The export step does not verify that cancellation was ever requested. It refuses only an already-archived MSP, so it would run from the untouched state too — the sequence is enforced here, not by the route." },
+        { dot: "#f87171", text: "Nothing resets this state. Once cancellation is recorded, no action in the system returns the MSP to normal — which is why the first step carries the heaviest warning on the screen rather than a quiet confirm." },
+        { dot: "#f87171", text: "The export step does not verify that cancellation was ever requested. It refuses only an already-archived MSP, so it would run from the untouched state too — the sequence is enforced here, not by the system." },
         { dot: "#f87171", text: "Archival sets the MSP's status to suspended, the same value non-payment produces. Any screen showing status alone cannot tell an archived MSP from a delinquent one; the offboarding state is the only thing that disambiguates." },
         { dot: "#fbbf24", text: "Archival is the one action taken by the platform rather than the MSP, and the one that names its target explicitly rather than reading it from the session — so it must always be tied to the MSP actually on screen." },
         { dot: "#fbbf24", text: "Re-requesting cancellation is a conflict, re-exporting silently succeeds without a second audit row, and re-archiving reports success. Three steps, three different repeat behaviours — the copy has to set the right expectation each time." },
         { dot: "#fbbf24", text: "Only the first export is recorded in the audit trail. Later regenerations leave no trace, so the log cannot answer how many times a customer's data was exported." },
         { dot: "#60a5fa", text: "There is no MSP-to-MSP transfer. The package is the entire handover, and its fixed notice tells the customer to re-onboard elsewhere themselves." },
         { dot: "#60a5fa", text: "The MSP record is retained, never deleted. Nothing in this surface removes rows, so an archived MSP stays visible to the platform afterwards." },
-        { dot: "#94a3b8", text: "The current state is one field on a much larger dashboard response, not its own endpoint — a screen that needs only this has to read the whole payload." },
+        { dot: "#94a3b8", text: "The current state is one field on a much larger dashboard response, not its own action — a screen that needs only this has to read the whole payload." },
         { dot: "#94a3b8", text: "Two of the three lifecycle events land in the event feed without a real severity because the feed matches on a prefix none of them carry. An events view would show them as routine information." },
-        { dot: "#94a3b8", text: "No MSP has ever moved past the default state in the live data, and nothing outside a test file calls these routes. This screen is the first thing that ever will." }
+        { dot: "#94a3b8", text: "No MSP has ever moved past the default state in the live data, and nothing outside a test file calls these actions. This screen is the first thing that ever will." }
       ]
     };
   }

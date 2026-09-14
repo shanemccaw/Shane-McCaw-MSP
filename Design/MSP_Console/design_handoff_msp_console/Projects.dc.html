@@ -31,7 +31,7 @@
 
   <div style="border:1px solid rgba(251,191,36,.22);border-radius:12px;background:rgba(251,191,36,.06);padding:14px;display:flex;flex-direction:column;gap:6px;min-width:0">
     <span style="font-size:12px;font-weight:700;color:#fbbf24">Backend shipped, nothing has ever called it</span>
-    <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">Seven routes exist — buckets and cards, per customer — and every table is genuinely empty in every environment. There is no card type or status yet; that is Phase 2. A second, unrelated system already called "Kanban" ships today (fixed 5-column pipeline, tied to a project record, used from the CRM) — this board is a separate, free-form, customer-scoped model and shares no table or route with it.</span>
+    <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">Seven actions exist — buckets and cards, per customer — and every table is genuinely empty in every environment. There is no card type or status yet; that is Phase 2. A second, unrelated system already called "Kanban" ships today (fixed 5-column pipeline, tied to a project record, used from the CRM) — this board is a separate, free-form, customer-scoped model and shares no table or action with it.</span>
   </div>
 
   <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
@@ -102,19 +102,7 @@
   <sc-if value="{{ noBuckets }}" hint-placeholder-val="{{ false }}">
     <div style="border:1px dashed rgba(148,163,184,.25);border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center">
       <span style="font-size:13px;font-weight:700;color:#cbd5e1">No buckets on this customer's board</span>
-      <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:380px">This is the real, honest state for every customer today — the route returns an empty board rather than a fixture. Add one above to see the shape a populated board would take.</span>
-    </div>
-  </sc-if>
-
-  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these seven routes do and don't give this screen</span>
-      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-        <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-          <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-          <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-        </div>
-      </sc-for>
+      <span style="font-size:11.5px;color:#94a3b8;text-wrap:pretty;max-width:380px">This is the real, honest state for every customer today — the system returns an empty board rather than a fixture. Add one above to see the shape a populated board would take.</span>
     </div>
   </sc-if>
 </div>
@@ -278,7 +266,6 @@ class Component extends DCLogic {
       showOwnHeader: !(this.props.embedded ?? false),
       showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
 
       toggleDemo: () => this.setState(s => ({ demo: !s.demo })),
       demoBtnLabel: st.demo ? "Back to the live (empty) state" : "Show an illustrative board",
@@ -293,9 +280,9 @@ class Component extends DCLogic {
         { dot: "#fbbf24", text: "There is no card type or status field. Phase 1 is deliberately \"plain title, description, position, bucket\" — a status column, per-type shapes and Project Templates are later phases, not built yet." },
         { dot: "#fbbf24", text: "A card can only move to another bucket on the same customer's board. Moving it onto a bucket owned by a different customer is refused outright, even for a platform administrator — there is no cross-customer move for anyone." },
         { dot: "#fbbf24", text: "Position is never renumbered by the server. Reordering is this client's job to compute and send for every affected card — a naive \"just save the one I moved\" write will leave duplicate position values among its untouched siblings." },
-        { dot: "#60a5fa", text: "A second, unrelated \"Kanban\" already ships today: a fixed five-column pipeline tied to a project record, used from the CRM. It shares no table and no route with this board — the name collision is real, but the two systems don't interact." },
-        { dot: "#94a3b8", text: "There is no bulk endpoint — reordering many buckets or moving several cards at once is one call per row. There is also no customer-facing read of this board at all; only an MSP operator can see it, by design for this phase." },
-        { dot: "#94a3b8", text: "A non-numeric bucket or card id answers not-found; a non-numeric customerId answers a validation error instead — two different error shapes for what looks like the same kind of mistake, carried straight through from the route." }
+        { dot: "#60a5fa", text: "A second, unrelated \"Kanban\" already ships today: a fixed five-column pipeline tied to a project record, used from the CRM. It shares no table and no action with this board — the name collision is real, but the two systems don't interact." },
+        { dot: "#94a3b8", text: "There is no bulk action — reordering many buckets or moving several cards at once is one call per row. There is also no customer-facing read of this board at all; only an MSP operator can see it, by design for this phase." },
+        { dot: "#94a3b8", text: "A non-numeric bucket or card id answers not-found; a non-numeric customerId answers a validation error instead — two different error shapes for what looks like the same kind of mistake, carried straight through from the system." }
       ]
     };
   }

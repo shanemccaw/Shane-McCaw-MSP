@@ -124,7 +124,7 @@
                   <sc-for list="{{ stateOptions }}" as="o" hint-placeholder-count="4"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
                 </select>
               </div>
-              <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty">Logged with source "unscoped" and today's date, straight into the current open period. Back-dating into a past period is possible on this route but not exposed here.</span>
+              <span style="font-size:10.5px;color:#94a3b8;text-wrap:pretty">Logged with source "unscoped" and today's date, straight into the current open period. Back-dating into a past period is possible on this but not exposed here.</span>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button onClick="{{ saveNewEntry }}" style="height:28px;padding:0 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Log hours</button>
                 <button onClick="{{ toggleAddEntry }}" style="height:28px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,163,184,.2);background:transparent;color:#94a3b8;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
@@ -171,18 +171,6 @@
       </sc-if>
     </div>
   </div>
-
-  <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-    <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-      <span style="font-size:12px;font-weight:700;color:#f1f5f9">What this router does and doesn't give this screen</span>
-      <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-        <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-          <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-          <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-        </div>
-      </sc-for>
-    </div>
-  </sc-if>
 </div>
 
 </x-dc>
@@ -422,7 +410,6 @@ class Component extends DCLogic {
       showOwnHeader: !(this.props.embedded ?? false),
       showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
 
       toggleDemo: () => this.setState(s => ({ demo: !s.demo, data: {} })),
       demoBtnLabel: st.demo ? "Back to the live (unconfigured) state" : "Show an illustrative, configured customer",
@@ -430,7 +417,7 @@ class Component extends DCLogic {
       customers,
       notConfigured: !configured, isConfigured: configured,
       noConfigTitle: "No retainer configured for " + (CUSTOMERS.find(c => c.id === st.selCustomer) || {}).name,
-      noConfigBody: "There is no retainer_settings row for this customer, so there is no allotment, rate or period to show — and, per the route's own rule, no period could ever be closed here either: a close attempt against an unconfigured customer is refused outright rather than snapshotting a default allotment nobody bought.",
+      noConfigBody: "There is no retainer_settings row for this customer, so there is no allotment, rate or period to show — and, per the system's own rule, no period could ever be closed here either: a close attempt against an unconfigured customer is refused outright rather than snapshotting a default allotment nobody bought.",
 
       selName: (CUSTOMERS.find(c => c.id === st.selCustomer) || {}).name,
       anchorDay: configured ? sel.anchorDay : "", currentPeriod: configured ? sel.currentPeriod : "",
@@ -453,11 +440,11 @@ class Component extends DCLogic {
         { dot: "#f87171", text: "Every retainer table reads zero rows in every environment today — settings, ledger and period-closes alike. Every customer in the real, live state is genuinely \"not configured\", not a loading or error state; the illustrative customer above is clearly a demo, never presented as real data." },
         { dot: "#fbbf24", text: "overHours is the honest, uncapped over-allotment signal. remainingHours floors at zero and is also true for a customer who used exactly their allotment — over-month must be read from overHours, never inferred from remaining hitting zero." },
         { dot: "#fbbf24", text: "Periods are anniversary-anchored to each customer's own subscription start day, not calendar months, and unused retained hours roll forward once before expiring. A customer whose anchor day shifts mid-history can end up with period keys that don't line up across the change — a known edge case, not a bug to fix here." },
-        { dot: "#fbbf24", text: "A known gap (filed, not re-investigated here): the period-close lock is enforced only on this router. AdminV2's own retainer-entry routes and the tracker byproduct hook that logs closed-ticket hours automatically can both still write into an already-closed period." },
+        { dot: "#fbbf24", text: "A known gap (filed, not re-investigated here): the period-close lock is enforced only on this router. AdminV2's own retainer-entry actions and the tracker byproduct hook that logs closed-ticket hours automatically can both still write into an already-closed period." },
         { dot: "#60a5fa", text: "Allotment, hourly rate and architect name are read-only here — they are written only from AdminV2. This screen can log, adjust, delete and move entries between open periods, and close or reopen a period, but never touch settings." },
         { dot: "#60a5fa", text: "Reopening a period hard-deletes its frozen snapshot rather than archiving it — there is no history table. Once reopened, the only surviving trace of who closed it and when lives in the audit log, not in the retainer data itself." },
         { dot: "#94a3b8", text: "Moving an entry's date into a different period requires that target period to also be open — a move between two open periods succeeds, but nothing can be moved into a closed one, even from an open one." },
-        { dot: "#94a3b8", text: "The error envelope on every route here is a bare { error } string, with no error code field — unlike some other MSP-console surfaces that carry a structured code alongside the message." }
+        { dot: "#94a3b8", text: "The error envelope on every action here is a bare { error } string, with no error code field — unlike some other MSP-console surfaces that carry a structured code alongside the message." }
       ]
     };
   }

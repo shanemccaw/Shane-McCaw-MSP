@@ -4,6 +4,26 @@ path: artifacts/api-server/src/routes (plus artifacts/admin-panel/src/components
 
 ## Last sync
 
+date: 2026-09-14T22:38:08Z
+
+### Updated in this project
+
+- Re-diffed all 46 `docs/msp-console` packs by blob sha against the 2026-09-14T19:59:30Z read: all 46 shas identical, including `break-glass` (unchanged this time). No new packs, no route/screen changes. No screen rebuilt.
+- `github.md` refreshed with this sync's timestamp; previous entry moved to "Previous sync".
+
+## Previous sync
+
+date: 2026-09-14T19:59:30Z
+
+### Updated in this project
+
+- Diffed `docs/msp-console` (46 packs, was 40) against the 2026-09-14T02:52 read. Six brand-new packs, none with a screen yet: **billing** (finds most of #1692's own scope — issue/adjust invoices, manage seats, retainer-interval switching — has no `msp-*` backend at all; only add-ons/one-offs, already covered by Marketplace Purchase, are real), **communications-push** (`msp-communications-push.ts`, 9 routes, a reminder-checkpoint tracker for upcoming changes — no send mechanism), **microsoft-changes** (adds an on-demand routing trigger and a real auth-gate finding — the console's own operator role can't reach the 12 authoring routes, all still `requireAdmin`), **requests-and-support-chat** (`msp-support.ts`, 3 routes — operator-side ticket queue, org-scoped not Contact-scoped, relocated from a `docs/portal/` addendum), **security-plan** (`msp-security-plan.ts`, 9 routes — dual customer+MSP signature model replacing the old single-slot one), **training-sessions** (`msp-training-sessions.ts`, 5 routes, an editable/deletable session log with no workflow state). All six are backend-complete with zero live rows and zero UI consumers — none affects a screen in this project.
+- **Break Glass**'s blob sha changed again (second time in a row); re-read in full — same 2026-09-11 provenance, same "no drift, no findings" conclusion, still cross-checks accurately against the built screen. No rebuild needed.
+- No other tracked pack or route file changed. No screen rebuilt this pass.
+- `github.md` refreshed: six new packs added to the inventory table (screen: none yet), `msp-training-sessions` added to "Not yet covered".
+
+## Previous sync
+
 date: 2026-09-14T15:15:17Z
 
 ### Updated in this project
@@ -321,18 +341,26 @@ A real MSP console now exists in the repo: `console/ConsoleShell.tsx`, `TreeSide
 
 Route files on main with no screen in this console yet:
 
-`msp-admin-settings` · `msp-alerts` · `msp-communications-push` · `msp-compliance-frameworks` · `msp-custom-domain` · `msp-engine-history` · `msp-engines` · `msp-m365-sla` · `msp-message-center` · `msp-plan-management` · `msp-policy-engine-settings` · `msp-security-plan` · `msp-staff` · `msp-staff-search` · `msp-support` · `msp-vip-classifications`
+`msp-admin-settings` · `msp-alerts` · `msp-communications-push` · `msp-compliance-frameworks` · `msp-custom-domain` · `msp-engine-history` · `msp-engines` · `msp-m365-sla` · `msp-message-center` · `msp-plan-management` · `msp-policy-engine-settings` · `msp-security-plan` · `msp-staff` · `msp-staff-search` · `msp-support` · `msp-training-sessions` · `msp-vip-classifications`
+
+Also newly backend-complete with no screen (2026-09-14): `msp-communications-push` (9 routes), `msp-security-plan` (9 routes), `msp-support`/requests-and-support-chat (3 routes), `msp-training-sessions` (5 routes) — a reminder-checkpoint tracker, a dual-signature security plan, an operator support-ticket queue, and an editable training-session log, respectively. Billing (invoices/seats/retainer-interval-switching) and Microsoft Changes (interpretation authoring) have no `msp-*` backend reachable by the console's own operator role at all — see the packs table below.
 
 Came off this list on 2026-09-14: `msp-audit-log` (Audit Log), `msp-consent` and `msp-onboarding` (Consent and Onboarding), `msp-sow` (Offers & SOWs), `msp-plan-self-service` (Plan Self-Service), `msp-policy-decisions` and `msp-standing-policies` (Policy Engine).
 
 Deliberately out of scope: `msp-billing-webhook`, `msp-webhooks` (inbound Stripe / app-signature receivers, no operator surface), `msp-signup` (public), `msp-v1` (the `/api/msp/v1/*` programmatic mount — an API surface, not an operator screen).
 
-## Contract packs (docs/msp-console @ main, read 2026-09-14T02:52:27Z)
+## Contract packs (docs/msp-console @ main, read 2026-09-14T19:58:12Z)
 
-Blob sha per pack — a changed sha means the pack was updated upstream. Changed since the 2026-09-12 read and acted on this pass: active-directory-ou-assignment, documents, msp-launch-control, retention-queue.
+Blob sha per pack — a changed sha means the pack was updated upstream. Six new since the 2026-09-14T02:52 read (billing, communications-push, microsoft-changes, requests-and-support-chat, security-plan, training-sessions); break-glass's blob sha changed again with no content drift.
 
 | Pack | Screen here | Blob |
 |---|---|---|
+| billing | none — no `msp-*` backend for invoices/seats/interval-switching; add-ons covered by Marketplace Purchase | bdd94f4ead98 |
+| communications-push | none — backend complete, zero UI consumer | 8a424185440e |
+| microsoft-changes | none — console's operator role can't reach the 12 authoring routes yet (auth-gate finding) | b29a197d23db |
+| requests-and-support-chat | none — backend complete, zero UI consumer | 5d54ed87370c |
+| security-plan | none — backend complete, zero UI consumer | 784f6338a7fa |
+| training-sessions | none — backend complete, zero UI consumer | 9319239b3423 |
 | msp-webhooks-inbound | none — deliberately out of scope (inbound receivers) | eb7637149782 |
 | projects | Projects | b4e2b35e8f6d |
 | retainer-hours | Retainer Hours | 4c1e15bb6209 |
@@ -348,7 +376,7 @@ Blob sha per pack — a changed sha means the pack was updated upstream. Changed
 | partner-revenue | Partner Revenue | 048759f15dc8 |
 | admin-panel-msp-tenant-management | MSP Console (tenant canvas + MSP settings) | 7cf216c979d0 |
 | audit-log | Audit Log (per tenant and MSP-wide) | 45224f604f29 |
-| break-glass | Break Glass | 7b2c105271ab |
+| break-glass | Break Glass | abe0b98108fa |
 | change-control | Change Control | 0c1395f64821 |
 | config-state | Configuration State | feaafcd4249b |
 | consent-and-onboarding | Consent and Onboarding (+ tenant Consent rows on the tenant canvas) | 1c636b4d564b |

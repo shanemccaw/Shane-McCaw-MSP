@@ -982,7 +982,7 @@ class Component extends DCLogic {
       submitTitle: canSubmit ? "" : freezeHit ? "A freeze exception needs a justification" : "Give the change a title first",
       submitCreate: canSubmit ? () => this.setState({ createOpen: false, newTitle: "", freezeJust: "" }) : () => {},
 
-      honestNote: "Change control runs end to end on the server — register, catalog, board, windows, executions and reviews are all live endpoints with nothing wired to them yet, so the records here are representative. Fleet change metrics (success rate, lead time, emergency ratio) have no operator endpoint at all and are not shown."
+      honestNote: "Change control runs end to end on the server — register, catalog, board, windows, executions and reviews are all live actions with nothing wired to them yet, so the records here are representative. Fleet change metrics (success rate, lead time, emergency ratio) have no operator action at all and are not shown."
     };
   }
 }

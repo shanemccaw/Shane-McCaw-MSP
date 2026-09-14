@@ -31,7 +31,7 @@
 
   <div style="border:1px solid rgba(248,113,113,.28);border-radius:12px;background:rgba(248,113,113,.07);padding:14px;display:flex;flex-direction:column;gap:6px;min-width:0">
     <span style="font-size:12px;font-weight:700;color:#f87171">The offer is accepted before the card is charged</span>
-    <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">Checkout records an accepted offer and pushes it to the customer's own screens first, then attempts payment. If payment fails for any reason, nothing takes that back — the customer sees an accepted purchase, no money moved, and no audit entry exists. Accepted is a terminal state with no route out of it, so a correction means someone editing the database by hand. That is why this screen confirms before it sends, and says plainly what a failure would leave behind.</span>
+    <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty">Checkout records an accepted offer and pushes it to the customer's own screens first, then attempts payment. If payment fails for any reason, nothing takes that back — the customer sees an accepted purchase, no money moved, and no audit entry exists. Accepted is a terminal state with no action out of it, so a correction means someone editing the database by hand. That is why this screen confirms before it sends, and says plainly what a failure would leave behind.</span>
   </div>
 
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start;min-width:0">
@@ -122,7 +122,6 @@
 
       <sc-if value="{{ hasOutcome }}" hint-placeholder-val="{{ false }}">
         <div style="border:1px solid {{ outLine }};border-radius:14px;background:{{ outTint }};padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-          <span style="font-size:12.5px;font-weight:700;font-family:Menlo,monospace;color:{{ outColor }}">{{ outCode }}</span>
           <span style="font-size:12px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">{{ outText }}</span>
           <div style="display:flex;flex-direction:column;gap:7px;border-top:1px solid rgba(148,163,184,.14);padding-top:11px">
             <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#94a3b8">WHAT NOW EXISTS</span>
@@ -135,23 +134,11 @@
           </div>
         </div>
       </sc-if>
-
-      <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
-        <div style="border:1px solid rgba(148,163,184,.16);border-radius:14px;background:rgba(15,23,42,.6);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-          <span style="font-size:12px;font-weight:700;color:#f1f5f9">What these two routes do and don't give this screen</span>
-          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5">
-            <div style="display:flex;gap:9px;align-items:flex-start;min-width:0">
-              <span style="width:6px;height:6px;border-radius:999px;background:{{ n.dot }};margin-top:6px;flex:none"></span>
-              <span style="font-size:11.5px;color:#cbd5e1;line-height:1.55;text-wrap:pretty;min-width:0">{{ n.text }}</span>
-            </div>
-          </sc-for>
-        </div>
-      </sc-if>
     </div>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;showNotes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;customerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Traders&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:940},&quot;customerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Northwind Traders&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootPad&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;rootBg&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;transparent&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 const GREEN = ["rgba(52,211,153,.1)", "rgba(52,211,153,.26)", "#34d399"];
 const AMBER = ["rgba(251,191,36,.1)", "rgba(251,191,36,.26)", "#fbbf24"];
 const RED = ["rgba(248,113,113,.1)", "rgba(248,113,113,.28)", "#f87171"];
@@ -183,7 +170,7 @@ class Component extends DCLogic {
   reason = (i) => {
     if (i.cls === "project") return ["project", "This one needs the customer's own signature", "A project-class item is only bought through the customer's own checkout, where they sign the statement of work. You cannot sign on their behalf, so this is refused outright rather than half-completed."];
     if (i.price === null) return ["consult", "No fixed price to charge", "This is priced on consultation. There is nothing for checkout to bill, so it has to be quoted and sold another way."];
-    if (i.perSeat) return ["seat", "A per-seat rate, not a total", "The price on this row is per user per month. Charging it as a flat total would bill a few dollars for a whole tenant, so this route refuses it rather than guessing a seat count."];
+    if (i.perSeat) return ["seat", "A per-seat rate, not a total", "The price on this row is per user per month. Charging it as a flat total would bill a few dollars for a whole tenant, so this refuses it rather than guessing a seat count."];
     return null;
   };
 
@@ -198,7 +185,7 @@ class Component extends DCLogic {
     if (free) {
       return this.setState({ outcome: {
         code: "201 · free_activated",
-        text: "Activated with no charge. Worth knowing: the customer-facing checkout also checks a per-item flag that lets an administrator mark a free item as not freely activatable. This route never reads that flag, so if such an item ever exists, it can still be activated here.",
+        text: "Activated with no charge. Worth knowing: the customer-facing checkout also checks a per-item flag that lets an administrator mark a free item as not freely activatable. this never reads that flag, so if such an item ever exists, it can still be activated here.",
         tone: GREEN,
         facts: [
           { state: "written", label: "An accepted offer on the customer's record", color: "#34d399" },
@@ -211,7 +198,7 @@ class Component extends DCLogic {
     if (fail || noCard) {
       return this.setState({ outcome: {
         code: noCard ? "400 · no payment method on file" : "402 · the card was declined",
-        text: "The payment never completed — but the offer was written and pushed to the customer before this point, and nothing rolls it back. Their own screens now show this purchase as accepted. Accepted is terminal: no route in the system moves an offer out of it, so this can only be corrected in the database by hand. Nothing was written to the audit trail either, so the only record is a line in the server log.",
+        text: "The payment never completed — but the offer was written and pushed to the customer before this point, and nothing rolls it back. Their own screens now show this purchase as accepted. Accepted is terminal: no action in the system moves an offer out of it, so this can only be corrected in the database by hand. Nothing was written to the audit trail either, so the only record is a line in the server log.",
         tone: RED,
         facts: [
           { state: "written", label: "An accepted offer on the customer's record — wrong, and permanent", color: "#f87171" },
@@ -264,7 +251,6 @@ class Component extends DCLogic {
       showOwnHeader: !(this.props.embedded ?? false),
       showToggles: !(this.props.embedded ?? false),
       rootBg: this.props.rootBg ?? "transparent",
-      showNotes: this.props.showNotes ?? true,
       customerName: this.props.customerName ?? "Northwind Traders",
 
       cardLabel: st.card ? "Card on file" : "No card on file",
@@ -294,7 +280,7 @@ class Component extends DCLogic {
 
       hasFulfilWarn: buyable && (i.fulfilment === "assessment" || i.fulfilment === "retainer"),
       fulfilWarnTitle: "Nothing will be provisioned",
-      fulfilWarnText: "This item's fulfilment type matches nothing the system knows how to act on, so the provisioning step quietly does nothing. The response still reports success, and the route discards the signal that would have said otherwise — so the work has to be started by hand.",
+      fulfilWarnText: "This item's fulfilment type matches nothing the system knows how to act on, so the provisioning step quietly does nothing. The response still reports success, and the system discards the signal that would have said otherwise — so the work has to be started by hand.",
 
       confirmText: free
         ? "Activating writes an accepted offer and an audit entry. No payment is attempted, so the failure case above does not apply."
@@ -318,13 +304,13 @@ class Component extends DCLogic {
         { dot: "#f87171", text: "The accepted offer is written and broadcast to the customer before payment is attempted, and no failure path ever undoes it. Accepted is terminal, so a failed checkout leaves a permanent, wrong record that only a hand-written database change can fix." },
         { dot: "#f87171", text: "A failed checkout writes nothing to the audit trail — only the two success paths do. The only trace of a customer seeing a purchase they never paid for is a line in the server log." },
         { dot: "#f87171", text: "Monthly retainers are charged once. The billing branch only creates a recurring subscription when the item's class says subscription, and every live retainer's class says retainer instead — so a four-thousand-a-month engagement bills a single time and records no subscription." },
-        { dot: "#f87171", text: "Most of the audit and assessment catalog has a fulfilment type that matches nothing real, so provisioning silently does nothing. The route discards the result that would have flagged it, and still reports success." },
+        { dot: "#f87171", text: "Most of the audit and assessment catalog has a fulfilment type that matches nothing real, so provisioning silently does nothing. the system discards the result that would have flagged it, and still reports success." },
         { dot: "#fbbf24", text: "The free path skips the per-item flag that lets an administrator forbid free activation — the customer's own checkout honours it. No live item is affected yet, but the control is simply absent here." },
         { dot: "#fbbf24", text: "Three refusals are real and airtight: a signature-gated project item, an item with no fixed price, and a per-seat rate. The per-seat one exists specifically so a per-user price is never charged as a whole-tenant total." },
         { dot: "#60a5fa", text: "The catalog shown is deliberately the full customer-facing set rather than what the customer's own plan tier would let them browse, because staff act on their behalf." },
-        { dot: "#60a5fa", text: "Neither route accepts an MSP identifier from the caller — the owning MSP is always derived from the customer being purchased for, and per-staff customer scoping applies on every call." },
+        { dot: "#60a5fa", text: "Neither action accepts an MSP identifier from the caller — the owning MSP is always derived from the customer being purchased for, and per-staff customer scoping applies on every call." },
         { dot: "#94a3b8", text: "Your cost is computed server-side from the item's own recorded cost, falling back to seventy per cent of retail when none is set. No price is ever taken from the caller." },
-        { dot: "#94a3b8", text: "This route has never been used against live data, and its one real consumer was deleted with an earlier version of the app. Exactly one MSP currently has a payment method capable of completing a paid purchase at all." }
+        { dot: "#94a3b8", text: "this has never been used against live data, and its one real consumer was deleted with an earlier version of the app. Exactly one MSP currently has a payment method capable of completing a paid purchase at all." }
       ]
     };
   }
