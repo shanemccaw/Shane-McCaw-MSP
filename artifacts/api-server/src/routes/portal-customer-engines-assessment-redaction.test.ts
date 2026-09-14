@@ -113,6 +113,20 @@ vi.mock("../lib/audit.ts", () => ({ createAuditLog: vi.fn() }));
 vi.mock("../lib/stripe.ts", () => ({ getStripeKey: vi.fn(() => "sk_test") }));
 vi.mock("../lib/sla-engine.ts", () => ({ runSlaEngineForTenant: vi.fn() }));
 vi.mock("../lib/scope-creep-engine.ts", () => ({ runScopeCreepEngineForTenant: vi.fn() }));
+// #4067: the route now reads computeCopilotGate() too. Stubbed rather than let
+// it load for real — the real chain pulls in health-engine.ts/priority-engine.ts,
+// which reference drizzle-orm's `sql` tag at module scope, and this file's own
+// drizzle-orm mock above (scoped to just the helpers this route's queries use)
+// has no `sql` export.
+vi.mock("../lib/copilot-gate.ts", () => ({
+  computeCopilotGate: vi.fn(async () => ({
+    score: 88,
+    threshold: 82,
+    status: "go",
+    source: "health_engine:copilot",
+    evaluation: { status: "scored", evaluableSignalCount: 5, minRequiredSignals: 3, reason: "scored" },
+  })),
+}));
 vi.mock("../lib/request-context.ts", () => ({
   getRequestContext: vi.fn(() => ({})),
   enrichRequestContext: vi.fn(),
@@ -246,6 +260,16 @@ describe("GET /api/portal/dashboard — assessment findings/recommendations payw
     expect(res.body.results.pillars.security.recommendations).toEqual([SECRET_RECOMMENDATION_TEXT]);
     expect(res.body.results.pillars.security.findingsCount).toBeUndefined();
     expect(res.body.results.pillars.security.score).toBe(42);
+
+    // #4067: the dashboard roll-up now carries the real Copilot Gate
+    // (computeCopilotGate(), mocked above) at the top level.
+    expect(res.body.copilotGate).toEqual({
+      score: 88,
+      threshold: 82,
+      status: "go",
+      source: "health_engine:copilot",
+      evaluation: { status: "scored", evaluableSignalCount: 5, minRequiredSignals: 3, reason: "scored" },
+    });
   });
 });
 

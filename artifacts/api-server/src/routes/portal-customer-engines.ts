@@ -38,6 +38,7 @@ import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, serv
 import { eq, desc, and, count, inArray, or, asc, isNull } from "drizzle-orm";
 import { createAuditLog } from "../lib/audit.ts";
 import { getStripeKey } from "../lib/stripe.ts";
+import { computeCopilotGate, type CopilotGateResult } from "../lib/copilot-gate.ts";
 import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
 import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
 import { hasAddOnEntitlement } from "../lib/portal-addon-entitlements.ts";
@@ -1073,6 +1074,14 @@ router.get(
         sopsExecsThisMonth = sopRunRows.filter((r) => isSameUtcMonth(r.startedAt, now)).length;
       }
 
+      // #4067 — the real Copilot Gate (computeCopilotGate(), never throws —
+      // degrades to a null score with `evaluation.reason` set). #1943's own
+      // body named `/portal/pillars` as already carrying this; it doesn't —
+      // buildPillarSummary() has no Gate field. The only routes that do are
+      // /portal/diagnostics/status and /portal/remediation-tracker/pillar-scores,
+      // neither of which the dashboard roll-up read from until now.
+      const copilotGate: CopilotGateResult = await computeCopilotGate(customerId);
+
       res.json({
         // #4068 — null, not 0, for an engine that has never produced a
         // snapshot for this customer. Same "never-scanned is unavailable, not
@@ -1123,6 +1132,8 @@ router.get(
         // this — the six counts alone can't disambiguate a real quiet week
         // from an unresolvable tenant identifier.
         tenantScopeResolved: tenantScope !== null,
+        // #4067 — the real Copilot Gate, see the computeCopilotGate() call above.
+        copilotGate,
         // #2922 — real cross-Feature roll-up counts, see the block above.
         // raciPendingAcceptance is #3049's addition to the same object.
         overviewCounts: {
