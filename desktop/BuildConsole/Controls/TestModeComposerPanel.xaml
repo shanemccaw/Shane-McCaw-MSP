@@ -423,7 +423,8 @@
                                 <Button x:Name="BtnFilterAll" Content="All" Style="{StaticResource IconButton}" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Padding="6,2" Margin="0,0,4,0" Click="BtnFilter_Click" Tag="all"/>
                                 <Button x:Name="BtnFilterOpen" Content="Open" Style="{StaticResource IconButton}" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" Padding="6,2" Margin="0,0,4,0" Click="BtnFilter_Click" Tag="open"/>
                                 <Button x:Name="BtnFilterVerifying" Content="Verifying" Style="{StaticResource IconButton}" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" Padding="6,2" Margin="0,0,4,0" Click="BtnFilter_Click" Tag="verifying"/>
-                                <Button x:Name="BtnFilterClosed" Content="Closed" Style="{StaticResource IconButton}" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" Padding="6,2" Click="BtnFilter_Click" Tag="closed"/>
+                                <Button x:Name="BtnFilterClosed" Content="Closed" Style="{StaticResource IconButton}" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" Padding="6,2" Margin="0,0,4,0" Click="BtnFilter_Click" Tag="closed"/>
+                                <Button x:Name="BtnFilterDesign" Content="Design" Style="{StaticResource IconButton}" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" Padding="6,2" Click="BtnFilter_Click" Tag="design" ToolTip="Every bug flagged Design, regardless of status"/>
                             </StackPanel>
 
                             <!-- Scrollable Bug Cards -->
@@ -449,10 +450,18 @@
                                                         <!-- Route / Time -->
                                                         <TextBlock Grid.Column="1" Text="{Binding TimestampDisplay}" FontSize="9" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
 
-                                                        <!-- Status Toggle (Open → Verifying → Closed) -->
-                                                        <Button Grid.Column="2" Content="{Binding StatusButtonLabel}" Style="{StaticResource IconButton}"
-                                                                FontSize="9" Padding="4,1" Click="BtnToggleBugStatus_Click" Tag="{Binding}"/>
+                                                        <!-- Status pill (read-only display; state changes happen via the explicit actions below) -->
+                                                        <TextBlock Grid.Column="2" Text="{Binding StatusButtonLabel}" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                                                     </Grid>
+
+                                                    <!-- Git #3982 — mouseover quick-actions: explicit per-state, matching the issue's enablement rule
+                                                         (Confirm/Reject only meaningful on Verifying; Mark Verifying only on Open; Re-open only on Closed) -->
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,4">
+                                                        <Button Content="Mark Verifying" Style="{StaticResource IconButton}" FontSize="8.5" Padding="4,1" Margin="0,0,4,0" Click="BtnMarkVerifying_Click" Tag="{Binding}" Visibility="{Binding IsOpenVisibility}"/>
+                                                        <Button Content="✓ Confirm" Style="{StaticResource IconButton}" FontSize="8.5" Padding="4,1" Margin="0,0,4,0" Click="BtnConfirmFixed_Click" Tag="{Binding}" Visibility="{Binding IsVerifyingVisibility}"/>
+                                                        <Button Content="✕ Reject" Style="{StaticResource IconButton}" FontSize="8.5" Padding="4,1" Margin="0,0,4,0" Click="BtnRejectBug_Click" Tag="{Binding}" Visibility="{Binding IsVerifyingVisibility}" ToolTip="Reopens and sends real evidence to chat — never touches GitHub"/>
+                                                        <Button Content="Re-open" Style="{StaticResource IconButton}" FontSize="8.5" Padding="4,1" Margin="0,0,4,0" Click="BtnReopenBug_Click" Tag="{Binding}" Visibility="{Binding IsClosedVisibility}"/>
+                                                    </StackPanel>
 
                                                     <!-- Screenshot Badge if present -->
                                                     <Border Background="#1A38BDF8" BorderBrush="#4038BDF8" BorderThickness="1" CornerRadius="4" Padding="5,2" Margin="0,0,0,4" HorizontalAlignment="Left" Visibility="{Binding HasScreenshotVisibility}">

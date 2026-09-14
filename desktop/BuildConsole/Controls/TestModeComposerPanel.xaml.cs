@@ -36,6 +36,7 @@ namespace BuildConsole.Controls
         public string? Resolution { get; set; } // "Fixed", "NotABug" — only meaningful when Status == "Closed"
         public string? ResolutionReason { get; set; } // required when Resolution == "NotABug"
         public bool IsDesign { get; set; } // Git #3978/#3981 addendum — flags a design issue; coexists with Status
+        public string? Selector { get; set; } // Git #3983 — element-level dedup key when logged via the DOM inspector
 
         // Sync tracking – set to true after a successful End & Sync
         public bool IsSynced { get; set; }
@@ -49,6 +50,12 @@ namespace BuildConsole.Controls
             _ => "● Open"
         };
         public string DesignButtonLabel => IsDesign ? "🎨 Design" : "+ Design";
+        // Git #3982 — per-state mouseover quick-action visibility (Confirm/Reject only meaningful on
+        // Verifying, per the issue's own enablement rule; Mark-Verifying/Re-open are the manual
+        // entry/exit points for the two ends of that lifecycle).
+        public Visibility IsOpenVisibility => Status == "Open" ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility IsVerifyingVisibility => Status == "Verifying" ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility IsClosedVisibility => Status == "Closed" ? Visibility.Visible : Visibility.Collapsed;
         public string ResolutionDisplay => !string.IsNullOrWhiteSpace(ResolutionReason)
             ? $"{(Resolution == "NotABug" ? "Not a Bug" : Resolution)}: {ResolutionReason}"
             : "";
@@ -111,6 +118,11 @@ namespace BuildConsole.Controls
         private string _globalNotes = "";
 
         // Events
+        /// <summary>Git #3982 — Reject packages the bug's real captured evidence (notes, steps,
+        /// expected/actual, screenshots) and raises this instead of calling GitHub. MainWindow wires it
+        /// to the shared #937 SendTextToActiveClaudeChatAsync path, same as the drawer's document-view
+        /// counterpart in BugsDocumentView. This control never calls a GitHub API.</summary>
+        public event Action<string>? SendToChatRequested;
         public event Action<bool>? ToggleWidthRequested;
         public event Action? InspectRequested;
         public event Action? DiffRequested;
@@ -634,6 +646,7 @@ namespace BuildConsole.Controls
                 BtnFilterOpen.Foreground = tag == "open" ? accent : subtext;
                 BtnFilterVerifying.Foreground = tag == "verifying" ? accent : subtext;
                 BtnFilterClosed.Foreground = tag == "closed" ? accent : subtext;
+                BtnFilterDesign.Foreground = tag == "design" ? accent : subtext;
                 RefreshBugDrawer();
             }
         }
@@ -645,6 +658,9 @@ namespace BuildConsole.Controls
                 if (_activeFilter == "open") return b.Status == "Open";
                 if (_activeFilter == "verifying") return b.Status == "Verifying";
                 if (_activeFilter == "closed") return b.Status == "Closed";
+                // Git #3982 — Design filter bypasses status entirely: every bug flagged Design,
+                // regardless of Open/Verifying/Closed ("a way to filter all design related work").
+                if (_activeFilter == "design") return b.IsDesign;
                 return true;
             }).ToList();
 
@@ -653,30 +669,75 @@ namespace BuildConsole.Controls
             TxtBugDrawerTitle.Text = $"Bugs on this page ({onPageCount}) · Total ({AllBugs.Count})";
         }
 
-        private void BtnToggleBugStatus_Click(object sender, RoutedEventArgs e)
+        /// <summary>Git #3982 — manual Open → Verifying entry point (the real dispatch-driven
+        /// auto-transition is a later child issue, #TBD8, not built yet).</summary>
+        private void BtnMarkVerifying_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button btn && btn.Tag is BugCardViewModel bug)
+            if (sender is Button btn && btn.Tag is BugCardViewModel bug && bug.Status == "Open")
             {
-                switch (bug.Status)
-                {
-                    case "Open":
-                        bug.Status = "Verifying";
-                        bug.Resolution = null;
-                        bug.ResolutionReason = null;
-                        break;
-                    case "Verifying":
-                        bug.Status = "Closed";
-                        bug.Resolution = "Fixed";
-                        bug.ResolutionReason = null;
-                        break;
-                    default: // "Closed"
-                        bug.Status = "Open";
-                        bug.Resolution = null;
-                        bug.ResolutionReason = null;
-                        break;
-                }
+                bug.Status = "Verifying";
+                bug.Resolution = null;
+                bug.ResolutionReason = null;
                 RefreshBugDrawer();
             }
+        }
+
+        /// <summary>Git #3982 — Confirm: only meaningful on a Verifying row. Closed/Fixed.</summary>
+        private void BtnConfirmFixed_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is BugCardViewModel bug && bug.Status == "Verifying")
+            {
+                bug.Status = "Closed";
+                bug.Resolution = "Fixed";
+                bug.ResolutionReason = null;
+                RefreshBugDrawer();
+                ShowToast($"Bug #{bug.Id} confirmed fixed.");
+            }
+        }
+
+        /// <summary>Git #3982 — Re-open: manual Closed → Open override. Plain status flip, no evidence
+        /// packaging, no GitHub call.</summary>
+        private void BtnReopenBug_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is BugCardViewModel bug && bug.Status == "Closed")
+            {
+                bug.Status = "Open";
+                bug.Resolution = null;
+                bug.ResolutionReason = null;
+                RefreshBugDrawer();
+            }
+        }
+
+        /// <summary>Git #3982 — Reject: only meaningful on a Verifying row. Real, explicit non-goal per
+        /// the issue: this NEVER calls any GitHub API. Sets status back to Open, then packages the bug's
+        /// real captured evidence (notes, steps, expected/actual, screenshots — the same fields
+        /// BtnCopyBugMd_Click already formats) and raises <see cref="SendToChatRequested"/> so MainWindow
+        /// hands it to the shared #937 send-to-active-chat path. A real person (Claude, in that chat)
+        /// decides what's actually wrong and reopens/comments on the GitHub issue with its own tools.</summary>
+        private void BtnRejectBug_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not BugCardViewModel bug || bug.Status != "Verifying") return;
+
+            bug.Status = "Open";
+            bug.Resolution = null;
+            bug.ResolutionReason = null;
+            RefreshBugDrawer();
+            ShowToast($"Bug #{bug.Id} rejected — evidence sent to chat.");
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"🔴 **Rejected from Verifying** — bug #{bug.Id} ({bug.Route}) was reviewed and is NOT actually fixed. Reopened locally (status = Open). Real captured evidence below — please look into it and, if warranted, reopen/comment on the GitHub issue yourself.");
+            sb.AppendLine();
+            sb.AppendLine($"### [{bug.Severity}] {bug.Route}");
+            sb.AppendLine($"- **Notes**: {bug.Notes}");
+            if (!string.IsNullOrEmpty(bug.Steps)) sb.AppendLine($"- **Steps**: {bug.Steps}");
+            if (!string.IsNullOrEmpty(bug.Expected)) sb.AppendLine($"- **Expected**: {bug.Expected}");
+            if (!string.IsNullOrEmpty(bug.Actual)) sb.AppendLine($"- **Actual**: {bug.Actual}");
+            if (bug.Screenshots is { Count: > 0 })
+            {
+                sb.AppendLine($"- **Screenshots** ({bug.Screenshots.Count}):");
+                foreach (var path in bug.Screenshots) sb.AppendLine($"  - `{path}`");
+            }
+            SendToChatRequested?.Invoke(sb.ToString());
         }
 
         private void BtnMarkNotABug_Click(object sender, RoutedEventArgs e)

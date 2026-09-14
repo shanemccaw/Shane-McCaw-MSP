@@ -84,6 +84,7 @@ namespace BuildConsole.Services
         public string? Resolution { get; set; } // "Fixed", "NotABug" — only meaningful when Status == "Closed"
         public string? ResolutionReason { get; set; } // required when Resolution == "NotABug"
         public bool IsDesign { get; set; }
+        public string? Selector { get; set; } // Git #3983 — element-level dedup key when logged via the DOM inspector
         public bool IsSynced { get; set; }
         public string SyncedSessionId { get; set; } = "";
     }

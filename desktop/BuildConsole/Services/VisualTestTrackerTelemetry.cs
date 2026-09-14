@@ -712,6 +712,10 @@ namespace BuildConsole.Services
                 <div style=""display:flex; align-items:center; overflow:hidden;"">
                     <span id=""__vtt_card_tag"" style=""font-family:Consolas, monospace; font-size:11.5px; font-weight:700; color:#38bdf8; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; max-width:200px;"">element</span>
                     <span id=""__vtt_card_dims"" style=""font-size:10px; color:#94a3b8; margin-left:6px; white-space:nowrap;"">0×0px</span>
+                    <span id=""__vtt_card_bug_status"" title="""" style=""display:none; align-items:center; margin-left:8px; cursor:pointer; flex-shrink:0;"">
+                        <span id=""__vtt_card_bug_dot"" style=""display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:3px; box-shadow:0 0 0 1px rgba(255,255,255,0.25);""></span>
+                        <span id=""__vtt_card_bug_count"" style=""font-size:9.5px; color:#94a3b8; font-weight:700;""></span>
+                    </span>
                 </div>
                 <button id=""__vtt_card_close"" title=""Cancel note and unselect (Esc)"" style=""background:none; border:none; color:#94a3b8; font-size:14px; cursor:pointer; padding:1px 5px; border-radius:3px; line-height:1;"">✕</button>
             </div>
@@ -735,6 +739,16 @@ namespace BuildConsole.Services
         var sendBtn = document.getElementById('__vtt_card_send');
         var addStepBtn = document.getElementById('__vtt_card_add_step');
         var noteInput = document.getElementById('__vtt_card_input');
+        var bugStatusBtn = document.getElementById('__vtt_card_bug_status');
+
+        if (bugStatusBtn) {
+            bugStatusBtn.addEventListener('click', function(ev) {
+                ev.stopPropagation();
+                if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+                    window.chrome.webview.postMessage(JSON.stringify({ type: 'VTT_DOM_BUG_HISTORY_REQUEST' }));
+                }
+            });
+        }
 
         if (closeBtn) closeBtn.addEventListener('click', function(ev) { ev.stopPropagation(); cancelNote(); });
         if (cancelBtn) cancelBtn.addEventListener('click', function(ev) { ev.stopPropagation(); cancelNote(); });
@@ -969,6 +983,11 @@ namespace BuildConsole.Services
         if (cardSel) cardSel.innerText = currentPayload.selector;
         if (cardInput) cardInput.value = '';
 
+        // Git #3983 — hide any status icon left from the previously-locked element; C# will call
+        // window.__vttDomShowBugStatus back once its (page_id, selector) lookup for THIS element
+        // resolves, if it finds any tracked bugs.
+        if (window.__vttDomHideBugStatus) window.__vttDomHideBugStatus();
+
         var cardWidth = 340;
         var cardHeight = 150;
         var topPos = (rect.top > cardHeight + 12) ? (rect.top - cardHeight - 8) : Math.min(window.innerHeight - cardHeight - 10, rect.bottom + 8);
@@ -1002,6 +1021,26 @@ namespace BuildConsole.Services
         selectedEl = null;
         if (noteCard) noteCard.style.display = 'none';
         if (overlay) overlay.style.display = 'none';
+    };
+
+    // Git #3983 — called back from C# once its (page_id, selector) lookup for the currently
+    // locked element resolves. data: { color: '#rrggbb', label: string, extraCount: number }.
+    // extraCount is bugs beyond the one the icon's own color/label already represents (2 total
+    // bugs shows (1), not (2) — per the issue's own verification steps).
+    window.__vttDomShowBugStatus = function(data) {
+        var statusEl = document.getElementById('__vtt_card_bug_status');
+        var dotEl = document.getElementById('__vtt_card_bug_dot');
+        var countEl = document.getElementById('__vtt_card_bug_count');
+        if (!statusEl || !dotEl || !countEl || !data) return;
+        dotEl.style.backgroundColor = data.color || '#64748b';
+        countEl.innerText = data.extraCount > 0 ? '(' + data.extraCount + ')' : '';
+        statusEl.title = (data.label || '') + ' — click for full history';
+        statusEl.style.display = 'inline-flex';
+    };
+
+    window.__vttDomHideBugStatus = function() {
+        var statusEl = document.getElementById('__vtt_card_bug_status');
+        if (statusEl) statusEl.style.display = 'none';
     };
 
     window.__vttDomInspectorCleanUp = function() {

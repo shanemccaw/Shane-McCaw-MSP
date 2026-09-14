@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Controls;
@@ -3252,6 +3253,7 @@ namespace BuildConsole
             navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Go
             navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Keep-alive play/pause (only if offerKeepAlive)
             navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Fill Login
+            navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Git #3984 — combined bug status icon
 
             var btnBack = new Button
             {
@@ -3387,6 +3389,111 @@ namespace BuildConsole
             Grid.SetColumn(btnFillLogin, 6);
             navBar.Children.Add(btnFillLogin);
 
+            // Git #3984 — combined page-level + global bug status icon: one dot+count badge for
+            // the CURRENT tab's base URL (page-level filtered to the current page_path, global
+            // unfiltered), same status-color convention as the detail window (StatusVisual).
+            // Hidden by default — only shown once a real scoped bug exists for a watched base URL,
+            // matched the same way the Visual Test Tracker floaty already does (MatchesWatchedVisualTestBaseUrl).
+            var bugStatusDot = new TextBlock
+            {
+                Text = "●",
+                FontSize = 13,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var bugStatusCountBadge = new TextBlock
+            {
+                Text = "",
+                FontSize = 9,
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(3, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)FindResource("Subtext1Brush")
+            };
+            var btnBugStatus = new Button
+            {
+                Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Children = { bugStatusDot, bugStatusCountBadge }
+                },
+                Style = (Style)FindResource("IconButton"),
+                Width = 36, Height = 28, Margin = new Thickness(0, 4, 4, 4),
+                Visibility = Visibility.Collapsed,
+                ToolTip = "Bug status for this page/site"
+            };
+            Grid.SetColumn(btnBugStatus, 7);
+            navBar.Children.Add(btnBugStatus);
+
+            VisualTestTrackerStore? bugToolbarStore = null;
+            VisualTestTrackerStore.ScopedBugSummary? lastBugSummary = null;
+            string lastBugScopeDescription = "";
+
+            async Task RefreshBugStatusIconAsync()
+            {
+                try
+                {
+                    string? currentUrl = wv.Source?.ToString();
+                    string? matchedBase = MatchesWatchedVisualTestBaseUrl(currentUrl);
+                    if (matchedBase == null)
+                    {
+                        btnBugStatus.Visibility = Visibility.Collapsed;
+                        return;
+                    }
+
+                    if (bugToolbarStore == null)
+                    {
+                        var connStr = VisualTestTrackerStore.ResolveConnectionString();
+                        bugToolbarStore = !string.IsNullOrWhiteSpace(connStr) ? new VisualTestTrackerStore(connStr) : null;
+                    }
+                    if (bugToolbarStore == null)
+                    {
+                        btnBugStatus.Visibility = Visibility.Collapsed;
+                        return;
+                    }
+
+                    int baseIdx = currentUrl!.IndexOf(matchedBase, StringComparison.OrdinalIgnoreCase);
+                    string pagePath = currentUrl.Substring(baseIdx + matchedBase.Length);
+                    if (string.IsNullOrEmpty(pagePath)) pagePath = "/";
+
+                    var summary = await bugToolbarStore.GetToolbarBugSummaryAsync(matchedBase, pagePath);
+                    if (summary.TotalCount == 0)
+                    {
+                        btnBugStatus.Visibility = Visibility.Collapsed;
+                        lastBugSummary = null;
+                        return;
+                    }
+
+                    lastBugSummary = summary;
+                    lastBugScopeDescription = $"{matchedBase}{pagePath} — page-level + global bugs for this site.";
+                    var latest = summary.Entries[0];
+                    var (glyph, brush) = StatusVisual.For(latest.Status, latest.Resolution);
+                    bugStatusDot.Text = glyph;
+                    bugStatusDot.Foreground = brush;
+                    bugStatusCountBadge.Text = summary.TotalCount > 1 ? $"({summary.TotalCount})" : "";
+                    btnBugStatus.Visibility = Visibility.Visible;
+                }
+                catch (Exception ex)
+                {
+                    // Never let a DB hiccup break browsing — same fail-quiet posture as the
+                    // Fill Login autofill detection above.
+                    BuildConsole.Services.ActivityLog.Log("visual-test-tracker", $"Toolbar bug icon refresh failed: {ex.Message}");
+                }
+            }
+
+            btnBugStatus.Click += (s, e) =>
+            {
+                if (lastBugSummary == null || lastBugSummary.Entries.Count == 0) return;
+                var dlg = new BugScopeHistoryWindow("Bug History", lastBugScopeDescription, lastBugSummary.Entries)
+                {
+                    Owner = this
+                };
+                dlg.Show();
+            };
+
+            wv.NavigationCompleted += async (s, e) =>
+            {
+                if (e.IsSuccess) await RefreshBugStatusIconAsync();
+            };
 
             wv.SourceChanged += (s, e) =>
             {
@@ -6270,6 +6377,17 @@ namespace BuildConsole
                     activeWv.CoreWebView2.Navigate(url);
                 }
             });
+
+            // Git #3982 — Reject's evidence hand-off routed through the exact same shared
+            // SendTextToActiveClaudeChatAsync path (#937) as the SQL Runner (#940) and Log Viewer
+            // (#2786). This view never calls GitHub itself — see BtnReject_Click's own doc comment.
+            bugsViewer.SendToChatRequested += async (s, text) =>
+                await SendTextToActiveClaudeChatAsync(
+                    text,
+                    showMessage: (msg, isError) => bugsViewer.ShowSendStatus(msg),
+                    onInserted: null,
+                    logChannel: "testing.bug-lifecycle.reject",
+                    whatSingular: "rejected bug evidence");
 
             var newTab = new TabItem
             {

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -30,6 +31,12 @@ namespace BuildConsole.Controls
         private AccessibilityAuditReport _lastA11yReport = new();
         private int _baselineDomNodeCount;
 
+        // Git #3983 — real bugs already tracked against the currently-locked element, from the
+        // last (page_id, selector) lookup. Kept so a click on the popover's status icon can open
+        // the detail view without a second round-trip to Postgres.
+        private VisualTestTrackerStore? _bugStatusStore;
+        private List<VisualTestTrackerEntry> _lastElementBugs = new();
+
         public ObservableCollection<ConsoleHistoryItem> ConsoleHistory { get; } = new();
 
         public event Action<bool>? ExpansionChanged;
@@ -37,6 +44,7 @@ namespace BuildConsole.Controls
         public event Action<string>? AddToNotesRequested;
         public event Action<string, DomElementInfo>? BugSubmittedFromDomInspector;
         public event Action? ApiHelperRequested;
+        public event Action<DomElementInfo, List<VisualTestTrackerEntry>>? BugHistoryRequested;
 
         public bool IsExpanded
         {
@@ -169,6 +177,7 @@ namespace BuildConsole.Controls
                         {
                             TxtDomComment.Clear();
                             _lastInspectedElement = null;
+                            _lastElementBugs = new List<VisualTestTrackerEntry>();
                             DomPickedContainer.Visibility = Visibility.Collapsed;
                             TxtDomEmpty.Visibility = Visibility.Visible;
                             BugSubmittedFromDomInspector?.Invoke(bugSubmit.Value.Comment, bugSubmit.Value.Element);
@@ -191,8 +200,23 @@ namespace BuildConsole.Controls
                         {
                             TxtDomComment.Clear();
                             _lastInspectedElement = null;
+                            _lastElementBugs = new List<VisualTestTrackerEntry>();
                             DomPickedContainer.Visibility = Visibility.Collapsed;
                             TxtDomEmpty.Visibility = Visibility.Visible;
+                        });
+                        return;
+                    }
+
+                    // 3.5. Git #3983 — click on the popover's bug-status icon requests the full
+                    // history for whichever element is currently locked.
+                    if (message.Contains("VTT_DOM_BUG_HISTORY_REQUEST"))
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            if (_lastInspectedElement != null)
+                            {
+                                BugHistoryRequested?.Invoke(_lastInspectedElement, _lastElementBugs);
+                            }
                         });
                         return;
                     }
@@ -398,8 +422,13 @@ namespace BuildConsole.Controls
         private void HandleDomElementInspected(DomElementInfo info)
         {
             _lastInspectedElement = info;
+            _lastElementBugs = new List<VisualTestTrackerEntry>();
             TxtDomEmpty.Visibility = Visibility.Collapsed;
             DomPickedContainer.Visibility = Visibility.Visible;
+
+            // Git #3983 — real lookup against (page_id, selector); the in-page popover's own
+            // status icon is shown/hidden by the JS callback once this resolves.
+            _ = ShowElementBugStatusAsync(info);
 
             // Ensure DOM accordion section is visible and expanded
             BodyDom.Visibility = Visibility.Visible;
@@ -436,6 +465,52 @@ namespace BuildConsole.Controls
                 TxtDomComment.Focus();
                 Keyboard.Focus(TxtDomComment);
             }), DispatcherPriority.Input);
+        }
+
+        /// <summary>
+        /// Git #3983 — real (page_id, selector) lookup for the element just locked by the DOM
+        /// inspector. A page that doesn't exist yet (never visited before this session) can't have
+        /// any bugs against it, so this uses the read-only <see cref="VisualTestTrackerStore.FindPageIdAsync"/>
+        /// rather than creating one — checking for existing bugs must never itself count as a "visit."
+        /// If any are found, calls back into the WebView to show the popover's status icon; the
+        /// element's own selector is re-checked against whatever is currently locked before injecting
+        /// anything, since the user may have already moved on to a different element by the time this
+        /// (deliberately fire-and-forget) lookup resolves.
+        /// </summary>
+        private async Task ShowElementBugStatusAsync(DomElementInfo info)
+        {
+            if (string.IsNullOrWhiteSpace(info.Selector)) return;
+
+            try
+            {
+                if (_bugStatusStore == null)
+                {
+                    var connStr = VisualTestTrackerStore.ResolveConnectionString();
+                    if (string.IsNullOrWhiteSpace(connStr)) return;
+                    _bugStatusStore = new VisualTestTrackerStore(connStr);
+                }
+
+                int? pageId = await _bugStatusStore.FindPageIdAsync(_activeBaseUrl, _activePagePath);
+                if (pageId == null) return;
+
+                var bugs = await _bugStatusStore.GetBugsForElementAsync(pageId.Value, info.Selector);
+
+                // Stale response — the locked element changed while this lookup was in flight.
+                if (_lastInspectedElement?.Selector != info.Selector) return;
+                if (bugs.Count == 0 || _activeWebView?.CoreWebView2 == null) return;
+
+                _lastElementBugs = bugs;
+                var (color, label) = ElementBugStatusPresenter.ColorAndLabelFor(bugs[0]);
+                // extraCount, not the raw total: spec is "(n) beyond the one shown" — 2 total bugs
+                // reads "(1)", not "(2)" (confirmed against the issue's own verification steps).
+                string payload = JsonSerializer.Serialize(new { color, label, extraCount = bugs.Count - 1 });
+                await _activeWebView.CoreWebView2.ExecuteScriptAsync(
+                    $"window.__vttDomShowBugStatus && window.__vttDomShowBugStatus({payload});");
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(VisualTestTrackerStore.Channel, $"Element bug status lookup failed: {ex.Message}");
+            }
         }
 
         private void TxtDomComment_PreviewKeyDown(object sender, KeyEventArgs e)
