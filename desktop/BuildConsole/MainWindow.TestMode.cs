@@ -252,8 +252,6 @@ namespace BuildConsole
 
             // 5. Establish (or resume) the active session record so bugs can be persisted
             RefreshActiveTestSession();
-
-            ToastEngine.Success("Test Mode", "Entered Test Mode — Left diagnostics rail, 540px test composer active. (Press Ctrl+Shift+T or click ✕ to exit)");
         }
 
         /// <summary>
@@ -289,8 +287,6 @@ namespace BuildConsole
 
             _activeTestSessionId = "";
             UnsubscribeTestModeWvEvents();
-
-            ToastEngine.Success("Test Mode", "Exited Test Mode — Workspace restored to previous layout.");
         }
 
         private Microsoft.Web.WebView2.Wpf.WebView2? _testModeSubscribedWv;
