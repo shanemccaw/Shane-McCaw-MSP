@@ -76,6 +76,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -212,6 +213,17 @@ router.get(
           ),
         )
         .orderBy(asc(complianceFrameworksTable.sortOrder), asc(complianceFrameworksTable.name));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "compliance_framework.customer_list_viewed",
+        entityType: "compliance_framework",
+        tenantId: tenant.customerId,
+        metadata: { count: rows.length },
+      });
+
       res.json(rows);
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/customers/:customerId/compliance-frameworks failed");
@@ -322,6 +334,18 @@ router.get(
         .from(complianceObligationsTable)
         .where(eq(complianceObligationsTable.frameworkId, framework.id))
         .orderBy(asc(complianceObligationsTable.sortOrder), asc(complianceObligationsTable.citation));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "compliance_framework.obligations_viewed",
+        entityType: "compliance_obligation",
+        entityId: framework.id,
+        tenantId: tenant.customerId,
+        metadata: { count: rows.length },
+      });
+
       res.json(rows);
     } catch (err: unknown) {
       log.error({ err }, "GET .../compliance-obligations failed");

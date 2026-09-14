@@ -22,6 +22,7 @@ import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "engine.policy" });
 
@@ -57,6 +58,16 @@ router.get(
         apiError(res, 404, ApiErrorCode.NOT_FOUND, "Tenant not found");
         return;
       }
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "policy_engine.settings_viewed",
+        entityType: "policy_engine_settings",
+        tenantId: tenant.id,
+      });
+
       res.json({ tenantId: tenant.id, policyEngineOptIn: tenant.policyEngineOptIn });
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/tenants/:tenantId/policy-engine failed");

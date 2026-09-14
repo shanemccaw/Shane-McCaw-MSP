@@ -69,6 +69,7 @@ import { z } from "zod";
 import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -249,6 +250,16 @@ router.get(
         .offset(offset);
 
       const checkpointsByPush = await loadCheckpoints(rows.map((r) => r.id));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "communications_push.customer_list_viewed",
+        entityType: "communications_push",
+        tenantId: customerId,
+        metadata: { count: rows.length },
+      });
 
       return res.json({
         pushes: rows.map((r) => pushToWire(r, checkpointsByPush.get(r.id) ?? [])),

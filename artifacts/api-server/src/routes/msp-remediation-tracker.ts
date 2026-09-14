@@ -59,6 +59,7 @@ import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { fetchPublishedKnowledgeBaseRows } from "../lib/remediation-knowledge-base.ts";
 import { REMEDIATION_TRACKER_STEP_IDS } from "./portal-remediation-tracker.ts";
 import { REMEDIATION_TRACKER_CATALOGUE, REMEDIATION_TRACKER_STATUS_LABELS } from "../lib/remediation-tracker-catalogue.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 
@@ -164,6 +165,15 @@ router.get(
       const knownRows = rows.filter((r) => STEP_ID_SET.has(r.stepId));
       const pricing = computeRemediationTrackerPricing(knownRows);
 
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "remediation_tracker.state_viewed",
+        entityType: "remediation_tracker",
+        tenantId: customerId,
+      });
+
       res.json({ steps: knownRows.map(toWire), pricing });
     } catch (err) {
       log.error({ err, customerId }, "GET /msp/customers/:customerId/remediation-tracker failed");
@@ -243,6 +253,15 @@ router.get(
         status: s,
         label: REMEDIATION_TRACKER_STATUS_LABELS[s] ?? s,
       }));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "remediation_tracker.catalogue_viewed",
+        entityType: "remediation_tracker",
+        tenantId: customerId,
+      });
 
       res.json({ steps, statusLabels: REMEDIATION_TRACKER_STATUS_LABELS, assignableStatuses });
     } catch (err) {
@@ -524,6 +543,16 @@ router.get(
           validationCommand: row?.validationCommand ?? null,
           expectedOutcome: row?.expectedOutcome ?? null,
         };
+      });
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "remediation_tracker.verification_guide_viewed",
+        entityType: "remediation_tracker_step",
+        entityId: stepId,
+        tenantId: customerId,
       });
 
       res.json({ stepId, checkKeys: mappedKeys, guidance });

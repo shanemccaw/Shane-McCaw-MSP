@@ -45,6 +45,7 @@ import {
   getEvidenceAttachment,
   toWireEvidenceAttachment,
 } from "../lib/evidence-attachments-store.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 
@@ -217,6 +218,18 @@ router.get(
         return;
       }
       const rows = await listEvidenceAttachments(mspId, "remediation_tracker", step.id);
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "remediation_step_evidence_viewed",
+        entityType: "remediation_step_evidence",
+        entityId: stepId,
+        tenantId: customerId,
+        metadata: { count: rows.length },
+      });
+
       res.status(200).json({ attachments: rows.map(toWireEvidenceAttachment) });
     } catch (err) {
       log.error({ err, customerId, stepId }, "GET remediation-tracker evidence failed");

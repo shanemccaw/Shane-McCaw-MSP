@@ -71,6 +71,7 @@ import { getDeliveryLog } from "../lib/webhook-delivery.ts";
 import { SUBSCRIBABLE_EVENT_TYPES } from "./webhooks.ts";
 import { INBOUND_EVENT_SUMMARY } from "./msp-billing-webhook.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "comms.webhook" });
 
@@ -181,6 +182,16 @@ router.get(
         .where(eq(outboundWebhooksTable.customerId, customerId))
         .orderBy(desc(outboundWebhooksTable.createdAt));
 
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "webhook.customer_list_viewed",
+        entityType: "webhook",
+        tenantId: customerId,
+        metadata: { count: rows.length },
+      });
+
       res.json({ webhooks: await shapeRows(rows) });
     } catch (err) {
       log.error({ err, customerId: req.params["customerId"] }, "msp-console-webhooks: failed to list customer webhooks");
@@ -219,6 +230,16 @@ router.get(
         res.status(404).json({ error: "Webhook not found" });
         return;
       }
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "webhook.detail_viewed",
+        entityType: "webhook",
+        entityId: webhookId,
+        tenantId: customerId,
+      });
 
       const [shaped] = await shapeRows([row]);
       res.json({ webhook: shaped });
@@ -381,6 +402,18 @@ router.get(
       }
 
       const { entries, nextCursor } = await getDeliveryLog(webhookId, limit, before);
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "webhook.deliveries_viewed",
+        entityType: "webhook",
+        entityId: webhookId,
+        tenantId: customerId,
+        metadata: { count: entries.length },
+      });
+
       res.json({ deliveries: entries, nextCursor });
     } catch (err) {
       log.error({ err, webhookId: req.params["webhookId"] }, "msp-console-webhooks: failed to load delivery log");
@@ -483,6 +516,16 @@ router.get(
           .where(and(sourceFilter, mspFilter, eq(inboundWebhookEventsTable.outcome, "processed")));
         for (const r of actedRows) actedTypes.add(r.eventType);
       }
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "webhook.inbound_activity_viewed",
+        entityType: "inbound_webhook_event",
+        tenantId: customerId,
+        metadata: { count: events.length },
+      });
 
       res.json({
         sources: [

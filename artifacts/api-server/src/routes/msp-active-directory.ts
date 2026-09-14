@@ -73,7 +73,7 @@ import { requireAuth, requireCapability, assertCustomerAccess, resolveStaffScope
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
-import { createAuditLog } from "../lib/audit.ts";
+import { createAuditLog, auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import { resolveAssignmentCustomer, resolveGraphUserByUpn } from "./admin-active-directory.ts";
 
 const router: IRouter = Router();
@@ -121,6 +121,17 @@ router.get(
         .from(activeDirectoryOusTable)
         .where(eq(activeDirectoryOusTable.tenantId, customerId))
         .orderBy(asc(activeDirectoryOusTable.name));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "active_directory.ous_viewed",
+        entityType: "active_directory_ou",
+        tenantId: customerId,
+        metadata: { count: rows.length },
+      });
+
       res.json({ ous: rows });
     } catch (err) {
       log.error({ err, customerId, mspId }, "Failed to load OUs for customer");

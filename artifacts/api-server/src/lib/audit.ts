@@ -4,6 +4,7 @@ import {
   type AuditActorRole,
   type AuditActionCategory,
 } from "@workspace/db";
+import { LEGACY_ROLE, effectiveLegacyRole } from "@workspace/db/rbac/legacy-ladder";
 import { logger } from "./logger.ts";
 const log = logger.child({ channel: "audit" });
 
@@ -168,4 +169,60 @@ export async function createAuditLogOrThrow(event: AuditEvent): Promise<void> {
   if (!result.ok) {
     throw new AuditWriteFailedError(event, result.error);
   }
+}
+
+/**
+ * Maps an authenticated caller's effective rung (#4044's real actor model) onto the
+ * `AuditActorRole` an audit row should carry. Used by the privileged/cross-boundary read
+ * auditing added for #4046 — every one of those call sites needs "who is this, really"
+ * rather than the raw two-value `user.role`.
+ */
+export function resolveAuditActorRole(user: { role: "admin" | "client"; mspRole?: string | null }): AuditActorRole {
+  const effective = effectiveLegacyRole({ role: user.role, mspRole: user.mspRole ?? null });
+  switch (effective) {
+    case LEGACY_ROLE.platformAdmin:
+      return "platform_admin";
+    case LEGACY_ROLE.mspAdmin:
+    case LEGACY_ROLE.mspOperator:
+      return "msp";
+    case LEGACY_ROLE.serviceAccount:
+      return "service_account";
+    case LEGACY_ROLE.customer:
+    case LEGACY_ROLE.free:
+    case LEGACY_ROLE.retainerNoConsent:
+    case LEGACY_ROLE.retainerConsented:
+      return "customer";
+    default:
+      // A real authenticated principal reached this call site (requireAuth already ran) but
+      // its rung isn't one of the above — never silently claim a specific role we didn't
+      // verify. `system` is the one value reserved for "no real principal" elsewhere in this
+      // file's contract, but here there IS a principal; log it plainly rather than guessing.
+      return "system";
+  }
+}
+
+/**
+ * A privileged / cross-boundary READ (#4046, part of #1946's settled read boundary,
+ * 2026-08-30 + 2026-09-14): break-glass secret reveal, an MSP operator reading a specific
+ * customer's data, data export/download, or any other read that crosses a tenant boundary.
+ * Ordinary same-tenant list/detail reads are deliberately NOT covered — see #1946.
+ *
+ * Always categorised `access` (the read-boundary catalogue value) and always fail-open via
+ * the same `createAuditLog` every write-path call site uses.
+ */
+export interface PrivilegedReadEvent {
+  actorUserId?: number | null;
+  actorName: string;
+  actorRole: AuditActorRole;
+  actionType: string;
+  entityType: string;
+  entityId?: string | number | null;
+  entityLabel?: string | null;
+  tenantId?: number | null;
+  clientId?: number | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export async function auditPrivilegedRead(event: PrivilegedReadEvent): Promise<AuditLogResult> {
+  return createAuditLog({ ...event, actionCategory: "access" });
 }

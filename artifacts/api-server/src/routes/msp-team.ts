@@ -57,7 +57,7 @@ import { eq, and, inArray, gte, isNull, sql, count } from "drizzle-orm";
 import { requireCapability, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
-import { createAuditLog } from "../lib/audit.ts";
+import { createAuditLog, auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { ensureClientSetupToken } from "../lib/client-setup-token.ts";
@@ -204,6 +204,16 @@ router.get("/msp/customers/:customerId/team", requireCapability("ladder.msp-oper
       createdAt: m.createdAt,
       activeSessionsCount: activeCountByUser.get(m.userId) ?? 0,
     }));
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: resolveAuditActorRole(req.user!),
+      actionType: "team.roster_viewed",
+      entityType: "user",
+      tenantId: customerId,
+      metadata: { count: result.length },
+    });
 
     res.json(result);
   } catch (err) {

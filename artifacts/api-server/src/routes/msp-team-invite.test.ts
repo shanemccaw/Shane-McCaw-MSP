@@ -131,7 +131,11 @@ mock.module("../lib/session-tracking.ts", {
   namedExports: { revokeAllOtherSessions: async () => {} },
 });
 mock.module("../lib/audit.ts", {
-  namedExports: { createAuditLog: async () => {} },
+  namedExports: {
+    createAuditLog: async () => ({ ok: true }),
+    auditPrivilegedRead: async () => ({ ok: true }),
+    resolveAuditActorRole: () => "msp",
+  },
 });
 mock.module("../lib/portal-url.ts", {
   namedExports: {

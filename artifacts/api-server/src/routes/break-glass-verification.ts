@@ -55,7 +55,7 @@ import {
 } from "../lib/graph.ts";
 import { sendEmailForMspOrThrow } from "../lib/mailer.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
-import { createAuditLog } from "../lib/audit.ts";
+import { createAuditLog, auditPrivilegedRead } from "../lib/audit.ts";
 
 const router = Router();
 
@@ -755,6 +755,19 @@ router.get("/public/break-glass/verify/callback", publicLimiter, async (req: Req
           `<h1>This credential is no longer available</h1>` +
           `<p>It has expired or already been delivered. Ask your provider to issue a new one.</p>`, branding));
       }
+      // Category 1 read-boundary event (#4046, #1946): the plaintext break-glass credential
+      // is actually revealed here — no req.user exists on this public OAuth callback, so the
+      // actor is the verified Entra UPN, attributed to the customer's own tenant.
+      await auditPrivilegedRead({
+        actorUserId: null,
+        actorName: upn ?? "unknown (break-glass verify callback)",
+        actorRole: "customer",
+        actionType: "break_glass.secret_revealed",
+        entityType: "break_glass_pending_secret",
+        entityId: secret.id,
+        tenantId: secret.customerId,
+        metadata: { runId: secret.runId, upn },
+      });
       // Reveal-once page (server-rendered so the plaintext never enters client
       // routing/history). Requires an explicit acknowledgment click to proceed.
       const ackBody =

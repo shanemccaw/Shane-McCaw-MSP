@@ -70,7 +70,7 @@ import {
   WriteConsentRequiredError,
 } from "../lib/graph.ts";
 import { logger } from "../lib/logger.ts";
-import { createAuditLog } from "../lib/audit.ts";
+import { createAuditLog, auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "auth" });
 
@@ -184,6 +184,16 @@ router.get("/msp/customers/:customerId/break-glass", requireCapability("ladder.m
       .where(eq(breakGlassPendingSecretsTable.customerId, customerId))
       .orderBy(desc(breakGlassPendingSecretsTable.createdAt));
 
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: resolveAuditActorRole(req.user!),
+      actionType: "break_glass.customer_history_viewed",
+      entityType: "break_glass_pending_secret",
+      tenantId: customerId,
+      metadata: { count: secrets.length },
+    });
+
     return res.json({
       secrets: secrets.map((s) => ({
         pendingSecretId: s.id,
@@ -237,6 +247,16 @@ router.get(
         .from(breakGlassVerificationAttemptsTable)
         .where(eq(breakGlassVerificationAttemptsTable.pendingSecretId, pendingSecretId))
         .orderBy(desc(breakGlassVerificationAttemptsTable.createdAt));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "break_glass.pending_secret_detail_viewed",
+        entityType: "break_glass_pending_secret",
+        entityId: pendingSecretId,
+        tenantId: customerId,
+      });
 
       return res.json({
         pendingSecretId: ctx.secret.id,
@@ -349,6 +369,16 @@ router.get(
         .leftJoin(usersTable, eq(usersTable.id, breakGlassOverrideAuditTable.adminUserId))
         .where(eq(breakGlassOverrideAuditTable.customerId, customerId))
         .orderBy(desc(breakGlassOverrideAuditTable.createdAt));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "break_glass.override_audit_viewed",
+        entityType: "break_glass_override_audit",
+        tenantId: customerId,
+        metadata: { count: rows.length },
+      });
 
       return res.json({
         audit: rows.map((r) => ({

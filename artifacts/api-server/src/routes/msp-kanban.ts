@@ -52,6 +52,7 @@ import { z } from "zod";
 import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -195,6 +196,16 @@ router.get(
         list.push(cardToWire(card));
         cardsByBucket.set(card.bucketId, list);
       }
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "kanban_board_viewed",
+        entityType: "kanban_board",
+        tenantId: customerId,
+        metadata: { bucketCount: buckets.length, cardCount: cards.length },
+      });
 
       return res.json({
         buckets: buckets.map((b) => ({ ...bucketToWire(b), cards: cardsByBucket.get(b.id) ?? [] })),

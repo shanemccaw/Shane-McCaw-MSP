@@ -30,6 +30,7 @@ import { fetchCustomerDirectoryMetrics } from "../lib/msp-customer-directory-met
 import { logger } from "../lib/logger.ts";
 import { syncTenantsAfterStatusWrite } from "../lib/retention/subscription-state.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -1209,6 +1210,15 @@ router.get(
         res.status(404).json({ error: "Customer not found" });
         return;
       }
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "customer.detail_viewed",
+        entityType: "customer",
+        tenantId: customerId,
+      });
 
       res.json(rows[0]);
     } catch (err) {

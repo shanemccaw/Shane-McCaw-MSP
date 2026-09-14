@@ -24,6 +24,7 @@ import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveFixRoute, resolveTenantWriteCeiling, FIX_ROUTE_AFFORDANCE } from "../lib/remediation-fix-route.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 
@@ -128,6 +129,16 @@ router.get(
           };
         })
         .sort((a, b) => a.title.localeCompare(b.title));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "remediation.fix_routes_viewed",
+        entityType: "remediation_fix_route",
+        tenantId: customerId,
+        metadata: { count: items.length },
+      });
 
       res.json({ tenantWriteCeiling, items });
     } catch (err) {

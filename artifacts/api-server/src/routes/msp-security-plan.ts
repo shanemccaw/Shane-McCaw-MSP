@@ -87,6 +87,7 @@ import {
   type SecurityPlanScopeDimension,
 } from "@workspace/db";
 import { z } from "zod";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -236,6 +237,16 @@ router.get(
       if (!tenant) return;
       const scope = scopeFromQuery(req);
       const document = await assembleSecurityPlan(tenant, scope);
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "security_plan.assembled_viewed",
+        entityType: "security_plan",
+        tenantId: tenant.customerId,
+      });
+
       res.json({ document });
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/security-plan/:customerId/assembled failed");
@@ -264,6 +275,16 @@ router.get(
       const tenant = await resolveOwnedTenant(req, res);
       if (!tenant) return;
       const { live, drift } = await getSecurityPlanDrift(tenant);
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "security_plan.drift_viewed",
+        entityType: "security_plan",
+        tenantId: tenant.customerId,
+      });
+
       res.json({ document: live, drift });
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/security-plan/:customerId/drift failed");
@@ -282,6 +303,17 @@ router.get(
       const tenant = await resolveOwnedTenant(req, res);
       if (!tenant) return;
       const rows = await listSecurityPlanVersions(tenant.mspId, tenant.customerId);
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "security_plan.versions_viewed",
+        entityType: "security_plan_version",
+        tenantId: tenant.customerId,
+        metadata: { count: rows.length },
+      });
+
       res.json({ customerId: tenant.customerId, versions: rows.map(toWireVersion) });
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/security-plan/:customerId/versions failed");
@@ -305,6 +337,17 @@ router.get(
         apiError(res, 404, ApiErrorCode.NOT_FOUND, "No version has been sealed for this Security Plan");
         return;
       }
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "security_plan.current_version_viewed",
+        entityType: "security_plan_version",
+        entityId: row.versionUid,
+        tenantId: tenant.customerId,
+      });
+
       res.json({ version: toWireVersion(row) });
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/security-plan/:customerId/versions/current failed");
@@ -366,6 +409,16 @@ router.get(
         apiError(res, 404, ApiErrorCode.NOT_FOUND, "No draft — freeze the assembled state first");
         return;
       }
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "security_plan.draft_viewed",
+        entityType: "security_plan_draft",
+        tenantId: tenant.customerId,
+      });
+
       res.json({ draft: toWireDraft(draft) });
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/security-plan/:customerId/draft failed");

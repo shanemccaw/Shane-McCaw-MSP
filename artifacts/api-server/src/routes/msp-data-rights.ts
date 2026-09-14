@@ -50,6 +50,7 @@ import { requireCapability, resolveStaffScopedCustomerIds, assertCustomerAccess 
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { submitAdminInitiatedDeletionRequest } from "../lib/data-rights.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
@@ -172,6 +173,16 @@ router.get("/msp/data-rights/customers/:customerId/users", requireCapability("la
       .select({ userId: usersTable.id, name: usersTable.name, email: usersTable.email, isActive: usersTable.isActive })
       .from(usersTable)
       .where(eq(usersTable.tenantId, customerId));
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: resolveAuditActorRole(req.user!),
+      actionType: "data_rights.customer_users_viewed",
+      entityType: "portal_user",
+      tenantId: customerId,
+      metadata: { count: rows.length },
+    });
 
     res.json({ users: rows.map((r) => ({ userId: r.userId, name: r.name, email: r.email, isActive: r.isActive })) });
   } catch (err) {

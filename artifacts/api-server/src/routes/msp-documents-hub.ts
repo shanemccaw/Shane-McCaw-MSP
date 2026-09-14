@@ -47,6 +47,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { buildHtmlDoc, htmlToPdf } from "../lib/html-pdf.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -235,6 +236,20 @@ router.get("/msp/documents-hub/:id/view", requireCapability("ladder.msp-operator
     const doc = await loadScopedDocument(mspId, id, await resolveStaffScopedCustomerIds(req.user!));
     if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
 
+    // Category 2 read-boundary event (#4046, #1946): an MSP operator reading one
+    // specific customer's generated document. doc.customerId is a legacy users.id
+    // (person-scoped), recorded via `clientId` per the AuditEvent backward-compat field.
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: resolveAuditActorRole(req.user!),
+      actionType: "insights_document_viewed",
+      entityType: "insights_generated_document",
+      entityId: doc.id,
+      entityLabel: doc.title,
+      clientId: doc.customerId ?? null,
+    });
+
     res.json({ id: doc.id, title: doc.title, htmlContent: stripStagedForReviewBanner(doc.htmlContent ?? "") });
   } catch (err) {
     log.error({ err }, "msp-documents-hub: GET /msp/documents-hub/:id/view failed");
@@ -266,6 +281,17 @@ router.get("/msp/documents-hub/:id/pdf", requireCapability("ladder.msp-operator"
       .replace(/[^a-zA-Z0-9 _-]/g, "")
       .replace(/\s+/g, "-")
       .slice(0, 80);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: resolveAuditActorRole(req.user!),
+      actionType: "insights_document_pdf_exported",
+      entityType: "insights_generated_document",
+      entityId: doc.id,
+      entityLabel: doc.title,
+      clientId: doc.customerId ?? null,
+    });
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.pdf"`);

@@ -33,6 +33,7 @@ import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
 import { namespacedProfileKey, resolveCustomerUserIds, BRIDGED_KEY_PRODUCER_CHECK, NON_CHECK_PROFILE_NAMESPACE } from "../lib/tenant-signals.ts";
+import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
@@ -82,6 +83,18 @@ router.get("/admin/document-generator/tenants/:mspCustomerId/projects", requireA
       .from(projectsTable)
       .where(inArray(projectsTable.clientUserId, userIds))
       .orderBy(desc(projectsTable.updatedAt));
+
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email ?? "platform-admin",
+      actorRole: "platform_admin",
+      actionType: "admin_customer_projects_viewed",
+      actionCategory: "access",
+      entityType: "project",
+      tenantId: mspCustomerId,
+      metadata: { count: rows.length },
+    });
+
     res.json(rows);
   } catch (err) {
     log.error({ err, mspCustomerId }, "admin-document-generator: list tenant projects failed");
@@ -376,11 +389,30 @@ router.get("/admin/document-generator/history/:id/html", requireAdmin, async (re
 
   try {
     const [doc] = await db
-      .select({ title: insightsGeneratedDocumentsTable.title, htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+      .select({
+        title: insightsGeneratedDocumentsTable.title,
+        htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+        customerId: insightsGeneratedDocumentsTable.customerId,
+      })
       .from(insightsGeneratedDocumentsTable)
       .where(eq(insightsGeneratedDocumentsTable.id, id))
       .limit(1);
     if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+
+    // Category 3/4 read-boundary event (#4046, #1946): PlatformAdmin viewing one
+    // customer's generated document. `doc.customerId` is a legacy users.id
+    // (person-scoped, not tenants.id) — recorded via `clientId`.
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email ?? "platform-admin",
+      actorRole: "platform_admin",
+      actionType: "admin_generated_document_viewed",
+      actionCategory: "access",
+      entityType: "insights_generated_document",
+      entityId: id,
+      entityLabel: doc.title,
+      clientId: doc.customerId ?? null,
+    });
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(doc.htmlContent);

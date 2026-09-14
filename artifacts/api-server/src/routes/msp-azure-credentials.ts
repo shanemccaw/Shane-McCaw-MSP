@@ -35,7 +35,7 @@ import { requireCapability, requireMspScope } from "../middlewares/requireAuth.t
 import { setSecretValue } from "../lib/azure-keyvault.ts";
 import { safeGetExpiry } from "../lib/azure-credential-expiry.ts";
 import { logger } from "../lib/logger.ts";
-import { createAuditLog } from "../lib/audit.ts";
+import { createAuditLog, auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "integration.azure" });
@@ -86,6 +86,21 @@ router.get(
         .from(azureTenantCredentialsTable)
         .where(eq(azureTenantCredentialsTable.clientUserId, clientUserId))
         .limit(1);
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "azure_credential.metadata_viewed",
+        entityType: "azure_credential_metadata",
+        entityId: clientUserId,
+        // No customer/tenant id is resolved anywhere in this handler's scope —
+        // clientBelongsToMsp only confirms mspId ownership, it never looks up
+        // usersTable.tenantId. Recording clientUserId in metadata rather than
+        // guessing a tenantId.
+        tenantId: null,
+        metadata: { clientUserId, hasCredential: !!row },
+      });
 
       if (!row) {
         res.json(null);

@@ -18,6 +18,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveBypassResolutionsForCustomer } from "../lib/remediation-bypass-resolutions.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 
@@ -46,6 +47,17 @@ router.get(
 
     try {
       const items = await resolveBypassResolutionsForCustomer(customerId);
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "remediation.bypass_resolutions_viewed",
+        entityType: "remediation_bypass_resolution",
+        tenantId: customerId,
+        metadata: { count: items.length },
+      });
+
       res.json({ items });
     } catch (err) {
       log.error({ err, customerId }, "GET /msp/customers/:customerId/remediation/bypass-resolutions failed");

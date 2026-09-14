@@ -1208,6 +1208,17 @@ router.get(
         diagnostics: snapshots,
       };
 
+      // Category 3 read-boundary event (#4046, #1946): data export/download.
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email ?? "customer",
+        actorRole: "customer",
+        actionType: "customer_data_export_downloaded",
+        actionCategory: "access",
+        entityType: "customer_export",
+        tenantId: customerId,
+      });
+
       res.json(exportData);
     } catch (err) {
       log.error({ err, customerId }, "portal-customer-engines: customer-export failed");

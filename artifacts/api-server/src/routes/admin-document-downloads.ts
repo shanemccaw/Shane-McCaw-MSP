@@ -32,6 +32,7 @@ import {
   projectsTable,
 } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
 import {
@@ -331,6 +332,22 @@ router.get("/admin/insights/documents/:id/download", requireAdmin, async (req: R
 
     const safeTitle = (doc.title ?? "document").replace(/[^a-z0-9_\- ]/gi, "_").slice(0, 80);
     const format = String(req.query["format"] ?? "pdf").toLowerCase();
+
+    // Category 3/4 read-boundary event (#4046, #1946): a PlatformAdmin downloading a
+    // specific customer's generated document. `doc.customerId` here is a legacy
+    // users.id (person-scoped, not tenants.id) — recorded via `clientId`, matching
+    // the AuditEvent field this backward-compat shape was retained for.
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "insights_document_downloaded",
+      entityType: "insights_generated_document",
+      entityId: doc.id,
+      entityLabel: doc.title,
+      clientId: doc.customerId ?? null,
+      metadata: { format },
+    });
 
     if (format === "html") {
       res.setHeader("Content-Type", "text/html; charset=utf-8");

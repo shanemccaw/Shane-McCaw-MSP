@@ -45,6 +45,7 @@ import {
 } from "../lib/remediation-tracker-catalogue.ts";
 import { REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "../lib/remediation-tracker-verification.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 /** MSP-side roles (`users.mspRole`) — see `LEGACY_ROLE_ORDER` in @workspace/db/rbac. */
 const MSP_STAFF_ROLES: ReadonlySet<string> = new Set([LEGACY_ROLE.platformAdmin, LEGACY_ROLE.mspAdmin, LEGACY_ROLE.mspOperator, LEGACY_ROLE.serviceAccount]);
@@ -328,6 +329,15 @@ router.get(
       ]);
       const csv = toCsv(rows);
 
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "remediation_tracker_csv_exported",
+        entityType: "remediation_tracker_export",
+        tenantId: customerId,
+      });
+
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader(
         "Content-Disposition",
@@ -359,6 +369,15 @@ router.get(
         resolveCustomerName(customerId),
       ]);
       const pdfBuffer = await htmlToPdf(buildHtmlDoc(toHtml(customerName, rows)));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "remediation_tracker_pdf_exported",
+        entityType: "remediation_tracker_export",
+        tenantId: customerId,
+      });
 
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
@@ -392,6 +411,16 @@ router.get(
         resolveCustomerName(customerId),
       ]);
       const pdfBuffer = await htmlToPdf(buildHtmlDoc(toEvidenceHtml(customerName, rows)));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "remediation_tracker_evidence_pack_exported",
+        entityType: "remediation_tracker_export",
+        tenantId: customerId,
+        metadata: { rowCount: rows.length },
+      });
 
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(

@@ -61,6 +61,7 @@ import { z } from "zod";
 import { requireCapability, requireMspScope } from "../middlewares/requireAuth.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import {
   minutesToHours,
   hoursToMinutes,
@@ -350,6 +351,16 @@ router.get(
         active: settings?.active ?? false,
         configured: !!settings,
       };
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "retainer.viewed",
+        entityType: "retainer",
+        tenantId: customerId,
+        metadata: { entryCount: entries.length },
+      });
 
       res.json({
         customer: { customerId, name: scope.customerName },

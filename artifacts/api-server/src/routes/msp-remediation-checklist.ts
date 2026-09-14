@@ -48,6 +48,7 @@ import { buildRaiseChangeRequestInputForChecklistItem } from "../lib/remediation
 import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise.ts";
 import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
 import { declineRemediationChecklistItemToRisk } from "../lib/remediation-tracker-risk-decline.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 
@@ -90,6 +91,16 @@ router.get(
 
     try {
       const result = await resolveRemediationChecklist(customerId);
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "remediation.checklist_viewed",
+        entityType: "remediation_checklist",
+        tenantId: customerId,
+      });
+
       res.json(result);
     } catch (err) {
       log.error({ err, customerId }, "GET /msp/customers/:customerId/remediation/checklist failed");

@@ -29,6 +29,7 @@ import { renderDashboardSnapshotHtml, DashboardSnapshotError } from "../lib/dash
 import { renderDashboardPpt } from "../lib/dashboard-ppt.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { resolveCustomerIdForPortalUser } from "../lib/tenant-signals.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -41,6 +42,15 @@ router.get("/portal/dashboard/pdf", requireCapability("ladder.customer-user"), a
   try {
     const { title, html } = await renderDashboardSnapshotHtml(req);
     const pdfBuffer = await htmlToPdf(buildHtmlDoc(html));
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: resolveAuditActorRole(req.user!),
+      actionType: "dashboard_pdf_exported",
+      entityType: "dashboard_export",
+      tenantId: req.user!.customerId ?? null,
+    });
 
     const safeTitle = title.replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "-").slice(0, 80);
     res.setHeader("Content-Type", "application/pdf");
@@ -62,6 +72,15 @@ router.get("/portal/dashboard/pdf", requireCapability("ladder.customer-user"), a
 router.get("/portal/dashboard/ppt", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   try {
     const { title, buffer } = await renderDashboardPpt(req);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: resolveAuditActorRole(req.user!),
+      actionType: "dashboard_ppt_exported",
+      entityType: "dashboard_export",
+      tenantId: req.user!.customerId ?? null,
+    });
 
     const safeTitle = title.replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "-").slice(0, 80);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");

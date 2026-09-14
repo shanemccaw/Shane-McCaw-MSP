@@ -39,6 +39,7 @@ import { randomUUID } from "crypto";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
 import { getRequestContext } from "../lib/request-context.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import { z } from "zod";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
@@ -815,6 +816,16 @@ router.get(
           eq(mspSalesBundleAssignmentsTable.mspId, mspId),
         ))
         .orderBy(sql`${mspSalesBundleAssignmentsTable.assignedAt} DESC`);
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "sales_bundle.customer_assignments_viewed",
+        entityType: "msp_sales_bundle_assignment",
+        tenantId: customerId,
+        metadata: { count: assignments.length },
+      });
 
       res.json({ assignments });
     } catch (err) {

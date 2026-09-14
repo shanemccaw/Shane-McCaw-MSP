@@ -80,6 +80,7 @@ import { classifyMonitorFailure, type FailureClassification } from "../lib/monit
 import jwt from "jsonwebtoken";
 import { randomUUID } from "crypto";
 import { LEGACY_ROLE, canonicalRoleValue } from "@workspace/db/rbac/legacy-ladder";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const router: IRouter = Router();
 
@@ -458,6 +459,17 @@ router.get(
         .orderBy(desc(clientServicesTable.id))
         .limit(1);
 
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "monitoring_package_viewed",
+        entityType: "monitoring_package",
+        entityId: pkgRow?.serviceId ?? null,
+        entityLabel: pkgRow?.serviceName ?? null,
+        tenantId: customerId,
+      });
+
       res.json({
         packageKey: pkgRow?.packageKey ?? null,
         serviceId: pkgRow?.serviceId ?? null,
@@ -511,6 +523,16 @@ router.get(
           .where(eq(mspDiagnosticRunsTable.customerId, customerId)),
       ]);
 
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "diagnostics_list_viewed",
+        entityType: "diagnostic_run",
+        tenantId: customerId,
+        metadata: { count: runs.length, total },
+      });
+
       res.json({ runs, total, limit, offset });
     } catch (err) {
       const status = (err as { status?: number }).status ?? 500;
@@ -553,6 +575,16 @@ router.get(
         .where(eq(mspDiagnosticRunsTable.customerId, customerId))
         .orderBy(desc(mspDiagnosticRunsTable.createdAt))
         .limit(limit);
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "diagnostics_run_history_viewed",
+        entityType: "diagnostic_run",
+        tenantId: customerId,
+        metadata: { count: runs.length },
+      });
 
       res.json(runs);
     } catch (err) {
@@ -606,7 +638,20 @@ router.get(
       // #379 — each failing finding carries its own triage verdict, computed on
       // read from that finding's own real error text. Additive: every existing
       // field on `findings` is unchanged.
-      res.json({ run, findings: await withFindingClassifications(findings) });
+      const classifiedFindings = await withFindingClassifications(findings);
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "diagnostic_run_detail_viewed",
+        entityType: "diagnostic_run",
+        entityId: runId,
+        tenantId: customerId,
+        metadata: { findingCount: classifiedFindings.length },
+      });
+
+      res.json({ run, findings: classifiedFindings });
     } catch (err) {
       const status = (err as { status?: number }).status ?? 500;
       log.error({ err }, "GET /msp/customers/:id/diagnostics/runs/:runId error");
@@ -693,6 +738,22 @@ router.get(
         .limit(1);
 
       if (!run) { res.status(404).json({ error: "Run not found" }); return; }
+
+      // Category 2 read-boundary event (#4046, #1946): an MSP operator or PlatformAdmin
+      // opening a live scan-progress stream for a specific customer's run. A customer
+      // streaming their OWN run (the `else` branch above) is an ordinary same-tenant read
+      // and is deliberately not audited here.
+      if (isAdmin || (userRole !== LEGACY_ROLE.customer && userRole !== LEGACY_ROLE.free)) {
+        await auditPrivilegedRead({
+          actorUserId: Number.isFinite(Number(decoded.id)) ? Number(decoded.id) : null,
+          actorName: String(decoded.email ?? "msp-operator"),
+          actorRole: isAdmin ? "platform_admin" : "msp",
+          actionType: "diagnostics.live_stream_opened",
+          entityType: "diagnostic_run",
+          entityId: runId,
+          tenantId: customerId,
+        });
+      }
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -823,6 +884,16 @@ router.get(
         };
       });
 
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "diagnostic_scripts_viewed",
+        entityType: "diagnostic_script",
+        tenantId: customerId,
+        metadata: { count: scripts.length, runId: latestRun.runId },
+      });
+
       res.json({ runId: latestRun.runId, scripts });
     } catch (err) {
       const status = (err as { status?: number }).status ?? 500;
@@ -903,6 +974,17 @@ router.get(
       const filename = module.filename?.trim() || `${checkKey}.ps1`;
 
       log.info({ customerId, checkKey, operatorId: req.user!.id }, "GET /msp/customers/:id/scripts/:checkKey/download");
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "diagnostic_script_downloaded",
+        entityType: "diagnostic_script",
+        entityId: checkKey,
+        entityLabel: filename,
+        tenantId: customerId,
+      });
 
       res.setHeader("Content-Type", "application/octet-stream");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

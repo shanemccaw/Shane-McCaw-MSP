@@ -61,6 +61,7 @@ import {
 } from "../lib/msp-ownership-book.ts";
 import { logger } from "../lib/logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -201,6 +202,16 @@ router.get(
     try {
       const callerEmail = (req.user as { email?: string } | undefined)?.email ?? "";
       const payload = await assembleOwnershipPayload(customerId, callerEmail);
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "ownership.customer_matrix_viewed",
+        entityType: "customer_ownership",
+        tenantId: customerId,
+      });
+
       res.json(payload);
     } catch (err) {
       log.error(
@@ -232,6 +243,17 @@ router.get(
     try {
       const events = await fetchOwnershipEvents(customerId, objectId, roleKey, ownerPersonId);
       log.info({ customerId, objectId, roleKey, events: events.length }, "msp ownership cell history served");
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "ownership.change_history_viewed",
+        entityType: "customer_ownership_event",
+        tenantId: customerId,
+        metadata: { objectId, roleKey, count: events.length },
+      });
+
       res.json({ events });
     } catch (err) {
       log.error(

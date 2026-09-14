@@ -54,6 +54,7 @@ import { requireCapability, assertCustomerAccess } from "../middlewares/requireA
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { createNotification } from "../lib/notification-center.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -178,6 +179,16 @@ router.get(
             .where(inArray(usersTable.id, authorIds))
         : [];
       const nameById = new Map(authorRows.map((u) => [u.id, u.name]));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "status_report.list_viewed",
+        entityType: "msp_status_report",
+        tenantId: customerId,
+        metadata: { count: rows.length },
+      });
 
       return res.json({
         reports: rows.map((r) => reportToWire(r, nameById.get(r.authoredByUserId) ?? null)),

@@ -40,6 +40,7 @@ import {
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -180,6 +181,15 @@ router.get(
         .limit(1);
 
       const telemetryStatus = customer?.status === "onboarding" ? "in_progress" : "completed";
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "customer_scores.viewed",
+        entityType: "customer_score",
+        tenantId: customerId,
+      });
 
       res.json({
         customerId,

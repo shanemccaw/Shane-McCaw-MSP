@@ -62,7 +62,7 @@ import { requireCapability, assertCustomerAccess } from "../middlewares/requireA
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
-import { createAuditLog } from "../lib/audit.ts";
+import { createAuditLog, auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import {
   getCallbackUrl,
   getHostBase,
@@ -146,6 +146,15 @@ router.get(
       res.status(404).json({ error: "Customer not found" });
       return;
     }
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: resolveAuditActorRole(req.user!),
+      actionType: "consent.customer_status_viewed",
+      entityType: "tenant_consent",
+      tenantId: customerId,
+    });
 
     res.json({
       customerId,

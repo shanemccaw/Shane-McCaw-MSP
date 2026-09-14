@@ -421,6 +421,18 @@ router.get("/admin/active-directory/msp/:id", requireAdmin, async (req: Request,
       loadMspOverride(mspId),
     ]);
 
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email ?? "platform-admin",
+      actorRole: "platform_admin",
+      actionType: "admin_msp_detail_viewed",
+      actionCategory: "access",
+      entityType: "msp",
+      entityId: mspId,
+      entityLabel: mspRow.name,
+      metadata: { customerCount: customers.length },
+    });
+
     res.json(
       buildMspDetail({
         msp: mspRow,
@@ -620,6 +632,18 @@ router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Req
         .limit(RECENT_DIAGNOSTIC_RUN_LIMIT),
     ]);
 
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email ?? "platform-admin",
+      actorRole: "platform_admin",
+      actionType: "admin_customer_detail_viewed",
+      actionCategory: "access",
+      entityType: "tenant",
+      entityId: customerId,
+      entityLabel: customerProfile.name,
+      tenantId: customerId,
+    });
+
     res.json(
       buildCustomerDetail({
         customer: customerProfile,
@@ -703,6 +727,17 @@ router.get("/admin/active-directory/customer/:id/diagnostics/runs", requireAdmin
       .where(eq(mspDiagnosticRunsTable.customerId, customerId))
       .orderBy(desc(mspDiagnosticRunsTable.createdAt))
       .limit(RECENT_DIAGNOSTIC_RUN_LIMIT);
+
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email ?? "platform-admin",
+      actorRole: "platform_admin",
+      actionType: "admin_customer_diagnostics_viewed",
+      actionCategory: "access",
+      entityType: "diagnostic_run",
+      tenantId: customerId,
+      metadata: { count: diagnosticRunRows.length },
+    });
 
     res.json({ recentDiagnosticRuns: diagnosticRunRows });
   } catch (err) {
@@ -854,6 +889,18 @@ router.get("/admin/active-directory/user/:id", requireAdmin, async (req: Request
           lastLoginAt: mspUserRow.lastLoginAt,
         }
       : null;
+
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email ?? "platform-admin",
+      actorRole: "platform_admin",
+      actionType: "admin_user_detail_viewed",
+      actionCategory: "access",
+      entityType: "user",
+      entityId: userId,
+      entityLabel: profile.email,
+      tenantId: mspUserRow?.customerId ?? null,
+    });
 
     res.json(
       buildUserDetail({
@@ -1101,7 +1148,19 @@ router.get("/admin/active-directory/user/:id/entitlements", requireAdmin, async 
   }
 
   try {
-    res.json(await loadUserEntitlementsView(userId));
+    const view = await loadUserEntitlementsView(userId);
+
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email ?? "platform-admin",
+      actorRole: "platform_admin",
+      actionType: "admin_user_entitlements_viewed",
+      actionCategory: "access",
+      entityType: "user_entitlements",
+      entityId: userId,
+    });
+
+    res.json(view);
   } catch (err) {
     log.error({ err, userId }, "Failed to load user entitlements");
     res.status(500).json({ error: "Failed to load entitlements" });
@@ -1335,6 +1394,18 @@ router.get("/admin/active-directory/ou/:id/assignments", requireAdmin, async (re
       .from(activeDirectoryOuAssignmentsTable)
       .where(eq(activeDirectoryOuAssignmentsTable.ouId, ouId))
       .orderBy(asc(activeDirectoryOuAssignmentsTable.objectUpn));
+
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email ?? "platform-admin",
+      actorRole: "platform_admin",
+      actionType: "admin_ou_assignments_viewed",
+      actionCategory: "access",
+      entityType: "active_directory_ou_assignment",
+      entityId: ouId,
+      metadata: { count: rows.length },
+    });
+
     res.json(rows);
   } catch (err) {
     log.error({ err, ouId }, "Failed to load OU assignments");

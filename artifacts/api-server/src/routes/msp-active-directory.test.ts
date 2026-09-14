@@ -89,6 +89,8 @@ vi.mock("../lib/logger.ts", () => {
 const mockCreateAuditLog = vi.fn().mockResolvedValue(undefined);
 vi.mock("../lib/audit.ts", () => ({
   createAuditLog: (...args: unknown[]) => mockCreateAuditLog(...args),
+  auditPrivilegedRead: (...args: unknown[]) => mockCreateAuditLog(...args),
+  resolveAuditActorRole: () => "msp",
 }));
 
 const mockResolveAssignmentCustomer = vi.fn();

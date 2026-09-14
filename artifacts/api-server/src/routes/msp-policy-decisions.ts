@@ -71,6 +71,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -205,6 +206,17 @@ router.get(
       const obligationTypeById = await loadObligationTypes(
         rows.map((r) => r.obligationId).filter((id): id is number => id !== null),
       );
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "policy_decisions.register_viewed",
+        entityType: "policy_decision",
+        tenantId: scope.customerId,
+        metadata: { count: rows.length },
+      });
+
       res.json({ customerId: scope.customerId, decisions: rows.map((row) => toWirePolicyRegisterEntry(row, obligationTypeById)) });
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/policy-decisions/:customerId failed");

@@ -32,6 +32,7 @@ import {
   type PillarScore,
   type TaskPoint,
 } from "../lib/remediation-pillar-scores.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 
@@ -123,6 +124,15 @@ router.get(
           latestRunId: latestRun?.runId ?? null,
         },
       };
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "remediation.pillar_scores_viewed",
+        entityType: "remediation_pillar_score",
+        tenantId: customerId,
+      });
 
       res.json(response);
     } catch (err) {

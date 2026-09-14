@@ -5,6 +5,7 @@ import { requireAuth } from "../middlewares/requireAuth.ts";
 import { buildLiveDocumentPrintUrl } from "../lib/portal-url.ts";
 import { renderLiveDocumentToPdf } from "../lib/html-pdf.ts";
 import { resolveMspSlugForUser } from "../lib/resolve-msp-id.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -76,6 +77,16 @@ router.get("/portal/live-documents/:docType/pdf", requireAuth, async (req: Reque
       .replace(/[^a-zA-Z0-9 _-]/g, "")
       .replace(/\s+/g, "-")
       .slice(0, 80);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: resolveAuditActorRole(req.user!),
+      actionType: "live_document_pdf_exported",
+      entityType: "live_document",
+      entityId: docType,
+      tenantId: req.user!.customerId ?? null,
+    });
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.pdf"`);

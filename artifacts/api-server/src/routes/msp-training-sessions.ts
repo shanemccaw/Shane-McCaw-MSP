@@ -43,6 +43,7 @@ import { z } from "zod";
 import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -157,6 +158,16 @@ router.get(
             .where(inArray(usersTable.id, loggedByIds))
         : [];
       const nameById = new Map(loggedByRows.map((u) => [u.id, u.name]));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "training_session.list_viewed",
+        entityType: "training_session",
+        tenantId: customerId,
+        metadata: { count: rows.length },
+      });
 
       return res.json({
         sessions: rows.map((r) => sessionToWire(r, nameById.get(r.loggedByUserId) ?? null)),
