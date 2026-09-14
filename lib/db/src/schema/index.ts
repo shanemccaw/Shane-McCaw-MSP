@@ -788,6 +788,11 @@ export type InsertReport = typeof reportsTable.$inferInsert;
 export type Report = typeof reportsTable.$inferSelect;
 
 // Invoices
+// Plain text, no CHECK — same convention as RETAINER_WORK_STATES (msp.ts) — so
+// adding a value (e.g. "superseded", #4109) is a source change, not a migration.
+export const INVOICE_STATUSES = ["draft", "due", "paid", "overdue", "superseded"] as const;
+export type InvoiceStatus = typeof INVOICE_STATUSES[number];
+
 export const invoicesTable = pgTable("invoices", {
   id: serial("id").primaryKey(),
   clientUserId: integer("client_user_id").notNull().references(() => usersTable.id),
@@ -801,7 +806,7 @@ export const invoicesTable = pgTable("invoices", {
   // Convert to display dollars at render only (Math.round(amount) / 100).
   amount: integer("amount").notNull(),
   currency: text("currency").notNull().default("usd"),
-  status: text("status", { enum: ["draft", "due", "paid", "overdue"] }).notNull().default("due"),
+  status: text("status", { enum: INVOICE_STATUSES }).notNull().default("due"),
   dueDate: timestamp("due_date"),
   paidAt: timestamp("paid_at"),
   pdfFilename: text("pdf_filename"),
@@ -818,10 +823,21 @@ export const invoicesTable = pgTable("invoices", {
   // zoho_books_create_invoice has synced this invoice (idempotency tracking
   // only, not display — Zoho Books has no in-platform UI).
   zohoBooksInvoiceId: text("zoho_books_invoice_id"),
+  // Versioned re-issue (#4109, Shane's 2026-09-14 decision): a SENT invoice
+  // (due/paid/overdue) is never edited in place — revising it creates a new
+  // row and marks this one `status: "superseded"`. `version` starts at 1 and
+  // increments per revision of the same logical invoice; `supersedesInvoiceId`
+  // points at the row this one replaced; `revisionReason` is the mandatory
+  // reason given for THIS row's revision (null on an original, never-revised
+  // invoice).
+  version: integer("version").notNull().default(1),
+  supersedesInvoiceId: integer("supersedes_invoice_id").references((): AnyPgColumn => invoicesTable.id),
+  revisionReason: text("revision_reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
   index("invoices_client_user_id_idx").on(t.clientUserId),
+  index("invoices_supersedes_invoice_id_idx").on(t.supersedesInvoiceId),
 ]);
 
 export type InsertInvoice = typeof invoicesTable.$inferInsert;

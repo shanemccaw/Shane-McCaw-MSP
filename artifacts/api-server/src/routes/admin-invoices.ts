@@ -175,6 +175,20 @@ router.delete("/admin/invoices/:id", requireAdmin, async (req: Request, res: Res
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
+  // #4109: a SENT invoice (due/paid/overdue) is never deleted, only revised —
+  // this DELETE previously removed an invoice regardless of status, which
+  // could destroy a customer's already-issued (or already-paid) bill with no
+  // trace. Draft-only, same rule the new MSP-console surface enforces
+  // (routes/msp-invoices.ts). The broader "AdminV2 should also gain a real
+  // revise-with-reason path instead of just blocking delete" is filed
+  // separately — see the sibling finding issue under #1692.
+  const [existing] = await db.select({ status: invoicesTable.status }).from(invoicesTable).where(eq(invoicesTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Invoice not found" }); return; }
+  if (existing.status !== "draft") {
+    res.status(409).json({ error: "Only a draft invoice can be deleted — a sent invoice must be revised, not deleted" });
+    return;
+  }
+
   const [deleted] = await db.delete(invoicesTable).where(eq(invoicesTable.id, id)).returning();
   if (!deleted) { res.status(404).json({ error: "Invoice not found" }); return; }
 
