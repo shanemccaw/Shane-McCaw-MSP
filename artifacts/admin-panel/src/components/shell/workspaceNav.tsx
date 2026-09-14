@@ -191,6 +191,7 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "sys-active-directory", label: "Active Directory", path: "/system/active-directory", icon: FolderTree },
           { id: "sys-ai-billing", label: "AI Billing", path: "/system/ai-billing", icon: Receipt },
           { id: "sys-azure-credentials", label: "Azure Credentials", path: "/system/azure-credentials", icon: KeyRound },
+          { id: "sys-platform-agreements", label: "Platform Agreements", path: "/system/platform-agreements", icon: FileText },
         ],
       },
       {
