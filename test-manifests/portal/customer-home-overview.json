@@ -15,7 +15,9 @@
 
     "#3049 sessionTag run (2026-09-06): shaneapp://runTest with onlyTag=3049-raci-pending-acceptance returned 'no steps matched session tag' against the live dev api-server — expected and honest, not a defect: this manifest edit and the backend field it tests ship on branch agent/3049-q1813, not yet merged into the dev-server checkout runTest resolves manifests/code from (the same shaneapp-runtest-hits-deployed-build-not-worktree gap prior sessions have hit). Re-run this tag once the branch lands on main and the dev server picks it up.",
 
-    "#3344 addition (2026-09-09): wired the real no_tenant_scope state into index.tsx (SCOPE UNRESOLVED state badge, 'No resolvable tenant identifier to schedule against.' Coming Up copy, and the Portal Counts note line — all matching Overview.dc.html's own state legend/copy verbatim). No reliable frontend signal existed for this before this build; overviewCounts alone can't disambiguate a real quiet week from resolveTenantScope(customerId) returning null, so the route now also emits tenantScopeResolved: boolean (see DASHBOARD-TENANTSCOPE apiTests step, sessionTag 3344-no-tenant-scope)."
+    "#3344 addition (2026-09-09): wired the real no_tenant_scope state into index.tsx (SCOPE UNRESOLVED state badge, 'No resolvable tenant identifier to schedule against.' Coming Up copy, and the Portal Counts note line — all matching Overview.dc.html's own state legend/copy verbatim). No reliable frontend signal existed for this before this build; overviewCounts alone can't disambiguate a real quiet week from resolveTenantScope(customerId) returning null, so the route now also emits tenantScopeResolved: boolean (see DASHBOARD-TENANTSCOPE apiTests step, sessionTag 3344-no-tenant-scope).",
+
+    "#4062-#4068 addition (2026-09-14): six real findings from the Dashboard contract-pack regen (#4056, parent Feature #1943), all fixed in one coordinated build. New overviewCounts fields: poamsOverdue + poamsApproachingExpiry (#4062, real msp_poams read — none existed before), openRisks + openRisksWithPlan (#4063, real Risk Register 'Open' count + the checkKey/additionalCheckKeys linkage to a live POA&M, since spawnedByPoamId/convertedToPoamId on msp_risk_decisions are one-time conversion pointers, not this relationship), sopsRunning + sopsQueued + sopsExecsThisMonth (#4064, the real queueStateFor() split — no 'waiting on customer' state exists separate from Queued, so this reports the two real states plus the aggregate execsThisMonth fallback the issue itself named), changeRequestsAwaitingApproval + freezeActive (#4065, reusing portal-change-control.ts's own displayStatus()/isWindowActiveAt() rather than re-deriving), and microsoftChangesThisWeek now counts kindForPost() === 'd'||'b' over the whole corpus instead of a raw 7-day date window (#4066, same field name, corrected meaning). scores.* now reads null instead of 0 for an engine that has never produced a snapshot for this customer (#4068), matching results.summary.compositeScore's existing null pattern. Verified against the real live local testbed data for customer_id=1 (tenant c4c814d4-3afe-441e-9145-62461d0a4fd3, msp_id=1) queried directly via DATABASE_URL before writing the apiTests below: one msp_poams row exists but is soft-deleted (deleted_at set) so poamsOverdue/ladder correctly read all-0; one Open msp_risk_decisions row (id=87) with a null check_key, so openRisks=1 and openRisksWithPlan=0 (no live plan to link to); zero msp_sop_runs rows so sopsRunning/sopsQueued=0; one msp_change_requests row (id=1226, status=pending_approval, approved_by NULL) so changeRequestsAwaitingApproval=1; zero change_freeze_windows rows so freezeActive=false; zero tenant_engine_snapshots rows for customer_id=1 so every scores.* field reads null, not 0 (the live #4068 symptom this fix corrects)."
   ],
 
   "apiTests": [
@@ -62,6 +64,78 @@
       "path": "/api/portal/dashboard",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.tenantScopeResolved", "exists": true }
+    },
+    {
+      "sessionTag": "4062-dashboard-rollups",
+      "name": "DASHBOARD-POAMS-OVERDUE - overviewCounts.poamsOverdue (#4062) is a real number; 0 for the testbed tenant's one msp_poams row, which is soft-deleted",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overviewCounts.poamsOverdue", "value": 0 }
+    },
+    {
+      "sessionTag": "4062-dashboard-rollups",
+      "name": "DASHBOARD-POAMS-LADDER - overviewCounts.poamsApproachingExpiry (#4062) is a real bucketed object, not a fixture",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overviewCounts.poamsApproachingExpiry.within30", "exists": true }
+    },
+    {
+      "sessionTag": "4062-dashboard-rollups",
+      "name": "DASHBOARD-OPEN-RISKS - overviewCounts.openRisks (#4063) is the real Risk Register 'Open' count, 1 for the testbed tenant's one Open row (msp_risk_decisions.id=87)",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overviewCounts.openRisks", "value": 1 }
+    },
+    {
+      "sessionTag": "4062-dashboard-rollups",
+      "name": "DASHBOARD-OPEN-RISKS-WITH-PLAN - overviewCounts.openRisksWithPlan (#4063) is the real checkKey-linked count, honest 0: the one Open risk has a null check_key so no POA&M can link to it",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overviewCounts.openRisksWithPlan", "value": 0 }
+    },
+    {
+      "sessionTag": "4062-dashboard-rollups",
+      "name": "DASHBOARD-SOPS - overviewCounts.sopsRunning/sopsQueued (#4064) are the real queueStateFor() split, honest 0/0 for the testbed tenant's zero msp_sop_runs rows",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overviewCounts.sopsRunning", "value": 0 }
+    },
+    {
+      "sessionTag": "4062-dashboard-rollups",
+      "name": "DASHBOARD-CHANGE-APPROVAL - overviewCounts.changeRequestsAwaitingApproval (#4065) is real, 1 for the testbed tenant's one pending_approval/unapproved CR (id=1226)",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overviewCounts.changeRequestsAwaitingApproval", "value": 1 }
+    },
+    {
+      "sessionTag": "4062-dashboard-rollups",
+      "name": "DASHBOARD-FREEZE - overviewCounts.freezeActive (#4065) is real, false for the testbed tenant's zero change_freeze_windows rows",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overviewCounts.freezeActive", "value": false }
+    },
+    {
+      "sessionTag": "4062-dashboard-rollups",
+      "name": "DASHBOARD-SCORES-NULL - scores.security (#4068) reads null, not 0, for the testbed tenant's zero tenant_engine_snapshots rows — the exact false-zero the fix corrects",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.scores.security", "value": null }
+    },
+    {
+      "sessionTag": "4062-dashboard-rollups",
+      "name": "DASHBOARD-MS-CHANGES - overviewCounts.microsoftChangesThisWeek (#4066) is still a real number field after switching its basis from a 7-day date window to kindForPost() 'd'/'b' classification over the whole corpus (no exact-value assertion: the testbed tenant carries 487 real Message Center rows, not hand-verified row by row)",
+      "method": "GET",
+      "path": "/api/portal/dashboard",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overviewCounts.microsoftChangesThisWeek", "exists": true }
     },
     {
       "name": "DASHBOARD-PROJECTS - projects is a real array (possibly empty), never a fixture substitution",

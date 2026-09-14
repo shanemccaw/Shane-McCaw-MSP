@@ -34,8 +34,8 @@ import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine.t
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.portal" });
-import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, usersTable, wfTriggersTable, wfDefinitionsTable, mspRiskDecisionsTable, policyDecisionsTable, mspMessageCenterItemsTable, changeMaintenanceWindowsTable, remediationTrackerStepsTable, portalOwnershipAssignmentsTable, mspsTable } from "@workspace/db";
-import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
+import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, usersTable, wfTriggersTable, wfDefinitionsTable, mspRiskDecisionsTable, policyDecisionsTable, mspMessageCenterItemsTable, changeMaintenanceWindowsTable, changeFreezeWindowsTable, remediationTrackerStepsTable, portalOwnershipAssignmentsTable, mspsTable, mspPoamsTable, mspSopRunsTable, mspChangeRequestsTable } from "@workspace/db";
+import { eq, desc, and, count, inArray, or, asc, isNull } from "drizzle-orm";
 import { createAuditLog } from "../lib/audit.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
@@ -43,7 +43,10 @@ import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
 import { hasAddOnEntitlement } from "../lib/portal-addon-entitlements.ts";
 import { CHANGE_CONTROL_FEATURE_KEY } from "./portal-change-control.ts";
 import { toMaintenanceCandidate, windowOverlapsRange } from "../lib/portal-change-maintenance.ts";
-import { effectiveDate } from "../lib/portal-message-center.ts";
+import { displayStatus as changeRequestDisplayStatus } from "../lib/portal-change-control.ts";
+import { isWindowActiveAt } from "../lib/portal-change-freeze.ts";
+import { kindForPost } from "../lib/portal-message-center.ts";
+import { queueStateFor, isSameUtcMonth } from "../lib/portal-sops.ts";
 import { remediationTerminalState } from "../lib/remediation-tracker-terminal-state.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
@@ -739,6 +742,23 @@ router.get(
       let changeScheduleThisWeek = 0;
       let remediationInProgress = 0;
       let policiesExpiringSoon = 0;
+      // #4062 — POA&Ms overdue + the approaching-expiry ladder.
+      let poamsOverdue = 0;
+      const poamsApproachingExpiry = { within7: 0, within30: 0, within60: 0, within90: 0 };
+      // #4063 — open Risk Register entries, and which have a credible plan
+      // (a live POA&M) behind them.
+      let openRisks = 0;
+      let openRisksWithPlan = 0;
+      // #4064 — the real SOP queue split, plus the aggregate activity fallback
+      // the issue names for the "waiting on customer" state the backend does
+      // not yet distinguish from "Queued".
+      let sopsRunning = 0;
+      let sopsQueued = 0;
+      let sopsExecsThisMonth = 0;
+      // #4065 — change requests genuinely awaiting the customer's approval,
+      // and whether a freeze is in effect right now.
+      let changeRequestsAwaitingApproval = 0;
+      let freezeActive = false;
 
       // Seventh count (#3049, filed against #2922's own honest gap): pending
       // Ownership/RACI acceptances named to THIS login. `portal_ownership_assignments`
@@ -786,17 +806,22 @@ router.get(
           else if (row.status === "active") rbdActive = row.n;
         }
 
-        // Microsoft Changes happening this week — same `customerId` + `mspId`
-        // scoping portal-message-center.ts's own read uses, same `effectiveDate()`
-        // (actionRequiredByDateTime ?? endDateTime ?? startDateTime ??
-        // lastModifiedDateTime) that page already uses to place a post on its
-        // calendar, filtered to the real rolling next-7-days window.
+        // Microsoft Changes requiring action — #4066: this used to be a pure
+        // date-window count over the whole corpus, which both missed a
+        // requiring-action post whose deadline falls outside the next 7 days
+        // and wrongly counted a no-action post whose unrelated date field
+        // landed this week. `kindForPost()` is portal-message-center.ts's own
+        // real classification (same one `buildStats()`'s "decisions"/"hits"
+        // counters use): "b" (breaks something) or "d" (needs a decision) are
+        // the two kinds that actually require action; "v"/"s" do not. Counted
+        // over the whole corpus, same `customerId` + `mspId` scoping that
+        // route's own read uses.
         const mcRows = await db
           .select({
+            category: mspMessageCenterItemsTable.category,
+            tags: mspMessageCenterItemsTable.tags,
+            isMajorChange: mspMessageCenterItemsTable.isMajorChange,
             actionRequiredByDateTime: mspMessageCenterItemsTable.actionRequiredByDateTime,
-            endDateTime: mspMessageCenterItemsTable.endDateTime,
-            startDateTime: mspMessageCenterItemsTable.startDateTime,
-            lastModifiedDateTime: mspMessageCenterItemsTable.lastModifiedDateTime,
           })
           .from(mspMessageCenterItemsTable)
           .where(
@@ -806,8 +831,8 @@ router.get(
             ),
           );
         microsoftChangesThisWeek = mcRows.filter((r) => {
-          const d = effectiveDate(r).getTime();
-          return d >= now.getTime() && d < weekFromNow.getTime();
+          const kind = kindForPost({ ...r, tags: Array.isArray(r.tags) ? r.tags : [] });
+          return kind === "d" || kind === "b";
         }).length;
 
         // Change schedule for the week — the maintenance calendar
@@ -840,6 +865,56 @@ router.get(
           changeScheduleThisWeek = windowRows
             .map(toMaintenanceCandidate)
             .filter((w) => windowOverlapsRange(w, now, weekFromNow)).length;
+
+          // #4065 — the two things #1943 actually asked for on this bullet:
+          // requests genuinely awaiting the customer's approval (not the
+          // maintenance schedule above, which is expected-work timing, a
+          // different concept), and whether a freeze is active right now.
+          // Same `change_control` entitlement gate as the maintenance-window
+          // read just above — both routes this rolls up require it, so an
+          // unentitled tenant reads a real 0/false, not an error.
+          const crRows = await db
+            .select({
+              status: mspChangeRequestsTable.status,
+              approvedBy: mspChangeRequestsTable.approvedBy,
+            })
+            .from(mspChangeRequestsTable)
+            .where(
+              and(
+                eq(mspChangeRequestsTable.mspId, tenantScope.mspId),
+                eq(mspChangeRequestsTable.tenantId, tenantScope.tenantId),
+              ),
+            );
+          changeRequestsAwaitingApproval = crRows.filter(
+            (r) => changeRequestDisplayStatus(r.status, r.approvedBy) === "Pending approval",
+          ).length;
+
+          const freezeRows = await db
+            .select()
+            .from(changeFreezeWindowsTable)
+            .where(
+              and(
+                eq(changeFreezeWindowsTable.mspId, tenantScope.mspId),
+                eq(changeFreezeWindowsTable.active, true),
+                or(
+                  eq(changeFreezeWindowsTable.scope, "global"),
+                  and(eq(changeFreezeWindowsTable.scope, "tenant"), eq(changeFreezeWindowsTable.tenantId, tenantScope.tenantId)),
+                  eq(changeFreezeWindowsTable.scope, "workload"),
+                ),
+              ),
+            );
+          freezeActive = freezeRows.some((row) =>
+            isWindowActiveAt(
+              {
+                startsAt: row.startsAt,
+                endsAt: row.endsAt,
+                recurrence: row.recurrence as Parameters<typeof isWindowActiveAt>[0]["recurrence"],
+                recurrenceUntil: row.recurrenceUntil,
+                active: row.active,
+              },
+              now,
+            ),
+          );
         }
 
         // Remediation steps in progress — a customer claim (completed /
@@ -880,15 +955,136 @@ router.get(
         policiesExpiringSoon = policyCounts
           .filter((row) => row.reviewState === "due" || row.reviewState === "overdue")
           .reduce((sum, row) => sum + row.n, 0);
+
+        // #4062 — POA&Ms overdue + the approaching-expiry ladder. Only a
+        // still-`active` plan can be overdue or approaching its date, same as
+        // `computeOverdue()`'s own rule in portal-poams.ts — draft/
+        // pending_signature isn't live yet, and completed/cancelled/
+        // converted_to_risk_acceptance are terminal. The alert catalog's own
+        // documented ladder for this (2026-09-04-alert-catalog-risk-policy-
+        // poam-1942.sql: "90/60/30 days, 3/2/1 weeks, 3/2/1 days out") is
+        // finer-grained than a dashboard tile needs; this buckets to the same
+        // real horizon at a size a roll-up count can actually display.
+        const todayIso = now.toISOString().slice(0, 10);
+        const poamRows = await db
+          .select({
+            scheduledCompletionDate: mspPoamsTable.scheduledCompletionDate,
+          })
+          .from(mspPoamsTable)
+          .where(
+            and(
+              eq(mspPoamsTable.mspId, tenantScope.mspId),
+              eq(mspPoamsTable.tenantId, tenantScope.tenantId),
+              eq(mspPoamsTable.status, "active"),
+              isNull(mspPoamsTable.deletedAt),
+            ),
+          );
+        for (const row of poamRows) {
+          if (row.scheduledCompletionDate < todayIso) {
+            poamsOverdue++;
+            continue;
+          }
+          const daysOut = Math.floor(
+            (new Date(`${row.scheduledCompletionDate}T00:00:00Z`).getTime() - now.getTime()) / 86_400_000,
+          );
+          if (daysOut <= 7) poamsApproachingExpiry.within7++;
+          else if (daysOut <= 30) poamsApproachingExpiry.within30++;
+          else if (daysOut <= 60) poamsApproachingExpiry.within60++;
+          else if (daysOut <= 90) poamsApproachingExpiry.within90++;
+        }
+
+        // #4063 — open Risk Register entries, and which have a credible plan
+        // behind them. `spawnedByPoamId`/`convertedToPoamId` on
+        // msp_risk_decisions are one-time CONVERSION pointers (a risk that
+        // WAS a POA&M, or vice versa) — a different relationship from "this
+        // open risk currently has a plan running in parallel", and neither
+        // WireRisk nor WirePoam carries a field for that. The real link is
+        // the shared `checkKey`/`additionalCheckKeys` the alert engine's own
+        // suppression logic already treats as how a risk and a finding relate.
+        const riskRows = await db
+          .select({
+            checkKey: mspRiskDecisionsTable.checkKey,
+            additionalCheckKeys: mspRiskDecisionsTable.additionalCheckKeys,
+          })
+          .from(mspRiskDecisionsTable)
+          .where(
+            and(
+              eq(mspRiskDecisionsTable.mspId, tenantScope.mspId),
+              eq(mspRiskDecisionsTable.tenantId, tenantScope.tenantId),
+              eq(mspRiskDecisionsTable.riskStatus, "Open"),
+            ),
+          );
+        openRisks = riskRows.length;
+
+        if (openRisks > 0) {
+          // A "live" plan — still actually being pursued, not abandoned or
+          // folded back into an acceptance.
+          const livePoamRows = await db
+            .select({
+              checkKey: mspPoamsTable.checkKey,
+              additionalCheckKeys: mspPoamsTable.additionalCheckKeys,
+            })
+            .from(mspPoamsTable)
+            .where(
+              and(
+                eq(mspPoamsTable.mspId, tenantScope.mspId),
+                eq(mspPoamsTable.tenantId, tenantScope.tenantId),
+                inArray(mspPoamsTable.status, ["draft", "pending_signature", "active"]),
+                isNull(mspPoamsTable.deletedAt),
+              ),
+            );
+          const poamCheckKeys = new Set<string>();
+          for (const p of livePoamRows) {
+            if (p.checkKey) poamCheckKeys.add(p.checkKey);
+            for (const k of p.additionalCheckKeys ?? []) poamCheckKeys.add(k);
+          }
+          if (poamCheckKeys.size > 0) {
+            openRisksWithPlan = riskRows.filter((r) => {
+              const keys = [r.checkKey, ...(r.additionalCheckKeys ?? [])].filter(
+                (k): k is string => !!k,
+              );
+              return keys.some((k) => poamCheckKeys.has(k));
+            }).length;
+          }
+        }
+
+        // #4064 — SOP running/queued roll-up. `queueStateFor()` is
+        // portal-sops.ts's own real Running/Queued distinction; the backend
+        // has no third "waiting on customer" state to split Queued further
+        // into (confirmed while investigating this issue), so this reports
+        // the two real states honestly rather than inventing one.
+        // `sopsExecsThisMonth` rides along as the aggregate "SOP activity"
+        // fallback the issue itself names for when that finer distinction
+        // isn't ready.
+        const sopRunRows = await db
+          .select({ status: mspSopRunsTable.status, startedAt: mspSopRunsTable.startedAt })
+          .from(mspSopRunsTable)
+          .where(
+            and(
+              eq(mspSopRunsTable.mspId, tenantScope.mspId),
+              eq(mspSopRunsTable.tenantId, tenantScope.tenantId),
+            ),
+          );
+        for (const row of sopRunRows) {
+          const state = queueStateFor(row.status);
+          if (state === "Running") sopsRunning++;
+          else if (state === "Queued") sopsQueued++;
+        }
+        sopsExecsThisMonth = sopRunRows.filter((r) => isSameUtcMonth(r.startedAt, now)).length;
       }
 
       res.json({
+        // #4068 — null, not 0, for an engine that has never produced a
+        // snapshot for this customer. Same "never-scanned is unavailable, not
+        // a bad score" rule `results.summary.compositeScore` already follows
+        // two fields over (`compositeCount > 0 ? ... : null`) — this object
+        // just didn't use it before.
         scores: {
-          security: scores.security ?? 0,
-          health: scores.health ?? 0,
-          drift: scores.drift ?? 0,
-          sla: scores.sla ?? 0,
-          scope_creep: scores.scope_creep ?? 0,
+          security: scores.security ?? null,
+          health: scores.health ?? null,
+          drift: scores.drift ?? null,
+          sla: scores.sla ?? null,
+          scope_creep: scores.scope_creep ?? null,
           ...scores
         },
         telemetryStatus,
@@ -937,6 +1133,19 @@ router.get(
           remediationInProgress,
           policiesExpiringSoon,
           raciPendingAcceptance,
+          // #4062
+          poamsOverdue,
+          poamsApproachingExpiry,
+          // #4063
+          openRisks,
+          openRisksWithPlan,
+          // #4064
+          sopsRunning,
+          sopsQueued,
+          sopsExecsThisMonth,
+          // #4065
+          changeRequestsAwaitingApproval,
+          freezeActive,
         },
       });
     } catch (err) {
