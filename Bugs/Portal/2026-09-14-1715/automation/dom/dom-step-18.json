@@ -1,0 +1,14 @@
+{
+  "StepIndex": 18,
+  "Route": "http://localhost:5175/portal/settings?tab=data",
+  "Selector": "[data-testid=\u0027settings-nav-data\u0027]",
+  "Description": "click [data-testid=\u0027settings-nav-data\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 5,
+  "Changes": [
+    "Captured DOM scope: 5 total element nodes under \u0027[data-testid=\u0027settings-nav-data\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T17:15:42.4637976-04:00"
+}

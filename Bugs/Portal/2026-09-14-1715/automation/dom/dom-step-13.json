@@ -1,0 +1,14 @@
+{
+  "StepIndex": 13,
+  "Route": "http://localhost:5175/portal/settings?tab=webhooks",
+  "Selector": "[data-testid=\u0027webhooks-page\u0027]",
+  "Description": "expect [data-testid=\u0027webhooks-page\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 52,
+  "Changes": [
+    "Captured DOM scope: 52 total element nodes under \u0027[data-testid=\u0027webhooks-page\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T17:15:33.9246847-04:00"
+}
