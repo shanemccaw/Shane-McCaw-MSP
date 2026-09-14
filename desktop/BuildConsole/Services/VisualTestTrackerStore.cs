@@ -429,6 +429,92 @@ namespace BuildConsole.Services
             return result;
         }
 
+        /// <summary>Git #3984 — one combined-scope bug for the per-tab browser toolbar's status icon:
+        /// the latest bug (by created_at) across page-level (page_id set, selector NULL) and global
+        /// (page_id NULL, base_url set) rows for the given tab, plus the total count across both sets.
+        /// Deliberately its own reader (not <see cref="ReadEntryFromReader"/>) because a global row's
+        /// page_id is genuinely NULL — reading it via GetInt32 the way ReadEntryFromReader's ordinal 2
+        /// does would throw (the real bug tracked as #3991).</summary>
+        public sealed class ScopedBugSummary
+        {
+            public int TotalCount;
+            public List<VisualTestTrackerEntry> Entries { get; } = new();
+        }
+
+        public async Task<ScopedBugSummary> GetToolbarBugSummaryAsync(string baseUrl, string pagePath)
+        {
+            var summary = new ScopedBugSummary();
+            if (string.IsNullOrWhiteSpace(baseUrl)) return summary;
+
+            await using var conn = await OpenAsync();
+
+            // Page-level scope needs a real page_id — read-only lookup (never creates a page row,
+            // unlike GetOrCreatePageAsync, since just hovering/navigating a tab shouldn't seed data).
+            int? pageId = null;
+            await using (var pageSel = new NpgsqlCommand(
+                "SELECT id FROM visual_test_tracker_pages WHERE base_url = @b AND page_path = @p", conn))
+            {
+                pageSel.Parameters.AddWithValue("@b", baseUrl);
+                pageSel.Parameters.AddWithValue("@p", pagePath ?? "");
+                var result = await pageSel.ExecuteScalarAsync();
+                if (result != null) pageId = (int)result;
+            }
+
+            const string selectCols =
+                "id, entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at, " +
+                "COALESCE(bug_number, id) as bug_num, git_issue_number, site_name, epic_name, closing_build_id, resolution, resolution_reason";
+
+            if (pageId.HasValue)
+            {
+                await using var cmd = new NpgsqlCommand(
+                    $"SELECT {selectCols} FROM visual_test_tracker_entries " +
+                    "WHERE page_id = @pid AND selector IS NULL ORDER BY created_at DESC", conn);
+                cmd.Parameters.AddWithValue("@pid", pageId.Value);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                    summary.Entries.Add(ReadScopedEntry(reader, pageId));
+            }
+
+            await using (var cmd = new NpgsqlCommand(
+                $"SELECT {selectCols} FROM visual_test_tracker_entries " +
+                "WHERE page_id IS NULL AND base_url = @b ORDER BY created_at DESC", conn))
+            {
+                cmd.Parameters.AddWithValue("@b", baseUrl);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                    summary.Entries.Add(ReadScopedEntry(reader, null));
+            }
+
+            summary.Entries.Sort((a, b) => b.CreatedAt.CompareTo(a.CreatedAt));
+            summary.TotalCount = summary.Entries.Count;
+            return summary;
+        }
+
+        private static VisualTestTrackerEntry ReadScopedEntry(NpgsqlDataReader reader, int? knownPageId)
+        {
+            return new VisualTestTrackerEntry
+            {
+                Id = reader.GetInt32(0),
+                EntryUuid = reader.GetString(1),
+                PageId = reader.IsDBNull(2) ? (knownPageId ?? 0) : reader.GetInt32(2),
+                BaseUrl = reader.GetString(3),
+                PagePath = reader.GetString(4),
+                Title = reader.GetString(5),
+                Notes = reader.GetString(6),
+                Severity = reader.GetString(7),
+                Status = reader.GetString(8),
+                CreatedAt = reader.GetFieldValue<DateTime>(9),
+                UpdatedAt = reader.GetFieldValue<DateTime>(10),
+                BugNumber = reader.IsDBNull(11) ? reader.GetInt32(0) : reader.GetInt32(11),
+                GitIssueNumber = reader.IsDBNull(12) ? null : reader.GetInt32(12),
+                SiteName = reader.IsDBNull(13) ? "" : reader.GetString(13),
+                EpicName = reader.IsDBNull(14) ? "" : reader.GetString(14),
+                ClosingBuildId = reader.IsDBNull(15) ? null : reader.GetString(15),
+                Resolution = reader.IsDBNull(16) ? null : reader.GetString(16),
+                ResolutionReason = reader.IsDBNull(17) ? null : reader.GetString(17),
+            };
+        }
+
         /// <summary>Saves or updates a bug entry to both local JSON and PostgreSQL.</summary>
         public async Task SaveEntryAsync(VisualTestTrackerEntry entry)
         {
