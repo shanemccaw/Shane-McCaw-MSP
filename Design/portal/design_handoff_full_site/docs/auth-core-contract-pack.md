@@ -398,7 +398,7 @@ honestly rather than fabricating a plausible-looking substitute:
 - **`status`**'s `m365Health` / `m365Uptime` — real discriminated unions
   (`{available:true,...} | {available:false,reason}`), never a value rendered without
   checking `available` first (consistent with the Account Security pack's Graph-signal
-  pattern, §8 of `docs/account-security-contract-pack.md`).
+  pattern, §8 of `docs/portal/account-security-contract-pack.md`).
 - **`setup-context` / `setup-password` / `reset-password`** token validity — each
   collapses missing/used/expired into one generic `400`/`404` message rather than
   leaking which specific state applies (an enumeration-resistance choice, same family as

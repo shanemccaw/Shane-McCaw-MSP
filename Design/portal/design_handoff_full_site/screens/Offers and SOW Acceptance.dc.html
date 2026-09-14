@@ -184,25 +184,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       </div>
     </sc-if>
 
-    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
-      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
-        <div style="display:flex;align-items:baseline;gap:10px">
-          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
-          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
-        </div>
-        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
-          <div style="display:flex;flex-direction:column">
-            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
-              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
-                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
-                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
-              </div>
-            </sc-for>
-          </div>
-        </sc-if>
-      </div>
-    </sc-if>
-  </div>
+    </div>
 
   <sc-if value="{{modalShow}}" hint-placeholder-val="{{ false }}">
     <div style="position:absolute;inset:0;z-index:60;background:rgba(2,6,23,.72);display:flex;align-items:center;justify-content:center;padding:24px">
@@ -228,9 +210,9 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;tab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;offers&quot;,&quot;sow&quot;],&quot;default&quot;:&quot;offers&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;presentationStatus&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;draft&quot;,&quot;signed&quot;,&quot;paid&quot;],&quot;default&quot;:&quot;draft&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;scopeDrift&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;tab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;offers&quot;,&quot;sow&quot;],&quot;default&quot;:&quot;offers&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;presentationStatus&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;draft&quot;,&quot;signed&quot;,&quot;paid&quot;],&quot;default&quot;:&quot;draft&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;scopeDrift&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Real response states&quot;}}">
 class Component extends DCLogic {
-  state = { tab: null, sel: 0, modal: null, ledger: true, states: {}, signed: false };
+  state = { tab: null, sel: 0, modal: null, states: {}, signed: false };
 
   renderVals() {
     const S = this.state, P = this.props;
@@ -287,8 +269,8 @@ class Component extends DCLogic {
     const spec = !M ? null : {
       reject: { title: "Decline \"" + sel.title + "\"?", body: "Declining is final for this offer — it moves to Declined and cannot be reopened. Your provider sees the decision straight away.", note: "A reason is optional and stored as you type it.", reject: true },
       "accepted-project": { title: "Offer accepted", body: "Because this is a project, a statement of work is now being generated from your tenant's live signals — the same pricing pipeline that priced the offer, not a flat catalogue rate. The acceptance is recorded regardless of how that generation goes.", note: "Your provider was notified over the live channel at the same moment this page updated." },
-      doc: { title: "Opening the full document", body: "The statement of work opens in a new tab as a standalone page — the reduced-scope version if one is current, otherwise the full consolidated document.", note: "This prototype stops at the request; the route behind it is live." },
-      signed: { title: "Signed", body: "Your name, signature and the time were recorded against this scope at " + usd(total) + ". No payment was taken and no invoice was raised by signing; that follows once a payment method is confirmed.", note: "The server's reply names its price field in cents but sends dollars (#2511). This page uses the amount shown above and does not trust the field name." },
+      doc: { title: "Opening the full document", body: "The statement of work opens in a new tab as a standalone page — the reduced-scope version if one is current, otherwise the full consolidated document." },
+      signed: { title: "Signed", body: "Your name, signature and the time were recorded against this scope at " + usd(total) + ". No payment was taken and no invoice was raised by signing; that follows once a payment method is confirmed." },
     }[M];
 
     return {
@@ -319,22 +301,11 @@ class Component extends DCLogic {
       modalTitle: spec ? spec.title : "", modalBody: spec ? spec.body : "", modalNote: spec ? spec.note : "",
       modalReject: !!(spec && spec.reject), modalPlain: !!(spec && !spec.reject),
       modalClose: () => this.setState({ modal: null }),
-      ledgerShow: P.showLedger !== false,
-      ledgerOpen: S.ledger,
-      ledgerToggle: S.ledger ? "Collapse" : "Expand",
-      toggleLedger: () => this.setState({ ledger: !S.ledger }),
-      ledger: [
-        { gap: "One price per offer. The customer read carries only the signal-adjusted price; base and internal figures never reach this page, so no \"was/now\" is drawn.", where: "§1" },
-        { gap: "No drafts. An offer the provider has not sent is filtered out of the list and 404s by id; the page never hints one is coming.", where: "§1 · §2" },
-        { gap: "Accept and decline only from Sent. Any other state gets no buttons, matching the 422 the server would return.", where: "§3" },
-        { gap: "No platform-agreement checkbox. That agreement is between the platform and the provider; the old page showed it as a UI-only gate that persisted nothing. No customer terms-acceptance record exists to write, so none is faked.", where: "§8 · §9b" },
-        { gap: "The bound price is the total drawn here, not the sign reply's \"effectivePriceCents\" — that field is dollars under a cents name (#2511).", where: "§7 · §9a" },
-        { gap: "Adjustments are live. They count only while their signal fires, and the page says so rather than presenting them as fixed line items.", where: "§5" },
-        { gap: "A discarded reduced scope is reported, not hidden. When the stored scoped version drifts from live pricing the server wipes it; the page shows the full scope and says why.", where: "§5" },
-        { gap: "Signing takes no payment and raises no event. Payment confirmation comes later from the processor, and the status moves to Paid on its own.", where: "§7" },
-        { gap: "Viewing is exact-login; signing is any login of the organisation. The page states who may sign rather than assuming every colleague can open it.", where: "§5 · §7" },
-        { gap: "Live updates come over the existing event channel; the page does not poll and does not claim more than \"accepted\" and \"declined\" arrive that way.", where: "§4" },
-      ],
+
+
+
+
+
     };
   }
 }

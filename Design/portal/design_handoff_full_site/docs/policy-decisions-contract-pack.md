@@ -35,7 +35,7 @@ Schema: `lib/db/src/schema/msp.ts` — `policyDecisionsTable` (`:8994-9096`, #20
 `tenantComplianceScopeTable` (`:423-431`+), `mspRiskDecisionsTable` (unchanged shape, old pack's
 §1 citations still accurate for its own fields).
 
-**Sibling pack:** `docs/policy-decisions-msp-console-contract-pack.md` (#2589, MSP Console /
+**Sibling pack:** `docs/msp-console/policy-decisions-msp-console-contract-pack.md` (#2589, MSP Console /
 operator side, DONE 2026-09-06) documents the Policy Engine object (`standing_policies`,
 `policy_evaluation_runs`) and the MSP-side read of `policy_decisions`. This pack does not
 re-extract that ground; §4 below states plainly what that pack already established and why it
@@ -372,7 +372,7 @@ route file states this explicitly: `msp-policy-engine-settings.ts`'s header (per
 **"SCOPE STOP: artifacts/portal has no page for this module."** #1685's own body states the
 intended eventual architecture ("Customer reads standing policy and the deviation decisions on
 their tenant") — not built, and correctly out of both this pack's and #2589's scope. See
-`docs/policy-decisions-msp-console-contract-pack.md` for the full Policy Engine wire contract,
+`docs/msp-console/policy-decisions-msp-console-contract-pack.md` for the full Policy Engine wire contract,
 enum unions, and cross-surface edges — none of it is duplicated here because none of it has a
 customer-facing counterpart to extract.
 
@@ -656,7 +656,7 @@ own origin issue rather than #1485 directly), board status set to AI Batter Up:
   `complianceObligationsTable`, `tenantComplianceScopeTable`, `mspRiskDecisionsTable` — unchanged
   fields only re-cited, not re-read in full)
 - `lib/db/migrations/manual/2026-08-31-obligation-register-authority-type-1525.sql` (filename only, §6)
-- `docs/policy-decisions-msp-console-contract-pack.md` (#2589 — sibling pack, Policy Engine +
+- `docs/msp-console/policy-decisions-msp-console-contract-pack.md` (#2589 — sibling pack, Policy Engine +
   MSP-side read of `policy_decisions`, cross-referenced throughout, not re-extracted)
 - `Design/portal/design_handoff_full_site/` (existence check only — §10's design-export row)
 - Repo-wide grep: `artifacts/portal/src` for every plausible consumer symbol of this pack's 3

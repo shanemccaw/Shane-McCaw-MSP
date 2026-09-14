@@ -85,6 +85,11 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
 
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
             <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">TIMELINE</span>
+            <div style="display:flex;align-items:center;gap:3px;border:1px solid rgba(255,255,255,.09);border-radius:8px;padding:3px">
+              <sc-for list="{{viewTabs}}" as="v" hint-placeholder-count="2">
+                <span onClick="{{v.pick}}" style="font-size:10px;font-weight:700;letter-spacing:.03em;padding:4px 9px;border-radius:6px;cursor:pointer;background:{{v.bg}};color:{{v.ink}}">{{v.label}}</span>
+              </sc-for>
+            </div>
             <span style="font-size:11px;color:#64748b">{{windowLabel}}</span>
             <div style="margin-left:auto;display:flex;align-items:center;gap:3px;border:1px solid rgba(255,255,255,.09);border-radius:8px;padding:3px">
               <sc-for list="{{windowTabs}}" as="w" hint-placeholder-count="3">
@@ -93,6 +98,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
             </div>
           </div>
 
+          <sc-if value="{{timelineMatrix}}" hint-placeholder-val="{{ true }}">
           <div style="display:flex;align-items:center;gap:0;padding-bottom:2px">
             <span style="width:128px;flex:none"></span>
             <div style="flex:1;min-width:0;position:relative;height:15px">
@@ -160,9 +166,101 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
             </sc-for>
             <span style="margin-left:auto;font-size:10px;color:#475569;font-family:Menlo,monospace">{{sourceLine}}</span>
           </div>
+          </sc-if>
+
+          <sc-if value="{{timelineListMode}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:0">
+            <sc-if value="{{noListRows}}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#64748b;padding:14px 0">Nothing in this window.</span></sc-if>
+            <sc-for list="{{listRows}}" as="e" hint-placeholder-count="6">
+              <div style="display:flex;align-items:baseline;gap:11px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+                <span style="width:52px;flex:none;font-size:11px;font-weight:700;color:#94a3b8">{{e.date}}</span>
+                <span style="width:7px;height:7px;border-radius:2px;background:{{e.color}};flex:none"></span>
+                <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:2px">
+                  <span style="font-size:12.5px;font-weight:600;color:#e2e8f0;line-height:1.4">{{e.title}}</span>
+                  <span style="font-size:10.5px;color:#64748b">{{e.kind}} · {{e.when}}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          </sc-if>
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(316px,1fr));gap:14px;align-items:start">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:14px;align-items:start">
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">WORK IN FLIGHT</span>
+            <sc-if value="{{hasProjects}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <sc-for list="{{projectRows}}" as="p" hint-placeholder-count="2">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <div style="display:flex;align-items:baseline;gap:9px">
+                      <span style="font-size:12px;font-weight:600;color:#e2e8f0;min-width:0;flex:1;line-height:1.4">{{p.title}}</span>
+                      <span style="font-size:10.5px;font-weight:700;color:{{p.stepInk}};flex:none;font-family:Menlo,monospace">{{p.steps}}</span>
+                    </div>
+                    <div style="height:4px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden">
+                      <div style="height:4px;width:{{p.pct}};background:{{p.barInk}};border-radius:999px"></div>
+                    </div>
+                    <span style="font-size:10.5px;color:#94a3b8">{{p.step}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{noProjects}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12px;color:#94a3b8">No active project.</span>
+            </sc-if>
+          </div>
+
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">PORTAL COUNTS</span>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(94px,1fr));gap:11px 14px">
+              <sc-for list="{{countRows}}" as="c" hint-placeholder-count="6">
+                <a href="{{c.href}}" style="display:flex;flex-direction:column;gap:2px">
+                  <span style="font-size:19px;font-weight:800;color:{{c.ink}};line-height:1;letter-spacing:-.02em">{{c.value}}</span>
+                  <span style="font-size:10.5px;color:#94a3b8;line-height:1.35">{{c.label}}</span>
+                </a>
+              </sc-for>
+            </div>
+            <sc-if value="{{countsNote}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:10.5px;color:#fbbf24">{{countsNoteLine}}</span>
+            </sc-if>
+          </div>
+
+          <sc-if value="{{hasOpenOffers}}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid rgba(0,120,212,.25);border-radius:14px;background:rgba(0,120,212,.05);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#60a5fa">OPEN OFFERS</span>
+              <span style="margin-left:auto;font-size:11px;font-weight:700;color:#60a5fa">{{openOffersCount}}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <sc-for list="{{openOffers}}" as="o" hint-placeholder-count="2">
+                <div onClick="{{o.open}}" style="display:flex;align-items:baseline;gap:9px;cursor:pointer" style-hover="opacity:.8">
+                  <span style="font-size:12px;color:#e2e8f0;min-width:0;flex:1;line-height:1.4">{{o.title}}</span>
+                  <span style="font-size:10.5px;font-weight:700;color:#60a5fa;flex:none;font-family:Menlo,monospace">{{o.price}}</span>
+                </div>
+              </sc-for>
+            </div>
+            <span onClick="{{openOffersNav}}" style="font-size:11px;font-weight:600;color:#60a5fa;cursor:pointer">Review offers →</span>
+          </div>
+          </sc-if>
+
+          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">REPORTS</span>
+            <sc-if value="{{hasReports}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:0">
+                <sc-for list="{{reportRows}}" as="r" hint-placeholder-count="3">
+                  <a href="{{r.href}}" style="display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)" style-hover="background:rgba(255,255,255,.025)">
+                    <span style="font-size:12px;color:#e2e8f0;min-width:0;flex:1">{{r.title}}</span>
+                    <span style="font-size:10.5px;color:#64748b;flex:none;font-family:Menlo,monospace">{{r.period}}</span>
+                  </a>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{noReports}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12px;color:#94a3b8">No reports yet.</span>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,316px),1fr));gap:14px;align-items:start">
 
           <div style="border:1px solid rgba(248,113,113,.22);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
             <div style="display:flex;align-items:center;gap:10px">
@@ -252,62 +350,6 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
           </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;align-items:start">
-          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">WORK IN FLIGHT</span>
-            <sc-if value="{{hasProjects}}" hint-placeholder-val="{{ true }}">
-              <div style="display:flex;flex-direction:column;gap:11px">
-                <sc-for list="{{projectRows}}" as="p" hint-placeholder-count="2">
-                  <div style="display:flex;flex-direction:column;gap:6px">
-                    <div style="display:flex;align-items:baseline;gap:9px">
-                      <span style="font-size:12px;font-weight:600;color:#e2e8f0;min-width:0;flex:1;line-height:1.4">{{p.title}}</span>
-                      <span style="font-size:10.5px;font-weight:700;color:{{p.stepInk}};flex:none;font-family:Menlo,monospace">{{p.steps}}</span>
-                    </div>
-                    <div style="height:4px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden">
-                      <div style="height:4px;width:{{p.pct}};background:{{p.barInk}};border-radius:999px"></div>
-                    </div>
-                    <span style="font-size:10.5px;color:#94a3b8">{{p.step}}</span>
-                  </div>
-                </sc-for>
-              </div>
-            </sc-if>
-            <sc-if value="{{noProjects}}" hint-placeholder-val="{{ false }}">
-              <span style="font-size:12px;color:#94a3b8">No active project.</span>
-            </sc-if>
-          </div>
-
-          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">PORTAL COUNTS</span>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(94px,1fr));gap:11px 14px">
-              <sc-for list="{{countRows}}" as="c" hint-placeholder-count="6">
-                <a href="{{c.href}}" style="display:flex;flex-direction:column;gap:2px">
-                  <span style="font-size:19px;font-weight:800;color:{{c.ink}};line-height:1;letter-spacing:-.02em">{{c.value}}</span>
-                  <span style="font-size:10.5px;color:#94a3b8;line-height:1.35">{{c.label}}</span>
-                </a>
-              </sc-for>
-            </div>
-            <sc-if value="{{countsNote}}" hint-placeholder-val="{{ false }}">
-              <span style="font-size:10.5px;color:#fbbf24">{{countsNoteLine}}</span>
-            </sc-if>
-          </div>
-
-          <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 16px 16px;display:flex;flex-direction:column;gap:11px;min-width:0">
-            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#94a3b8">REPORTS</span>
-            <sc-if value="{{hasReports}}" hint-placeholder-val="{{ true }}">
-              <div style="display:flex;flex-direction:column;gap:0">
-                <sc-for list="{{reportRows}}" as="r" hint-placeholder-count="3">
-                  <div style="display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">
-                    <span style="font-size:12px;color:#e2e8f0;min-width:0;flex:1">{{r.title}}</span>
-                    <span style="font-size:10.5px;color:#64748b;flex:none;font-family:Menlo,monospace">{{r.period}}</span>
-                  </div>
-                </sc-for>
-              </div>
-            </sc-if>
-            <sc-if value="{{noReports}}" hint-placeholder-val="{{ false }}">
-              <span style="font-size:12px;color:#94a3b8">No reports yet.</span>
-            </sc-if>
-          </div>
-        </div>
 
       </div>
     </sc-if>
@@ -316,7 +358,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
 </div>
 
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;responseState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live_paid&quot;,&quot;live_unpaid&quot;,&quot;never_scanned&quot;,&quot;onboarding&quot;,&quot;no_tenant_scope&quot;,&quot;error&quot;],&quot;default&quot;:&quot;live_paid&quot;,&quot;tsType&quot;:&quot;\&quot;live_paid\&quot; | \&quot;live_unpaid\&quot; | \&quot;never_scanned\&quot; | \&quot;onboarding\&quot; | \&quot;no_tenant_scope\&quot; | \&quot;error\&quot;&quot;,&quot;section&quot;:&quot;Response state&quot;},&quot;changeControlEntitled&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Response state&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;responseState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live_paid&quot;,&quot;live_unpaid&quot;,&quot;never_scanned&quot;,&quot;onboarding&quot;,&quot;no_tenant_scope&quot;,&quot;error&quot;],&quot;default&quot;:&quot;live_paid&quot;,&quot;tsType&quot;:&quot;\&quot;live_paid\&quot; | \&quot;live_unpaid\&quot; | \&quot;never_scanned\&quot; | \&quot;onboarding\&quot; | \&quot;no_tenant_scope\&quot; | \&quot;error\&quot;&quot;,&quot;section&quot;:&quot;Response state&quot;},&quot;changeControlEntitled&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Response state&quot;},&quot;embedded&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;boolean&quot;},&quot;onOpenOffers&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;() =&gt; void&quot;}}">
 const DAY = 86400000;
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -347,6 +389,12 @@ class Component extends DCLogic {
   renderVals() {
     const st = this.state.st ?? this.props.responseState ?? "live_paid";
     const entitled = this.props.changeControlEntitled ?? true;
+    const openOffersNav = () => (this.props.onOpenOffers ? this.props.onOpenOffers() : window.open("Offers and SOW Acceptance.dc.html", "_blank"));
+    const OPEN_OFFERS_RAW = [
+      { title: "Conditional Access hardening project", price: "$6,400" },
+      { title: "Tenant Monitoring — move to Growth", price: "Per seat" },
+    ];
+    const openOffers = OPEN_OFFERS_RAW.map((o) => ({ ...o, open: openOffersNav }));
     const paid = st === "live_paid" || st === "onboarding" || st === "no_tenant_scope";
     const error = st === "error";
     const never = st === "never_scanned";
@@ -499,6 +547,13 @@ class Component extends DCLogic {
       { label: "Microsoft changes", color: BLU, items: cluster(msItems) },
       { label: "Policy reviews", color: AMB, items: cluster(polItems) },
     ];
+
+    const listRows = [...scanItems, ...findItems, ...msItems, ...polItems]
+      .filter(r => inWin(r.d)).sort((a, b) => a.d - b.d)
+      .map(r => ({
+        date: fmt(r.d), future: r.d > NOW,
+        title: r.pop.title, kind: r.pop.kind, color: r.pop.color, when: r.pop.when,
+      }));
 
     // A bar narrower than ~6% of the track cannot hold its own label, so the label
     // moves outside it; a bar clamped by the window edge is squared off and hatched
@@ -731,6 +786,14 @@ class Component extends DCLogic {
       ticks, gridLines,
       nowLeft: pct(NOW).toFixed(2) + "%",
       markerLanes, barLanes,
+      timelineMatrix: (this.state.tView || "matrix") === "matrix",
+      timelineListMode: this.state.tView === "list",
+      listRows, noListRows: listRows.length === 0,
+      viewTabs: [["matrix", "Matrix"], ["list", "List"]].map(([key, label]) => ({
+        label, bg: (this.state.tView || "matrix") === key ? "rgba(0,120,212,.24)" : "transparent",
+        ink: (this.state.tView || "matrix") === key ? "#f8fafc" : "#94a3b8",
+        pick: () => this.setState({ tView: key }),
+      })),
       legend: [
         { color: GRN, label: "Scan" }, { color: RED, label: "Critical" },
         { color: AMB, label: "Warning / due" }, { color: BLU, label: "Microsoft" },
@@ -748,6 +811,8 @@ class Component extends DCLogic {
       stateBorder: error ? "rgba(248,113,113,.4)" : (onboarding || noScope || !paid) ? "rgba(251,191,36,.4)" : "rgba(52,211,153,.4)",
       stateFill: error ? "rgba(248,113,113,.08)" : (onboarding || noScope || !paid) ? "rgba(251,191,36,.08)" : "rgba(52,211,153,.08)",
 
+      hasOpenOffers: openOffers.length > 0 && paid && !error,
+      openOffers, openOffersCount: openOffers.length, openOffersNav,
       inboxChips: [
         { value: "3", label: "notifications", ink: "#f8fafc", href: "Portal Alerts.dc.html" },
         { value: "5", label: "messages", ink: "#f8fafc", href: "ShaneBot.dc.html" },
@@ -793,9 +858,9 @@ class Component extends DCLogic {
       hasReports: true,
       noReports: false,
       reportRows: [
-        { title: "Monthly posture summary", period: "Aug 2026" },
-        { title: "Monthly posture summary", period: "Jul 2026" },
-        { title: "Signal intelligence snapshot", period: "Jun 2026" },
+        { title: "Monthly posture summary", period: "Aug 2026", href: "Status Reports.dc.html" },
+        { title: "Monthly posture summary", period: "Jul 2026", href: "Status Reports.dc.html" },
+        { title: "Signal intelligence snapshot", period: "Jun 2026", href: "Status Reports.dc.html" },
       ],
     };
   }

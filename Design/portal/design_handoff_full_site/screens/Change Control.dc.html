@@ -25,11 +25,11 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
 </style>
 </helmet>
 <div data-screen-label="Change control" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
-  <div style="flex:1;min-width:0;overflow-y:auto;padding:24px 30px 48px;padding-right:max(30px, calc(100% - 1030px));display:flex;flex-direction:column;gap:16px">
+  <div style="flex:1;min-width:0;overflow-y:auto;padding:min(24px,5%) min(30px,4%) 48px;padding-right:max(min(30px,4%), calc(100% - 1030px));display:flex;flex-direction:column;gap:16px">
 
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Change control</span>
-      <span title="Every change to your tenant exists here as a change request first. An approved request is what authorises a write, and the execution stamps its reference back onto the change it made." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span title="Every change to your tenant starts here as a request. Once approved, it can be carried out." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
       <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
       <span style="margin-left:auto;font-size:11px;color:#64748b">{{approverLine}}</span>
     </div>
@@ -57,7 +57,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     </sc-if>
 
     <sc-if value="{{showStats}}" hint-placeholder-val="{{ true }}">
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:10px">
         <sc-for list="{{stats}}" as="c" hint-placeholder-count="4">
           <div style="border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.02);padding:13px 14px 14px;display:flex;flex-direction:column;gap:7px">
             <span style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#94a3b8">{{c.label}}</span>
@@ -82,7 +82,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
             <span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;color:#34d399;border:1px solid rgba(52,211,153,.35);border-radius:999px;padding:2px 7px">ENFORCED AT SUBMIT</span>
           </div>
           <span style="font-size:12.5px;color:#cbd5e1;line-height:1.65;max-width:780px">{{freezeBody}}</span>
-          <span style="font-size:11.5px;color:#94a3b8;line-height:1.65;max-width:780px">A change whose own booked window overlaps a freeze is refused too, not only one raised during it. The refusal happens on the server, so it cannot be clicked past.</span>
+          <span style="font-size:11.5px;color:#94a3b8;line-height:1.65;max-width:780px">A change booked to run during a freeze is blocked as well, not only one raised during it.</span>
         </div>
       </div>
     </sc-if>
@@ -102,9 +102,9 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
           <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
             <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Raise a change request</span>
             <span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;color:#34d399;border:1px solid rgba(52,211,153,.35);border-radius:999px;padding:2px 7px">CURRENT</span>
-            <span style="font-size:11px;color:#64748b">creation is ungated — a real change produces a real CR whether or not the add-on is bought</span>
+            <span style="font-size:11px;color:#64748b">available to every tenant</span>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:11px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:11px">
             <sc-for list="{{fields}}" as="f" hint-placeholder-count="9">
               <div style="display:flex;flex-direction:column;gap:5px">
                 <span style="font-size:11px;font-weight:600;color:#cbd5e1">{{f.label}} <span style="color:{{f.reqInk}};font-weight:500">{{f.req}}</span></span>
@@ -116,9 +116,9 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
             </sc-for>
           </div>
           <div style="border-top:1px solid rgba(255,255,255,.07);padding-top:12px;display:flex;flex-direction:column;gap:6px">
-            <span style="font-size:11.5px;font-weight:600;color:#e2e8f0">Decided for you on submit — not fields on this form</span>
-            <span style="font-size:11.5px;color:#94a3b8;line-height:1.65;max-width:780px">Risk and workload are computed server-side from what you typed; a risk named by the client is ignored, because risk decides how many approvals the change needs. Status is always <b style="color:#e2e8f0;font-weight:600">Pending approval</b>, and the approval stages it needs are created with it. Requester comes from your sign-in, tenant details from your connected tenant, and the backup flag is written <b style="color:#e2e8f0;font-weight:600">false</b> with an empty hash — a snapshot is captured at execution, not from the JSON you paste.</span>
-            <span style="font-size:11px;color:#64748b;line-height:1.6;max-width:780px">Three checks run on the server before anything is written. A freeze in effect refuses the change unless you include a written justification, which adds an approval stage only your MSP can decide. When your policy enforces maintenance windows, a booked span must sit entirely inside an active window — there is no exception path. And a booked span that overlaps another open change on the same target is refused whatever your policy says. With no connected tenant the request is refused outright rather than filed against a blank tenant.</span>
+            <span style="font-size:11.5px;font-weight:600;color:#e2e8f0">Set automatically</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.65;max-width:780px">Risk level and the number of approvals needed are calculated for you. Every new request starts as <b style="color:#e2e8f0;font-weight:600">Pending approval</b>.</span>
+            <span style="font-size:11px;color:#64748b;line-height:1.6;max-width:780px">If a freeze is in effect, you'll need to include a written justification. Changes must fit inside an approved maintenance window, and can't overlap another change on the same target.</span>
           </div>
         </div>
       </sc-if>
@@ -148,7 +148,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
             </div>
             <sc-if value="{{r.expanded}}" hint-placeholder-val="{{ false }}">
               <div style="border-top:1px solid rgba(255,255,255,.07);background:rgba(2,6,23,.45);padding:15px 16px 16px;display:flex;flex-direction:column;gap:13px">
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:12px">
                   <sc-for list="{{r.detail}}" as="d" hint-placeholder-count="8">
                     <div style="display:flex;flex-direction:column;gap:4px">
                       <span style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8">{{d.k}}</span>
@@ -216,7 +216,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                       <span onClick="{{k.click}}" style="font-size:10.5px;font-weight:600;color:#93c5fd;border:1px solid rgba(0,120,212,.4);border-radius:999px;padding:2px 9px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.8)">{{k.label}}</span>
                     </sc-for>
                   </div>
-                  <span style="font-size:10.5px;color:#475569;line-height:1.65;max-width:800px">Comments and attachments are yours to add, and neither can be edited or removed once posted; events are the record of what the platform did. The stored rollback command is deliberately never sent to the browser and is not shown here.</span>
+                  <span style="font-size:10.5px;color:#475569;line-height:1.65;max-width:800px">Comments and attachments can't be edited or removed once posted.</span>
                 </div>
               </div>
             </sc-if>
@@ -240,7 +240,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
         <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Standard changes you can run</span>
         <span style="font-size:11px;color:#64748b">pre-approved catalogue items · running one still produces a real, auto-approved change request</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:10px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:10px">
         <sc-for list="{{catalog}}" as="c" hint-placeholder-count="3">
           <div style="border:1px solid rgba(255,255,255,.09);border-radius:13px;background:rgba(255,255,255,.02);padding:15px 16px 16px;display:flex;flex-direction:column;gap:8px">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -255,13 +255,13 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
           </div>
         </sc-for>
       </div>
-      <span style="display:block;font-size:10.5px;color:#475569;line-height:1.65;max-width:840px">A standard change needs no human approval stage: the ledger records one inherited approval, whose approver is the real party that catalogued it, never &ldquo;the system&rdquo;. Revoking the catalogue item is the control — it is not permanent by accident, and it is checked live on every run. One gap is on record: running a catalogue item currently skips the freeze, maintenance-window and collision checks an ordinary change goes through (filed as #3044), so until that is fixed a standard change can run inside a freeze.</span>
+      <span style="display:block;font-size:10.5px;color:#475569;line-height:1.65;max-width:840px">Standard changes are pre-approved and run without a manual approval step. Your MSP can revoke a catalogue item at any time to stop it from being run.</span>
     </sc-if>
 
     <sc-if value="{{showFreezeCal}}" hint-placeholder-val="{{ true }}">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
         <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Freeze calendar</span>
-        <span style="font-size:11px;color:#64748b">one row per standing rule — a one-off span or a recurring cadence, not one row per occurrence</span>
+        <span style="font-size:11px;color:#64748b">one row per rule, not per occurrence</span>
       </div>
       <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 18px 16px;display:flex;flex-direction:column;gap:9px">
         <sc-for list="{{freezes}}" as="f" hint-placeholder-count="3">
@@ -281,7 +281,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     <sc-if value="{{showFreezeCal}}" hint-placeholder-val="{{ true }}">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
         <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Maintenance windows</span>
-        <span style="font-size:11px;color:#64748b">when a booked change is allowed to run — defined by your MSP, read here</span>
+        <span style="font-size:11px;color:#64748b">when a scheduled change is allowed to run — set by your MSP</span>
         <span style="margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.07em;color:{{mwInk}};border:1px solid {{mwBorder}};border-radius:999px;padding:2px 7px">{{mwTag}}</span>
       </div>
       <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 18px 16px;display:flex;flex-direction:column;gap:9px">
@@ -302,7 +302,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     <sc-if value="{{showMetrics}}" hint-placeholder-val="{{ true }}">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
         <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Change metrics</span>
-        <span style="font-size:11px;color:#64748b">a metric with nothing to count says so — it never reads as 0%</span>
+        <span style="font-size:11px;color:#64748b">shows &ldquo;not available&rdquo; when there's nothing to measure yet</span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">
         <sc-for list="{{metrics}}" as="m" hint-placeholder-count="5">
@@ -324,7 +324,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       </div>
       <sc-if value="{{policyOpen}}" hint-placeholder-val="{{ false }}">
         <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:15px 18px 16px;display:flex;flex-direction:column;gap:14px">
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:10px">
             <sc-for list="{{policy}}" as="p" hint-placeholder-count="5">
               <div onClick="{{p.click}}" style="display:flex;align-items:flex-start;gap:10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 12px;cursor:pointer" style-hover="border-color:rgba(0,120,212,.45)">
                 <span style="width:28px;height:16px;border-radius:999px;background:{{p.trackBg}};border:1px solid {{p.trackBorder}};position:relative;flex:none;margin-top:1px"><span style="position:absolute;top:2px;left:{{p.knobLeft}};width:10px;height:10px;border-radius:999px;background:{{p.knob}}"></span></span>
@@ -335,54 +335,34 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
               </div>
             </sc-for>
           </div>
-          <span style="font-size:11px;color:#94a3b8;line-height:1.6;max-width:800px">Signatures required: <b style="color:#e2e8f0;font-weight:600">at least 1</b>. This is a floor — a change's class and computed risk can demand more stages, and this setting can never demand fewer.</span>
+          <span style="font-size:11px;color:#94a3b8;line-height:1.6;max-width:800px">Signatures required: <b style="color:#e2e8f0;font-weight:600">at least 1</b>. Some changes may need more approvals based on their class and risk, but never fewer than this.</span>
           <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
             <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
               <span style="font-size:11px;font-weight:600;color:#cbd5e1">Who can approve</span>
-              <span style="font-size:10.5px;color:#64748b">computed live from each account's approve-changes flag — there is no list to edit here</span>
+              <span style="font-size:10.5px;color:#64748b">based on each account's permissions</span>
             </div>
             <div style="display:flex;gap:7px;flex-wrap:wrap">
               <sc-for list="{{approvers}}" as="a" hint-placeholder-count="3">
                 <span style="font-size:11px;color:#cbd5e1;border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:3px 10px">{{a.name}}</span>
               </sc-for>
             </div>
-            <span style="font-size:10.5px;color:#475569;line-height:1.6;max-width:800px">The approve and reject actions read the same flag, so this list and the gate cannot disagree. Changing who holds it is an account change, made with your MSP.</span>
+            <span style="font-size:10.5px;color:#475569;line-height:1.6;max-width:800px">To change who can approve changes, contact your MSP.</span>
           </div>
           <div style="display:flex;flex-direction:column;gap:7px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
             <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
               <span style="font-size:11px;font-weight:600;color:#cbd5e1">Who is told, and when</span>
-              <span style="font-size:10.5px;color:#64748b">seven fixed events · each rule is saved on its own</span>
+              <span style="font-size:10.5px;color:#64748b">each rule is saved separately</span>
             </div>
             <sc-for list="{{notifs}}" as="n" hint-placeholder-count="7">
               <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,.04);padding-bottom:7px">
                 <span style="font-size:12px;color:#e2e8f0;flex:1;min-width:240px">{{n.label}}</span>
                 <span style="font-size:11px;color:{{n.toInk}};min-width:150px">{{n.to}}</span>
-                <span style="font-family:Menlo,monospace;font-size:10px;color:#475569">{{n.key}}</span>
               </div>
             </sc-for>
-            <span style="font-size:10.5px;color:#475569;line-height:1.6;max-width:800px">A rule with no recipient names nobody on purpose — you choose who is told; no name is pre-filled by guessing.</span>
+            <span style="font-size:10.5px;color:#475569;line-height:1.6;max-width:800px">If no recipient is set, no one is notified until you choose one.</span>
           </div>
         </div>
       </sc-if>
-    </sc-if>
-
-    <sc-if value="{{showNotBuilt}}" hint-placeholder-val="{{ true }}">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px">
-        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Not on this page yet</span>
-        <span style="font-size:11px;color:#64748b">what the module still owes you</span>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:10px">
-        <sc-for list="{{stubs}}" as="s" hint-placeholder-count="3">
-          <div style="border:1px dashed rgba(148,163,184,.32);border-radius:13px;background:rgba(255,255,255,.012);padding:15px 16px 16px;display:flex;flex-direction:column;gap:8px">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span style="font-size:12.5px;font-weight:600;color:#e2e8f0">{{s.title}}</span>
-              <span style="margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.07em;color:#c2a63d;border:1px solid rgba(194,166,61,.4);border-radius:999px;padding:2px 7px">{{s.tag}}</span>
-            </div>
-            <span style="font-size:11.5px;color:#94a3b8;line-height:1.6">{{s.now}}</span>
-            <span style="font-size:11.5px;color:#64748b;line-height:1.6">{{s.target}}</span>
-          </div>
-        </sc-for>
-      </div>
     </sc-if>
 
   </div>
@@ -527,8 +507,8 @@ class Component extends DCLogic {
         blocks.length ? "Blocks " + blocks.map((d) => d.code + " (" + d.status + ")").join(", ") : "",
       ].filter(Boolean).join(" · ");
       const depNote = blockedBy.length
-        ? "Approval can still be recorded, but no write can claim this change while a blocker is unresolved. The blocker's status is shown as stored, not as displayed."
-        : blocks.length ? "The change listed cannot be executed until this one resolves. Edges are set by your MSP; this page reads them." : "";
+        ? "This change can be approved, but can't be carried out until its blocker is resolved."
+        : blocks.length ? "The change listed cannot be carried out until this one is resolved." : "";
 
       const stageLine = required === 0
         ? "pre-approved · no human stage"
@@ -548,14 +528,14 @@ class Component extends DCLogic {
       });
 
       const timeline = [
-        { when: fmt(cr.createdAt), text: "Raised by " + cr.requester + " · risk computed as " + cr.risk + ", " + (required === 0 ? "no human approval required" : required + " approval stage" + (required > 1 ? "s" : "") + " created"), kind: "EVENT", dot: "#60a5fa", ink: "#cbd5e1" },
+        { when: fmt(cr.createdAt), text: "Raised by " + cr.requester + " · risk: " + cr.risk + (required === 0 ? " · no approval required" : " · " + required + " approval stage" + (required > 1 ? "s" : "") + " required"), kind: "EVENT", dot: "#60a5fa", ink: "#cbd5e1" },
       ]
         .concat(appr.filter((a) => a.decidedAt).map((a) => ({
           when: fmt(a.decidedAt), text: "Stage " + a.stage + " " + a.decision + " by " + (a.name || "—") + (a.onBehalfOf ? " for " + a.onBehalfOf : ""), kind: "EVENT",
           dot: a.decision === "approved" ? "#34d399" : a.decision === "rejected" ? "#f87171" : "#64748b", ink: "#cbd5e1",
         })))
-        .concat(cr.executorRunId ? [{ when: "Aug 21 08:41 UTC", text: "Executed by run " + cr.executorRunId + " · reference stamped onto the change it made", kind: "EVENT", dot: "#cbd5e1", ink: "#cbd5e1" }] : [])
-        .concat(cr.executorRunId ? [{ when: "Aug 22 09:15 UTC", text: "Post-implementation review recorded by your MSP · close code: successful · drift re-scan not applicable to this category", kind: "EVENT", dot: "#cbd5e1", ink: "#cbd5e1" }] : [])
+        .concat(cr.executorRunId ? [{ when: "Aug 21 08:41 UTC", text: "Change carried out", kind: "EVENT", dot: "#cbd5e1", ink: "#cbd5e1" }] : [])
+        .concat(cr.executorRunId ? [{ when: "Aug 22 09:15 UTC", text: "Review completed by your MSP · outcome: successful", kind: "EVENT", dot: "#cbd5e1", ink: "#cbd5e1" }] : [])
         .concat((this.state.attachments[cr.code] || []).map((a) => ({ when: "just now", text: "Attachment · " + a, kind: "ATTACHMENT", dot: "#00B4D8", ink: "#94a3b8" })))
         .concat((this.state.comments[cr.code] || []).map((c) => ({ when: "just now", text: c, kind: "COMMENT", dot: "#00B4D8", ink: "#94a3b8" })));
 
@@ -572,14 +552,14 @@ class Component extends DCLogic {
       const decide = (kind, reason) => () => this.setState((s) => ({ decided: Object.assign({}, s.decided, { [cr.code]: { kind, reason } }) }));
 
       const actions = [
-        act("Approve", canApproveNow, "", canApproveNow ? "Records a real approval on stage " + nextStage + ". Stages are decided in order and the server re-checks your authority." : rejectedTerminal ? "This change is terminally rejected — no further decision can be recorded." : nextStage === null ? "No stage is pending on this change." : isRequester ? "You raised this change, and your tenant requires a separate approver." : "You do not hold the approve-changes capability.", decide("approved")),
-        act("Reject with a reason", canApproveNow, "", canApproveNow ? "A reason is required. Your rejection assigns the residual risk to your side and records it on the register; an MSP rejection leaves the finding open instead." : rejectedTerminal ? "This change is already terminally rejected." : nextStage === null ? "No stage is pending on this change." : isRequester ? "You raised this change, and your tenant requires a separate approver." : "You do not hold the approve-changes capability.", decide("rejected", "Rejected here — the residual risk is recorded on your register.")),
-        act("Add a comment", true, "", "Comments are yours; the event history is the platform's.", () => this.setState((s) => ({ comments: Object.assign({}, s.comments, { [cr.code]: (s.comments[cr.code] || []).concat(["Comment recorded against this change."]) }) }))),
+        act("Approve", canApproveNow, "", canApproveNow ? "Approves stage " + nextStage + " of this change." : rejectedTerminal ? "This change has already been rejected." : nextStage === null ? "No approval is pending on this change." : isRequester ? "You raised this change, so a separate approver is required." : "You don't have permission to approve changes.", decide("approved")),
+        act("Reject with a reason", canApproveNow, "", canApproveNow ? "A reason is required. Rejecting records the risk on your register." : rejectedTerminal ? "This change has already been rejected." : nextStage === null ? "No approval is pending on this change." : isRequester ? "You raised this change, so a separate approver is required." : "You don't have permission to approve changes.", decide("rejected", "Rejected here — the residual risk is recorded on your register.")),
+        act("Add a comment", true, "", "Add a note to this change.", () => this.setState((s) => ({ comments: Object.assign({}, s.comments, { [cr.code]: (s.comments[cr.code] || []).concat(["Comment recorded against this change."]) }) }))),
       ]
-        .concat(isRouted ? [act("Decline this Microsoft change", true, "", "Declining a routed Microsoft change is declining a remediation: it takes your full name and a statement, the change goes to rejected, and the residual risk becomes yours, recorded as an accepted risk linked back to this CR. Only a Microsoft-routed change can be declined this way.", decide("rejected", "Declined — recorded as an accepted risk against your register."))] : [])
+        .concat(isRouted ? [act("Decline this Microsoft change", true, "", "Declining this change records the risk as accepted on your register. Requires your name and a statement.", decide("rejected", "Declined — recorded as an accepted risk against your register."))] : [])
         .concat([
-          act("Move the booked window", false, "NO ROUTE", "New bookings are checked for collisions and window coverage, and dependencies are read here — but no route moves an already-raised change. Raise a new change for the new window."),
-          act("Roll back", false, "MSP-SIDE ONLY", "Execution records and rollback as an inverse change exist on your MSP's console. No rollback path exists on the portal, and the stored rollback command is never sent to the browser."),
+          act("Move the booked window", false, "", "To reschedule, raise a new change with the new window."),
+          act("Roll back", false, "", "Contact your MSP to roll back a completed change."),
         ]);
 
       return {
@@ -598,23 +578,23 @@ class Component extends DCLogic {
         click: () => this.setState((s) => ({ open: s.open === cr.code ? null : cr.code })),
         stages,
         approvalMeta: required === 0 ? "no human stage · one inherited approval on record" : required + " stage" + (required > 1 ? "s" : "") + " required · SLA " + slaDays(cr.changeClass, cr.risk) + " day" + (slaDays(cr.changeClass, cr.risk) === 1 ? "" : "s") + " from raising",
-        approvalNote: "How many stages a change needs comes from its class and its computed risk, floored up by your tenant's own signatures setting — never down. Each stage takes one decision. A pending stage past its SLA is flagged here; the escalation that should follow is computed but nothing sends it yet (#3046). The person who raised a change cannot approve it while your policy requires a separate approver, and a stage added for a freeze exception can only be decided by your MSP.",
+        approvalNote: "How many approvals a change needs depends on its class and risk level. Whoever raised a change cannot approve it if your policy requires a separate approver, and only your MSP can approve a freeze exception.",
         detail: [
           { k: "Rationale", v: cr.rationale, ink: "#cbd5e1", font: "inherit", wrap: "normal", hasNote: false, note: "" },
-          { k: "Before · pre-change snapshot", v: cr.pre, ink: cr.pre === "{}" ? "#64748b" : "#cbd5e1", font: "Menlo,monospace", wrap: "pre-wrap", hasNote: cr.pre === "{}", note: "Empty, not missing: no pre-change state was captured." },
+          { k: "Before · pre-change snapshot", v: cr.pre, ink: cr.pre === "{}" ? "#64748b" : "#cbd5e1", font: "Menlo,monospace", wrap: "pre-wrap", hasNote: cr.pre === "{}", note: "No previous state was recorded." },
           { k: "After · proposed payload", v: cr.post, ink: "#cbd5e1", font: "Menlo,monospace", wrap: "pre-wrap", hasNote: false, note: "" },
-          { k: "Booked window", v: cr.scheduledStart ? (fmt(cr.scheduledStart) + (cr.scheduledEnd ? " → " + fmt(cr.scheduledEnd) : " · start only")) : "No real instant booked", ink: cr.scheduledStart ? "#cbd5e1" : "#64748b", font: "inherit", wrap: "normal", hasNote: true,
-            note: cr.scheduledStart ? "A real instant, so this change can be date-ordered and checked against the freeze calendar. The label above it is what a human typed." : "Only the free-text label exists, so this change cannot be date-ordered or freeze-checked on its own window." },
-          { k: "Executed", v: cr.executedAt || "Not executed", ink: cr.executedAt ? "#cbd5e1" : "#64748b", font: "inherit", wrap: "normal", hasNote: !!cr.executorRunId, note: cr.executorRunId ? "Carried out by run " + cr.executorRunId + ", which stamped this change's reference onto the configuration it changed." : "" },
-          { k: "Backup verified", v: cr.backupVerified ? "Yes — captured at execution" : "No", ink: "#94a3b8", font: "inherit", wrap: "normal", hasNote: !cr.backupVerified, note: "Recorded false with an empty hash until a real execution captures a snapshot. A verified-looking hash is never fabricated." },
-          { k: "Raised from", v: cr.linkedFinding || "Raised directly — no linked finding", ink: cr.linkedFinding ? "#cbd5e1" : "#64748b", font: "inherit", wrap: "normal", hasNote: !!cr.remediationCheckKey, note: cr.remediationCheckKey ? "Structured link: " + cr.remediationCheckKey + " — this CR is the one authorising that remediation item. Raising it closed the matching active risk on your register at that moment, discharged by this change rather than by its execution." : "" },
+          { k: "Booked window", v: cr.scheduledStart ? (fmt(cr.scheduledStart) + (cr.scheduledEnd ? " → " + fmt(cr.scheduledEnd) : " · start only")) : "No date or time set", ink: cr.scheduledStart ? "#cbd5e1" : "#64748b", font: "inherit", wrap: "normal", hasNote: true,
+            note: cr.scheduledStart ? "This change has a specific date and time, so it can be checked against the freeze calendar." : "No specific date and time is set for this change." },
+          { k: "Executed", v: cr.executedAt || "Not executed", ink: cr.executedAt ? "#cbd5e1" : "#64748b", font: "inherit", wrap: "normal", hasNote: !!cr.executorRunId, note: cr.executorRunId ? "Carried out, and the record was linked back to this change." : "" },
+          { k: "Backup verified", v: cr.backupVerified ? "Yes — captured at execution" : "No", ink: "#94a3b8", font: "inherit", wrap: "normal", hasNote: !cr.backupVerified, note: "A backup is captured when the change is carried out." },
+          { k: "Raised from", v: cr.linkedFinding || "Raised directly — no linked finding", ink: cr.linkedFinding ? "#cbd5e1" : "#64748b", font: "inherit", wrap: "normal", hasNote: !!cr.remediationCheckKey, note: cr.remediationCheckKey ? "This request authorizes that remediation item. Raising it closed the matching item on your risk register." : "" },
           { k: "Dependencies", v: depText, ink: hasDeps ? "#cbd5e1" : "#64748b", font: "inherit", wrap: "normal", hasNote: hasDeps, note: depNote },
           { k: "Raised", v: fmtDay(cr.createdAt), ink: "#cbd5e1", font: "inherit", wrap: "normal", hasNote: false, note: "" },
         ],
         actions,
         actionNote: canApproveNow
-          ? "You hold the approve-changes capability, so approve and reject are live on this change. The server re-checks the capability, the stage order and separation of duties on every decision — the buttons only decide what is offered."
-          : "Approve and reject are not offered on this change: " + (rejectedTerminal ? "it is terminally rejected." : nextStage === null ? "no stage is pending." : isRequester ? "you raised it, and a separate approver is required." : "you do not hold the approve-changes capability."),
+          ? "You can approve or reject this change."
+          : "Approve and reject aren't available on this change: " + (rejectedTerminal ? "it has already been rejected." : nextStage === null ? "no approval is pending." : isRequester ? "you raised it, and a separate approver is required." : "you don't have permission to approve changes."),
         timeline,
         addComment: () => this.setState((s) => ({ comments: Object.assign({}, s.comments, { [cr.code]: (s.comments[cr.code] || []).concat(["Comment recorded against this change."]) }) })),
         attachKinds: [["evidence", "Evidence"], ["test_result", "Test result"], ["approval_email", "Approval email"], ["other", "Other"]].map(([k, label]) => ({
@@ -641,10 +621,10 @@ class Component extends DCLogic {
     const stats = [
       { label: "Open changes", value: String(S.open), hasSub: false, sub: "", note: "Pending approval, approved, scheduled or in window.", hasTag: false, ink: "#f8fafc" },
       { label: "Awaiting approval", value: String(S.awaiting), hasSub: false, sub: "", note: "A stage is pending a decision.", hasTag: false, ink: S.awaiting > 0 ? "#c2a63d" : "#f8fafc" },
-      { label: "Next window", value: String(S.winCount), hasSub: true, sub: S.winLabel, note: dateOrdered ? "The earliest upcoming booked instant, and how many changes share it." : "No open change carries a real instant.",
-        hasTag: true, tag: dateOrdered ? "DATE-ORDERED" : "STRING-GROUPED †", tagInk: dateOrdered ? "#34d399" : "#c2a63d", tagBorder: dateOrdered ? "rgba(52,211,153,.35)" : "rgba(194,166,61,.4)", tagStyle: "solid", ink: "#f8fafc" },
+      { label: "Next window", value: String(S.winCount), hasSub: true, sub: S.winLabel, note: dateOrdered ? "The earliest upcoming booked window, and how many changes share it." : "No open change has a scheduled date yet.",
+        hasTag: false, tag: "", tagInk: "", tagBorder: "", tagStyle: "solid", ink: "#f8fafc" },
       { label: "Emergency · 90 days", value: String(S.emergency), hasSub: true, sub: S.snapshots + (S.snapshots === 1 ? " snapshot held" : " snapshots held"), note: "Emergency changes raised in the last 90 days. Snapshots are kept 90 days.",
-        hasTag: true, tag: "SUBSTITUTE METRIC †", tagInk: "#c2a63d", tagBorder: "rgba(194,166,61,.4)", tagStyle: "solid", ink: S.emergency > 0 ? "#f87171" : "#f8fafc" },
+        hasTag: false, tag: "", tagInk: "", tagBorder: "", tagStyle: "solid", ink: S.emergency > 0 ? "#f87171" : "#f8fafc" },
     ];
 
     const FIELDS = [
@@ -736,24 +716,22 @@ class Component extends DCLogic {
       skeletons: [{ w1: "42%", w2: "68%" }, { w1: "56%", w2: "50%" }, { w1: "34%", w2: "72%" }, { w1: "48%", w2: "60%" }],
       stateInk: isLoading ? "#64748b" : isFail ? "#f87171" : noTenant ? "#c2a63d" : isEmpty ? "#60a5fa" : "#34d399",
       stateDot: isLoading ? "#64748b" : isFail ? "#f87171" : noTenant ? "#c2a63d" : isEmpty ? "#60a5fa" : "#34d399",
-      stateLine: isLoading ? "Loading the register" : isFail ? "Couldn't load the register" : noTenant ? "No connected M365 tenant · fails closed" : isEmpty ? "Live · genuinely empty" : "Live · " + CRS.length + " change requests on your tenant",
+      stateLine: isLoading ? "Loading the register" : isFail ? "Couldn't load the register" : noTenant ? "No connected Microsoft 365 tenant" : isEmpty ? "Live · no change requests yet" : "Live · " + CRS.length + " change requests on your tenant",
       approverLine: canApproveChanges ? "You may approve changes · change control add-on active" : "You may not approve changes · change control add-on active",
 
       showFail: isFail || noTenant,
       failHead: isFail ? "Couldn't load the change register" : "No connected M365 tenant",
       failBody: isFail
-        ? "The register did not load. Nothing is shown in its place — an empty register would read as “no changes on your tenant”, which is a different and much worse claim."
-        : "Your account has no resolvable Microsoft 365 tenant, so the register fails closed to empty rather than matching every other unidentified row. The counters below are the fail-closed envelope, not your tenant's answer.",
-      failMeta: isFail ? "Retry, or contact Shane McCaw if it persists." : "Connect a tenant to see your own register. Reading answers with this empty envelope; raising, approving, rejecting, commenting, attaching and metrics are refused outright until then.",
+        ? "The register couldn't be loaded. We're not showing an empty register in its place, since that would incorrectly suggest there are no changes on your tenant."
+        : "Your account isn't connected to a Microsoft 365 tenant, so no change data is available. The counters below are all zero until a tenant is connected.",
+      failMeta: isFail ? "Retry, or contact Shane McCaw if this continues." : "Connect a tenant to see your own change register. Raising, approving, and commenting on changes are unavailable until then.",
       failInk: isFail ? "#f87171" : "#c2a63d",
       failBorder: isFail ? "rgba(248,113,113,.35)" : "rgba(194,166,61,.35)",
       failBg: isFail ? "rgba(248,113,113,.05)" : "rgba(194,166,61,.05)",
 
       showStats: !isLoading && !isFail,
       stats,
-      statsFootnote: dateOrdered
-        ? "† Next window is genuinely chronological here, because open changes carry a real booked instant. Where none does, it falls back to grouping identical window text and says so. Snapshots held measures retention from when a change was raised, because the executed-at stamp is still free text, and the emergency count is measured off creation rather than execution."
-        : "† No open change carries a real booked instant, so Next window falls back to the largest group of changes sharing the same window text — not the soonest date. Snapshots held measures retention from when a change was raised, because the executed-at stamp is still free text.",
+      statsFootnote: "Snapshots are kept for 90 days from when a change was raised.",
 
       freezeActive: live && !!activeFreeze,
       freezeHead: activeFreeze ? "A freeze is in effect: " + activeFreeze.name : "",
@@ -778,12 +756,12 @@ class Component extends DCLogic {
       mwTag: mwEnforced ? "ENFORCED ON BOOKING" : "NOT ENFORCED",
       mwInk: mwEnforced ? "#34d399" : "#8494ab", mwBorder: mwEnforced ? "rgba(52,211,153,.35)" : "rgba(132,148,171,.35)",
       mwNote: mwEnforced
-        ? "A change with a booked start must sit entirely inside one of these windows — touching the edge is not enough, and unlike a freeze there is no justification route around it. A change with only a text label and no booked instant is not checked, because there is nothing to check. Recurring windows are walked through their cadence, so a weekly window set months ago still counts."
-        : "Your policy is not enforcing these windows, so a booked change is not checked against them. They are still read here so you can see what your MSP has defined.",
+        ? "A change with a scheduled start time must fall entirely inside one of these windows. Unlike a freeze, there's no exception process."
+        : "Your policy isn't enforcing these windows, so scheduled changes aren't checked against them. They're still shown here so you can see what your MSP has set.",
 
       showMetrics: !isLoading && !isFail && !noTenant,
       metrics,
-      metricsNote: "Success and failure are read from settled executions, falling back to a change's own terminal event. Lead time is measured from real timestamps, never from the window label. One gap is on record: the post-implementation review's own close code is not consulted, so a change closed as “successful with issues” counts as a plain success here (#3045).",
+      metricsNote: "Success and failure are based on completed executions. Lead time is measured from real timestamps.",
 
       showPolicy: !isLoading && !isFail,
       policyOpen: this.state.policyOpen,
@@ -801,12 +779,6 @@ class Component extends DCLogic {
       approvers: [canApproveChanges ? "Jordan Reid (you)" : null, "Anna Novak", "Elena Petrova"].filter(Boolean).map((name) => ({ name })),
       notifs: NOTIFS.map(([key, label, to]) => ({ key, label, to: to || "No recipient set", toInk: to ? "#cbd5e1" : "#c2a63d" })),
 
-      showNotBuilt: (this.props.showNotBuilt ?? true) && !isLoading,
-      stubs: [
-        { title: "Rollback as an inverse change", tag: "MSP-SIDE ONLY", now: "The rollback affordance appears on an implemented change and no rollback route exists on the portal. Execution records, planned-versus-actual and rollback as an inverse change are real on your MSP's console.", target: "Target: your own read of the execution record behind an implemented change, and the inverse change it would take to undo it." },
-        { title: "Moving a booked change", tag: "NO ROUTE", now: "New bookings are checked for collisions and window coverage, and blocked-by dependencies are shown — but an already-raised change cannot be moved from here.", target: "Target: a reschedule that re-runs the same collision and window checks against the new span." },
-        { title: "CAB, execution and post-implementation review", tag: "MSP-SIDE ONLY", now: "CAB membership, meetings, agendas and review close codes exist on your MSP's console. A review reaches this page only as an event on the change's timeline.", target: "Target: your own view of agenda items that concern your tenant, and the review outcome on each implemented change." },
-      ],
     };
   }
 }

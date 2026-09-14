@@ -59,6 +59,8 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                 <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
                   <span style="font-size:12.5px;color:#e2e8f0;font-weight:600">{{m.name}}</span>
                   <sc-if value="{{m.isYou}}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-weight:600;color:#60a5fa;border:1px solid rgba(96,165,250,.3);border-radius:999px;padding:1px 6px">You</span></sc-if>
+                  <sc-if value="{{m.isAdmin}}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-weight:600;color:#00B4D8;border:1px solid rgba(0,180,216,.35);border-radius:999px;padding:1px 6px">Customer Admin</span></sc-if>
+                  <sc-if value="{{m.isBilling}}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-weight:600;color:#a78bfa;border:1px solid rgba(167,139,250,.35);border-radius:999px;padding:1px 6px">Billing</span></sc-if>
                   <sc-if value="{{m.suspended}}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(148,163,184,.3);border-radius:999px;padding:1px 6px">Suspended</span></sc-if>
                   <sc-if value="{{m.isLockedOut}}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-weight:600;color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:999px;padding:1px 6px">Locked out</span></sc-if>
                 </div>
@@ -81,6 +83,31 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
             <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">LAST SIGN-IN</span><span style="font-size:12px;color:#e2e8f0">{{sel.lastLogin}}</span><span style="font-size:10.5px;color:#64748b">{{sel.sessionsLine}}</span></div>
             <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">REPORTS TO</span><span style="font-size:12px;color:#e2e8f0">{{sel.managerName}}</span><span style="font-size:10.5px;color:#64748b">used when they decline an ownership role</span></div>
             <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">MEMBER SINCE</span><span style="font-size:12px;color:#e2e8f0">{{sel.createdAt}}</span><span style="font-size:10.5px;color:#64748b">{{sel.statusLine}}</span></div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">ROLES</span>
+              <span style="font-size:10.5px;color:#64748b">{{rolesMeta}}</span>
+            </div>
+            <sc-for list="{{roles}}" as="r" hint-placeholder-count="2">
+              <div style="display:flex;gap:12px;align-items:flex-start;border:1px solid {{r.bd}};background:{{r.bg}};border-radius:10px;padding:10px 12px">
+                <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{r.name}}</span>
+                    <span style="font-size:10px;font-weight:600;color:{{r.stInk}};border:1px solid {{r.stBd}};border-radius:999px;padding:1px 8px">{{r.stLabel}}</span>
+                  </div>
+                  <span style="font-size:11px;color:#94a3b8;line-height:1.5">{{r.grants}}</span>
+                  <sc-if value="{{r.hasNote}}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:10.5px;color:{{r.noteInk}};line-height:1.5">{{r.note}}</span>
+                  </sc-if>
+                </div>
+                <sc-if value="{{canManage}}" hint-placeholder-val="{{ true }}">
+                  <span onClick="{{r.run}}" title="{{r.title}}" style="font-size:11.5px;font-weight:600;color:{{r.ink}};border:1px solid {{r.btnBd}};border-radius:6px;padding:6px 11px;cursor:{{r.cursor}};white-space:nowrap;flex:none">{{r.label}}</span>
+                </sc-if>
+              </div>
+            </sc-for>
+            <span style="font-size:10.5px;color:#475569;line-height:1.5">Only these two platform roles can be assigned here. A role your organisation defines itself is not offered; the server refuses any other key.</span>
           </div>
 
           <sc-if value="{{canManage}}" hint-placeholder-val="{{ true }}">
@@ -175,11 +202,11 @@ class Component extends DCLogic {
     const isEmpty = scene === "empty";
     const MFA = { FIDO2: { label: "Passkey", ink: "#34d399", bd: "rgba(52,211,153,.3)" }, TOTP: { label: "Authenticator app", ink: "#34d399", bd: "rgba(52,211,153,.3)" }, SMS: { label: "SMS", ink: "#fbbf24", bd: "rgba(251,191,36,.3)" }, Disabled: { label: "No MFA", ink: "#f87171", bd: "rgba(248,113,113,.3)" } };
     const RAW = [
-      { id: 41, name: "Priya Natarajan", email: "priya@contoso.com", phone: "+61 412 000 118", dept: "IT", title: "Head of IT", active: true, locked: false, mfa: "FIDO2", enforced: true, last: "Today 08:52", sessions: 2, created: "18 May 2026", you: true, manager: null },
-      { id: 52, name: "Marcus Chen", email: "marcus.chen@contoso.com", phone: null, dept: "IT", title: "Systems administrator", active: true, locked: false, mfa: "TOTP", enforced: true, last: "Yesterday 17:20", sessions: 1, created: "4 Sep 2026", manager: 41 },
-      { id: 47, name: "Aisha Rahman", email: "aisha.rahman@contoso.com", phone: "+61 400 771 002", dept: "Finance", title: "Finance manager", active: true, locked: true, mfa: "SMS", enforced: false, last: "9 Sep 14:03", sessions: 0, created: "2 Jul 2026", manager: 41 },
-      { id: 55, name: "Tom Okafor", email: "tom.okafor@contoso.com", phone: null, dept: "", title: "", active: true, locked: false, mfa: "Disabled", enforced: false, last: null, sessions: 0, created: "12 Sep 2026", manager: 52 },
-      { id: 44, name: "Lena Fischer", email: "lena.fischer@contoso.com", phone: null, dept: "Legal", title: "Counsel", active: false, locked: false, mfa: "TOTP", enforced: true, last: "22 Aug 09:10", sessions: 0, created: "3 Jun 2026", manager: null },
+      { id: 41, name: "Priya Natarajan", email: "priya@contoso.com", phone: "+61 412 000 118", dept: "IT", title: "Head of IT", active: true, locked: false, mfa: "FIDO2", enforced: true, last: "Today 08:52", sessions: 2, created: "18 May 2026", you: true, manager: null, admin: true, billing: true },
+      { id: 52, name: "Marcus Chen", email: "marcus.chen@contoso.com", phone: null, dept: "IT", title: "Systems administrator", active: true, locked: false, mfa: "TOTP", enforced: true, last: "Yesterday 17:20", sessions: 1, created: "4 Sep 2026", manager: 41, admin: false, billing: false },
+      { id: 47, name: "Aisha Rahman", email: "aisha.rahman@contoso.com", phone: "+61 400 771 002", dept: "Finance", title: "Finance manager", active: true, locked: true, mfa: "SMS", enforced: false, last: "9 Sep 14:03", sessions: 0, created: "2 Jul 2026", manager: 41, admin: false, billing: true, billed: true },
+      { id: 55, name: "Tom Okafor", email: "tom.okafor@contoso.com", phone: null, dept: "", title: "", active: true, locked: false, mfa: "Disabled", enforced: false, last: null, sessions: 0, created: "12 Sep 2026", manager: 52, admin: false, billing: false },
+      { id: 44, name: "Lena Fischer", email: "lena.fischer@contoso.com", phone: null, dept: "Legal", title: "Counsel", active: false, locked: false, mfa: "TOTP", enforced: true, last: "22 Aug 09:10", sessions: 0, created: "3 Jun 2026", manager: null, admin: false, billing: false },
     ];
     const rows = isEmpty ? RAW.slice(0, 1) : RAW;
     const eff = (r) => Object.assign({}, r, S.over[r.id] || {}, { manager: S.managers[r.id] !== undefined ? S.managers[r.id] : r.manager });
@@ -188,7 +215,7 @@ class Component extends DCLogic {
       const r = eff(r0), T = MFA[r.mfa];
       return { name: r.name, initials: r.name.split(" ").map((w) => w[0]).join("").slice(0, 2), avBg: r.active ? "#0A2540" : "#1e293b", opacity: r.active ? 1 : .6,
         sub: [r.title, r.dept, r.last ? "last sign-in " + r.last : "never signed in"].filter(Boolean).join(" · "),
-        isYou: !!r.you, suspended: !r.active, isLockedOut: r.locked, mfaStatus: T.label, mfaInk: T.ink, mfaBd: T.bd,
+        isYou: !!r.you, suspended: !r.active, isLockedOut: r.locked, mfaStatus: T.label, mfaInk: T.ink, mfaBd: T.bd, isAdmin: !!r.admin, isBilling: !!r.billing,
         pick: () => this.setState({ sel: i, result: null }), bg: S.sel === i ? "rgba(255,255,255,.04)" : "transparent" };
     });
     const cur = eff(rows[Math.min(S.sel, rows.length - 1)]);
@@ -213,6 +240,10 @@ class Component extends DCLogic {
       mfaCleared: { title: "MFA cleared", body: "clearedMethods: " + (cur.mfa === "FIDO2" ? "passkey, totp" : cur.mfa.toLowerCase()) + ". An email listing these has gone to " + cur.email + ".", note: "" },
       bypass: { title: "Emergency bypass code for " + cur.name, body: "Lets its holder skip MFA on this account for 24 hours, once. Any earlier code for them is now invalid. Pass it on out of band — it is not emailed and will not be shown again.", note: "The highest-privilege action on this page. It is recorded with its expiry.", secret: true },
       manager: { title: "Who does " + cur.name + " report to?", body: "Used when they decline an ownership role: the decline is escalated to the person chosen here, then up their chain.", note: "Must be a member of this team, not themselves, and must not create a loop.", picker: true },
+      grantAdmin: { title: "Make " + cur.name + " a Customer Admin?", body: "They gain every customer capability at once: billing view and manage, team management (everything on this page, including granting these roles), approving change requests, and the full marketplace. This is the top of your organisation, parallel to your MSP's own admin role.", note: "Recorded on the audit trail as team_member_role_granted with the role key. Takes effect on their next request — nothing waits for a token refresh.", cta: "Grant Customer Admin", confirm: () => set({ admin: true }) },
+      revokeAdmin: { title: "Remove Customer Admin from " + cur.name + "?", body: "They lose team management, change approval and the full marketplace. Billing access goes too unless they hold the Billing role separately.", note: "You cannot remove your own Customer Admin role — the server refuses it, so the organisation always keeps at least the admin doing the removing.", cta: "Remove Customer Admin", danger: true, confirm: () => set({ admin: false }) },
+      grantBilling: { title: "Give " + cur.name + " the Billing role?", body: "They can see and act on your organisation's billing — invoices, subscriptions, payment methods — without any admin rights. Built for the finance person who should see bills while engineers should not.", note: "Recorded on the audit trail as team_member_role_granted with the role key.", cta: "Grant Billing", confirm: () => set({ billing: true }) },
+      revokeBilling: { title: "Remove the Billing role from " + cur.name + "?", body: cur.billed ? "They lose billing access now. Because an invoice or service is addressed to them personally, the platform will grant Billing back automatically the next time a bill is issued to them — the revoke stands until then." : "They lose billing access from their next request.", note: "Recorded on the audit trail as team_member_role_revoked with the role key.", cta: "Remove Billing", danger: true, confirm: () => set({ billing: false }) },
     }[M];
     const managerOptions = M === "manager" ? [{ label: "No one", id: null, note: "clears the reporting line" }].concat(RAW.filter((r) => r.id !== cur.id).map((r) => {
       let hop = eff(r).manager, cycle = false, guard = 0; while (hop && guard < 50) { if (hop === cur.id) { cycle = true; break; } const nx = RAW.find((x) => x.id === hop); hop = nx ? eff(nx).manager : null; guard++; }
@@ -238,6 +269,25 @@ class Component extends DCLogic {
         act("Sign out everywhere", "sessions", "Ends all live sessions · no audit entry", false, cur.sessions === 0),
         act("Reports to…", "manager", "Sets who a declined ownership role escalates to", false, false),
       ],
+      rolesMeta: canManage ? "granted here by a team manager · read live on every request" : "read live · only a team manager can change them",
+      roles: [
+        (() => { const selfLock = !!cur.you && cur.admin; const on = cur.admin; return {
+          name: "Customer Admin", grants: "Everything on the customer side: billing view and manage, team management, change approval, the full marketplace.",
+          stLabel: on ? "Held" : "Not held", stInk: on ? "#00B4D8" : "#64748b", stBd: on ? "rgba(0,180,216,.4)" : "rgba(100,116,139,.35)",
+          bd: on ? "rgba(0,180,216,.25)" : "rgba(255,255,255,.07)", bg: on ? "rgba(0,180,216,.04)" : "transparent",
+          hasNote: selfLock, note: "Your own admin role cannot be removed from here — the server refuses it.", noteInk: "#64748b",
+          label: on ? "Remove" : "Grant", title: on ? (selfLock ? "You cannot remove your own Customer Admin role" : "Removes every admin capability") : "Grants every customer capability",
+          run: () => { if (!selfLock) this.setState({ modal: on ? "revokeAdmin" : "grantAdmin" }); },
+          ink: selfLock ? "#475569" : on ? "#f87171" : "#cbd5e1", btnBd: selfLock ? "rgba(255,255,255,.07)" : on ? "rgba(248,113,113,.4)" : "rgba(255,255,255,.14)", cursor: selfLock ? "not-allowed" : "pointer" }; })(),
+        (() => { const on = cur.billing; return {
+          name: "Billing", grants: "Billing view and manage only — invoices, subscriptions, payment methods. No admin rights.",
+          stLabel: on ? (cur.billed ? "Held · a bill is addressed to them" : "Held") : "Not held", stInk: on ? "#a78bfa" : "#64748b", stBd: on ? "rgba(167,139,250,.4)" : "rgba(100,116,139,.35)",
+          bd: on ? "rgba(167,139,250,.25)" : "rgba(255,255,255,.07)", bg: on ? "rgba(167,139,250,.04)" : "transparent",
+          hasNote: !!cur.billed, note: "Granted automatically to whoever an invoice or service is addressed to, because billing routes read that person's own rows. A removal stands until their next bill.", noteInk: "#64748b",
+          label: on ? "Remove" : "Grant", title: on ? "Removes billing access" : "Grants billing access without admin rights",
+          run: () => this.setState({ modal: on ? "revokeBilling" : "grantBilling" }),
+          ink: on ? "#f87171" : "#cbd5e1", btnBd: on ? "rgba(248,113,113,.4)" : "rgba(255,255,255,.14)", cursor: "pointer" }; })(),
+      ],
       recoveryActions: [
         act(cur.enforced ? "Stop requiring MFA" : "Require MFA", "enforce", "Takes effect at their next sign-in", false, false),
         act("Unlock", "unlock", "Clears the failed-attempt lock", false, !cur.locked),
@@ -259,15 +309,20 @@ class Component extends DCLogic {
       toggleLedger: () => this.setState({ ledger: !S.ledger }),
       ledger: [
         { gap: "Viewing and managing are separate. Anyone on the organisation sees the roster; the actions appear only with the team-management grant, which is read live on every call.", where: "§0 · §1" },
-        { gap: "Invites create a standard member only. There is no \"invite as manager\"; the page says so instead of drawing a role picker the route does not take.", where: "§2 · §5" },
+        { gap: "Invites create a standard member only. There is no \"invite as admin\"; the role is granted afterwards under Roles, which is what the route takes.", where: "§2 · §5" },
         { gap: "Temporary passwords and bypass codes are shown once, to you, and never emailed. The page states that the relay is yours.", where: "§4f · §4h" },
         { gap: "Sign-out-everywhere is labelled as leaving no audit entry, because it is the one mutating action that writes none.", where: "§4a · §5" },
         { gap: "One reduced MFA status per member — passkey over app over SMS — not a list of every method.", where: "§1 · §3" },
-        { gap: "\"Reports to\" is written by its own route and not returned by the roster read. The page holds what it set and says the roster does not carry it.", where: "§1 · §4i · §5" },
+        { gap: "\"Reports to\" is written by its own route; since #3996 the roster read carries managerUserId too, so the page shows what is stored rather than only what it set.", where: "§1 · §4i · #3996" },
         { gap: "The manager picker refuses self, other organisations and loops, mirroring the three server checks; the page cannot show the before/after in the audit because the audit row carries none.", where: "§4i" },
         { gap: "You cannot suspend yourself here; the button is disabled on your own row.", where: "§4b" },
         { gap: "Resetting MFA is a full teardown of every method, drawn with that warning, not a per-method toggle.", where: "§4g" },
         { gap: "The roster is unsorted because the read is; the page keeps the server's order rather than inventing one.", where: "§1" },
+        { gap: "Two roles, no more. Only the platform keys customer-admin and billing can be granted here; an organisation's own custom roles and every other key are refused by the server (400) and not offered.", where: "#3629 · #3647" },
+        { gap: "Granting roles is gated exactly like every other action here — the team-management grant, read live. A Customer Admin holds it by role; a plain member with the grant holds it too.", where: "#3647 · #2460" },
+        { gap: "You cannot remove your own Customer Admin role; the button is disabled with the server's reason. Removing someone else's is allowed even if they are the last one — the page does not add a floor the server lacks.", where: "#3647" },
+        { gap: "Billing is also granted by the platform, not only by people: whoever an invoice or service is addressed to gets it automatically, and a removal stands only until their next bill. Drawn on the role card rather than hidden.", where: "#3629" },
+        { gap: "Roles take effect on the next request. Nothing here waits for a sign-out or token refresh, and a 503 (role model unreadable) is drawn as unavailable, never as denied.", where: "#2460 · #3647" },
       ],
     };
   }

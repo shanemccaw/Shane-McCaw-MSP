@@ -130,6 +130,33 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
             </div>
           </sc-if>
 
+          <sc-if value="{{t.hasGen}}" hint-placeholder-val="{{ false }}">
+            <div data-testid="active-card-generic" style="box-sizing:border-box;width:100%;max-width:520px;border:1px solid rgba(255,255,255,.11);border-radius:12px;background:rgba(255,255,255,.025);padding:14px 16px 14px;display:flex;flex-direction:column;gap:12px">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">{{t.genEyebrow}}</span>
+              <sc-if value="{{t.genHeadShow}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                  <span style="font-size:22px;font-weight:800;color:#f8fafc;letter-spacing:-.02em">{{t.genHeadValue}}</span>
+                  <span style="font-size:12px;color:#94a3b8">{{t.genHeadLabel}}</span>
+                </div>
+              </sc-if>
+              <div style="display:flex;flex-direction:column;gap:0">
+                <sc-for list="{{t.genRows}}" as="g" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid rgba(255,255,255,.06)">
+                    <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                      <span style="font-size:12.5px;color:#e2e8f0;line-height:1.4">{{g.left}}</span>
+                      <span style="font-size:10.5px;color:#64748b;line-height:1.4">{{g.sub}}</span>
+                    </div>
+                    <span style="font-size:10px;font-weight:600;color:{{g.ink}};background:{{g.bg}};border:1px solid {{g.bd}};border-radius:999px;padding:3px 10px;flex:none;white-space:nowrap">{{g.right}}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <sc-if value="{{t.genNoteShow}}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:10.5px;color:#64748b;line-height:1.55">{{t.genNote}}</span>
+              </sc-if>
+              <span onClick="{{t.genLink}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">{{t.genLinkLabel}} →</span>
+            </div>
+          </sc-if>
+
           <sc-if value="{{t.hasNote}}" hint-placeholder-val="{{ false }}">
             <span style="font-size:10.5px;color:#475569;line-height:1.5;max-width:520px">{{t.note}}</span>
           </sc-if>
@@ -186,11 +213,17 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:820},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;compact&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;hasInvoices&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Account data&quot;},&quot;hasSubscriptions&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Account data&quot;},&quot;hasScore&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Account data&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Account data&quot;},&quot;openPanel&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(spec: any) =&gt; void&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:820},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;compact&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;hasInvoices&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Account data&quot;},&quot;hasSubscriptions&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Account data&quot;},&quot;hasScore&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Account data&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Account data&quot;},&quot;openPanel&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(spec: any) =&gt; void&quot;},&quot;onNavigate&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(pageKey: string) =&gt; void&quot;},&quot;resetSignal&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;number&quot;}}">
 class Component extends DCLogic {
   state = { turns: [], draft: "", typing: false, banner: null, bannerSeen: false };
 
   componentWillUnmount() { clearTimeout(this._t); }
+  componentDidUpdate(prevProps) {
+    if (prevProps.resetSignal !== this.props.resetSignal) {
+      clearTimeout(this._t);
+      this.setState({ turns: [], draft: "", typing: false, banner: null });
+    }
+  }
 
   push(user, replyFn) {
     const turns = this.state.turns.concat([{ role: "user", text: user }]);
@@ -227,6 +260,280 @@ class Component extends DCLogic {
     ];
     const bar = (n) => n >= 80 ? "#34d399" : n >= 50 ? "#fbbf24" : "#f87171";
 
+    const navigate = (page) => { if (P.onNavigate) P.onNavigate(page); };
+    const T_GOLD = { ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" };
+    const T_RED = { ink: "#f87171", bg: "rgba(248,113,113,.10)", bd: "rgba(248,113,113,.28)" };
+    const T_GRN = { ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" };
+    const T_BLU = { ink: "#60a5fa", bg: "rgba(96,165,250,.10)", bd: "rgba(96,165,250,.28)" };
+    const T_PUR = { ink: "#a78bfa", bg: "rgba(167,139,250,.10)", bd: "rgba(167,139,250,.28)" };
+    const T_SLT = { ink: "#94a3b8", bg: "rgba(148,163,184,.10)", bd: "rgba(148,163,184,.26)" };
+
+    const PILLAR_LABEL = { governance: "Governance", security: "Security", compliance: "Compliance", licensing: "Licensing", adoption: "Adoption", health: "Health" };
+    const SEV_T = { good: T_GRN, meh: T_GOLD, na: T_SLT };
+    // Template: one row per signal on a pillar page's own catalog (icon, label, value, delta,
+    // note, severity, weight, checkKey — same shape as Pillar Pages' `groups` data). Governance
+    // is seeded from the real page; the other five pillars (security, compliance, licensing,
+    // adoption, health) extend with more rows in this exact shape.
+    const SIGNALS = [
+      { pillar: "governance", checkKey: "governance:public-teams-discoverable", label: "Public, discoverable teams", value: "5", delta: "+1", note: "of 18 teams", sev: "meh", kw: ["public", "team"] },
+      { pillar: "governance", checkKey: "governance:public-groups-discoverable", label: "Public Microsoft 365 groups", value: "24", delta: "±0", note: "of 78 groups", sev: "meh", kw: ["public", "group"] },
+      { pillar: "governance", checkKey: "governance:ownerless-groups", label: "Groups without an owner", value: "12", delta: "+2", note: "of 104 groups scanned", sev: "meh", kw: ["owner", "group"] },
+      { pillar: "governance", checkKey: "teams:ownerless-teams", label: "Teams without an owner", value: "2", delta: "±0", note: "of 18 teams", sev: "meh", kw: ["owner", "team"] },
+      { pillar: "governance", checkKey: "governance:guest-count", label: "Guest accounts", value: "3", delta: "±0", note: "in the directory", sev: "good", kw: ["guest", "account"] },
+      { pillar: "governance", checkKey: "governance:guest-staleness", label: "Stale guests", value: "2", delta: "+1", note: "no sign-in in 90 days", sev: "meh", kw: ["stale", "guest"] },
+      { pillar: "governance", checkKey: "appgov:dormant-service-principals", label: "Dormant service principals", value: "61", delta: "±0", note: "of 498 enterprise apps", sev: "meh", kw: ["dormant", "service"] },
+      { pillar: "governance", checkKey: "identity:stale-accounts", label: "Stale user accounts", value: "5", delta: "±0", note: "of 24 users · no sign-in 90d", sev: "meh", kw: ["stale", "user"] },
+      { pillar: "governance", checkKey: "identity:guest-mfa-enforcement", label: "Guest MFA enforcement", value: "0", delta: "±0", note: "no policy covers guests", sev: "meh", kw: ["guest", "mfa"] },
+      { pillar: "governance", checkKey: "teams:inactive-teams", label: "Inactive teams", value: "6", delta: "±0", note: "no activity in 90 days", sev: "meh", kw: ["inactive", "team"] },
+      { pillar: "governance", checkKey: "teams:guest-membership", label: "Teams with guests", value: "4", delta: "+1", note: "of 18 teams", sev: "meh", kw: ["team", "guest"] },
+      { pillar: "governance", checkKey: "sharepoint:inactive-sites", label: "Inactive SharePoint sites", value: "21", delta: "+2", note: "no activity in 90 days", sev: "meh", kw: ["inactive", "sharepoint"] },
+    ];
+    const matchSignal = (t) => {
+      let best = null, bestScore = 0;
+      SIGNALS.forEach((s) => {
+        const score = s.kw.filter((k) => t.indexOf(k) !== -1).length;
+        if (score === s.kw.length && score > bestScore) { bestScore = score; best = s; }
+      });
+      return best;
+    };
+
+    const RACI_WL = {
+      "SharePoint": { holders: [] },
+      "Exchange Online": { holders: ["Marcus Chen"] },
+      "Identity & access": { holders: ["Dana Whitfield", "Marcus Lein"] },
+      "Teams": { holders: ["Daniel Okafor"] },
+      "Defender": { holders: ["Marcus Lein"] },
+    };
+    const RACI_WL_LIST = Object.keys(RACI_WL);
+
+    const GEN = {
+      ca: { eyebrow: "CONDITIONAL ACCESS", navPage: "cc", navLabel: "Open Change Control",
+        head: { value: "2", label: "open items reference Conditional Access" },
+        rows: [
+          { left: "CR-2026-118 — Block legacy authentication protocols", sub: "High risk · pending a second approval · Saturday window", right: "Pending", t: T_GOLD },
+          { left: "RR-2026-009 — Conditional access change declined", sub: "Accepted risk on the register · review due 12 Sep 2026", right: "Accepted", t: T_PUR },
+        ],
+        note: "This portal has no standalone Conditional Access policy inventory yet — this is read across Change Control and the Risk Register, the two places that actually reference it.",
+        chips: ["Who owns Identity & access?", "What risks are open on my register?"] },
+      risk: { eyebrow: "RISK REGISTER", navPage: "risk", navLabel: "Open Risk Register",
+        head: { value: "4", label: "open or mitigating, 1 review overdue" },
+        rows: [
+          { left: "RR-2026-016 — Teams sites with no retention policy", sub: "High inherent · no owner recorded", right: "Open", t: T_SLT },
+          { left: "RR-2026-011 — MFA gaps on privileged accounts", sub: "Accepted risk · review was due 1 Sep 2026", right: "Overdue", t: T_RED },
+          { left: "RR-2026-007 — Licence spend above committed baseline", sub: "Mitigating · reclamation pass scheduled October", right: "Mitigating", t: T_GOLD },
+        ],
+        note: "Pulled straight from your risk register — same statuses, same IDs.",
+        chips: ["Who owns Identity & access?", "What Conditional Access am I missing?"] },
+      changes: { eyebrow: "CHANGE CONTROL", navPage: "cc", navLabel: "Open Change Control",
+        head: { value: "2", label: "pending approval, 1 scheduled" },
+        rows: [
+          { left: "CR-2026-118 — Block legacy authentication protocols", sub: "High risk · one approval in, one still due", right: "Pending", t: T_GOLD },
+          { left: "CR-2026-117 — Raise SharePoint external link expiry to 30 days", sub: "Medium risk · awaiting first approval", right: "Pending", t: T_GOLD },
+          { left: "CR-2026-116 — Move two service accounts to modern auth", sub: "Approved · Friday identity window, 20:00–22:00", right: "Scheduled", t: T_BLU },
+        ],
+        note: "Shane cannot approve these on your behalf — only your named approvers can.",
+        chips: ["Who owns SharePoint?", "What Conditional Access am I missing?"] },
+      findings: { eyebrow: "REMEDIATION TRACKING", navPage: "remediation", navLabel: "Open Remediation Tracking",
+        head: { value: "2", label: "open findings from your latest scan" },
+        rows: [
+          { left: "External sharing defaults to anyone with the link", sub: "Critical · six sites, links never expire", right: "Critical", t: T_RED },
+          { left: "Five accounts hold permanent Global Administrator", sub: "Critical · assigned outright, not activated when needed", right: "Critical", t: T_RED },
+        ],
+        note: "Findings are keyed to your latest scan. A re-scan is what clears one, not a status change here.",
+        chips: ["Any change requests waiting on me?", "Who owns SharePoint?"] },
+      poams: { eyebrow: "POA&MS", navPage: "poams", navLabel: "Open POA&Ms",
+        head: { value: "3", label: "active plans, 1 awaiting your signature" },
+        rows: [
+          { left: "POAM-2026-019 — Retire legacy authentication for Exchange Online", sub: "Target 30 Nov 2026 · needs your signature", right: "Unsigned", t: T_GOLD },
+          { left: "POAM-2026-017 — Enforce MFA registration for guest accounts", sub: "Target 15 Oct 2026 · signed 21 Aug 2026", right: "Active", t: T_GRN },
+        ],
+        note: "Milestones are set and ticked off by Shane; this only reads them back.",
+        chips: ["Who owns Exchange Online?", "What risks are open on my register?"] },
+      secplan: { eyebrow: "SECURITY PLAN", navPage: "secplan", navLabel: "Open Security Plan",
+        head: { value: "v4", label: "sealed and signed, 2 Sep 2026" },
+        rows: [
+          { left: "Changes since signing", sub: "5 rows moved across identity and remediation registers", right: "Drift", t: T_BLU },
+          { left: "Identity", sub: "2 accepted risks and 1 open risk sit on privileged access", right: "Concentrated", t: T_GOLD },
+        ],
+        note: "Content is fixed the moment a version seals — drift is compared, never rewritten in place.",
+        chips: ["What risks are open on my register?", "Any change requests waiting on me?"] },
+      raci: { eyebrow: "OWNERSHIP / RACI", navPage: "raci", navLabel: "Open Ownership / RACI",
+        head: { value: "2", label: "roles with no holder assigned" },
+        rows: [
+          { left: "Accountable — SharePoint", sub: "No holder currently assigned", right: "Unassigned", t: T_RED },
+          { left: "Accountable — Identity & access", sub: "Held by Dana Whitfield and Marcus Lein", right: "Held", t: T_GRN },
+        ],
+        note: "An unassigned Accountable role is why some risks and changes can't be signed yet.",
+        chips: RACI_WL_LIST.map((w) => "Who owns " + w + "?") },
+      policy: { eyebrow: "POLICY DECISIONS", navPage: "policy", navLabel: "Open Policy Decisions",
+        head: { value: "1", label: "review overdue, 1 waiting on a licence" },
+        rows: [
+          { left: "#39 — Two service accounts kept out of MFA", sub: "Quarterly review — was due 2 Aug 2026", right: "Overdue", t: T_RED },
+          { left: "#33 — Guest access reviews paused", sub: "Waiting on Entra ID P2 licences to land", right: "Waiting", t: T_BLU },
+        ],
+        note: "A lapsed review doesn't undo the position — it just means the review is late, not the decision.",
+        chips: ["What Conditional Access am I missing?"] },
+      team: { eyebrow: "TEAM & ROLES", navPage: "team", navLabel: "Open Team Management",
+        head: { value: "14", label: "active members" },
+        rows: [
+          { left: "Customer Admins", sub: "Full billing, team and change-approval capability", right: "2 people", t: T_SLT },
+          { left: "Without MFA enforced", sub: "Accounts that haven't completed enrollment", right: "1 account", t: T_GOLD },
+        ],
+        note: "Billing access is auto-granted to whoever a bill is addressed to, separate from Customer Admin.",
+        chips: ["Who owns Identity & access?"] },
+      tickets: { eyebrow: "REQUESTS & SUPPORT", navPage: "requests", navLabel: "Open Requests",
+        head: { value: "2", label: "open tickets with Shane" },
+        rows: [
+          { left: "Break-glass invite email never arrived", sub: "Category: Access · opened this week", right: "Open", t: T_BLU },
+          { left: "Question on the Q3 retainer invoice", sub: "Category: Billing", right: "On Hold", t: T_GOLD },
+        ],
+        note: "I can raise a new one, but I have no way to check status changes beyond what's shown here.",
+        chips: [] },
+      sla: { eyebrow: "SCOPE & SLA", navPage: "scope", navLabel: "Open Service and Scope",
+        head: { value: "2 of 5", label: "open requests are approaching their response target" },
+        rows: [
+          { left: "Response time compliance", sub: "Live reading, compared against your agreement's targets", right: "Attention", t: T_GOLD },
+          { left: "Scope additions", sub: "Nothing outside the agreed deliverables this period", right: "Fine", t: T_GRN },
+        ],
+        note: "This is a live reading — it can differ from the stored snapshot on your Overview.",
+        chips: [] },
+      retainer: { eyebrow: "MY ARCHITECT", navPage: "architect", navLabel: "Open My Architect",
+        head: { value: "5.5h", label: "used of 9.5h allotted this month" },
+        rows: [
+          { left: "Conditional Access consolidation — twelve policies to five", sub: "Security · report-only trial running until 25 Sep", right: "In progress", t: T_BLU },
+        ],
+        note: "Hours only — the money side of the retainer lives on Billing, not here.",
+        chips: ["What Conditional Access am I missing?"] },
+      tenantStatus: { eyebrow: "TENANT STATUS", navPage: "home", navLabel: "Open Overview",
+        head: { value: "Attention", label: "1 area needs a look, last scan 6h ago" },
+        rows: [
+          { left: "Security", sub: "1 critical finding — legacy authentication still enabled", right: "Attention", t: T_GOLD },
+          { left: "Governance", sub: "No open findings on the latest scan", right: "Healthy", t: T_GRN },
+        ],
+        note: "Same status strip that sits at the top of your sidebar.",
+        chips: ["What Conditional Access am I missing?", "What risks are open on my register?"] },
+      project: { eyebrow: "PROJECTS", navPage: "projects", navLabel: "Open Projects",
+        head: { value: "63%", label: "tasks completed on Legacy authentication retirement" },
+        rows: [
+          { left: "Migration of service mailboxes", sub: "In progress · due 6 Oct 2026", right: "In progress", t: T_BLU },
+          { left: "Protocol switch-off", sub: "Blocked on the kiosk firmware dependency", right: "Blocked", t: T_RED },
+        ],
+        note: "Shane moves the cards; this only reads back where they landed.",
+        chips: ["How many architect hours have I used?"] },
+      burndown: { eyebrow: "MY ARCHITECT — BURN-DOWN", navPage: "architect", navLabel: "Open My Architect",
+        head: { value: "58%", label: "of this month's 9.5h allotment used" },
+        rows: [
+          { left: "Conditional Access consolidation", sub: "Security · in progress", right: "5.0h", t: T_BLU },
+          { left: "Remaining this month", sub: "Resets 1 Oct — unused hours already rolled in once", right: "4.0h", t: T_GRN },
+        ],
+        note: "Burn-down resets each calendar month.",
+        chips: ["Any change requests waiting on me?"] },
+      msChanges: { eyebrow: "MICROSOFT CHANGES", navPage: "changes", navLabel: "Open Microsoft Changes",
+        head: { value: "76", label: "Microsoft-side changes land in the next 90 days" },
+        rows: [
+          { left: "Shared calendars move to the REST-based model", sub: "Exchange Online · 29 Sep – 27 Nov window", right: "Reference", t: T_SLT },
+          { left: "New Teams chat experience becomes default", sub: "Teams · client-side, nothing to count in your tenant", right: "No action", t: T_SLT },
+        ],
+        note: "This is Microsoft's own change roadmap — separate from the change requests you approve on Change Control.",
+        chips: ["What Conditional Access am I missing?"] },
+      diagnostics: { eyebrow: "DIAGNOSTICS & SCRIPTS", navPage: "diag", navLabel: "Open Diagnostics and Scripts",
+        head: { value: "2", label: "critical findings on the latest diagnostic run" },
+        rows: [
+          { left: "Legacy authentication is still allowed for 12 accounts", sub: "Conditional Access — legacy auth", right: "Critical", t: T_RED },
+          { left: "No break-glass account excluded from Conditional Access", sub: "Identity — emergency access", right: "Critical", t: T_RED },
+        ],
+        note: "A point-in-time run — a separate register from Remediation Tracking's ongoing checklist.",
+        chips: ["What's outstanding in remediation tracking?", "What Conditional Access am I missing?"] },
+      statusReports: { eyebrow: "STATUS REPORTS", navPage: "statusreports", navLabel: "Open Status Reports",
+        head: { value: "3", label: "published reports, newest is August 2026" },
+        rows: [
+          { left: "August 2026", sub: "Published 3 Sep 2026 · written by Shane McCaw", right: "Published", t: T_GRN },
+          { left: "June 2026", sub: "Late — written in September for an insurance file", right: "Late", t: T_GOLD },
+        ],
+        note: "These are Shane's monthly reports — a different register from the retainer status reports on My Architect.",
+        chips: ["How many architect hours have I used?"] },
+      mfa: { eyebrow: "ACCOUNT SECURITY — MFA", navPage: "account:security", navLabel: "Open Account Security",
+        head: { value: "1", label: "method registered — add a backup for resilience" },
+        rows: [
+          { left: "Microsoft Authenticator", sub: "Registered 11 Jan 2026 · push + code", right: "Registered", t: T_GRN },
+          { left: "Text message backup", sub: "Not set up — the weakest method", right: "Not set up", t: T_GOLD },
+        ],
+        note: "This is your own sign-in MFA on this portal. I can show what's registered; adding or removing a method happens on the page itself.",
+        chips: ["How do I change my password?"] },
+      password: { eyebrow: "ACCOUNT SECURITY — PASSWORD", navPage: "account:security", navLabel: "Open Account Security",
+        head: { value: "No forced expiry", label: "on this portal login" },
+        rows: [
+          { left: "Portal password", sub: "Changed from Account Security, not from here", right: "Change", t: T_BLU },
+        ],
+        note: "This is your portal sign-in password — separate from any Microsoft 365 password policy on your tenant.",
+        chips: ["How do I change my MFA?"] },
+      breakglass: { eyebrow: "BREAK-GLASS ACCESS", navPage: "breakglass", navLabel: "Open Break-glass Access",
+        head: { value: "2", label: "verification links currently live" },
+        rows: [
+          { left: "it.director@contoso.com", sub: "Global Administrator eligible, not active — activate in PIM first", right: "Pending", t: T_GOLD },
+          { left: "ops.lead@contoso.com", sub: "Link live, not yet attempted", right: "Pending", t: T_BLU },
+        ],
+        note: "Nothing changes on your tenant until a verification succeeds — this only shows who's been asked.",
+        chips: ["Who owns Identity & access?"] },
+      documents: { eyebrow: "DOCUMENTS", navPage: "docs", navLabel: "Open Documents",
+        head: { value: "1", label: "document waiting on your review" },
+        rows: [
+          { left: "Conditional Access hardening — scoped SOW", sub: "Statement of work · $6,400 · scoped 12 Sep", right: "Review", t: T_GOLD },
+          { left: "Security posture report — September", sub: "Delivered 9 Sep 2026", right: "Delivered", t: T_GRN },
+        ],
+        note: "Some reports render live with no stored copy — those are named as such, not linked.",
+        chips: ["What Conditional Access am I missing?"] },
+      settings: { eyebrow: "SETTINGS", navPage: "settings", navLabel: "Open Settings",
+        head: { value: "7", label: "alert categories, all on their default delivery mode" },
+        rows: [
+          { left: "Alert preferences", sub: "Findings, drift, progress, reviews, remediation, billing, support", right: "Configured", t: T_SLT },
+          { left: "Departments", sub: "Live route, group mapping available", right: "Available", t: T_GRN },
+        ],
+        note: "Settings covers alerts, notifications, webhooks, departments, privacy and email authentication in one container.",
+        chips: ["How do I change my MFA?"] },
+      configState: { eyebrow: "CONFIGURATION STATE", navPage: "config", navLabel: "Open Configuration State",
+        head: { value: "13.8%", label: "of the tenant is machine-readable on the latest snapshot" },
+        rows: [
+          { left: "MicrosoftGraph", sub: "852 types · 49,627 objects", right: "73 collected", t: T_SLT },
+          { left: "ExchangeOnline", sub: "59 types · 504 objects", right: "58 collected", t: T_GRN },
+        ],
+        note: "This reads coverage, not compliance — how much of the tenant we can see, not whether it's configured well.",
+        chips: ["What Conditional Access am I missing?"] },
+    };
+
+    const getGen = (key) => {
+      if (key.indexOf("signal:") === 0) {
+        const ck = key.slice(7);
+        const s = SIGNALS.find((x) => x.checkKey === ck);
+        if (!s) return null;
+        const label = PILLAR_LABEL[s.pillar] || s.pillar;
+        return {
+          eyebrow: label.toUpperCase() + " PILLAR SIGNAL", navPage: "pillar:" + s.pillar, navLabel: "Open " + label + " pillar",
+          head: { value: s.value, label: s.label + (s.delta && s.delta !== "±0" ? " · " + s.delta + " since last scan" : "") },
+          rows: [{ left: s.label, sub: s.note + " · " + s.checkKey, right: s.sev === "good" ? "Healthy" : s.sev === "meh" ? "Worth a look" : "N/A", t: SEV_T[s.sev] }],
+          note: "Read straight from the " + label + " pillar's signal catalog — same number, same checkKey.",
+          chips: [],
+        };
+      }
+      if (key.indexOf("raci:") === 0) {
+        const name = key.slice(5);
+        const wl = RACI_WL[name] || { holders: [] };
+        return {
+          eyebrow: "OWNERSHIP / RACI", navPage: "raci", navLabel: "Open Ownership / RACI",
+          head: { value: String(wl.holders.length), label: (wl.holders.length ? "holder" + (wl.holders.length > 1 ? "s" : "") : "holders") + " for " + name },
+          rows: [{ left: "Accountable — " + name, sub: wl.holders.length ? wl.holders.join(" and ") + " · any of them may sign" : "No holder assigned yet",
+            right: wl.holders.length ? "Held" : "Unassigned", t: wl.holders.length ? T_GRN : T_RED }],
+          note: wl.holders.length ? "Any listed holder may sign for this workload; Shane cannot sign on their behalf." : "Assign a holder on Ownership / RACI before anything on this workload can be signed.",
+          chips: RACI_WL_LIST.filter((w) => w !== name).slice(0, 4).map((w) => "Who owns " + w + "?"),
+        };
+      }
+      return GEN[key];
+    };
+    const genReply = (key, sentence) => {
+      const g = getGen(key) || {};
+      return { role: "bot", text: sentence, card: "gen:" + key, chips: (g.chips || []).map((q) => ({ t: q, click: () => ask(q) })) };
+    };
+
     const reply = {
       invoice: () => hasInvoices
         ? { role: "bot", text: "Three invoices on your account. The July monitoring charge and the Q3 retainer are settled; the one-off onboarding charge is still due.", card: "invoice",
@@ -235,7 +542,7 @@ class Component extends DCLogic {
       subscription: () => hasSubs
         ? { role: "bot", text: "You hold two active subscriptions. Neither is in a trial and neither is scheduled to cancel.", card: "subscription",
             note: "Statuses come from your assignments, in the words your account records them." }
-        : { role: "bot", text: "No subscription is assigned to your account, so there is no plan state for me to read. If you expected one, that is worth raising with your MSP rather than something I can fix from here.", card: null },
+        : { role: "bot", text: "No subscription is assigned to your account, so there is no plan state for me to read. If you expected one, that is worth raising with Shane rather than something I can fix from here.", card: null },
       score: () => hasScore
         ? { role: "bot", text: "Your Copilot readiness sits at 68. Compliance is what is holding it down; collaboration is your strongest pillar.", card: "score",
             note: "These are the five numbers already computed for your tenant. I have not recalculated anything." }
@@ -243,16 +550,75 @@ class Component extends DCLogic {
       data: () => ({ role: "bot", text: "Here is what your account holds in one view — your subscriptions, your most recent scan and your purchases.", card: "data",
         note: "This is my fallback card. When a question fits invoices, your plan or your score, you get that specific card instead." }),
       unknown: () => ({ role: "bot", text: "I can only answer from what your account actually holds — invoices, your subscriptions, your readiness score, your scans and your purchases. That question is outside all of them, so rather than guess I would put you in front of a person.", card: null,
-        chips: [{ t: "Talk to a human" }] }),
-      escalated: () => ({ role: "bot", text: "I have raised this with your MSP and attached this conversation. Someone will reply by email — there is no ticket queue in this portal for you to watch, so the reply comes to your inbox rather than back into this page.", card: null,
+        chips: [{ t: "Talk to a human", click: () => this.setState({ turns: S.turns.concat([reply.escalated()]), banner: "Raised with Shane. The reply will come by email.", bannerSeen: false }) }] }),
+      escalated: () => ({ role: "bot", text: "I have raised this with Shane and attached this conversation. He will reply by email — there is no ticket queue in this portal for you to watch, so the reply comes to your inbox rather than back into this page.", card: null,
         note: "Raised once, on this turn. Asking again would raise a second one." }),
+      ca: () => genReply("ca", "Two things on your account touch Conditional Access right now: a pending change to block legacy authentication, and an accepted risk from a Conditional Access change you declined."),
+      risk: () => genReply("risk", "Four risks are open or being mitigated, and one accepted risk's review has lapsed."),
+      changes: () => genReply("changes", "Two change requests are waiting on approval and one is scheduled for this week."),
+      findings: () => genReply("findings", "Your latest scan turned up two open findings, both critical."),
+      poams: () => genReply("poams", "You have three active plans of action, one of them waiting on your signature."),
+      secplan: () => genReply("secplan", "Version 4 of your security plan is sealed and signed. Five rows have moved since it was signed."),
+      raci: () => genReply("raci", "Two Accountable roles show a gap or a clear holder worth knowing about."),
+      policy: () => genReply("policy", "One policy decision's review is overdue, and one more is waiting on a licence to land."),
+      team: () => genReply("team", "You have 14 active team members, two of them Customer Admins."),
+      tickets: () => genReply("tickets", "Two tickets are open with Shane right now."),
+      sla: () => genReply("sla", "Two of your five open requests are getting close to their agreed response time."),
+      retainer: () => genReply("retainer", "You've used 5.5 of your 9.5 allotted architect hours this month."),
+      tenantStatus: () => genReply("tenantStatus", "Your tenant needs attention in one area — security. Governance is clean on the latest scan."),
+      project: () => genReply("project", "Your legacy authentication retirement project is 63% through its tasks, with one step blocked."),
+      burndown: () => genReply("burndown", "You've burned through 58% of this month's architect hours, mostly on the Conditional Access consolidation."),
+      msChanges: () => genReply("msChanges", "76 Microsoft-side changes land in the next 90 days — most need no action from you."),
+      diagnostics: () => genReply("diagnostics", "Your latest diagnostic run found two critical issues, both around Conditional Access and legacy authentication."),
+      statusReports: () => genReply("statusReports", "Three monthly status reports are published, the newest covering August 2026."),
+      configState: () => genReply("configState", "13.8% of your tenant is machine-readable on the latest configuration snapshot."),
+      mfa: () => genReply("mfa", "You have one MFA method registered — Microsoft Authenticator — and no backup method set up."),
+      password: () => genReply("password", "Your portal password has no forced expiry. You can change it from Account Security."),
+      breakglass: () => genReply("breakglass", "Two break-glass verification links are currently live, one still needing a role activated in PIM."),
+      documents: () => genReply("documents", "One document is waiting on your review; your latest delivered report is from September."),
+      settings: () => genReply("settings", "Your alert preferences are set across seven categories, all still on their default delivery mode."),
+      logout: () => ({ role: "bot", text: "I can't sign you out myself — that's not something I can do on your behalf. Use your account menu in the top right to sign out.", card: null }),
     };
 
     const pick = (q) => {
       const t = q.toLowerCase();
+      const ownMatch = t.match(/who owns (.+?)\??$/);
+      if (ownMatch) {
+        const raw = ownMatch[1].trim().toLowerCase();
+        const found = RACI_WL_LIST.find((w) => w.toLowerCase().includes(raw) || raw.includes(w.toLowerCase().split(" ")[0]));
+        if (found) return genReply("raci:" + found, found + " is accountable to " + (RACI_WL[found].holders.length ? RACI_WL[found].holders.join(" and ") : "nobody right now") + ".");
+      }
+      const sig = matchSignal(t);
+      if (sig) { const lbl = PILLAR_LABEL[sig.pillar] || sig.pillar; return genReply("signal:" + sig.checkKey, sig.value + " — from your " + lbl + " pillar's " + sig.label.toLowerCase() + " signal."); }
+      if (/conditional access|\bca\b policy|\bmfa policy/.test(t)) return reply.ca();
       if (/invoice|bill|charge|paid|receipt|owe/.test(t)) return reply.invoice();
-      if (/subscription|plan|tier|monitoring|retainer|renew/.test(t)) return reply.subscription();
-      if (/score|readiness|copilot|pillar/.test(t)) return reply.score();
+      if (/subscription|plan\b|tier|renew/.test(t) && !/retainer|architect/.test(t)) return reply.subscription();
+      if (/score|readiness|copilot pillar/.test(t)) return reply.score();
+      if (/risk register|open risk|accepted risk/.test(t)) return reply.risk();
+      if (/change request|change control|pending approval|cr-2026/.test(t)) return reply.changes();
+      if (/finding|remediation|vulnerab/.test(t)) return reply.findings();
+      if (/poam|plan of action|milestone/.test(t)) return reply.poams();
+      if (/security plan|drift|sealed/.test(t)) return reply.secplan();
+      if (/raci|ownership|accountable|who owns/.test(t)) return reply.raci();
+      if (/policy decision|obligation|compliance/.test(t)) return reply.policy();
+      if (/team|customer admin|billing role|roster/.test(t)) return reply.team();
+      if (/ticket|support request|escalat/.test(t) && !/talk to a human/.test(t)) return reply.tickets();
+      if (/\bsla\b|service level|scope creep|response time/.test(t)) return reply.sla();
+      if (/burn ?down/.test(t)) return reply.burndown();
+      if (/retainer hour|architect hour|my architect/.test(t)) return reply.retainer();
+      if (/tenant status|overall health|how is my tenant|scan status/.test(t)) return reply.tenantStatus();
+      if (/project state|project status|kanban|which project|legacy authentication retirement/.test(t)) return reply.project();
+      if (/microsoft change|roadmap change|message center/.test(t)) return reply.msChanges();
+      if (/diagnostic|script (download|run)/.test(t)) return reply.diagnostics();
+      if (/status report|monthly report/.test(t)) return reply.statusReports();
+      if (/configuration state|machine.readable|tenant coverage|workload coverage/.test(t)) return reply.configState();
+      if (/\bmfa\b|multi.factor|authenticator|two.factor/.test(t)) return reply.mfa();
+      if (/change.*password|reset.*password|update.*password|forgot.*password/.test(t)) return reply.password();
+      if (/break.?glass/.test(t)) return reply.breakglass();
+      if (/\bdocument|\bsow\b|statement of work/.test(t)) return reply.documents();
+      if (/\bsettings\b|alert preference|notification preference|webhook|department/.test(t)) return reply.settings();
+      if (/log ?out|sign out|sign.?off/.test(t)) return reply.logout();
+      if (/my service/.test(t)) return reply.sla();
       if (/account|everything|scan|purchase|overview|summary/.test(t)) return reply.data();
       return reply.unknown();
     };
@@ -282,9 +648,19 @@ class Component extends DCLogic {
           { label: "LATEST SCAN", pad: "11px", border: "1px solid rgba(255,255,255,.06)", rows: [{ left: "Full tenant diagnostic", right: "Completed 1 Sep" }] },
           { label: "PURCHASES", pad: "11px", border: "1px solid rgba(255,255,255,.06)", rows: [{ left: "Identity assessment", right: "$2,750" }, { left: "Onboarding — one-off", right: "$960" }] },
         ],
+        hasGen: typeof c === "string" && c.indexOf("gen:") === 0,
+        genEyebrow: (getGen((c || "").slice(4)) || {}).eyebrow || "",
+        genHeadShow: !!(getGen((c || "").slice(4)) || {}).head,
+        genHeadValue: ((getGen((c || "").slice(4)) || {}).head || {}).value || "",
+        genHeadLabel: ((getGen((c || "").slice(4)) || {}).head || {}).label || "",
+        genRows: ((getGen((c || "").slice(4)) || {}).rows || []).map((g) => ({ left: g.left, sub: g.sub, right: g.right, ink: g.t.ink, bg: g.t.bg, bd: g.t.bd })),
+        genNoteShow: !!(getGen((c || "").slice(4)) || {}).note,
+        genNote: (getGen((c || "").slice(4)) || {}).note || "",
+        genLinkLabel: (getGen((c || "").slice(4)) || {}).navLabel || "",
+        genLink: () => navigate((getGen((c || "").slice(4)) || {}).navPage),
         hasNote: !!t.note, note: t.note || "",
         hasChips: !!(t.chips && t.chips.length),
-        chips: (t.chips || []).map((c2) => ({ t: c2.t, click: () => this.setState({ turns: S.turns.concat([reply.escalated()]), banner: "Raised with your MSP. The reply will come by email.", bannerSeen: false }) })),
+        chips: (t.chips || []).map((c2) => ({ t: c2.t, click: c2.click })),
       };
     });
 
@@ -302,9 +678,11 @@ class Component extends DCLogic {
       startersShow: S.turns.length === 0,
       starters: [
         { t: "What have I been invoiced for?", click: () => ask("What have I been invoiced for?") },
-        { t: "What plan am I on?", click: () => ask("What plan am I on?") },
+        { t: "What Conditional Access am I missing?", click: () => ask("What Conditional Access am I missing?") },
+        { t: "What risks are open on my register?", click: () => ask("What risks are open on my register?") },
         { t: "What is my Copilot readiness score?", click: () => ask("What is my Copilot readiness score?") },
-        { t: "Show me everything on my account", click: () => ask("Show me everything on my account") },
+        { t: "Any change requests waiting on me?", click: () => ask("Any change requests waiting on me?") },
+        { t: "How many architect hours have I used?", click: () => ask("How many architect hours have I used?") },
         { t: "Can you turn on MFA for everyone?", click: () => ask("Can you turn on MFA for everyone?") },
       ],
       draft: S.draft,
@@ -314,8 +692,8 @@ class Component extends DCLogic {
       sendBg: canSend ? "#0078D4" : "rgba(255,255,255,.06)",
       sendInk: canSend ? "#fff" : "#475569",
       sendCur: canSend ? "pointer" : "default",
-      reset: () => this.setState({ turns: [], draft: "", typing: false, banner: null }),
-      escalate: () => this.setState({ turns: S.turns.concat([reply.escalated()]), banner: "Raised with your MSP. The reply will come by email.", bannerSeen: false }),
+      reset: () => { clearTimeout(this._t); this.setState({ turns: [], draft: "", typing: false, banner: null }); },
+      escalate: () => this.setState({ turns: S.turns.concat([reply.escalated()]), banner: "Raised with Shane. The reply will come by email.", bannerSeen: false }),
       bannerShow: !!S.banner, bannerText: S.banner || "",
       dismissBanner: () => this.setState({ banner: null }),
 
@@ -326,8 +704,8 @@ class Component extends DCLogic {
         { gap: "It shows one card per answer, the most specific one that fits. The all-in-one account card is its last resort.", where: "§4.4" },
         { gap: "An answer it cannot ground in your own data is refused rather than guessed.", where: "§2" },
         { gap: "Nothing is remembered. The conversation is not stored on either side, so reloading starts empty.", where: "§6" },
-        { gap: "It has no view of your tickets. It can raise one with your MSP; it cannot then tell you what happened to it.", where: "§5.4" },
-        { gap: "Findings, remediation steps, Microsoft changes and documents are not offered as cards yet — the data behind them is not settled enough to show in one.", where: "§5" },
+        { gap: "It has no view of your tickets. It can raise one with Shane; it cannot then tell you what happened to it.", where: "§5.4" },
+        { gap: "Pillar signal cards currently cover Governance only — Security, Compliance, Licensing, Adoption and Health use the same signal shape and are the template's next rows, not built yet.", where: "§5" },
         { gap: "It answers only for your own tenant, and only when you are signed in as its customer.", where: "§2" },
       ],
     };

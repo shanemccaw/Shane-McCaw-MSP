@@ -61,9 +61,9 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       <sc-if value="{{pageConfig}}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#f8fafc">Configuration State</span></sc-if>
       <sc-if value="{{pageChanges}}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#f8fafc">Microsoft Changes</span></sc-if>
       <sc-if value="{{pageAccount}}" hint-placeholder-val="{{ false }}">
-        <span style="font-size:12.5px;color:#64748b">Your account</span>
+        <span style="font-size:12.5px;color:#64748b">Account</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
-        <span style="font-size:14px;font-weight:600;color:#f8fafc">Account security</span>
+        <span style="font-size:14px;font-weight:600;color:#f8fafc">{{atabLabel}}</span>
       </sc-if>
       <sc-if value="{{pageCc}}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#f8fafc">Change control</span></sc-if>
       <sc-if value="{{pageRaci}}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#f8fafc">Ownership / RACI</span></sc-if>
@@ -77,23 +77,28 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       <sc-if value="{{pageArchitect}}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#f8fafc">My Architect</span></sc-if>
       <sc-if value="{{pageScope}}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#f8fafc">Service and scope</span></sc-if>
       <sc-if value="{{pageRequests}}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#f8fafc">Requests</span></sc-if>
+      <sc-if value="{{pagePoams}}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#f8fafc">POA&amp;Ms</span></sc-if>
+      <sc-if value="{{pageStatusReports}}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#f8fafc">Status reports</span></sc-if>
+      <sc-if value="{{pageProjects}}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#f8fafc">Projects</span></sc-if>
       <sc-if value="{{pageTeam}}" hint-placeholder-val="{{ false }}">
         <span style="font-size:12.5px;color:#64748b">Your account</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
         <span style="font-size:14px;font-weight:600;color:#f8fafc">Team</span>
       </sc-if>
       <sc-if value="{{pageBreakGlass}}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#f8fafc">Break-glass access</span></sc-if>
-      <sc-if value="{{pageLeaving}}" hint-placeholder-val="{{ false }}">
-        <span style="font-size:12.5px;color:#64748b">Your account</span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
-        <span style="font-size:14px;font-weight:600;color:#f8fafc">Leaving</span>
-      </sc-if>
       <sc-if value="{{pagePillar}}" hint-placeholder-val="{{ false }}">
         <span style="font-size:12.5px;color:#64748b">Pillars</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
         <span style="font-size:14px;font-weight:600;color:#f8fafc">{{pillarLabel}}</span>
       </sc-if>
       <div style="margin-left:auto;display:flex;align-items:center;gap:6px;flex:none">
+        <sc-if value="{{showOffersPill}}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{openOffersNav}}" style="display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;background:rgba(0,120,212,.13);border:1px solid rgba(0,120,212,.3);cursor:pointer" style-hover="background:rgba(0,120,212,.2)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><path d="M7 7h.01"></path></svg>
+            <sc-if value="{{wide}}" hint-placeholder-val="{{ true }}"><span style="font-size:11.5px;font-weight:600;color:#93c5fd;white-space:nowrap">Offers</span></sc-if>
+            <span style="min-width:15px;height:15px;border-radius:999px;background:#0078D4;color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px">{{openOffersCount}}</span>
+          </div>
+        </sc-if>
         <sc-if value="{{wide}}" hint-placeholder-val="{{ true }}">
         <div onClick="{{toggleSop}}" style="position:relative;width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:{{sopBtnBg}}" style-hover="background:rgba(255,255,255,.06)">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"></path><path d="m3 7 2 2 4-4"></path><path d="M13 6h8M13 12h8M13 18h8"></path></svg>
@@ -130,25 +135,49 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       <sc-if value="{{sidebarShow}}" hint-placeholder-val="{{ true }}">
       <div data-shell-sidebar="{{sbMode}}" style="width:{{sbW}};flex:none;position:{{sbPos}};top:0;bottom:0;left:0;z-index:{{sbZ}};background:{{sbBg}};box-shadow:{{sbShadow}};border-right:1px solid rgba(255,255,255,.10);display:flex;flex-direction:column;padding:14px 10px 12px">
         <div style="display:flex;flex-direction:column;gap:1px;overflow-y:auto;overflow-x:hidden;min-height:0;margin-bottom:10px">
-          <sc-for list="{{modules}}" as="m" hint-placeholder-count="13">
+          <sc-for list="{{modules}}" as="m" hint-placeholder-count="3">
             <div onClick="{{m.click}}" style="display:flex;align-items:center;gap:10px;padding:5.5px 10px;border-radius:6px;cursor:pointer;background:{{m.rowBg}}" style-hover="background:rgba(255,255,255,.04)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{m.ink}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{m.p1}}"></path><path d="{{m.p2}}"></path><path d="{{m.p3}}"></path></svg>
               <span style="font-size:13px;color:{{m.ink}};font-weight:{{m.weight}}">{{m.label}}</span>
             </div>
           </sc-for>
+          <div style="height:1px;background:rgba(255,255,255,.08);margin:8px 6px"></div>
+          <sc-for list="{{navGroups}}" as="grp" hint-placeholder-count="4">
+            <div onClick="{{grp.toggle}}" style="display:flex;align-items:center;gap:7px;padding:6px 10px 6px 6px;border-radius:6px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" style="flex:none;transform:{{grp.chevron}}"><path d="m9 18 6-6-6-6"></path></svg>
+              <div style="width:18px;height:18px;flex:none;border-radius:5px;background:{{grp.tileBg}};border:1px solid {{grp.tileBorder}};display:flex;align-items:center;justify-content:center">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{{grp.color}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{grp.p1}}"></path><path d="{{grp.p2}}"></path></svg>
+              </div>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#64748b">{{grp.name}}</span>
+            </div>
+            <sc-if value="{{grp.expanded}}" hint-placeholder-val="{{ true }}">
+              <sc-for list="{{grp.items}}" as="m" hint-placeholder-count="4">
+                <div onClick="{{m.click}}" style="display:flex;align-items:center;gap:10px;padding:5.5px 10px 5.5px 26px;border-radius:6px;cursor:pointer;background:{{m.rowBg}}" style-hover="background:rgba(255,255,255,.04)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{m.ink}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{m.p1}}"></path><path d="{{m.p2}}"></path><path d="{{m.p3}}"></path></svg>
+                  <span style="font-size:12.5px;color:{{m.ink}};font-weight:{{m.weight}}">{{m.label}}</span>
+                </div>
+              </sc-for>
+            </sc-if>
+          </sc-for>
         </div>
         <div style="margin-top:auto;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:linear-gradient(135deg, rgba(0,120,212,.12), rgba(139,92,246,.10));padding:14px 14px 12px">
-          <div onClick="{{openScan}}" style="display:flex;align-items:center;gap:7px;padding-bottom:8px;cursor:pointer">
+          <div onClick="{{toggleTs}}" style="display:flex;align-items:center;gap:7px;padding-bottom:8px;cursor:pointer">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="#00B4D8"><path d="M12 3l1.7 4.4L18 9l-4.3 1.6L12 15l-1.7-4.4L6 9l4.3-1.6zM18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path></svg>
             <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b;white-space:nowrap">TENANT STATUS</span>
             <span style="margin-left:auto;font-size:9.5px;font-weight:600;color:#475569;white-space:nowrap">{{scanChip}}</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;transform:{{tsChevron}}"><path d="m9 18 6-6-6-6"></path></svg>
           </div>
-          <div style="display:flex;align-items:baseline;gap:5px">
-            <span style="font-size:30px;font-weight:800;color:{{scoreInk}};line-height:1;font-variant-numeric:tabular-nums">{{scoreText}}</span>
-            <sc-if value="{{showScore}}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;color:#475569">/ 100</span></sc-if>
+          <div onClick="{{openScan}}" style="cursor:pointer">
+            <div style="display:flex;align-items:baseline;gap:5px">
+              <span style="font-size:30px;font-weight:800;color:{{scoreInk}};line-height:1;font-variant-numeric:tabular-nums">{{scoreText}}</span>
+              <sc-if value="{{showScore}}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;color:#475569">/ 100</span></sc-if>
+            </div>
+            <div style="font-size:12.5px;font-weight:600;color:{{sevColor}};padding:5px 0 2px">{{sevLabel}}</div>
+            <div style="font-size:11px;color:#64748b;line-height:1.45">{{lastScanText}}</div>
           </div>
-          <div style="font-size:12.5px;font-weight:600;color:{{sevColor}};padding:5px 0 2px">{{sevLabel}}</div>
-          <div style="font-size:11.5px;color:#64748b;line-height:1.45">{{scanLine}}</div>
+
+          <sc-if value="{{tsOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="font-size:11.5px;color:#64748b;line-height:1.45;margin-top:4px">{{scanLine}}</div>
 
           <sc-if value="{{scanBarShow}}" hint-placeholder-val="{{ false }}">
             <div onClick="{{openScan}}" style="margin-top:9px;display:flex;flex-direction:column;gap:6px;cursor:pointer">
@@ -181,24 +210,42 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
               <span style="font-size:11px;color:#64748b;line-height:1.45">{{scanOutcomeBody}}</span>
             </div>
           </sc-if>
-          <sc-if value="{{showCta}}" hint-placeholder-val="{{ true }}">
-            <div onClick="{{runScan}}" style="margin-top:10px;background:#0078D4;color:#fff;font-size:12.5px;font-weight:600;border-radius:6px;padding:8px 0;text-align:center;cursor:pointer" style-hover="background:#005A9E">{{ctaLabel}}</div>
+          <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,.07);padding-top:9px;font-size:11px;color:#64748b;line-height:1.45">{{nextScanText}}</div>
           </sc-if>
         </div>
       </div>
       </sc-if>
       <div style="flex:1;display:flex;min-height:0;position:relative">
         <sc-if value="{{pageHome}}" hint-placeholder-val="{{ true }}">
-          <dc-import name="Overview" embedded="{{ true }}" response-state="{{overviewDataState}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
+          <dc-import name="Overview" embedded="{{ true }}" response-state="{{overviewDataState}}" on-open-offers="{{openOffersNav}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
         </sc-if>
         <sc-if value="{{pagePillar}}" hint-placeholder-val="{{ false }}">
-          <dc-import name="Pillar Pages" embedded="{{ true }}" pillar="{{selPillar}}" severity="{{sevProp}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
+          <dc-import name="Pillar Pages" embedded="{{ true }}" pillar="{{selPillar}}" severity="{{sevProp}}" on-open-offers="{{openOffersNav}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
         </sc-if>
         <sc-if value="{{pageChanges}}" hint-placeholder-val="{{ false }}">
           <dc-import name="Microsoft Changes" embedded="{{ true }}" severity="{{sevProp}}" scan-running="{{scanRunning}}" sop-runs="{{sopCountNum}}" impersonated="{{impersonated}}" mfa-pending="{{mfaPending}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
         </sc-if>
         <sc-if value="{{pageAccount}}" hint-placeholder-val="{{ false }}">
-          <dc-import name="Account Security" embedded="{{ true }}" data-state="{{accountDataState}}" passkey-enrolled="{{ false }}" open-panel="{{openPanel}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
+          <div data-screen-label="Account" style="flex:1;display:flex;min-height:0;flex-direction:{{settingsDir}}">
+            <div style="width:{{settingsNavW}};flex:none;border-right:{{settingsNavBr}};border-bottom:{{settingsNavBb}};padding:{{settingsNavPad}};display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.14em;color:#475569;padding:0 10px 8px">ACCOUNT</span>
+              <sc-for list="{{atabItems}}" as="it" hint-placeholder-count="3">
+                <div onClick="{{it.click}}" style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:7px;cursor:pointer;background:{{it.bg}}" style-hover="background:rgba(255,255,255,.04)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{it.ink}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{it.i1}}"></path><path d="{{it.i2}}"></path></svg>
+                  <span style="font-size:12.5px;font-weight:600;color:{{it.ink}}">{{it.label}}</span>
+                </div>
+              </sc-for>
+            </div>
+            <sc-if value="{{atabSecurity}}" hint-placeholder-val="{{ true }}">
+              <dc-import name="Account Security" embedded="{{ true }}" data-state="{{accountDataState}}" passkey-enrolled="{{ false }}" open-panel="{{openPanel}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
+            </sc-if>
+            <sc-if value="{{atabBilling}}" hint-placeholder-val="{{ false }}">
+              <dc-import name="Billing" embedded="{{ true }}" data-state="{{billingDataState}}" open-panel="{{openPanel}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
+            </sc-if>
+            <sc-if value="{{atabLeaving}}" hint-placeholder-val="{{ false }}">
+              <dc-import name="Offboarding" embedded="{{ true }}" scene="active" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
+            </sc-if>
+          </div>
         </sc-if>
         <sc-if value="{{pageConfig}}" hint-placeholder-val="{{ false }}">
           <dc-import name="Configuration State" embedded="{{ true }}" data-state="{{configDataState}}" open-panel="{{openPanel}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
@@ -245,20 +292,20 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
         <sc-if value="{{pageBreakGlass}}" hint-placeholder-val="{{ false }}">
           <dc-import name="Break-glass Access" embedded="{{ true }}" scene="pending" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
         </sc-if>
-        <sc-if value="{{pageLeaving}}" hint-placeholder-val="{{ false }}">
-          <dc-import name="Offboarding" embedded="{{ true }}" scene="active" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
-        </sc-if>
         <sc-if value="{{pageSecPlan}}" hint-placeholder-val="{{ false }}">
           <dc-import name="Security Plan" embedded="{{ true }}" data-state="{{secPlanDataState}}" open-panel="{{openPanel}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
         </sc-if>
         <sc-if value="{{pageRisk}}" hint-placeholder-val="{{ false }}">
           <dc-import name="Risk Register" embedded="{{ true }}" data-state="{{riskDataState}}" open-panel="{{openPanel}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
         </sc-if>
-        <sc-if value="{{pageBilling}}" hint-placeholder-val="{{ false }}">
-          <dc-import name="Billing" embedded="{{ true }}" data-state="{{billingDataState}}" open-panel="{{openPanel}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
+        <sc-if value="{{pagePoams}}" hint-placeholder-val="{{ false }}">
+          <dc-import name="POAMs" embedded="{{ true }}" scene="live" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
         </sc-if>
-        <sc-if value="{{pageWebhooks}}" hint-placeholder-val="{{ false }}">
-          <dc-import name="Webhooks" embedded="{{ true }}" data-state="{{webhooksDataState}}" open-panel="{{openPanel}}" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
+        <sc-if value="{{pageStatusReports}}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Status Reports" embedded="{{ true }}" scene="live" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
+        </sc-if>
+        <sc-if value="{{pageProjects}}" hint-placeholder-val="{{ false }}">
+          <dc-import name="Projects" embedded="{{ true }}" scene="live" style="flex:1;min-width:0" hint-size="100%,100%"></dc-import>
         </sc-if>
         <sc-if value="{{pageSettings}}" hint-placeholder-val="{{ false }}">
           <div data-screen-label="Settings" style="flex:1;display:flex;min-height:0;flex-direction:{{settingsDir}}">
@@ -280,6 +327,9 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
             </sc-if>
             <sc-if value="{{settingsEmailAuth}}" hint-placeholder-val="{{ false }}">
               <dc-import name="Email Authentication Setup" embedded="{{ true }}" data-state="checked" style="flex:1;min-width:0;min-height:0" hint-size="100%,100%"></dc-import>
+            </sc-if>
+            <sc-if value="{{settingsWebhooks}}" hint-placeholder-val="{{ false }}">
+              <dc-import name="Webhooks" embedded="{{ true }}" data-state="{{webhooksDataState}}" open-panel="{{openPanel}}" style="flex:1;min-width:0;min-height:0" hint-size="100%,100%"></dc-import>
             </sc-if>
 
             <sc-if value="{{settingsNotifs}}" hint-placeholder-val="{{ false }}">
@@ -396,6 +446,32 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
               </div>
             </div>
             </sc-if>
+
+            <sc-if value="{{settingsDepartments}}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;overflow-y:auto;min-height:0">
+              <div style="padding:24px 30px 40px;max-width:820px">
+                <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Departments</span>
+                <span style="display:block;font-size:12.5px;color:#64748b;margin-top:5px">Every department your directory reports, plus any you've mapped to a security group instead. {{unmappedLine}}</span>
+                <div style="display:flex;flex-direction:column;gap:10px;margin-top:20px">
+                  <sc-for list="{{deptRows}}" as="d" hint-placeholder-count="4">
+                    <div style="border:1px solid rgba(255,255,255,.09);border-radius:12px;background:rgba(255,255,255,.02);padding:14px 16px;display:flex;align-items:center;gap:14px">
+                      <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">{{d.name}}</span>
+                        <span style="font-size:11px;color:#64748b">{{d.sub}}</span>
+                      </div>
+                      <span style="margin-left:auto;font-size:12px;font-weight:700;color:#cbd5e1;font-variant-numeric:tabular-nums;flex:none">{{d.n}}</span>
+                      <span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;color:{{d.srcInk}};border:1px solid {{d.srcBorder}};background:{{d.srcBg}};border-radius:999px;padding:4px 10px;flex:none;white-space:nowrap">{{d.srcLabel}}</span>
+                      <span onClick="{{d.edit}}" style="font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 12px;cursor:pointer;flex:none" style-hover="background:rgba(255,255,255,.05)">Edit mapping</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;margin-top:20px;border-top:1px solid rgba(255,255,255,.06);padding-top:14px">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M12 16v-4"></path><path d="M12 8h.01"></path><circle cx="12" cy="12" r="10"></circle></svg>
+                  <span style="font-size:11.5px;color:#64748b;line-height:1.5">A group-mapped department's count still comes from the directory attribute — this platform has no live Microsoft Graph group-membership read yet, so a group mapping changes which source you're telling us to trust, not what's actually counted.</span>
+                </div>
+              </div>
+            </div>
+            </sc-if>
           </div>
         </sc-if>
         <sc-if value="{{savedToast}}" hint-placeholder-val="{{ false }}">
@@ -423,11 +499,12 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path><path d="M12 8V4H8"></path></svg>
               </div>
               <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;font-weight:600;color:#f8fafc">ShaneBot</span><span style="font-size:10.5px;color:#64748b">Answers from your own tenant</span></div>
-              <div onClick="{{toggleBot}}" style="margin-left:auto;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:rgba(255,255,255,.05)">
+              <span onClick="{{clearBot}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer;flex:none" style-hover="color:#cbd5e1">Clear</span>
+              <div onClick="{{toggleBot}}" style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none" style-hover="background:rgba(255,255,255,.05)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
               </div>
             </div>
-            <dc-import name="ShaneBot" embedded="{{ true }}" compact="{{ true }}" style="flex:1;min-width:0;min-height:0" hint-size="100%,100%"></dc-import>
+            <dc-import name="ShaneBot" embedded="{{ true }}" compact="{{ true }}" on-navigate="{{navFromBot}}" reset-signal="{{botResetTick}}" style="flex:1;min-width:0;min-height:0" hint-size="100%,100%"></dc-import>
           </div>
         </sc-if>
   </div>
@@ -522,14 +599,6 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
         </div>
       </sc-if>
       <div style="padding:8px 6px 4px;display:flex;flex-direction:column">
-        <div onClick="{{openBilling}}" style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{billingRowBg}}" style-hover="background:rgba(255,255,255,.04)">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"></path><path d="M2 10h20"></path></svg>
-          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Billing</span><span style="font-size:10.5px;color:#64748b">Receipts · payment details</span></div>
-        </div>
-        <div onClick="{{openWebhooks}}" style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{webhooksRowBg}}" style-hover="background:rgba(255,255,255,.04)">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"></path><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"></path><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"></path></svg>
-          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Webhooks</span><span style="font-size:10.5px;color:#64748b">Outbound endpoints · deliveries</span></div>
-        </div>
         <div onClick="{{openTeam}}" style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{teamRowBg}}" style-hover="background:rgba(255,255,255,.04)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><path d="M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"></path><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
           <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Team</span><span style="font-size:10.5px;color:#64748b">Members · invitations · sign-in recovery</span></div>
@@ -538,23 +607,34 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 1 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
           <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Break-glass access</span><span style="font-size:10.5px;color:#64748b">Credential handoffs waiting on a run</span></div>
         </div>
-        <div onClick="{{openLeaving}}" style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{leavingRowBg}}" style-hover="background:rgba(255,255,255,.04)">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg>
-          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Leaving</span><span style="font-size:10.5px;color:#64748b">Export your records · end services</span></div>
-        </div>
-        <div onClick="{{openSettings}}" style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>
-          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Settings</span><span style="font-size:10.5px;color:#64748b">Alert preferences</span></div>
-        </div>
         <div style="height:1px;background:rgba(255,255,255,.08);margin:4px 10px"></div>
+        <div onClick="{{openMyService}}" style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{myServiceRowBg}}" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">My Service</span><span style="font-size:10.5px;color:#64748b">Scope · SLA · retainer terms</span></div>
+        </div>
+        <div onClick="{{openDocs}}" style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{docsRowBg}}" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M16 13H8M16 17H8M10 9H8"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Documents</span><span style="font-size:10.5px;color:#64748b">SOWs · reports · signed contracts</span></div>
+        </div>
         <div onClick="{{openAccount}}" style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{accountRowBg}}" style-hover="background:rgba(255,255,255,.04)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v10H5z"></path><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
-          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Account security</span><span style="font-size:10.5px;color:#64748b">Password · MFA · active sessions</span></div>
+          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Account</span><span style="font-size:10.5px;color:#64748b">Security · billing · leaving</span></div>
         </div>
         <div style="height:1px;background:rgba(255,255,255,.08);margin:4px 10px"></div>
-        <div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5M21 12H9"></path></svg>
-          <span style="font-size:13px;color:#cbd5e1">Sign out</span>
+        <div onClick="{{openSettings}}" style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{settingsRowBg}}" style-hover="background:rgba(255,255,255,.04)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#cbd5e1">Settings</span><span style="font-size:10.5px;color:#64748b">Alerts · webhooks · email authentication</span></div>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,.08);margin:4px 10px"></div>
+        <div style="display:flex;align-items:stretch;gap:4px">
+          <div onClick="{{openSupport}}" style="flex:1;min-width:0;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{supportRowBg}}" style-hover="background:rgba(255,255,255,.04)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M9.09 9a3 3 0 1 1 5.83 1c0 2-3 2-3 4"></path><path d="M12 17h.01"></path></svg>
+            <span style="font-size:13px;color:#cbd5e1">Support</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5M21 12H9"></path></svg>
+            <span style="font-size:13px;color:#cbd5e1;white-space:nowrap">Sign out</span>
+          </div>
         </div>
       </div>
       <div style="padding:9px 16px 11px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:7px">
@@ -578,7 +658,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
           <span style="font-size:12px;color:#64748b;line-height:1.5;max-width:250px">Alerts land here when a scan, drift, or your MSP's work triggers one of your conditions.</span>
         </div>
       </sc-if>
-      <sc-if value="{{alertsFull}}" hint-placeholder-val="{{ false }}">
+      <sc-if value="{{alertsList}}" hint-placeholder-val="{{ false }}">
         <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08);flex:none">
           <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Alerts</span>
           <span style="display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:#64748b;letter-spacing:.05em"><span style="width:6px;height:6px;border-radius:999px;background:#00B4D8;animation:livePulse 2.4s ease-in-out infinite"></span>LIVE</span>
@@ -612,6 +692,92 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
           </sc-for>
         </div>
       </sc-if>
+      <sc-if value="{{alertsDetail}}" hint-placeholder-val="{{ false }}">
+        <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:6px;border-bottom:1px solid rgba(255,255,255,.08);flex:none">
+          <span onClick="{{closeAlertDetail}}" style="font-size:12.5px;color:#94a3b8;cursor:pointer" style-hover="color:#cbd5e1">Alerts</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{alertDetail.t}}</span>
+        </div>
+        <div style="overflow-y:auto;min-height:0;padding:16px 16px 18px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{alertDetail.ink}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="{{alertDetail.p1}}"></path><path d="{{alertDetail.p2}}"></path><path d="{{alertDetail.p3}}"></path></svg>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:14.5px;font-weight:600;color:#f8fafc">{{alertDetail.t}}</span>
+              <span style="font-size:11px;color:#64748b">{{alertDetail.time}}</span>
+            </div>
+          </div>
+          <sc-if value="{{alertDetail.isPlain}}" hint-placeholder-val="{{ false }}">
+            <sc-if value="{{alertDetail.hasBody}}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;color:#cbd5e1;line-height:1.55">{{alertDetail.body}}</span></sc-if>
+            <span style="font-size:10px;color:#64748b;border:1px solid rgba(148,163,184,.25);border-radius:999px;padding:3px 10px;align-self:flex-start">{{alertDetail.cat}}</span>
+            <sc-if value="{{alertDetail.linked}}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{alertDetail.go}}" style="display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid rgba(0,120,212,.4);background:rgba(0,120,212,.10);border-radius:8px;padding:9px 0;cursor:pointer;font-size:12.5px;font-weight:600;color:#60a5fa" style-hover="background:rgba(0,120,212,.16)">View finding<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+            </sc-if>
+          </sc-if>
+          <sc-if value="{{alertDetail.isScan}}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:13px;color:#cbd5e1;line-height:1.55">{{alertDetail.body}}</span>
+            <div style="display:flex;gap:8px">
+              <sc-for list="{{alertDetail.scanStatRows}}" as="st" hint-placeholder-count="3">
+                <div style="flex:1;border:1px solid rgba(255,255,255,.08);border-radius:9px;background:rgba(255,255,255,.02);padding:10px 8px;display:flex;flex-direction:column;gap:3px;align-items:center">
+                  <span style="font-size:16px;font-weight:700;color:#f8fafc">{{st.value}}</span>
+                  <span style="font-size:10px;color:#64748b;text-align:center">{{st.label}}</span>
+                </div>
+              </sc-for>
+            </div>
+            <span style="font-size:11px;color:#64748b">{{alertDetail.scanRunId}} · {{alertDetail.scanDuration}}</span>
+            <div onClick="{{alertDetail.go}}" style="display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid rgba(0,120,212,.4);background:rgba(0,120,212,.10);border-radius:8px;padding:9px 0;cursor:pointer;font-size:12.5px;font-weight:600;color:#60a5fa" style-hover="background:rgba(0,120,212,.16)">View scan results<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+          </sc-if>
+          <sc-if value="{{alertDetail.isTask}}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.02);padding:12px;display:flex;flex-direction:column;gap:6px">
+              <span style="font-size:13px;font-weight:600;color:#f8fafc">{{alertDetail.taskTitle}}</span>
+              <span style="font-size:12px;color:#94a3b8;line-height:1.5">{{alertDetail.taskDesc}}</span>
+            </div>
+            <sc-if value="{{alertDetail.taskDone}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12.5px;font-weight:600;color:#34d399;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>{{alertDetail.taskDoneLabel}}</span>
+            </sc-if>
+            <sc-if value="{{alertDetail.taskPending}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;gap:8px">
+                <div onClick="{{alertDetail.approve}}" style="flex:1;text-align:center;border:1px solid rgba(52,211,153,.4);background:rgba(52,211,153,.10);border-radius:8px;padding:9px 0;cursor:pointer;font-size:12.5px;font-weight:600;color:#34d399" style-hover="background:rgba(52,211,153,.16)">Approve</div>
+                <div onClick="{{alertDetail.needsInfo}}" style="flex:1;text-align:center;border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:9px 0;cursor:pointer;font-size:12.5px;font-weight:600;color:#cbd5e1" style-hover="background:rgba(255,255,255,.04)">Needs more info</div>
+              </div>
+            </sc-if>
+          </sc-if>
+          <sc-if value="{{alertDetail.isInvoice}}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.02);padding:12px;display:flex;flex-direction:column;gap:4px">
+              <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:15px;font-weight:700;color:#f8fafc">{{alertDetail.invAmount}}</span><span style="margin-left:auto;font-size:10px;font-weight:600;color:#fbbf24;border:1px solid rgba(251,191,36,.4);border-radius:999px;padding:2px 8px">{{alertDetail.invStatus}}</span></div>
+              <span style="font-size:11.5px;color:#94a3b8">{{alertDetail.invNumber}} · {{alertDetail.invDue}}</span>
+            </div>
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#475569">PAYMENT HISTORY</span>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <sc-for list="{{alertDetail.invHistoryRows}}" as="h" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+                  <span style="color:#cbd5e1;flex:1;min-width:0">{{h.num}}</span>
+                  <span style="color:#64748b">{{h.date}}</span>
+                  <span style="color:#94a3b8;font-variant-numeric:tabular-nums">{{h.amt}}</span>
+                  <span style="font-size:10px;font-weight:600;color:#34d399">{{h.status}}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div onClick="{{alertDetail.go}}" style="display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid rgba(0,120,212,.4);background:rgba(0,120,212,.10);border-radius:8px;padding:9px 0;cursor:pointer;font-size:12.5px;font-weight:600;color:#60a5fa" style-hover="background:rgba(0,120,212,.16)">Open Billing<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+          </sc-if>
+          <sc-if value="{{alertDetail.isChange}}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:13px;font-weight:600;color:#f8fafc">{{alertDetail.changeWhat}}</span>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="flex:1;border:1px solid rgba(255,255,255,.08);border-radius:9px;background:rgba(255,255,255,.02);padding:9px 10px;display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;color:#475569">BEFORE</span>
+                <span style="font-size:12.5px;color:#94a3b8">{{alertDetail.changeBefore}}</span>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+              <div style="flex:1;border:1px solid rgba(251,191,36,.3);border-radius:9px;background:rgba(251,191,36,.06);padding:9px 10px;display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;color:#c2a63d">NOW</span>
+                <span style="font-size:12.5px;color:#f8fafc">{{alertDetail.changeAfter}}</span>
+              </div>
+            </div>
+            <sc-if value="{{alertDetail.hasCr}}" hint-placeholder-val="{{ false }}"><span style="font-size:11.5px;font-weight:600;color:#34d399;border:1px solid rgba(52,211,153,.35);background:rgba(52,211,153,.08);border-radius:999px;padding:4px 10px;align-self:flex-start">Linked to {{alertDetail.changeCr}}</span></sc-if>
+            <sc-if value="{{alertDetail.hasCrNot}}" hint-placeholder-val="{{ true }}"><span style="font-size:11.5px;font-weight:600;color:#f87171;border:1px solid rgba(248,113,113,.35);background:rgba(248,113,113,.08);border-radius:999px;padding:4px 10px;align-self:flex-start">No change request on file</span></sc-if>
+            <div onClick="{{alertDetail.go}}" style="display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid rgba(0,120,212,.4);background:rgba(0,120,212,.10);border-radius:8px;padding:9px 0;cursor:pointer;font-size:12.5px;font-weight:600;color:#60a5fa" style-hover="background:rgba(0,120,212,.16)">View in Change Control<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+          </sc-if>
+        </div>
+      </sc-if>
       <div style="display:flex;align-items:center;padding:10px 14px;border-top:1px solid rgba(255,255,255,.08);flex:none">
         <sc-if value="{{alertsFull}}" hint-placeholder-val="{{ false }}"><span onClick="{{pickAll}}" style="font-size:12px;color:#94a3b8;cursor:pointer" style-hover="color:#cbd5e1">Open activity feed</span></sc-if>
         <span onClick="{{openSettings}}" style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;cursor:pointer" style-hover="color:#cbd5e1">
@@ -638,7 +804,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
           <span onClick="{{openSops}}" style="font-size:12px;font-weight:600;color:#60a5fa;cursor:pointer">View SOP library</span>
         </div>
       </sc-if>
-      <sc-if value="{{sopFull}}" hint-placeholder-val="{{ false }}">
+      <sc-if value="{{sopList}}" hint-placeholder-val="{{ false }}">
         <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08)">
           <span style="width:7px;height:7px;border-radius:999px;background:#00B4D8"></span>
           <span style="font-size:13.5px;font-weight:600;color:#f8fafc">SOP activity</span>
@@ -646,7 +812,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
         </div>
         <div style="display:flex;flex-direction:column;gap:10px;padding:12px 12px 4px">
           <sc-for list="{{sopsShown}}" as="s" hint-placeholder-count="2">
-            <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.02);padding:11px 12px 12px">
+            <div onClick="{{s.click}}" style="border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.02);padding:11px 12px 12px;cursor:pointer" style-hover="border-color:rgba(255,255,255,.16)">
               <div style="display:flex;align-items:center;gap:8px">
                 <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{s.title}}</span>
                 <span style="margin-left:auto;font-size:10px;font-weight:600;color:{{s.chipInk}};border:1px solid {{s.chipBorder}};background:{{s.chipBg}};border-radius:999px;padding:2px 9px;flex:none">{{s.chip}}</span>
@@ -671,22 +837,40 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
           <span onClick="{{openRunbooks}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#60a5fa;cursor:pointer">Open Runbooks</span>
         </div>
       </sc-if>
+      <sc-if value="{{sopDetail}}" hint-placeholder-val="{{ false }}">
+        <div style="padding:13px 14px 11px;display:flex;align-items:center;gap:6px;border-bottom:1px solid rgba(255,255,255,.08)">
+          <span onClick="{{closeSopDetail}}" style="font-size:12.5px;color:#94a3b8;cursor:pointer" style-hover="color:#cbd5e1">SOP activity</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{sopDetail.title}}</span>
+        </div>
+        <div style="padding:16px 16px 18px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:14.5px;font-weight:600;color:#f8fafc">{{sopDetail.title}}</span>
+            <span style="margin-left:auto;font-size:10px;font-weight:600;color:{{sopDetail.chipInk}};border:1px solid {{sopDetail.chipBorder}};background:{{sopDetail.chipBg}};border-radius:999px;padding:2px 9px;flex:none">{{sopDetail.chip}}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">{{sopDetail.mode}}</span>
+            <span style="font-size:10px;color:#64748b;border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:2px 8px">{{sopDetail.cr}}</span>
+          </div>
+          <div style="font-size:12.5px;color:#94a3b8">{{sopDetail.step}}</div>
+          <div style="height:3px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden"><div style="height:100%;width:{{sopDetail.pctW}};border-radius:999px;background:linear-gradient(90deg,#0078D4,#00B4D8)"></div></div>
+          <div style="display:flex;align-items:center;gap:5px">
+            <span style="font-size:10.5px;color:#64748b">{{sopDetail.meta}} · run by</span>
+            <span style="font-size:10.5px;color:#64748b;border-bottom:1px dashed rgba(148,163,184,.35)">operator</span>
+            <span style="font-size:10.5px;color:#64748b">· owner</span>
+            <span style="font-size:10.5px;color:#64748b;border-bottom:1px dashed rgba(148,163,184,.35)">owner</span>
+          </div>
+          <div onClick="{{sopDetail.go}}" style="display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid rgba(0,120,212,.4);background:rgba(0,120,212,.10);border-radius:8px;padding:9px 0;cursor:pointer;font-size:12.5px;font-weight:600;color:#60a5fa" style-hover="background:rgba(0,120,212,.16)">View full SOP<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+        </div>
+      </sc-if>
     </div>
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{
-  &quot;severity&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;none&quot;, &quot;healthy&quot;, &quot;attention&quot;, &quot;critical&quot;], &quot;default&quot;: &quot;none&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Tenant state&quot;},
-  &quot;scanRunning&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Tenant state&quot;},
-  &quot;scanPhase&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;none&quot;, &quot;running&quot;, &quot;late-join&quot;, &quot;complete&quot;, &quot;partial&quot;, &quot;failed&quot;, &quot;disconnected&quot;, &quot;cache-cleared&quot;], &quot;default&quot;: &quot;none&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Scan progress&quot;},
-  &quot;scanIndex&quot;: {&quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 12, &quot;min&quot;: 1, &quot;max&quot;: 22, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Scan progress&quot;},
-  &quot;sopRuns&quot;: {&quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 0, &quot;min&quot;: 0, &quot;max&quot;: 3, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Activity&quot;},
-  &quot;impersonated&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Session&quot;},
-  &quot;mfaPending&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Session&quot;}
-}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;severity&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;healthy&quot;,&quot;attention&quot;,&quot;critical&quot;],&quot;default&quot;:&quot;critical&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Tenant state&quot;},&quot;scanRunning&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Tenant state&quot;},&quot;scanPhase&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;running&quot;,&quot;late-join&quot;,&quot;complete&quot;,&quot;partial&quot;,&quot;failed&quot;,&quot;disconnected&quot;,&quot;cache-cleared&quot;],&quot;default&quot;:&quot;complete&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Scan progress&quot;},&quot;scanIndex&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:12,&quot;min&quot;:1,&quot;max&quot;:22,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Scan progress&quot;},&quot;sopRuns&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:3,&quot;min&quot;:0,&quot;max&quot;:3,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Activity&quot;},&quot;impersonated&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Session&quot;},&quot;mfaPending&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Session&quot;}}">
 class Component extends DCLogic {
-  state = { open: null, bot: false, demoScan: false, demoResult: null,
-    page: null, pillarKey: "governance", tab: "personal", readIds: {},
+  state = { open: null, bot: false, demoScan: false, demoResult: null, tsOpen: false, navExpanded: {}, botResetTick: 0,
+    page: null, pillarKey: "governance", tab: "personal", readIds: {}, alertId: null, sopId: null, taskAction: {},
     en: { findings: 1, drift: 1, progress: 1, reviews: 1, remediation: 1, billing: 1, support: 1 },
     em: { findings: 1, drift: 1, progress: 1, reviews: 1, remediation: 0, billing: 1, support: 1 },
     mode: { findings: "immediate", drift: "immediate", progress: "daily", reviews: "daily", remediation: "daily", billing: "immediate", support: "immediate" },
@@ -730,9 +914,12 @@ class Component extends DCLogic {
     });
     const M = [
       ["Overview", "M3 3h7v9H3z", "M14 3h7v5h-7z", "M14 12h7v9h-7zM3 16h7v5H3z", true, "home"],
+      ["My Architect", "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2", "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "", false, "architect"],
+      ["Projects", "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z", "M9 3v18M15 3v18", "", false, "projects"],
       ["Microsoft Changes", "m3 11 18-5v12L3 14v-3z", "M11.6 16.8a3 3 0 1 1-5.8-1.6", "", true, "changes"],
       ["Change Control", "M9 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", "M21 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", "M13 6h3a2 2 0 0 1 2 2v7M6 9v12", false, "cc"],
       ["Risk Register", "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z", "M12 9v4M12 17h.01", "", false, "risk"],
+      ["POA&Ms", "m3 17 2 2 4-4", "m3 7 2 2 4-4", "M13 6h8M13 12h8M13 18h8", false, "poams"],
       ["Remediation", "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z", "", "", false, "remediation"],
       ["SOPs", "M8 2h8v4H8z", "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2", "M12 11h4M12 16h4M8 11h.01M8 16h.01", false, "sops"],
       ["Runbooks", "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z", "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z", "", false, "runbooks"],
@@ -743,18 +930,44 @@ class Component extends DCLogic {
       ["Diagnostics", "M22 12h-4l-3 9L9 3l-3 9H2", "", "", false, "diag"],
       ["Documents", "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z", "M14 2v6h6", "M16 13H8M16 17H8M10 9H8", false, "docs"],
       ["Offers", "M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z", "M7 7h.01", "", false, "offers"],
-      ["My Architect", "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2", "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "", false, "architect"],
+      ["Status reports", "M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2", "M18 14h-8", "M15 18h-5M10 6h8v4h-8V6Z", false, "statusreports"],
       ["Service & scope", "M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83", "", "", false, "scope"],
       ["Requests", "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z", "", "", false, "requests"],
     ];
     const home = this.state.page == null;
-    const modules = M.map(([label, p1, p2, p3, active, key]) => ({
+    const rowFor = ([label, p1, p2, p3, active, key]) => ({
       label, p1, p2, p3: p3 || "",
       rowBg: key ? (this.state.page === key || (key === "home" && home) ? "rgba(255,255,255,.06)" : "transparent") : (active && home ? "rgba(255,255,255,.06)" : "transparent"),
       ink: key ? (this.state.page === key || (key === "home" && home) ? "#f8fafc" : "#94a3b8") : (active && home ? "#f8fafc" : "#94a3b8"),
       weight: key ? (this.state.page === key || (key === "home" && home) ? 600 : 400) : (active && home ? 600 : 400),
       click: key ? () => this.setState({ page: key === "home" ? null : key, open: null, drawer: false }) : () => {},
-    }));
+    });
+    const byKey = {};
+    M.forEach((row) => { byKey[row[5]] = row; });
+    const topKeys = ["home", "architect", "projects"];
+    const modules = topKeys.map((k) => rowFor(byKey[k]));
+    const GROUPS = [
+      { name: "Monitoring", keys: ["changes", "diag", "statusreports"], color: "#00B4D8", p1: "M22 12h-4l-3 9L9 3l-3 9H2" },
+      { name: "Governance", keys: ["cc", "risk", "poams", "policy", "config", "secplan"], color: "#818cf8", p1: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" },
+      { name: "Operations", keys: ["remediation", "sops", "runbooks", "raci"], color: "#fbbf24", p1: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" },
+    ];
+    const navGroups = GROUPS.map((g) => {
+      const activeInGroup = g.keys.includes(this.state.page);
+      const stored = this.state.navExpanded[g.name];
+      const expanded = stored !== undefined ? stored : activeInGroup;
+      return {
+        name: g.name,
+        expanded,
+        color: g.color,
+        p1: g.p1,
+        p2: g.p2 || "",
+        tileBg: `${g.color}1a`,
+        tileBorder: `${g.color}33`,
+        chevron: expanded ? "rotate(90deg)" : "none",
+        toggle: () => this.setState((s) => ({ navExpanded: { ...s.navExpanded, [g.name]: !expanded } })),
+        items: g.keys.map((k) => rowFor(byKey[k])),
+      };
+    });
     const score = { healthy: "72", attention: "54", critical: "38", none: "—" }[sev];
     const sevColor = { healthy: "#34d399", attention: "#fbbf24", critical: "#f87171", none: "#64748b" }[sev];
     const sevLabel = { healthy: "Healthy", attention: "Attention required", critical: "Critical", none: "Not scanned yet" }[sev];
@@ -774,23 +987,43 @@ class Component extends DCLogic {
     const NOTIFS = [
       { id: "ov", t: "Oversharing detected", body: null, sev: "critical", cat: "findings", time: "09:41", unread: 1, linked: 1, day: "TODAY" },
       { id: "og", t: "Ownerless group/team", body: "104 groups and teams have no owner after run 445", sev: "warning", cat: "findings", time: "09:40", unread: 1, linked: 1, day: "TODAY" },
-      { id: "sc", t: "Scan complete", body: "Run 445 finished — results are on your pillar pages", sev: "info", cat: "remediation", time: "09:38", unread: 1, linked: 1, day: "TODAY" },
-      { id: "tk", t: "Task awaiting customer", body: "A remediation step is waiting on your approval", sev: "warning", cat: "remediation", time: "08:12", unread: 1, linked: 1, day: "TODAY" },
-      { id: "in", t: "Invoice issued", body: "Your latest statement is available under Billing", sev: "info", cat: "billing", time: "Yesterday 16:04", unread: 0, linked: 1, day: "EARLIER" },
-      { id: "ca", t: "Conditional Access policy change", body: "A policy changed outside an approved change window", sev: "warning", cat: "drift", time: "Yesterday 11:26", unread: 0, linked: 1, day: "EARLIER" },
+      { id: "sc", t: "Scan complete", body: "Run 445 finished — results are on your pillar pages", sev: "info", cat: "remediation", time: "09:38", unread: 1, linked: 1, day: "TODAY", kind: "scan",
+        scanRunId: "Run 445", scanDuration: "4m 12s", scanStats: [["Checks run", 22], ["Findings", 6], ["Passed", 16]] },
+      { id: "tk", t: "Task awaiting customer", body: "A remediation step is waiting on your approval", sev: "warning", cat: "remediation", time: "08:12", unread: 1, linked: 1, day: "TODAY", kind: "task",
+        taskTitle: "Approve conditional access baseline change", taskDesc: "Your MSP wants to require MFA for all users, replacing the admins-only policy currently in place. This is a remediation step from run 445." },
+      { id: "in", t: "Invoice issued", body: "Your latest statement is available under Billing", sev: "info", cat: "billing", time: "Yesterday 16:04", unread: 0, linked: 1, day: "EARLIER", kind: "invoice",
+        invNumber: "INV-1042", invAmount: "$1,240.00", invDue: "Due Oct 3, 2026", invStatus: "Open",
+        invHistory: [["INV-1031", "$1,240.00", "Aug 3, 2026", "Paid"], ["INV-1019", "$1,180.00", "Jul 3, 2026", "Paid"], ["INV-1004", "$1,180.00", "Jun 3, 2026", "Paid"]] },
+      { id: "ca", t: "Conditional Access policy change", body: "A policy changed outside an approved change window", sev: "warning", cat: "drift", time: "Yesterday 11:26", unread: 0, linked: 1, day: "EARLIER", kind: "change",
+        changeWhat: "Conditional Access requires MFA", changeBefore: "Required for admins only", changeAfter: "Required for all users", changeCr: null },
       { id: "fx", t: "Fix verified", body: "A completed fix was re-checked and held", sev: "info", cat: "progress", time: "Aug 27 · 15:50", unread: 0, linked: 1, day: "EARLIER" },
       { id: "mc", t: "Message center update", body: null, sev: "info", cat: "message_center", time: "Aug 27 · 09:12", unread: 0, linked: 0, act: 1, day: "EARLIER" },
       { id: "ps", t: "Pillar score moved", body: "Governance moved after run 445", sev: "info", cat: "progress", time: "Aug 26 · 18:02", unread: 0, linked: 1, act: 1, day: "EARLIER" },
     ];
+    const CATNAV = { findings: "pillar", drift: "changes", remediation: "remediation", billing: "account", progress: "pillar" };
     const rows = NOTIFS.filter((n) => S.tab === "all" || !n.act).map((n) => {
       const unread = !!n.unread && !S.readIds[n.id], sv = SEVI[n.sev];
       return { ...n, ...sv, unread,
         titleInk: unread ? "#f8fafc" : "#94a3b8", titleWeight: unread ? 600 : 500,
         bandColor: unread && n.sev === "critical" ? "#f87171" : "transparent",
         bg: unread && n.sev === "critical" ? "rgba(248,113,113,.05)" : "transparent",
-        hasBody: !!n.body, linked: !!n.linked,
-        click: () => this.setState((s) => ({ readIds: { ...s.readIds, [n.id]: 1 } })) };
+        hasBody: !!n.body, linked: !!n.linked, kind: n.kind || "plain",
+        isScan: n.kind === "scan", isTask: n.kind === "task", isInvoice: n.kind === "invoice", isChange: n.kind === "change",
+        isPlain: !n.kind,
+        scanStatRows: n.kind === "scan" ? n.scanStats.map(([label, value]) => ({ label, value })) : [],
+        invHistoryRows: n.kind === "invoice" ? n.invHistory.map(([num, amt, date, status]) => ({ num, amt, date, status })) : [],
+        hasCr: n.kind === "change" ? !!n.changeCr : false,
+        hasCrNot: n.kind === "change" ? !n.changeCr : false,
+        taskDone: S.taskAction[n.id] || null,
+        taskPending: !S.taskAction[n.id],
+        taskDoneLabel: S.taskAction[n.id] === "approved" ? "Approved" : "Marked as needing more info",
+        approve: () => this.setState((s) => ({ taskAction: { ...s.taskAction, [n.id]: "approved" }, readIds: { ...s.readIds, [n.id]: 1 } })),
+        needsInfo: () => this.setState((s) => ({ taskAction: { ...s.taskAction, [n.id]: "info" }, readIds: { ...s.readIds, [n.id]: 1 } })),
+        go: () => this.setState({ page: CATNAV[n.cat] || "changes", open: null, alertId: null,
+          ...(n.cat === "billing" ? { atab: "billing" } : {}) }),
+        click: () => this.setState((s) => ({ readIds: { ...s.readIds, [n.id]: 1 }, alertId: n.id })) };
     });
+    const alertDetail = rows.find((r) => r.id === S.alertId) || null;
     const groups = ["TODAY", "EARLIER"].map((label) => ({ label, rows: rows.filter((r) => r.day === label) })).filter((g) => g.rows.length);
     const unreadCount = rows.filter((r) => r.unread).length;
     const anyUnread = unreadCount > 0;
@@ -1068,8 +1301,14 @@ class Component extends DCLogic {
       panelHasFooter: !!(PANEL && (PANEL.cta || PANEL.foot)),
       openPanel: (spec) => this.setState({ panel: spec, open: null }),
       closePanel: () => this.setState({ panel: null }),
-      pillars, modules, groups, cats,
-      sopsShown: allSops.slice(0, Math.max(sop, 0)),
+      pillars, modules, navGroups, groups, cats,
+      sopsShown: allSops.slice(0, Math.max(sop, 0)).map((s, i) => ({ ...s, id: i,
+        click: () => this.setState({ sopId: i }),
+        go: () => this.setState({ page: s.chip === "Running" ? "runbooks" : "sops", open: null, sopId: null }) })),
+      sopDetail: (allSops.slice(0, Math.max(sop, 0)).map((s, i) => ({ ...s, id: i,
+        go: () => this.setState({ page: s.chip === "Running" ? "runbooks" : "sops", open: null, sopId: null }) })).find((s) => s.id === S.sopId)) || null,
+      sopList: sop > 0 && S.sopId === null,
+      closeSopDetail: () => this.setState({ sopId: null }),
       oNone: sev === "none" ? 1 : 0,
       oHealthy: sev === "healthy" ? 1 : 0,
       oAttention: sev === "attention" ? 1 : 0,
@@ -1083,7 +1322,11 @@ class Component extends DCLogic {
       scoreInk: sev === "none" ? "#475569" : "#f8fafc",
       sevColor, sevLabel,
       showScore: sev !== "none",
-      showCta: !scan && phase !== "running" && phase !== "late-join" && phase !== "disconnected",
+      tsOpen: S.tsOpen,
+      tsChevron: S.tsOpen ? "rotate(90deg)" : "none",
+      toggleTs: () => this.setState((s) => ({ tsOpen: !s.tsOpen })),
+      lastScanText: sev === "none" ? "Never scanned" : phase === "running" || phase === "late-join" ? "Scanning now" : "Last scan: Today, 09:38",
+      nextScanText: scan ? "Scan in progress" : "Next scan: tonight, 2:00 AM · scans run on a fixed schedule",
       scanLine: SC.line,
       scanBarShow: SC.barShow,
       scanDeterminate: SC.determinate,
@@ -1092,7 +1335,6 @@ class Component extends DCLogic {
       scanCountLine: SC.countLine,
       scanOpenHint: "Open log",
       scanChip: { running: "Live", "late-join": "Live · late", complete: "Complete", partial: "Partial", failed: "Failed", disconnected: "No stream", "cache-cleared": "Summary", none: "No run" }[phase],
-      ctaLabel: sev === "none" ? "Run first scan" : "Run a new scan",
       scanHasFinding: SC.hasFinding,
       scanFindingText: SC.findingText,
       scanFindingInk: SC.findingInk,
@@ -1115,6 +1357,10 @@ class Component extends DCLogic {
       sopBtnBg: open === "sop" ? "rgba(255,255,255,.06)" : "transparent",
       alertsEmpty: sev === "none",
       alertsFull: sev !== "none",
+      alertsList: sev !== "none" && !S.alertId,
+      alertsDetail: sev !== "none" && !!S.alertId,
+      alertDetail,
+      closeAlertDetail: () => this.setState({ alertId: null }),
       alertsBadge: sev !== "none" && anyUnread,
       unreadCount, anyUnread: sev !== "none" && anyUnread,
       allRead: sev !== "none" && !anyUnread,
@@ -1127,6 +1373,7 @@ class Component extends DCLogic {
       pickAll: () => this.setState({ tab: "all" }),
       markAll: () => { const all = {}; NOTIFS.forEach((n) => (all[n.id] = 1)); this.setState({ readIds: all }); },
       openSettings: () => this.setState({ page: "settings", open: null }),
+      settingsRowBg: S.page === "settings" ? "rgba(255,255,255,.05)" : "transparent",
       pageHome: home,
       pageSettings: S.page === "settings",
       pagePillar: S.page === "pillar",
@@ -1136,6 +1383,24 @@ class Component extends DCLogic {
       accountDataState: "live",
       overviewDataState: sev === "none" ? "never_scanned" : "live_paid",
       openAccount: () => this.setState({ page: "account", open: null }),
+      openOffersNav: () => this.setState({ page: "offers", open: null }),
+      showOffersPill: true,
+      openOffersCount: 2,
+      navFromBot: (key) => {
+        const parts = String(key).split(":");
+        const page = parts[0] === "home" ? null : parts[0];
+        const patch = { page, open: null };
+        if (parts[0] === "account" && parts[1]) patch.atab = parts[1];
+        if (parts[0] === "pillar" && parts[1]) patch.pillarKey = parts[1];
+        this.setState(patch);
+      },
+      clearBot: () => this.setState({ botResetTick: S.botResetTick + 1 }),
+      openSupport: () => this.setState({ page: "requests", open: null }),
+      supportRowBg: S.page === "requests" ? "rgba(255,255,255,.05)" : "transparent",
+      openMyService: () => this.setState({ page: "scope", open: null }),
+      myServiceRowBg: S.page === "scope" ? "rgba(255,255,255,.05)" : "transparent",
+      openDocs: () => this.setState({ page: "docs", open: null }),
+      docsRowBg: S.page === "docs" ? "rgba(255,255,255,.05)" : "transparent",
       pageCc: S.page === "cc",
       ccDataState: "live",
       pageRaci: S.page === "raci",
@@ -1152,7 +1417,7 @@ class Component extends DCLogic {
       openRunbooks: () => this.setState({ page: "runbooks", open: null }),
       settingsGroups: [
         { label: "ALERTS", items: [{ key: "alerts", label: "Alert preferences", i1: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9", i2: "M10.3 21a1.94 1.94 0 0 0 3.4 0" }, { key: "notifs", label: "Notifications", i1: "M4 4h16v12H5.17L4 17.17z", i2: "M8 9h8M8 12h5" }] },
-        { label: "YOUR TENANT", items: [{ key: "emailauth", label: "Email authentication", i1: "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z", i2: "m22 6-10 7L2 6" }] },
+        { label: "YOUR TENANT", items: [{ key: "emailauth", label: "Email authentication", i1: "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z", i2: "m22 6-10 7L2 6" }, { key: "webhooks", label: "Webhooks", i1: "M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2", i2: "m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06" }, { key: "departments", label: "Departments", i1: "M3 21h18", i2: "M6 21V8l6-4 6 4v13M9 21v-6h6v6" }] },
         { label: "YOUR ACCOUNT", items: [{ key: "data", label: "Privacy and your data", i1: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", i2: "M7 10l5 5 5-5M12 15V3" }] },
       ].map((g) => ({ label: g.label, items: g.items.map((it) => ({ ...it,
         bg: S.stab === it.key ? "rgba(255,255,255,.06)" : "transparent",
@@ -1161,9 +1426,28 @@ class Component extends DCLogic {
       settingsAlerts: S.stab === "alerts",
       settingsNotifs: S.stab === "notifs",
       goAlertPrefs: () => this.setState({ stab: "alerts" }),
+      settingsDepartments: S.stab === "departments",
+      unmappedLine: "3 users have no department set on their directory profile.",
+      deptRows: [
+        { name: "Engineering", n: 14, src: "attribute", srcLabel: "ATTRIBUTE", sub: "From the directory attribute", srcInk: "#94a3b8", srcBorder: "rgba(255,255,255,.14)", srcBg: "transparent" },
+        { name: "Finance", n: 6, src: "group", srcLabel: "GROUP", sub: "Mapped to \u201cFinance-SG\u201d", srcInk: "#00B4D8", srcBorder: "rgba(0,180,216,.35)", srcBg: "rgba(0,180,216,.08)" },
+        { name: "Sales EMEA", n: 0, src: "group", srcLabel: "GROUP", sub: "Mapped to \u201cSales-EMEA-SG\u201d \u2014 no one currently carries this attribute", srcInk: "#00B4D8", srcBorder: "rgba(0,180,216,.35)", srcBg: "rgba(0,180,216,.08)" },
+        { name: "Operations", n: 9, src: "attribute", srcLabel: "ATTRIBUTE", sub: "From the directory attribute", srcInk: "#94a3b8", srcBorder: "rgba(255,255,255,.14)", srcBg: "transparent" },
+      ].map((d) => ({ ...d, edit: () => this.setState({ panel: {
+        title: d.name, state: d.src === "group" ? "Mapped to a security group" : "Reading from the directory attribute",
+        rows: [
+          { k: "Source", v: d.src === "group" ? "Security group" : "Directory attribute" },
+          { k: "Group", v: d.src === "group" ? d.sub.replace("Mapped to ", "").replace(" \u2014 no one currently carries this attribute", "") : "Not set" },
+          { k: "If unmapped later", v: "Falls back to the directory attribute" },
+        ],
+        cta: d.src === "group" ? "Remove mapping" : "Map to a security group instead",
+        foot: "The headcount shown always comes from the directory attribute \u2014 mapping only changes which source this page says is authoritative.",
+      }, open: null }) })),
       settingsData: S.stab === "data",
       settingsEmailAuth: S.stab === "emailauth",
-      settingsPageLabel: S.stab === "data" ? "Privacy and your data" : S.stab === "emailauth" ? "Email authentication" : S.stab === "notifs" ? "Notifications" : "Alert preferences",
+      settingsWebhooks: S.stab === "webhooks",
+      webhooksDataState: "live",
+      settingsPageLabel: S.stab === "data" ? "Privacy and your data" : S.stab === "emailauth" ? "Email authentication" : S.stab === "webhooks" ? "Webhooks" : S.stab === "notifs" ? "Notifications" : S.stab === "departments" ? "Departments" : "Alert preferences",
       exportData: () => this.setState({ panel: { title: "Export my data", state: "Nothing is exported yet", rows: [
         { k: "What you get", v: "Everything this portal holds about you and your tenant's records here — findings, decisions, change requests and their history." },
         { k: "How it arrives", v: "Your MSP prepares the export and tells you where to collect it. It is not generated automatically from this screen." },
@@ -1180,29 +1464,37 @@ class Component extends DCLogic {
       secPlanDataState: "signed",
       pageRisk: S.page === "risk",
       riskDataState: "live",
-      pageBilling: S.page === "billing",
       billingDataState: "live",
-      billingRowBg: S.page === "billing" ? "rgba(255,255,255,.05)" : "transparent",
-      openBilling: () => this.setState({ page: "billing", open: null }),
+      openBilling: () => this.setState({ page: "account", atab: "billing", open: null }),
       pageDiag: S.page === "diag",
       pageDocs: S.page === "docs",
       pageOffers: S.page === "offers",
       pageArchitect: S.page === "architect",
       pageScope: S.page === "scope",
       pageRequests: S.page === "requests",
+      pagePoams: S.page === "poams",
+      pageStatusReports: S.page === "statusreports",
+      pageProjects: S.page === "projects",
       pageTeam: S.page === "team",
       teamRowBg: S.page === "team" ? "rgba(255,255,255,.05)" : "transparent",
       openTeam: () => this.setState({ page: "team", open: null }),
       pageBreakGlass: S.page === "breakglass",
       breakGlassRowBg: S.page === "breakglass" ? "rgba(255,255,255,.05)" : "transparent",
       openBreakGlass: () => this.setState({ page: "breakglass", open: null }),
-      pageLeaving: S.page === "leaving",
-      leavingRowBg: S.page === "leaving" ? "rgba(255,255,255,.05)" : "transparent",
-      openLeaving: () => this.setState({ page: "leaving", open: null }),
-      pageWebhooks: S.page === "webhooks",
-      webhooksDataState: "live",
-      webhooksRowBg: S.page === "webhooks" ? "rgba(255,255,255,.05)" : "transparent",
-      openWebhooks: () => this.setState({ page: "webhooks", open: null }),
+      openLeaving: () => this.setState({ page: "account", atab: "leaving", open: null }),
+      openWebhooks: () => this.setState({ page: "settings", stab: "webhooks", open: null }),
+      atabItems: [
+        { key: "security", label: "Account security", i1: "M5 11h14v10H5z", i2: "M8 11V7a4 4 0 0 1 8 0v4" },
+        { key: "billing", label: "Billing", i1: "M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z", i2: "M2 10h20" },
+        { key: "leaving", label: "Leaving", i1: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", i2: "m16 17 5-5-5-5M21 12H9" },
+      ].map((it) => ({ ...it,
+        bg: S.atab === it.key ? "rgba(255,255,255,.06)" : "transparent",
+        ink: S.atab === it.key ? "#f8fafc" : "#94a3b8",
+        click: () => this.setState({ atab: it.key }) })),
+      atabSecurity: S.atab === "security" || !S.atab,
+      atabBilling: S.atab === "billing",
+      atabLeaving: S.atab === "leaving",
+      atabLabel: S.atab === "billing" ? "Billing" : S.atab === "leaving" ? "Leaving" : "Account security",
       sopCountNum: sop,
       selPillar: S.pillarKey,
       pillarLabel: S.pillarKey.charAt(0).toUpperCase() + S.pillarKey.slice(1),

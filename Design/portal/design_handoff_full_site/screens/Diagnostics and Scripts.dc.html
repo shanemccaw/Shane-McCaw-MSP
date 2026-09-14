@@ -38,7 +38,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
         <span style="width:8px;height:8px;border-radius:999px;background:#60a5fa;animation:pulseDot 1.4s ease-in-out infinite;flex:none"></span>
         <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:200px">
           <span style="font-size:12.5px;font-weight:600;color:#f8fafc">A scan is running now — started 14:07, 61 of 143 checks done</span>
-          <span style="font-size:11px;color:#94a3b8;line-height:1.5">Results below are still from the previous scan. This page only takes a scan on once it has finished or finished in part; the running one is visible here because the assessment status read reports it separately.</span>
+          <span style="font-size:11px;color:#94a3b8;line-height:1.5">Results below are still from the previous scan until this one finishes or finishes in part.</span>
         </div>
       </div>
     </sc-if>
@@ -130,33 +130,15 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
           </div>
           <span style="font-size:12px;color:#94a3b8;line-height:1.6">Some checks can only be completed by a PowerShell script run inside your tenant. When a scan marks a check that way, its script downloads from here, scoped to the checks your own scan surfaced.</span>
           <span style="font-size:12px;color:#cbd5e1;line-height:1.6">No check in your scan needs one, and no check on the platform is flagged that way today. This section is empty because nothing exists to fill it — not because the download is broken, though it also cannot yet succeed: no script has been attached to any check anywhere.</span>
-          <span style="font-size:10.5px;color:#475569;line-height:1.5;border-top:1px solid rgba(255,255,255,.06);padding-top:10px">Attaching a script to a check is missing on the provider side (#2506). Until it lands, this list stays honest and empty.</span>
+  
         </div>
       </div>
     </sc-if>
 
-    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
-      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
-        <div style="display:flex;align-items:baseline;gap:10px">
-          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
-          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
-        </div>
-        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
-          <div style="display:flex;flex-direction:column">
-            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
-              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
-                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
-                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
-              </div>
-            </sc-for>
-          </div>
-        </sc-if>
-      </div>
-    </sc-if>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;scanning&quot;,&quot;never-scanned&quot;,&quot;no-customer-context&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;scanning&quot;,&quot;never-scanned&quot;,&quot;no-customer-context&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;}}">
 class Component extends DCLogic {
   state = { filter: "all", ledger: true };
 
@@ -206,21 +188,6 @@ class Component extends DCLogic {
       filters: [filt("all", "All"), filt("critical", "Critical"), filt("warning", "Warning"), filt("info", "Info"), filt("ok", "OK")],
       findings,
       pillars: [pillar("Identity & access", 71), pillar("Data protection", 58), pillar("Threat protection", 64), pillar("Device & endpoint", 82), pillar("Governance & audit", 77)],
-      ledgerShow: P.showLedger !== false,
-      ledgerOpen: S.ledger,
-      ledgerToggle: S.ledger ? "Collapse" : "Expand",
-      toggleLedger: () => this.setState({ ledger: !S.ledger }),
-      ledger: [
-        { gap: "No \"run a scan\" button. Scans are triggered by the provider against your monitoring package; the customer read is read-only.", where: "§0 · §1f" },
-        { gap: "A running scan is shown as a strip, not as results. The latest-scan read only takes on a run once it is complete or partial; the in-progress one comes from the assessment status read, which selects differently.", where: "§1a · §1e · §4" },
-        { gap: "No script list. No list endpoint ever existed; downloads are per check, and no check is flagged for a script anywhere today.", where: "§0 · §1c" },
-        { gap: "The empty scripts section names the real cause: nothing can attach a script to a check yet (#2506). It is a wiring gap, not \"no data yet\".", where: "§6" },
-        { gap: "No industry average or Microsoft excellence benchmark on the pillar bars. The reference table is empty, so those fields are null for every tenant.", where: "§1d" },
-        { gap: "No raw Microsoft data or remediation notes behind a finding. The customer read is a deliberately narrower summary than the operator's.", where: "§1a · §1b" },
-        { gap: "No scan history. There is no customer list of runs — only the latest, and a single run by id; the page draws the latest.", where: "§1a · §1b" },
-        { gap: "Licence-blocked checks are counted apart from errors, as the run itself does, so a tenant without a licence is never shown as broken.", where: "§2" },
-        { gap: "Nothing scores the tenant as a single number here. Pillar scores are drawn; the composite lives with the CIO report, not this page.", where: "§2" },
-      ],
     };
   }
 }

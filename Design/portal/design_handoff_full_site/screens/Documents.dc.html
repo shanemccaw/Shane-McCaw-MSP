@@ -136,30 +136,11 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
         <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:22px 26px;display:flex;flex-direction:column;gap:8px;max-width:600px">
           <span style="font-size:17px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{goneTitle}}</span>
           <span style="font-size:12.5px;color:#94a3b8;line-height:1.6">{{goneBody}}</span>
-          <span style="font-size:11px;color:#64748b;font-family:ui-monospace,Menlo,monospace;padding-top:4px">{{goneCode}}</span>
         </div>
       </sc-if>
     </sc-if>
 
-    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
-      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
-        <div style="display:flex;align-items:baseline;gap:10px">
-          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
-          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
-        </div>
-        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
-          <div style="display:flex;flex-direction:column">
-            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
-              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
-                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
-                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
-              </div>
-            </sc-for>
-          </div>
-        </sc-if>
-      </div>
-    </sc-if>
-  </div>
+    </div>
 
   <sc-if value="{{modalShow}}" hint-placeholder-val="{{ false }}">
     <div style="position:absolute;inset:0;z-index:60;background:rgba(2,6,23,.72);display:flex;align-items:center;justify-content:center;padding:24px">
@@ -178,9 +159,9 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;empty&quot;,&quot;share-viewer&quot;,&quot;share-expired&quot;,&quot;share-missing&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;empty&quot;,&quot;share-viewer&quot;,&quot;share-expired&quot;,&quot;share-missing&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;}}">
 class Component extends DCLogic {
-  state = { modal: null, ledger: true };
+  state = { modal: null };
 
   renderVals() {
     const S = this.state, P = this.props;
@@ -199,9 +180,9 @@ class Component extends DCLogic {
       const canPdf = (st === "delivered" || st === "approved") && !live;
       return {
         title, status: T.label, stInk: T.ink, stBg: T.bg, stBd: T.bd, meta,
-        note: live, noteText: "Renders live — its PDF export currently fails (#2507) and there is no stored copy to view. Your provider can present it to you directly.",
+        note: live, noteText: "Renders live and has no stored copy — ask your provider to present it to you directly.",
         canView, noView: !canView, noViewWhy: live ? "This report renders live and has no stored HTML to view here" : "Only a delivered document can be viewed",
-        canPdf, noPdf: !canPdf, noPdfWhy: live ? "Could not render this report to PDF right now — the live-render route it depends on no longer exists" : "Under review — a PDF is available once approved",
+        canPdf, noPdf: !canPdf, noPdfWhy: live ? "A PDF isn't available for this report right now" : "Under review — a PDF is available once approved",
         canShare: st === "delivered" || st === "approved" || sow,
         view: open("view"), pdf: open("pdf"), share: open("share"),
       };
@@ -222,12 +203,12 @@ class Component extends DCLogic {
     ];
     const M = S.modal;
     const spec = !M ? null : {
-      view: { title: "Opening the document", body: "The stored HTML is served to you with any \"staged for review\" banner removed. Only a delivered document, or a statement of work under review, can be opened this way.", note: "This prototype stops at the request; the route behind it is live." },
-      pdf: { title: "Downloading the PDF", body: "The stored document is converted to a PDF named after its title. An approved document can be downloaded before it is formally delivered.", note: "This prototype stops at the request; the route behind it is live." },
+      view: { title: "Opening the document", body: "The stored document opens with any \"staged for review\" banner removed. Only a delivered document, or a statement of work under review, can be opened this way." },
+      pdf: { title: "Downloading the PDF", body: "The stored document is converted to a PDF named after its title. An approved document can be downloaded before it is formally delivered." },
       share: { title: "Share link created", body: "Anyone with this link can read the document without signing in, for 30 days. Sharing the same document again replaces this link only — a colleague's link to a different document keeps working.", note: "Views and reading time on the link are counted and visible to your provider.", link: true },
-      dl: { title: "Downloading the report file", body: "The file is served exactly as your provider uploaded it.", note: "This prototype stops at the request; the route behind it is live." },
+      dl: { title: "Downloading the report file", body: "The file is served exactly as your provider uploaded it." },
     }[M];
-    const gone = { "share-expired": ["This share link has expired", "Links last 30 days from when they were created. Ask whoever sent it to share the document again — a fresh link is one click for them.", "410"], "share-missing": ["This link does not lead anywhere", "Either it was copied incompletely or the document it pointed to is gone. Nothing is shown in either case.", "404"] }[scene] || ["", "", ""];
+    const gone = { "share-expired": ["This share link has expired", "Links last 30 days from when they were created. Ask whoever sent it to share the document again — a fresh link is one click for them."], "share-missing": ["This link does not lead anywhere", "Either it was copied incompletely or the document it pointed to is gone. Nothing is shown in either case."] }[scene] || ["", ""];
 
     return {
       rootH: P.embedded ? "100%" : "100vh",
@@ -239,24 +220,15 @@ class Component extends DCLogic {
       gen, genMeta: "newest first · delivered, plus statements of work under review",
       reports, repMeta: "uploaded by your provider · newest first",
       viewerOk: scene === "share-viewer", viewerGone: scene === "share-expired" || scene === "share-missing",
-      goneTitle: gone[0], goneBody: gone[1], goneCode: gone[2],
+      goneTitle: gone[0], goneBody: gone[1],
       modalShow: !!M,
       modalTitle: spec ? spec.title : "", modalBody: spec ? spec.body : "", modalNote: spec ? spec.note : "", modalLink: !!(spec && spec.link),
       modalClose: () => this.setState({ modal: null }),
-      ledgerShow: P.showLedger !== false,
-      ledgerOpen: S.ledger,
-      ledgerToggle: S.ledger ? "Collapse" : "Expand",
-      toggleLedger: () => this.setState({ ledger: !S.ledger }),
-      ledger: [
-        { gap: "Two lists, not one. Generated documents and uploaded report files come from different places with different fields, and merging them would invent a shape neither has.", where: "§1 · §2" },
-        { gap: "Three different gates, drawn as three. View needs delivered (or a scoped SOW); PDF needs approved or delivered; Share needs either, plus the SOW carve-out. Each button is enabled by its own rule.", where: "§2a–2c" },
-        { gap: "Live-rendered reports are named as currently unexportable. Their PDF path navigates to a route that no longer exists and fails with a 502 (#2507); the page says so instead of offering a button that fails.", where: "§4" },
-        { gap: "No draft, archived, generating or failed documents. They are excluded server-side and the page does not hint at them.", where: "§2" },
-        { gap: "Re-sharing replaces only this document's link. The page says that rather than warning about links it does not affect.", where: "§2c" },
-        { gap: "The public viewer shows the expiry and says it is counted. Views and dwell time are recorded for the sender; a reader should know that.", where: "§2d · §2e" },
-        { gap: "No pagination, no search. Both lists come back whole, newest first, and are drawn that way.", where: "§1 · §2" },
-        { gap: "A document can be here and missing from the Overview timeline for a multi-login organisation — the timeline scopes differently (#2499). Not this page's to fix.", where: "§6" },
-      ],
+
+
+
+
+
     };
   }
 }

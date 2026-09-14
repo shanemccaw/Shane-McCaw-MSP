@@ -25,11 +25,11 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
 </style>
 </helmet>
 <div data-screen-label="Risk register" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
-  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:24px 30px 56px;padding-right:max(30px, calc(100% - 990px));display:flex;flex-direction:column;gap:16px">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 990px));display:flex;flex-direction:column;gap:16px">
 
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Risk register</span>
-      <span title="Risks your MSP has recorded against your tenant, and the ones you have signed to accept. Signing transfers the named exposure to you." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span title="Risks your MSP has recorded against your tenant, and the ones you have signed to accept." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
       <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
     </div>
 
@@ -48,8 +48,8 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:14px 16px">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
         <div style="display:flex;flex-direction:column;gap:4px">
-          <span style="font-size:13px;font-weight:600;color:#f8fafc">Your register could not be read</span>
-          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">This is a failed read, not an empty register. Risks may well stand against your tenant right now, and a signature you have already given is unaffected.</span>
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">Your register could not be loaded</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">This isn't the same as an empty register — there may still be risks on your tenant. Any signatures you've already given are unaffected.</span>
           <span onClick="{{retry}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Try again</span>
         </div>
       </div>
@@ -58,8 +58,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     <sc-if value="{{isEmpty}}" hint-placeholder-val="{{ false }}">
       <div style="border:1px dashed rgba(148,163,184,.25);border-radius:14px;padding:32px 26px;display:flex;flex-direction:column;gap:8px;align-items:center;text-align:center">
         <span style="font-size:13.5px;font-weight:600;color:#f8fafc">No risks recorded</span>
-        <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:560px">Your MSP has raised nothing against your tenant, and you have signed nothing. Your MSP records risks here; there is no self-service way to add one.</span>
-        <span style="font-size:11.5px;color:#c2a63d;line-height:1.55;max-width:560px">One caveat we would rather state than hide: this is also the answer given when your tenant cannot be identified. An empty register and an unreadable tenant look identical from here.</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:560px">Your MSP has raised nothing against your tenant, and you have signed nothing. Your MSP records risks here — there's no self-service way to add one.</span>
       </div>
     </sc-if>
 
@@ -110,7 +109,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
         <div style="flex:1;min-width:min(240px,100%);display:flex;flex-direction:column;gap:7px;justify-content:center">
           <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{plotLine}}</span>
           <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:420px">{{unplottedLine}}</span>
-          <span style="font-size:10.5px;color:#475569;line-height:1.5;max-width:420px">Coordinates are recorded per risk by your MSP. A risk without both is left off the map rather than placed at a guessed position.</span>
+          <span style="font-size:10.5px;color:#475569;line-height:1.5;max-width:420px">Likelihood and impact are set by your MSP. A risk without both isn't shown on the map.</span>
         </div>
       </div>
 
@@ -253,7 +252,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                   <sc-if value="{{r.noDoc}}" hint-placeholder-val="{{ false }}">
                     <div style="padding:15px 14px;display:flex;flex-direction:column;gap:5px">
                       <span style="font-size:12px;font-weight:600;color:#e2e8f0">No document prepared yet</span>
-                      <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:600px">The full risk decision document is prepared by your MSP, never generated on request from here — so it always carries a real author. Until they prepare it, there is nothing to read or sign as a whole.</span>
+                      <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:600px">The full risk decision document is prepared by your MSP. Until they prepare it, there is nothing to read or sign as a whole.</span>
                     </div>
                   </sc-if>
                   <sc-if value="{{r.hasDoc}}" hint-placeholder-val="{{ false }}">
@@ -268,7 +267,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                       </sc-for>
                       <sc-if value="{{r.needsDocSign}}" hint-placeholder-val="{{ false }}">
                         <div style="padding:12px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                          <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:520px">The current version widened what it covers, so it needs a fresh signature. A version that only narrowed its scope carries the previous signature forward instead of asking again.</span>
+                          <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:520px">This version widened what it covers, so it needs a fresh signature.</span>
                           <span onClick="{{r.signDoc}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:8px 14px;cursor:pointer;flex:none" style-hover="background:#005A9E">Read and sign the document</span>
                         </div>
                       </sc-if>
@@ -286,7 +285,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
           <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Decisions recorded against these risks</span>
           <span style="font-size:11px;color:#64748b">{{decCountLine}}</span>
         </div>
-        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">These are decisions that only exist because a risk was raised here — the record of what was chosen about a finding. Standing policies you author on their own live on the Policy decisions page and come from a different register; the two are never merged.</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">The record of what was decided about each risk. Standing policies you author on their own live on the Policy decisions page.</span>
         <div style="display:flex;flex-direction:column;padding-top:2px">
           <sc-for list="{{decisions}}" as="d" hint-placeholder-count="3">
             <div onClick="{{d.click}}" style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid rgba(255,255,255,.05);cursor:pointer" style-hover="opacity:.85">
@@ -301,25 +300,6 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       </div>
     </sc-if>
 
-    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
-      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
-        <div style="display:flex;align-items:baseline;gap:10px">
-          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
-          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
-        </div>
-        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
-          <div style="display:flex;flex-direction:column">
-            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
-              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
-                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
-                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none">{{l.where}}</span>
-              </div>
-            </sc-for>
-          </div>
-          <span style="font-size:10.5px;color:#475569;line-height:1.55;padding-top:4px">The last two are open questions rather than settled positions, and are shown here so nobody has to discover them from a blank field.</span>
-        </sc-if>
-      </div>
-    </sc-if>
   </div>
 
   <sc-if value="{{modalShow}}" hint-placeholder-val="{{ false }}">
@@ -337,7 +317,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:980},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;live-empty&quot;,&quot;loading&quot;,&quot;fetch-failed&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;signerIsAccountable&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;openPanel&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(spec: any) =&gt; void&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:980},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;live-empty&quot;,&quot;loading&quot;,&quot;fetch-failed&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;signerIsAccountable&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data&quot;},&quot;openPanel&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(spec: any) =&gt; void&quot;}}">
 class Component extends DCLogic {
   state = { open: null, names: {}, stmts: {}, confirmed: {}, signedNow: {}, modal: null, ledger: true, failed: null };
 
@@ -465,16 +445,16 @@ class Component extends DCLogic {
       const facts = [
         { k: "SEVERITY", v: r.inherent + " inherent · " + r.residual + " residual", ink: "#cbd5e1", hasNote: true, note: "Residual is what stands after the controls below." },
         { k: "POSITION", v: r.likelihood == null ? "Not recorded" : "Likelihood " + r.likelihood + " · impact " + r.impact, ink: r.likelihood == null ? "#c2a63d" : "#cbd5e1", hasNote: r.likelihood == null, note: "Left off the heat map rather than placed at a guess." },
-        { k: "OWNER", v: r.owner, ink: r.owner === "Not recorded" ? "#c2a63d" : "#cbd5e1", hasNote: true, note: "Display text on the risk. Who may sign is decided by the workload below, not by this name." },
+        { k: "OWNER", v: r.owner, ink: r.owner === "Not recorded" ? "#c2a63d" : "#cbd5e1", hasNote: false, note: "" },
         { k: "AUTHORITY TO SIGN", v: r.workload ? (r.holders.length ? r.holders.join(", ") : "Nobody holds it") : "Not workload-owned", ink: r.workload && !r.holders.length ? "#c2a63d" : "#cbd5e1", hasNote: true,
-          note: r.workload ? "Accountable for " + r.workload + ". Any holder may sign; the order means nothing." : "This check spans workloads, so no single owner resolves and anyone signed in here may sign." },
+          note: r.workload ? "Accountable for " + r.workload + ". Any holder may sign." : "This risk isn't tied to one workload, so anyone signed in here may sign." },
         { k: "OBLIGATION", v: r.obligation, ink: r.obligation === "Not recorded" ? "#c2a63d" : "#cbd5e1", hasNote: !!r.obligationType, note: r.obligationType ? "Matched to your " + r.obligationType + " catalogue." : "" },
         { k: "REGISTER REF", v: r.register, ink: r.register === "Not recorded" ? "#c2a63d" : "#cbd5e1", hasNote: false, note: "" },
         { k: "PROVENANCE", v: r.spawn ? "Raised by " + r.spawn : "Recorded by your MSP", ink: "#cbd5e1", hasNote: !!(r.spawn || r.discharge),
           note: r.discharge ? "Discharged by " + r.discharge + "." : r.spawn ? "Declining that change request is what created this risk." : "" },
         { k: "REVIEW", v: r.reviewCopy || "No review clock set", ink: r.review === "overdue" ? "#f87171" : r.reviewCopy ? "#cbd5e1" : "#c2a63d", hasNote: r.review === "overdue", note: "An overdue review does not lapse a signature — it stays valid." },
       ];
-      if (r.instances) facts.push({ k: "AFFECTED OBJECTS", v: r.instances + " accounts", ink: "#cbd5e1", hasNote: true, note: "Counted by your MSP. The individual objects are not served to this page." });
+      if (r.instances) facts.push({ k: "AFFECTED OBJECTS", v: r.instances + " accounts", ink: "#cbd5e1", hasNote: false, note: "" });
 
       return {
         title: r.title, subLine: r.id + " · " + r.pillar + " · " + r.framework + " " + r.control,
@@ -500,8 +480,8 @@ class Component extends DCLogic {
           { k: "BACKED BY", v: acc.authorizedBy },
         ] : [],
         signedFoot: accSt === "revoked"
-          ? "Revoking ends the acceptance; it does not remove it. The risk above is open again, and this signature cannot be reused or re-signed."
-          : "Recorded once and never rewritten, including the time, the signing address and who held authority at that moment. There is no expiry date and no renewal — a later change request is what discharges it.",
+          ? "Revoking ends the acceptance; it doesn't remove the record. The risk above is open again, and this signature can't be reused."
+          : "Recorded permanently, including the time and who held authority at that moment. There's no expiry date — only a change request can discharge it.",
 
         canSign: signable && !acc,
         nameVal: name, stmtVal: stmt,
@@ -513,7 +493,7 @@ class Component extends DCLogic {
         signBg: canSubmit ? "#0078D4" : "rgba(255,255,255,.06)", signInk: canSubmit ? "#fff" : "#475569", signCur: canSubmit ? "pointer" : "default",
         authorityFoot: r.workload
           ? "You are signing as an Accountable holder for " + r.workload + ". Your MSP cannot sign this for you."
-          : "This check has no single workload owner, so any signed-in person here may sign it. Your MSP cannot sign it for you.",
+          : "This risk isn't tied to one workload owner, so any signed-in person here may sign it. Your MSP cannot sign it for you.",
         sign: () => canSubmit && this.setState({ modal: { kind: "sign", id: r.id, name: name.trim(), stmt: stmt.trim(), workload: r.workload, holders: r.holders } }),
 
         blocked: noHolder || notMine,
@@ -522,7 +502,7 @@ class Component extends DCLogic {
         blockInk: noHolder ? "#c2a63d" : "#f87171",
         blockHead: noHolder ? "Nobody can sign this yet" : "You are not the person who can sign this",
         blockBody: noHolder
-          ? "Nobody currently holds Accountable for " + r.workload + ", and acceptance follows that role rather than a per-risk assignment. Assign a holder and this becomes signable — by them, or by you if it is you."
+          ? "Nobody currently holds Accountable for " + r.workload + ". Assign a holder and this becomes signable by them."
           : "Accountable for " + r.workload + " is held by " + r.holders.join(" and ") + ". Any of them can sign this line; you cannot sign on their behalf, and neither can your MSP.",
         hasBlockLink: true,
         blockLinkLabel: noHolder ? "Open Ownership / RACI to assign a holder" : "See the current holders on Ownership / RACI",
@@ -564,10 +544,10 @@ class Component extends DCLogic {
 
     const M = S.modal;
     const mSpec = !M ? null : M.kind === "sign"
-      ? { title: "Sign this acceptance as " + M.name + "?", body: "The line is recorded as accepted the moment you confirm, along with your statement word for word, the time, your address and who held authority for the workload right now.", note: "It cannot be signed a second time and it does not expire. If your position changes later, your MSP revokes it and raises the risk again — the original signature stays on the record either way.", cta: "Confirm and sign", cancel: "Go back" }
+      ? { title: "Sign this acceptance as " + M.name + "?", body: "This records the risk as accepted, along with your statement, the time, and who held authority for the workload.", note: "It cannot be signed a second time and it does not expire. If your position changes later, your MSP can revoke it and raise the risk again.", cta: "Confirm and sign", cancel: "Go back" }
       : M.kind === "doc"
-      ? { title: "Signing the whole document", body: "This signs the current version of the risk decision document as one act, separately from the per-line acceptances above. It needs your drawn signature, so it opens the document view rather than completing here.", note: "This prototype does not carry the document view yet. The endpoint behind it is live, and refuses a version that has been superseded or already signed.", cta: "Understood", cancel: "Close" }
-      : { title: "Authority comes from Ownership / RACI", body: "Who may accept a risk follows whoever holds Accountable for " + (M.workload || "the workload") + " right now, not a per-risk assignment. Changing the holder there changes who can sign here immediately.", note: "Already-signed acceptances are unaffected — each one keeps the holders who backed it at the time.", cta: "Open Ownership / RACI", cancel: "Stay here" };
+      ? { title: "Signing the whole document", body: "This signs the current version of the risk decision document as one act, separately from the per-line acceptances above.", note: "A version that has been superseded or already signed can't be signed again.", cta: "Understood", cancel: "Close" }
+      : { title: "Authority comes from Ownership / RACI", body: "Who may accept a risk follows whoever holds Accountable for " + (M.workload || "the workload") + " right now. Changing the holder there changes who can sign here immediately.", note: "Already-signed acceptances are unaffected.", cta: "Open Ownership / RACI", cancel: "Stay here" };
 
     return {
       rootH: P.embedded ? "100%" : "100vh",
@@ -581,9 +561,9 @@ class Component extends DCLogic {
       riskCount: RISKS.length, statusChips,
       liabilityLine: money(acceptedTotal) + " of named exposure sits with you under a signature · " + money(openTotal) + " is still open",
       clocks: [
-        { tag: "RISK", note: "The risk's own state. It can be mitigating with nothing signed, or open again after a revoked signature.", ink: "#38bdf8", bg: "rgba(56,189,248,.10)", bd: "rgba(56,189,248,.26)" },
-        { tag: "ACCEPTANCE", note: "Your signature. Awaiting yours, signed, or revoked — and never expired, because a signature does not lapse.", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.26)" },
-        { tag: "REVIEW", note: "The review clock. Falling overdue raises a flag; it never invalidates a signature or closes a risk.", ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.26)" },
+        { tag: "RISK", note: "The risk's own state — open, mitigating, accepted, or closed.", ink: "#38bdf8", bg: "rgba(56,189,248,.10)", bd: "rgba(56,189,248,.26)" },
+        { tag: "ACCEPTANCE", note: "Your signature. Awaiting yours, signed, or revoked — and it never expires on its own.", ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.26)" },
+        { tag: "REVIEW", note: "The review clock. Falling overdue raises a flag; it doesn't close the risk or invalidate a signature.", ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.26)" },
       ],
       risks,
       cells,
@@ -606,24 +586,6 @@ class Component extends DCLogic {
         } else this.setState({ modal: null });
       },
 
-      ledgerShow: P.showLedger !== false,
-      ledgerOpen: S.ledger,
-      ledgerToggle: S.ledger ? "Collapse" : "Expand",
-      toggleLedger: () => this.setState({ ledger: !S.ledger }),
-      ledger: [
-        { gap: "No second signature, on a line or on a document. Acceptance is written once and cannot be replaced, re-signed or amended.", where: "§9.3" },
-        { gap: "No renewal on your behalf. Your MSP has no path to re-accept or extend anything you signed, by design.", where: "§9.6" },
-        { gap: "No name check. The name you type is recorded as typed and is never matched against your account.", where: "§9.5" },
-        { gap: "No document produced on request. Your MSP prepares it so it always has a real author; before that a version has no readable document.", where: "§9.9" },
-        { gap: "No authority check on cross-cutting risks. Cost, governance and licence checks resolve to no workload owner, so anyone signed in here may sign them.", where: "§9.8" },
-        { gap: "No line items. A risk covering 22 accounts is one line here; the individual objects are tracked by your MSP and not served to this page.", where: "§6.2" },
-        { gap: "No structured owner on a risk. The owner shown is display text; the person who may sign is resolved through the workload instead.", where: "§4" },
-        { gap: "No fabricated values. Anything unrecorded reads \"Not recorded\" rather than a zero, a dash or a guessed default.", where: "§8" },
-        { gap: "No difference between an empty register and a tenant we cannot identify — both answer with an empty list.", where: "§8" },
-        { gap: "No provenance for a risk raised by a declined remediation step. The pointer exists in the database but is not served, so such a risk looks authored from scratch.", where: "§7.3" },
-        { gap: "Two separate registers use the name \"policy decisions\". This page shows only the risk-derived ones and links to the other rather than merging them.", where: "§0.1" },
-        { gap: "Whether a risk's own Expired state should still exist is unsettled, so no risk is shown as expired here.", where: "§2" },
-      ],
     };
   }
 }

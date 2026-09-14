@@ -78,7 +78,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
 
       <div style="display:flex;flex-direction:column;gap:10px">
         <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Multifactor methods</span>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px">
           <sc-for list="{{methods}}" as="m" hint-placeholder-count="3">
             <div style="border:1px solid {{m.border}};border-radius:14px;background:{{m.bg}};padding:14px 16px 15px;display:flex;flex-direction:column;gap:9px">
               <div style="display:flex;align-items:center;gap:8px">
@@ -210,7 +210,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     </sc-if>
   </div>
   <sc-if value="{{panelOpen}}" hint-placeholder-val="{{ false }}">
-    <div style="width:368px;flex:none;border-left:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.02);display:flex;flex-direction:column;min-height:0">
+    <div style="width:min(368px,100%);flex:none;border-left:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.02);display:flex;flex-direction:column;min-height:0">
       <div style="flex:none;display:flex;align-items:center;gap:10px;padding:16px 18px 14px;border-bottom:1px solid rgba(255,255,255,.08)">
         <div style="display:flex;flex-direction:column;gap:2px">
           <span style="font-size:14px;font-weight:600;color:#f8fafc">{{panelTitle}}</span>

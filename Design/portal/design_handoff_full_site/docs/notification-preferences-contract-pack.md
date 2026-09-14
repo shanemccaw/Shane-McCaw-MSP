@@ -10,7 +10,7 @@ forbidden list; no `drizzle-kit push`.
 
 **Scope, per #2552's own default:** this pack covers the Notification Preferences
 surface only — `GET`/`PATCH /api/portal/notification-preferences`. Webhooks
-(`portal/webhooks`) already has its own contract pack, `docs/webhooks-contract-pack.md`
+(`portal/webhooks`) already has its own contract pack, `docs/portal/webhooks-contract-pack.md`
 (#1597), and is referenced here, not re-extracted. This matches the archived page's
 own structure (`customer-notifications.tsx` composed two independent cards,
 `CategoryPreferencesCard` and `WebhookCard`, over two unrelated endpoints) and is a
@@ -31,7 +31,7 @@ one surface; flagged, not blocking.
 **No named `interface Wire*` exists in `notification-preferences.ts`.** Both
 responses are inline object literals built at the call site (`{ preferences }` at
 line 55, `{ ok: true }` at line 97) — Section 2 extracts them directly from the
-route body, the same convention `webhooks-contract-pack.md` uses for `webhooks.ts`.
+route body, the same convention `docs/portal/webhooks-contract-pack.md` uses for `webhooks.ts`.
 
 ## 2. Wire contract, per endpoint
 
@@ -208,7 +208,7 @@ page was itself only ever reachable by a `CustomerUser` login.
 
 ## 8. Cross-surface edges
 
-- **Webhooks (#1597, `docs/webhooks-contract-pack.md`) — real, verified edge.** See
+- **Webhooks (#1597, `docs/portal/webhooks-contract-pack.md`) — real, verified edge.** See
   §5: a customer webhook subscribed to `notification.<category>` never fires for a
   category the same customer has `inAppEnabled: false` for, because
   `fanOutToCustomerWebhook` is only reached after that check passes. Neither pack
@@ -252,7 +252,7 @@ zero rows and an error banner, not a defaulted 15-row list).
 
 `notification-preferences.ts` carries no `"What this route deliberately does NOT
 serve"` header block (same absence noted for `webhooks.ts` in
-`docs/webhooks-contract-pack.md` §7). Stated plainly from what's actually in scope:
+`docs/portal/webhooks-contract-pack.md` §7). Stated plainly from what's actually in scope:
 
 - No `label`/`description`/`icon`/`color` per category — only the bare `category`
   key, `inAppEnabled`, `emailEnabled`. Any human-readable copy or iconography is a

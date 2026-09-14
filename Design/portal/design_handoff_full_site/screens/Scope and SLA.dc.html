@@ -100,30 +100,12 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       </div>
     </sc-if>
 
-    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
-      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
-        <div style="display:flex;align-items:baseline;gap:10px">
-          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
-          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
-        </div>
-        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
-          <div style="display:flex;flex-direction:column">
-            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="7">
-              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
-                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
-                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
-              </div>
-            </sc-for>
-          </div>
-        </sc-if>
-      </div>
-    </sc-if>
-  </div>
+    </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;on-track&quot;,&quot;attention&quot;,&quot;action-required&quot;,&quot;read-failed&quot;],&quot;default&quot;:&quot;on-track&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;on-track&quot;,&quot;attention&quot;,&quot;action-required&quot;,&quot;read-failed&quot;],&quot;default&quot;:&quot;on-track&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;}}">
 class Component extends DCLogic {
-  state = { ledger: true, retried: null };
+  state = { retried: null };
 
   renderVals() {
     const S = this.state, P = this.props;
@@ -168,20 +150,11 @@ class Component extends DCLogic {
         openRequests: String(slaData.open), activeWarnings: String(slaData.warnings), activeIssues: String(slaData.issues), warnInk: slaData.warnings ? "#fbbf24" : "#f8fafc", issueInk: slaData.issues ? "#f87171" : "#f8fafc" },
       scope: { overallLabel: SC.label, ink: SC.ink, bd: SC.bd, bg: SC.bg, pillBg: SC.pillBg, headline: scopeData.headline, subtext: scopeData.subtext, openItems: String(scopeData.counts.reduce((a, b) => a + b, 0)) },
       areas,
-      ledgerShow: P.showLedger !== false,
-      ledgerOpen: S.ledger,
-      ledgerToggle: S.ledger ? "Collapse" : "Expand",
-      toggleLedger: () => this.setState({ ledger: !S.ledger }),
-      ledger: [
-        { gap: "The SLA card carries a visible caveat instead of a confident \"all clear\". The engine resolves the wrong id space and evaluates nothing (#2513); the page says so rather than presenting a bug-masked reading as fact.", where: "§5 · §6" },
-        { gap: "No per-request breakdown, ticket references, policy names or internal scores. The routes translate to headline, subtext and counts; the page draws only what is served.", where: "§1 · §2" },
-        { gap: "Always three scope areas. The route returns exactly three, so the page never adds a fourth or hides an empty one.", where: "§2" },
-        { gap: "\"Needs action\" can appear on an area whose own change is small, because any open violation escalates every exceeded area. The page explains that beside the list.", where: "§2" },
-        { gap: "\"Computed at\" is when this page opened. Neither reading is stored; there is no last-run time to show.", where: "§3" },
-        { gap: "No numeric compliance figure for scope. Only the SLA reading serves one, and only as the server's label.", where: "§2" },
-        { gap: "The Overview's SLA and scope scores come from a stored snapshot and can disagree with these live readings; the page names that rather than reconciling it.", where: "§7" },
-        { gap: "A failed read shows the server's own message and no substitute figures.", where: "§6" },
-      ],
+
+
+
+
+
     };
   }
 }

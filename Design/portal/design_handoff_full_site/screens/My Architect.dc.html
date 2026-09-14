@@ -60,7 +60,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
         <span style="font-size:13.5px;font-weight:600;color:#f8fafc">{{unconfTitle}}</span>
         <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:660px">{{unconfBody}}</span>
-        <span style="font-size:11px;color:#475569;line-height:1.55;max-width:660px">The month figures below are the platform default of 8 hours with nothing used — a real default, not your allotment. Status reports your architect has sent still show, since they do not depend on a retainer.</span>
+        <span style="font-size:11px;color:#475569;line-height:1.55;max-width:660px">The month figures below show a default of 8 hours with nothing used yet — not your actual allotment. Status reports your architect has sent still show, since they do not depend on a retainer.</span>
       </div>
     </sc-if>
 
@@ -116,7 +116,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
             <span style="font-size:13px;font-weight:600;color:{{e.hInk}};flex:none;font-variant-numeric:tabular-nums;white-space:nowrap">{{e.hours}}</span>
           </div>
         </sc-for>
-        <span style="display:block;font-size:10.5px;color:#475569;line-height:1.55;border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:2px">Entries marked "from change control" or "from remediation" were logged automatically when that record closed; their hours are set by your architect afterwards, so a fresh one can honestly read 0h. Nothing on this page adds or edits an entry.</span>
+        <span style="display:block;font-size:10.5px;color:#475569;line-height:1.55;border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:2px">Entries from change control or remediation are logged automatically when that work closes; their hours are set by your architect afterwards, so a fresh one can honestly read 0h. Nothing on this page adds or edits an entry.</span>
       </div>
     </sc-if>
 
@@ -163,30 +163,12 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       </div>
     </sc-if>
 
-    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
-      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
-        <div style="display:flex;align-items:baseline;gap:10px">
-          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
-          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
-        </div>
-        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
-          <div style="display:flex;flex-direction:column">
-            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
-              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
-                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
-                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
-              </div>
-            </sc-for>
-          </div>
-        </sc-if>
-      </div>
-    </sc-if>
-  </div>
+    </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;configured&quot;,&quot;over-month&quot;,&quot;not-configured&quot;,&quot;inactive&quot;,&quot;no-customer-scope&quot;,&quot;read-failed&quot;],&quot;default&quot;:&quot;configured&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;configured&quot;,&quot;over-month&quot;,&quot;not-configured&quot;,&quot;inactive&quot;,&quot;no-customer-scope&quot;,&quot;read-failed&quot;],&quot;default&quot;:&quot;configured&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;}}">
 class Component extends DCLogic {
-  state = { month: 0, ledger: true, retried: null };
+  state = { month: 0, retried: null };
 
   renderVals() {
     const S = this.state, P = this.props;
@@ -263,7 +245,7 @@ class Component extends DCLogic {
       retry: () => this.setState({ retried: "configured" }),
       architectName: "Priya Raman · M365 Architect",
       unconfTitle: scene === "inactive" ? "Your retainer is paused" : "You do not have an architect retainer",
-      unconfBody: scene === "inactive" ? "A retainer exists on your account but is not active, so it is shown as not configured — the same answer the platform gives. Your work log from active months stays on record; this page will pick it up again when the retainer is switched back on by your provider." : "This is a real read of your account: no retainer has been set up. Retained architect hours are arranged with your provider; nothing on this page can start one.",
+      unconfBody: scene === "inactive" ? "A retainer exists on your account but is currently paused. Your work log from active months stays on record; this page will pick it up again once the retainer is switched back on by your provider." : "This is a real read of your account: no retainer has been set up. Retained architect hours are arranged with your provider; nothing on this page can start one.",
       bucketBd: isOver ? "rgba(251,191,36,.3)" : "rgba(255,255,255,.09)",
       periodLabel: M.label,
       isOver, overHours: overH,
@@ -277,29 +259,17 @@ class Component extends DCLogic {
       ],
       usedW: Math.min(100, cap ? (used / cap) * 100 : 0) + "%",
       usedBar: isOver ? "#fbbf24" : "#0078D4",
-      bucketNote: isOver ? "\"Over\" is keyed off the over figure itself, not off remaining hitting zero — a month that lands exactly on its allotment also reads 0h remaining, and is not over." : "Figures are computed once, server-side, from the log. The page does not re-add them.",
+      bucketNote: isOver ? "\"Over\" reflects hours logged past the allotment — a month landing exactly on its allotment reads 0h remaining, and is not over." : "Figures are computed once from the log. The page does not re-add them.",
       logMeta: M.entries.length + " entries · " + M.label + " · newest first",
       logEmpty: M.entries.length === 0,
       entries: M.entries,
       reports, reportsMeta: reports.length ? reports.length + " sent · drafts not shown" : "none sent",
       noReports: reports.length === 0,
-      ledgerShow: P.showLedger !== false,
-      ledgerOpen: S.ledger,
-      ledgerToggle: S.ledger ? "Collapse" : "Expand",
-      toggleLedger: () => this.setState({ ledger: !S.ledger }),
-      ledger: [
-        { gap: "No money. An hourly rate is served on this read and is dropped on the floor: no rate, no dollar total, no derived cost, anywhere on the page. Billing is Billing's.", where: "§6.1" },
-        { gap: "No writing. Hours are not logged, entries are not edited, the allotment is not changed here — every write is the provider's.", where: "§6.2" },
-        { gap: "No reply box under a status report. The thread is served read-only; a customer reply endpoint does not exist yet, so the page says who to ask instead of drawing a field that posts nowhere.", where: "§6.3 · §7.1" },
-        { gap: "\"Configured\" is the server's flag, not \"settings exist\". A paused retainer is drawn as not configured because that is what the read says.", where: "§1.1 · §5" },
-        { gap: "\"Over\" keys off the over figure, never off remaining reaching zero.", where: "§1.2" },
-        { gap: "The month figures are the server's. Nothing re-derives used or remaining from the entries client-side.", where: "§6.4" },
-        { gap: "The architect's name is a live field. It is never typed into the page.", where: "§1.1" },
-        { gap: "Derived entries are shown as what they are. A remediation-derived item carries a generic label and 0h until the architect sets its hours; the page does not dress that up.", where: "§2" },
-        { gap: "No documents section. Nothing on this read references a document, and the page does not pretend one rides along.", where: "§4.4" },
-        { gap: "\"How the retainer works\" is fixed prose, not a served field. Decided: static copy, no backend table.", where: "§6.6" },
-        { gap: "Pillar colours come from the server's derived field; an unknown pillar gets the grey fallback, never a new colour.", where: "§1.3" },
-      ],
+
+
+
+
+
     };
   }
 }

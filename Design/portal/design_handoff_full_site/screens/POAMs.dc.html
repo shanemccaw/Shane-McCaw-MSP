@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+input::placeholder,textarea::placeholder{color:#475569}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+<div data-screen-label="POA&amp;Ms" data-poams-scene="{{sceneMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 1120px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">POA&amp;Ms</span>
+      <span title="Plans of Action and Milestones — the sibling exit to the Risk Register. Where a risk acceptance says 'we accept the consequence', a plan says 'we are fixing this, and here is how and by when'. Your MSP authors and tracks the plan; your organisation signs it." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+      <sc-if value="{{canRaise}}" hint-placeholder-val="{{ true }}">
+        <span onClick="{{openCreate}}" style="margin-left:auto;font-size:12px;font-weight:600;color:#fff;background:#0078D4;border-radius:6px;padding:7px 13px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:#005A9E">Raise a plan</span>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{gated}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(251,191,36,.3);border-radius:14px;background:rgba(251,191,36,.05);padding:18px 22px 19px;display:flex;flex-direction:column;gap:10px">
+        <span style="font-size:14px;font-weight:600;color:#f8fafc">POA&amp;Ms aren't included in your Monitoring tier</span>
+        <span style="font-size:12px;color:#cbd5e1;line-height:1.6;max-width:700px">The read behind this page checks that the tier your organisation purchased bundles the POA&amp;M module. Today no tier does — Foundation, Growth and Premier all leave it out — so the list and detail reads answer 402 for every organisation on the platform, not only yours. That is a pricing decision still to be made, not a fault.</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:700px">Raising and signing a plan are not gated. A plan you raise here is recorded and your MSP sees it on their console — but you could not read it back here until your tier includes POA&amp;Ms.</span>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-top:4px">
+          <span onClick="{{openCreate}}" style="font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap" style-hover="background:rgba(255,255,255,.05)">Raise a plan anyway</span>
+          <a href="Billing.dc.html" style="font-size:12px;font-weight:600;text-decoration:none">Your plan and tier under Billing →</a>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{createdGated}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px solid rgba(52,211,153,.25);background:rgba(52,211,153,.06);border-radius:12px;padding:13px 15px;align-items:flex-start">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{createdId}} was recorded</span>
+          <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">It is awaiting signature on your MSP's console. This page cannot show it to you until your tier includes POA&amp;Ms.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{failed}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:14px 16px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">Your plans could not be read</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">A failed read, not an empty list. Your plans, signatures and milestones are unchanged.</span>
+          <span onClick="{{retry}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Try again</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isEmpty}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">No plans yet</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">A successful read with nothing in it: no plan of action exists for your organisation. Your MSP raises most plans from a finding; you can raise one yourself when you want a weakness fixed on a schedule rather than accepted as a risk.</span>
+        <span style="font-size:11px;color:#475569;line-height:1.5;max-width:680px">This is also what you'd see if your tenant couldn't be identified — the two look the same from here.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{creating}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(0,120,212,.35);border-radius:14px;background:rgba(0,120,212,.05);padding:16px 20px 18px;display:flex;flex-direction:column;gap:13px">
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Raise a plan</span>
+          <span style="font-size:11px;color:#64748b;line-height:1.5">It starts as awaiting signature. A plan you raise yourself still goes through the same signature ceremony; there is no bypass.</span>
+          <span onClick="{{cancelCreate}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">Cancel</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:12px">
+          <div style="display:flex;flex-direction:column;gap:5px;grid-column:1 / -1">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Title</span>
+            <input onInput="{{setCTitle}}" value="{{cTitle}}" placeholder="What this plan fixes, in one line" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;font-size:12.5px;color:#f8fafc;font-family:Inter,system-ui,sans-serif;outline:none;width:100%;box-sizing:border-box">
+            <span style="font-size:10.5px;color:#475569">{{cTitleCount}}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Target completion date</span>
+            <input type="date" onInput="{{setCDate}}" value="{{cDate}}" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:7px 10px;font-size:12.5px;color:#f8fafc;font-family:Inter,system-ui,sans-serif;outline:none;width:100%;box-sizing:border-box;color-scheme:dark">
+            <span style="font-size:10.5px;color:#475569">Kept as the original date forever, even if the live target later moves.</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Check this plan answers</span>
+            <select onChange="{{setCCheck}}" value="{{cCheck}}" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;font-size:12.5px;color:#f8fafc;font-family:Inter,system-ui,sans-serif;outline:none;width:100%;box-sizing:border-box;color-scheme:dark">
+              <option value="">No specific check</option>
+              <option value="exo.legacy_auth_enabled">exo.legacy_auth_enabled — Exchange Online</option>
+              <option value="entra.guest_mfa_unenforced">entra.guest_mfa_unenforced — Entra ID</option>
+              <option value="teams.ownerless_groups">teams.ownerless_groups — Teams and Groups</option>
+              <option value="spo.anonymous_links_enabled">spo.anonymous_links_enabled — SharePoint Online</option>
+            </select>
+            <span style="font-size:10.5px;color:#475569">{{cCheckHint}}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Linked statement of work</span>
+            <select onChange="{{setCSow}}" value="{{cSow}}" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;font-size:12.5px;color:#f8fafc;font-family:Inter,system-ui,sans-serif;outline:none;width:100%;box-sizing:border-box;color-scheme:dark">
+              <option value="">None</option>
+              <option value="6f1c2a90-4b7e-4d2a-9c11-8e2f0a5b3c77">SOW 6f1c2a90 — Legacy authentication retirement</option>
+              <option value="b83d4e15-2c6a-4f09-a7d3-51e9c0f2a4b8">SOW b83d4e15 — Identity hardening retainer</option>
+            </select>
+            <span style="font-size:10.5px;color:#475569">Optional. Ties the plan to work your MSP has already quoted.</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <span style="font-size:11px;font-weight:600;color:#94a3b8">The weakness</span>
+          <textarea onInput="{{setCWeak}}" value="{{cWeak}}" placeholder="What is wrong today, and what it exposes" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;font-size:12.5px;color:#f8fafc;font-family:Inter,system-ui,sans-serif;outline:none;width:100%;box-sizing:border-box;resize:vertical;min-height:64px;line-height:1.5"></textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px">
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Interim compensating control</span>
+            <textarea onInput="{{setCInterim}}" value="{{cInterim}}" placeholder="What limits the exposure until the fix lands" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;font-size:12.5px;color:#f8fafc;font-family:Inter,system-ui,sans-serif;outline:none;width:100%;box-sizing:border-box;resize:vertical;min-height:64px;line-height:1.5"></textarea>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-size:11px;font-weight:600;color:#94a3b8">Resources required</span>
+            <textarea onInput="{{setCRes}}" value="{{cRes}}" placeholder="People, time, change windows, money" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;font-size:12.5px;color:#f8fafc;font-family:Inter,system-ui,sans-serif;outline:none;width:100%;box-sizing:border-box;resize:vertical;min-height:64px;line-height:1.5"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+          <span style="font-size:11px;color:#64748b;line-height:1.5;flex:1;min-width:240px">Your organisation and tenant are set automatically. The plan code is assigned when you save it.</span>
+          <span onClick="{{submitCreate}}" style="font-size:12px;font-weight:600;color:{{createInk}};background:{{createBg}};border-radius:6px;padding:8px 14px;cursor:{{createCur}};white-space:nowrap">Raise plan</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isLive}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:12px;border:1px solid {{sumBd}};background:{{sumBg}};border-radius:12px;padding:11px 16px;flex-wrap:wrap">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:{{sumInk}}">{{sumTag}}</span>
+        <span style="font-size:12px;color:#cbd5e1;line-height:1.5;flex:1;min-width:200px">{{summary}}</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:16px;align-items:start">
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <sc-for list="{{rows}}" as="p" hint-placeholder-count="4">
+            <div onClick="{{p.pick}}" style="border:1px solid {{p.bd}};border-radius:12px;background:{{p.bg}};padding:12px 14px;display:flex;flex-direction:column;gap:7px;cursor:pointer">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:10.5px;color:#64748b;font-family:ui-monospace,Menlo,monospace">{{p.id}}</span>
+                <span style="font-size:10px;font-weight:600;color:{{p.sInk}};border:1px solid {{p.sBd}};border-radius:999px;padding:2px 9px">{{p.statusLabel}}</span>
+                <sc-if value="{{p.overdue}}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:10px;font-weight:600;color:#f87171;border:1px solid rgba(248,113,113,.45);border-radius:999px;padding:2px 9px">Overdue</span>
+                </sc-if>
+              </div>
+              <span style="font-size:13px;font-weight:600;color:#f8fafc;line-height:1.4">{{p.title}}</span>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#64748b">
+                <span>{{p.targetLine}}</span>
+                <span>{{p.msLine}}</span>
+              </div>
+            </div>
+          </sc-for>
+          <span style="font-size:10.5px;color:#475569;line-height:1.5;padding:2px 4px">Newest first. Status words are the server's own six; a plan your MSP cancels or converts keeps that word here rather than disappearing.</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+          <sc-if value="{{showDetail}}" hint-placeholder-val="{{ true }}">
+            <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:16px 20px 18px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <span style="font-size:11px;color:#64748b;font-family:ui-monospace,Menlo,monospace">{{d.id}}</span>
+                  <span style="font-size:10px;font-weight:600;color:{{d.sInk}};border:1px solid {{d.sBd}};border-radius:999px;padding:2px 9px">{{d.statusLabel}}</span>
+                  <sc-if value="{{d.overdue}}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:10px;font-weight:600;color:#f87171;border:1px solid rgba(248,113,113,.45);border-radius:999px;padding:2px 9px">Overdue · past the live target</span>
+                  </sc-if>
+                </div>
+                <span style="font-size:16px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;line-height:1.35">{{d.title}}</span>
+                <span style="font-size:12.5px;color:#cbd5e1;line-height:1.6">{{d.weakness}}</span>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">TARGET COMPLETION</span>
+                  <span style="font-size:13px;font-weight:600;color:{{d.targetInk}}">{{d.target}}</span>
+                  <span style="font-size:10.5px;color:#64748b;line-height:1.5">{{d.targetNote}}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">ACCOUNTABLE TODAY</span>
+                  <span style="font-size:12px;font-weight:600;color:{{d.authInk}};line-height:1.45">{{d.authLine}}</span>
+                  <span style="font-size:10.5px;color:#64748b;line-height:1.5">Who holds the role now, read live from Ownership. It can differ from who backed the signature below.</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">CHECK</span>
+                  <span style="font-size:11.5px;color:#e2e8f0;font-family:ui-monospace,Menlo,monospace;word-break:break-all">{{d.checkKey}}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">STATEMENT OF WORK</span>
+                  <span style="font-size:11.5px;color:#e2e8f0">{{d.sowLine}}</span>
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:14px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+                <div style="display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">INTERIM COMPENSATING CONTROL</span>
+                  <span style="font-size:12px;color:#cbd5e1;line-height:1.6">{{d.interim}}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">RESOURCES REQUIRED</span>
+                  <span style="font-size:12px;color:#cbd5e1;line-height:1.6">{{d.resources}}</span>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+                <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                  <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">MILESTONES</span>
+                  <span style="font-size:10.5px;color:#64748b">{{d.msLine}}</span>
+                </div>
+                <sc-if value="{{d.hasMs}}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;flex-direction:column">
+                    <sc-for list="{{d.ms}}" as="m" hint-placeholder-count="3">
+                      <div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid rgba(255,255,255,.05)">
+                        <span style="width:8px;height:8px;border-radius:999px;background:{{m.dot}};flex:none;margin-top:5px"></span>
+                        <span style="font-size:12px;color:#e2e8f0;line-height:1.5;flex:1;min-width:0">{{m.title}}</span>
+                        <span style="font-size:11px;color:{{m.ink}};flex:none;white-space:nowrap">{{m.when}}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{d.noMs}}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:11.5px;color:#64748b;line-height:1.5">None recorded. Your MSP adds milestones as the work is planned.</span>
+                </sc-if>
+                <span style="font-size:10.5px;color:#475569;line-height:1.5">Milestones are set and completed by your MSP. This page reads them; it cannot add, edit or tick one off.</span>
+              </div>
+
+              <sc-if value="{{d.isSigned}}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid rgba(52,211,153,.25);background:rgba(52,211,153,.05);border-radius:12px;padding:13px 15px;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M20 6 9 17l-5-5"></path></svg>
+                    <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{d.signedLine}}</span>
+                  </div>
+                  <span style="font-size:12px;color:#cbd5e1;line-height:1.55;font-style:italic">“{{d.signedStatement}}”</span>
+                  <span style="font-size:11px;color:#94a3b8;line-height:1.5">{{d.backedLine}}</span>
+                  <sc-if value="{{d.justSigned}}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:11px;color:#34d399;line-height:1.5">Recorded just now: your name as typed, the time, your address, a hash of the statement, and who held Accountable at this moment. The plan is now active; the record cannot be edited or withdrawn.</span>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{d.showSign}}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid rgba(0,120,212,.35);background:rgba(0,120,212,.06);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:11px">
+                  <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Sign this plan</span>
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">{{d.authorityFoot}}</span>
+                  <div style="display:flex;flex-direction:column;gap:5px">
+                    <span style="font-size:11px;font-weight:600;color:#94a3b8">Your full name</span>
+                    <input onInput="{{setSignName}}" value="{{signName}}" placeholder="Name as you sign it" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;font-size:12.5px;color:#f8fafc;font-family:Inter,system-ui,sans-serif;outline:none;width:100%;box-sizing:border-box;max-width:360px">
+                    <span style="font-size:10.5px;color:#475569">Recorded as typed. It is not checked against your account name.</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:5px">
+                    <span style="font-size:11px;font-weight:600;color:#94a3b8">Statement</span>
+                    <textarea onInput="{{setSignStmt}}" value="{{signStmt}}" placeholder="What your organisation is agreeing to, in your words" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;font-size:12.5px;color:#f8fafc;font-family:Inter,system-ui,sans-serif;outline:none;width:100%;box-sizing:border-box;resize:vertical;min-height:60px;line-height:1.5"></textarea>
+                    <span style="font-size:10.5px;color:#475569">{{signStmtCount}}</span>
+                  </div>
+                  <label style="display:flex;gap:9px;align-items:flex-start;cursor:pointer">
+                    <input type="checkbox" checked="{{signConfirmed}}" onChange="{{toggleConfirm}}" style="margin:2px 0 0;accent-color:#0078D4">
+                    <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5">I confirm this plan, its interim control and its target date on behalf of my organisation.</span>
+                  </label>
+                  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                    <span onClick="{{doSign}}" style="font-size:12px;font-weight:600;color:{{signInk}};background:{{signBg}};border-radius:6px;padding:8px 14px;cursor:{{signCur}};white-space:nowrap">Sign and activate</span>
+                    <span style="font-size:10.5px;color:#475569">Signed once. No edit, no withdrawal; a second attempt is refused.</span>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{d.showBlocked}}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid {{d.blockBd}};background:{{d.blockBg}};border-radius:12px;padding:13px 15px;display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:12.5px;font-weight:600;color:{{d.blockInk}}">{{d.blockHead}}</span>
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">{{d.blockBody}}</span>
+                  <a href="Ownership RACI.dc.html" style="font-size:11.5px;font-weight:600;text-decoration:none;padding-top:2px">{{d.blockLink}}</a>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{d.showClosed}}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);border-radius:12px;padding:13px 15px;display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:12.5px;font-weight:600;color:#f8fafc">{{d.closedHead}}</span>
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">{{d.closedBody}}</span>
+                  <sc-if value="{{d.closedLink}}" hint-placeholder-val="{{ false }}">
+                    <a href="Risk Register.dc.html" style="font-size:11.5px;font-weight:600;text-decoration:none;padding-top:2px">Open the Risk Register →</a>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:12px;display:flex;flex-direction:column;gap:9px">
+                <sc-if value="{{delStep0}}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
+                    <span style="font-size:11px;color:#64748b;line-height:1.5;flex:1;min-width:220px">Deleting moves the plan into a recoverable retention window. It leaves this list at once; your MSP can still see and recover it until the window closes.</span>
+                    <span onClick="{{armDelete}}" style="font-size:12px;font-weight:600;color:#f87171;border:1px solid rgba(248,113,113,.4);border-radius:6px;padding:7px 13px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:rgba(248,113,113,.08)">Delete this plan…</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{delStep1}}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:12.5px;font-weight:600;color:#f87171">{{d.delHead}}</span>
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">{{d.delBody}}</span>
+                  <div style="display:flex;flex-direction:column;gap:5px">
+                    <span style="font-size:11px;font-weight:600;color:#94a3b8">Why you are deleting it</span>
+                    <textarea onInput="{{setDelReason}}" value="{{delReason}}" placeholder="Required, whatever state the plan is in" style="background:rgba(255,255,255,.04);border:1px solid rgba(248,113,113,.35);border-radius:6px;padding:8px 10px;font-size:12.5px;color:#f8fafc;font-family:Inter,system-ui,sans-serif;outline:none;width:100%;box-sizing:border-box;resize:vertical;min-height:52px;line-height:1.5"></textarea>
+                    <span style="font-size:10.5px;color:#475569">Recorded with your name against the deletion — required even for an empty plan.</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:5px">
+                    <span style="font-size:11px;font-weight:600;color:#94a3b8">{{d.delTypeLabel}}</span>
+                    <input onInput="{{setDelTyped}}" value="{{delTyped}}" placeholder="{{d.id}}" style="background:rgba(255,255,255,.04);border:1px solid rgba(248,113,113,.35);border-radius:6px;padding:8px 10px;font-size:12.5px;color:#f8fafc;font-family:ui-monospace,Menlo,monospace;outline:none;width:100%;box-sizing:border-box;max-width:260px">
+                  </div>
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <span onClick="{{disarmDelete}}" style="font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap" style-hover="background:rgba(255,255,255,.05)">Keep the plan</span>
+                    <span onClick="{{confirmDelete}}" style="font-size:12px;font-weight:600;color:{{delInk}};background:{{delBg}};border-radius:6px;padding:7px 13px;cursor:{{delCur}};white-space:nowrap">Delete this plan</span>
+
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{showDeleted}}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:16px 20px 18px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <span style="font-size:13.5px;font-weight:600;color:#f8fafc">{{deletedId}} was deleted</span>
+                <span style="font-size:12px;color:#94a3b8;line-height:1.6">The plan is out of your list and inside its retention window; your MSP can still see it, and can recover it, until the window closes.</span>
+              </div>
+              <sc-if value="{{accelIdle}}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.5;flex:1;min-width:220px">If it should be gone before the window closes, you can ask your MSP to purge it early. Asking purges nothing by itself.</span>
+                  <span onClick="{{armAccel}}" style="font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:7px 13px;cursor:pointer;flex:none;white-space:nowrap" style-hover="background:rgba(255,255,255,.05)">Ask to purge early…</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{accelForm}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+                  <span style="font-size:11px;font-weight:600;color:#94a3b8">Why it should go early</span>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <span onClick="{{pickSuperseded}}" style="font-size:11.5px;font-weight:600;color:{{supInk}};border:1px solid {{supBd}};background:{{supBg}};border-radius:999px;padding:5px 12px;cursor:pointer">Superseded by another record</span>
+                    <span onClick="{{pickNoLonger}}" style="font-size:11.5px;font-weight:600;color:{{nlInk}};border:1px solid {{nlBd}};background:{{nlBg}};border-radius:999px;padding:5px 12px;cursor:pointer">No longer needed</span>
+                  </div>
+                  <sc-if value="{{accelSuperseded}}" hint-placeholder-val="{{ false }}">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:8px">
+                      <input onInput="{{setAccelRt}}" value="{{accelRt}}" placeholder="Record type, e.g. msp_risk_decisions" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;font-size:12px;color:#f8fafc;font-family:ui-monospace,Menlo,monospace;outline:none;width:100%;box-sizing:border-box">
+                      <input onInput="{{setAccelRid}}" value="{{accelRid}}" placeholder="Record id" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;font-size:12px;color:#f8fafc;font-family:ui-monospace,Menlo,monospace;outline:none;width:100%;box-sizing:border-box">
+                    </div>
+                    <span style="font-size:10.5px;color:#475569;line-height:1.5">Both are required together.</span>
+                  </sc-if>
+                  <textarea onInput="{{setAccelReason}}" value="{{accelReason}}" placeholder="In your words — an operator reads this" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;font-size:12.5px;color:#f8fafc;font-family:Inter,system-ui,sans-serif;outline:none;width:100%;box-sizing:border-box;resize:vertical;min-height:52px;line-height:1.5"></textarea>
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <span onClick="{{cancelAccel}}" style="font-size:12px;font-weight:600;color:#cbd5e1;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap" style-hover="background:rgba(255,255,255,.05)">Cancel</span>
+                    <span onClick="{{sendAccel}}" style="font-size:12px;font-weight:600;color:{{accelInk}};background:{{accelBg}};border-radius:6px;padding:7px 13px;cursor:{{accelCur}};white-space:nowrap">Send the request</span>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{accelDone}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:10px;border:1px solid rgba(52,211,153,.25);background:rgba(52,211,153,.06);border-radius:12px;padding:12px 14px;align-items:flex-start">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Acceleration requested — awaiting operator review</span>
+                    <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">An operator will review the request. Nothing has been purged yet, and this page won't show a status once they decide.</span>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;empty&quot;,&quot;tier-gated&quot;,&quot;failed&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;signerRole&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;holder&quot;,&quot;not-holder&quot;,&quot;no-holder&quot;],&quot;default&quot;:&quot;holder&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;}}">
+class Component extends DCLogic {
+  state = {
+    plans: null, sel: null, creating: false, created: null, retried: false, seq: 20,
+    sign: { name: "", stmt: "", ok: false }, justSigned: null,
+    del: { step: 0, reason: "", typed: "" },
+    deleted: null,
+    create: { title: "", weakness: "", interim: "", resources: "", date: "", checkKey: "", sowId: "" },
+    ledger: true,
+  };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    const TODAY = "2026-09-14", ME = "Priya Natarajan";
+    const scene = S.retried && (P.scene || "live") === "failed" ? "live" : (P.scene || "live");
+    const role = P.signerRole || "holder";
+    const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const fd = (s) => { if (!s) return ""; const [y, m, d] = s.slice(0, 10).split("-"); return `${+d} ${MON[+m - 1]} ${y}`; };
+    const fdt = (iso) => fd(iso) + " · " + iso.slice(11, 16) + " UTC";
+    const set = (patch) => this.setState(patch);
+    const upd = (k, sub) => (e) => this.setState({ [k]: { ...this.state[k], [sub]: e.target.value } });
+
+    const AUTH = {
+      "exo.legacy_auth_enabled": { workloadLabel: "Exchange Online", holders: ["Priya Natarajan", "Daniel Okafor"] },
+      "entra.guest_mfa_unenforced": { workloadLabel: "Entra ID", holders: ["Priya Natarajan", "Daniel Okafor"] },
+      "entra.user_consent_unrestricted": { workloadLabel: "Entra ID", holders: ["Priya Natarajan", "Daniel Okafor"] },
+      "teams.ownerless_groups": { workloadLabel: "Teams and Groups", holders: ["Daniel Okafor"] },
+      "spo.anonymous_links_enabled": { workloadLabel: "SharePoint Online", holders: [] },
+    };
+    const authorityFor = (checkKey) => {
+      const a = AUTH[checkKey]; if (!a) return null;
+      let holders = a.holders;
+      if (a.workloadLabel === "Exchange Online") { if (role === "no-holder") holders = []; else if (role === "not-holder") holders = ["Daniel Okafor"]; }
+      return { workloadLabel: a.workloadLabel, holders };
+    };
+    const STATUS = {
+      draft: { l: "Draft", c: "#94a3b8", b: "rgba(148,163,184,.4)" },
+      pending_signature: { l: "Awaiting signature", c: "#fbbf24", b: "rgba(251,191,36,.45)" },
+      active: { l: "Active", c: "#34d399", b: "rgba(52,211,153,.45)" },
+      completed: { l: "Completed", c: "#60a5fa", b: "rgba(96,165,250,.45)" },
+      cancelled: { l: "Cancelled", c: "#64748b", b: "rgba(100,116,139,.45)" },
+      converted_to_risk_acceptance: { l: "Converted to risk acceptance", c: "#a78bfa", b: "rgba(167,139,250,.45)" },
+    };
+    const INITIAL = [
+      { id: "POAM-2026-019", title: "Retire legacy authentication for Exchange Online", status: "pending_signature", checkKey: "exo.legacy_auth_enabled", target: "2026-11-30", original: "2026-11-30", sowId: "6f1c2a90-4b7e-4d2a-9c11-8e2f0a5b3c77",
+        weakness: "Basic authentication is still enabled for IMAP and POP on 14 mailboxes, two of them shared service mailboxes used by the finance scanner and the visitor kiosk. Legacy protocols cannot carry MFA, so a leaked password on any of them is a full mailbox compromise.",
+        interim: "A Conditional Access policy blocks legacy authentication for every user except the two service mailboxes, which are restricted to the office egress addresses. Sign-in logs for both are reviewed weekly.",
+        resources: "Two engineering days from your MSP under the linked SOW, one change window for the protocol switch-off, and the finance team's time to re-point the scanner to Graph.",
+        signed: null,
+        milestones: [
+          { title: "Inventory every mailbox still using basic auth", due: "2026-10-10", status: "pending", completedAt: null },
+          { title: "Migrate the finance scanner and kiosk to modern auth", due: "2026-10-31", status: "pending", completedAt: null },
+          { title: "Disable IMAP and POP tenant-wide", due: "2026-11-25", status: "pending", completedAt: null },
+        ] },
+      { id: "POAM-2026-017", title: "Enforce MFA registration for guest accounts", status: "active", checkKey: "entra.guest_mfa_unenforced", target: "2026-10-15", original: "2026-09-30", sowId: null,
+        weakness: "61 guest accounts have never registered an MFA method and are exempt from the registration campaign. Guests hold access to 9 project sites, including two marked confidential.",
+        interim: "Guests without MFA are limited to browser sessions of one hour and blocked from downloading from confidential sites through a session policy.",
+        resources: "Your MSP's identity engineer for the registration campaign, and one review meeting with each project owner to confirm which guests still need access.",
+        signed: { by: "Priya Natarajan", on: "2026-08-21T14:02:11Z", statement: "We accept this plan and its target. Guests who have not registered by 15 October will be disabled.", authorizedBy: { workloadLabel: "Entra ID", holders: ["Priya Natarajan", "Daniel Okafor"] } },
+        milestones: [
+          { title: "List guests without MFA and their site access", due: "2026-08-28", status: "completed", completedAt: "2026-08-27T09:14:00Z" },
+          { title: "Registration campaign — first notice", due: "2026-09-20", status: "pending", completedAt: null },
+          { title: "Disable guests still unregistered", due: "2026-10-10", status: "pending", completedAt: null },
+        ] },
+      { id: "POAM-2026-015", title: "Remove ownerless Teams and Microsoft 365 Groups", status: "active", checkKey: "teams.ownerless_groups", target: "2026-09-01", original: "2026-09-01", sowId: null,
+        weakness: "104 groups and teams have no owner. Nobody can approve membership changes, review sharing or answer for their content — including 31 with external members.",
+        interim: "New ownerless groups alert within the hour. The 31 with external members have had guest access frozen until an owner is assigned.",
+        resources: "Department leads to nominate owners; your MSP to run the assignment script and archive what nobody claims.",
+        signed: { by: "Daniel Okafor", on: "2026-07-02T16:40:52Z", statement: "Agreed. Anything unclaimed after 1 September is archived, not deleted, for 90 days.", authorizedBy: { workloadLabel: "Teams and Groups", holders: ["Daniel Okafor"] } },
+        milestones: [
+          { title: "Nominate owners for groups with external members", due: "2026-07-31", status: "completed", completedAt: "2026-07-30T11:00:00Z" },
+          { title: "Assign owners for the remaining groups", due: "2026-08-15", status: "pending", completedAt: null },
+          { title: "Archive unclaimed groups", due: "2026-08-30", status: "pending", completedAt: null },
+        ] },
+      { id: "POAM-2026-012", title: "Restrict user consent to third-party OAuth apps", status: "converted_to_risk_acceptance", checkKey: "entra.user_consent_unrestricted", target: "2026-08-31", original: "2026-08-31", sowId: null,
+        weakness: "Any user can grant third-party applications read access to their mail and files without review. 23 such grants exist, 6 to publishers nobody can identify.",
+        interim: "Admin consent workflow is enabled for high-risk permissions; existing grants are reviewed monthly.",
+        resources: "One review session per department to confirm which of the 23 apps are still in use.",
+        signed: { by: "Priya Natarajan", on: "2026-05-14T10:22:03Z", statement: "Agreed, subject to the marketing team's approval workflow being ready first.", authorizedBy: { workloadLabel: "Entra ID", holders: ["Priya Natarajan", "Daniel Okafor"] } },
+        milestones: [
+          { title: "Review the 23 existing grants", due: "2026-06-30", status: "completed", completedAt: "2026-06-28T15:30:00Z" },
+          { title: "Switch user consent to verified publishers only", due: "2026-08-15", status: "pending", completedAt: null },
+        ] },
+      { id: "POAM-2026-009", title: "Decommission the on-premises Exchange hybrid server", status: "cancelled", checkKey: null, target: "2026-06-30", original: "2026-06-30", sowId: null,
+        weakness: "The hybrid server has not received security updates since March and still holds a send connector into the tenant.",
+        interim: "The connector is restricted to the server's address; anything inbound from it is quarantined for review.",
+        resources: "A migration weekend and the vendor's decommissioning checklist.",
+        signed: null, milestones: [] },
+    ];
+
+    const basePlans = scene === "live" ? INITIAL : [];
+    const plans = S.plans || basePlans;
+    const gated = scene === "tier-gated", failed = scene === "failed";
+    const isEmpty = !gated && !failed && plans.length === 0;
+    const isLive = !gated && !failed && plans.length > 0;
+
+    const isOver = (p) => p.status === "active" && p.target < TODAY;
+    const nActive = plans.filter((p) => p.status === "active").length;
+    const nOver = plans.filter(isOver).length;
+    const nWait = plans.filter((p) => p.status === "pending_signature").length;
+
+    const selId = S.sel || (plans[0] && plans[0].id);
+    const cur = S.deleted ? null : plans.find((p) => p.id === selId) || null;
+
+    const rows = plans.map((p) => {
+      const st = STATUS[p.status] || STATUS.draft, active = cur && cur.id === p.id;
+      const done = p.milestones.filter((m) => m.status === "completed").length;
+      return {
+        id: p.id, title: p.title, statusLabel: st.l, sInk: st.c, sBd: st.b, overdue: isOver(p),
+        bd: active ? "rgba(0,120,212,.55)" : "rgba(255,255,255,.09)", bg: active ? "rgba(0,120,212,.07)" : "rgba(255,255,255,.02)",
+        targetLine: (isOver(p) ? "Target was " : "Target ") + fd(p.target),
+        msLine: p.milestones.length ? `${done} of ${p.milestones.length} milestones done` : "No milestones yet",
+        pick: () => set({ sel: p.id, creating: false, deleted: null, justSigned: null, del: { step: 0, reason: "", typed: "" }, sign: { name: "", stmt: "", ok: false } }),
+      };
+    });
+
+    let d = null;
+    if (cur) {
+      const p = cur, st = STATUS[p.status] || STATUS.draft, auth = authorityFor(p.checkKey), over = isOver(p);
+      const pendingSig = p.status === "pending_signature" || p.status === "draft";
+      const closed = p.status === "cancelled" || p.status === "completed" || p.status === "converted_to_risk_acceptance";
+      const noHolder = !!auth && auth.holders.length === 0;
+      const iAmHolder = !auth || auth.holders.includes(ME);
+      const done = p.milestones.filter((m) => m.status === "completed").length;
+      d = {
+        id: p.id, title: p.title, weakness: p.weakness, statusLabel: st.l, sInk: st.c, sBd: st.b, overdue: over,
+        target: fd(p.target), targetInk: over ? "#f87171" : "#f8fafc",
+        targetNote: p.target !== p.original ? "Moved from " + fd(p.original) + ". The original date is kept and never rewritten." : "Unchanged since the plan was raised.",
+        authLine: auth ? (auth.holders.length ? auth.workloadLabel + " — " + auth.holders.join(", ") : auth.workloadLabel + " — nobody holds Accountable right now") : "No single workload owner for this check",
+        authInk: noHolder ? "#fbbf24" : "#e2e8f0",
+        checkKey: p.checkKey || "No check linked",
+        sowLine: p.sowId ? "SOW " + p.sowId.slice(0, 8) : "None linked",
+        interim: p.interim, resources: p.resources,
+        hasMs: p.milestones.length > 0, noMs: p.milestones.length === 0,
+        msLine: p.milestones.length ? `${done} of ${p.milestones.length} done` : "",
+        ms: p.milestones.map((m) => {
+          const late = m.status === "pending" && m.due < TODAY;
+          return { title: m.title, dot: m.status === "completed" ? "#34d399" : late ? "#f87171" : "rgba(148,163,184,.5)", ink: m.status === "completed" ? "#34d399" : late ? "#f87171" : "#94a3b8",
+            when: m.status === "completed" ? "Done " + fd(m.completedAt) : late ? "Overdue · due " + fd(m.due) : "Due " + fd(m.due) };
+        }),
+        isSigned: !!p.signed,
+        signedLine: p.signed ? `Signed by ${p.signed.by} on ${fdt(p.signed.on)}` : "",
+        signedStatement: p.signed ? p.signed.statement : "",
+        backedLine: p.signed ? (p.signed.authorizedBy ? `Backed at signing by Accountable for ${p.signed.authorizedBy.workloadLabel}: ${p.signed.authorizedBy.holders.join(", ")} — as the role stood at that moment, replayed on every read.` : "No workload resolved for this check, so it was signed under the open rule: any signed-in person here could sign it.") : "",
+        justSigned: S.justSigned === p.id,
+        showSign: pendingSig && !noHolder && iAmHolder,
+        showBlocked: pendingSig && (noHolder || !iAmHolder),
+        showClosed: closed,
+        authorityFoot: auth ? `You are signing as an Accountable holder for ${auth.workloadLabel}. Your MSP cannot sign this for you.` : "This check has no single workload owner, so any signed-in person here may sign it. Your MSP cannot sign it for you.",
+        blockHead: noHolder ? "Nobody can sign this yet" : "You are not the person who can sign this",
+        blockBody: auth ? (noHolder ? `No one currently holds Accountable authority for ${auth.workloadLabel}. Assign an owner on the Ownership page before this plan can be signed.` : `Only an Accountable holder for ${auth.workloadLabel} can sign this plan. Today that is ${auth.holders.join(" and ")}; you cannot sign on their behalf, and neither can your MSP.`) : "",
+        blockBd: noHolder ? "rgba(251,191,36,.35)" : "rgba(248,113,113,.35)", blockBg: noHolder ? "rgba(251,191,36,.06)" : "rgba(248,113,113,.05)", blockInk: noHolder ? "#fbbf24" : "#f87171",
+        blockLink: noHolder ? "Open Ownership / RACI to assign a holder" : "See the current holders on Ownership / RACI",
+        closedHead: p.status === "cancelled" ? "Cancelled by your MSP" : p.status === "converted_to_risk_acceptance" ? "Converted to a risk acceptance by your MSP" : "Completed",
+        closedBody: p.status === "cancelled" ? "Cancelling is your MSP's console action; this page has no cancel and no un-cancel. The plan cannot be signed, and it stays here under its final word rather than disappearing."
+          : p.status === "converted_to_risk_acceptance" ? "Your MSP turned this plan into a risk acceptance on their console — \"we accept the consequence\" instead of \"we are fixing this\". The plan keeps its final word here; the acceptance lives on the Risk Register. Neither side of that conversion can be done from this page."
+          : "Marked completed by your MSP. No route on this page writes that word.",
+        closedLink: p.status === "converted_to_risk_acceptance",
+        delHead: `Delete ${p.id}?`,
+        delBody: (p.signed ? "This plan carries a signature. " : p.milestones.length ? "This plan has milestones your MSP is tracking. " : "This plan has no signature and no milestones yet. ") + "Deletion is soft — it enters a retention window your MSP can still see and recover from — but it leaves this page immediately and the signature, if any, goes with it.",
+        delTypeLabel: `Type ${p.id} to confirm`,
+      };
+    }
+
+    const sn = S.sign.name.trim(), ss = S.sign.stmt.trim();
+    const canSign = !!cur && sn.length >= 2 && sn.length <= 200 && ss.length >= 1 && ss.length <= 2000 && S.sign.ok;
+    const canDelete = !!cur && S.del.reason.trim().length > 0 && S.del.typed.trim() === cur.id;
+    const D = S.deleted;
+    const canAccel = !!D && D.reason.trim().length > 0 && (D.kind !== "superseded_by" || (D.rt.trim() && D.rid.trim()));
+    const C = S.create;
+    const canCreate = C.title.trim().length >= 1 && C.title.trim().length <= 300 && [C.weakness, C.interim, C.resources].every((t) => t.trim().length >= 1 && t.trim().length <= 4000) && /^\d{4}-\d{2}-\d{2}$/.test(C.date);
+    const cAuth = C.checkKey ? AUTH[C.checkKey] : null;
+
+    const stateLine = gated ? "Not included in your tier" : failed ? "Couldn't load your plans" : isEmpty ? "Live · no plans" : `Live · ${plans.length} plan${plans.length === 1 ? "" : "s"} · ${nActive} active${nOver ? ` (${nOver} overdue)` : ""} · ${nWait} awaiting signature`;
+    const sum = nOver ? { tag: "PAST TARGET", ink: "#f87171", bd: "rgba(248,113,113,.3)", bg: "rgba(248,113,113,.05)", text: `${nOver} active plan${nOver === 1 ? " is" : "s are"} past ${nOver === 1 ? "its" : "their"} live target date. Overdue is computed from the target each time this page loads; nothing marks it later, and a cancelled or converted plan is never overdue.` }
+      : nWait ? { tag: "YOUR SIGNATURE", ink: "#fbbf24", bd: "rgba(251,191,36,.3)", bg: "rgba(251,191,36,.05)", text: `${nWait} plan${nWait === 1 ? " is" : "s are"} waiting for a signature from an Accountable holder. Nothing starts until it is signed.` }
+      : { tag: "ON TRACK", ink: "#34d399", bd: "rgba(52,211,153,.3)", bg: "rgba(52,211,153,.05)", text: "Every active plan is inside its target date." };
+
+    const emptyCreate = { title: "", weakness: "", interim: "", resources: "", date: "", checkKey: "", sowId: "" };
+    return {
+      rootH: P.embedded ? "100%" : "100vh",
+      sceneMarker: scene + (S.deleted ? " deleted:" + S.deleted.id : "") + (S.created ? " created:" + S.created : ""),
+      stateInk: gated ? "#fbbf24" : failed ? "#f87171" : "#64748b", stateDot: gated ? "#fbbf24" : failed ? "#f87171" : "#34d399", stateLine,
+      gated, failed, isEmpty, isLive,
+      canRaise: !gated && !failed && !S.creating,
+      createdGated: gated && !!S.created && !S.creating, createdId: S.created || "",
+      retry: () => set({ retried: true }),
+      openCreate: () => set({ creating: true, created: null, deleted: null }),
+      cancelCreate: () => set({ creating: false }),
+      creating: S.creating,
+      cTitle: C.title, cDate: C.date, cCheck: C.checkKey, cSow: C.sowId, cWeak: C.weakness, cInterim: C.interim, cRes: C.resources,
+      cTitleCount: `${C.title.trim().length} / 300`,
+      cCheckHint: cAuth ? `Signing will be reserved to whoever holds Accountable for ${cAuth.workloadLabel} at the time.` : "With no check, no workload owner applies — any signed-in person here may sign it.",
+      setCTitle: upd("create", "title"), setCDate: upd("create", "date"), setCCheck: upd("create", "checkKey"), setCSow: upd("create", "sowId"),
+      setCWeak: upd("create", "weakness"), setCInterim: upd("create", "interim"), setCRes: upd("create", "resources"),
+      createBg: canCreate ? "#0078D4" : "rgba(255,255,255,.06)", createInk: canCreate ? "#fff" : "#475569", createCur: canCreate ? "pointer" : "default",
+      submitCreate: () => {
+        if (!canCreate) return;
+        const id = `POAM-2026-0${S.seq}`;
+        const np = { id, title: C.title.trim(), status: "pending_signature", checkKey: C.checkKey || null, target: C.date, original: C.date, sowId: C.sowId || null, weakness: C.weakness.trim(), interim: C.interim.trim(), resources: C.resources.trim(), signed: null, milestones: [] };
+        set({ plans: [np, ...plans], seq: S.seq + 1, creating: false, created: id, sel: id, deleted: null, justSigned: null, create: emptyCreate });
+      },
+      sumTag: sum.tag, sumInk: sum.ink, sumBd: sum.bd, sumBg: sum.bg, summary: sum.text,
+      rows, d,
+      showDetail: isLive && !S.creating && !!cur,
+      showDeleted: isLive && !S.creating && !!S.deleted,
+      signName: S.sign.name, signStmt: S.sign.stmt, signConfirmed: S.sign.ok,
+      signStmtCount: `${ss.length.toLocaleString()} / 2,000 · kept word for word`,
+      setSignName: upd("sign", "name"), setSignStmt: upd("sign", "stmt"),
+      toggleConfirm: () => set({ sign: { ...S.sign, ok: !S.sign.ok } }),
+      signBg: canSign ? "#0078D4" : "rgba(255,255,255,.06)", signInk: canSign ? "#fff" : "#475569", signCur: canSign ? "pointer" : "default",
+      doSign: () => {
+        if (!canSign) return;
+        const auth = authorityFor(cur.checkKey), now = new Date().toISOString();
+        const next = plans.map((p) => p.id !== cur.id ? p : { ...p, status: "active", signed: { by: sn, on: now, statement: ss, authorizedBy: auth ? { workloadLabel: auth.workloadLabel, holders: auth.holders } : null } });
+        set({ plans: next, justSigned: cur.id, sign: { name: "", stmt: "", ok: false } });
+      },
+      delStep0: S.del.step === 0, delStep1: S.del.step === 1, delReason: S.del.reason, delTyped: S.del.typed,
+      armDelete: () => set({ del: { step: 1, reason: "", typed: "" } }),
+      disarmDelete: () => set({ del: { step: 0, reason: "", typed: "" } }),
+      setDelReason: upd("del", "reason"), setDelTyped: upd("del", "typed"),
+      delBg: canDelete ? "#dc2626" : "rgba(255,255,255,.06)", delInk: canDelete ? "#fff" : "#475569", delCur: canDelete ? "pointer" : "default",
+      confirmDelete: () => {
+        if (!canDelete) return;
+        set({ plans: plans.filter((p) => p.id !== cur.id), sel: null, deleted: { id: cur.id, accel: "idle", kind: "no_longer_needed", reason: "", rt: "", rid: "" }, del: { step: 0, reason: "", typed: "" } });
+      },
+      deletedId: D ? D.id : "",
+      accelIdle: !!D && D.accel === "idle", accelForm: !!D && D.accel === "form", accelDone: !!D && D.accel === "done",
+      accelSuperseded: !!D && D.kind === "superseded_by",
+      armAccel: () => set({ deleted: { ...D, accel: "form" } }),
+      cancelAccel: () => set({ deleted: { ...D, accel: "idle" } }),
+      pickSuperseded: () => set({ deleted: { ...D, kind: "superseded_by" } }),
+      pickNoLonger: () => set({ deleted: { ...D, kind: "no_longer_needed" } }),
+      supInk: D && D.kind === "superseded_by" ? "#f8fafc" : "#94a3b8", supBd: D && D.kind === "superseded_by" ? "rgba(0,120,212,.6)" : "rgba(255,255,255,.14)", supBg: D && D.kind === "superseded_by" ? "rgba(0,120,212,.12)" : "transparent",
+      nlInk: D && D.kind === "no_longer_needed" ? "#f8fafc" : "#94a3b8", nlBd: D && D.kind === "no_longer_needed" ? "rgba(0,120,212,.6)" : "rgba(255,255,255,.14)", nlBg: D && D.kind === "no_longer_needed" ? "rgba(0,120,212,.12)" : "transparent",
+      accelReason: D ? D.reason : "", accelRt: D ? D.rt : "", accelRid: D ? D.rid : "",
+      setAccelReason: upd("deleted", "reason"), setAccelRt: upd("deleted", "rt"), setAccelRid: upd("deleted", "rid"),
+      accelBg: canAccel ? "#0078D4" : "rgba(255,255,255,.06)", accelInk: canAccel ? "#fff" : "#475569", accelCur: canAccel ? "pointer" : "default",
+      sendAccel: () => canAccel && set({ deleted: { ...D, accel: "done" } }),
+    };
+  }
+}
+</script>
+</body>
+</html>

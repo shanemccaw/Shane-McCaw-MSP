@@ -5,7 +5,7 @@ Regenerated for #1719, per the #1642/#2586 extraction method: read the real, cur
 full, cite it, and treat the prior pack as prior art to replace wholesale, not edit.
 
 Module: **Remediation Tracking** (#1489, epic #1485). This is the customer-portal half of the
-module's two surfaces; `docs/remediation-tracking-msp-console-contract-pack.md` (#2586) is the
+module's two surfaces; `docs/msp-console/remediation-tracking-msp-console-contract-pack.md` (#2586) is the
 operator-facing mirror under `/api/msp/customers/:customerId/remediation*` — same tables, same
 business logic, different caller and auth, documented there rather than duplicated here.
 

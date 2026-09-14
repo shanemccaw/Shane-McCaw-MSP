@@ -158,7 +158,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
               </div>
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);border:1px solid rgba(255,255,255,.10);border-radius:14px;background:rgba(255,255,255,.02);overflow:hidden">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));border:1px solid rgba(255,255,255,.10);border-radius:14px;background:rgba(255,255,255,.02);overflow:hidden">
             <sc-for list="{{tiles}}" as="t" hint-placeholder-count="4">
               <div style="padding:14px 16px 12px;display:flex;flex-direction:column;gap:3px;border-left:{{t.bl}}">
                 <span style="font-size:10px;font-weight:600;letter-spacing:.12em;color:#64748b">{{t.label}}</span>
@@ -167,16 +167,22 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                   <sc-if value="{{t.pillShow}}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;font-weight:600;color:#94a3b8;border:1px solid rgba(148,163,184,.30);border-radius:999px;padding:2px 8px">{{t.pill}}</span></sc-if>
                 </div>
                 <span style="font-size:11px;color:#64748b">{{t.sub}}</span>
-                <span style="font-size:9.5px;color:#475569">{{t.key}}</span>
               </div>
             </sc-for>
           </div>
-          <div style="display:grid;grid-template-columns:1.55fr 1fr;gap:14px;align-items:start">
-            <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
+            <div style="display:flex;flex-direction:column;gap:8px;min-width:0;flex:1.55 1 340px">
               <div style="display:flex;align-items:center;gap:8px">
                 <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">FINDINGS FROM YOUR LATEST SCAN</span>
                 <div style="flex:1;height:1px;background:rgba(255,255,255,.06)"></div>
               </div>
+              <sc-if value="{{showOfferBanner}}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{openOfferBanner}}" style="border:1px solid rgba(0,120,212,.25);background:rgba(0,120,212,.05);border-radius:10px;padding:11px 14px;display:flex;align-items:center;gap:10px;cursor:pointer" style-hover="background:rgba(0,120,212,.08)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><path d="M7 7h.01"></path></svg>
+                  <span style="font-size:12.5px;color:#cbd5e1"><span style="font-weight:600;color:#f8fafc">{{offerBannerTitle}}</span> {{offerBannerBody}}</span>
+                  <span style="margin-left:auto;font-size:11.5px;font-weight:600;color:#60a5fa;flex:none;white-space:nowrap">View offer →</span>
+                </div>
+              </sc-if>
               <sc-if value="{{findingsEmpty}}" hint-placeholder-val="{{ false }}">
                 <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:13px 16px;display:flex;align-items:center;gap:10px">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><path d="m9 11 3 3L22 4"></path></svg>
@@ -193,7 +199,6 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                   </div>
                   <span style="font-size:11.5px;color:#64748b;line-height:1.5;padding-left:17px">{{f.desc}}</span>
                   <div style="display:flex;align-items:center;gap:10px;padding-left:17px;flex-wrap:wrap">
-                    <span style="font-size:9.5px;color:#475569;border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:2px 8px">{{f.key}}</span>
                     <sc-if value="{{f.evShow}}" hint-placeholder-val="{{ true }}"><span style="font-size:11px;font-weight:600;color:#60a5fa;cursor:pointer">{{f.ev}}</span></sc-if>
                     <sc-if value="{{f.noEv}}" hint-placeholder-val="{{ false }}"><span style="font-size:10.5px;color:#475569">No per-item evidence — a policy gap, not an object list</span></sc-if>
                     <span style="margin-left:auto;font-size:10.5px;color:#94a3b8">{{f.rec}}</span>
@@ -201,7 +206,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                 </div>
               </sc-for>
             </div>
-            <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+            <div style="display:flex;flex-direction:column;gap:8px;min-width:0;flex:1 1 260px">
               <div style="display:flex;align-items:center;gap:8px">
                 <span style="font-size:10px;font-weight:600;letter-spacing:.13em;color:#64748b">WHAT FEEDS THIS SCORE</span>
                 <div style="flex:1;height:1px;background:rgba(255,255,255,.06)"></div>
@@ -275,7 +280,6 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
                       <div style="display:flex;align-items:center;gap:6px;padding-top:9px;margin-top:auto;min-width:0">
                         <span style="width:6px;height:6px;border-radius:999px;background:{{c.stInk}};flex:none"></span>
                         <span style="font-size:10.5px;font-weight:700;color:{{c.stInk}}">{{c.status}}</span>
-                        <span style="margin-left:auto;font-size:9px;color:#334155;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{c.key}}</span>
                       </div>
                     </div>
                   </sc-for>
@@ -566,7 +570,8 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
   &quot;scanRunning&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Tenant state&quot;},
   &quot;sopRuns&quot;: {&quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 0, &quot;min&quot;: 0, &quot;max&quot;: 3, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Activity&quot;},
   &quot;impersonated&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Session&quot;},
-  &quot;mfaPending&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Session&quot;}
+  &quot;mfaPending&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Session&quot;},
+  &quot;onOpenOffers&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;() => void&quot;}
 }">
 class Component extends DCLogic {
   state = { pillar: null, open: null, bot: false, demoScan: false, demoResult: null };
@@ -1102,11 +1107,15 @@ class Component extends DCLogic {
     const drift = scanned ? d.drift : null;
     return {
       pillars, modules, alerts, tiles, findings, sigGroups, covSegs, covLegend, gapRows,
+      showOfferBanner: pk === "security" && scanned,
+      offerBannerTitle: "There's an open offer for this.",
+      offerBannerBody: "Conditional Access hardening project — closes the legacy-auth gap below.",
+      openOfferBanner: () => (this.props.onOpenOffers ? this.props.onOpenOffers() : window.open("Offers and SOW Acceptance.dc.html", "_blank")),
       hLabel: d.label,
       hBand: `linear-gradient(90deg,${d.primary},${d.accent})`,
       hGlow: d.glow, hPrimary: d.primary, hIcon: ICONS[pk],
       hChecksLine: `${d.total} CHECKS FEED IT`,
-      hScanLine1: scanned ? "core:premier · run 445" : "no runs yet",
+      hScanLine1: scanned ? "Run 445" : "no runs yet",
       hScanLine2: scanned ? "151 checks · 2 hours ago" : "first scan establishes the baseline",
       hScore: scanned && !unscored ? String(d.score) : "—",
       hScoreInk: scanned && !unscored ? pillarSevInk : "#475569",
@@ -1155,7 +1164,7 @@ class Component extends DCLogic {
         { name: "Power_Pages_vTrial_for_Makers", count: "×10,000", reason: "no price on file" },
       ],
       provLine: scanned
-        ? "Every figure on this page traces to a monitor-check observation on your tenant — run 445 (core:premier) · 151 checks · 2 hours ago. Unavailable renders as unavailable — never zero, never red."
+        ? "Every figure on this page traces to a monitor-check observation on your tenant — run 445 · 151 checks · 2 hours ago. Unavailable renders as unavailable — never zero, never red."
         : "No scan has run yet — this page renders only what has genuinely been observed. Today that is nothing, and it says so.",
       botQ1: scanned ? `Why is my ${d.label} score ${d.score}?` : "What happens in my first scan?",
       sopsShown: allSops.slice(0, Math.max(sop, 0)),

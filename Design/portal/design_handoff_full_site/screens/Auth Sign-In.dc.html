@@ -25,17 +25,17 @@ input{font-family:inherit}
 input:focus{outline:2px solid #0078D4;outline-offset:-1px}
 </style>
 </helmet>
-<div data-screen-label="Auth — Sign in" style="min-height:100vh;background:#020617;color:#cbd5e1;font-family:Inter,system-ui,sans-serif;display:flex;flex-direction:column">
-
-  <div style="border-bottom:1px dashed rgba(148,163,184,.22);padding:10px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(255,255,255,.015)">
-    <span style="font-size:9px;font-weight:700;letter-spacing:.11em;color:#475569;flex:none">REAL RESPONSE STATE</span>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <sc-for list="{{states}}" as="s" hint-placeholder-count="5">
-        <span onClick="{{s.pick}}" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:999px;cursor:pointer;color:{{s.ink}};background:{{s.bg}};border:1px solid {{s.bd}};white-space:nowrap">{{s.label}}</span>
-      </sc-for>
-    </div>
-    <span style="font-size:10.5px;color:#475569;margin-left:auto">POST /api/auth/login · auth.ts:321-418 · 10 req/15 min per IP</span>
+<div style="position:sticky;top:0;z-index:10;border-bottom:1px solid rgba(148,163,184,.18);padding:8px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#0f172a;font-family:ui-monospace,Menlo,monospace">
+  <span style="font-size:9px;font-weight:700;letter-spacing:.11em;color:#64748b;flex:none">DEV: RESPONSE STATE (not part of design)</span>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <sc-for list="{{states}}" as="s" hint-placeholder-count="5">
+      <span onClick="{{s.pick}}" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:999px;cursor:pointer;color:{{s.ink}};background:{{s.bg}};border:1px solid {{s.bd}};white-space:nowrap">{{s.label}}</span>
+    </sc-for>
   </div>
+  <span style="font-size:10.5px;color:#475569;margin-left:auto">POST /api/auth/login · auth.ts:321-418 · 10 req/15 min per IP</span>
+</div>
+
+<div data-screen-label="Auth — Sign in" style="min-height:100vh;background:#020617;color:#cbd5e1;font-family:Inter,system-ui,sans-serif;display:flex;flex-direction:column">
 
   <div style="flex:1;display:flex;align-items:flex-start;justify-content:center;padding:56px 20px 64px">
     <div style="width:100%;max-width:430px;display:flex;flex-direction:column;gap:20px">
@@ -60,7 +60,6 @@ input:focus{outline:2px solid #0078D4;outline-offset:-1px}
             <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
               <span style="font-size:12.5px;font-weight:600;color:#f8fafc;line-height:1.4">{{bannerTitle}}</span>
               <span style="font-size:11.5px;color:#94a3b8;line-height:1.55">{{bannerBody}}</span>
-              <span style="font-size:10.5px;color:#475569;line-height:1.5;font-family:ui-monospace,Menlo,monospace">{{bannerWire}}</span>
             </div>
           </div>
         </sc-if>
@@ -83,17 +82,6 @@ input:focus{outline:2px solid #0078D4;outline-offset:-1px}
         <span style="font-size:11px;color:#64748b;line-height:1.55;border-top:1px solid rgba(255,255,255,.07);padding-top:12px">Locked out, lost your authenticator, or no code arriving? <a href="#">Get sign-in help</a> — that route works without a session, because by then you do not have one.</span>
       </div>
 
-      <div style="border:1px solid rgba(255,255,255,.07);border-radius:12px;background:rgba(255,255,255,.015);padding:14px 16px;display:flex;flex-direction:column;gap:9px">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#475569">WHAT THIS CALL CAN RETURN</span>
-        <sc-for list="{{branches}}" as="b" hint-placeholder-count="5">
-          <div style="display:flex;gap:9px;align-items:flex-start">
-            <span style="font-size:10px;font-weight:700;color:{{b.codeInk}};background:{{b.codeBg}};border:1px solid {{b.codeBd}};border-radius:5px;padding:2px 6px;flex:none;font-family:ui-monospace,Menlo,monospace;min-width:38px;text-align:center">{{b.code}}</span>
-            <span style="font-size:11.5px;color:#94a3b8;line-height:1.5;min-width:0">{{b.text}}</span>
-          </div>
-        </sc-for>
-        <span style="font-size:10.5px;color:#475569;line-height:1.55;border-top:1px solid rgba(255,255,255,.06);padding-top:9px">A successful password check on an MFA-enrolled account issues no session at all — only a 10-minute <code style="font-family:ui-monospace,Menlo,monospace">mfaToken</code> plus the real enrolled-method list. The session is issued by the challenge endpoint, not by this one.</span>
-      </div>
-
     </div>
   </div>
 </div>
@@ -107,36 +95,19 @@ const STATES = [
   {key:"mfa",    label:"200 mfaRequired"}
 ];
 const BANNERS = {
-  invalid:{tone:"bad", title:"That email and password do not match",
-    body:"One message covers a wrong password and an email with no account behind it. The backend does not distinguish the two to the caller, so neither does this screen.",
-    wire:"401 { error } · auth.ts:354"},
-  nopass:{tone:"bad", title:"This account has no password yet",
-    body:"The account exists but has never completed setup, so there is nothing to check a password against. Use your invite link, or request a fresh one from the forgot-password route.",
-    wire:"401 { error } · auth.ts:377"},
-  locked:{tone:"warn", title:"Locked until 14:22 after too many failed attempts",
-    body:"The lock is a real timestamp on your account, not a rate limiter. It lifts on its own at that time; sign-in help can lift it sooner after an identity check.",
-    wire:"423 { accountLocked: true, lockedUntil } · auth.ts:354-361"},
-  mfa:{tone:"info", title:"Password accepted — one more step",
-    body:"Your account has 1 enrolled method (totp). Handing off to the challenge screen with a 10-minute token; no session exists until that code is verified.",
-    wire:"200 { mfaRequired: true, mfaToken, methods: [\"totp\"] } · auth.ts:400"}
+  invalid:{tone:"bad", title:"Email and password don't match",
+    body:"Double-check for typos and try again. 2 attempts remaining before your account is temporarily locked."},
+  nopass:{tone:"bad", title:"You haven't set a password yet",
+    body:"Use the invite link we emailed you to set one up, or request a new link below."},
+  locked:{tone:"warn", title:"Too many attempts — try again at 2:22 PM",
+    body:"For your account's security, we've temporarily locked sign-in. You can wait until then, or get help below to unlock it sooner."},
+  mfa:{tone:"info", title:"Enter your verification code",
+    body:"We've sent a 6-digit code to your authenticator app. Enter it on the next screen to finish signing in."}
 };
 const TONES = {
   bad :{bg:"rgba(248,113,113,.07)", bd:"rgba(248,113,113,.35)", dot:"#f87171"},
   warn:{bg:"rgba(194,166,61,.08)",  bd:"rgba(194,166,61,.35)",  dot:"#c2a63d"},
   info:{bg:"rgba(0,120,212,.09)",   bd:"rgba(96,165,250,.35)",  dot:"#60a5fa"}
-};
-const BRANCHES = [
-  {code:"200", tone:"ok",   text:"No MFA enrolled — a full session straight away: accessToken, refreshToken, refreshExpiresAt and the user payload, with mfaSetupPending set when enforcement is active and the account has zero enrollments."},
-  {code:"200", tone:"info", text:"MFA enrolled — mfaRequired, an mfaToken, and methods: the real enrolled list, any of totp, sms or passkey."},
-  {code:"401", tone:"bad",  text:"Invalid credentials, or an account with no passwordHash set. Both share one message."},
-  {code:"423", tone:"warn", text:"Account locked, with the real lockedUntil timestamp."},
-  {code:"429", tone:"warn", text:"Ten attempts per fifteen minutes per IP in production."}
-];
-const CODES = {
-  ok  :{ink:"#34d399", bg:"rgba(52,211,153,.10)", bd:"rgba(52,211,153,.28)"},
-  info:{ink:"#60a5fa", bg:"rgba(96,165,250,.10)", bd:"rgba(96,165,250,.28)"},
-  bad :{ink:"#f87171", bg:"rgba(248,113,113,.10)",bd:"rgba(248,113,113,.28)"},
-  warn:{ink:"#c2a63d", bg:"rgba(194,166,61,.10)", bd:"rgba(194,166,61,.28)"}
 };
 class Component extends DCLogic {
   state = { active:"idle", busy:false };
@@ -153,17 +124,14 @@ class Component extends DCLogic {
         pick: () => this.setState({active:s.key, busy:false})
       })),
       hasBanner: !!b,
-      bannerTitle: b && b.title, bannerBody: b && b.body, bannerWire: b && b.wire,
+      bannerTitle: b && b.title, bannerBody: b && b.body,
       bannerBg: t.bg, bannerBd: t.bd, bannerDot: t.dot,
       ctaLabel: this.state.busy ? "Checking…" : "Sign in",
       ctaBg: this.state.busy ? "#005A9E" : "#0078D4",
       submit: () => {
         this.setState({busy:true});
         setTimeout(() => this.setState({busy:false}), 900);
-      },
-      branches: BRANCHES.map(x => Object.assign({text:x.text, code:x.code}, {
-        codeInk:CODES[x.tone].ink, codeBg:CODES[x.tone].bg, codeBd:CODES[x.tone].bd
-      }))
+      }
     };
   }
 }

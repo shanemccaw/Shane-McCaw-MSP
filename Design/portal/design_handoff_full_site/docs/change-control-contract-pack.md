@@ -5,7 +5,7 @@
 `9f24302c0` on 2026-09-03 because real backend work (#1496–#1506's remaining sub-issues, #1554,
 #1555, #1759, #1761, #1762) landed after it was written, making it describe dead architecture. This
 is a **full re-extraction against the current, real code**, not a restoration of that file's content
-— follows the `#1642` pattern, same as `docs/microsoft-changes-contract-pack.md`.
+— follows the `#1642` pattern, same as `docs/portal/microsoft-changes-contract-pack.md`.
 
 **Status of this document:** extracted, not authored. Every field below is cited to `file:line`.
 Nothing here is invented; where a value does not exist in code it is marked **OPEN GAP**, not

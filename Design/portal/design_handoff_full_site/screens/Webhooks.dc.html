@@ -25,7 +25,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
 </style>
 </helmet>
 <div data-screen-label="Webhooks" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
-  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:24px 30px 56px;padding-right:max(30px, calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
 
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Webhooks</span>
@@ -483,7 +483,7 @@ class Component extends DCLogic {
       toggleLedger: () => this.setState({ ledger: !S.ledger }),
       ledger: [
         { gap: "No reveal of a secret after the moment it is created or rotated — only the 14-character prefix is readable afterwards.", where: "§6" },
-        { gap: "No replay of a failed delivery. Nothing in the platform can re-attempt one, so a delivery that exhausts its three attempts is lost.", where: "§7" },
+        { gap: "No replay of a failed delivery, and none is planned (#3525, decided). Nothing in the platform can re-attempt one, so a delivery that exhausts its three attempts is lost.", where: "§7" },
         { gap: "No access to the payload that was sent. It is stored against every delivery but never served.", where: "§2" },
         { gap: "No paging past the most recent 200 deliveries per endpoint.", where: "§2" },
         { gap: "No stored health. The status on each row is computed in the browser from the deliveries fetched, and can change with the page size read.", where: "§3" },

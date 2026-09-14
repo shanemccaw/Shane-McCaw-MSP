@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+textarea::placeholder{color:#475569}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+<div data-screen-label="Status Reports" data-status-reports-scene="{{sceneMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 1120px));display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Status reports</span>
+      <span title="Written by your MSP at the end of each reporting period and published to you once final. You can read each report and comment on it; your MSP replies in the same thread. Reports they are still drafting never appear here." style="width:17px;height:17px;border-radius:999px;border:1px solid rgba(148,163,184,.35);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;cursor:help">i</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:{{stateInk}}"><span style="width:6px;height:6px;border-radius:999px;background:{{stateDot}}"></span>{{stateLine}}</span>
+    </div>
+
+    <sc-if value="{{failed}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:14px 16px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:13px;font-weight:600;color:#f8fafc">Your status reports could not be read</span>
+          <span style="font-size:12px;color:#94a3b8;line-height:1.55;max-width:620px">A failed read, not an empty list. Nothing your MSP has published is lost.</span>
+          <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace">500 · “Failed to load status reports” — the server's own message</span>
+          <span onClick="{{retry}}" style="font-size:11.5px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Try again</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{notFound}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">That report isn't available to you</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">The link you followed points at a report this page cannot show. A report that does not exist, one that belongs to another organisation, and one your MSP has not published yet all get this same answer — the server does not say which, and neither does this page.</span>
+        <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace">404 · “Not found”</span>
+        <span onClick="{{back}}" style="font-size:12px;font-weight:600;color:#60a5fa;cursor:pointer;padding-top:2px">Back to your reports →</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isEmpty}}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:20px 22px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:13.5px;font-weight:600;color:#f8fafc">No published reports yet</span>
+        <span style="font-size:12px;color:#94a3b8;line-height:1.6;max-width:680px">A successful read with nothing in it. Your MSP has not published a status report for your organisation. Reports they are still writing never appear here, so there is nothing to preview — the first one arrives when they publish it, and you will be notified.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isLive}}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;align-items:start">
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="3">
+            <div onClick="{{r.pick}}" style="border:1px solid {{r.bd}};border-radius:12px;background:{{r.bg}};padding:12px 14px;display:flex;flex-direction:column;gap:6px;cursor:pointer">
+              <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                <span style="font-size:13.5px;font-weight:600;color:#f8fafc">{{r.periodLabel}}</span>
+                <span style="margin-left:auto;font-size:10.5px;color:#64748b;white-space:nowrap">{{r.asOf}}</span>
+              </div>
+              <span style="font-size:11px;color:#64748b">{{r.byLine}}</span>
+              <span style="font-size:12px;color:#94a3b8;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{r.lead}}</span>
+            </div>
+          </sc-for>
+          <span style="font-size:10.5px;color:#475569;line-height:1.5;padding:2px 4px">Newest period first, by the date each report covers — a report entered late for an earlier period sorts by that period, not by when it arrived.</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:12px;min-width:0;grid-column:span 1">
+          <sc-if value="{{hasCur}}" hint-placeholder-val="{{ true }}">
+            <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:18px 22px 20px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569">STATUS REPORT</span>
+                <span style="font-size:18px;font-weight:700;color:#f8fafc;letter-spacing:-.01em;line-height:1.3">{{c.periodLabel}}</span>
+                <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:#94a3b8">
+                  <span>{{c.asOfLine}}</span>
+                  <span>{{c.publishedLine}}</span>
+                  <span style="color:{{c.authorInk}}">{{c.authorLine}}</span>
+                </div>
+                <sc-if value="{{c.late}}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:10.5px;color:#64748b;line-height:1.5">Published well after the period it covers. It sits where its period belongs in the list, not at the top.</span>
+                </sc-if>
+              </div>
+              <span style="font-size:13px;color:#e2e8f0;line-height:1.7;white-space:pre-wrap;border-top:1px solid rgba(255,255,255,.06);padding-top:14px;max-width:720px">{{c.content}}</span>
+              <span style="font-size:10.5px;color:#475569;line-height:1.5">Shown as your MSP wrote it. Line breaks are kept; nothing is summarised or reformatted. Published reports cannot be edited on their side either.</span>
+            </div>
+
+            <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:16px 20px 18px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                <span style="font-size:13px;font-weight:600;color:#f8fafc">Discussion</span>
+                <span style="font-size:11px;color:#64748b">{{threadLine}}</span>
+              </div>
+              <sc-if value="{{hasComments}}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{comments}}" as="m" hint-placeholder-count="3">
+                    <div style="display:flex;flex-direction:column;gap:5px;border:1px solid {{m.bd}};background:{{m.bg}};border-radius:12px;padding:11px 14px">
+                      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;color:{{m.sideInk}};border:1px solid {{m.sideBd}};border-radius:999px;padding:2px 8px">{{m.side}}</span>
+                        <span style="font-size:12px;font-weight:600;color:{{m.nameInk}}">{{m.name}}</span>
+                        <span style="margin-left:auto;font-size:10.5px;color:#64748b;white-space:nowrap">{{m.when}}</span>
+                      </div>
+                      <span style="font-size:12.5px;color:#e2e8f0;line-height:1.6;white-space:pre-wrap">{{m.body}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{noComments}}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:12px;color:#64748b;line-height:1.5">No comments yet. Yours would be the first; your MSP sees it and can reply here.</span>
+              </sc-if>
+
+              <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+                <span style="font-size:11px;font-weight:600;color:#94a3b8">Add a comment as {{meName}}</span>
+                <textarea onInput="{{setDraft}}" value="{{draft}}" placeholder="A question, a correction, a request for next month's report…" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 11px;font-size:12.5px;color:#f8fafc;font-family:Inter,system-ui,sans-serif;outline:none;width:100%;box-sizing:border-box;resize:vertical;min-height:72px;line-height:1.55"></textarea>
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <span style="font-size:10.5px;color:{{countInk}}">{{countLine}}</span>
+                  <sc-if value="{{postIdle}}" hint-placeholder-val="{{ true }}">
+                    <span onClick="{{post}}" style="margin-left:auto;font-size:12px;font-weight:600;color:{{postInk}};background:{{postBg}};border-radius:6px;padding:7px 13px;cursor:{{postCur}};white-space:nowrap">Add comment</span>
+                  </sc-if>
+                  <sc-if value="{{postSending}}" hint-placeholder-val="{{ false }}">
+                    <span style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:#94a3b8;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 13px;white-space:nowrap"><span style="width:11px;height:11px;border-radius:999px;border:2px solid rgba(148,163,184,.3);border-top-color:#94a3b8;animation:spin .9s linear infinite"></span>Adding…</span>
+                  </sc-if>
+                </div>
+                <sc-if value="{{postSent}}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:11px;color:#34d399;line-height:1.5">Added. Your comment is recorded and cannot be edited or removed. A notification goes to the operator who wrote this report, best-effort — the comment stands whether or not that message lands.</span>
+                </sc-if>
+                <sc-if value="{{postError}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;gap:10px;border:1px dashed rgba(248,113,113,.45);background:rgba(248,113,113,.06);border-radius:12px;padding:11px 13px;align-items:flex-start">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+                    <div style="display:flex;flex-direction:column;gap:3px">
+                      <span style="font-size:12px;font-weight:600;color:#f8fafc">“Failed to add comment”</span>
+                      <span style="font-size:11px;color:#94a3b8;line-height:1.5">The server's own message. Nothing was recorded and your text is still here — try again.</span>
+                    </div>
+                  </div>
+                </sc-if>
+                <span style="font-size:10.5px;color:#475569;line-height:1.5">Comments are permanent: nobody, on either side, can edit or delete one. You always post as yourself.</span>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;empty&quot;,&quot;not-found&quot;,&quot;failed&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;commentOutcome&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;success&quot;,&quot;error&quot;],&quot;default&quot;:&quot;success&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;}}">
+class Component extends DCLogic {
+  state = { sel: null, comments: null, draft: "", posting: "idle", back: false, retried: false, seq: 30 };
+
+  renderVals() {
+    const S = this.state, P = this.props;
+    const ME = "Priya Natarajan";
+    let scene = P.scene || "live";
+    if (S.retried && scene === "failed") scene = "live";
+    if (S.back && scene === "not-found") scene = "live";
+    const outcome = P.commentOutcome || "success";
+    const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const fd = (iso) => { const [y, m, d] = iso.slice(0, 10).split("-"); return `${+d} ${MON[+m - 1]} ${y}`; };
+    const fdt = (iso) => fd(iso) + " · " + iso.slice(11, 16) + " UTC";
+    const set = (patch) => this.setState(patch);
+
+    const REPORTS = [
+      { id: 7, periodLabel: "August 2026", asOfDate: "2026-08-31T00:00:00.000Z", publishedAt: "2026-09-03T13:20:41.000Z", createdAt: "2026-09-02T16:05:12.000Z", authoredByName: "Shane McCaw",
+        content: "Guest access was the month's main thread. Of the 61 guest accounts without a registered MFA method at the start of August, 12 remain: 40 were disabled under the plan you signed on 21 August (POAM-2026-017) and 9 registered after the first notice. The 12 that remain all belong to two project sites whose owners have asked for another two weeks.\n\nLegacy authentication is now blocked for every user account. The two shared service mailboxes — the finance scanner and the visitor kiosk — still authenticate with basic auth and are the subject of the plan awaiting your signature (POAM-2026-019). Both are restricted to your office egress addresses, and their sign-in logs were clean all month.\n\nOwnerless groups fell from 104 to 71. The 31 with external members all have owners now; the remaining 71 are internal-only and are being archived in batches of ten a week. Nothing has been deleted.\n\nTwo Microsoft changes landed that affect you: the retirement of the classic Exchange admin centre reports, which needs no action, and the Teams external access default change, which we held back with a policy pin until your review on 18 September.\n\nNext month: finish the guest campaign, sign and start the legacy-auth plan, and complete the group archive. No scope changes are proposed." },
+      { id: 6, periodLabel: "July 2026", asOfDate: "2026-07-31T00:00:00.000Z", publishedAt: "2026-08-04T15:02:10.000Z", createdAt: "2026-08-04T09:40:00.000Z", authoredByName: null,
+        content: "July was a quieter month. The ownerless-groups plan (POAM-2026-015) was signed on 2 July and the first milestone — owners for every group with external members — closed on the 30th, a day early.\n\nWe reviewed the 23 third-party OAuth grants under POAM-2026-012 with each department; 9 were revoked as unused, 14 stay pending the publisher-verification switch. Given how the review went, we have proposed converting that plan into a recorded risk acceptance rather than forcing the switch before the marketing workflow is ready — that decision is with you.\n\nNo Microsoft changes required action. Drift was limited to two Conditional Access edits, both inside approved windows." },
+      { id: 8, periodLabel: "June 2026", asOfDate: "2026-06-30T00:00:00.000Z", publishedAt: "2026-09-10T09:12:00.000Z", createdAt: "2026-09-10T08:55:31.000Z", authoredByName: "Shane McCaw", late: true,
+        content: "A catch-up report for June, written in September at your request for the insurance renewal file. It covers the period from the records we hold; nothing in it is new work.\n\nJune's activity was the onboarding baseline: the first full diagnostic run, the risk register seeded with 14 findings, and the first two plans raised (POAM-2026-009, later cancelled when the hybrid server was retired by other means, and POAM-2026-012).\n\nNo signatures, no changes and no incidents fell in the period." },
+    ];
+    const INITIAL_COMMENTS = {
+      7: [
+        { id: 11, authorType: "msp", authorName: "Shane McCaw", body: "Published. The guest numbers are as of the 31st — the 61 → 12 figure includes the 40 accounts disabled under POAM-2026-017 on the 28th.", createdAt: "2026-09-03T13:24:02.000Z" },
+        { id: 12, authorType: "customer", authorName: "Priya Natarajan", body: "Thanks. For September, can the two service mailboxes still on legacy auth be listed by name with the compensating control next to each? Audit wants it in the file.", createdAt: "2026-09-04T08:51:37.000Z" },
+        { id: 13, authorType: "msp", authorName: "Shane McCaw", body: "Yes. They will be named, with the egress restriction and the weekly log review stated against each.", createdAt: "2026-09-04T10:07:19.000Z" },
+      ],
+      6: [],
+      8: [
+        { id: 21, authorType: "customer", authorName: "Daniel Okafor", body: "Late but useful — this is the period the insurer asked about. Filed.", createdAt: "2026-09-10T14:30:05.000Z" },
+        { id: 22, authorType: "msp", authorName: null, body: "Noted. If they want the diagnostic run itself, the June snapshot is under Documents.", createdAt: "2026-09-10T15:02:48.000Z" },
+      ],
+    };
+    const comments = S.comments || INITIAL_COMMENTS;
+    const reports = scene === "live" ? REPORTS : [];
+    const failed = scene === "failed", notFound = scene === "not-found";
+    const isEmpty = scene === "empty", isLive = scene === "live";
+    const selId = S.sel || (reports[0] && reports[0].id);
+    const cur = reports.find((r) => r.id === selId) || null;
+    const thread = cur ? (comments[cur.id] || []) : [];
+
+    const rows = reports.map((r) => {
+      const active = cur && cur.id === r.id;
+      return {
+        periodLabel: r.periodLabel, asOf: "as of " + fd(r.asOfDate),
+        byLine: "Published " + fd(r.publishedAt) + " · " + (r.authoredByName || "Unknown operator"),
+        lead: r.content.split("\n")[0],
+        bd: active ? "rgba(0,120,212,.55)" : "rgba(255,255,255,.09)", bg: active ? "rgba(0,120,212,.07)" : "rgba(255,255,255,.02)",
+        pick: () => set({ sel: r.id, draft: "", posting: "idle" }),
+      };
+    });
+
+    const c = cur ? {
+      periodLabel: cur.periodLabel, asOfLine: "As of " + fd(cur.asOfDate), publishedLine: "Published " + fd(cur.publishedAt),
+      authorLine: cur.authoredByName ? "Written by " + cur.authoredByName : "Author unknown — no name on record",
+      authorInk: cur.authoredByName ? "#94a3b8" : "#64748b", late: !!cur.late, content: cur.content,
+    } : null;
+
+    const cm = thread.map((m) => {
+      const msp = m.authorType === "msp";
+      return {
+        side: msp ? "YOUR MSP" : "YOUR ORGANISATION", sideInk: msp ? "#60a5fa" : "#94a3b8", sideBd: msp ? "rgba(96,165,250,.4)" : "rgba(148,163,184,.35)",
+        name: m.authorName || (msp ? "Unknown operator" : "Unknown"), nameInk: m.authorName ? "#f8fafc" : "#94a3b8",
+        when: fdt(m.createdAt), body: m.body,
+        bd: msp ? "rgba(96,165,250,.18)" : "rgba(255,255,255,.08)", bg: msp ? "rgba(96,165,250,.04)" : "rgba(255,255,255,.02)",
+      };
+    });
+
+    const len = S.draft.length, trimmed = S.draft.trim().length;
+    const canPost = !!cur && trimmed >= 1 && trimmed <= 10000 && S.posting !== "sending";
+    const over = trimmed > 10000;
+
+        return {
+      rootH: P.embedded ? "100%" : "100vh",
+      sceneMarker: scene + (cur ? " report:" + cur.id : ""),
+      stateInk: failed ? "#f87171" : notFound ? "#fbbf24" : "#64748b", stateDot: failed ? "#f87171" : notFound ? "#fbbf24" : "#34d399",
+      stateLine: failed ? "Read failed · 500" : notFound ? "Not found · 404" : isEmpty ? "Live · no published reports" : `Live · ${reports.length} published report${reports.length === 1 ? "" : "s"} · published only, newest period first`,
+      failed, notFound, isEmpty, isLive,
+      retry: () => set({ retried: true }), back: () => set({ back: true }),
+      rows, hasCur: !!cur, c,
+      threadLine: thread.length ? `${thread.length} comment${thread.length === 1 ? "" : "s"} · oldest first` : "",
+      hasComments: cm.length > 0, noComments: cm.length === 0, comments: cm,
+      meName: ME, draft: S.draft,
+      setDraft: (e) => set({ draft: e.target.value, posting: S.posting === "sent" || S.posting === "error" ? "idle" : S.posting }),
+      countLine: `${len.toLocaleString()} / 10,000`, countInk: over ? "#f87171" : "#475569",
+      postIdle: S.posting !== "sending", postSending: S.posting === "sending", postSent: S.posting === "sent", postError: S.posting === "error",
+      postBg: canPost ? "#0078D4" : "rgba(255,255,255,.06)", postInk: canPost ? "#fff" : "#475569", postCur: canPost ? "pointer" : "default",
+      post: () => {
+        if (!canPost) return;
+        const body = S.draft.trim(), rid = cur.id;
+        set({ posting: "sending" });
+        setTimeout(() => {
+          if (outcome === "error") { this.setState({ posting: "error" }); return; }
+          const all = this.state.comments || INITIAL_COMMENTS;
+          const next = { ...all, [rid]: [...(all[rid] || []), { id: this.state.seq, authorType: "customer", authorName: ME, body, createdAt: new Date().toISOString() }] };
+          this.setState({ comments: next, seq: this.state.seq + 1, draft: "", posting: "sent" });
+        }, 900);
+      },
+
+    };
+  }
+}
+</script>
+</body>
+</html>

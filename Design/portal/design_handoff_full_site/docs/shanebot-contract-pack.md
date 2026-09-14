@@ -613,7 +613,7 @@ extracted from the live code, the same way §4-5 document the server side.
   tree (parented under the separate, closed #360, itself under Epic #1096 Application Core,
   not Feature #1616). It is noted here only so Design doesn't mistake ShaneBot's action
   layer for part of the Active Cards contract; a`Requests and Support Chat` contract pack
-  (docs/requests-and-support-chat-contract-pack.md, #2450) already covers those two routes
+  (docs/portal/requests-and-support-chat-contract-pack.md, #2450) already covers those two routes
   and both response fields in full, and that pack — not this one — is the place a
   sub-issue for that gap would belong if filed.
 

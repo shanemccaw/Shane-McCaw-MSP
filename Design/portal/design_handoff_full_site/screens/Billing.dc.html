@@ -25,7 +25,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
 </style>
 </helmet>
 <div data-screen-label="Billing" data-pv2-bill-receipts-source="{{sourceMarker}}" style="flex:1;min-width:0;height:{{rootH}};position:relative;display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
-  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:24px 30px 56px;padding-right:max(30px, calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 950px));display:flex;flex-direction:column;gap:16px">
 
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">Billing</span>
@@ -57,7 +57,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
     </sc-if>
 
     <sc-if value="{{isLive}}" hint-placeholder-val="{{ true }}">
-      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 20px 14px">
+      <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:6px 20px 14px;overflow-x:auto">
         <div style="display:flex;align-items:center;gap:12px;padding:13px 0 8px;flex-wrap:wrap">
           <span style="font-size:13.5px;font-weight:600;color:#f8fafc">Receipts</span>
           <span style="font-size:11px;color:#64748b">{{receiptMeta}}</span>
@@ -71,7 +71,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
         </sc-if>
 
         <sc-if value="{{hasReceipts}}" hint-placeholder-val="{{ true }}">
-          <div style="display:flex;align-items:center;gap:12px;padding-bottom:5px">
+          <div style="display:flex;align-items:center;gap:12px;padding-bottom:5px;min-width:560px">
             <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:78px;flex:none">DATE</span>
             <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;min-width:0;flex:1">WHAT FOR</span>
             <span style="font-size:9px;font-weight:700;letter-spacing:.09em;color:#475569;width:74px;flex:none;text-align:right">AMOUNT</span>
@@ -79,7 +79,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
             <span style="width:70px;flex:none"></span>
           </div>
           <sc-for list="{{receipts}}" as="r" hint-placeholder-count="5">
-            <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06)">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06);min-width:560px">
               <span style="font-size:11.5px;color:#94a3b8;width:78px;flex:none;white-space:nowrap">{{r.date}}</span>
               <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
                 <span style="font-size:12.5px;color:#e2e8f0;line-height:1.4">{{r.what}}</span>

@@ -26,7 +26,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
 </helmet>
 
 <div data-screen-label="Policy decisions" style="flex:1;min-width:0;height:{{rootH}};display:flex;min-height:0;background:#020617;font-family:Inter,system-ui,sans-serif;color:#cbd5e1">
-  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:24px 30px 56px;padding-right:max(30px, calc(100% - 1180px));display:flex;flex-direction:column;gap:18px">
+  <div style="flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:min(24px,5%) min(30px,4%) 56px;padding-right:max(min(30px,4%), calc(100% - 1180px));display:flex;flex-direction:column;gap:18px">
 
     <div style="display:flex;flex-direction:column;gap:9px">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -129,7 +129,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
               <span onClick="{{toggleForm}}" style="margin-left:auto;font-size:11px;font-weight:600;color:#60a5fa;cursor:pointer">Close</span>
             </div>
             <span style="font-size:12px;color:#94a3b8;line-height:1.65;max-width:760px">Recording and signing are one act. Your typed name and the confirmation are the signature; the time it was signed is set when it reaches the server.</span>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:11px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,238px),1fr));gap:11px">
               <sc-for list="{{fields}}" as="f" hint-placeholder-count="8">
                 <div style="display:flex;flex-direction:column;gap:5px">
                   <span style="font-size:11px;font-weight:600;color:#cbd5e1">{{f.label}} <span style="color:{{f.reqInk}};font-weight:500">{{f.req}}</span></span>
@@ -173,7 +173,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
                 </div>
               </div>
 
-              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:14px 24px">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,292px),1fr));gap:14px 24px">
                 <div style="display:flex;flex-direction:column;gap:5px">
                   <span style="font-size:8.5px;font-weight:800;letter-spacing:.13em;color:#475569">WHY YOU CHOSE THIS</span>
                   <span style="font-size:12px;color:#cbd5e1;line-height:1.6">{{r.statement}}</span>
@@ -197,7 +197,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
 
             <sc-if value="{{r.expanded}}" hint-placeholder-val="{{ false }}">
               <div style="border-top:1px solid rgba(255,255,255,.07);background:rgba(2,6,23,.45);padding:15px 18px 16px;display:flex;flex-direction:column;gap:14px">
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(252px,1fr));gap:14px 22px">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,252px),1fr));gap:14px 22px">
                   <sc-for list="{{r.detail}}" as="d" hint-placeholder-count="4">
                     <div style="display:flex;flex-direction:column;gap:4px">
                       <span style="font-size:8.5px;font-weight:800;letter-spacing:.13em;color:#475569">{{d.k}}</span>
@@ -231,7 +231,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
           <span style="font-size:9.5px;font-weight:700;letter-spacing:.15em;color:#94a3b8">WHAT YOU ARE MEASURED AGAINST</span>
           <span style="font-size:11px;color:#64748b">{{obligationMeta}}</span>
         </div>
-        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 18px 16px;display:flex;flex-direction:column;gap:16px">
+        <div style="border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.02);padding:14px 18px 16px;display:flex;flex-direction:column;overflow-x:auto;gap:16px">
           <div style="display:flex;gap:14px;padding:0 0 2px">
             <span style="width:8px;flex:none"></span>
             <span style="width:200px;flex:none;font-size:8.5px;font-weight:800;letter-spacing:.12em;color:#94a3b8">AUTHORITY</span>
@@ -246,7 +246,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
                 <span style="font-size:8.5px;font-weight:800;letter-spacing:.14em;color:{{g.accent}}">{{g.label}}</span>
               </div>
               <sc-for list="{{g.rows}}" as="o" hint-placeholder-count="4">
-                <div style="display:flex;align-items:flex-start;gap:14px;padding:10px 0;border-top:1px solid rgba(255,255,255,.05)">
+                <div style="display:flex;align-items:flex-start;gap:14px;padding:10px 0;border-top:1px solid rgba(255,255,255,.05);min-width:560px">
                   <span style="width:8px;flex:none;display:flex;justify-content:center;padding-top:5px">
                     <span style="width:6px;height:6px;border-radius:999px;background:{{o.tone}}"></span>
                   </span>
@@ -274,7 +274,7 @@ a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
           <span style="margin-left:auto;font-size:10.5px;font-weight:600;color:#64748b">{{howToggleLabel}}</span>
         </div>
         <sc-if value="{{howOpen}}" hint-placeholder-val="{{ false }}">
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px 26px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px 26px">
             <sc-for list="{{how}}" as="h" hint-placeholder-count="5">
               <div style="display:flex;flex-direction:column;gap:3px">
                 <span style="font-size:11.5px;font-weight:700;color:#e2e8f0">{{h.head}}</span>

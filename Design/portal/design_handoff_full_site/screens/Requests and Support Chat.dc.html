@@ -116,7 +116,7 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
               <div style="display:flex;flex-direction:column;gap:3px">
                 <span style="font-size:12.5px;font-weight:600;color:#f8fafc">Ticketing is not available right now.</span>
-                <span style="font-size:11px;color:#94a3b8;line-height:1.5">The desk could not be reached for this thread. Your requests still exist; try again shortly. (The list and this thread report the same outage differently — #2512.)</span>
+                <span style="font-size:11px;color:#94a3b8;line-height:1.5">The desk could not be reached for this thread. Your requests still exist; try again shortly.</span>
               </div>
             </div>
           </sc-if>
@@ -178,30 +178,12 @@ a{color:#60a5fa}a:hover{color:#93c5fd}
       </div>
     </sc-if>
 
-    <sc-if value="{{ledgerShow}}" hint-placeholder-val="{{ true }}">
-      <div style="border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.015);padding:16px 20px 15px;display:flex;flex-direction:column;gap:9px">
-        <div style="display:flex;align-items:baseline;gap:10px">
-          <span style="font-size:13px;font-weight:600;color:#f8fafc">What this page deliberately does not do</span>
-          <span onClick="{{toggleLedger}}" style="margin-left:auto;font-size:11.5px;font-weight:600;color:#64748b;cursor:pointer" style-hover="color:#cbd5e1">{{ledgerToggle}}</span>
-        </div>
-        <sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ true }}">
-          <div style="display:flex;flex-direction:column">
-            <sc-for list="{{ledger}}" as="l" hint-placeholder-count="8">
-              <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)">
-                <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5;flex:1;min-width:0">{{l.gap}}</span>
-                <span style="font-size:10.5px;color:#475569;font-family:ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">{{l.where}}</span>
-              </div>
-            </sc-for>
-          </div>
-        </sc-if>
-      </div>
-    </sc-if>
-  </div>
+    </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;never-opened&quot;,&quot;not-configured&quot;,&quot;thread-unavailable&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;},&quot;showLedger&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data honesty&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;embedded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;never-opened&quot;,&quot;not-configured&quot;,&quot;thread-unavailable&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Real response states&quot;}}">
 class Component extends DCLogic {
-  state = { sel: 0, form: false, queued: false, replied: false, priority: "Medium", ledger: true };
+  state = { sel: 0, form: false, queued: false, replied: false, priority: "Medium" };
 
   renderVals() {
     const S = this.state, P = this.props;
@@ -250,26 +232,15 @@ class Component extends DCLogic {
       sel, thread: sel.thread || [],
       reply: () => this.setState({ replied: true }), replied: S.replied,
       proposals: [
-        { title: "Fix it now", body: "For an offer your provider has sent, the assistant can propose running the remediation pack behind it.", note: "Only on test tenants. On a live tenant this is refused server-side, twice, because it writes to Microsoft 365.", noteInk: "#fbbf24" },
-        { title: "Regenerate a document", body: "Re-runs generation for your current document; the target is re-resolved on the server, never taken from the chat.", note: "Confirm first. Progress streams back as it runs.", noteInk: "#64748b" },
+        { title: "Fix it now", body: "For an offer your provider has sent, the assistant can propose running the remediation pack behind it.", note: "Only on test tenants. On a live tenant this is refused, because it writes to Microsoft 365.", noteInk: "#fbbf24" },
+        { title: "Regenerate a document", body: "Re-runs generation for your current document, always for the document you're currently viewing.", note: "Confirm first. Progress streams back as it runs.", noteInk: "#64748b" },
         { title: "Re-run the scan", body: "Starts a fresh scan of your tenant with your monitoring package.", note: "Confirm first. The run then shows on Diagnostics as it progresses.", noteInk: "#64748b" },
       ],
-      ledgerShow: P.showLedger !== false,
-      ledgerOpen: S.ledger,
-      ledgerToggle: S.ledger ? "Collapse" : "Expand",
-      toggleLedger: () => this.setState({ ledger: !S.ledger }),
-      ledger: [
-        { gap: "\"Not set up\" is drawn as a real state, not an error. The list route says configured:false and this page believes it.", where: "§8" },
-        { gap: "Submitting and replying are queued, and the page says \"queued\". The desk picks writes up on a sweep; nothing appears instantly and the page does not fake a row.", where: "§7 · §10" },
-        { gap: "Private agent notes are not shown, and the page says why the thread may look thinner than the provider's copy.", where: "§9" },
-        { gap: "Ticket statuses are the desk's own words. The page does not invent a status vocabulary; the coloured pill keys off the desk's four coarse buckets.", where: "§8 · §12" },
-        { gap: "Priority and category ride inside the ticket text. The page says so rather than implying structured fields the desk does not have.", where: "§7" },
-        { gap: "A reply is prefixed with your name because the desk would otherwise credit it to the agent. The page tells you that before you send.", where: "§10" },
-        { gap: "\"Not yours\" and \"does not exist\" are the same 404, and the page treats them as one.", where: "§9" },
-        { gap: "\"Talk to a human\" always reports success. The server swallows delivery failures, so the page cannot promise more than \"sent\" — and does not.", where: "§2" },
-        { gap: "The chat itself lives on ShaneBot. This page explains the propose-then-confirm contract and the handoff, and links there instead of drawing a second chat.", where: "§1 · §11" },
-        { gap: "Instant remediation is drawn with its test-tenant-only guard on it. On a live tenant the offer is never listed and the action is refused.", where: "§4 · §5" },
-      ],
+
+
+
+
+
     };
   }
 }
