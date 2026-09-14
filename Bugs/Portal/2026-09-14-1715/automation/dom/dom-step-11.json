@@ -1,0 +1,14 @@
+{
+  "StepIndex": 11,
+  "Route": "http://localhost:5175/portal/settings?tab=departments",
+  "Selector": "[data-testid=\u0027departments-content\u0027]",
+  "Description": "expect [data-testid=\u0027departments-content\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 18,
+  "Changes": [
+    "Captured DOM scope: 18 total element nodes under \u0027[data-testid=\u0027departments-content\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T17:15:30.5333529-04:00"
+}

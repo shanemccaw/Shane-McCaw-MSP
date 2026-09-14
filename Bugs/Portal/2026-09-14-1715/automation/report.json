@@ -1,0 +1,751 @@
+{
+  "testName": "Issue #1736 - Settings (#1736, Feature #1596) \u2014 the consolidated Settings container page in artifacts/portal, per the landed Shell design\u0027s own settingsGroups/stab state machine (Design/portal/design_handoff_full_site/screens/Shell.dc.html:1418-1450). Six tabs, three groups: ALERTS (Alert preferences, Notifications), YOUR TENANT (Email authentication, Webhooks, Departments), YOUR ACCOUNT (Privacy and your data). Change Control, Ownership/RACI and Account Security are deliberately NOT part of this page \u2014 the landed design keeps each on its own dedicated destination, contradicting the earlier #4057 contract-pack framing. Route: /settings. This manifest covers the new container (nav, tab switching) and the two brand-new tabs (Alert preferences, Departments); Webhooks/Notification Preferences/Email authentication/Privacy already have their own manifests covering their standalone routes and are only smoke-checked here for correctly rendering inside the container.",
+  "productName": "Portal",
+  "sessionId": "2026-09-14-1715",
+  "startedAt": "2026-09-14T17:15:08.5229268-04:00",
+  "endedAt": "2026-09-14T17:15:45.3427768-04:00",
+  "durationSeconds": 36.82,
+  "success": true,
+  "summary": "\u2714 TEST PASSED (19/19 Steps)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/settings",
+    "http://localhost:5175/portal/login"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/portal/login",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "navigation to http://localhost:5175/portal/login succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 783,
+      "detail": "Navigated to http://localhost:5175/portal/login",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "[data-testid=\u0027login-email\u0027]",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "[data-testid=\u0027login-email\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 17,
+      "detail": "[data-testid=\u0027login-email\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 3,
+      "action": "input",
+      "selector": "[data-testid=\u0027login-email\u0027]",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "input on \u0027[data-testid=\u0027login-email\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 16,
+      "detail": "Executed input on [data-testid=\u0027login-email\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\3.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 4,
+      "action": "input",
+      "selector": "[data-testid=\u0027login-password\u0027]",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "input on \u0027[data-testid=\u0027login-password\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 20,
+      "detail": "Executed input on [data-testid=\u0027login-password\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\4.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "click",
+      "selector": "[data-testid=\u0027login-submit\u0027]",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "click on \u0027[data-testid=\u0027login-submit\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 29,
+      "detail": "Executed click on [data-testid=\u0027login-submit\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\5.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 6,
+      "action": "goto",
+      "selector": "/portal/settings",
+      "targetUrl": "http://localhost:5175/portal/settings",
+      "expected": "navigation to http://localhost:5175/portal/settings succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 1262,
+      "detail": "Navigated to http://localhost:5175/portal/settings",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\6.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 7,
+      "action": "expect",
+      "selector": "[data-testid=\u0027settings-page\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings",
+      "expected": "[data-testid=\u0027settings-page\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 14,
+      "detail": "[data-testid=\u0027settings-page\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\7.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 8,
+      "action": "expect",
+      "selector": "[data-testid=\u0027settings-nav-alerts\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings",
+      "expected": "[data-testid=\u0027settings-nav-alerts\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 10,
+      "detail": "[data-testid=\u0027settings-nav-alerts\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\8.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 9,
+      "action": "expect",
+      "selector": "[data-testid=\u0027alert-preferences-content\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings",
+      "expected": "[data-testid=\u0027alert-preferences-content\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 12,
+      "detail": "[data-testid=\u0027alert-preferences-content\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\9.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 10,
+      "action": "click",
+      "selector": "[data-testid=\u0027settings-nav-departments\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings?tab=departments",
+      "expected": "click on \u0027[data-testid=\u0027settings-nav-departments\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 22,
+      "detail": "Executed click on [data-testid=\u0027settings-nav-departments\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\10.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 11,
+      "action": "expect",
+      "selector": "[data-testid=\u0027departments-content\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings?tab=departments",
+      "expected": "[data-testid=\u0027departments-content\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 16,
+      "detail": "[data-testid=\u0027departments-content\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\11.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 12,
+      "action": "click",
+      "selector": "[data-testid=\u0027settings-nav-webhooks\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings?tab=webhooks",
+      "expected": "click on \u0027[data-testid=\u0027settings-nav-webhooks\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 34,
+      "detail": "Executed click on [data-testid=\u0027settings-nav-webhooks\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\12.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 13,
+      "action": "expect",
+      "selector": "[data-testid=\u0027webhooks-page\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings?tab=webhooks",
+      "expected": "[data-testid=\u0027webhooks-page\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 32,
+      "detail": "[data-testid=\u0027webhooks-page\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\13.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 14,
+      "action": "click",
+      "selector": "[data-testid=\u0027settings-nav-notifs\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings?tab=notifs",
+      "expected": "click on \u0027[data-testid=\u0027settings-nav-notifs\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 54,
+      "detail": "Executed click on [data-testid=\u0027settings-nav-notifs\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\14.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 15,
+      "action": "expect",
+      "selector": "[data-testid=\u0027notification-preferences-page\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings?tab=notifs",
+      "expected": "[data-testid=\u0027notification-preferences-page\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 21,
+      "detail": "[data-testid=\u0027notification-preferences-page\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\15.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 16,
+      "action": "click",
+      "selector": "[data-testid=\u0027settings-nav-emailauth\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings?tab=emailauth",
+      "expected": "click on \u0027[data-testid=\u0027settings-nav-emailauth\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 36,
+      "detail": "Executed click on [data-testid=\u0027settings-nav-emailauth\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\16.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 17,
+      "action": "expect",
+      "selector": "[data-testid=\u0027email-auth-setup-page\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings?tab=emailauth",
+      "expected": "[data-testid=\u0027email-auth-setup-page\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 18,
+      "detail": "[data-testid=\u0027email-auth-setup-page\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\17.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 18,
+      "action": "click",
+      "selector": "[data-testid=\u0027settings-nav-data\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings?tab=data",
+      "expected": "click on \u0027[data-testid=\u0027settings-nav-data\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 28,
+      "detail": "Executed click on [data-testid=\u0027settings-nav-data\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\18.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 19,
+      "action": "expect",
+      "selector": "[data-testid=\u0027data-rights-and-privacy-page\u0027]",
+      "targetUrl": "http://localhost:5175/portal/settings?tab=data",
+      "expected": "[data-testid=\u0027data-rights-and-privacy-page\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 15,
+      "detail": "[data-testid=\u0027data-rights-and-privacy-page\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\19.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [
+    {
+      "level": "error",
+      "message": "[console.error] Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A76",
+      "stack": "Error\n    at console.error (\u003Canonymous\u003E:23:25)\n    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:5789:114)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:5995:88)\n    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:6061:35\n    at reconcileChildren (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:6444:53)\n    at beginWork (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:7830:104)\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:1485:72)",
+      "timestamp": "2026-09-14T17:15:45.3423027-04:00"
+    }
+  ],
+  "apiFailures": [
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-14T17:15:09.7546908-04:00"
+    },
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-14T17:15:12.5539502-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png",
+    "screenshots/screenshot-06.png",
+    "screenshots/screenshot-07.png",
+    "screenshots/screenshot-08.png",
+    "screenshots/screenshot-09.png",
+    "screenshots/screenshot-10.png",
+    "screenshots/screenshot-11.png",
+    "screenshots/screenshot-12.png",
+    "screenshots/screenshot-13.png",
+    "screenshots/screenshot-14.png",
+    "screenshots/screenshot-15.png",
+    "screenshots/screenshot-16.png",
+    "screenshots/screenshot-17.png",
+    "screenshots/screenshot-18.png",
+    "screenshots/screenshot-19.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /portal/login",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect [data-testid=\u0027login-email\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "input [data-testid=\u0027login-email\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "input [data-testid=\u0027login-password\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "click [data-testid=\u0027login-submit\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 6,
+      "StepLabel": "goto /portal/settings",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\6.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\6.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 7,
+      "StepLabel": "expect [data-testid=\u0027settings-page\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\7.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\7.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 8,
+      "StepLabel": "expect [data-testid=\u0027settings-nav-alerts\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\8.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\8.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 9,
+      "StepLabel": "expect [data-testid=\u0027alert-preferences-content\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\9.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\9.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 10,
+      "StepLabel": "click [data-testid=\u0027settings-nav-departments\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\10.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\10.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 11,
+      "StepLabel": "expect [data-testid=\u0027departments-content\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\11.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\11.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 12,
+      "StepLabel": "click [data-testid=\u0027settings-nav-webhooks\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\12.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\12.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 13,
+      "StepLabel": "expect [data-testid=\u0027webhooks-page\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\13.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\13.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 14,
+      "StepLabel": "click [data-testid=\u0027settings-nav-notifs\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\14.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\14.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 15,
+      "StepLabel": "expect [data-testid=\u0027notification-preferences-page\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\15.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\15.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 16,
+      "StepLabel": "click [data-testid=\u0027settings-nav-emailauth\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\16.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\16.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 17,
+      "StepLabel": "expect [data-testid=\u0027email-auth-setup-page\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\17.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\17.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 18,
+      "StepLabel": "click [data-testid=\u0027settings-nav-data\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\18.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\18.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 19,
+      "StepLabel": "expect [data-testid=\u0027data-rights-and-privacy-page\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1736-20260914171506\\screenshots\\19.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\settings\\19.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "/portal/login",
+      "Description": "goto /portal/login",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-14T17:15:12.8343483-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "[data-testid=\u0027login-email\u0027]",
+      "Description": "expect [data-testid=\u0027login-email\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027login-email\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-14T17:15:14.4137082-04:00"
+    },
+    {
+      "StepIndex": 3,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "[data-testid=\u0027login-email\u0027]",
+      "Description": "input [data-testid=\u0027login-email\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027login-email\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-03.json",
+      "Timestamp": "2026-09-14T17:15:15.9874757-04:00"
+    },
+    {
+      "StepIndex": 4,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "[data-testid=\u0027login-password\u0027]",
+      "Description": "input [data-testid=\u0027login-password\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027login-password\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-04.json",
+      "Timestamp": "2026-09-14T17:15:17.5887105-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "[data-testid=\u0027login-submit\u0027]",
+      "Description": "click [data-testid=\u0027login-submit\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 2,
+      "Changes": [
+        "Captured DOM scope: 2 total element nodes under \u0027[data-testid=\u0027login-submit\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-14T17:15:19.2283884-04:00"
+    },
+    {
+      "StepIndex": 6,
+      "Route": "http://localhost:5175/portal/settings",
+      "Selector": "/portal/settings",
+      "Description": "goto /portal/settings",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-06.json",
+      "Timestamp": "2026-09-14T17:15:22.2299361-04:00"
+    },
+    {
+      "StepIndex": 7,
+      "Route": "http://localhost:5175/portal/settings",
+      "Selector": "[data-testid=\u0027settings-page\u0027]",
+      "Description": "expect [data-testid=\u0027settings-page\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 307,
+      "Changes": [
+        "Captured DOM scope: 307 total element nodes under \u0027[data-testid=\u0027settings-page\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-07.json",
+      "Timestamp": "2026-09-14T17:15:23.8837483-04:00"
+    },
+    {
+      "StepIndex": 8,
+      "Route": "http://localhost:5175/portal/settings",
+      "Selector": "[data-testid=\u0027settings-nav-alerts\u0027]",
+      "Description": "expect [data-testid=\u0027settings-nav-alerts\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 5,
+      "Changes": [
+        "Captured DOM scope: 5 total element nodes under \u0027[data-testid=\u0027settings-nav-alerts\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-08.json",
+      "Timestamp": "2026-09-14T17:15:25.5801099-04:00"
+    },
+    {
+      "StepIndex": 9,
+      "Route": "http://localhost:5175/portal/settings",
+      "Selector": "[data-testid=\u0027alert-preferences-content\u0027]",
+      "Description": "expect [data-testid=\u0027alert-preferences-content\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 259,
+      "Changes": [
+        "Captured DOM scope: 259 total element nodes under \u0027[data-testid=\u0027alert-preferences-content\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-09.json",
+      "Timestamp": "2026-09-14T17:15:27.2002817-04:00"
+    },
+    {
+      "StepIndex": 10,
+      "Route": "http://localhost:5175/portal/settings?tab=departments",
+      "Selector": "[data-testid=\u0027settings-nav-departments\u0027]",
+      "Description": "click [data-testid=\u0027settings-nav-departments\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 7,
+      "Changes": [
+        "Captured DOM scope: 7 total element nodes under \u0027[data-testid=\u0027settings-nav-departments\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-10.json",
+      "Timestamp": "2026-09-14T17:15:28.9036363-04:00"
+    },
+    {
+      "StepIndex": 11,
+      "Route": "http://localhost:5175/portal/settings?tab=departments",
+      "Selector": "[data-testid=\u0027departments-content\u0027]",
+      "Description": "expect [data-testid=\u0027departments-content\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 18,
+      "Changes": [
+        "Captured DOM scope: 18 total element nodes under \u0027[data-testid=\u0027departments-content\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-11.json",
+      "Timestamp": "2026-09-14T17:15:30.5333529-04:00"
+    },
+    {
+      "StepIndex": 12,
+      "Route": "http://localhost:5175/portal/settings?tab=webhooks",
+      "Selector": "[data-testid=\u0027settings-nav-webhooks\u0027]",
+      "Description": "click [data-testid=\u0027settings-nav-webhooks\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 5,
+      "Changes": [
+        "Captured DOM scope: 5 total element nodes under \u0027[data-testid=\u0027settings-nav-webhooks\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-12.json",
+      "Timestamp": "2026-09-14T17:15:32.2626876-04:00"
+    },
+    {
+      "StepIndex": 13,
+      "Route": "http://localhost:5175/portal/settings?tab=webhooks",
+      "Selector": "[data-testid=\u0027webhooks-page\u0027]",
+      "Description": "expect [data-testid=\u0027webhooks-page\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 52,
+      "Changes": [
+        "Captured DOM scope: 52 total element nodes under \u0027[data-testid=\u0027webhooks-page\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-13.json",
+      "Timestamp": "2026-09-14T17:15:33.9246847-04:00"
+    },
+    {
+      "StepIndex": 14,
+      "Route": "http://localhost:5175/portal/settings?tab=notifs",
+      "Selector": "[data-testid=\u0027settings-nav-notifs\u0027]",
+      "Description": "click [data-testid=\u0027settings-nav-notifs\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 4,
+      "Changes": [
+        "Captured DOM scope: 4 total element nodes under \u0027[data-testid=\u0027settings-nav-notifs\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-14.json",
+      "Timestamp": "2026-09-14T17:15:35.7276989-04:00"
+    },
+    {
+      "StepIndex": 15,
+      "Route": "http://localhost:5175/portal/settings?tab=notifs",
+      "Selector": "[data-testid=\u0027notification-preferences-page\u0027]",
+      "Description": "expect [data-testid=\u0027notification-preferences-page\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 207,
+      "Changes": [
+        "Captured DOM scope: 207 total element nodes under \u0027[data-testid=\u0027notification-preferences-page\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-15.json",
+      "Timestamp": "2026-09-14T17:15:37.4070445-04:00"
+    },
+    {
+      "StepIndex": 16,
+      "Route": "http://localhost:5175/portal/settings?tab=emailauth",
+      "Selector": "[data-testid=\u0027settings-nav-emailauth\u0027]",
+      "Description": "click [data-testid=\u0027settings-nav-emailauth\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 4,
+      "Changes": [
+        "Captured DOM scope: 4 total element nodes under \u0027[data-testid=\u0027settings-nav-emailauth\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-16.json",
+      "Timestamp": "2026-09-14T17:15:39.1475467-04:00"
+    },
+    {
+      "StepIndex": 17,
+      "Route": "http://localhost:5175/portal/settings?tab=emailauth",
+      "Selector": "[data-testid=\u0027email-auth-setup-page\u0027]",
+      "Description": "expect [data-testid=\u0027email-auth-setup-page\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 98,
+      "Changes": [
+        "Captured DOM scope: 98 total element nodes under \u0027[data-testid=\u0027email-auth-setup-page\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-17.json",
+      "Timestamp": "2026-09-14T17:15:40.8140784-04:00"
+    },
+    {
+      "StepIndex": 18,
+      "Route": "http://localhost:5175/portal/settings?tab=data",
+      "Selector": "[data-testid=\u0027settings-nav-data\u0027]",
+      "Description": "click [data-testid=\u0027settings-nav-data\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 5,
+      "Changes": [
+        "Captured DOM scope: 5 total element nodes under \u0027[data-testid=\u0027settings-nav-data\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-18.json",
+      "Timestamp": "2026-09-14T17:15:42.4637976-04:00"
+    },
+    {
+      "StepIndex": 19,
+      "Route": "http://localhost:5175/portal/settings?tab=data",
+      "Selector": "[data-testid=\u0027data-rights-and-privacy-page\u0027]",
+      "Description": "expect [data-testid=\u0027data-rights-and-privacy-page\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 99,
+      "Changes": [
+        "Captured DOM scope: 99 total element nodes under \u0027[data-testid=\u0027data-rights-and-privacy-page\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-19.json",
+      "Timestamp": "2026-09-14T17:15:44.1221047-04:00"
+    }
+  ],
+  "recommendations": "All automated UI steps passed. Review baseline screenshots for visual drift."
+}

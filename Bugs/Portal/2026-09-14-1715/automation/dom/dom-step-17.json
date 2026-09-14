@@ -1,0 +1,14 @@
+{
+  "StepIndex": 17,
+  "Route": "http://localhost:5175/portal/settings?tab=emailauth",
+  "Selector": "[data-testid=\u0027email-auth-setup-page\u0027]",
+  "Description": "expect [data-testid=\u0027email-auth-setup-page\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 98,
+  "Changes": [
+    "Captured DOM scope: 98 total element nodes under \u0027[data-testid=\u0027email-auth-setup-page\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T17:15:40.8140784-04:00"
+}

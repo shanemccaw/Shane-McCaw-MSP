@@ -1,0 +1,8 @@
+[
+  {
+    "level": "error",
+    "message": "[console.error] Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A76",
+    "stack": "Error\n    at console.error (\u003Canonymous\u003E:23:25)\n    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:5789:114)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:5995:88)\n    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:6061:35\n    at reconcileChildren (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:6444:53)\n    at beginWork (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:7830:104)\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=b88af16a:1485:72)",
+    "timestamp": "2026-09-14T17:15:45.3423027-04:00"
+  }
+]
