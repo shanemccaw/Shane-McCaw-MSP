@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Route, Switch, Router as WouterRouter, Link } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
@@ -38,6 +39,11 @@ import PillarPage from "@/pages/pillar";
 import BreakGlassStatusPage from "@/pages/break-glass-status";
 import BreakGlassVerifyPage from "@/pages/break-glass-verify";
 import NotFound from "@/pages/not-found";
+import ConsentSuccessPage from "@/pages/consent-success";
+import ConsentDeclinedPage from "@/pages/consent-declined";
+import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
+import OnboardingLinkPage from "@/pages/onboarding-link";
+import PortalIdentityInterstitialPage from "@/pages/portal-identity-interstitial";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +58,12 @@ const ROUTER_BASE = (import.meta.env.BASE_URL || "/portal/").replace(/\/$/, "");
 // instead of a dead end.
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
+  // Feature #1650 / Git #3993 — a staff role that authenticated at the
+  // customer-facing /portal/ login instead of /admin-panel/ gets the
+  // interstitial once per browser tab (not persisted — a hard reload or a
+  // fresh tab re-asks, matching the archived page's own "client-side only,
+  // no request made to decide this" framing).
+  const [staffAcknowledged, setStaffAcknowledged] = useState(false);
 
   if (isLoading) {
     return (
@@ -78,6 +90,10 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     );
+  }
+
+  if (user.mspRole && user.mspRole !== "CustomerUser" && !staffAcknowledged) {
+    return <PortalIdentityInterstitialPage onContinue={() => setStaffAcknowledged(true)} />;
   }
 
   return <>{children}</>;
@@ -152,6 +168,18 @@ export default function App() {
                     links here, and the recipient may have no portal account at
                     all. Must stay ahead of ProtectedRoutes' /break-glass/:runId. */}
                 <Route path="/break-glass/verify/:token" component={BreakGlassVerifyPage} />
+                {/*
+                  Consent and Onboarding (Feature #1650, Git #3993) — the
+                  "portal"-origin redirect targets of GET /api/consent/callback
+                  and the public invite-link landing page. None of these carry
+                  a requireRole gate server-side (contract pack #2758 §1/§6a),
+                  so they render outside RequireAuth like the Auth Core screens
+                  above.
+                */}
+                <Route path="/consent/success" component={ConsentSuccessPage} />
+                <Route path="/consent/declined" component={ConsentDeclinedPage} />
+                <Route path="/consent/tenant-conflict" component={ConsentTenantConflictPage} />
+                <Route path="/onboarding/:token" component={OnboardingLinkPage} />
                 <Route>
                   <ProtectedRoutes />
                 </Route>

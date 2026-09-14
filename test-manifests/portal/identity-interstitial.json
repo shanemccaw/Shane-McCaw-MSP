@@ -1,11 +1,12 @@
 {
-  "feature": "Identity interstitial (Git #1296): a non-Customer role (PlatformAdmin, MSPAdmin, MSPOperator, ServiceAccount) logging in through the customer-facing /portal/ login now lands on a new identity interstitial instead of straight to /dashboard. It offers two choices -- log out and go sign in at /admin-panel/, or accept and continue into /portal-v2 with tenant impersonation available. Customer is unaffected and still lands straight on /portal-v2. TenantSwitcherFloaty and ImpersonationBanner are now also mounted on PortalV2Shell.tsx (previously only on the legacy app-shell.tsx).",
+  "feature": "Identity interstitial (Git #1296; rebuilt against the new artifacts/portal scaffold in Feature #1650, Git #3993): a non-CustomerUser role (PlatformAdmin, MSPAdmin, MSPOperator, ServiceAccount, Free, Assessment) logging in through the customer-facing /portal/ login now lands on a client-side interstitial (App.tsx's RequireAuth gate, not a routed page) instead of the customer Overview. It offers two choices -- log out and go sign in at /admin-panel/, or acknowledge and continue into the customer Overview for this browser tab. CustomerUser is unaffected and lands straight on the Overview.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "0231b1938",
+  "lastVerifiedAgainstCommit": "PENDING",
 
   "notes": [
-    "ENV VARS required: DEPLOY_URL, TEST_ADMIN_EMAIL/TEST_ADMIN_PASSWORD (PlatformAdmin -- the non-Customer account driving the primary assertions), TEST_CUSTOMER_EMAIL/TEST_CUSTOMER_PASSWORD (Customer -- the negative control proving the interstitial does not appear for that role).",
-    "Mirrors test-manifests/portal/customer-home-landing.json's landing-proof pattern: no explicit goto after login-submit, so the DOM assertion can only pass if the real post-login redirect (login.tsx resolvedLanding) sent the account there."
+    "REBUILT Git #3993: portal-v2 (this manifest's old target -- /portal-v2, PortalV2Shell, pv2-sidebar, TenantSwitcherFloaty, mspRole 'Customer') was retired 2026-08-29. The new artifacts/portal scaffold has no tenant-impersonation floaty and its real enum value is 'CustomerUser', not 'Customer' -- both updated below. The gate is now a plain client-side acknowledgement (RequireAuth's staffAcknowledged state), not a route with its own URL.",
+    "ENV VARS required: DEPLOY_URL, TEST_ADMIN_EMAIL/TEST_ADMIN_PASSWORD (PlatformAdmin -- the non-CustomerUser account driving the primary assertions), TEST_PORTAL_EMAIL/TEST_PORTAL_PASSWORD (CustomerUser -- the negative control proving the interstitial does not appear for that role; same env vars security-drilldowns.json already uses for its login).",
+    "No explicit goto after login-submit for either account -- the assertion can only pass if the real post-login state (App.tsx's RequireAuth mspRole check) actually renders the interstitial in place of the protected routes."
   ],
 
   "uiSteps": [
@@ -18,7 +19,7 @@
     { "action": "input", "selector": "#email", "value": "{{TEST_ADMIN_EMAIL}}" },
     { "action": "input", "selector": "#password", "value": "{{TEST_ADMIN_PASSWORD}}" },
     {
-      "name": "Primary login AS PlatformAdmin -- assert the response really carries a non-Customer role, since the whole landing assertion below depends on it",
+      "name": "Primary login AS PlatformAdmin -- assert the response really carries a non-CustomerUser role, since the whole landing assertion below depends on it",
       "action": "click",
       "selector": "[data-testid='login-submit']",
       "critical": true,
@@ -28,7 +29,7 @@
       }
     },
     {
-      "name": "LANDING -- with NO explicit goto, the identity interstitial renders. This is only true if the post-login redirect resolved a non-Customer role's landing to /identity (the feature under test).",
+      "name": "LANDING -- with NO explicit goto, the identity interstitial renders. This is only true if RequireAuth's mspRole gate fired for a non-CustomerUser role.",
       "action": "expect",
       "selector": "[data-testid='identity-interstitial-card']",
       "state": "visible"
@@ -41,42 +42,42 @@
       "textContains": "Platform Admin"
     },
     {
-      "name": "accept -- proceed into the customer portal",
+      "name": "accept -- continue into the customer portal for this tab",
       "action": "click",
       "selector": "[data-testid='identity-interstitial-accept']"
     },
     {
-      "name": "lands on the /portal-v2 Overview shell",
+      "name": "lands on the customer Overview",
       "action": "expect",
-      "selector": "[data-testid='pv2-sidebar']",
+      "selector": "[data-testid='overview-notifications-chip']",
       "state": "visible"
     },
     {
-      "name": "TenantSwitcherFloaty is now mounted on PortalV2Shell (previously app-shell.tsx only) -- visible for this PlatformAdmin session",
+      "name": "the interstitial does not reappear on this same tab after acknowledging",
       "action": "expect",
-      "selector": "[data-testid='tenant-switcher-floaty']",
-      "state": "visible"
+      "selector": "[data-testid='identity-interstitial-card']",
+      "state": "absent"
     },
 
     {
-      "name": "log out and switch to a Customer session -- negative control",
+      "name": "log out and switch to a CustomerUser session -- negative control",
       "action": "goto",
       "target": "/portal/login"
     },
-    { "action": "input", "selector": "#email", "value": "{{TEST_CUSTOMER_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_CUSTOMER_PASSWORD}}" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
     {
       "action": "click",
       "selector": "[data-testid='login-submit']",
       "captureResponse": {
         "urlPattern": "/api/auth/login",
-        "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "Customer" }
+        "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "CustomerUser" }
       }
     },
     {
-      "name": "NEGATIVE CONTROL -- Customer never sees the interstitial, lands straight on /portal-v2",
+      "name": "NEGATIVE CONTROL -- CustomerUser never sees the interstitial, lands straight on the Overview",
       "action": "expect",
-      "selector": "[data-testid='pv2-sidebar']",
+      "selector": "[data-testid='overview-notifications-chip']",
       "state": "visible"
     },
     {

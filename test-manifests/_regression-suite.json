@@ -17,6 +17,7 @@
     "portal/ownership.json",
     "portal/security-plan.json",
     "portal/my-architect.json",
+    "portal/consent-onboarding.json",
     "chat/support-chat-active-cards.json",
     "crm/zoho-lead-and-invoice-sync.json",
     "crm/zoho-lead-field-verification.json",

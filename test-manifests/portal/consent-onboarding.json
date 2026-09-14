@@ -1,0 +1,37 @@
+{
+  "feature": "Consent and Onboarding (Feature #1650, Git #3993): the 3 'portal'-origin GET /api/consent/callback redirect targets (consent-success acknowledgement, declined, tenant-conflict), the msp-onboarding invite-link landing page (GET /api/public/onboarding/link/:token), and the live REQUIRED_MT_SCOPES read the declined page uses (GET /api/public/consent-scopes -- already real and live off #433, public-consent-scopes.ts; not new in this build).",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "consent-success.tsx's finalize/success branches, and a real valid onboarding-link, both need server-seeded state (a live checkout session with a cached guestInfo, or a real msp_onboarding_links row) this manifest does not create -- covered by manual review of the wire contracts (docs/portal/consent-and-onboarding-contract-pack.md, #2758) instead of a driven step, per the 'document what can't be asserted' rule.",
+    "The onboarding-link page's 'Connect Microsoft 365' button is intentionally disabled (see #4010 -- no consent-kickoff bridge exists yet for this token type) -- no click step is asserted against it.",
+    "The three UI routes below render OUTSIDE RequireAuth (no requireRole gate server-side, contract pack #2758 §1/§6a) -- no login steps needed, unlike security-drilldowns.json's protected routes."
+  ],
+  "apiTests": [
+    {
+      "name": "SCOPES -- GET /api/public/consent-scopes (already real/live, #433) returns the live REQUIRED_MT_SCOPES manifest, which the declined page reads instead of hand-typing a copy that can drift from it (contract pack #2758 §9b). Bare array response.",
+      "sessionTag": "3993-consent-onboarding",
+      "method": "GET",
+      "path": "/api/public/consent-scopes",
+      "expect": { "status": 200, "jsonPath": "$[*]", "containsAny": ["Directory.Read.All"] }
+    },
+    {
+      "name": "LINK-404 -- GET /api/public/onboarding/link/:token 404s for an unknown token, matching msp-onboarding.ts's own real response shape.",
+      "sessionTag": "3993-consent-onboarding",
+      "method": "GET",
+      "path": "/api/public/onboarding/link/does-not-exist-3993",
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "This onboarding link does not exist" }
+    }
+  ],
+  "uiSteps": [
+    { "name": "goto the declined page (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/consent/declined?tenant=3f1c0000-0000-0000-0000-0000a9e20000", "sessionTag": "3993-consent-onboarding" },
+    { "name": "DECLINED1 -- the honest 'nothing changed' headline renders.", "action": "expect", "selector": "body", "textContains": "Consent was not granted", "sessionTag": "3993-consent-onboarding", "critical": true },
+    { "name": "DECLINED2 -- the live scope manifest is on the DOM, not a hardcoded 4-item list.", "action": "expect", "selector": "body", "textContains": "Directory.Read.All", "sessionTag": "3993-consent-onboarding" },
+
+    { "name": "goto the tenant-conflict page.", "action": "goto", "target": "/portal/consent/tenant-conflict?tenant=3f1c0000-0000-0000-0000-0000a9e20000", "sessionTag": "3993-consent-onboarding" },
+    { "name": "CONFLICT1 -- the cross-MSP stop headline renders.", "action": "expect", "selector": "body", "textContains": "already managed by a different provider", "sessionTag": "3993-consent-onboarding", "critical": true },
+
+    { "name": "goto an unknown onboarding-link token.", "action": "goto", "target": "/portal/onboarding/does-not-exist-3993", "sessionTag": "3993-consent-onboarding" },
+    { "name": "LINK1 -- the real 404 state renders (not a generic error page).", "action": "expect", "selector": "body", "textContains": "This link does not exist", "sessionTag": "3993-consent-onboarding", "critical": true }
+  ]
+}
