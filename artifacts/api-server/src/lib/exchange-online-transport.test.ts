@@ -40,10 +40,10 @@ describe("parseExchangeOnlineEndpoint", () => {
     }
   });
 
-  it("fails closed on a cmdlet with no allowlisted key (New-TransportRule is deliberately unmapped)", () => {
-    const res = parseExchangeOnlineEndpoint("exchange-online://New-TransportRule");
+  it("fails closed on a cmdlet with no allowlisted key", () => {
+    const res = parseExchangeOnlineEndpoint("exchange-online://Remove-TransportRule");
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error).toContain("New-TransportRule");
+    if (!res.ok) expect(res.error).toContain("Remove-TransportRule");
   });
 
   it("fails closed on an empty cmdlet and on a non-scheme endpoint", () => {
@@ -111,10 +111,9 @@ describe("classifyPsExecutionFailure", () => {
 });
 
 describe("real template body shapes map end-to-end through parse + build", () => {
-  // The 12 supported baseline_action_templates rows' endpoint/body pairs as
-  // they exist in the DB (action.set-mail-flow-rule excluded on purpose —
-  // its New-TransportRule "Condition" param defect is a filed finding).
-  // Bodies here are post-interpolation shapes: {{var}}s become strings.
+  // The 13 supported baseline_action_templates rows' endpoint/body pairs as
+  // they exist in the DB. Bodies here are post-interpolation shapes:
+  // {{var}}s become strings.
   const templates: Array<{ templateId: string; endpoint: string; body: Record<string, unknown> }> = [
     { templateId: "action.block-outbound-send", endpoint: "exchange-online://Set-Mailbox", body: { Identity: "mbx", MaxSendSize: "0B" } },
     { templateId: "action.convert-user-to-shared-mailbox", endpoint: "exchange-online://Set-Mailbox", body: { Type: "Shared", Identity: "upn" } },
@@ -128,6 +127,7 @@ describe("real template body shapes map end-to-end through parse + build", () =>
     { templateId: "action.set-forwarding-rule", endpoint: "exchange-online://Set-Mailbox", body: { Identity: "upn", ForwardingSmtpAddress: "f@b.c", DeliverToMailboxAndForward: true } },
     { templateId: "action.toggle-litigation-hold", endpoint: "exchange-online://Set-Mailbox", body: { Identity: "mbx", LitigationHoldEnabled: "true" } },
     { templateId: "microrem.enable-mailbox-archive", endpoint: "exchange-online://Enable-Mailbox", body: { Archive: true, Identity: "upn" } },
+    { templateId: "action.set-mail-flow-rule", endpoint: "exchange-online://New-TransportRule", body: { Name: "n", SetSCL: "9", FromScope: "NotInOrganization" } },
   ];
 
   for (const t of templates) {

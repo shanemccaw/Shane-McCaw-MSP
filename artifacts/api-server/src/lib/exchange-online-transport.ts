@@ -43,13 +43,12 @@ export function isExchangeOnlineEndpoint(endpoint: string): boolean {
  * closed HERE with a precise error instead of a container 400. Keys are the
  * cmdlet's own name kebab-cased, the catalog's mechanical naming convention.
  *
- * `New-TransportRule` (action.set-mail-flow-rule) is DELIBERATELY absent:
- * that template's body names a "Condition" parameter New-TransportRule does
- * not have, and because the container silently drops params outside an
- * entry's AllowedParams, allowlisting it would fire `New-TransportRule
- * -Name X -SetSCL n` with no condition at all — an org-wide SCL rule
- * applying to ALL mail. Excluded until the template row is redesigned with
- * the cmdlet's real condition predicates (filed as its own finding).
+ * `New-TransportRule` (action.set-mail-flow-rule, #3989) is now allowlisted:
+ * the template row was redesigned around the cmdlet's real `-FromScope`
+ * predicate (`NotInOrganization` — "sender is external") instead of the
+ * fictional `Condition` param this map originally excluded it over. FromScope
+ * is fixed in the template body, never request/user-supplied, so this can
+ * never fire as an org-wide unconditional SCL rule.
  */
 export const EXCHANGE_ONLINE_CMDLET_KEYS: Record<string, string> = {
   "Set-Mailbox": "set-mailbox",
@@ -58,6 +57,7 @@ export const EXCHANGE_ONLINE_CMDLET_KEYS: Record<string, string> = {
   "Add-MailboxPermission": "add-mailbox-permission",
   "Add-RecipientPermission": "add-recipient-permission",
   "Enable-Mailbox": "enable-mailbox",
+  "New-TransportRule": "new-transport-rule",
 };
 
 export interface ParsedExchangeOnlineEndpoint {

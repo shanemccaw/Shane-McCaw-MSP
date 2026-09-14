@@ -1400,16 +1400,18 @@ $script:CmdletCatalog = @{
     #   add-recipient-permission: action.grant-send-as (Identity, Trustee,
     #     AccessRights)
     #   enable-mailbox: microrem.enable-mailbox-archive (Identity, Archive)
+    #   new-transport-rule: action.set-mail-flow-rule (Name, SetSCL,
+    #     FromScope — FromScope is fixed to "NotInOrganization" in the
+    #     template body, never user/request-supplied; #3989)
     #
-    # DELIBERATELY ABSENT: New-TransportRule (action.set-mail-flow-rule).
-    # That template's body names a "Condition" parameter New-TransportRule
-    # does not have (its real conditions are individual predicate params —
-    # From, SubjectContainsWords, SentToScope, ...). Under the silent-drop
-    # param filtering an entry here would fire `New-TransportRule -Name X
-    # -SetSCL n` with NO condition — an org-wide SCL rule applying to ALL
-    # mail. Fail closed (unknown_cmdlet 400) until the template row is
-    # redesigned against the cmdlet's real predicates; filed as its own
-    # finding under #2494.
+    # new-transport-rule (#3989): action.set-mail-flow-rule redesigned around
+    # New-TransportRule's real -FromScope predicate instead of the fictional
+    # "Condition" param the #3948 exclusion above was filed against.
+    # -FromScope NotInOrganization is the ONE real condition value this
+    # template fires — "sender is external" — and it is fixed in the
+    # template's body_template, never taken from request/user input, so a
+    # write through this key can never land as an org-wide unconditional SCL
+    # rule the way the old fictional param would have.
     #
     # Prerequisite, same one #491's exchange-session READ entries already
     # flag: the app-only identity needs Exchange.ManageAsApp and an Exchange
@@ -1451,6 +1453,12 @@ $script:CmdletCatalog = @{
     "enable-mailbox" = @{
         Cmdlet         = "Enable-Mailbox"
         AllowedParams  = @("Identity", "Archive")
+        Session        = "exchange"
+        IsWrite        = $true
+    }
+    "new-transport-rule" = @{
+        Cmdlet         = "New-TransportRule"
+        AllowedParams  = @("Name", "SetSCL", "FromScope")
         Session        = "exchange"
         IsWrite        = $true
     }
