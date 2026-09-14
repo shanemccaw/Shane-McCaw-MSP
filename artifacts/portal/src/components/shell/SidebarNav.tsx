@@ -14,8 +14,23 @@ import { useHoldBadge } from "@/components/holds/useHoldBadge";
  * `useHoldBadge`'s own header: "Badges are rare on purpose... the single
  * place in the nav that says 'a decision is waiting'") — real, previously
  * built but wired to nothing since no page existed to nest it under.
+ *
+ * `narrow`/`drawerOpen`/`onNavigate` are Git #4004's own addition —
+ * Shell.dc.html's `data-shell-sidebar="drawer"` mode: below 760px this
+ * mounts only while the drawer is open, as a floating overlay (absolute,
+ * 280px, raised z-index, its own background + shadow) instead of the
+ * static in-flow rail; `onNavigate` closes the drawer on row click, per
+ * the design's own click handler (`this.setState({ ..., drawer: false })`).
  */
-export function SidebarNav({ footerSlot }: { footerSlot?: ReactNode }) {
+export function SidebarNav({
+  footerSlot,
+  narrow = false,
+  onNavigate,
+}: {
+  footerSlot?: ReactNode;
+  narrow?: boolean;
+  onNavigate?: () => void;
+}) {
   const [location] = useLocation();
   const search = useSearch();
   const params = new URLSearchParams(search);
@@ -25,8 +40,20 @@ export function SidebarNav({ footerSlot }: { footerSlot?: ReactNode }) {
 
   return (
     <div
+      data-shell-sidebar={narrow ? "drawer" : "rail"}
       className="flex flex-none flex-col border-r"
-      style={{ width: 232, borderColor: "rgba(255,255,255,.10)", padding: "14px 10px 12px" }}
+      style={{
+        width: narrow ? 280 : 232,
+        position: narrow ? "absolute" : "relative",
+        top: narrow ? 0 : undefined,
+        bottom: narrow ? 0 : undefined,
+        left: narrow ? 0 : undefined,
+        zIndex: narrow ? 57 : "auto",
+        background: narrow ? "#070d1c" : "transparent",
+        boxShadow: narrow ? "0 24px 64px rgba(0,0,0,.65)" : "none",
+        borderColor: "rgba(255,255,255,.10)",
+        padding: "14px 10px 12px",
+      }}
     >
       <div className="mb-[10px] flex min-h-0 flex-col gap-px overflow-y-auto overflow-x-hidden">
         {MODULE_NAV_ITEMS.map((item) => {
@@ -38,6 +65,7 @@ export function SidebarNav({ footerSlot }: { footerSlot?: ReactNode }) {
               key={item.key}
               href={item.builtPath ?? comingSoonHref(item.label, "module")}
               data-testid={`sidebar-nav-${item.key}`}
+              onClick={onNavigate}
               className="flex items-center gap-[10px] rounded-md px-[10px] py-[5.5px] transition-colors hover:bg-white/[.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
               style={{ background: active ? "rgba(255,255,255,.06)" : "transparent" }}
             >

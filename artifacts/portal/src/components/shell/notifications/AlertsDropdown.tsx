@@ -175,7 +175,7 @@ export function AlertsDropdown({
             className="absolute right-0 z-50 flex flex-col overflow-hidden rounded-[14px]"
             style={{
               top: "calc(100% + 8px)",
-              width: 404,
+              width: "min(404px, calc(100vw - 24px))",
               maxHeight: 620,
               background: "rgba(11,17,32,.98)",
               border: `1px solid ${HAIRLINE}`,
