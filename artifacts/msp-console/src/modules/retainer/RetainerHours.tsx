@@ -9,19 +9,21 @@
  * customer switch" shape the design's own logic class uses, not a tenant-tree
  * node per customer.
  *
- * All 7 base routes plus the `#4026` "adjust after close" route are wired.
- * Reopening a period and adjusting a CLOSED period both require
- * `ladder.msp-admin` server-side — `isAdmin` gates those two actions in the UI,
- * the same convention `Sales`/`Reports`/`PoamsPage` already use for their own
- * admin-only actions on this console.
+ * All 7 base routes plus the `#4026` "adjust after close" route and the
+ * `#4098` pending-entry approve/reject routes are wired. Reopening a period,
+ * adjusting a CLOSED period, and approving/rejecting a pending entry all
+ * require `ladder.msp-admin` server-side — `isAdmin` gates those actions in
+ * the UI, the same convention `Sales`/`Reports`/`PoamsPage` already use for
+ * their own admin-only actions on this console.
  */
 import { useMemo, useState } from "react";
 import { border, signal, surface, text } from "@/console/tokens";
 import {
-  useAdjustClosedRetainerPeriod, useAdjustRetainerEntry, useCloseRetainerPeriod,
-  useDeleteRetainerEntry, useLogRetainerHours, useReopenRetainerPeriod,
+  useAdjustClosedRetainerPeriod, useAdjustRetainerEntry, useApprovePendingRetainerEntry,
+  useCloseRetainerPeriod, useDeleteRetainerEntry, useLogRetainerHours,
+  usePendingRetainerEntries, useRejectPendingRetainerEntry, useReopenRetainerPeriod,
   useRetainerCustomers, useRetainerDetail,
-  type EntryWithLock, type RetainerPeriod, type RetainerWorkState,
+  type EntryWithLock, type PendingEntryWire, type RetainerPeriod, type RetainerWorkState,
 } from "@/api/retainer-api";
 import {
   AMBER, BLUE, formatDate, formatDateTime, formatHours, formatRate,
@@ -89,6 +91,9 @@ export function RetainerHours({ mspId, isAdmin }: { mspId: number | null; isAdmi
   const closePeriod = useCloseRetainerPeriod(mspId, effectiveSelId);
   const reopenPeriod = useReopenRetainerPeriod(mspId, effectiveSelId);
   const adjustClosed = useAdjustClosedRetainerPeriod(mspId, effectiveSelId);
+  const pendingQuery = usePendingRetainerEntries(mspId, effectiveSelId);
+  const approvePending = useApprovePendingRetainerEntry(mspId);
+  const rejectPending = useRejectPendingRetainerEntry(mspId);
 
   const [addingEntry, setAddingEntry] = useState(false);
   const [newEntry, setNewEntry] = useState<EntryFormState>(EMPTY_FORM);
@@ -97,14 +102,20 @@ export function RetainerHours({ mspId, isAdmin }: { mspId: number | null; isAdmi
   const [overrideEntryId, setOverrideEntryId] = useState<number | null>(null);
   const [overrideReason, setOverrideReason] = useState("");
   const [overrideDraft, setOverrideDraft] = useState<EntryFormState>(EMPTY_FORM);
+  const [reviewingId, setReviewingId] = useState<number | null>(null);
+  const [reviewAction, setReviewAction] = useState<"approve" | "reject" | null>(null);
+  const [reviewReason, setReviewReason] = useState("");
 
   const selectCustomer = (id: number) => {
     setSelCustomerId(id);
     setAddingEntry(false);
     setEditingEntryId(null);
     setOverrideEntryId(null);
+    setReviewingId(null);
+    setReviewAction(null);
     logHours.reset(); adjustEntry.reset(); deleteEntry.reset();
     closePeriod.reset(); reopenPeriod.reset(); adjustClosed.reset();
+    approvePending.reset(); rejectPending.reset();
   };
 
   const startEdit = (e: EntryWithLock) => {
@@ -153,13 +164,27 @@ export function RetainerHours({ mspId, isAdmin }: { mspId: number | null; isAdmi
     );
   };
 
+  const startReview = (entryId: number, action: "approve" | "reject") => {
+    setReviewingId(entryId);
+    setReviewAction(action);
+    setReviewReason("");
+    approvePending.reset(); rejectPending.reset();
+  };
+  const cancelReview = () => { setReviewingId(null); setReviewAction(null); };
+  const submitReview = () => {
+    if (reviewingId == null || !reviewAction || !reviewReason.trim()) return;
+    const mutation = reviewAction === "approve" ? approvePending : rejectPending;
+    mutation.mutate({ entryId: reviewingId, reason: reviewReason.trim() }, { onSuccess: () => cancelReview() });
+  };
+
   const selectedSummary = customers.find((c) => c.customerId === effectiveSelId);
   const detail = detailQuery.data;
+  const pendingEntries = pendingQuery.data?.entries ?? [];
 
   const notes = useMemo(() => ([
     { dot: RED[2], text: "overHours is the honest, uncapped over-allotment signal. remainingHours floors at zero and is also true for a customer who used exactly their allotment — over-month must be read from overHours, never inferred from remaining hitting zero." },
     { dot: AMBER[2], text: "Periods are anniversary-anchored to each customer's own subscription start day, not calendar months, and unused retained hours roll forward once before expiring. A customer whose anchor day shifts mid-history can end up with period keys that don't line up across the change — a known, documented edge case, not a bug." },
-    { dot: AMBER[2], text: "A tracked, open gap: the tracker byproduct hook that logs closed-ticket hours automatically (change control / remediation tracker completions) does not check the period-close lock before inserting. Minutes are 0 at insert time so totals don't move immediately, but a later hours edit on that row could slip past a closed period. The AdminV2/console close-lock bypass this same finding (#4026) originally covered is already resolved — every normal writer on both AdminV2 and this console honors the lock." },
+    { dot: AMBER[2], text: "Resolved (#4098, follow-up to #4026): the tracker byproduct hook that logs closed-ticket hours automatically (change control / remediation tracker completions) now honors the same period-close lock as every other writer. When its target period is closed, the entry lands in the Pending approval panel above instead of writing past the lock or silently skipping — an MSPAdmin approves it into the ledger (with a reason, recorded the same way as an adjust-after-close override) or rejects it outright." },
     { dot: BLUE[2], text: "Allotment, hourly rate and architect name are read-only here — they are written only from AdminV2. This screen can log, adjust, delete and move entries between open periods, close or reopen a period, and — as MSP admin only — make a reasoned override into an already-closed period." },
     { dot: BLUE[2], text: "Reopening a period hard-deletes its frozen snapshot rather than archiving it — there is no history table. Once reopened, the only surviving trace of who closed it and when lives in the audit log, not in the retainer data itself." },
     { dot: text.muted, text: "Moving an entry's date into a different period requires that target period to also be open — a move between two open periods succeeds, but nothing can be moved into a closed one, even from an open one, outside the admin override path." },
@@ -261,6 +286,62 @@ export function RetainerHours({ mspId, isAdmin }: { mspId: number | null; isAdmi
                     closePending={closePeriod.isPending} reopenPending={reopenPeriod.isPending}
                   />
                 ))}
+              </Panel>
+
+              <Panel>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: text.title, flex: 1 }}>Pending approval</span>
+                  {pendingQuery.isFetching && <span style={{ fontSize: 10.5, color: text.muted }}>Refreshing…</span>}
+                </div>
+                <span style={{ fontSize: 10.5, color: text.muted, textWrap: "pretty" as const }}>
+                  Tracked-item closures (change control / remediation tracker completions) that landed here instead of the ledger because their period was already closed when the byproduct hook fired. {isAdmin ? "Approve to log the hours into the ledger; reject to leave them out." : "Approving or rejecting requires MSPAdmin."}
+                </span>
+                {pendingQuery.isLoading && <span style={{ fontSize: 11.5, color: text.muted }}>Loading…</span>}
+                {pendingQuery.isError && <span style={{ fontSize: 11.5, color: RED[2] }}>Couldn't load: {pendingQuery.error.message}</span>}
+                {pendingQuery.isSuccess && pendingEntries.length === 0 && (
+                  <span style={{ fontSize: 11.5, color: text.muted, textAlign: "center", padding: "10px 0" }}>Nothing waiting on approval for this customer.</span>
+                )}
+                {pendingEntries.map((p: PendingEntryWire) => {
+                  const reviewing = reviewingId === p.id;
+                  return (
+                    <div key={p.id} style={{ border: `1px solid ${reviewing ? "rgba(251,191,36,.4)" : "rgba(148,163,184,.14)"}`, borderRadius: 10, background: reviewing ? "rgba(251,191,36,.05)" : "rgba(2,6,23,.4)", padding: 11, display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: text.title, flex: 1, minWidth: 140, textWrap: "pretty" as const }}>{p.item}</span>
+                        <Badge label={`period ${p.periodKey}`} tone={AMBER} />
+                      </div>
+                      <span style={{ fontSize: 10.5, color: text.muted }}>
+                        {formatDate(p.occurredAt)} · source: {p.source}{p.finding ? ` · ${p.finding}` : ""} · queued {formatDateTime(p.createdAt)}
+                      </span>
+                      {reviewing ? (
+                        <>
+                          <textarea value={reviewReason} onChange={(e) => setReviewReason(e.target.value)} rows={2} placeholder="Reason (required)" style={taStyle} />
+                          {(approvePending.isError || rejectPending.isError) && (
+                            <span style={{ fontSize: 11, color: RED[2] }}>{(reviewAction === "approve" ? approvePending.error : rejectPending.error)?.message}</span>
+                          )}
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button
+                              onClick={submitReview}
+                              disabled={!reviewReason.trim() || approvePending.isPending || rejectPending.isPending}
+                              style={btnStyle("#fff", reviewAction === "approve" ? "#16a34a" : "#dc2626", reviewAction === "approve" ? "#16a34a" : "#dc2626")}
+                            >
+                              {reviewAction === "approve"
+                                ? (approvePending.isPending ? "Approving…" : "Confirm approve")
+                                : (rejectPending.isPending ? "Rejecting…" : "Confirm reject")}
+                            </button>
+                            <button onClick={cancelReview} style={btnStyle(text.muted, "transparent", "rgba(148,163,184,.2)")}>Cancel</button>
+                          </div>
+                        </>
+                      ) : isAdmin ? (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button onClick={() => startReview(p.id, "approve")} style={btnStyle(GREEN[2], GREEN[0], "rgba(34,197,94,.3)")}>Approve</button>
+                          <button onClick={() => startReview(p.id, "reject")} style={btnStyle(RED[2], RED[0], "rgba(248,113,113,.24)")}>Reject</button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 10.5, color: text.muted }}>Awaiting MSPAdmin review.</span>
+                      )}
+                    </div>
+                  );
+                })}
               </Panel>
 
               <Panel>
