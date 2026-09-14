@@ -91,7 +91,8 @@ namespace BuildConsole
                     Route = TestModeComposerPanel.ActiveRoute,
                     Steps = $"1. Locate and inspect `{element.Selector}`",
                     Actual = actualSb.ToString().TrimEnd(),
-                    Tags = new List<string> { "dom-inspector", element.Tag.ToLowerInvariant() }
+                    Tags = new List<string> { "dom-inspector", element.Tag.ToLowerInvariant() },
+                    Selector = element.Selector
                 };
 
                 // Automatically capture cropped element screenshot and attach to bug report
@@ -135,6 +136,13 @@ namespace BuildConsole
             };
 
             TestModeDiagnosticsPanel.ApiHelperRequested += OpenApiHelperForTestMode;
+
+            // Git #3983 — click-through from the DOM inspector popover's status icon opens the
+            // full bug history for that exact element.
+            TestModeDiagnosticsPanel.BugHistoryRequested += (element, bugs) =>
+            {
+                ElementBugHistoryWindow.Show(this, element, bugs);
+            };
 
             // Composer events
             TestModeComposerPanel.ToggleWidthRequested += (isWide) =>
@@ -362,6 +370,7 @@ namespace BuildConsole
                     Resolution = b.Resolution,
                     ResolutionReason = b.ResolutionReason,
                     IsDesign = b.IsDesign,
+                    Selector = b.Selector,
                     IsSynced = b.IsSynced,
                     SyncedSessionId = b.SyncedSessionId
                 });
@@ -571,6 +580,23 @@ namespace BuildConsole
                 var connStr = VisualTestTrackerStore.ResolveConnectionString();
                 VisualTestTrackerStore? bugStore = !string.IsNullOrWhiteSpace(connStr) ? new VisualTestTrackerStore(connStr) : null;
 
+                // Git #3983 — every entry saved below needs a real page_id: without this, PageId
+                // stays at its C# default of 0, which violates visual_test_tracker_entries'
+                // page_id_fkey (page id 0 never exists) and silently drops the whole INSERT inside
+                // SaveEntryAsync's try/catch. That's not hypothetical — confirmed live against
+                // local Postgres while building #3983 (page_id=0 insert throws
+                // "violates foreign key constraint ... Key (page_id)=(0) is not present"). Every bug
+                // logged through Test Mode's composer/DOM-inspector flow was failing to reach
+                // Postgres at all before this fix, which also means #3983's own (page_id, selector)
+                // lookup would never have found a match. Same GetOrCreatePageAsync call the
+                // standalone Visual Test Tracker floaty (VisualTestTrackerWindow) already makes.
+                VisualTestTrackerPage? page = null;
+                if (bugStore != null)
+                {
+                    try { page = await bugStore.GetOrCreatePageAsync(baseUrl, pagePath); }
+                    catch (Exception ex) { ActivityLog.Log("visual-test-tracker", $"GetOrCreatePageAsync failed: {ex.Message}"); }
+                }
+
                 // Convert AllBugs to VisualTestTrackerEntry list
                 var entries = new List<VisualTestTrackerEntry>();
                 foreach (var bug in TestModeComposerPanel.AllBugs)
@@ -578,11 +604,13 @@ namespace BuildConsole
                     var entry = new VisualTestTrackerEntry
                     {
                         EntryUuid = bug.Id,
+                        PageId = page?.Id ?? 0,
                         Severity = bug.Severity,
                         Status = bug.Status,
                         Resolution = bug.Resolution,
                         ResolutionReason = bug.ResolutionReason,
                         IsDesign = bug.IsDesign,
+                        Selector = bug.Selector,
                         Notes = bug.Notes,
                         PagePath = !string.IsNullOrWhiteSpace(bug.Route) ? bug.Route : pagePath,
                         CurrentUrl = !string.IsNullOrWhiteSpace(url) ? url : bug.Route,
@@ -609,6 +637,7 @@ namespace BuildConsole
                     {
                         var notesEntry = new VisualTestTrackerEntry
                         {
+                            PageId = page?.Id ?? 0,
                             Severity = TestModeComposerPanel.SelectedSeverity,
                             Status = "Open",
                             Notes = currentNotes,

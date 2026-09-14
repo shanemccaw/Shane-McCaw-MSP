@@ -97,6 +97,9 @@ namespace BuildConsole.Services
         public string? Resolution { get; set; } // "Fixed", "NotABug"
         public string? ResolutionReason { get; set; } // required when Resolution == "NotABug" (DB CHECK constraint)
         public bool IsDesign { get; set; } // Git #3978/#3981 addendum — flags a design (not functional) issue; coexists with Status, doesn't gate it
+        // Git #3978/#3983 — element-level dedup/lookup key is (PageId, Selector); null for a
+        // page-level bug (no specific element) or a global bug (PageId also null, see #3984).
+        public string? Selector { get; set; }
         public List<string> Tags { get; set; } = new();
 
         // ── Auto-Collected Metadata ─────────────────────────────────────────────

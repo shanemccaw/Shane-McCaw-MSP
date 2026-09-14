@@ -35,6 +35,7 @@ namespace BuildConsole.Controls
         public string? Resolution { get; set; } // "Fixed", "NotABug" — only meaningful when Status == "Closed"
         public string? ResolutionReason { get; set; } // required when Resolution == "NotABug"
         public bool IsDesign { get; set; } // Git #3978/#3981 addendum — flags a design issue; coexists with Status
+        public string? Selector { get; set; } // Git #3983 — element-level dedup key when logged via the DOM inspector
 
         // Sync tracking – set to true after a successful End & Sync
         public bool IsSynced { get; set; }

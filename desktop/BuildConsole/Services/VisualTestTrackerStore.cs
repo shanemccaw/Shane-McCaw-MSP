@@ -135,6 +135,55 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>Git #3983 — read-only page lookup (never creates). A page that doesn't exist yet
+        /// can't have any bugs logged against it, so the DOM inspector's element-status lookup uses
+        /// this instead of <see cref="GetOrCreatePageAsync"/> — checking for an existing bug is not a
+        /// "visit" and must not create a page row as a side effect.</summary>
+        public async Task<int?> FindPageIdAsync(string baseUrl, string pagePath)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT id FROM visual_test_tracker_pages WHERE base_url = @b AND page_path = @p", conn);
+            cmd.Parameters.AddWithValue("@b", baseUrl);
+            cmd.Parameters.AddWithValue("@p", pagePath);
+            var result = await cmd.ExecuteScalarAsync();
+            return result is int id ? id : null;
+        }
+
+        /// <summary>Git #3983 — every bug tracked against one exact element, newest first. Real
+        /// dedup/lookup key is (page_id, selector), scoped to the current page (global cross-page
+        /// dedup is #3984, not this). Returns an empty list rather than throwing if the table/columns
+        /// don't exist yet or the DB is unreachable — a failed lookup must never block hovering an
+        /// element.</summary>
+        public async Task<List<VisualTestTrackerEntry>> GetBugsForElementAsync(int pageId, string selector)
+        {
+            var result = new List<VisualTestTrackerEntry>();
+            if (pageId <= 0 || string.IsNullOrWhiteSpace(selector)) return result;
+
+            try
+            {
+                await using var conn = await OpenAsync();
+                await using var cmd = new NpgsqlCommand(
+                    "SELECT id, entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at, " +
+                    "COALESCE(bug_number, id) as bug_num, git_issue_number, site_name, epic_name, closing_build_id, " +
+                    "steps_to_reproduce, expected_behavior, actual_behavior, resolution, resolution_reason, is_design, selector " +
+                    "FROM visual_test_tracker_entries WHERE page_id = @pid AND selector = @sel ORDER BY created_at DESC", conn);
+                cmd.Parameters.AddWithValue("@pid", pageId);
+                cmd.Parameters.AddWithValue("@sel", selector);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    result.Add(ReadEntryFromReader(reader));
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"GetBugsForElementAsync lookup skipped: {ex.Message}");
+            }
+
+            return result;
+        }
+
         /// <summary>Persists the checkbox state + notes for a page (debounced from the UI). updated_at bumps.</summary>
         public async Task SavePageAsync(int pageId, bool isGood, string notes)
         {
@@ -284,7 +333,7 @@ namespace BuildConsole.Services
                 await using var cmd = new NpgsqlCommand(
                     "SELECT id, entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at, " +
                     "COALESCE(bug_number, id) as bug_num, git_issue_number, site_name, epic_name, closing_build_id, " +
-                    "steps_to_reproduce, expected_behavior, actual_behavior, resolution, resolution_reason, is_design " +
+                    "steps_to_reproduce, expected_behavior, actual_behavior, resolution, resolution_reason, is_design, selector " +
                     "FROM visual_test_tracker_entries WHERE page_id = @pid ORDER BY bug_num DESC, created_at DESC", conn);
                 cmd.Parameters.AddWithValue("@pid", pageId);
                 await using var reader = await cmd.ExecuteReaderAsync();
@@ -342,7 +391,7 @@ namespace BuildConsole.Services
                 await using var cmd = new NpgsqlCommand(
                     "SELECT id, entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at, " +
                     "COALESCE(bug_number, id) as bug_num, git_issue_number, site_name, epic_name, closing_build_id, " +
-                    "steps_to_reproduce, expected_behavior, actual_behavior, resolution, resolution_reason, is_design " +
+                    "steps_to_reproduce, expected_behavior, actual_behavior, resolution, resolution_reason, is_design, selector " +
                     "FROM visual_test_tracker_entries ORDER BY site_name ASC, epic_name ASC, bug_num DESC, created_at DESC", conn);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 var dbList = new List<VisualTestTrackerEntry>();
@@ -534,19 +583,19 @@ namespace BuildConsole.Services
                 await using var conn = await OpenAsync();
                 await using var cmd = new NpgsqlCommand(
                     "INSERT INTO visual_test_tracker_entries (entry_uuid, page_id, base_url, page_path, title, notes, severity, status, " +
-                    "resolution, resolution_reason, is_design, " +
+                    "resolution, resolution_reason, is_design, selector, " +
                     "git_issue_number, site_name, epic_name, closing_build_id, steps_to_reproduce, expected_behavior, actual_behavior, created_at, updated_at) " +
-                    "VALUES (@u, @pid, @b, @p, @t, @n, @sev, @st, @res, @resr, @isd, @git, @site, @epic, @close, @steps, @exp, @act, @c, @up) " +
+                    "VALUES (@u, @pid, @b, @p, @t, @n, @sev, @st, @res, @resr, @isd, @sel, @git, @site, @epic, @close, @steps, @exp, @act, @c, @up) " +
                     "ON CONFLICT (entry_uuid) DO UPDATE SET " +
                     "title = EXCLUDED.title, notes = EXCLUDED.notes, severity = EXCLUDED.severity, " +
                     "status = EXCLUDED.status, resolution = EXCLUDED.resolution, resolution_reason = EXCLUDED.resolution_reason, " +
-                    "is_design = EXCLUDED.is_design, git_issue_number = EXCLUDED.git_issue_number, site_name = EXCLUDED.site_name, " +
+                    "is_design = EXCLUDED.is_design, selector = EXCLUDED.selector, git_issue_number = EXCLUDED.git_issue_number, site_name = EXCLUDED.site_name, " +
                     "epic_name = EXCLUDED.epic_name, closing_build_id = EXCLUDED.closing_build_id, " +
                     "steps_to_reproduce = EXCLUDED.steps_to_reproduce, expected_behavior = EXCLUDED.expected_behavior, " +
                     "actual_behavior = EXCLUDED.actual_behavior, updated_at = EXCLUDED.updated_at " +
                     "RETURNING id, COALESCE(bug_number, id)", conn);
                 cmd.Parameters.AddWithValue("@u", entry.EntryUuid);
-                cmd.Parameters.AddWithValue("@pid", entry.PageId);
+                cmd.Parameters.AddWithValue("@pid", entry.PageId > 0 ? entry.PageId : DBNull.Value);
                 cmd.Parameters.AddWithValue("@b", entry.BaseUrl ?? "");
                 cmd.Parameters.AddWithValue("@p", entry.PagePath ?? "");
                 cmd.Parameters.AddWithValue("@t", entry.Title ?? "");
@@ -556,6 +605,7 @@ namespace BuildConsole.Services
                 cmd.Parameters.AddWithValue("@res", (object?)entry.Resolution ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@resr", (object?)entry.ResolutionReason ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@isd", entry.IsDesign);
+                cmd.Parameters.AddWithValue("@sel", (object?)entry.Selector ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@git", (object?)entry.GitIssueNumber ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@site", entry.SiteName ?? "");
                 cmd.Parameters.AddWithValue("@epic", entry.EpicName ?? "");
@@ -735,6 +785,13 @@ namespace BuildConsole.Services
                 entry.Resolution = reader.IsDBNull(19) ? null : reader.GetString(19);
                 entry.ResolutionReason = reader.IsDBNull(20) ? null : reader.GetString(20);
                 entry.IsDesign = !reader.IsDBNull(21) && reader.GetBoolean(21);
+            }
+
+            // Git #3983 — selector (element-level dedup key) is the last column in the SELECT
+            // list wherever it's included; same FieldCount guard pattern.
+            if (reader.FieldCount > 22)
+            {
+                entry.Selector = reader.IsDBNull(22) ? null : reader.GetString(22);
             }
 
             return entry;

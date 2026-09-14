@@ -159,6 +159,7 @@ namespace BuildConsole
                     Resolution = r.Resolution,
                     ResolutionReason = r.ResolutionReason,
                     IsDesign = r.IsDesign,
+                    Selector = r.Selector,
                     IsSynced = r.IsSynced,
                     SyncedSessionId = r.SyncedSessionId
                 }).ToList();
