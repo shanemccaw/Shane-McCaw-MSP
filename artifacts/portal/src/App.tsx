@@ -43,6 +43,7 @@ import ChangeControlPage from "@/pages/change-control";
 import ScopeAndSlaPage from "@/pages/scope-and-sla";
 import OffboardingPage from "@/pages/offboarding";
 import PillarPage from "@/pages/pillar";
+import CustomerDiagnosticsPage from "@/pages/customer-diagnostics";
 import BreakGlassStatusPage from "@/pages/break-glass-status";
 import BreakGlassVerifyPage from "@/pages/break-glass-verify";
 import CustomerDocumentsPage from "@/pages/customer-documents";
@@ -135,6 +136,7 @@ function ProtectedRoutes() {
           <Route path="/microsoft-changes" component={MicrosoftChangesPage} />
           <Route path="/change-control" component={ChangeControlPage} />
           <Route path="/scope-and-sla" component={ScopeAndSlaPage} />
+          <Route path="/diagnostics" component={CustomerDiagnosticsPage} />
           <Route path="/offboarding" component={OffboardingPage} />
           <Route path="/pillars/:pillar" component={PillarPage} />
           <Route path="/break-glass" component={BreakGlassStatusPage} />

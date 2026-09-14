@@ -14,6 +14,7 @@ import {
   Compass,
   Gauge,
   FileText,
+  Stethoscope,
   type LucideProps,
 } from "lucide-react";
 
@@ -50,6 +51,7 @@ export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   { key: "changes", label: "Microsoft Changes", icon: Megaphone, builtPath: "/microsoft-changes" },
   { key: "change-control", label: "Change Control", icon: Waypoints, builtPath: "/change-control" },
   { key: "scope-sla", label: "Scope and SLA", icon: Gauge, builtPath: "/scope-and-sla" },
+  { key: "diagnostics", label: "Diagnostics", icon: Stethoscope, builtPath: "/diagnostics" },
   { key: "risk-register", label: "Risk Register", icon: AlertTriangle, builtPath: "/risk-register" },
   { key: "remediation", label: "Remediation", icon: Wrench, builtPath: "/remediation-tracking" },
   { key: "sops", label: "SOPs", icon: BookOpen, builtPath: "/sops" },

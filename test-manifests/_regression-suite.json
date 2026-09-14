@@ -95,6 +95,7 @@
     "portal/microsoft-changes.json",
     "portal/config-state.json",
     "portal/pillar-pages.json",
+    "portal/diagnostics-and-scripts.json",
     "portal/remediation-tracking.json",
     "portal/remediation-tracking-checklist.json",
     "portal/offboarding.json"
