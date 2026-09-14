@@ -89,6 +89,7 @@
     "portal/account-security-graph-signals.json",
     "portal/notification-preferences.json",
     "portal/webhooks.json",
+    "portal/settings.json",
     "portal/billing.json",
     "portal/team-role-assignment.json",
     "portal/team-management.json",

@@ -53,7 +53,7 @@ export function DataRightsAndPrivacyContent() {
   const ready = confirmText.trim().toUpperCase() === CONFIRM_PHRASE;
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5" style={{ color: "#cbd5e1" }}>
+    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5" style={{ color: "#cbd5e1" }} data-testid="data-rights-and-privacy-page">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-[20px] font-bold text-[#f8fafc]" style={{ letterSpacing: "-.01em" }}>

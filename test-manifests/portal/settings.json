@@ -1,0 +1,77 @@
+{
+  "issue": 1736,
+  "feature": "Settings (#1736, Feature #1596) — the consolidated Settings container page in artifacts/portal, per the landed Shell design's own settingsGroups/stab state machine (Design/portal/design_handoff_full_site/screens/Shell.dc.html:1418-1450). Six tabs, three groups: ALERTS (Alert preferences, Notifications), YOUR TENANT (Email authentication, Webhooks, Departments), YOUR ACCOUNT (Privacy and your data). Change Control, Ownership/RACI and Account Security are deliberately NOT part of this page — the landed design keeps each on its own dedicated destination, contradicting the earlier #4057 contract-pack framing. Route: /settings. This manifest covers the new container (nav, tab switching) and the two brand-new tabs (Alert preferences, Departments); Webhooks/Notification Preferences/Email authentication/Privacy already have their own manifests covering their standalone routes and are only smoke-checked here for correctly rendering inside the container.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "f7ad167b6",
+
+  "notes": [
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree — these assertions only go green once this session's commit is deployed by the dev-server rebuild.",
+    "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same Customer testbed account test-manifests/portal/webhooks.json already uses.",
+    "RULES-1 is the new portal-facing route this build added — GET /api/portal/alert-preferences/rules, a read of the customer_tenant_alert_rules catalog (previously admin-only, zero customer-facing consumers). Asserted directly since it has no prior coverage anywhere.",
+    "DEPT-1 confirms the already-built (but previously zero-consumer) GET /api/portal/settings/departments contract this page's new Departments tab now wires — real, possibly-empty array, never a fixture.",
+    "UI steps click through all six tabs to confirm the container's real stab-switching renders each real tab content component (not a placeholder), reusing each tab's own already-established data-testid (alert-preferences-content, departments-content, webhooks-page, notification-preferences-page, email-auth-setup-page, data-rights-and-privacy-page — the last of which this build added since the standalone page had none before).",
+    "The testbed tenant currently has zero users with a department attribute set (confirmed live via psql this session), so UI-DEPT2 asserts the real, honest empty state rather than a populated row — that is the correct assertion for current data, not a gap.",
+    "Departments' 'Edit mapping' / group-mapping form and Alert preferences' save/reset/recipient round-trip are NOT driven destructively here — the shared testbed tenant's real alert-preference rows and department mappings are used by other flows (customer-tenant-alert-engine, ownership-workload-membership), and this manifest's job is proving the container wires real data in, not re-proving each tab's own save contract a second time."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the Customer testbed account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_CUSTOMER_EMAIL}}", "password": "{{TEST_CUSTOMER_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "RULES-1 (#1736) — GET /api/portal/alert-preferences/rules returns the real customer_tenant_alert_rules catalog, filtered to enabled+notify_customer rows. No prior portal-facing route served this.",
+      "method": "GET",
+      "path": "/api/portal/alert-preferences/rules",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.rules", "exists": true }
+    },
+    {
+      "name": "PREFS-1 — GET /api/portal/alert-preferences still serves the real profile the new Alert preferences tab reads (unchanged route, new consumer).",
+      "method": "GET",
+      "path": "/api/portal/alert-preferences",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.categories.findings.threshold", "exists": true }
+    },
+    {
+      "name": "DEPT-1 (#1592/#4051) — GET /api/portal/settings/departments serves a real (possibly empty) array — the new Departments tab's real backend, previously zero page consumers.",
+      "method": "GET",
+      "path": "/api/portal/settings/departments",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.departments", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "goto the real login page.", "action": "goto", "target": "/portal/login" },
+    { "action": "expect", "selector": "[data-testid='login-email']", "state": "visible", "critical": true },
+    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_CUSTOMER_EMAIL}}" },
+    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_CUSTOMER_PASSWORD}}" },
+    { "name": "sign in.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the real Settings page.", "action": "goto", "target": "/portal/settings" },
+    { "name": "UI1 — the container renders.", "action": "expect", "selector": "[data-testid='settings-page']", "state": "visible", "critical": true },
+    { "name": "UI2 — the left nav's default active tab is Alert preferences (stab defaults to 'alerts', matching the design).", "action": "expect", "selector": "[data-testid='settings-nav-alerts']", "state": "visible", "critical": true },
+    { "name": "UI3 (#1736, new) — the Alert preferences tab renders real content, not a placeholder.", "action": "expect", "selector": "[data-testid='alert-preferences-content']", "state": "visible", "critical": true },
+
+    { "name": "UI-DEPT1 — click the Departments nav row.", "action": "click", "selector": "[data-testid='settings-nav-departments']" },
+    { "name": "UI-DEPT2 (#1592/#4051, new) — the Departments tab renders real content (the testbed tenant currently has no department-tagged users, so this may be the honest empty state).", "action": "expect", "selector": "[data-testid='departments-content']", "state": "visible", "critical": true },
+
+    { "name": "UI-WH1 — click the Webhooks nav row.", "action": "click", "selector": "[data-testid='settings-nav-webhooks']" },
+    { "name": "UI-WH2 — the already-proven WebhooksContent renders inside the container.", "action": "expect", "selector": "[data-testid='webhooks-page']", "state": "visible", "critical": true },
+
+    { "name": "UI-NOTIF1 — click the Notifications nav row.", "action": "click", "selector": "[data-testid='settings-nav-notifs']" },
+    { "name": "UI-NOTIF2 — the already-proven NotificationPreferencesContent renders inside the container.", "action": "expect", "selector": "[data-testid='notification-preferences-page']", "state": "visible", "critical": true },
+
+    { "name": "UI-EMAIL1 — click the Email authentication nav row.", "action": "click", "selector": "[data-testid='settings-nav-emailauth']" },
+    { "name": "UI-EMAIL2 — the already-proven EmailAuthSetupContent renders inside the container.", "action": "expect", "selector": "[data-testid='email-auth-setup-page']", "state": "visible", "critical": true },
+
+    { "name": "UI-DATA1 — click the Privacy and your data nav row.", "action": "click", "selector": "[data-testid='settings-nav-data']" },
+    { "name": "UI-DATA2 (#1736 — added the missing data-testid) — DataRightsAndPrivacyContent renders inside the container.", "action": "expect", "selector": "[data-testid='data-rights-and-privacy-page']", "state": "visible", "critical": true }
+  ]
+}
