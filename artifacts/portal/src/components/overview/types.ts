@@ -26,6 +26,74 @@ export interface TimelineResponseWire {
   nextCursor: string | null;
 }
 
+// ── GET /api/portal/customer/timeline/matrix ────────────────────────────────
+// Backs the Overview Matrix/List timeline card (#4129) — a separate, windowed
+// (not cursor-paginated) read from the feed above; see that route's own
+// header comment for why.
+
+export interface MatrixScanWire {
+  id: string;
+  title: string;
+  status: "success" | "warning";
+  timestamp: string;
+}
+
+export interface MatrixFindingWire {
+  id: string;
+  title: string;
+  status: "warning" | "error";
+  timestamp: string;
+}
+
+export interface MatrixMicrosoftChangeWire {
+  id: string;
+  title: string;
+  workload: string;
+  timestamp: string;
+}
+
+export interface MatrixChangeWindowWire {
+  id: string;
+  code: string;
+  title: string;
+  status: string;
+  scheduledStart: string;
+  scheduledEnd: string | null;
+}
+
+export interface MatrixPolicyReviewWire {
+  id: string;
+  title: string;
+  status: "default" | "warning" | "error";
+  reviewDueAt: string;
+}
+
+export interface TimelineMatrixResponseWire {
+  windowStart: string;
+  windowEnd: string;
+  scans: MatrixScanWire[];
+  findings: MatrixFindingWire[];
+  microsoftChanges: MatrixMicrosoftChangeWire[];
+  changeWindows: MatrixChangeWindowWire[];
+  policyReviews: MatrixPolicyReviewWire[];
+}
+
+// ── GET /api/portal/offers ──────────────────────────────────────────────────
+// Minimal client-side mirror of the customer-safe shape `portal-offers.ts`'s
+// `toCustomerOffer` returns — full shape lives in `customer-offers.tsx`; only
+// the fields the Overview "Open Offers" card needs are mirrored here.
+
+export interface OfferSummaryWire {
+  id: number;
+  title: string;
+  adjustedPriceCents: number;
+  state: "sent" | "accepted" | "rejected" | "expired";
+}
+
+export interface OffersResponseWire {
+  offers: OfferSummaryWire[];
+}
+
 // ── GET /api/portal/dashboard ───────────────────────────────────────────────
 
 export interface PriorityItemWire {

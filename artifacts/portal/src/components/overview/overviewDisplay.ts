@@ -32,3 +32,8 @@ export function formatTime(iso: string): string {
 export function formatReportPeriod(iso: string): string {
   return format(new Date(iso), "MMM yyyy");
 }
+
+/** "$6,400" — matches `customer-offers.tsx`'s own `formatCents`. */
+export function formatCents(cents: number): string {
+  return "$" + (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}

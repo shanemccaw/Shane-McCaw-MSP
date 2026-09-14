@@ -28,7 +28,10 @@
  * Auth: requireCapability("ladder.customer-user") — MSP JWT with Customer role.
  *
  * Routes:
- *   GET /api/portal/customer/timeline
+ *   GET /api/portal/customer/timeline          — cursor-paginated, past-only feed (above)
+ *   GET /api/portal/customer/timeline/matrix    — windowed feed backing the Overview
+ *     Matrix/List timeline card (#4129); see that route's own header comment for
+ *     why it's a second read rather than an extension of the one above.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -40,11 +43,16 @@ import {
   tenantEngineSnapshotsTable,
   insightsGeneratedDocumentsTable,
   salesOffersTable,
+  mspMessageCenterItemsTable,
+  mspChangeRequestsTable,
+  policyDecisionsTable,
 } from "@workspace/db";
-import { eq, and, desc, lt, inArray } from "drizzle-orm";
+import { eq, and, desc, lt, gte, lte, inArray, isNotNull } from "drizzle-orm";
 import { ENGINE_DEFS } from "../lib/engine-registry.ts";
 import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage.ts";
 import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
+import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
+import { formatChangeRequestCode } from "../lib/portal-change-control.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -319,6 +327,289 @@ router.get(
       res.json({ events: page, nextCursor });
     } catch (err) {
       log.error({ err, customerId }, "portal-customer-timeline: failed to load timeline");
+      res.status(500).json({ error: "Unable to load your activity timeline right now. Please try again shortly." });
+    }
+  },
+);
+
+// ── GET /api/portal/customer/timeline/matrix ────────────────────────────────
+//
+// Backs the Overview page's Matrix/List timeline card (#4129), separate from
+// the cursor-paginated feed above. That feed is deliberately past-only (its
+// `before` cursor assumes monotonic backward traversal); this one needs a
+// forward-looking window too — an upcoming policy review or a booked change
+// window is never "older than X", it hasn't happened yet. So this is a
+// second, windowed (not paginated) read across FIVE sources: the same
+// Scans/Findings queried directly above, plus three real per-item-dated
+// sources the design's own matrix now expects (Microsoft Changes, Change
+// Windows, Policy Reviews) that the 5-source feed above never carried.
+//
+// Deliberately NOT reusing GET /api/portal/message-center for the Microsoft
+// Changes lane: that route computes wave placement/scoring/density over the
+// customer's ENTIRE corpus (hundreds of posts on a real tenant) and returns
+// only a capped, per-wave-shaped subset — built for a paged reading surface,
+// not a "give me what's dated in this window" query. Querying
+// `msp_message_center_items` directly here, the same way the route above
+// queries its own five tables directly, avoids paying for that shaping work
+// on every Overview load and avoids a pagination-shape mismatch between the
+// two surfaces.
+
+const MATRIX_DEFAULT_BACK_DAYS = 14;
+const MATRIX_DEFAULT_FWD_DAYS = 21;
+const MATRIX_MAX_WINDOW_DAYS = 120;
+const MATRIX_SOURCE_LIMIT = 80;
+// Message Center corpora run into the hundreds on a real tenant (portal-
+// message-center.ts's own header: "the live testbed tenant holds 501
+// items") — over-fetch on the indexed lastModifiedDateTime column, then
+// resolve each row's real `publishedAt` (startDateTime ?? lastModifiedDateTime)
+// and re-filter to the exact window in JS, the same over-fetch-then-filter
+// shape the score-delta source above already uses.
+const MC_FETCH_LIMIT = 300;
+
+type MatrixScanStatus = "success" | "warning";
+type MatrixFindingStatus = "warning" | "error";
+type MatrixPolicyStatus = "default" | "warning" | "error";
+
+interface MatrixScanDto {
+  id: string;
+  title: string;
+  status: MatrixScanStatus;
+  timestamp: string;
+}
+interface MatrixFindingDto {
+  id: string;
+  title: string;
+  status: MatrixFindingStatus;
+  timestamp: string;
+}
+interface MatrixMicrosoftChangeDto {
+  id: string;
+  title: string;
+  workload: string;
+  timestamp: string;
+}
+interface MatrixChangeWindowDto {
+  id: string;
+  code: string;
+  title: string;
+  status: string;
+  scheduledStart: string;
+  scheduledEnd: string | null;
+}
+interface MatrixPolicyReviewDto {
+  id: string;
+  title: string;
+  status: MatrixPolicyStatus;
+  reviewDueAt: string;
+}
+
+router.get(
+  "/portal/customer/timeline/matrix",
+  requireCapability("ladder.customer-user"),
+  async (req: Request, res: Response) => {
+    const customerId = req.user!.customerId;
+    if (!customerId) {
+      res.status(400).json({ error: "No customer account associated with this user" });
+      return;
+    }
+
+    const back = Math.min(
+      Math.max(parseInt(String(req.query.back ?? MATRIX_DEFAULT_BACK_DAYS), 10) || MATRIX_DEFAULT_BACK_DAYS, 1),
+      MATRIX_MAX_WINDOW_DAYS,
+    );
+    const fwd = Math.min(
+      Math.max(parseInt(String(req.query.fwd ?? MATRIX_DEFAULT_FWD_DAYS), 10) || MATRIX_DEFAULT_FWD_DAYS, 1),
+      MATRIX_MAX_WINDOW_DAYS,
+    );
+    const now = new Date();
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const windowStart = new Date(now.getTime() - back * DAY_MS);
+    const windowEnd = new Date(now.getTime() + fwd * DAY_MS);
+
+    try {
+      // Change Windows and Policy Reviews are MSP-era (mspId, tenantId)-keyed
+      // tables (see portal-customer-scope.ts's header) — an unresolvable scope
+      // means genuinely none exist for this customer, not a permission
+      // failure, matching every other route reading these two tables.
+      const scope = await resolveTenantScope(customerId);
+
+      const [runs, findings, mcRows, ccRows, polRows] = await Promise.all([
+        db
+          .select({
+            runId: mspDiagnosticRunsTable.runId,
+            status: mspDiagnosticRunsTable.status,
+            checksTotal: mspDiagnosticRunsTable.checksTotal,
+            checksOk: mspDiagnosticRunsTable.checksOk,
+            checksLicenseGap: mspDiagnosticRunsTable.checksLicenseGap,
+            checksError: mspDiagnosticRunsTable.checksError,
+            completedAt: mspDiagnosticRunsTable.completedAt,
+            createdAt: mspDiagnosticRunsTable.createdAt,
+          })
+          .from(mspDiagnosticRunsTable)
+          .where(
+            and(
+              eq(mspDiagnosticRunsTable.customerId, customerId),
+              inArray(mspDiagnosticRunsTable.status, ["completed", "partial", "failed"]),
+              gte(mspDiagnosticRunsTable.createdAt, windowStart),
+            ),
+          )
+          .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+          .limit(MATRIX_SOURCE_LIMIT),
+
+        db
+          .select({
+            findingId: mspDiagnosticFindingsTable.findingId,
+            severity: mspDiagnosticFindingsTable.severity,
+            title: mspDiagnosticFindingsTable.title,
+            createdAt: mspDiagnosticFindingsTable.createdAt,
+          })
+          .from(mspDiagnosticFindingsTable)
+          .where(
+            and(
+              eq(mspDiagnosticFindingsTable.customerId, customerId),
+              inArray(mspDiagnosticFindingsTable.severity, ["warning", "critical"]),
+              gte(mspDiagnosticFindingsTable.createdAt, windowStart),
+            ),
+          )
+          .orderBy(desc(mspDiagnosticFindingsTable.createdAt))
+          .limit(MATRIX_SOURCE_LIMIT),
+
+        scope
+          ? db
+              .select({
+                graphMessageId: mspMessageCenterItemsTable.graphMessageId,
+                title: mspMessageCenterItemsTable.title,
+                services: mspMessageCenterItemsTable.services,
+                startDateTime: mspMessageCenterItemsTable.startDateTime,
+                lastModifiedDateTime: mspMessageCenterItemsTable.lastModifiedDateTime,
+              })
+              .from(mspMessageCenterItemsTable)
+              .where(
+                and(
+                  eq(mspMessageCenterItemsTable.customerId, scope.customerId),
+                  eq(mspMessageCenterItemsTable.mspId, scope.mspId),
+                  gte(mspMessageCenterItemsTable.lastModifiedDateTime, windowStart),
+                ),
+              )
+              .orderBy(desc(mspMessageCenterItemsTable.lastModifiedDateTime))
+              .limit(MC_FETCH_LIMIT)
+          : Promise.resolve([]),
+
+        scope
+          ? db
+              .select({
+                id: mspChangeRequestsTable.id,
+                title: mspChangeRequestsTable.title,
+                status: mspChangeRequestsTable.status,
+                scheduledStart: mspChangeRequestsTable.scheduledStart,
+                scheduledEnd: mspChangeRequestsTable.scheduledEnd,
+              })
+              .from(mspChangeRequestsTable)
+              .where(
+                and(
+                  eq(mspChangeRequestsTable.mspId, scope.mspId),
+                  eq(mspChangeRequestsTable.tenantId, scope.tenantId),
+                  isNotNull(mspChangeRequestsTable.scheduledStart),
+                  gte(mspChangeRequestsTable.scheduledStart, windowStart),
+                  lte(mspChangeRequestsTable.scheduledStart, windowEnd),
+                ),
+              )
+              .orderBy(desc(mspChangeRequestsTable.scheduledStart))
+              .limit(MATRIX_SOURCE_LIMIT)
+          : Promise.resolve([]),
+
+        scope
+          ? db
+              .select({
+                id: policyDecisionsTable.id,
+                title: policyDecisionsTable.title,
+                reviewState: policyDecisionsTable.reviewState,
+                reviewDueAt: policyDecisionsTable.reviewDueAt,
+              })
+              .from(policyDecisionsTable)
+              .where(
+                and(
+                  eq(policyDecisionsTable.mspId, scope.mspId),
+                  eq(policyDecisionsTable.tenantId, scope.tenantId),
+                  isNotNull(policyDecisionsTable.reviewDueAt),
+                  gte(policyDecisionsTable.reviewDueAt, windowStart),
+                  lte(policyDecisionsTable.reviewDueAt, windowEnd),
+                ),
+              )
+              .orderBy(desc(policyDecisionsTable.reviewDueAt))
+              .limit(MATRIX_SOURCE_LIMIT)
+          : Promise.resolve([]),
+      ]);
+
+      const scans: MatrixScanDto[] = runs.map((run) => {
+        const at = run.completedAt ?? run.createdAt;
+        if (run.status === "failed") {
+          return { id: `run:${run.runId}`, title: "Security scan couldn't complete", status: "warning", timestamp: at.toISOString() };
+        }
+        const cov = evaluateDocGateCoverage({
+          checksOk: run.checksOk ?? 0,
+          checksLicenseGap: run.checksLicenseGap ?? 0,
+          checksError: run.checksError ?? 0,
+          checksTotal: run.checksTotal ?? 0,
+        });
+        const sufficient = run.status === "completed" || cov.proceed;
+        return {
+          id: `run:${run.runId}`,
+          title: sufficient ? "Security scan completed" : "Security scan finished with limited coverage",
+          status: sufficient ? "success" : "warning",
+          timestamp: at.toISOString(),
+        };
+      });
+
+      const findingsDto: MatrixFindingDto[] = findings.map((f) => ({
+        id: `finding:${f.findingId}`,
+        title: f.title,
+        status: f.severity === "critical" ? "error" : "warning",
+        timestamp: f.createdAt.toISOString(),
+      }));
+
+      const microsoftChanges: MatrixMicrosoftChangeDto[] = mcRows
+        .map((r) => ({
+          id: `mc:${r.graphMessageId}`,
+          title: r.title,
+          workload: r.services[0] ?? "General",
+          at: r.startDateTime ?? r.lastModifiedDateTime,
+        }))
+        .filter((r) => r.at >= windowStart && r.at <= windowEnd)
+        .sort((a, b) => b.at.getTime() - a.at.getTime())
+        .slice(0, MATRIX_SOURCE_LIMIT)
+        .map((r) => ({ id: r.id, title: r.title, workload: r.workload, timestamp: r.at.toISOString() }));
+
+      const changeWindows: MatrixChangeWindowDto[] = ccRows.map((r) => ({
+        id: `cc:${r.id}`,
+        code: formatChangeRequestCode(r.id),
+        title: r.title,
+        status: r.status,
+        // isNotNull(scheduledStart) is in the WHERE clause above, but Drizzle's
+        // types don't narrow on that, so scheduledStart is asserted non-null here.
+        scheduledStart: r.scheduledStart!.toISOString(),
+        scheduledEnd: r.scheduledEnd?.toISOString() ?? null,
+      }));
+
+      const policyReviews: MatrixPolicyReviewDto[] = polRows.map((r) => ({
+        id: `policy:${r.id}`,
+        title: r.title,
+        status: r.reviewState === "overdue" ? "error" : r.reviewState === "due" ? "warning" : "default",
+        // isNotNull(reviewDueAt) is in the WHERE clause above; asserted for the same reason as scheduledStart.
+        reviewDueAt: r.reviewDueAt!.toISOString(),
+      }));
+
+      res.json({
+        windowStart: windowStart.toISOString(),
+        windowEnd: windowEnd.toISOString(),
+        scans,
+        findings: findingsDto,
+        microsoftChanges,
+        changeWindows,
+        policyReviews,
+      });
+    } catch (err) {
+      log.error({ err, customerId }, "portal-customer-timeline: failed to load timeline matrix");
       res.status(500).json({ error: "Unable to load your activity timeline right now. Please try again shortly." });
     }
   },

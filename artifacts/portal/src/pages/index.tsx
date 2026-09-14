@@ -3,6 +3,8 @@ import { Loader2, AlertCircle } from "lucide-react";
 import { comingSoonHref } from "@/components/shell/moduleNav";
 import { useOverviewDashboard } from "@/components/overview/useOverviewDashboard";
 import { useOverviewTimeline } from "@/components/overview/useOverviewTimeline";
+import { useOpenOffers } from "@/components/overview/useOpenOffers";
+import { TimelineCard } from "@/components/overview/TimelineCard";
 import {
   RED,
   AMB,
@@ -14,6 +16,7 @@ import {
   formatDay,
   formatTime,
   formatReportPeriod,
+  formatCents,
 } from "@/components/overview/overviewDisplay";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
@@ -42,32 +45,32 @@ function PanelLabel({ children, color = "#94a3b8", trailing }: { children: React
 }
 
 /**
- * Customer Home / Overview (#2921) — wired to the two real endpoints traced
- * in `docs/portal/customer-home-and-timeline-contract-pack.md`:
+ * Customer Home / Overview (#2921, calendar strip + Open Offers card added
+ * #4129) — wired to the real endpoints traced in
+ * `docs/portal/customer-home-and-timeline-contract-pack.md` plus two added
+ * for #4129:
  *
- *   GET /api/portal/dashboard            (useOverviewDashboard)
- *   GET /api/portal/customer/timeline    (useOverviewTimeline)
+ *   GET /api/portal/dashboard                  (useOverviewDashboard)
+ *   GET /api/portal/customer/timeline          (useOverviewTimeline — "Happened")
+ *   GET /api/portal/customer/timeline/matrix   (TimelineCard — Matrix/List calendar strip)
+ *   GET /api/portal/offers                     (useOpenOffers — Open Offers card)
  *
  * Adapted from `Design/portal/design_handoff_full_site/screens/Overview.dc.html`
  * (README: "recreate designs... using this codebase's existing... patterns,
- * not ship the HTML files as-is"). One deliberate shape departure from that
- * reference: its top calendar/gantt strip plots four marker lanes (Scans,
- * Findings, Microsoft Changes, Policy Reviews) and two bar lanes (Change
- * Windows, Projects) using illustrative, hand-authored dates in the design
- * tool's own mock script — not real API data. Of those six lanes, only Scans
- * and Findings (both folded into the real "Happened" feed below) and Projects
- * (real `startDate`/`endDate`, but rendered here as a plain progress bar
- * rather than a plotted gantt bar) have real per-item dated data behind them
- * today. Microsoft Changes, Change Windows and Policy Reviews only have real
- * *aggregate weekly counts* (`overviewCounts`, #2922) — #2922 deliberately
- * scoped that build to counts, not itemized schedules — so this page reads
- * those forward-looking counts honestly in "Coming Up" / "Portal Counts"
- * rather than inventing dated rows the API can't back. The calendar strip
- * itself is not rebuilt this pass; see build-journal/2921.md.
+ * not ship the HTML files as-is"). #2921 originally skipped the design's top
+ * calendar/gantt strip because Microsoft Changes, Change Windows and Policy
+ * Reviews only had real *aggregate weekly counts* (`overviewCounts`, #2922)
+ * behind them, not itemized schedules — #4129 found and cited the real
+ * per-item dated fields that closed that gap (`publishedAt`, `scheduledStart`/
+ * `scheduledEnd` #1762, `reviewDueAt`) and built the strip against them; see
+ * `TimelineCard.tsx` for the one remaining deliberate simplification (no
+ * mouse-tracked hover popover, no marker collision-clustering — both visual
+ * polish, not the real gap #4129 was scoped to close).
  */
 export default function OverviewPage() {
   const dashboard = useOverviewDashboard();
   const timeline = useOverviewTimeline();
+  const openOffers = useOpenOffers();
 
   const d = dashboard.data;
   const showError = dashboard.error && !d && dashboard.loaded;
@@ -241,6 +244,111 @@ export default function OverviewPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
+          <TimelineCard projects={d?.projects ?? []} />
+
+          {/* Work In Flight / Portal Counts / Open Offers / Reports */}
+          <div className="grid gap-[14px]" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+            <Panel>
+              <PanelLabel>WORK IN FLIGHT</PanelLabel>
+              {!d || d.projects.length === 0 ? (
+                <span className="text-xs text-[#94a3b8]">No active project.</span>
+              ) : (
+                <div className="flex flex-col gap-[11px]">
+                  {d.projects.map((p) => {
+                    const stepLabel = p.currentTask ? `${p.currentTask.stepNumber}/${p.currentTask.totalSteps}` : "—";
+                    const subLabel = p.currentTask ? p.currentTask.title : p.phase ?? "No task in progress";
+                    return (
+                      <div key={p.id} className="flex flex-col gap-[6px]">
+                        <div className="flex items-baseline gap-[9px]">
+                          <span className="min-w-0 flex-1 text-xs font-semibold leading-[1.4] text-[#e2e8f0]">{p.title}</span>
+                          <span className="flex-none text-[10.5px] font-bold text-[#7dd3fc]" style={{ fontFamily: "Menlo, monospace" }}>
+                            {stepLabel}
+                          </span>
+                        </div>
+                        <div className="h-1 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,.07)" }}>
+                          <div className="h-1 rounded-full" style={{ width: `${p.progress}%`, background: "#0078D4" }} />
+                        </div>
+                        <span className="text-[10.5px] text-[#94a3b8]">{subLabel}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
+
+            <Panel>
+              <PanelLabel>PORTAL COUNTS</PanelLabel>
+              {!d ? null : (
+                <>
+                  <div className="grid gap-x-[14px] gap-y-[11px]" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(94px, 1fr))" }}>
+                    {portalCounts.map((c, i) => (
+                      <a key={i} href={c.href} className="flex flex-col gap-[2px]">
+                        <span className="text-[19px] font-extrabold leading-none" style={{ color: c.value === 0 ? "#475569" : c.ink, letterSpacing: "-.02em" }}>
+                          {c.value}
+                        </span>
+                        <span className="text-[10.5px] leading-[1.35] text-[#94a3b8]">{c.label}</span>
+                      </a>
+                    ))}
+                  </div>
+                  {noTenantScope ? (
+                    <span className="text-[10.5px]" style={{ color: AMB }}>
+                      Tenant identifier unresolvable — six counts are a real 0. RACI roles are scoped to your account, not the tenant, so that one still reads.
+                    </span>
+                  ) : null}
+                </>
+              )}
+            </Panel>
+
+            {openOffers.offers.length > 0 ? (
+              <div
+                className="flex min-w-0 flex-col gap-[11px] rounded-[14px] p-[14px] pb-4"
+                style={{ border: "1px solid rgba(0,120,212,.25)", background: "rgba(0,120,212,.05)" }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[9.5px] font-bold text-[#60a5fa]" style={{ letterSpacing: ".14em" }}>
+                    OPEN OFFERS
+                  </span>
+                  <span className="ml-auto text-[11px] font-bold text-[#60a5fa]">{openOffers.offers.length}</span>
+                </div>
+                <div className="flex flex-col gap-[9px]">
+                  {openOffers.offers.map((o) => (
+                    <a key={o.id} href="/offers" className="flex items-baseline gap-[9px] hover:opacity-80">
+                      <span className="min-w-0 flex-1 text-xs leading-[1.4] text-[#e2e8f0]">{o.title}</span>
+                      <span className="flex-none text-[10.5px] font-bold text-[#60a5fa]" style={{ fontFamily: "Menlo, monospace" }}>
+                        {o.adjustedPriceCents === 0 ? "Priced per seat" : formatCents(o.adjustedPriceCents)}
+                      </span>
+                    </a>
+                  ))}
+                </div>
+                <a href="/offers" className="text-[11px] font-semibold text-[#60a5fa] hover:text-[#93c5fd]">
+                  Review offers →
+                </a>
+              </div>
+            ) : null}
+
+            <Panel>
+              <PanelLabel>REPORTS</PanelLabel>
+              {!d || d.reports.length === 0 ? (
+                <span className="text-xs text-[#94a3b8]">No reports yet.</span>
+              ) : (
+                <div className="flex flex-col">
+                  {d.reports.map((r, i) => (
+                    <div
+                      key={r.id}
+                      className="flex items-baseline gap-[10px] py-2"
+                      style={{ borderBottom: i < d.reports.length - 1 ? "1px solid rgba(255,255,255,.05)" : undefined }}
+                    >
+                      <span className="min-w-0 flex-1 text-xs text-[#e2e8f0]">{r.title}</span>
+                      <span className="flex-none text-[10.5px] text-[#64748b]" style={{ fontFamily: "Menlo, monospace" }}>
+                        {formatReportPeriod(r.reportDate ?? r.createdAt)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Panel>
+          </div>
+
           {/* Needs You / Coming Up / Happened */}
           <div className="grid gap-[14px]" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(316px, 1fr))" }}>
             <Panel accent="rgba(248,113,113,.22)">
@@ -354,82 +462,6 @@ export default function OverviewPage() {
                       {timeline.loadingMore ? "Loading…" : "Older"}
                     </button>
                   ) : null}
-                </div>
-              )}
-            </Panel>
-          </div>
-
-          {/* Work In Flight / Portal Counts / Reports */}
-          <div className="grid gap-[14px]" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
-            <Panel>
-              <PanelLabel>WORK IN FLIGHT</PanelLabel>
-              {!d || d.projects.length === 0 ? (
-                <span className="text-xs text-[#94a3b8]">No active project.</span>
-              ) : (
-                <div className="flex flex-col gap-[11px]">
-                  {d.projects.map((p) => {
-                    const stepLabel = p.currentTask ? `${p.currentTask.stepNumber}/${p.currentTask.totalSteps}` : "—";
-                    const subLabel = p.currentTask ? p.currentTask.title : p.phase ?? "No task in progress";
-                    return (
-                      <div key={p.id} className="flex flex-col gap-[6px]">
-                        <div className="flex items-baseline gap-[9px]">
-                          <span className="min-w-0 flex-1 text-xs font-semibold leading-[1.4] text-[#e2e8f0]">{p.title}</span>
-                          <span className="flex-none text-[10.5px] font-bold text-[#7dd3fc]" style={{ fontFamily: "Menlo, monospace" }}>
-                            {stepLabel}
-                          </span>
-                        </div>
-                        <div className="h-1 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,.07)" }}>
-                          <div className="h-1 rounded-full" style={{ width: `${p.progress}%`, background: "#0078D4" }} />
-                        </div>
-                        <span className="text-[10.5px] text-[#94a3b8]">{subLabel}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Panel>
-
-            <Panel>
-              <PanelLabel>PORTAL COUNTS</PanelLabel>
-              {!d ? null : (
-                <>
-                  <div className="grid gap-x-[14px] gap-y-[11px]" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(94px, 1fr))" }}>
-                    {portalCounts.map((c, i) => (
-                      <a key={i} href={c.href} className="flex flex-col gap-[2px]">
-                        <span className="text-[19px] font-extrabold leading-none" style={{ color: c.value === 0 ? "#475569" : c.ink, letterSpacing: "-.02em" }}>
-                          {c.value}
-                        </span>
-                        <span className="text-[10.5px] leading-[1.35] text-[#94a3b8]">{c.label}</span>
-                      </a>
-                    ))}
-                  </div>
-                  {noTenantScope ? (
-                    <span className="text-[10.5px]" style={{ color: AMB }}>
-                      Tenant identifier unresolvable — six counts are a real 0. RACI roles are scoped to your account, not the tenant, so that one still reads.
-                    </span>
-                  ) : null}
-                </>
-              )}
-            </Panel>
-
-            <Panel>
-              <PanelLabel>REPORTS</PanelLabel>
-              {!d || d.reports.length === 0 ? (
-                <span className="text-xs text-[#94a3b8]">No reports yet.</span>
-              ) : (
-                <div className="flex flex-col">
-                  {d.reports.map((r, i) => (
-                    <div
-                      key={r.id}
-                      className="flex items-baseline gap-[10px] py-2"
-                      style={{ borderBottom: i < d.reports.length - 1 ? "1px solid rgba(255,255,255,.05)" : undefined }}
-                    >
-                      <span className="min-w-0 flex-1 text-xs text-[#e2e8f0]">{r.title}</span>
-                      <span className="flex-none text-[10.5px] text-[#64748b]" style={{ fontFamily: "Menlo, monospace" }}>
-                        {formatReportPeriod(r.reportDate ?? r.createdAt)}
-                      </span>
-                    </div>
-                  ))}
                 </div>
               )}
             </Panel>
