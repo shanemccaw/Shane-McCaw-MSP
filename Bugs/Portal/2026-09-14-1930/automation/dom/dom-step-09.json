@@ -1,0 +1,14 @@
+{
+  "StepIndex": 9,
+  "Route": "http://localhost:5175/portal/risk-register",
+  "Selector": "[data-testid=\u0027policy-decision-row-RBD-2026-104\u0027]",
+  "Description": "expect [data-testid=\u0027policy-decision-row-RBD-2026-104\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 4,
+  "Changes": [
+    "Captured DOM scope: 4 total element nodes under \u0027[data-testid=\u0027policy-decision-row-RBD-2026-104\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T19:31:43.4005543-04:00"
+}

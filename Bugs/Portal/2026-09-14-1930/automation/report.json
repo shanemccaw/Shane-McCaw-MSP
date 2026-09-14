@@ -1,0 +1,404 @@
+{
+  "testName": "Issue #2993 - Risk Register (#2993, Feature #1487) -- the real customer-facing Risk Register page in the rebuilt artifacts/portal (/risk-register), wired to GET /api/portal/risk-register, GET /api/portal/policy-decisions, POST /api/portal/risk-register/:rbdId/accept, and GET /api/portal/risk-register/rbd/:rbdId/versions -- see docs/portal/risk-register-contract-pack.md. No fixture module: every row on screen comes from these endpoints. #3058 wired the whole-document viewer \u002B drawn-signature capture (GET .../versions/:versionUid/document, POST .../versions/:versionUid/sign) that this manifest\u0027s DOC steps below cover.",
+  "productName": "Portal",
+  "sessionId": "2026-09-14-1930",
+  "startedAt": "2026-09-14T19:30:19.2222110-04:00",
+  "endedAt": "2026-09-14T19:32:16.2426294-04:00",
+  "durationSeconds": 117.02,
+  "success": false,
+  "summary": "\u26A0 TEST INCOMPLETE (7/10 Steps)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/team",
+    "http://localhost:5175/portal/risk-register"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/portal/risk-register",
+      "targetUrl": "http://localhost:5175/portal/risk-register",
+      "expected": "navigation to http://localhost:5175/portal/risk-register succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 1528,
+      "detail": "Navigated to http://localhost:5175/portal/risk-register",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "body",
+      "targetUrl": "http://localhost:5175/portal/risk-register",
+      "expected": "body state == \u0027visible\u0027; textContains any of [\u0022Risk register\u0022]",
+      "actual": "found=True, visible=True; text=\u0022S Portal Governance 53 Security 54 Compliance 74 Licensing 60 Adoption 82 Health 63 Risk register i Live \u2014 4 risks 4 risks on your register Open 1 Mitigating 1 Accepted 2 $27k of named exposure sits w...\u0022",
+      "passed": true,
+      "durationMs": 26,
+      "detail": "body \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Risk register\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 3,
+      "action": "expect",
+      "selector": "[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "targetUrl": "http://localhost:5175/portal/risk-register",
+      "expected": "[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027] state == \u0027visible\u0027; textContains any of [\u0022Teams chat retention set to 1 year rather than the 7-year records period\u0022]",
+      "actual": "found=True, visible=True; text=\u0022Teams chat retention set to 1 year rather than the 7-year records period RBD-2026-104 \u00B7 Compliance \u00B7 Internal records schedule Records schedule 4.2 - transitory communications Accepted Signed No clock...\u0022",
+      "passed": true,
+      "durationMs": 44,
+      "detail": "[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Teams chat retention set to 1 year rather than the 7-year records period\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\3.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 4,
+      "action": "click",
+      "selector": "[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "targetUrl": "http://localhost:5175/portal/risk-register",
+      "expected": "click on \u0027[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 55,
+      "detail": "Executed click on [data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\4.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "expect",
+      "selector": "body",
+      "targetUrl": "http://localhost:5175/portal/risk-register",
+      "expected": "body state == \u0027visible\u0027; textContains any of [\u0022WHAT IT IS\u0022]",
+      "actual": "found=True, visible=True; text=\u0022S Portal Governance 53 Security 54 Compliance 74 Licensing 60 Adoption 82 Health 63 Risk register i Live \u2014 4 risks 4 risks on your register Open 1 Mitigating 1 Accepted 2 $27k of named exposure sits w...\u0022",
+      "passed": true,
+      "durationMs": 20,
+      "detail": "body \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022WHAT IT IS\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\5.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 6,
+      "action": "click",
+      "selector": "[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "targetUrl": "http://localhost:5175/portal/risk-register",
+      "expected": "click on \u0027[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 18,
+      "detail": "Executed click on [data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\6.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 7,
+      "action": "expect",
+      "selector": "body",
+      "targetUrl": "http://localhost:5175/portal/risk-register",
+      "expected": "body state == \u0027visible\u0027; textContains any of [\u0022Accepted by\u0022]",
+      "actual": "found=True, visible=True; text=\u0022S Portal Governance 53 Security 54 Compliance 74 Licensing 60 Adoption 82 Health 63 Risk register i Live \u2014 4 risks 4 risks on your register Open 1 Mitigating 1 Accepted 2 $27k of named exposure sits w...\u0022",
+      "passed": false,
+      "durationMs": 30029,
+      "detail": "body \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained none of [\u0022Accepted by\u0022] [polled 30002ms / 102 attempts, 30000ms budget exhausted]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\7.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 8,
+      "action": "expect",
+      "selector": "body",
+      "targetUrl": "http://localhost:5175/portal/risk-register",
+      "expected": "body state == \u0027visible\u0027; textContains any of [\u0022No document prepared yet\u0022]",
+      "actual": "found=True, visible=True; text=\u0022S Portal Governance 53 Security 54 Compliance 74 Licensing 60 Adoption 82 Health 63 Risk register i Live \u2014 4 risks 4 risks on your register Open 1 Mitigating 1 Accepted 2 $27k of named exposure sits w...\u0022",
+      "passed": false,
+      "durationMs": 30019,
+      "detail": "body \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained none of [\u0022No document prepared yet\u0022] [polled 30002ms / 112 attempts, 30000ms budget exhausted]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\8.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 9,
+      "action": "expect",
+      "selector": "[data-testid=\u0027policy-decision-row-RBD-2026-104\u0027]",
+      "targetUrl": "http://localhost:5175/portal/risk-register",
+      "expected": "[data-testid=\u0027policy-decision-row-RBD-2026-104\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 30,
+      "detail": "[data-testid=\u0027policy-decision-row-RBD-2026-104\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\9.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 10,
+      "action": "expect",
+      "selector": "body",
+      "targetUrl": "http://localhost:5175/portal/risk-register",
+      "expected": "body state == \u0027visible\u0027; textContains any of [\u0022What this page deliberately does not do\u0022]",
+      "actual": "found=True, visible=True; text=\u0022S Portal Governance 53 Security 54 Compliance 74 Licensing 60 Adoption 82 Health 63 Risk register i Live \u2014 4 risks 4 risks on your register Open 1 Mitigating 1 Accepted 2 $27k of named exposure sits w...\u0022",
+      "passed": false,
+      "durationMs": 30018,
+      "detail": "body \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained none of [\u0022What this page deliberately does not do\u0022] [polled 30001ms / 115 attempts, 30000ms budget exhausted]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\10.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-14T19:30:20.6242034-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png",
+    "screenshots/screenshot-06.png",
+    "screenshots/screenshot-07.png",
+    "screenshots/screenshot-08.png",
+    "screenshots/screenshot-09.png",
+    "screenshots/screenshot-10.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /portal/risk-register",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\risk-register\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect body",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\risk-register\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "expect [data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\risk-register\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "click [data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\risk-register\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "expect body",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\risk-register\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 6,
+      "StepLabel": "click [data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\6.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\risk-register\\6.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 7,
+      "StepLabel": "expect body",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\7.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\risk-register\\7.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 8,
+      "StepLabel": "expect body",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\8.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\risk-register\\8.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 9,
+      "StepLabel": "expect [data-testid=\u0027policy-decision-row-RBD-2026-104\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\9.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\risk-register\\9.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 10,
+      "StepLabel": "expect body",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2993-20260914193016\\screenshots\\10.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\risk-register\\10.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5175/portal/risk-register",
+      "Selector": "/portal/risk-register",
+      "Description": "goto /portal/risk-register",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-14T19:30:30.1974212-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5175/portal/risk-register",
+      "Selector": "body",
+      "Description": "expect body",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 233,
+      "Changes": [
+        "Captured DOM scope: 233 total element nodes under \u0027body\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-14T19:30:31.8875952-04:00"
+    },
+    {
+      "StepIndex": 3,
+      "Route": "http://localhost:5175/portal/risk-register",
+      "Selector": "[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "Description": "expect [data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 10,
+      "Changes": [
+        "Captured DOM scope: 10 total element nodes under \u0027[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-03.json",
+      "Timestamp": "2026-09-14T19:30:33.5705688-04:00"
+    },
+    {
+      "StepIndex": 4,
+      "Route": "http://localhost:5175/portal/risk-register",
+      "Selector": "[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "Description": "click [data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 10,
+      "Changes": [
+        "Captured DOM scope: 10 total element nodes under \u0027[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-04.json",
+      "Timestamp": "2026-09-14T19:30:35.2422614-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5175/portal/risk-register",
+      "Selector": "body",
+      "Description": "expect body",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 301,
+      "Changes": [
+        "Captured DOM scope: 301 total element nodes under \u0027body\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-14T19:30:36.8555926-04:00"
+    },
+    {
+      "StepIndex": 6,
+      "Route": "http://localhost:5175/portal/risk-register",
+      "Selector": "[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "Description": "click [data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 10,
+      "Changes": [
+        "Captured DOM scope: 10 total element nodes under \u0027[data-testid=\u0027risk-row-toggle-RBD-2026-104\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-06.json",
+      "Timestamp": "2026-09-14T19:30:38.4843228-04:00"
+    },
+    {
+      "StepIndex": 7,
+      "Route": "http://localhost:5175/portal/risk-register",
+      "Selector": "body",
+      "Description": "expect body",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 233,
+      "Changes": [
+        "Captured DOM scope: 233 total element nodes under \u0027body\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-07.json",
+      "Timestamp": "2026-09-14T19:31:10.1268842-04:00"
+    },
+    {
+      "StepIndex": 8,
+      "Route": "http://localhost:5175/portal/risk-register",
+      "Selector": "body",
+      "Description": "expect body",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 233,
+      "Changes": [
+        "Captured DOM scope: 233 total element nodes under \u0027body\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-08.json",
+      "Timestamp": "2026-09-14T19:31:41.7439296-04:00"
+    },
+    {
+      "StepIndex": 9,
+      "Route": "http://localhost:5175/portal/risk-register",
+      "Selector": "[data-testid=\u0027policy-decision-row-RBD-2026-104\u0027]",
+      "Description": "expect [data-testid=\u0027policy-decision-row-RBD-2026-104\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 4,
+      "Changes": [
+        "Captured DOM scope: 4 total element nodes under \u0027[data-testid=\u0027policy-decision-row-RBD-2026-104\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-09.json",
+      "Timestamp": "2026-09-14T19:31:43.4005543-04:00"
+    },
+    {
+      "StepIndex": 10,
+      "Route": "http://localhost:5175/portal/risk-register",
+      "Selector": "body",
+      "Description": "expect body",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 233,
+      "Changes": [
+        "Captured DOM scope: 233 total element nodes under \u0027body\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-10.json",
+      "Timestamp": "2026-09-14T19:32:15.0216607-04:00"
+    }
+  ],
+  "recommendations": "Investigate failing step(s) and review captured screenshots and console/API logs under /Bugs/Portal/2026-09-14-1930/automation/."
+}
