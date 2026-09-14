@@ -279,7 +279,7 @@ namespace BuildConsole
                 }
                 var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, epicNumber);
                 ActivityLog.Log(GitDetailChannel, $"new chat for epic #{epicNumber} -> {baseUrl} (prefill 'Epic #{epicNumber}')");
-                OpenWebTab(fullUrl, $"Epic #{epicNumber} New Chat", "", injectPrefillPoll: true, associateIssueNumber: epicNumber, associateIssueType: "Epic", associateDefaultTitle: $"[#{epicNumber}] Epic Chat");
+                OpenWebTab(fullUrl, $"Epic #{epicNumber} New Chat", "", injectPrefillPoll: true, associateIssueNumber: epicNumber, associateIssueType: "Epic", associateDefaultTitle: "Epic Chat");
             }
         }
 
