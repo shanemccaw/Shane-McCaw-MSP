@@ -8,6 +8,7 @@ import {
   changePasswordSuccessText,
   type LiveAccountSecurityGraphSignals,
 } from "@/components/account-security/useAccountSecurityLive";
+import { useRemediationExport } from "@/lib/remediation-tracker-export-api";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -153,6 +154,12 @@ export default function AccountSecurityPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [deletionResult, setDeletionResult] = useState<string | null>(null);
+
+  // ── Export tenant evidence (Git #4135) — real evidence-pack.pdf export,
+  // the same GET /api/portal/remediation-tracker/evidence-pack.pdf the
+  // Remediation Tracker's own export controls call. ─────────────────────────
+  const evidenceExport = useRemediationExport("evidence-pack");
+  const [evidenceExportError, setEvidenceExportError] = useState<string | null>(null);
 
   // ── Change password (#3529) ───────────────────────────────────────────────
   const [passwordFormOpen, setPasswordFormOpen] = useState(false);
@@ -834,6 +841,36 @@ export default function AccountSecurityPage() {
                 {live.exporting ? "Preparing…" : "Download export"}
               </button>
             </div>
+
+            <div className="flex flex-wrap items-center gap-3 border-b py-[11px]" style={{ borderColor: "rgba(255,255,255,.06)" }}>
+              <span className="w-[200px] min-w-[150px] shrink-0 text-[12.5px] font-semibold text-[#e2e8f0]">Export tenant evidence</span>
+              <span className="text-[11.5px] text-[#64748b]">Immediate</span>
+              <button
+                type="button"
+                disabled={evidenceExport.isPending}
+                onClick={() => {
+                  setEvidenceExportError(null);
+                  evidenceExport.mutate(undefined, {
+                    onError: (err) => setEvidenceExportError(err instanceof Error ? err.message : "Export failed"),
+                  });
+                }}
+                className="ml-auto rounded-md px-[14px] py-[7px] text-[12px] font-semibold text-[#cbd5e1] transition-colors hover:bg-white/[.04]"
+                style={{ border: "1px solid rgba(255,255,255,.14)" }}
+                data-testid="account-security-export-tenant-evidence"
+              >
+                {evidenceExport.isPending ? "Preparing…" : "Go to evidence export"}
+              </button>
+            </div>
+            {evidenceExportError ? (
+              <div
+                className="flex items-center gap-[9px] rounded-[10px] px-[14px] py-[10px]"
+                style={{ border: "1px dashed rgba(248,113,113,.45)", background: "rgba(248,113,113,.06)" }}
+                data-testid="account-security-export-tenant-evidence-error"
+              >
+                <AlertCircle className="size-[14px] shrink-0" color={RED} />
+                <span className="text-[12px] text-[#e2e8f0]">{evidenceExportError}</span>
+              </div>
+            ) : null}
 
             <div className="flex flex-wrap items-center gap-3 py-[11px]">
               <span className="w-[200px] min-w-[150px] shrink-0 text-[12.5px] font-semibold text-[#e2e8f0]">Delete your account</span>
