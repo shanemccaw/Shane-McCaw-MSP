@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users, KeyRound, DoorOpen } from "lucide-react";
+import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users, KeyRound, DoorOpen, Lock } from "lucide-react";
 import type { AuthUser } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 import { comingSoonHref } from "./moduleNav";
@@ -187,6 +187,16 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
             onNavigate={onClose}
           />
         )}
+        {/* #4005 (part of #1652) — standalone Privacy & Data page, Shane's
+            2026-09-14 reversal of the earlier fold-into-Account-Security call. */}
+        <MenuRow
+          href="/privacy"
+          icon={Lock}
+          label="Privacy and your data"
+          sub="Export or delete your account's data"
+          testId="user-menu-data-rights-privacy"
+          onNavigate={onClose}
+        />
       </div>
       <Divider />
       <div style={{ padding: "4px 6px 6px" }}>

@@ -11,6 +11,7 @@ import IndexPage from "@/pages/index";
 import ComingSoon from "@/pages/coming-soon";
 import SupportPage from "@/pages/support";
 import AccountSecurityPage from "@/pages/account-security";
+import DataRightsAndPrivacyPage from "@/pages/data-rights-and-privacy";
 import BillingPage from "@/pages/billing";
 import CustomerTeamPage from "@/pages/customer-team";
 import ConfigStatePage from "@/pages/config-state";
@@ -113,6 +114,7 @@ function ProtectedRoutes() {
           <Route path="/" component={IndexPage} />
           <Route path="/support" component={SupportPage} />
           <Route path="/account-security" component={AccountSecurityPage} />
+          <Route path="/privacy" component={DataRightsAndPrivacyPage} />
           <Route path="/billing" component={BillingPage} />
           <Route path="/team" component={CustomerTeamPage} />
           <Route path="/config-state" component={ConfigStatePage} />
