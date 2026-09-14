@@ -28,6 +28,7 @@ import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
 import { CHANGE_REQUEST_WORKLOADS } from "../lib/portal-change-control.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
@@ -152,6 +153,16 @@ router.post(
         })
         .returning();
       log.info({ mspId, maintenanceWindowId: inserted.id, scope: body.scope, recurrence: body.recurrence }, "change maintenance window created");
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: "msp",
+        actionType: "change_maintenance_window.created",
+        actionCategory: "settings",
+        entityType: "change_maintenance_window",
+        entityId: inserted.id,
+        metadata: { mspId, scope: body.scope, recurrence: body.recurrence },
+      });
       res.status(201).json({ window: toWire(inserted) });
     } catch (err) {
       log.error({ err, mspId }, "POST /msp/change-maintenance-windows failed");
@@ -228,6 +239,16 @@ router.patch(
         .returning();
 
       log.info({ mspId, maintenanceWindowId: id, active: updated.active }, "change maintenance window updated");
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: "msp",
+        actionType: "change_maintenance_window.updated",
+        actionCategory: "settings",
+        entityType: "change_maintenance_window",
+        entityId: id,
+        metadata: { mspId, active: updated.active },
+      });
       res.json({ window: toWire(updated) });
     } catch (err) {
       log.error({ err, mspId, maintenanceWindowId: id }, "PATCH /msp/change-maintenance-windows/:id failed");

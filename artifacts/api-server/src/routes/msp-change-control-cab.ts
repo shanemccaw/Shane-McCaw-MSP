@@ -34,6 +34,7 @@ import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
 import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
 import {
   addOrUpdateMember,
   addAgendaItem,
@@ -57,6 +58,12 @@ import { CAB_MEETING_TYPES, CAB_MEMBER_ROLES, CAB_MEMBER_SIDES, summarizeAgenda,
 const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
+
+/** Shared audit-actor shape for every write route in this file — always `msp` side. */
+function auditActor(req: Request): { actorUserId: number; actorName: string; actorRole: "msp" } {
+  const user = req.user!;
+  return { actorUserId: user.id, actorName: user.name ?? user.email, actorRole: "msp" };
+}
 
 function mspContext(req: Request, res: Response): number | null {
   const mspId = resolveMspIdStrict(req);
@@ -131,6 +138,14 @@ router.post("/msp/change-control/cab/members", requireAuth, requireCapability("l
       tenantId: parsed.data.tenantId ?? null,
       isEcab: parsed.data.isEcab,
     });
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "cab.member_added",
+      actionCategory: "settings",
+      entityType: "cab_member",
+      entityId: member.id,
+      metadata: { mspId, name: parsed.data.name, side: parsed.data.side, role: parsed.data.role },
+    });
     res.status(201).json({ member: toWireCabMember(member) });
   } catch (err) {
     log.error({ err, mspId }, "POST /msp/change-control/cab/members failed");
@@ -152,6 +167,14 @@ router.delete("/msp/change-control/cab/members/:id", requireAuth, requireCapabil
       res.status(404).json({ error: "Active CAB member not found" });
       return;
     }
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "cab.member_removed",
+      actionCategory: "settings",
+      entityType: "cab_member",
+      entityId: memberId,
+      metadata: { mspId },
+    });
     res.status(200).json({ removed: true });
   } catch (err) {
     log.error({ err, mspId, memberId }, "DELETE /msp/change-control/cab/members/:id failed");
@@ -205,6 +228,14 @@ router.post("/msp/change-control/cab/meetings", requireAuth, requireCapability("
       location: parsed.data.location,
       notes: parsed.data.notes,
     });
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "cab.meeting_scheduled",
+      actionCategory: "create",
+      entityType: "cab_meeting",
+      entityId: meeting.id,
+      metadata: { mspId, meetingType: parsed.data.meetingType, scheduledFor: parsed.data.scheduledFor },
+    });
     res.status(201).json({ meeting: toWireCabMeeting(meeting, summarizeAgenda([])) });
   } catch (err) {
     log.error({ err, mspId }, "POST /msp/change-control/cab/meetings failed");
@@ -247,6 +278,14 @@ router.post("/msp/change-control/cab/meetings/:id/start", requireAuth, requireCa
       res.status(409).json({ error: "Meeting not found or not in a startable state" });
       return;
     }
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "cab.meeting_started",
+      actionCategory: "action",
+      entityType: "cab_meeting",
+      entityId: meetingId,
+      metadata: { mspId },
+    });
     res.json({ meeting: toWireCabMeeting(meeting, summarizeAgenda([])) });
   } catch (err) {
     log.error({ err, mspId, meetingId }, "POST /msp/change-control/cab/meetings/:id/start failed");
@@ -265,6 +304,14 @@ router.post("/msp/change-control/cab/meetings/:id/close", requireAuth, requireCa
       return;
     }
     const { items } = await listAgendaWithChanges(mspId, meetingId);
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "cab.meeting_closed",
+      actionCategory: "action",
+      entityType: "cab_meeting",
+      entityId: meetingId,
+      metadata: { mspId },
+    });
     res.json({ meeting: toWireCabMeeting(result.meeting, summarizeAgenda(items.map((i) => i.row))) });
   } catch (err) {
     log.error({ err, mspId, meetingId }, "POST /msp/change-control/cab/meetings/:id/close failed");
@@ -282,6 +329,14 @@ router.post("/msp/change-control/cab/meetings/:id/cancel", requireAuth, requireC
       res.status(409).json({ error: "Meeting not found or already closed" });
       return;
     }
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "cab.meeting_cancelled",
+      actionCategory: "action",
+      entityType: "cab_meeting",
+      entityId: meetingId,
+      metadata: { mspId },
+    });
     res.json({ meeting: toWireCabMeeting(meeting, summarizeAgenda([])) });
   } catch (err) {
     log.error({ err, mspId, meetingId }, "POST /msp/change-control/cab/meetings/:id/cancel failed");
@@ -329,6 +384,14 @@ router.post("/msp/change-control/cab/meetings/:id/agenda", requireAuth, requireC
       res.status(result.code).json({ error: result.error });
       return;
     }
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "cab.agenda_item_added",
+      actionCategory: "create",
+      entityType: "cab_agenda_item",
+      entityId: result.item.id,
+      metadata: { mspId, meetingId, changeRequestId: parsed.data.changeRequestId },
+    });
     res.status(201).json({ item: result.item });
   } catch (err) {
     log.error({ err, mspId, meetingId }, "POST .../agenda failed");
@@ -356,6 +419,14 @@ router.patch("/msp/change-control/cab/agenda/:id", requireAuth, requireCapabilit
       res.status(404).json({ error: "Agenda item not found" });
       return;
     }
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "cab.agenda_item_updated",
+      actionCategory: "update",
+      entityType: "cab_agenda_item",
+      entityId: agendaItemId,
+      metadata: { mspId },
+    });
     res.json({ item: row });
   } catch (err) {
     log.error({ err, mspId, agendaItemId }, "PATCH /msp/change-control/cab/agenda/:id failed");
@@ -384,6 +455,14 @@ router.post("/msp/change-control/cab/agenda/:id/decision", requireAuth, requireC
       return;
     }
     log.info({ mspId, agendaItemId, decision: parsed.data.decision, complete: result.complete }, "cab: decision recorded via route");
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: parsed.data.decision === "approve" ? "cab.decision_approved" : "cab.decision_rejected",
+      actionCategory: "security",
+      entityType: "cab_agenda_item",
+      entityId: agendaItemId,
+      metadata: { mspId, decision: parsed.data.decision, note: parsed.data.note, complete: result.complete },
+    });
     res.status(200).json({ item: result.item, complete: result.complete });
   } catch (err) {
     log.error({ err, mspId, agendaItemId }, "POST .../decision failed");
@@ -408,6 +487,14 @@ router.post("/msp/change-control/cab/agenda/:id/defer", requireAuth, requireCapa
       res.status(result.code).json({ error: result.error });
       return;
     }
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "cab.agenda_item_deferred",
+      actionCategory: "update",
+      entityType: "cab_agenda_item",
+      entityId: agendaItemId,
+      metadata: { mspId, deferredToMeetingId: parsed.data.deferredToMeetingId },
+    });
     res.json({ item: result.item });
   } catch (err) {
     log.error({ err, mspId, agendaItemId }, "POST .../defer failed");

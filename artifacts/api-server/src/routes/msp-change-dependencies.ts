@@ -22,6 +22,7 @@ import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
 import {
   createDependency,
   deleteDependency,
@@ -231,6 +232,16 @@ router.post(
         apiError(res, 409, ApiErrorCode.CONFLICT, result.reason);
         return;
       }
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: req.user!.role,
+        actionType: "change_dependency.created",
+        actionCategory: "create",
+        entityType: "change_request_dependency",
+        entityId: result.edge.id,
+        metadata: { mspId, changeRequestId: dbId, blocksChangeRequestId: blocksId },
+      });
       res.status(201).json({ edge: toWire(result.edge) });
     } catch (err) {
       log.error({ err, mspId, dbId }, "POST /msp/change-requests/:id/dependencies failed");
@@ -268,6 +279,16 @@ router.delete(
         return;
       }
       log.info({ mspId, dbId, depId }, "change-control: blocked_by dependency removed");
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: req.user!.role,
+        actionType: "change_dependency.deleted",
+        actionCategory: "delete",
+        entityType: "change_request_dependency",
+        entityId: depId,
+        metadata: { mspId, changeRequestId: dbId },
+      });
       res.status(204).end();
     } catch (err) {
       log.error({ err, mspId, dbId, depId }, "DELETE /msp/change-requests/:id/dependencies/:depId failed");

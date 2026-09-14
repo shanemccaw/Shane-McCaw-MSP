@@ -6,6 +6,7 @@ import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
 import { logRetainerWorkFromTracker, pillarHintForCategory } from "../lib/retainer-work-logger.ts";
 import { CHANGE_REQUEST_CATEGORIES, workloadForCategory } from "../lib/portal-change-control.ts";
 import { toWireApproval, type WireApprovalRecord } from "../lib/portal-change-approvals.ts";
@@ -308,6 +309,18 @@ router.post(
         occurredAt: inserted.createdAt,
       });
 
+      await createAuditLog({
+        actorUserId: req.user?.id ?? null,
+        actorName: userEmail,
+        actorRole: "msp",
+        actionType: "change_request.raised",
+        actionCategory: "create",
+        entityType: "msp_change_request",
+        entityId: inserted.id,
+        tenantId: tenantForPolicy?.id ?? null,
+        metadata: { changeClass: parsedBody.data.changeClass, riskLevel: parsedBody.data.riskLevel },
+      });
+
       // #1775 — the MSP console is a second door into `mspChangeRequestsTable`,
       // same table the customer wizard (`portal-change-control-raise.ts`) and
       // the router (`m365-change-router.ts`) write, and both of those already
@@ -442,6 +455,17 @@ router.patch(
           return;
         }
 
+        await createAuditLog({
+          actorUserId: req.user?.id ?? null,
+          actorName: approver.name,
+          actorRole: "msp",
+          actionType: "change_request.rejected",
+          actionCategory: "security",
+          entityType: "msp_change_request",
+          entityId: dbId,
+          metadata: { reason },
+        });
+
         res.json({
           id: crIdStr,
           message: "Change request updated successfully",
@@ -535,6 +559,17 @@ router.patch(
           actorRole: "msp",
           actorPersonId: req.user ? personIdForUser(req.user.id) : null,
           actorName: req.user?.email ?? null,
+        });
+
+        await createAuditLog({
+          actorUserId: req.user?.id ?? null,
+          actorName: req.user?.email ?? "unknown@mspplatform.com",
+          actorRole: "msp",
+          actionType: `change_request.${parsedBody.data.status}`,
+          actionCategory: "action",
+          entityType: "msp_change_request",
+          entityId: dbId,
+          metadata: { fromStatus: existing.status, toStatus: parsedBody.data.status },
         });
       }
 
@@ -669,6 +704,17 @@ router.post(
         apiError(res, result.code, errorCode, result.error);
         return;
       }
+
+      await createAuditLog({
+        actorUserId: req.user?.id ?? null,
+        actorName: approver.name,
+        actorRole: "msp",
+        actionType: "change_request.approved",
+        actionCategory: "security",
+        entityType: "msp_change_request",
+        entityId: dbId,
+        metadata: { stage: result.stage, complete: result.complete },
+      });
 
       res.json({ id: crIdStr, approved: true, stage: result.stage, complete: result.complete });
     } catch (err: unknown) {
@@ -829,6 +875,15 @@ router.post(
         authorName: req.user?.email || "unknown@mspplatform.com",
         body: parsedBody.data.body,
       });
+      await createAuditLog({
+        actorUserId: req.user?.id ?? null,
+        actorName: comment.authorName,
+        actorRole: "msp",
+        actionType: "change_request.comment_added",
+        actionCategory: "create",
+        entityType: "msp_change_request",
+        entityId: dbId,
+      });
       res.status(201).json({
         id: formatCrId(dbId),
         comment: { authorRole: comment.authorRole, authorName: comment.authorName, body: comment.body, createdAt: comment.createdAt.toISOString() } satisfies WireCrComment,
@@ -893,6 +948,16 @@ router.post(
         uploadedByRole: "msp",
         uploadedByPersonId: req.user ? personIdForUser(req.user.id) : "unknown",
         uploadedByName: req.user?.email || "unknown@mspplatform.com",
+      });
+      await createAuditLog({
+        actorUserId: req.user?.id ?? null,
+        actorName: attachment.uploadedByName,
+        actorRole: "msp",
+        actionType: "change_request.attachment_added",
+        actionCategory: "create",
+        entityType: "msp_change_request",
+        entityId: dbId,
+        metadata: { kind: attachment.kind, label: attachment.label },
       });
       res.status(201).json({
         id: formatCrId(dbId),
