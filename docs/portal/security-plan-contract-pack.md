@@ -10,6 +10,11 @@ and the Drizzle schema, cited to file:line. **Nothing here is authored or invent
 code, no schema changes, no UI, no `drizzle-kit push` — this pack documents #2949's own build
 (already committed), it does not perform it.
 
+**Addendum, #4113 (documentation-only):** `GET /api/portal/security-plan/drift`
+(`portal-security-plan-document.ts`, added at **#3027**, already wired and consumed live by the
+Security Plan screen's "Changes since signing" section) had no §2 entry — this pack was generated
+before #3027 shipped. See §2.8.
+
 **Why this pack replaces the #1731/#2601 one wholesale, not edited.** That pack's whole §0.3
 finding was that `portal-security-plan.ts` still served the ORIGINAL legacy
 `portal_security_plans` model while the real MSP-side assembled/versioned/signed pipeline sat
@@ -72,6 +77,7 @@ at §7.
 | `/api/portal/security-plan/versions` | GET | `portal-security-plan-document.ts` — new at #2949 | `CustomerUser` | Nothing yet | Yes, same reason |
 | `/api/portal/security-plan/versions/current` | GET | `portal-security-plan-document.ts` — new at #2949 | `CustomerUser` | Nothing yet | Yes, same reason |
 | `/api/portal/security-plan/versions/:versionUid/sign` | POST | `portal-security-plan-document.ts` — new at #2949 | `CustomerUser` | Nothing yet | Yes, same reason |
+| `/api/portal/security-plan/drift` | GET | `portal-security-plan-document.ts:316-330` — new at #3027 | `CustomerUser` | **Yes** — the Security Plan screen's "Changes since signing" section | No |
 | `/api/msp/security-plan/:customerId/assembled` | GET | `msp-security-plan.ts:209-225` | `MSPOperator` | Nothing | Yes, deliberately (route's own header) |
 | `/api/msp/security-plan/:customerId/drift` | GET | `msp-security-plan.ts:238-253` | `MSPOperator` | Nothing | Yes, same reason |
 | `/api/msp/security-plan/:customerId/versions` | GET | `msp-security-plan.ts:256-271` | `MSPOperator` | Nothing | Yes, same reason |
@@ -235,6 +241,53 @@ ignored from a poisoned body), typed-name floor (400 below 2 chars), tenant-scop
 for another tenant's version), 409 on a superseded version, 409 on an already-signed version, 409
 on a lost signing race, and `GET .../versions/current` returning an unsigned version (unlike
 `assembledPlan`).
+
+### 2.8 `GET /api/portal/security-plan/drift` — new at #3027
+
+Added to `portal-security-plan-document.ts` after this pack's original #2949 extraction, so it had
+no prior entry here (#4113). Real, wired, and live: `artifacts/portal/src/lib/security-plan-api.ts:108`
+calls it, and the Security Plan screen's "Changes since signing" section
+(`artifacts/portal/src/pages/security-plan.tsx:228,255`, rendered by
+`artifacts/portal/src/components/security-plan/DriftPanel.tsx`) is its real consumer — unlike every
+other route in §0.3's table, this one is **not** orphaned.
+
+```ts
+// portal-security-plan-document.ts:284-306 — verbatim
+interface WireSecurityPlanDrift {
+  readonly hasLastSignedVersion: boolean;
+  readonly lastSignedVersionUid: string | null;
+  readonly lastSignedVersionNumber: number | null;
+  readonly lastSignedAt: string | null;
+  readonly modules: SecurityPlanDrift["modules"];
+  readonly totalAdded: number;
+  readonly totalRemoved: number;
+  readonly totalChanged: number;
+}
+```
+
+`modules` is `readonly SecurityPlanModuleDrift[]` (`msp.ts:7055-7061`) — each entry
+`{ moduleKey, label, added: SecurityPlanAssembledItem[], removed: SecurityPlanAssembledItem[], changed: SecurityPlanDriftChangedItem[] }`,
+with `SecurityPlanDriftChangedItem` (`msp.ts:7045-7050`) carrying `{ id, title, from: { state, detail }, to: { state, detail } }`.
+The client-side mirror of the whole wire shape is `WireSecurityPlanDrift`
+(`artifacts/portal/src/lib/security-plan-types.ts:160-169`), byte-for-byte the same fields.
+
+`GET /portal/security-plan/drift` (`portal-security-plan-document.ts:316-330`) requires
+`requireCapability("ladder.customer-user")` (same floor as §2's read routes — lower than the
+`sign` route's stakes), resolves `requireScope(req, res)` (the same `TenantScope` pattern the
+whole module uses), then calls `getSecurityPlanDrift(scope)` (`security-plan-drift.ts:130-161`)
+and returns `{ drift: toWireDrift(drift) }`. Fails to `500 INTERNAL` on any thrown error
+(`:325-328`) — unlike §1's `assembledPlan`, there is no fail-closed-to-null convention here; an
+unscoped resolution failure is a real 500, not a silent empty drift.
+
+`getSecurityPlanDrift` (§3.7's `computeSecurityPlanDrift`, reused unchanged) always diffs against
+the **honest, unscoped** live view (`HONEST_SCOPE`, `security-plan-assembly.ts`) — never the
+caller's own scope — against the last **fully executed** version (`getLastFullyExecutedSecurityPlanVersion`,
+i.e. both `customerSignedAt` and `mspSignedAt` non-null, #1689/#3793), not merely the last signed
+one. `hasLastSignedVersion: false` (nothing ever executed yet) returns an empty `modules: []` with
+all three totals `0` — distinct from "executed, no drift since," which returns `hasLastSignedVersion: true`
+with empty `modules`/zero totals for the same reason. Same #1567 constraint as §3.7: this is
+mechanical DATA drift only (added/removed/changed rows across the seven source modules); `.prose`
+is never read or compared.
 
 ---
 
