@@ -4,7 +4,6 @@ import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { comingSoonHref } from "@/components/shell/moduleNav";
 
 interface Preference {
   category: string;
@@ -404,7 +403,7 @@ export function NotificationPreferencesContent() {
                 nothing: no setting here changes one there.
               </span>
               <Link
-                href={comingSoonHref("Portal Alerts", "module")}
+                href="/settings?tab=alerts"
                 className="w-fit text-[11.5px] font-semibold"
                 style={{ color: "#60a5fa" }}
                 data-testid="notification-preferences-open-alerts"
