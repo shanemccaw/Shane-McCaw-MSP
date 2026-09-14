@@ -21,6 +21,7 @@ import {
 import { eq, desc, and, isNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 const log = logger.child({ channel: "workflow.script" });
 import { randomUUID } from "crypto";
 import { createHash } from "crypto";
@@ -138,6 +139,17 @@ router.get("/admin/script-download-tokens", requireAdmin, async (req: Request, r
        LIMIT 200`,
       [scriptId ?? null, customerId ? parseInt(customerId, 10) : null],
     );
+
+    if (customerId) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_script_download_tokens_viewed",
+        entityType: "tenant",
+        clientId: parseInt(customerId, 10),
+      });
+    }
 
     res.json(
       rows.rows.map((r) => ({

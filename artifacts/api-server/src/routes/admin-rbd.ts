@@ -34,6 +34,7 @@ import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
 import { assignRegisterRef } from "../lib/risk-register-ref.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -148,6 +149,16 @@ router.get("/admin/rbd/:customerId", requireAdmin, async (req: Request, res: Res
       .from(mspRiskDecisionsTable)
       .where(and(eq(mspRiskDecisionsTable.mspId, scope.mspId), eq(mspRiskDecisionsTable.tenantId, scope.tenantId)))
       .orderBy(desc(mspRiskDecisionsTable.id));
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_customer_risk_decisions_viewed",
+      entityType: "tenant",
+      tenantId: customerId,
+      entityLabel: scope.tenantName,
+    });
 
     res.json({
       customer: { customerId, name: scope.tenantName, primaryDomain: scope.primaryDomain },

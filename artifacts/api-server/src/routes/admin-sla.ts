@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 const log = logger.child({ channel: "engine.sla" });
 import {
   computeSlaEngine,
@@ -180,6 +181,16 @@ router.get("/admin/sla/assignments", requireAdmin, async (req: Request, res: Res
                      created_at AS "createdAt", updated_at AS "updatedAt"
               FROM sla_assignments ORDER BY id DESC`,
     );
+    if (mspId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_sla_assignments_viewed",
+        entityType: "msp",
+        entityId: mspId,
+      });
+    }
     res.json({ assignments: rows.rows });
   } catch (err) {
     log.error({ err }, "admin-sla: list assignments failed");
@@ -253,6 +264,16 @@ router.get("/admin/sla/timers", requireAdmin, async (req: Request, res: Response
                        metadata, created_at AS "createdAt", updated_at AS "updatedAt"
                 FROM sla_timers ORDER BY created_at DESC LIMIT 100`,
     );
+    if (customerId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_sla_timers_viewed",
+        entityType: "tenant",
+        tenantId: customerId,
+      });
+    }
     res.json({ timers: rows.rows });
   } catch (err) {
     log.error({ err }, "admin-sla: list timers failed");
@@ -410,6 +431,25 @@ router.get("/admin/sla/compliance", requireAdmin, async (req: Request, res: Resp
                        avg_resolution_minutes AS "avgResolutionMinutes", notes, created_at AS "createdAt"
                 FROM sla_compliance_records ORDER BY period_start DESC LIMIT 100`,
     );
+    if (customerId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_sla_compliance_viewed",
+        entityType: "tenant",
+        tenantId: customerId,
+      });
+    } else if (mspId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_sla_compliance_viewed",
+        entityType: "msp",
+        entityId: mspId,
+      });
+    }
     res.json({ records: rows.rows });
   } catch (err) {
     log.error({ err }, "admin-sla: list compliance records failed");
@@ -484,6 +524,25 @@ router.get("/admin/sla/evaluate", requireAdmin, async (req: Request, res: Respon
       output = await runSlaEngineForMsp(mspId);
     } else {
       output = await runSlaEngineForMsp(0);
+    }
+    if (customerId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_sla_evaluate_viewed",
+        entityType: "tenant",
+        tenantId: customerId,
+      });
+    } else if (mspId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_sla_evaluate_viewed",
+        entityType: "msp",
+        entityId: mspId,
+      });
     }
     res.json(output);
   } catch (err) {

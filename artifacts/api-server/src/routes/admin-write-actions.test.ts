@@ -195,7 +195,10 @@ vi.mock("@workspace/db", () => {
 
 vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (req.headers["authorization"] === `Bearer ${ADMIN_PASS}`) return next();
+    if (req.headers["authorization"] === `Bearer ${ADMIN_PASS}`) {
+      (req as any).user = { id: 1, email: "admin@test.local", role: "admin" };
+      return next();
+    }
     res.status(401).json({ error: "Unauthorized" });
   },
   // Same admin-session check as requireAdmin above (see the real
@@ -205,7 +208,10 @@ vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAdminOrIngestToken:
     (_envVar?: string) =>
     (req: express.Request, res: express.Response, next: express.NextFunction) => {
-      if (req.headers["authorization"] === `Bearer ${ADMIN_PASS}`) return next();
+      if (req.headers["authorization"] === `Bearer ${ADMIN_PASS}`) {
+        (req as any).user = { id: 1, email: "admin@test.local", role: "admin" };
+        return next();
+      }
       res.status(401).json({ error: "Unauthorized" });
     },
 }));

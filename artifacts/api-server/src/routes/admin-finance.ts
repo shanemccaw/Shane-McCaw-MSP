@@ -5,6 +5,7 @@ import {
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 
 const router = Router();
 
@@ -56,6 +57,16 @@ router.get("/admin/invoices/:id", requireAdmin, async (req: Request, res: Respon
   }).from(contractsTable).where(contractWhere).orderBy(desc(contractsTable.signedAt)).limit(1);
 
   const aging = invoice.status === "overdue" ? agingBucket(invoice.dueDate) : null;
+
+  await auditPrivilegedRead({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email,
+    actorRole: "platform_admin",
+    actionType: "admin_invoice_viewed",
+    entityType: "invoice",
+    entityId: id,
+    clientId: invoice.clientUserId ?? null,
+  });
 
   res.json({
     ...invoice,

@@ -3,6 +3,7 @@ import { db, scriptRunResultsTable, engagementProjectsTable, usersTable, monitor
 import { eq, desc, asc, isNull, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 const log = logger.child({ channel: "engine.signals" });
 import {
   getAllSignalDefinitions,
@@ -816,6 +817,15 @@ router.get("/admin/signal-rules/customer-pillar-scores/:customerId", requireAdmi
       label: PILLAR_LABELS[pillar],
       score: computePillarDisplayScore(pillar, output, impacts, evaluableSignalKeys),
     }));
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_customer_pillar_scores_viewed",
+      entityType: "tenant",
+      tenantId: customerId,
+    });
 
     res.json({ customerId, pillars });
   } catch (err) {

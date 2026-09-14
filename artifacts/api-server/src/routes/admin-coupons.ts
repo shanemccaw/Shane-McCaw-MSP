@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, couponsTable, couponRedemptionsTable, usersTable } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 
 const router: IRouter = Router();
 
@@ -286,6 +287,15 @@ router.get("/admin/coupons/:id/redemptions", requireAdmin, async (req: Request, 
           OR (${couponRedemptionsTable.couponId} IS NULL AND ${couponRedemptionsTable.couponCode} = ${coupon.code})`
     )
     .orderBy(desc(couponRedemptionsTable.redeemedAt));
+
+  await auditPrivilegedRead({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email,
+    actorRole: "platform_admin",
+    actionType: "admin_coupon_redemptions_viewed",
+    entityType: "coupon",
+    entityId: id,
+  });
 
   res.json(rows);
 });

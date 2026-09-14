@@ -3,6 +3,7 @@ import { db, emailsTable, emailDomainRulesTable, usersTable, kanbanTasksTable, p
 import { eq, and, isNull, isNotNull, desc, count, gte } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { graphCredentialsPresent, getMailMessageBody } from "../lib/graph.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "comms.email" });
 
@@ -28,6 +29,15 @@ router.get("/admin/projects/:id/emails", requireAdmin, async (req: Request, res:
     .leftJoin(usersTable, eq(emailsTable.linkedUserId, usersTable.id))
     .where(eq(emailsTable.linkedProjectId, id))
     .orderBy(desc(emailsTable.receivedAt));
+
+  await auditPrivilegedRead({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email,
+    actorRole: "platform_admin",
+    actionType: "admin_project_emails_viewed",
+    entityType: "project",
+    entityId: id,
+  });
 
   res.json({ emails: rows });
 });
@@ -159,6 +169,16 @@ router.get("/admin/emails/:id", requireAdmin, async (req: Request, res: Response
       log.warn({ err }, "Failed to fetch email body from Graph; falling back to preview");
     }
   }
+
+  await auditPrivilegedRead({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email,
+    actorRole: "platform_admin",
+    actionType: "admin_email_viewed",
+    entityType: "email",
+    entityId: id,
+    clientId: row.clientId ?? null,
+  });
 
   res.json({
     ...row,

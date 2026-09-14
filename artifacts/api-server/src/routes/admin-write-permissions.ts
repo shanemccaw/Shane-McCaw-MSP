@@ -40,6 +40,7 @@ import {
 import { eq, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import { getGrantedWriteAppPermissionsForTenant } from "../lib/graph.ts";
 import {
   requiredPermissionsForWrite,
@@ -264,6 +265,15 @@ router.get("/admin/write-permissions", requireAdmin, async (req: Request, res: R
         required, notRequested, nonGraphSteps, unmappedSteps, appOnlyUnsupportedSteps, granted, grantedReadable,
       );
     }
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_write_permissions_viewed",
+      entityType: "tenant",
+      tenantId: customerId,
+    });
 
     res.json({
       customerId,

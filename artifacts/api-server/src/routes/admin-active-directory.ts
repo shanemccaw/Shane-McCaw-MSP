@@ -509,6 +509,17 @@ router.get("/admin/active-directory/group/:role", requireAdmin, async (req: Requ
       lastLoginAt: m.lastLoginAt,
     }));
 
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email ?? "platform-admin",
+      actorRole: "platform_admin",
+      actionType: "admin_directory_group_viewed",
+      actionCategory: "access",
+      entityType: "rbac_group",
+      entityId: role,
+      metadata: { memberCount: members.length },
+    });
+
     res.json(buildGroupDetail(role, filterGroupMembers(q, members)));
   } catch (err) {
     log.error({ err, role }, "Failed to build RBAC Group detail pane");

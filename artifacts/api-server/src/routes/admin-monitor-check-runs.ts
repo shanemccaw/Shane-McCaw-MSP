@@ -69,6 +69,7 @@ import { db, monitorChecksTable, monitoringPackageChecksTable, tenantsTable, typ
 import { and, eq, inArray, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 import { executeMonitorCheck, type MappingRule } from "../lib/monitor-executor.ts";
 import { traceCheckResponse } from "../lib/monitor-check-trace.ts";
@@ -580,6 +581,16 @@ router.get("/admin/monitor-check-batches/:batchId", requireAdmin, async (req: Re
       .filter((r): r is typeof r & { classification: FailureClassification } => r.classification != null)
       .map((r) => ({ checkKey: r.checkKey, classification: r.classification }));
 
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "monitor_check_batch_viewed",
+      entityType: "monitor_check_batch",
+      entityId: batchId,
+      tenantId: runs[0]?.customerId ?? null,
+    });
+
     res.json({
       summary: summarizeBatch(batchId, runs),
       runs: classified,
@@ -610,6 +621,18 @@ router.get("/admin/monitor-check-runs", requireAdmin, async (req: Request, res: 
       ...(customerId != null ? { customerId } : {}),
       ...(limit != null ? { limit } : {}),
     });
+
+    if (customerId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "monitor_check_run_history_viewed",
+        entityType: "tenant",
+        tenantId: customerId,
+      });
+    }
+
     res.json({ runs: withClassification(runs) });
   } catch (err) {
     log.error({ err }, "admin-monitor-check-runs: failed to list run history");
@@ -641,6 +664,21 @@ router.get("/admin/monitor-check-runs/:runId", requireAdminOrIngestToken(), asyn
       statusText: run.statusText,
       requestEndpoint: run.request?.endpoint ?? null,
     });
+
+    // requireAdminOrIngestToken also accepts executeScan's unattended bearer
+    // token, which carries no session and no req.user — skip the audit call on
+    // that path rather than crash on req.user!.id (there's no real human
+    // principal to attribute it to; see the CLAUDE.md special-case note).
+    if (req.user) {
+      await auditPrivilegedRead({
+        actorUserId: req.user.id,
+        actorName: req.user.email,
+        actorRole: "platform_admin",
+        actionType: "monitor_check_run_viewed",
+        entityType: "monitor_check_run",
+        entityId: run.runId,
+      });
+    }
 
     res.json({ run: pollable, classification });
   } catch (err) {
@@ -676,6 +714,19 @@ router.get("/admin/monitor-check-runs/:runId/items", requireAdminOrIngestToken()
             ? "That run did not complete successfully — there is no captured response"
             : "That run has no captured response yet",
         runStatus: run.status,
+      });
+    }
+
+    // requireAdminOrIngestToken also accepts executeScan's unattended bearer
+    // token, with no session and no req.user — skip the audit call on that path.
+    if (req.user) {
+      await auditPrivilegedRead({
+        actorUserId: req.user.id,
+        actorName: req.user.email,
+        actorRole: "platform_admin",
+        actionType: "monitor_check_run_items_viewed",
+        entityType: "monitor_check_run",
+        entityId: run.runId,
       });
     }
 
@@ -741,6 +792,17 @@ router.get("/admin/monitor-check-runs/:runId/diff", requireAdmin, async (req: Re
     });
 
     const diff = diffCheckRuns({ sideA: toSide(a), sideB: toSide(b), rules });
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "monitor_check_run_diff_viewed",
+      entityType: "monitor_check_run",
+      entityId: runId,
+      metadata: { against },
+    });
+
     res.json({ diff });
   } catch (err) {
     log.error({ err }, "admin-monitor-check-runs: diff failed");

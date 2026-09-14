@@ -13,6 +13,7 @@ import { db, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { getGlobalReaderProvisioningState, provisionGlobalReaderForTenant } from "../lib/global-reader-role-provisioning.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.provisioning" });
 
@@ -45,6 +46,14 @@ router.get("/admin/customers/:customerId/global-reader-provisioning", requireAdm
   }
   try {
     const state = await getGlobalReaderProvisioningState(customer.tenantId, customer.id);
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "global_reader_provisioning_viewed",
+      entityType: "tenant",
+      tenantId: customer.id,
+    });
     res.json(state);
   } catch (err) {
     log.error({ err, customerId: customer.id }, "admin-global-reader-provisioning: failed to read state");

@@ -95,8 +95,14 @@ vi.mock("@workspace/db", () => {
 });
 
 vi.mock("../middlewares/requireAuth.ts", () => ({
-  requireAuth: (_req: any, _res: any, next: () => void) => next(),
-  requireAdmin: (_req: any, _res: any, next: () => void) => next(),
+  requireAuth: (req: any, _res: any, next: () => void) => {
+    req.user = { id: 1, email: "admin@test.local", role: "admin" };
+    next();
+  },
+  requireAdmin: (req: any, _res: any, next: () => void) => {
+    req.user = { id: 1, email: "admin@test.local", role: "admin" };
+    next();
+  },
 }));
 
 const mockResolveTenantScope = vi.fn(async (customerId: number) => ({

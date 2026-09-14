@@ -17,6 +17,7 @@ import { db, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { getDlpProvisioningState, provisionDlpRoleGroupForTenant } from "../lib/dlp-role-group-provisioning.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.provisioning" });
 
@@ -51,6 +52,16 @@ router.get("/admin/customers/:customerId/dlp-provisioning", requireAdmin, async 
   }
   try {
     const state = await getDlpProvisioningState(customer.tenantId, customer.id);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_dlp_provisioning_viewed",
+      entityType: "tenant",
+      tenantId: customer.id,
+    });
+
     res.json(state);
   } catch (err) {
     log.error({ err, customerId: customer.id }, "admin-dlp-provisioning: failed to read state");

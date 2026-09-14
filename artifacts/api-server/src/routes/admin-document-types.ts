@@ -29,6 +29,7 @@ import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { invalidateDocumentTypeCache } from "../lib/document-types.ts";
 import { generateDocument } from "../lib/document-engine.ts";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "system.core" });
 import { z } from "zod";
@@ -222,6 +223,16 @@ router.get("/admin/document-types/:key/preview", requireAdmin, async (req: Reque
     const result = docTypeRow.pipelineCategory === "pipeline_output"
       ? await generateSowDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, dryRun: true })
       : await generateDocument({ mspCustomerId, projectId: isNaN(projectId) ? 0 : projectId, docTypeKey: key, dryRun: true });
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_document_preview_generated",
+      entityType: "tenant",
+      tenantId: mspCustomerId,
+      metadata: { docTypeKey: key, ...(projectId && !isNaN(projectId) ? { projectId } : {}) },
+    });
 
     res.json({ preview: result });
   } catch (err) {

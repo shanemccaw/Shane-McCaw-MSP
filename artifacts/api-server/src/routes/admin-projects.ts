@@ -24,7 +24,7 @@ import {
 import { eq, and, asc, desc, count, sql, inArray, isNotNull, isNull, gte } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { createNotification } from "../lib/notification-center.ts";
-import { createAuditLog } from "../lib/audit.ts";
+import { createAuditLog, auditPrivilegedRead } from "../lib/audit.ts";
 import { createProjectFolder } from "../lib/graph.ts";
 import { resolveTemplateTaskMetadata } from "../lib/template-task-metadata.ts";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
@@ -111,6 +111,18 @@ router.get("/admin/projects/:id", requireAdmin, async (req: Request, res: Respon
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  await auditPrivilegedRead({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "platform_admin",
+    actionType: "admin_project_detail_viewed",
+    entityType: "project",
+    entityId: project.id,
+    entityLabel: project.title,
+    clientId: project.clientUserId ?? null,
+  });
+
   res.json(project);
 });
 
@@ -625,6 +637,15 @@ router.get("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respon
   }
   // ─────────────────────────────────────────────────────────────────────────────
 
+  await auditPrivilegedRead({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "platform_admin",
+    actionType: "admin_project_kanban_viewed",
+    entityType: "project",
+    entityId: projectId,
+  });
+
   res.json(tasks);
 });
 
@@ -950,6 +971,17 @@ router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Requ
   const blockedCount = steps.filter(s => s.status === "blocked").length;
   const completedStepsCount = allCompletedSteps.length;
 
+  await auditPrivilegedRead({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "platform_admin",
+    actionType: "admin_project_report_autofill_viewed",
+    entityType: "project",
+    entityId: project.id,
+    entityLabel: project.title,
+    clientId: project.clientUserId ?? null,
+  });
+
   res.json({
     project: {
       id: project.id,
@@ -1016,6 +1048,16 @@ router.get("/admin/projects/:id/closure", requireAdmin, async (req: Request, res
 
   const [closure] = await db.select().from(projectClosuresTable).where(eq(projectClosuresTable.projectId, projectId));
   if (!closure) { res.status(404).json({ error: "No closure record found" }); return; }
+
+  await auditPrivilegedRead({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "platform_admin",
+    actionType: "admin_project_closure_viewed",
+    entityType: "project_closure",
+    entityId: closure.id,
+  });
+
   res.json(closure);
 });
 

@@ -36,7 +36,7 @@ import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus } from ".
 import { runAiAnalyzer } from "../lib/ai-analyzer.ts";
 import { parseM365ScriptOutput } from "../lib/parse-m365-script-output.ts";
 import { getSecretValue } from "../lib/azure-keyvault.ts";
-import { createAuditLog } from "../lib/audit.ts";
+import { createAuditLog, auditPrivilegedRead } from "../lib/audit.ts";
 import { applyProfileUpdates as applyProfileUpdatesShared, snapshotHealthFromProfile as snapshotHealthFromProfileShared } from "../lib/m365-profile-update.ts";
 import { resolveBillingMspId } from "../lib/ai-billing.ts";
 
@@ -804,6 +804,15 @@ router.get("/admin/run-script/:jobRef/status", requireAdmin, async (req: Request
       }
     }
 
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "script_run_status_viewed",
+      entityType: "script_run",
+      entityId: jobRef,
+    });
+
     res.json({
       status: row.status,
       outputLines,
@@ -832,6 +841,15 @@ router.get("/admin/clients/:id/scores", requireAdmin, async (req: Request, res: 
       .from(clientScoresTable)
       .where(eq(clientScoresTable.clientId, id))
       .limit(1);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "client_scores_viewed",
+      entityType: "user",
+      clientId: id,
+    });
 
     res.json({
       identity:         row?.identity         ?? 0,

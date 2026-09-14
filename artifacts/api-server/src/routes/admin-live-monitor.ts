@@ -15,6 +15,7 @@ import { db, pool } from "@workspace/db";
 import { activitySubscriptionsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "engine.alert" });
@@ -88,6 +89,16 @@ router.get(
         res.status(404).json({ error: "Subscription not found" });
         return;
       }
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "live_monitor_subscription_viewed",
+        entityType: "tenant",
+        entityId: tenantId,
+        metadata: { contentType },
+      });
 
       res.json(rows[0]);
     } catch (err) {

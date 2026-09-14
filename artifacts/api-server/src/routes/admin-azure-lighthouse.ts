@@ -17,6 +17,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, tenantAzureLighthouseOffersTable, tenantAzureReachTable, tenantsTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import {
   buildLighthouseArmTemplate,
   buildLighthouseDeepLink,
@@ -158,6 +159,24 @@ router.get("/admin/tenants/:tenantId/azure-lighthouse-offers", requireAdmin, asy
     .from(tenantAzureLighthouseOffersTable)
     .where(eq(tenantAzureLighthouseOffersTable.tenantId, tenantId))
     .orderBy(desc(tenantAzureLighthouseOffersTable.offeredAt));
+
+  // tenantAzureLighthouseOffersTable.tenantId is the Entra GUID, not tenants.id — resolve
+  // the real numeric tenant so the audit row can carry a proper tenantId scope.
+  const [tenant] = await db
+    .select({ id: tenantsTable.id })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantId))
+    .limit(1);
+
+  await auditPrivilegedRead({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email,
+    actorRole: "platform_admin",
+    actionType: "admin_azure_lighthouse_offers_viewed",
+    entityType: "tenant",
+    entityId: tenantId,
+    tenantId: tenant?.id ?? null,
+  });
 
   res.json({ tenantId, offers: rows, everOffered: rows.length > 0 });
 });

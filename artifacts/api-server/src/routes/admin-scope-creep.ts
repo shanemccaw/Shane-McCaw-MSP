@@ -15,6 +15,7 @@ import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import {
   computeScopeCreepEngine,
   runScopeCreepEngineForMsp,
@@ -241,6 +242,16 @@ router.get("/admin/scope-creep/assignments", requireAdmin, async (req: Request, 
                      created_at AS "createdAt", updated_at AS "updatedAt"
               FROM scope_creep_assignments ORDER BY id DESC`,
     );
+    if (mspId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_scope_creep_assignments_viewed",
+        entityType: "msp",
+        entityId: mspId,
+      });
+    }
     res.json({ assignments: rows.rows });
   } catch (err) {
     log.error({ err }, "admin-scope-creep: list assignments failed");
@@ -311,6 +322,16 @@ router.get("/admin/scope-creep/detections", requireAdmin, async (req: Request, r
                        resolved_at AS "resolvedAt"
                 FROM scope_creep_detections ORDER BY detected_at DESC LIMIT 100`,
     );
+    if (customerId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_scope_creep_detections_viewed",
+        entityType: "tenant",
+        tenantId: customerId,
+      });
+    }
     res.json({ detections: rows.rows });
   } catch (err) {
     log.error({ err }, "admin-scope-creep: list detections failed");
@@ -374,6 +395,16 @@ router.get("/admin/scope-creep/scores", requireAdmin, async (req: Request, res: 
                      computed_at AS "computedAt"
               FROM scope_creep_scores ORDER BY computed_at DESC LIMIT 100`,
     );
+    if (customerId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_scope_creep_scores_viewed",
+        entityType: "tenant",
+        tenantId: customerId,
+      });
+    }
     res.json({ scores: rows.rows });
   } catch (err) {
     log.error({ err }, "admin-scope-creep: list scores failed");
@@ -421,6 +452,16 @@ router.get("/admin/scope-creep/violations", requireAdmin, async (req: Request, r
             ? sql`${baseSelect} WHERE resolved_at IS NOT NULL ORDER BY created_at DESC LIMIT 100`
             : sql`${baseSelect} WHERE resolved_at IS NULL ORDER BY created_at DESC LIMIT 100`,
     );
+    if (customerId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_scope_creep_violations_viewed",
+        entityType: "tenant",
+        tenantId: customerId,
+      });
+    }
     res.json({ violations: rows.rows });
   } catch (err) {
     log.error({ err }, "admin-scope-creep: list violations failed");
@@ -550,6 +591,25 @@ router.get("/admin/scope-creep/compliance", requireAdmin, async (req: Request, r
                        notes, created_at AS "createdAt"
                 FROM scope_creep_compliance ORDER BY period_start DESC LIMIT 100`,
     );
+    if (customerId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_scope_creep_compliance_viewed",
+        entityType: "tenant",
+        tenantId: customerId,
+      });
+    } else if (mspId != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_scope_creep_compliance_viewed",
+        entityType: "msp",
+        entityId: mspId,
+      });
+    }
     res.json({ records: rows.rows });
   } catch (err) {
     log.error({ err }, "admin-scope-creep: list compliance records failed");
