@@ -3626,7 +3626,9 @@ namespace BuildConsole.Services
                 {
                     await using var cmd = new NpgsqlCommand(insertChatSql, conn);
                     cmd.Parameters.AddWithValue("@convId", conversationId);
-                    cmd.Parameters.AddWithValue("@title", title?.Trim() ?? $"[#{issueNumber}] Chat");
+                    // Git #4107 — RAW title only, no baked-in "[#N] " prefix (display-only,
+                    // added exactly once by OpenChatTab's forced-title computation).
+                    cmd.Parameters.AddWithValue("@title", title?.Trim() ?? "Chat");
                     cmd.Parameters.AddWithValue("@account", BuildConsoleSettings.CurrentAccountLabel());
                     var val = await cmd.ExecuteScalarAsync();
                     if (val != null && val != DBNull.Value)
@@ -3645,7 +3647,7 @@ namespace BuildConsole.Services
                         RETURNING id";
                     await using var cmd = new NpgsqlCommand(insertChatSqlLegacy, conn);
                     cmd.Parameters.AddWithValue("@convId", conversationId);
-                    cmd.Parameters.AddWithValue("@title", title?.Trim() ?? $"[#{issueNumber}] Chat");
+                    cmd.Parameters.AddWithValue("@title", title?.Trim() ?? "Chat");
                     var val = await cmd.ExecuteScalarAsync();
                     if (val != null && val != DBNull.Value)
                     {

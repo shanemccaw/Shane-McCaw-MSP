@@ -4997,8 +4997,7 @@ namespace BuildConsole.Controls
                     if (_db == null && _api == null) return;
                     int firstNum = chat.AssociatedIssueNumbers[0];
                     string? matchedTitle = null;
-                    string prefix = $"[#{firstNum}]";
-                    
+
                     var matchIssue = _lastBoardIssues.FirstOrDefault(i => i.Number == firstNum);
                     if (matchIssue != null)
                     {
@@ -5010,17 +5009,21 @@ namespace BuildConsole.Controls
                         if (matchMilestone != null)
                         {
                             matchedTitle = matchMilestone.Title;
-                            prefix = $"[Milestone #{firstNum}]";
                         }
                     }
-                    
+
                     if (string.IsNullOrEmpty(matchedTitle))
                     {
                         ToastEngine.Warning("Auto-Name Chat", $"Could not find issue or milestone #{firstNum} in cached board data.");
                         return;
                     }
-                    
-                    string newTitle = $"{prefix} {matchedTitle}";
+
+                    // Git #4107 — RAW title only, no baked-in "[#N] " prefix. That prefix is a
+                    // display-only concern OpenChatTab's forced-title computation already adds
+                    // exactly once; baking it in here too produced the same double-prefix bug
+                    // this issue fixes ("[#1234] [#1234] Title") for a chat that falls through to
+                    // OpenChatTab's non-epic "[#N] {chat.Title}" fallback.
+                    string newTitle = matchedTitle;
                     try
                     {
                         if (_db != null)
@@ -5306,7 +5309,9 @@ namespace BuildConsole.Controls
             }
             var label = $"Epic #{epicNumber}";
             var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, epicNumber, label: label);
-            var defaultTitle = $"[#{epicNumber}] {epicTitle}";
+            // Git #4107 — RAW title only, no baked-in "[#N] " prefix (that's a display-only
+            // concern OpenChatTab's forced-title computation adds exactly once).
+            var defaultTitle = epicTitle;
             ActivityLog.Log("git-board.chat", $"new epic chat #{epicNumber} ('{epicTitle}') from Chats panel -> {baseUrl} (Git #2534)");
             EpicChatRequested?.Invoke(this, (fullUrl, $"#{epicNumber} New Chat", true, epicNumber, "Epic", defaultTitle));
         }
@@ -5355,6 +5360,16 @@ namespace BuildConsole.Controls
             }
             return null;
         }
+
+        /// <summary>Git #4107 — the real, already-live completion rollup (GitHub's own
+        /// subIssuesSummary.percentCompleted, Git #2538) for the forced epic-linked tab-title
+        /// format ("[#N] - &lt;Epic&gt; X% complete"). <see cref="Services.BoardEpic"/> (from
+        /// bt_epics, used for chat/epic association) carries no percent of its own — the real,
+        /// live number lives on <see cref="GitBoardIssue"/> from the board's own GraphQL fetch
+        /// (<see cref="_lastBoardIssues"/>), the same source <see cref="GetEpicForIssueNumber"/>
+        /// already walks. Returns 0 (not yet loaded / unknown), never a fake percent.</summary>
+        public int GetSubIssuePercentForGithubNumber(int githubNumber) =>
+            _lastBoardIssues.FirstOrDefault(i => i.Number == githubNumber)?.SubIssuePercent ?? 0;
 
         public BuildConsole.Services.BoardEpic? GetEpicForChat(BoardChat chat)
         {
@@ -7083,7 +7098,7 @@ namespace BuildConsole.Controls
                         var label = $"{issueType} #{issue.IssueNumber}";
                         var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, issue.IssueNumber, label: label);
                         ActivityLog.Log("git-board.chat", $"new chat for issue #{issue.IssueNumber} -> {baseUrl} (prefill '{label}', PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
-                        EpicChatRequested?.Invoke(this, (fullUrl, $"#{issue.IssueNumber} New Chat", true, issue.IssueNumber, issueType, $"[#{issue.IssueNumber}] {issue.RawTitle}"));
+                        EpicChatRequested?.Invoke(this, (fullUrl, $"#{issue.IssueNumber} New Chat", true, issue.IssueNumber, issueType, issue.RawTitle));
                     };
                     cm.Items.Add(miNewChat);
                 }
@@ -7117,14 +7132,14 @@ namespace BuildConsole.Controls
                         bool resolved = true;
                         if (_db != null)
                         {
-                            resolved = await _db.LinkChatToIssueAsync(conversationId, issue.IssueNumber, $"[#{issue.IssueNumber}] {issue.RawTitle}", resolveLive: ResolveLiveBoardIssue);
+                            resolved = await _db.LinkChatToIssueAsync(conversationId, issue.IssueNumber, issue.RawTitle, resolveLive: ResolveLiveBoardIssue);
                         }
                         else
                         {
                             // Git #2075 — issue.IssueNumber is always a real board issue/epic here
                             // (same reasoning as the Git #2068 comment below), so it's safe to tell
                             // the server this number can be live-fetched/upserted if not yet synced.
-                            var res = await _api.LinkChatToIssueAsync(conversationId, issue.IssueNumber, $"[#{issue.IssueNumber}] {issue.RawTitle}", isEpicOrIssue: true);
+                            var res = await _api.LinkChatToIssueAsync(conversationId, issue.IssueNumber, issue.RawTitle, isEpicOrIssue: true);
                             if (!res.IsSuccessStatusCode)
                             {
                                 var body = await res.Content.ReadAsStringAsync();
@@ -7157,7 +7172,7 @@ namespace BuildConsole.Controls
                             _lastBoardChats.Add(new BoardChat
                             {
                                 ConversationId = conversationId,
-                                Title = $"[#{issue.IssueNumber}] {issue.RawTitle}",
+                                Title = issue.RawTitle,
                                 ClaudeUrl = chatUrl,
                                 AssociatedIssueNumbers = new List<int> { issue.IssueNumber },
                                 // Git #1480 — see the milestone-assign optimistic add above.
