@@ -312,7 +312,8 @@ didn't drill into.
   correctly derive `pendingBg` by filtering local `bgSecrets` for `status ===
   "pending_delivery"` — the identical filter §1.1's real query applies server-side.
 - The `override` drawer's precondition checklist (`bgPre`, `:4098-4103`) — pending
-  status, all-terminal links, `breakGlassAccountId` present, Global Administrator
+  status, all-terminal links, account identity present (`break_glass_account_id` on
+  the pending-secret row since #4015, not the run payload), Global Administrator
   only, run stays paused — matches §1.4's real preconditions (via
   `performBreakGlassAdminOverride`, portal pack §2.6) field for field.
 

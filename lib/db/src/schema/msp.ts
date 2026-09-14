@@ -4429,6 +4429,13 @@ export const breakGlassPendingSecretsTable = pgTable("break_glass_pending_secret
   // The paused workflow node id, so the /acknowledge path can resume the run via
   // resumeWorkflowRun(runId, gateNodeId, ...). One pause per pending secret.
   gateNodeId: text("gate_node_id"),
+  // Git #4015 — the break-glass account (Entra object id or UPN) this credential
+  // belongs to, written by the gate at insert and carried onto the replacement row
+  // by admin-override. The override resets THIS account, so the identity is bound
+  // to the secret row rather than read back from the mutable run payload. An
+  // identifier, not a credential. Nullable: rows predating #4015 whose run payload
+  // was already redacted have no recoverable identity.
+  breakGlassAccountId: text("break_glass_account_id"),
   // "superseded_by_reset" = an admin-override reset the credential and issued a new
   // pending secret; nothing was ever delivered from this row.
   status: text("status", { enum: ["pending_delivery", "delivered_purged", "superseded_by_reset"] }).notNull().default("pending_delivery"),

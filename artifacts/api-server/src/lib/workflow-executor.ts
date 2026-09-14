@@ -145,7 +145,7 @@ import {
 // of the executor's static module graph (#1911).
 import type { GeneratedSecretRef } from "./generated-secret-store.ts";
 
-export { runTemplateResolveSteps, resolveProvidedVariablesOf };
+export { runTemplateResolveSteps, resolveProvidedVariablesOf, redactForPersistence };
 export type { BaselineTemplateResolveStep, ResolveStepOutcome };
 
 // ── Sensitive payload redaction for persisted run rows ───────────────────────
@@ -171,10 +171,17 @@ export type { BaselineTemplateResolveStep, ResolveStepOutcome };
 // a failed Graph write surfaces as `{ error: String(err) }`, and an SDK error
 // string can echo the request body that contained the password. Error paths are
 // exactly the gap that produced #1900, since all three affected runs failed.
+//
+// Git #4015 — `breakGlassAccountId` is deliberately NOT here. It is the created
+// account's Entra object id: an identifier, not a credential, and already recorded
+// unredacted in the create step's own node output before the gate stamps it. While
+// it was listed, the value pass also collected it as a "secret" and scrubbed every
+// copy — so the paused run resumed with `breakGlassUserId: "[redacted]"` (breaking
+// the post-gate Global Administrator assignment) and admin-override reset
+// `/users/[redacted]`.
 const SENSITIVE_PAYLOAD_KEYS = new Set([
   "generatedPassword",
   "breakGlassSecret",
-  "breakGlassAccountId",
   "password",
   "newPassword",
   "clientSecret",
@@ -8304,6 +8311,8 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           // Null when this credential predates the store or was minted without it.
           secretRef: generatedSecretRefsOf(payload).find(([field]) => field === secretField)?.[1] ?? null,
           gateNodeId: node.id,
+          // #4015 — the account admin-override resets, bound to this secret row.
+          breakGlassAccountId: resolvedAccountId != null ? String(resolvedAccountId) : null,
           status: "pending_delivery",
         }).returning();
 
