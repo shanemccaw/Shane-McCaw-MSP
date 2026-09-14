@@ -1,7 +1,6 @@
 import { Link } from "wouter";
 
 import { useEmailAuthSetupLive, type WireEmailAuthStatus } from "@/components/emailAuthSetupLive";
-import { comingSoonHref } from "@/components/shell/moduleNav";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -149,6 +148,10 @@ const LEDGER: readonly { readonly gap: string; readonly where: string }[] = [
   {
     gap: "No re-check button. The reading is a point in time from the last scan; drift over time is the Configuration State page's job.",
     where: "§3",
+  },
+  {
+    gap: "An unresolvable tenant looks like a never-scanned one. The route answers both the same way, and so does this page.",
+    where: "§4",
   },
 ];
 
@@ -302,7 +305,7 @@ export function EmailAuthSetupContent() {
             <Link href="/config-state" className="text-[12px] font-semibold text-primary hover:underline">
               Configuration state →
             </Link>
-            <Link href={comingSoonHref("Diagnostics and Scripts", "module")} className="text-[12px] font-semibold text-primary hover:underline">
+            <Link href="/diagnostics" className="text-[12px] font-semibold text-primary hover:underline">
               Latest scan →
             </Link>
           </div>
