@@ -387,7 +387,13 @@ describe("#3590 — CustomerUser renamed Customer, Assessment folded into Free",
 
   it("customer:marketplace.browse-full is every rung except the pre-payment Free rung", () => {
     const allowed = LEGACY_ROLE_ORDER.filter((rung) => legacyDecision(row(rung), "customer", "marketplace.browse-full"));
+    // #3971 — the two new Retainer rungs are not the pre-payment `Free` rung, so the
+    // transcribed `role !== Free` predicate admits them. Their real Portal catalog
+    // gating is #3970's `feature_role_mapping` work; this oracle only reflects that they
+    // are not `Free`. Listed in LEGACY_ROLE_ORDER order (both sit between Free and Customer).
     expect(allowed).toEqual([
+      LEGACY_ROLE.retainerNoConsent,
+      LEGACY_ROLE.retainerConsented,
       LEGACY_ROLE.customer,
       LEGACY_ROLE.serviceAccount,
       LEGACY_ROLE.mspOperator,

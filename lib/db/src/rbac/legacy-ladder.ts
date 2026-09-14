@@ -45,6 +45,18 @@
  */
 export const LEGACY_ROLE_ORDER = [
   "Free",
+  // #3971 (step 1 of #3970) — the two Retainer tiers, added parallel to `Free`/`Customer`.
+  // Placed BETWEEN `Free` and `Customer` deliberately: the relative order of every
+  // pre-existing rung is preserved byte-for-byte (Free < Customer < ServiceAccount < …),
+  // so every existing `legacyRequireRole` comparison is unchanged, and neither Retainer
+  // rung outranks a full paid `Customer`. `RetainerNoConsent` (a retainer client who has
+  // not yet consented to tenant access — no tenant, ever, while in this state) sits just
+  // above `Free`; `RetainerConsented` (has a tenant, same requirement shape as `Customer`)
+  // above that but still below `Customer`. The live gate reads seeded `ladder.*` rows, not
+  // this index at runtime (#2460), so this ordering only fixes how a later step's seed
+  // enumerates these rungs — the Portal gating itself is #3970's `feature_role_mapping` work.
+  "RetainerNoConsent",
+  "RetainerConsented",
   "Customer",
   "ServiceAccount",
   "MSPOperator",
@@ -104,6 +116,8 @@ export function canonicalRoleValue<T extends string | null | undefined>(value: T
  */
 export const LEGACY_ROLE = Object.freeze({
   free: "Free",
+  retainerNoConsent: "RetainerNoConsent",
+  retainerConsented: "RetainerConsented",
   customer: "Customer",
   serviceAccount: "ServiceAccount",
   mspOperator: "MSPOperator",
@@ -246,6 +260,11 @@ export const LADDER_CAPABILITY_PREFIX = "ladder.";
  */
 export const LADDER_CAPABILITY_KEYS: Readonly<Record<LegacyRole, string>> = Object.freeze({
   Free: "ladder.free",
+  // #3971 — one capability key per new rung, same lowercase-kebab convention. New keys,
+  // never-before-shipped, so there is no immutability constraint to honour (unlike
+  // `ladder.customer-user`, kept verbatim through the #3590 rename).
+  RetainerNoConsent: "ladder.retainer-no-consent",
+  RetainerConsented: "ladder.retainer-consented",
   Customer: "ladder.customer-user",
   ServiceAccount: "ladder.service-account",
   MSPOperator: "ladder.msp-operator",
@@ -273,6 +292,8 @@ export function ladderCapabilityKey(role: LegacyRole): string {
  */
 export const LADDER = Object.freeze({
   free: LADDER_CAPABILITY_KEYS.Free,
+  retainerNoConsent: LADDER_CAPABILITY_KEYS.RetainerNoConsent,
+  retainerConsented: LADDER_CAPABILITY_KEYS.RetainerConsented,
   customer: LADDER_CAPABILITY_KEYS.Customer,
   serviceAccount: LADDER_CAPABILITY_KEYS.ServiceAccount,
   mspOperator: LADDER_CAPABILITY_KEYS.MSPOperator,
