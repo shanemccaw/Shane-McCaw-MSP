@@ -10,6 +10,7 @@ import { PortalLayout } from "@/components/layout";
 import IndexPage from "@/pages/index";
 import ComingSoon from "@/pages/coming-soon";
 import SupportPage from "@/pages/support";
+import CustomerRequestsPage from "@/pages/customer-requests";
 import AccountSecurityPage from "@/pages/account-security";
 import DataRightsAndPrivacyPage from "@/pages/data-rights-and-privacy";
 import BillingPage from "@/pages/billing";
@@ -113,6 +114,7 @@ function ProtectedRoutes() {
         <Switch>
           <Route path="/" component={IndexPage} />
           <Route path="/support" component={SupportPage} />
+          <Route path="/requests" component={CustomerRequestsPage} />
           <Route path="/account-security" component={AccountSecurityPage} />
           <Route path="/privacy" component={DataRightsAndPrivacyPage} />
           <Route path="/billing" component={BillingPage} />

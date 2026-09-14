@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users, KeyRound, DoorOpen, Lock } from "lucide-react";
+import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users, KeyRound, DoorOpen, Lock, Ticket } from "lucide-react";
 import type { AuthUser } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 import { comingSoonHref } from "./moduleNav";
@@ -142,6 +142,14 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
             onNavigate={onClose}
           />
         )}
+        <MenuRow
+          href="/requests"
+          icon={Ticket}
+          label="Requests"
+          sub="Open tickets · ShaneBot handoffs"
+          testId="user-menu-requests"
+          onNavigate={onClose}
+        />
         <MenuRow
           href="/webhooks"
           icon={Webhook}

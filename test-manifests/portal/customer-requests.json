@@ -1,21 +1,22 @@
 {
   "issue": 1158,
-  "feature": "Portal: customer-facing ticket submission + in-portal thread view via Zoho Desk (#1045)",
+  "feature": "Portal: customer-facing ticket submission + in-portal thread view via Zoho Desk (#1045). #3998 (Feature #1659) wired the real page — artifacts/portal/src/pages/customer-requests.tsx, route /requests — against these same four routes, against the real design at Design/portal/design_handoff_full_site/screens/Requests and Support Chat.dc.html.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "0231b1938",
+  "lastVerifiedAgainstCommit": "1f09466a4",
 
   "notes": [
     "Covers the four new customer-scoped routes in portal-customer-requests.ts (mounted in routes/index.ts): POST /api/portal/customer/requests (open a request -> enqueueEscalationTicket, same Zoho Desk write path as ShaneBot's escalation), GET /api/portal/customer/requests (list the caller's own tickets), GET /api/portal/customer/requests/:ticketId (detail + conversation thread, ownership-enforced), POST /api/portal/customer/requests/:ticketId/reply (public comment, ownership-enforced).",
-    "WHAT THESE apiTests ASSERT: every route is registered and gated by requireRole('Customer'). Called with NO auth token, each must answer 401 (not 404) - 404 would mean the route isn't mounted, 200 would mean the auth gate is missing. This is the deploy-independent, credential-independent contract worth locking in a regression suite.",
-    "HONEST LIMIT (deploy): shaneapp://runTest hits the DEPLOYED build, so until this branch is deployed these routes 404 rather than 401. A red run here immediately after this commit, before Shane deploys, is expected and is NOT a manifest regression - re-run once deployed.",
-    "HONEST LIMIT (full happy path): exercising create/list/thread/reply end-to-end needs (a) a credentialed Customer session - the HTTP apiTests executor cannot mint one, same gap money-path-e2e.json documents - and (b) a live Zoho Desk connection with a configured Department. zoho-desk.ts's own header notes Zoho Desk endpoints are not live-verified in this environment (no credentials / no Department). So contact-resolution, ticket listing, conversation fetch, and reply posting cannot be asserted against real Zoho data from here; all three read/reply routes are written to degrade to a structured 200 { configured:false, ... } shape when Zoho isn't connected rather than error (Git #2512 - detail and reply used to return a bare 503 for this identical condition; aligned to match list's contract).",
+    "WHAT THESE apiTests ASSERT: every route is registered and gated by requireCapability('ladder.customer-user'). Called with NO auth token, each must answer 401 (not 404) - 404 would mean the route isn't mounted, 200 would mean the auth gate is missing. This is the deploy-independent, credential-independent contract worth locking in a regression suite.",
+    "HONEST LIMIT (deploy): shaneapp://runTest hits the DEPLOYED build, so until this branch is deployed these routes 404 rather than 401, and the new /requests page/route 404s too. A red run here immediately after this commit, before Shane deploys, is expected and is NOT a manifest regression - re-run once deployed.",
+    "HONEST LIMIT (full happy path): exercising create/list/thread/reply end-to-end needs (a) a credentialed Customer session - the HTTP apiTests executor cannot mint one, same gap money-path-e2e.json documents - and (b) a live Zoho Desk connection with a configured Department. zoho-desk.ts's own header notes Zoho Desk endpoints are not live-verified in this environment (no credentials / no Department). So contact-resolution, ticket listing, conversation fetch, and reply posting cannot be asserted against real Zoho data from here; all three read/reply routes are written to degrade to a structured 200 { configured:false, ... } shape when Zoho isn't connected rather than error (Git #2512 - detail and reply used to return a bare 503 for this identical condition; aligned to match list's contract, commit ac7b38446, confirmed still true against the route file as of this session's own commit).",
     "HONEST LIMIT (async): a freshly-submitted request is created by the Zoho batch drain (~every 5 min), not synchronously in the POST response (which returns 202 queued), so even with full credentials a create would not appear in the immediately-following list call - the UI copy says so.",
-    "OWNERSHIP: getDeskTicketForContact compares the ticket's contactId to the caller's own resolved contactId; foreign or unknown ids both 404 so a customer can't probe another customer's ticket by id. Not assertable here without two credentialed customers + live Zoho, documented as the security-relevant behavior to re-verify when those are available."
+    "OWNERSHIP: getDeskTicketForContact compares the ticket's contactId to the caller's own resolved contactId; foreign or unknown ids both 404 so a customer can't probe another customer's ticket by id. Not assertable here without two credentialed customers + live Zoho, documented as the security-relevant behavior to re-verify when those are available.",
+    "#3998 (sessionTag 3998) UI STEPS: deliberately do NOT click 'Open a request' — that button only renders when the list read comes back configured:true (see customer-requests.tsx), and per the HONEST LIMIT above this environment's TEST_CUSTOMER account has no live Zoho Department, so whether that button is even present today is genuinely unknown from here; asserting a click against it would be a coin-flip-red step, not a real regression signal. What IS asserted regardless of that state: the page itself renders, the live/loading/failed status line renders, and the two reciprocal ShaneBot<->Requests links (unconditional in both pages' markup, not gated behind configured) are both present."
   ],
 
   "apiTests": [
     {
-      "name": "GET list is auth-gated (401 without a token, proving the route is mounted and requireRole('Customer') is in front of it)",
+      "name": "GET list is auth-gated (401 without a token, proving the route is mounted and requireCapability('ladder.customer-user') is in front of it)",
       "method": "GET",
       "path": "/api/portal/customer/requests",
       "expect": { "status": 401 }
@@ -41,8 +42,41 @@
       "headers": { "Content-Type": "application/json" },
       "body": { "message": "unauth probe" },
       "expect": { "status": 401 }
+    },
+    {
+      "name": "#3998 (sessionTag 3998) SETUP — log in as the Customer testbed account; extract the bearer.",
+      "sessionTag": "3998",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_CUSTOMER_EMAIL}}", "password": "{{TEST_CUSTOMER_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "#3998 (sessionTag 3998) — GET /api/portal/customer/requests with a real session returns a real configured flag + requests array (200, never a fixture, either shape is honest).",
+      "sessionTag": "3998",
+      "method": "GET",
+      "path": "/api/portal/customer/requests",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.requests", "exists": true }
     }
   ],
 
-  "uiSteps": []
+  "uiSteps": [
+    { "name": "#3998 goto the real login page.", "sessionTag": "3998", "action": "goto", "target": "/portal/login" },
+    { "sessionTag": "3998", "action": "expect", "selector": "[data-testid='login-email']", "state": "visible", "critical": true },
+    { "sessionTag": "3998", "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_CUSTOMER_EMAIL}}" },
+    { "sessionTag": "3998", "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_CUSTOMER_PASSWORD}}" },
+    { "name": "#3998 sign in.", "sessionTag": "3998", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "#3998 goto the real Requests page.", "sessionTag": "3998", "action": "goto", "target": "/portal/requests" },
+    { "name": "#3998 UI1 — the page renders.", "sessionTag": "3998", "action": "expect", "selector": "[data-testid='requests-page']", "state": "visible", "critical": true },
+    { "name": "#3998 UI2 — the live/loading/failed status line renders.", "sessionTag": "3998", "action": "expect", "selector": "[data-testid='requests-status']", "state": "visible", "critical": true },
+
+    { "name": "#3998 UI3 — the reciprocal link to ShaneBot renders (design's own 'Quick questions go to ShaneBot' panel, unconditional regardless of configured state).", "sessionTag": "3998", "action": "expect", "selector": "a[href='/support']", "state": "visible", "critical": true },
+
+    { "name": "#3998 UI4 — goto the real Support (ShaneBot) page.", "sessionTag": "3998", "action": "goto", "target": "/portal/support" },
+    { "name": "#3998 UI5 — the reciprocal View your requests link renders (this session's own addition, unconditional).", "sessionTag": "3998", "action": "expect", "selector": "[data-testid='support-view-requests-link']", "state": "visible", "critical": true }
+  ]
 }
