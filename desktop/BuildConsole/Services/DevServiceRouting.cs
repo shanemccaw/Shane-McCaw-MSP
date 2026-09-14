@@ -6,8 +6,8 @@ namespace BuildConsole.Services
 {
     /// <summary>
     /// Git #1210 — resolves a uiSteps navigation route to the correct LOCAL DEV front-end service
-    /// origin (Marketing 5173 / Admin 5174 / Portal 5175 / Website 5176), instead of the API server's
-    /// port (8080) that {{DEPLOY_URL}} / config.ApiBaseUrl resolves to.
+    /// origin (Marketing 5173 / Admin 5174 / Portal 5175 / Website 5176 / MSP Console 5177), instead of
+    /// the API server's port (8080) that {{DEPLOY_URL}} / config.ApiBaseUrl resolves to.
     ///
     /// Background (the real regression this fixes): manifests declare "baseUrl":"{{DEPLOY_URL}}", which
     /// HttpTestExecutor.ResolvePlaceholders maps to config.ApiBaseUrl. In the OLD single-origin Replit
@@ -33,6 +33,7 @@ namespace BuildConsole.Services
         public const string Admin = "admin-panel";
         public const string Portal = "portal";
         public const string Website = "msp-website";
+        public const string MspConsole = "msp-console";
 
         /// <summary>The service the run navigates to when no route in the manifest is clearly owned by a
         /// specific front-end (only shared/ambiguous routes like "/login" or "/"). Marketing is the public
@@ -76,12 +77,18 @@ namespace BuildConsole.Services
             if (t == "/portal" || t.StartsWith("/portal/")) return Portal;
             if (IsSlugAtRoot(t)) return Portal;
 
-            // Admin panel — /admin and the admin SPA's own top-level routes.
+            // MSP Console — /msp-console (Git #4101).
+            if (t == "/msp-console" || t.StartsWith("/msp-console/"))
+                return MspConsole;
+
+            // Admin panel — /admin, /admin-panel, /adminv2, and the admin SPA's own top-level routes.
+            // Git #4101 — /dashboard, /customers and /m365-health were stale rules dating from the
+            // retired msp-portal app and are not real admin-panel routes; replaced with the real
+            // /admin-panel and /adminv2 prefixes.
             if (t == "/admin" || t.StartsWith("/admin/")
-                || t.StartsWith("/content") || t.StartsWith("/view-as")
-                || t == "/dashboard" || t.StartsWith("/dashboard/")
-                || t == "/customers" || t.StartsWith("/customers/")
-                || t == "/m365-health" || t.StartsWith("/m365-health/"))
+                || t == "/admin-panel" || t.StartsWith("/admin-panel/")
+                || t == "/adminv2" || t.StartsWith("/adminv2/")
+                || t.StartsWith("/content") || t.StartsWith("/view-as"))
                 return Admin;
 
             // Marketing — the public site's own routes.
@@ -137,7 +144,7 @@ namespace BuildConsole.Services
         {
             var score = new Dictionary<string, int>
             {
-                [Marketing] = 0, [Admin] = 0, [Portal] = 0, [Website] = 0,
+                [Marketing] = 0, [Admin] = 0, [Portal] = 0, [Website] = 0, [MspConsole] = 0,
             };
 
             foreach (var route in navRoutes)
