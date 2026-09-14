@@ -695,6 +695,17 @@ export const clientServicesTable = pgTable("client_services", {
   // or is canceled.
   stripeScheduleId: text("stripe_schedule_id"),
   pendingBillingInterval: text("pending_billing_interval", { enum: CLIENT_BILLING_INTERVALS }),
+  // Operator-proposed interval switch (#4112): an MSP-console operator proposes a
+  // monthly⟷yearly switch for this retainer, but — unlike the self-service switch
+  // above — it does NOT take effect until the customer approves it. Presence of
+  // proposedBillingInterval means a proposal is pending customer action. On approve,
+  // it folds into the existing stripeScheduleId/pendingBillingInterval switch above
+  // (same Stripe Subscription Schedule mechanics) and is cleared; on reject it is
+  // simply cleared. No auto-expiry — mirrors the existing switch's own pattern of
+  // only ever clearing on an explicit action, never a timeout.
+  proposedBillingInterval: text("proposed_billing_interval", { enum: CLIENT_BILLING_INTERVALS }),
+  proposedByUserId: integer("proposed_by_user_id").references(() => usersTable.id),
+  proposedAt: timestamp("proposed_at"),
 }, (t) => [
   index("client_services_client_user_id_idx").on(t.clientUserId),
 ]);

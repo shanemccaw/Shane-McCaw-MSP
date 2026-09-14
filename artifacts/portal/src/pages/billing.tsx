@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, XCircle } from "lucide-react";
 import { useBillingLive } from "@/components/billingLive";
+import { useRetainerIntervalProposalLive } from "@/components/retainerIntervalProposalLive";
 import { useAuth } from "@/lib/auth-context";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
@@ -42,9 +43,25 @@ const RED = "#f87171";
  *  - No interval / tier-switch / add-on toggles — the design's own
  *    hypothetical-repricing calculator, explicitly out of scope.
  *  - No pay-invoice, invoice-detail, or card-details surface on this page.
+ *
+ * One addition past the landed design (#4112): when an MSP operator has
+ * PROPOSED a retainer interval switch (`msp-retainer-billing.ts`'s
+ * propose-interval-switch, not the customer's own self-service choice), a
+ * real approve/reject card renders here via
+ * `retainerIntervalProposalLive.ts`. This is deliberately NOT the excluded
+ * hypothetical-repricing calculator above — the customer never picks a
+ * target interval or explores pricing here, they only decide on a specific
+ * proposal already made. No design export covers this card yet, so it is
+ * built plainly with this page's own existing tokens/patterns rather than
+ * invented pixel-for-pixel styling.
  */
+function intervalLabel(i: "month" | "year"): string {
+  return i === "year" ? "yearly" : "monthly";
+}
+
 export default function BillingPage() {
   const live = useBillingLive();
+  const proposalLive = useRetainerIntervalProposalLive();
   const { can } = useAuth();
   const canManageBilling = can("customer", "billing.manage");
   // Git #3843, following #3648's real backend change: `billing.view` is narrowed
@@ -151,6 +168,56 @@ export default function BillingPage() {
           <span className="text-[12px] text-[#e2e8f0]">{downloadError}</span>
         </div>
       ) : null}
+
+      {proposalLive.proposals.map((p) => (
+        <div
+          key={p.clientServiceId}
+          className="flex flex-col gap-[10px] rounded-[14px] px-5 py-4"
+          style={{ border: `1px solid ${AMB}55`, background: "rgba(251,191,36,.06)" }}
+          data-testid="billing-interval-proposal"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-col gap-[3px]">
+              <span className="text-[13px] font-semibold text-[#f8fafc]">Your MSP proposed a billing interval change</span>
+              <span className="text-[12px] leading-[1.5] text-[#cbd5e1]">
+                Switch from {intervalLabel(p.billingInterval)} to {intervalLabel(p.proposedBillingInterval)} billing
+                {p.proposedByName ? ` — proposed by ${p.proposedByName}` : ""}
+                {p.proposedAt ? ` on ${new Date(p.proposedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}.
+                Nothing changes until you decide.
+              </span>
+            </div>
+            {canManageBilling ? (
+              <div className="flex shrink-0 items-center gap-[8px]">
+                <button
+                  type="button"
+                  onClick={() => void proposalLive.reject(p.clientServiceId)}
+                  disabled={proposalLive.actionPending}
+                  className="flex items-center gap-[6px] whitespace-nowrap rounded-md px-[12px] py-[7px] text-[12px] font-semibold text-[#cbd5e1] hover:bg-white/[.05]"
+                  style={{ border: "1px solid rgba(255,255,255,.14)" }}
+                  data-testid={`billing-reject-proposal-${p.clientServiceId}`}
+                >
+                  <XCircle className="size-[13px]" />
+                  Reject
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void proposalLive.approve(p.clientServiceId)}
+                  disabled={proposalLive.actionPending}
+                  className="flex items-center gap-[6px] whitespace-nowrap rounded-md px-[12px] py-[7px] text-[12px] font-semibold text-white hover:opacity-90"
+                  style={{ background: GRN }}
+                  data-testid={`billing-approve-proposal-${p.clientServiceId}`}
+                >
+                  <CheckCircle2 className="size-[13px]" />
+                  {proposalLive.actionPending ? "Working…" : "Approve"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+          {proposalLive.actionError ? (
+            <span className="text-[11.5px] text-[#f87171]">{proposalLive.actionError}</span>
+          ) : null}
+        </div>
+      ))}
 
       {isLoading ? (
         <div className="flex flex-col gap-[10px]">

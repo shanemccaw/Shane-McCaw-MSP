@@ -32,6 +32,7 @@ import { PlanSelfService } from "./modules/PlanSelfService";
 import { Reports } from "./modules/Reports";
 import { MarketplacePurchase } from "./modules/MarketplacePurchase";
 import { SeatPricing } from "./modules/SeatPricing";
+import { RetainerIntervalSwitch } from "./modules/RetainerIntervalSwitch";
 import { OffersAndSows } from "./modules/OffersAndSows";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
@@ -363,11 +364,23 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     return <MarketplacePurchase customerId={sel.tenant} customerName={customer?.name ?? `Customer ${sel.tenant}`} />;
   }
   if (sel.kind === "page" && sel.page === "billing") {
-    // Seat Pricing (#4111) — automatic pricing from the customer's real,
-    // live M365 licensed-user count, plus the manual service-account
-    // exclusion override.
+    // Two independent, narrow slices of this still-unwired nav slot stack
+    // here rather than fighting over it — the full Billing screen (Design
+    // screen 23) stays blocked on a real Design export (#2608):
+    //   - Seat Pricing (#4111) — automatic pricing from the customer's real,
+    //     live M365 licensed-user count, plus the manual service-account
+    //     exclusion override.
+    //   - Retainer Interval Switch (#4112, Feature #1692) — propose a
+    //     month<->year retainer interval switch for the customer to
+    //     approve/reject.
     const customer = customers.find((c) => c.id === sel.tenant);
-    return <SeatPricing customerId={sel.tenant} customerName={customer?.name ?? `Customer ${sel.tenant}`} />;
+    if (!customer) return undefined;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+        <SeatPricing customerId={sel.tenant} customerName={customer.name} />
+        <RetainerIntervalSwitch mspId={customer.mspId} customerId={sel.tenant} customerName={customer.name} />
+      </div>
+    );
   }
   if (sel.kind === "page" && sel.page === "audit") {
     // Audit Log (#4012, README screen 63), per-tenant leaf — narrowed

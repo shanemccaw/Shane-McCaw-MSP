@@ -12,9 +12,21 @@
  * events that portal.ts's processStripeEvent() delegates to the handlers
  * exported at the bottom of this file.
  *
- * GET  /api/portal/billing/retainer-intervals                     — interval + pending-switch state per retainer
- * POST /api/portal/billing/subscriptions/:id/switch-interval      — schedule a monthly⟷yearly switch
+ * GET  /api/portal/billing/retainer-intervals                       — interval + pending-switch + pending-proposal state per retainer
+ * POST /api/portal/billing/subscriptions/:id/switch-interval        — schedule a monthly⟷yearly switch, self-service, effective immediately
  * POST /api/portal/billing/subscriptions/:id/cancel-interval-switch — release the schedule, clear pending state
+ * POST /api/portal/billing/subscriptions/:id/approve-interval-proposal — approve an MSP-operator-proposed switch (#4112)
+ * POST /api/portal/billing/subscriptions/:id/reject-interval-proposal  — reject an MSP-operator-proposed switch (#4112)
+ *
+ * #4112 — operator-proposed switch: an MSP-console operator can PROPOSE a
+ * switch (msp-retainer-billing.ts, client_services.proposed_billing_interval)
+ * that does nothing on its own — it only becomes a real Stripe Subscription
+ * Schedule once the customer approves it here, via the exact same
+ * `applyIntervalSwitch` mechanics the self-service switch-interval route uses.
+ * A customer's own direct switch-interval remains immediate/self-service and
+ * is entirely unaffected by a pending proposal (the two states coexist on
+ * separate columns; approving/rejecting a proposal only ever touches the
+ * proposed_* columns' own scheduling side-effects).
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -22,7 +34,9 @@ import {
   db,
   clientServicesTable,
   servicesTable,
+  usersTable,
   type ClientBillingInterval,
+  type AuditActorRole,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
@@ -69,11 +83,15 @@ router.get("/portal/billing/retainer-intervals", requireAuth, requireCustomerCap
         billingInterval: clientServicesTable.billingInterval,
         pendingBillingInterval: clientServicesTable.pendingBillingInterval,
         stripeScheduleId: clientServicesTable.stripeScheduleId,
+        proposedBillingInterval: clientServicesTable.proposedBillingInterval,
+        proposedAt: clientServicesTable.proposedAt,
+        proposedByName: usersTable.name,
         price: servicesTable.price,
         annualPriceCents: servicesTable.annualPriceCents,
       })
       .from(clientServicesTable)
       .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
+      .leftJoin(usersTable, eq(usersTable.id, clientServicesTable.proposedByUserId))
       .where(
         and(
           inArray(clientServicesTable.clientUserId, scopeUserIds),
@@ -86,6 +104,11 @@ router.get("/portal/billing/retainer-intervals", requireAuth, requireCustomerCap
       billingInterval: r.billingInterval,
       pendingBillingInterval: r.stripeScheduleId ? r.pendingBillingInterval : null,
       hasPendingSwitch: r.stripeScheduleId != null && r.pendingBillingInterval != null,
+      // #4112 — a pending MSP-console proposal, awaiting this customer's approve/reject.
+      proposedBillingInterval: r.proposedBillingInterval,
+      hasPendingProposal: r.proposedBillingInterval != null,
+      proposedAt: r.proposedAt ? r.proposedAt.toISOString() : null,
+      proposedByName: r.proposedByName,
       monthlyPriceCents: monthlyPriceCentsOf(r.price),
       annualPriceCents: r.annualPriceCents,
     })));
@@ -94,6 +117,68 @@ router.get("/portal/billing/retainer-intervals", requireAuth, requireCustomerCap
     apiError(res, 500, "Failed to load billing interval details");
   }
 });
+
+/**
+ * The real interval-change mechanics, shared by the self-service switch-interval
+ * route below and the approve-interval-proposal route (#4112) — one place that
+ * ever calls `getOrCreateRetainerPrice` + `scheduleIntervalSwitchAtPeriodEnd` and
+ * persists the result, so a proposal approval can never reimplement this math.
+ * Always clears any pending operator proposal on the row (approving one IS the
+ * transition out of the proposed state), which is a no-op for the self-service
+ * caller since it never has one set.
+ */
+async function applyIntervalSwitch(
+  stripe: import("stripe").Stripe,
+  params: {
+    cs: { id: number; clientUserId: number; serviceId: number; stripeSubscriptionId: string; stripeScheduleId: string | null };
+    svcName: string;
+    targetInterval: ClientBillingInterval;
+    actorUserId: number;
+    actorName: string;
+    actorRole: AuditActorRole;
+    actionType: string;
+    extraMetadata?: Record<string, unknown>;
+  },
+): Promise<{ scheduleId: string; effectiveAt: Date }> {
+  const targetPriceId = await getOrCreateRetainerPrice(params.cs.serviceId, params.targetInterval);
+
+  const { scheduleId, effectiveAt } = await scheduleIntervalSwitchAtPeriodEnd(stripe, {
+    stripeSubscriptionId: params.cs.stripeSubscriptionId,
+    existingScheduleId: params.cs.stripeScheduleId,
+    targetPriceId,
+  });
+
+  await db
+    .update(clientServicesTable)
+    .set({
+      stripeScheduleId: scheduleId,
+      pendingBillingInterval: params.targetInterval,
+      proposedBillingInterval: null,
+      proposedByUserId: null,
+      proposedAt: null,
+    })
+    .where(eq(clientServicesTable.id, params.cs.id));
+
+  void createAuditLog({
+    actorUserId: params.actorUserId,
+    actorName: params.actorName,
+    actorRole: params.actorRole,
+    actionType: params.actionType,
+    entityType: "service",
+    entityId: params.cs.id,
+    entityLabel: params.svcName,
+    clientId: params.cs.clientUserId,
+    metadata: {
+      toInterval: params.targetInterval,
+      stripeScheduleId: scheduleId,
+      targetPriceId,
+      effectiveAt: effectiveAt.toISOString(),
+      ...params.extraMetadata,
+    },
+  });
+
+  return { scheduleId, effectiveAt };
+}
 
 // ── POST /api/portal/billing/subscriptions/:id/switch-interval ────────────────
 
@@ -152,48 +237,25 @@ router.post("/portal/billing/subscriptions/:id/switch-interval", requireAuth, re
       return;
     }
 
-    let targetPriceId: string;
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey);
+
+    let scheduleId: string, effectiveAt: Date;
     try {
-      targetPriceId = await getOrCreateRetainerPrice(cs.serviceId, targetInterval);
+      ({ scheduleId, effectiveAt } = await applyIntervalSwitch(stripe, {
+        cs: { id: cs.id, clientUserId: cs.clientUserId, serviceId: cs.serviceId, stripeSubscriptionId: cs.stripeSubscriptionId, stripeScheduleId: cs.stripeScheduleId },
+        svcName: svc.name,
+        targetInterval,
+        actorUserId,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: "client",
+        actionType: "retainer_interval_switch_scheduled",
+        extraMetadata: { fromInterval: cs.billingInterval },
+      }));
     } catch (err) {
       if (err instanceof RetainerPricingError) { apiError(res, 400, err.message); return; }
       throw err;
     }
-
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey);
-
-    const { scheduleId, effectiveAt } = await scheduleIntervalSwitchAtPeriodEnd(stripe, {
-      stripeSubscriptionId: cs.stripeSubscriptionId,
-      existingScheduleId: cs.stripeScheduleId,
-      targetPriceId,
-    });
-
-    await db
-      .update(clientServicesTable)
-      .set({
-        stripeScheduleId: scheduleId,
-        pendingBillingInterval: targetInterval,
-      })
-      .where(eq(clientServicesTable.id, cs.id));
-
-    void createAuditLog({
-      actorUserId,
-      actorName: req.user!.name ?? req.user!.email,
-      actorRole: "client",
-      actionType: "retainer_interval_switch_scheduled",
-      entityType: "service",
-      entityId: cs.id,
-      entityLabel: svc.name,
-      clientId: cs.clientUserId,
-      metadata: {
-        fromInterval: cs.billingInterval,
-        toInterval: targetInterval,
-        stripeScheduleId: scheduleId,
-        targetPriceId,
-        effectiveAt: effectiveAt.toISOString(),
-      },
-    });
 
     const effectiveDateStr = effectiveAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
     void sendAdminSms(
@@ -300,6 +362,156 @@ router.post("/portal/billing/subscriptions/:id/cancel-interval-switch", requireA
   } catch (err) {
     log.error({ err }, "portal-retainer-billing: cancel interval switch failed");
     apiError(res, 500, "Failed to cancel the pending billing interval change");
+  }
+});
+
+// ── POST /api/portal/billing/subscriptions/:id/approve-interval-proposal ──────
+// #4112 — the customer's approval of an MSP-console-proposed switch
+// (msp-retainer-billing.ts). Nothing in Stripe exists for a proposal until
+// this fires; approving runs the exact same `applyIntervalSwitch` mechanics
+// switch-interval uses above, just triggered by the proposal instead of the
+// customer's own free choice of target interval.
+
+router.post("/portal/billing/subscriptions/:id/approve-interval-proposal", requireAuth, requireCustomerCapability("billing.manage"), async (req: Request, res: Response) => {
+  try {
+    const actorUserId = req.user!.id;
+    const scopeUserIds = await billingScopeUserIds(req.user!);
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { apiError(res, 400, "Invalid ID"); return; }
+
+    const [row] = await db
+      .select({ cs: clientServicesTable, svc: servicesTable })
+      .from(clientServicesTable)
+      .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
+      .where(and(eq(clientServicesTable.id, id), inArray(clientServicesTable.clientUserId, scopeUserIds)))
+      .limit(1);
+
+    if (!row) { apiError(res, 404, "Subscription not found"); return; }
+    const { cs, svc } = row;
+
+    if (!cs.proposedBillingInterval) {
+      apiError(res, 404, "No pending billing interval proposal to approve");
+      return;
+    }
+    if (!cs.stripeSubscriptionId) {
+      apiError(res, 400, "No Stripe subscription linked to this service. Please contact support.");
+      return;
+    }
+    if (cs.status !== "active") {
+      apiError(res, 409, "Billing interval can only be changed on an active subscription");
+      return;
+    }
+    if (cs.stripeScheduleId) {
+      apiError(res, 409, "A billing interval change is already scheduled. Cancel it before approving this proposal.");
+      return;
+    }
+
+    let stripeKey: string;
+    try {
+      stripeKey = getStripeKey();
+    } catch {
+      apiError(res, 503, "Stripe not configured");
+      return;
+    }
+
+    const targetInterval = cs.proposedBillingInterval;
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey);
+
+    let scheduleId: string, effectiveAt: Date;
+    try {
+      ({ scheduleId, effectiveAt } = await applyIntervalSwitch(stripe, {
+        cs: { id: cs.id, clientUserId: cs.clientUserId, serviceId: cs.serviceId, stripeSubscriptionId: cs.stripeSubscriptionId, stripeScheduleId: cs.stripeScheduleId },
+        svcName: svc.name,
+        targetInterval,
+        actorUserId,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: "client",
+        actionType: "retainer_interval_switch_proposal_approved",
+        extraMetadata: { fromInterval: cs.billingInterval, proposedByUserId: cs.proposedByUserId },
+      }));
+    } catch (err) {
+      if (err instanceof RetainerPricingError) { apiError(res, 400, err.message); return; }
+      throw err;
+    }
+
+    const effectiveDateStr = effectiveAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    void sendAdminSms(
+      `Retainer billing change: ${req.user!.name ?? req.user!.email} approved the proposed ${svc.name} retainer switch to ${targetInterval === "year" ? "yearly" : "monthly"} billing, effective ${effectiveDateStr}.`,
+    );
+
+    log.info(
+      { clientServiceId: cs.id, actorUserId, clientUserId: cs.clientUserId, targetInterval, scheduleId, effectiveAt },
+      "portal-retainer-billing: interval switch proposal approved",
+    );
+
+    res.json({
+      ok: true,
+      effectiveAt: effectiveAt.toISOString(),
+      pendingBillingInterval: targetInterval,
+    });
+  } catch (err) {
+    if (err instanceof RetainerPricingError) { apiError(res, 400, err.message); return; }
+    log.error({ err }, "portal-retainer-billing: approve interval proposal failed");
+    apiError(res, 500, "Failed to approve the billing interval proposal");
+  }
+});
+
+// ── POST /api/portal/billing/subscriptions/:id/reject-interval-proposal ───────
+// #4112 — the customer declines an MSP-console-proposed switch. Nothing was
+// ever created in Stripe for a proposal, so this only clears the proposed_*
+// columns — the retainer's real billing interval is entirely unaffected.
+
+router.post("/portal/billing/subscriptions/:id/reject-interval-proposal", requireAuth, requireCustomerCapability("billing.manage"), async (req: Request, res: Response) => {
+  try {
+    const actorUserId = req.user!.id;
+    const scopeUserIds = await billingScopeUserIds(req.user!);
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { apiError(res, 400, "Invalid ID"); return; }
+
+    const [row] = await db
+      .select({ cs: clientServicesTable, svc: servicesTable })
+      .from(clientServicesTable)
+      .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
+      .where(and(eq(clientServicesTable.id, id), inArray(clientServicesTable.clientUserId, scopeUserIds)))
+      .limit(1);
+
+    if (!row) { apiError(res, 404, "Subscription not found"); return; }
+    const { cs, svc } = row;
+
+    if (!cs.proposedBillingInterval) {
+      apiError(res, 404, "No pending billing interval proposal to reject");
+      return;
+    }
+
+    const rejectedInterval = cs.proposedBillingInterval;
+
+    await db
+      .update(clientServicesTable)
+      .set({ proposedBillingInterval: null, proposedByUserId: null, proposedAt: null })
+      .where(eq(clientServicesTable.id, cs.id));
+
+    void createAuditLog({
+      actorUserId,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: "client",
+      actionType: "retainer_interval_switch_proposal_rejected",
+      entityType: "service",
+      entityId: cs.id,
+      entityLabel: svc.name,
+      clientId: cs.clientUserId,
+      metadata: { rejectedInterval, proposedByUserId: cs.proposedByUserId },
+    });
+
+    log.info(
+      { clientServiceId: cs.id, actorUserId, clientUserId: cs.clientUserId, rejectedInterval },
+      "portal-retainer-billing: interval switch proposal rejected",
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    log.error({ err }, "portal-retainer-billing: reject interval proposal failed");
+    apiError(res, 500, "Failed to reject the billing interval proposal");
   }
 });
 
