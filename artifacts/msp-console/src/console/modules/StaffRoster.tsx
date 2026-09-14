@@ -16,7 +16,7 @@
  * means unrestricted (the whole book), never "no access" (§1, §8) — rendered
  * as "All customers", never an empty badge. Only `MSPAdmin`/`MSPOperator`
  * can ever be assigned or invited (§3, §5c, §6); every other role reachable
- * through this roster (PlatformAdmin, CustomerUser, Assessment, …) is shown
+ * through this roster (PlatformAdmin, Customer, Free, …) is shown
  * as "Listed, but not staff" with scoping/role/approval hidden, matching the
  * server's own hard 400 guard rather than a client-side guess.
  *
@@ -62,13 +62,41 @@ const ROLE_TONE: Record<string, Tone> = {
   PlatformAdmin: signal.notice,
   MSPAdmin: signal.info,
   MSPOperator: signal.ok,
-  CustomerUser: signal.neutral,
+  Customer: signal.neutral,
   Free: signal.neutral,
-  Assessment: signal.neutral,
+  RetainerNoConsent: signal.neutral,
+  RetainerConsented: signal.neutral,
   ServiceAccount: signal.neutral,
 };
 
 interface LastResult { code: string; text: string; tone: Tone }
+
+/**
+ * Git #4088 — the label was a two-way ternary (`PlatformAdmin` / `CustomerUser` /
+ * else "an assessment sign-up") written when `Assessment` and `CustomerUser` were
+ * still real roles. #3590 retired both, and the roster's "no role filter" (see
+ * file header) can surface any of six non-staff roles here, not just two — this
+ * covers all of them explicitly instead of falling every non-`PlatformAdmin`,
+ * non-`Customer` row into the old catch-all.
+ */
+function nonStaffAccountLabel(role: string | null | undefined): string {
+  switch (role) {
+    case "PlatformAdmin":
+      return "a platform administrator";
+    case "Customer":
+      return "a customer login";
+    case "Free":
+      return "a free-tier sign-up";
+    case "RetainerNoConsent":
+      return "a retainer client (not yet consented)";
+    case "RetainerConsented":
+      return "a retainer client";
+    case "ServiceAccount":
+      return "a service account";
+    default:
+      return "an account on another tier";
+  }
+}
 
 function Pill({ label, tone }: { label: string; tone: Tone }) {
   return (
@@ -371,7 +399,7 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
                 {shown.map((p) => {
-                  const tone = ROLE_TONE[p.mspRole ?? "CustomerUser"] ?? signal.neutral;
+                  const tone = ROLE_TONE[p.mspRole ?? "Customer"] ?? signal.neutral;
                   const isStaff = p.mspRole != null && STAFF_ROLES.has(p.mspRole);
                   const on = p.id === selectedId;
                   return (
@@ -421,7 +449,7 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
                     <span style={{ fontSize: 11, color: text.muted, wordBreak: "break-all" }}>{selected.email}</span>
                     <span style={{ fontSize: 11, color: text.label }}>user #{selected.id} · created {new Date(selected.createdAt).toLocaleDateString()} · {formatWhen(selected.lastLoginAt)}</span>
                   </span>
-                  <Pill label={selected.mspRole ?? "unknown"} tone={ROLE_TONE[selected.mspRole ?? "CustomerUser"] ?? signal.neutral} />
+                  <Pill label={selected.mspRole ?? "unknown"} tone={ROLE_TONE[selected.mspRole ?? "Customer"] ?? signal.neutral} />
                 </div>
 
                 {scopable ? (
@@ -512,7 +540,7 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
                   <div style={{ border: `1px solid ${signal.warning.border}`, borderRadius: 10, background: signal.warning.tint, padding: 12, display: "flex", flexDirection: "column", gap: 5 }}>
                     <span style={{ fontSize: 11.5, fontWeight: 700, color: signal.warning.strong }}>Listed, but not staff</span>
                     <span style={{ fontSize: 11.5, color: text.secondary, textWrap: "pretty" }}>
-                      This account is {selected.mspRole === "PlatformAdmin" ? "a platform administrator" : selected.mspRole === "CustomerUser" ? "a customer login" : "an assessment sign-up"} that happens to carry this MSP's id. The roster route returns it, but the role, scope and approval routes refuse it: only MSPAdmin and MSPOperator can be set or scoped here, and nothing on this surface can promote or demote anyone else.
+                      This account is {nonStaffAccountLabel(selected.mspRole)} that happens to carry this MSP's id. The roster route returns it, but the role, scope and approval routes refuse it: only MSPAdmin and MSPOperator can be set or scoped here, and nothing on this surface can promote or demote anyone else.
                     </span>
                   </div>
                 )}

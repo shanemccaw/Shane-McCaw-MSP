@@ -1,11 +1,12 @@
 {
-  "feature": "Identity interstitial (Git #1296; rebuilt against the new artifacts/portal scaffold in Feature #1650, Git #3993): a non-CustomerUser role (PlatformAdmin, MSPAdmin, MSPOperator, ServiceAccount, Free, Assessment) logging in through the customer-facing /portal/ login now lands on a client-side interstitial (App.tsx's RequireAuth gate, not a routed page) instead of the customer Overview. It offers two choices -- log out and go sign in at /admin-panel/, or acknowledge and continue into the customer Overview for this browser tab. CustomerUser is unaffected and lands straight on the Overview.",
+  "feature": "Identity interstitial (Git #1296; rebuilt against the new artifacts/portal scaffold in Feature #1650, Git #3993): a non-Customer role (PlatformAdmin, MSPAdmin, MSPOperator, ServiceAccount, Free, RetainerNoConsent, RetainerConsented) logging in through the customer-facing /portal/ login now lands on a client-side interstitial (App.tsx's RequireAuth gate, not a routed page) instead of the customer Overview. It offers two choices -- log out and go sign in at /admin-panel/, or acknowledge and continue into the customer Overview for this browser tab. Customer is unaffected and lands straight on the Overview.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "PENDING",
 
   "notes": [
-    "REBUILT Git #3993: portal-v2 (this manifest's old target -- /portal-v2, PortalV2Shell, pv2-sidebar, TenantSwitcherFloaty, mspRole 'Customer') was retired 2026-08-29. The new artifacts/portal scaffold has no tenant-impersonation floaty and its real enum value is 'CustomerUser', not 'Customer' -- both updated below. The gate is now a plain client-side acknowledgement (RequireAuth's staffAcknowledged state), not a route with its own URL.",
-    "ENV VARS required: DEPLOY_URL, TEST_ADMIN_EMAIL/TEST_ADMIN_PASSWORD (PlatformAdmin -- the non-CustomerUser account driving the primary assertions), TEST_PORTAL_EMAIL/TEST_PORTAL_PASSWORD (CustomerUser -- the negative control proving the interstitial does not appear for that role; same env vars security-drilldowns.json already uses for its login).",
+    "REBUILT Git #3993: portal-v2 (this manifest's old target -- /portal-v2, PortalV2Shell, pv2-sidebar, TenantSwitcherFloaty, mspRole 'Customer') was retired 2026-08-29. The new artifacts/portal scaffold has no tenant-impersonation floaty and its real enum value was 'CustomerUser' at the time, not 'Customer' -- both updated below.",
+    "Git #4088 -- #3590 renamed 'CustomerUser' to 'Customer' (and folded 'Assessment' into 'Free'), but App.tsx's RequireAuth still compared against the retired 'CustomerUser' spelling, so every real Customer account was wrongly shown this interstitial. This manifest's own negative-control assertion (below) was asserting the same stale 'CustomerUser' value and would not have caught the regression -- updated to 'Customer' to match the real, current mspRole value. The gate is a plain client-side acknowledgement (RequireAuth's staffAcknowledged state), not a route with its own URL.",
+    "ENV VARS required: DEPLOY_URL, TEST_ADMIN_EMAIL/TEST_ADMIN_PASSWORD (PlatformAdmin -- the non-Customer account driving the primary assertions), TEST_PORTAL_EMAIL/TEST_PORTAL_PASSWORD (Customer -- the negative control proving the interstitial does not appear for that role; same env vars security-drilldowns.json already uses for its login).",
     "No explicit goto after login-submit for either account -- the assertion can only pass if the real post-login state (App.tsx's RequireAuth mspRole check) actually renders the interstitial in place of the protected routes."
   ],
 
@@ -60,7 +61,7 @@
     },
 
     {
-      "name": "log out and switch to a CustomerUser session -- negative control",
+      "name": "log out and switch to a Customer session -- negative control",
       "action": "goto",
       "target": "/portal/login"
     },
@@ -71,11 +72,11 @@
       "selector": "[data-testid='login-submit']",
       "captureResponse": {
         "urlPattern": "/api/auth/login",
-        "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "CustomerUser" }
+        "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "Customer" }
       }
     },
     {
-      "name": "NEGATIVE CONTROL -- CustomerUser never sees the interstitial, lands straight on the Overview",
+      "name": "NEGATIVE CONTROL -- Customer never sees the interstitial, lands straight on the Overview",
       "action": "expect",
       "selector": "[data-testid='overview-notifications-chip']",
       "state": "visible"

@@ -5,24 +5,44 @@ import { ConsentOnboardingShell, ConsentCard } from "@/components/consent/Consen
 /**
  * Identity interstitial (Feature #1650, Git #3993; originally Git #1296).
  * `/portal/` is customer-only. A staff role (PlatformAdmin, MSPAdmin,
- * MSPOperator, ServiceAccount, Free, Assessment) that authenticates here
- * instead of at /admin-panel/ needs to know that's what happened, rather
- * than silently landing on a customer page — App.tsx's RequireAuth renders
- * this in place of the protected routes whenever `user.mspRole` is present
- * and isn't `"CustomerUser"`. Not a routed page: there is no dedicated URL,
- * it is a client-side gate on the JWT already in hand (contract pack #2758
- * §7 — no endpoint of its own).
+ * MSPOperator, ServiceAccount, Free, RetainerNoConsent, RetainerConsented)
+ * that authenticates here instead of at /admin-panel/ needs to know that's
+ * what happened, rather than silently landing on a customer page —
+ * App.tsx's RequireAuth renders this in place of the protected routes
+ * whenever `user.mspRole` is present and isn't `"Customer"`. Not a routed
+ * page: there is no dedicated URL, it is a client-side gate on the JWT
+ * already in hand (contract pack #2758 §7 — no endpoint of its own).
+ *
+ * Git #4088 — `CustomerUser` was renamed `Customer` (and `Assessment`
+ * folded into `Free`) by #3590; this file's own copy of the taxonomy had not
+ * been updated, so every real Customer failed `!== "CustomerUser"` above and
+ * was wrongly shown this screen. Mirrors `LEGACY_ROLE_ORDER` /
+ * `LEGACY_ROLE` in `lib/db/src/rbac/legacy-ladder.ts` (the real, current
+ * 8-value taxonomy) as a local literal rather than importing
+ * `@workspace/db` into this Vite app — the same reason
+ * `account-security-api.ts` (`artifacts/msp-console`) keeps its own literal
+ * copy instead of importing the server's Drizzle schema type.
  */
 const ROLE_LABELS: Record<string, string> = {
-  PlatformAdmin: "Platform Admin",
-  MSPAdmin: "MSP Admin",
-  MSPOperator: "MSP Operator",
-  CustomerUser: "Customer User",
-  ServiceAccount: "Service Account",
   Free: "Free",
-  Assessment: "Assessment",
+  RetainerNoConsent: "Retainer (No Consent)",
+  RetainerConsented: "Retainer (Consented)",
+  Customer: "Customer",
+  ServiceAccount: "Service Account",
+  MSPOperator: "MSP Operator",
+  MSPAdmin: "MSP Admin",
+  PlatformAdmin: "Platform Admin",
 };
-const ALL_ROLES = ["Assessment", "Free", "CustomerUser", "ServiceAccount", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
+const ALL_ROLES = [
+  "Free",
+  "RetainerNoConsent",
+  "RetainerConsented",
+  "Customer",
+  "ServiceAccount",
+  "MSPOperator",
+  "MSPAdmin",
+  "PlatformAdmin",
+];
 
 export default function PortalIdentityInterstitialPage({ onContinue }: { onContinue: () => void }) {
   const { user, logout } = useAuth();
@@ -53,7 +73,7 @@ export default function PortalIdentityInterstitialPage({ onContinue }: { onConti
             <span
               key={r}
               className={`rounded-full border px-2.5 py-1 text-[10.5px] font-semibold ${
-                r === "CustomerUser"
+                r === "Customer"
                   ? "border-status-green/25 bg-status-green/10 text-status-green"
                   : "border-border/50 bg-muted/40 text-muted-foreground"
               }`}
@@ -63,7 +83,7 @@ export default function PortalIdentityInterstitialPage({ onContinue }: { onConti
           ))}
         </div>
         <span className="text-[11px] text-muted-foreground">
-          The seven roles the platform knows. Only Customer User belongs on this side; the rest are
+          The eight roles the platform knows. Only Customer belongs on this side; the rest are
           read straight from your signed-in token — no request was made to decide this.
         </span>
 

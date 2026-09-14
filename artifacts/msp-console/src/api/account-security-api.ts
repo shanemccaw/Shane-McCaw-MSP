@@ -52,10 +52,13 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 
-/** `MSP_ROLES` (`lib/db/src/schema/index.ts`) — kept as a local literal union
- * rather than importing the server's Drizzle schema type into this Vite app. */
+/** `LEGACY_ROLE_ORDER` (`lib/db/src/rbac/legacy-ladder.ts`) — kept as a local
+ * literal union rather than importing the server's Drizzle schema type into
+ * this Vite app. Git #4088 — `CustomerUser` was renamed `Customer` and
+ * `Assessment` folded into `Free` by #3590; this copy had not been updated. */
 export type AccountSecurityRole =
-  | "PlatformAdmin" | "MSPAdmin" | "MSPOperator" | "CustomerUser" | "ServiceAccount" | "Free" | "Assessment";
+  | "PlatformAdmin" | "MSPAdmin" | "MSPOperator" | "ServiceAccount"
+  | "RetainerNoConsent" | "RetainerConsented" | "Customer" | "Free";
 
 export interface AccountSecurityUser {
   readonly id: number;

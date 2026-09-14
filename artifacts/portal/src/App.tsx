@@ -105,7 +105,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (user.mspRole && user.mspRole !== "CustomerUser" && !staffAcknowledged) {
+  if (user.mspRole && user.mspRole !== "Customer" && !staffAcknowledged) {
     return <PortalIdentityInterstitialPage onContinue={() => setStaffAcknowledged(true)} />;
   }
 

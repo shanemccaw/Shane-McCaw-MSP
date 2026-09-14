@@ -54,9 +54,10 @@ const ROLE_TONE: Record<AccountSecurityRole, Tone> = {
   MSPAdmin: signal.warning,
   MSPOperator: signal.info,
   ServiceAccount: signal.info,
-  CustomerUser: signal.neutral,
+  Customer: signal.neutral,
   Free: signal.neutral,
-  Assessment: signal.neutral,
+  RetainerNoConsent: signal.neutral,
+  RetainerConsented: signal.neutral,
 };
 
 /** Notes shown at the bottom of the page — real, current documentation of
@@ -239,7 +240,7 @@ export function AccountSecurity() {
   };
 
   const rosterRows = useMemo(() => roster.map((u) => {
-    const tone = ROLE_TONE[u.mspRole ?? "CustomerUser"];
+    const tone = ROLE_TONE[u.mspRole ?? "Customer"];
     const isStaff = u.mspRole != null && STAFF_TIERS.has(u.mspRole);
     const scope = u.tenantId != null ? `id ${u.id} · tenantId ${u.tenantId}` : `id ${u.id} · no tenant`;
     const flag = !isStaff && u.tenantId != null

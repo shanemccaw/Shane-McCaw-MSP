@@ -22,8 +22,9 @@
  *   - There is no `role`/`jobTitle`+`department` distinction the design implies
  *     with its "PERSON / ROLE" column split — the real roster row carries
  *     `jobTitle` and `department` as free-text fields, and every invited
- *     teammate is written with the flat `mspRole: "CustomerUser"` (contract
- *     pack §2). There is no invite-time way to grant a different role, and no
+ *     teammate is written with the flat `mspRole: "Customer"` (contract
+ *     pack §2; `LEGACY_ROLE.customer`, renamed from `CustomerUser` by #3590).
+ *     There is no invite-time way to grant a different role, and no
  *     "role" facet to filter or display beyond that. This seam does not
  *     invent one.
  *   - The roster has no per-row "locked" boolean the design's fixture
