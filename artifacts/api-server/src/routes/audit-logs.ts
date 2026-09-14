@@ -10,7 +10,7 @@ import {
   type AuditActorRole,
 } from "@workspace/db";
 import { eq, and, desc, count, gte, lte, isNull, isNotNull, type SQL } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireAdmin, requireCapability } from "../middlewares/requireAuth.ts";
 
 const router: IRouter = Router();
 
@@ -20,11 +20,18 @@ const ACTION_CATEGORY_SET = new Set<string>(AUDIT_ACTION_CATEGORIES);
 const ACTOR_ROLE_SET = new Set<string>(AUDIT_ACTOR_ROLES);
 
 // Cross-tenant visibility for this route is a hard boundary enforced by the
-// requireAdmin gate itself, not a UI filter: there is no per-tenant
+// requireCapability gate itself, not a UI filter: there is no per-tenant
 // restriction below unless the caller explicitly asks for one via
-// `tenantId` (an admin choosing to narrow their own view, not a customer
-// escaping a boundary they're inside).
-router.get("/audit-logs", requireAdmin, async (req: Request, res: Response) => {
+// `tenantId` (an admin/MSP operator choosing to narrow their own view, not a
+// customer escaping a boundary they're inside).
+//
+// Gate widened from requireAdmin (Git #4061) so MSP Console's own Audit Log
+// module (`ladder.msp-admin`, same floor as its existing `/api/msp/audit`
+// tab) can read this table too, not only the platform-admin app. A legacy
+// `role === "admin"` caller still clears this — that role promotes to the
+// top ladder rung (PlatformAdmin) via `effectiveLegacyRole` — so admin-panel's
+// existing callers are unaffected.
+router.get("/audit-logs", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
   const offset = (page - 1) * PAGE_SIZE;
 

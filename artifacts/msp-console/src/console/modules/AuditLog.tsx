@@ -6,6 +6,15 @@
  * `customerId`/`customerName`) and the Operations node (`/ops/audit`,
  * passing neither). Same file, one prop — not two screens.
  *
+ * Two tabs (Git #4061, Shane's decision: separate tabs, not a merged feed
+ * and not a replacement — the two tables track genuinely different things):
+ *   - **Security & Session Events** (this file's original content, unchanged)
+ *     — `msp_audit_logs` via `GET /api/msp/audit`, exactly as #4012 shipped.
+ *   - **Business Actions** (`./BusinessActionLog.tsx`) — the general
+ *     business-action trail via `GET /api/audit-logs` (#4044/#4047).
+ * Each tab owns its own fetch, its own filters, its own table — no shared
+ * state between them.
+ *
  * Wired against `GET /api/msp/audit` (`artifacts/api-server/src/routes/msp-audit-log.ts`)
  * via `@/api/audit-log-api`. The `customerId` server-side filter (#3671) and
  * the regenerated contract pack (#3682) are both confirmed live on `main` as
@@ -29,6 +38,7 @@ import {
   actionConvention, AuditLogApiError, HIDDEN_COLUMNS, isFallbackActor, useAuditLog,
   type AuditLogEntry, type AuditLogFilters,
 } from "@/api/audit-log-api";
+import { BusinessActionLog } from "./BusinessActionLog";
 
 const LIMIT = 30;
 
@@ -68,7 +78,49 @@ function fieldStyle(): React.CSSProperties {
   };
 }
 
+type AuditTab = "security" | "business";
+
+function tabButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", height: 32, padding: "0 14px",
+    borderRadius: 8, border: `1px solid ${active ? border.hover : border.card}`,
+    background: active ? "rgba(37,99,235,.18)" : "transparent",
+    fontSize: 12.5, fontWeight: 700, color: active ? text.strong : text.muted, cursor: "pointer", fontFamily: "inherit",
+  };
+}
+
 export function AuditLog({
+  customerId, customerName, embedded = true, forceEmpty = false, isPlatformAdmin = false, ownMspId = null, ownMspLabel = "your MSP",
+}: {
+  customerId?: number;
+  customerName?: string;
+  embedded?: boolean;
+  forceEmpty?: boolean;
+  isPlatformAdmin?: boolean;
+  ownMspId?: number | null;
+  ownMspLabel?: string;
+}) {
+  const [tab, setTab] = useState<AuditTab>("security");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => setTab("security")} style={tabButtonStyle(tab === "security")}>Security &amp; Session Events</button>
+        <button onClick={() => setTab("business")} style={tabButtonStyle(tab === "business")}>Business Actions</button>
+      </div>
+      {tab === "security" ? (
+        <SecurityEventsTab
+          customerId={customerId} customerName={customerName} embedded={embedded} forceEmpty={forceEmpty}
+          isPlatformAdmin={isPlatformAdmin} ownMspId={ownMspId} ownMspLabel={ownMspLabel}
+        />
+      ) : (
+        <BusinessActionLog tenantId={customerId} customerName={customerName} />
+      )}
+    </div>
+  );
+}
+
+function SecurityEventsTab({
   customerId, customerName, embedded = true, forceEmpty = false, isPlatformAdmin = false, ownMspId = null, ownMspLabel = "your MSP",
 }: {
   customerId?: number;
