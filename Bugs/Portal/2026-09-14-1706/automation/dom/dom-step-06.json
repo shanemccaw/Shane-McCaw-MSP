@@ -1,0 +1,12 @@
+{
+  "StepIndex": 6,
+  "Route": "http://localhost:5175/portal/settings",
+  "Selector": "/portal/settings",
+  "Description": "goto /portal/settings",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T17:07:10.215377-04:00"
+}
