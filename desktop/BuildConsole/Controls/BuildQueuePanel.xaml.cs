@@ -5058,6 +5058,7 @@ namespace BuildConsole.Controls
             bool isAskingShane = node.IsAskingShane;
             bool isSelected = _selectedQueueItemId == item.Id;
             bool isPaused = BuildConsoleSettings.Load().PausedBuildIds.Contains(item.Id);
+            bool hasNote = !string.IsNullOrWhiteSpace(item.Note);
 
             Color cardBorderColor = isSelected ? Color.FromRgb(0x89, 0xB4, 0xFA) :
                 (isWaitingForInput ? Color.FromRgb(0xF9, 0xE2, 0xAF) :
@@ -5065,6 +5066,13 @@ namespace BuildConsole.Controls
                 (item.Status == "running" ? Color.FromRgb(0x45, 0x5A, 0x82) :
                 (isPaused ? Color.FromRgb(0xFA, 0xB3, 0x87) :
                 (isBlocked ? Color.FromRgb(0x5A, 0x2A, 0x34) :
+                // Git #4075 — a note is Shane's own standing reminder to himself: worth
+                // surfacing whenever the card doesn't already carry a more urgent live
+                // signal above, but it must not override those. Muted gold — same hue
+                // family as the 📝 badge's amber (#F9E2AF, Git #3742) so the badge and
+                // border read as the same signal, but deliberately lower-saturation so it
+                // doesn't compete with isWaitingForInput's vivid amber.
+                (hasNote ? Color.FromRgb(0xC9, 0xA0, 0x6B) :
                 (item.Status == BuildQueuePostgresClient.VerifyingStatus ? Color.FromRgb(0x2A, 0x4A, 0x5A) :
                 (item.Status == "done" ? Color.FromRgb(0x2E, 0x52, 0x3E) :
                 (item.Status == "failed" ? Color.FromRgb(0x5A, 0x2A, 0x34) :
@@ -5077,7 +5085,7 @@ namespace BuildConsole.Controls
                 // to revisit (override/drain), not just a passive staging spot.
                 (item.Status == Services.AccountCapPolicy.CappedStatus ? Color.FromRgb(0xFA, 0xB3, 0x87) :
                 (item.Status == "external" ? Color.FromRgb(0x89, 0xB4, 0xFA) :
-                Color.FromRgb(0x31, 0x32, 0x44))))))))))));
+                Color.FromRgb(0x31, 0x32, 0x44)))))))))))));
 
             Color cardBgColor = isSelected ? Color.FromRgb(0x1B, 0x22, 0x34) :
                 (isWaitingForInput ? Color.FromRgb(0x23, 0x1E, 0x18) :
