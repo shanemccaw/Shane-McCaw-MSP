@@ -110,6 +110,7 @@ router.get("/msp/break-glass", requireCapability("ladder.msp-operator"), async (
         customerId: breakGlassPendingSecretsTable.customerId,
         status: breakGlassPendingSecretsTable.status,
         createdAt: breakGlassPendingSecretsTable.createdAt,
+        credentialUncertainAt: breakGlassPendingSecretsTable.credentialUncertainAt,
       })
       .from(breakGlassPendingSecretsTable)
       .where(and(
@@ -148,6 +149,8 @@ router.get("/msp/break-glass", requireCapability("ladder.msp-operator"), async (
       customerName: customerNameById.get(s.customerId) ?? null,
       status: s.status,
       createdAt: s.createdAt.toISOString(),
+      // #4041 — non-null while invites and reveals refuse pending a re-run override.
+      credentialUncertainAt: s.credentialUncertainAt ? s.credentialUncertainAt.toISOString() : null,
       liveInviteCount: liveCountBySecret.get(s.id) ?? 0,
       totalInviteCount: totalCountBySecret.get(s.id) ?? 0,
     }));
@@ -267,6 +270,7 @@ router.get(
         deliveredAt: ctx.secret.deliveredAt ? ctx.secret.deliveredAt.toISOString() : null,
         deliveredToEmail: ctx.secret.deliveredToEmail,
         breakGlassAccountId: ctx.secret.breakGlassAccountId,
+        credentialUncertainAt: ctx.secret.credentialUncertainAt ? ctx.secret.credentialUncertainAt.toISOString() : null,
         attempts: attempts.map((a) => ({
           id: a.id,
           invitedEmail: a.invitedEmail,

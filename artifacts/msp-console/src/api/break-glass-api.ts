@@ -65,6 +65,8 @@ export interface BreakGlassDetail {
   readonly deliveredAt: string | null;
   readonly deliveredToEmail: string | null;
   readonly breakGlassAccountId: string | null;
+  /** #4041 — set while invites and reveals refuse pending a re-run admin-override. */
+  readonly credentialUncertainAt: string | null;
   readonly attempts: readonly BreakGlassAttempt[];
 }
 

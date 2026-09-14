@@ -27,6 +27,9 @@ const state = vi.hoisted(() => ({
   claimAvailable: true,
   claimLost: false,
   selectQueue: [] as unknown[][],
+  priorUncertainAt: null as Date | null,
+  sets: [] as Record<string, unknown>[],
+  txSets: [] as Record<string, unknown>[],
 }));
 
 vi.mock("@workspace/db", () => {
@@ -46,7 +49,7 @@ vi.mock("@workspace/db", () => {
       let op = "";
       return chain(
         () => (op === "claim" ? (state.claimAvailable ? [{ id: 4 }] : []) : []),
-        (v) => { op = v.status === "reset_in_progress" ? "claim" : "release"; state.calls.push(op); },
+        (v) => { op = v.status === "reset_in_progress" ? "claim" : "release"; state.calls.push(op); state.sets.push({ op, ...v }); },
       );
     },
     transaction: async (fn: (tx: unknown) => Promise<void>) => {
@@ -56,7 +59,7 @@ vi.mock("@workspace/db", () => {
         throw new Error("connection terminated");
       }
       await fn({
-        update: () => chain(() => (state.claimLost ? [] : [{ id: 4 }])),
+        update: () => chain(() => (state.claimLost ? [] : [{ id: 4 }]), (v) => { state.txSets.push(v); }),
         insert: () => chain(() => [{ id: 77 }]),
       });
       state.calls.push("tx:commit");
@@ -121,7 +124,7 @@ const ctx = () => ({
   secret: {
     id: 4, runId: 10, customerId: 1, encryptedValue: "enc", secretRef: null, gateNodeId: "gate",
     breakGlassAccountId: "0f8fad5b-d9cb-469f-a165-70867728950e", status: "pending_delivery",
-    createdAt: new Date(), deliveredAt: null, deliveredToEmail: null,
+    createdAt: new Date(), deliveredAt: null, deliveredToEmail: null, credentialUncertainAt: state.priorUncertainAt,
   },
   mspId: 1, tenantId: "c4c814d4-3afe-441e-9145-62461d0a4fd3", domain: null,
   branding: { name: null, logoUrl: null, primaryColor: null },
@@ -139,6 +142,9 @@ beforeEach(() => {
   state.claimAvailable = true;
   state.claimLost = false;
   state.selectQueue = [];
+  state.sets = [];
+  state.priorUncertainAt = null;
+  state.txSets = [];
 });
 
 describe("#4029 — admin-override never resets a credential it cannot keep", () => {
@@ -261,5 +267,66 @@ describe("#4040 — admin-override claims the secret before it touches the store
     const result = await override();
     expect(result).toMatchObject({ ok: false, status: 500, detail: "claim_lost" });
     expect(state.calls).toEqual(["claim", "store", "graph", "tx"]);
+  });
+});
+
+describe("#4041 — an uncertain reset is persisted on the row, not only in the response", () => {
+  const claimSet = () => state.sets.find((v) => v.op === "claim");
+  const releaseSet = () => state.sets.find((v) => v.op === "release");
+
+  it("marks the row in the claim itself, before the store or the tenant is touched", async () => {
+    await override();
+    expect(state.calls[0]).toBe("claim");
+    // A coalesce, not a literal: an earlier marker keeps its original time.
+    expect(claimSet()?.credentialUncertainAt).toBeDefined();
+    expect(claimSet()?.credentialUncertainAt).not.toBeNull();
+  });
+
+  it("leaves the marker when the reset outcome is unknown", async () => {
+    for (const setup of [
+      () => { state.writeResult = { success: false, status: 504, data: "", errorType: "unexpected" }; },
+      () => { state.writeThrows = new TypeError("fetch failed"); },
+    ]) {
+      state.calls = []; state.sets = []; state.writeThrows = null;
+      setup();
+      const result = await override();
+      expect(result).toMatchObject({ ok: false, status: 502, detail: "outcome_unknown" });
+      expect(releaseSet()).toBeDefined();
+      expect(releaseSet()).not.toHaveProperty("credentialUncertainAt");
+    }
+  });
+
+  it("leaves the marker when the reset landed and the replacement was not recorded", async () => {
+    state.txFailures = 2;
+    const result = await override();
+    expect(result).toMatchObject({ ok: false, status: 500, detail: "replacement_unrecorded" });
+    expect(releaseSet()).not.toHaveProperty("credentialUncertainAt");
+  });
+
+  it("restores the marker to its prior value on every definite refusal", async () => {
+    state.writeResult = { success: false, status: 404, data: "", errorType: "not_found" };
+    await override();
+    expect(releaseSet()).toHaveProperty("credentialUncertainAt", null);
+
+    state.calls = []; state.sets = []; state.writeResult = { success: true, status: 204, data: null };
+    state.configured = false;
+    await override();
+    expect(releaseSet()).toHaveProperty("credentialUncertainAt", null);
+  });
+
+  it("does not clear an earlier uncertainty when a later reset is definitely refused", async () => {
+    const earlier = new Date("2026-09-14T12:00:00Z");
+    state.priorUncertainAt = earlier;
+    state.writeResult = { success: false, status: 404, data: "", errorType: "not_found" };
+    const result = await override();
+    expect(result).toMatchObject({ ok: false, status: 502 });
+    expect(releaseSet()).toHaveProperty("credentialUncertainAt", earlier);
+  });
+
+  it("clears the marker in the transaction that records the replacement", async () => {
+    state.priorUncertainAt = new Date("2026-09-14T12:00:00Z");
+    const result = await override();
+    expect(result).toMatchObject({ ok: true, newPendingSecretId: 77 });
+    expect(state.txSets).toContainEqual({ status: "superseded_by_reset", resetClaimToken: null, credentialUncertainAt: null });
   });
 });

@@ -4442,6 +4442,13 @@ export const breakGlassPendingSecretsTable = pgTable("break_glass_pending_secret
   // identifier, not a credential. Nullable: rows predating #4015 whose run payload
   // was already redacted have no recoverable identity.
   breakGlassAccountId: text("break_glass_account_id"),
+  // Git #4041 — set when an admin-override on this row may have changed the tenant
+  // credential without recording a replacement (reset outcome unknown, or reset
+  // landed and the record failed). While set, invite and reveal refuse: the
+  // credential this row holds may no longer be accepted by the tenant. Written
+  // before the tenant reset is sent, restored on a definite refusal, and cleared
+  // by the override that records a replacement. NULL = no known uncertainty.
+  credentialUncertainAt: timestamp("credential_uncertain_at", { withTimezone: true }),
   // "superseded_by_reset" = an admin-override reset the credential and issued a new
   // pending secret; nothing was ever delivered from this row.
   // Git #4040 — "reset_in_progress" = an admin-override has claimed this row (a

@@ -185,7 +185,12 @@ reissued, sent }`, JSONed straight through (`:295`). On `{ ok: false, status: 40
 500 | 502 | 503, error, detail? }` (#4029 — `500 replacement_unrecorded` and `502
 outcome_unknown` both mean "run the override again before re-inviting"; #4040 — `409
 override_in_progress` means another override holds the secret's claim and nothing was
-touched, and `500 claim_lost` means a stale takeover beat this call to recording), this route mirrors that status (`:293`). Write-back gate
+touched, and `500 claim_lost` means a stale takeover beat this call to recording; Git #4041
+makes "run the override again before re-inviting" enforced rather than advised —
+`outcome_unknown` and `replacement_unrecorded` both leave `credential_uncertain_at` set on
+the row, the portal invite route and the public reveal refuse while it is set, and a
+successful override clears it; the list (§1.1) and detail (§1.3) reads serve it as
+`credentialUncertainAt: string | null`), this route mirrors that status (`:293`). Write-back gate
 errors (`WriteBackNotEnabledError`, `WriteBackCustomerNotFoundError`,
 `WriteConsentRequiredError`) are caught explicitly (`:297-299`) and surfaced as `409
 { error, blockedBy: err.reason }` — a real, distinct state, not a generic 500.

@@ -110,7 +110,12 @@ return a bare 404** (`:393`, `:395`) — the route never confirms a
 `pendingSecretId` exists to a caller who shouldn't see it.
 
 Preconditions enforced server-side, not just documented: `ctx.secret.status`
-must be `"pending_delivery"` (`:397-399`), else `409`.
+must be `"pending_delivery"` (`:397-399`), else `409`. And (Git #4041)
+`credential_uncertain_at` must be null, else `409` with
+`{ error: CREDENTIAL_UNCERTAIN_ERROR, detail: "credential_uncertain" }` — the last
+admin-override on this row may have changed the tenant credential without
+recording a replacement (§2.6), so the operator is told to run the admin-override
+again before inviting anyone. No attempt row is written and no email is sent.
 
 Response (`:402`):
 
@@ -152,6 +157,7 @@ Response — one of two shapes:
 | `pending` | `true` | literal |
 | `pendingSecretId` | `number` | `secret.id` |
 | `status` | `"pending_delivery"` | `secret.status` (only value reachable here — see §6 enum) |
+| `credentialUncertainAt` | `Date` (ISO string over the wire) `| null` | `secret.credentialUncertainAt` (Git #4041) — non-null while invites and reveals refuse pending a re-run admin-override (§2.6). Also served on `GET /api/portal/break-glass` handoffs and on the MSP console list/detail reads (§3.1, §3.3) |
 | `attempts` | array | see below |
 
 Each `attempts[]` row (`:451-456`):
@@ -176,6 +182,13 @@ signed `state` (HMAC-tied back to the link token, `:89-92`) so the callback
 can't be replayed against a different attempt. No portal-facing JSON contract
 to design against here — this is the OAuth hop, not a UI surface.
 
+Git #4041: when the link's pending secret carries `credential_uncertain_at`, the
+page answers `409` ("This credential cannot be delivered right now") **before**
+any redirect to Microsoft, and the link is set `superseded`. Retiring it is
+deliberate: a pending or consumed link counts as live to admin-override's
+precondition (§2.6), so leaving it would block the one action that resolves the
+uncertainty. The recovery override re-invites every prior recipient.
+
 Rate-limited: 60 requests / 15 min per the shared `publicLimiter`
 (`:105-111`).
 
@@ -189,6 +202,18 @@ id `62e90394-69f5-4237-9190-012177145e10`, `:70-72`). Also server-rendered
 HTML, not JSON — same "no portal contract" note as §2.3. The reveal-once
 credential page this produces on success (`:638-647`) is a plain HTML form
 POSTing to §2.5; it is not meant to be embedded in the portal SPA.
+
+Routing (Git #4076, fixed with #4041): §2.3's `verify/:token` route is registered first,
+so until the fix Microsoft's redirect to `verify/callback` was answered by it as token
+`"callback"` with a 410. Nothing below this line had ever run. `:token` now passes
+`"callback"` through with `next()`. A real Global Administrator sign-in through this
+handler is still unverified; see #4076.
+
+Git #4041: a pending secret carrying `credential_uncertain_at` is refused with the
+same `409` page as §2.3, checked **before** the code exchange (no sign-in is spent,
+the link is not consumed) and retired to `superseded`. The check is repeated after
+the claim, on the re-read secret row; if an override marked the row in between, the
+claimed link is retired the same way and nothing is revealed.
 
 Race handling for two simultaneous winners: an atomic conditional UPDATE
 (`WHERE linkStatus = 'pending'`, `:589-592`) inside a transaction claims the
@@ -251,6 +276,15 @@ regardless of which caller invokes it:
   `BREAK_GLASS_OVERRIDE_CLAIM_STALE_MS` (15 min) was left by a process that died
   mid-override and may be taken over. **Every refusal below hands the claim back**
   (`reset_in_progress` → `pending_delivery`, conditional on the claim token).
+  Git #4041: the same claim statement sets
+  `credential_uncertain_at = coalesce(credential_uncertain_at, now())`. From the
+  claim until a replacement is recorded, the credential on this row may stop being
+  the tenant's password, and only a marker written before the reset survives a
+  process that dies between the reset and the record (its stale claim is then taken
+  over with the marker still set). A definite hand-back restores the marker to its
+  value before the claim; an uncertain one (`outcome_unknown`,
+  `replacement_unrecorded`) keeps it. While it is set, invite (§2.1) and reveal
+  (§2.3, §2.4) refuse.
 - **every existing verification attempt for this secret must be terminal**
   (`expired` or `superseded`), read under the claim — an admin cannot override
   while a link is still live, and the invite route refuses a row that is not
@@ -279,7 +313,9 @@ irreversible step, the tenant reset):
    - No definite answer (a 5xx, or a transport error after the request may
      have left) → the vault copy is **kept** (it may be the only copy of a live
      password; it expires with the store TTL), the old row is left
-     overridable; `502` with `detail: "outcome_unknown"`.
+     overridable **and keeps `credential_uncertain_at`** (Git #4041), so it cannot
+     be invited or revealed until the override is run again; `502` with
+     `detail: "outcome_unknown"`.
 4. **Record**: supersede the old pending-secret row, insert the new one plus an
    audit row, in one transaction. The supersede is conditional on this call's
    claim (`status = 'reset_in_progress' AND reset_claim_token = <its token>`);
@@ -289,7 +325,10 @@ irreversible step, the tenant reset):
    the failed attempt did not in fact commit, by `secret_ref->>'secretName'`).
    If the retry fails too → `500` with `detail: "replacement_unrecorded"`; the
    vault copy is **not** purged and the claim is handed back so the old row is
-   overridable, so running the override again issues a recorded credential.
+   overridable, so running the override again issues a recorded credential. The
+   hand-back keeps `credential_uncertain_at` (Git #4041). A successful record
+   clears it on the superseded row in the same transaction; the replacement row
+   starts unmarked.
 5. Purges the old row's now-orphaned vault copy, fires the repeated-override
    alert if this is the 2nd+ override in 24h (see §7), and re-issues invites.
    **Does not resume the run** — it stays paused until the new secret is
