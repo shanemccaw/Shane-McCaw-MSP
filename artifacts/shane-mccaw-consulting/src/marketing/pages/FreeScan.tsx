@@ -4,6 +4,7 @@ import { Nav } from "../components/Nav";
 import { FreeScanReturnLinkRequest } from "../components/FreeScanReturnLinkRequest";
 import { Footer } from "../components/Footer";
 import { useSignalCheckCount } from "../../hooks/useSignalCheckCount";
+import { useCatalog, type MonitoringTier } from "../../hooks/useCatalog";
 import { logger } from "../../lib/logger";
 import { RevealNoScanGate } from "@workspace/copilot-scan-scene/RevealNoScanGate";
 
@@ -471,13 +472,70 @@ const LOCKED_CAPABILITIES = [
   "Being told the day one of these comes back, instead of finding out next year",
   "The written procedure and evidence behind each fix, for your auditor",
 ];
-const QUOTE_PRICE = "$1,240";
-const QUOTE_BASIS =
-  "Growth tier, 1,240 seats, Enterprise bracket — less than the licence waste this scan just found.";
-
 // The scan already granted read-only consent, so the monitoring checkout can skip re-connecting:
 // ?product=monitoring&scanned=1 is the flow the handoff README documents for exactly this case.
 const CHECKOUT_HREF = "/buy?product=monitoring&scanned=1";
+
+// ── The upsell price card's quote — real Products Catalog data, not a hardcoded number ──────────
+// This card upsells the exact same product Buy.tsx's ?product=monitoring&scanned=1 checkout
+// prices: the "Growth" monitoring tier (Buy.tsx's own default, `MON_TIERS[1]`, when no ?tier= is
+// on the URL — see buyCheckout.ts). The scan never learns this prospect's real licensed-seat
+// count (the free-scan results wire, FreeScanResultsReady above, carries no seat field), so this
+// mirrors Buy.tsx's own real fallback for exactly that case: `st.seatsFromCatalog || 250`
+// (Buy.tsx line ~412) — 250 is Buy.tsx's real default, not an invented placeholder.
+const QUOTE_DEFAULT_SEATS = 250;
+
+interface MonitoringTypeAttributes {
+  seatMin?: number;
+  seatMax?: number | null;
+  seatCountFloor?: number;
+  pricePerUserMonth?: string;
+  flatMonthlySurcharge?: string | null;
+  tenantTierLabel?: string;
+}
+
+function monTierAttrs(row: MonitoringTier): MonitoringTypeAttributes {
+  return (row.typeAttributes ?? {}) as MonitoringTypeAttributes;
+}
+function monPricePerUser(row: MonitoringTier): number {
+  const n = parseFloat(monTierAttrs(row).pricePerUserMonth ?? "");
+  return isNaN(n) ? 0 : n;
+}
+function monSeatFloor(row: MonitoringTier): number {
+  const n = Number(monTierAttrs(row).seatCountFloor ?? row.seatMin ?? 1);
+  return isNaN(n) || n < 1 ? 1 : Math.trunc(n);
+}
+function monSurcharge(row: MonitoringTier): number {
+  const n = parseFloat(monTierAttrs(row).flatMonthlySurcharge ?? "");
+  return isNaN(n) ? 0 : n;
+}
+// Byte-identical to resolveTypeAttributesMonthlyPriceCents (api-server/src/lib/catalog-pricing.ts),
+// the only function that ever computes an actual Stripe charge for a monitoring tier — same
+// formula Monitoring.tsx's own computeMonthlyPrice uses. Never reads the unused `monthlyFloor`
+// attribute (see Monitoring.tsx's header note: it is dead data, not read by the real charge path).
+function monMonthlyPrice(row: MonitoringTier, seats: number): number {
+  const billableSeats = Math.max(1, Math.trunc(seats) || 1, monSeatFloor(row));
+  return monPricePerUser(row) * billableSeats + monSurcharge(row);
+}
+function monMoney(n: number): string {
+  return "$" + Math.round(n).toLocaleString("en-US");
+}
+function monTierDisplayName(row: MonitoringTier): string {
+  return row.name.split("—")[0].replace(/Monitoring/i, "").trim();
+}
+
+/** Finds the real Growth-tier catalog row whose seat band covers `seats`. */
+function findGrowthRowForSeats(rows: MonitoringTier[], seats: number): MonitoringTier | null {
+  const growthRows = rows.filter((r) => r.tier === "growth");
+  return (
+    growthRows.find((r) => {
+      const attrs = monTierAttrs(r);
+      const min = attrs.seatMin ?? r.seatMin ?? 1;
+      const max = attrs.seatMax ?? r.seatMax ?? Infinity;
+      return seats >= min && seats <= max;
+    }) ?? null
+  );
+}
 
 // ── Read-consent screen data (Git #1361) ─────────────────────────────────────
 // The real catalog slug the consent-bearing checkout session is created against — a FREE
@@ -864,6 +922,19 @@ export function FreeScanReturn() {
 
 function FreeScanPage({ returnMode }: { returnMode: boolean }) {
   const signals = useSignalCheckCount();
+  // Real Products Catalog read for the upsell price card below (Git #3955) — the same
+  // service_type=monitoring_tier rows Buy.tsx, Monitoring.tsx and Pricing.tsx all read live.
+  const { monitoringTiers, loading: catalogLoading } = useCatalog();
+  const quoteRow = useMemo(
+    () => findGrowthRowForSeats(monitoringTiers, QUOTE_DEFAULT_SEATS),
+    [monitoringTiers],
+  );
+  const quotePrice = quoteRow ? monMoney(monMonthlyPrice(quoteRow, QUOTE_DEFAULT_SEATS)) : null;
+  const quoteBasis = quoteRow
+    ? `${monTierDisplayName(quoteRow)} tier, ${QUOTE_DEFAULT_SEATS.toLocaleString("en-US")} seats, ${
+        monTierAttrs(quoteRow).tenantTierLabel ?? "matching"
+      } bracket — less than the licence waste this scan just found.`
+    : null;
   // Git #1359: a return visit (/scan/results) has no form to fill and no consent to grant — it opens
   // on the results phase and reads through the emailed return-link token instead of a sessionId.
   const [returnToken] = useState<string | null>(() =>
@@ -2457,10 +2528,14 @@ function FreeScanPage({ returnMode }: { returnMode: boolean }) {
                         To fix and keep watching {scanDomain}
                       </div>
                       <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
-                        <b style={{ fontSize: 28, fontWeight: 800, color: "#f8fafc" }}>{QUOTE_PRICE}</b>
+                        <b style={{ fontSize: 28, fontWeight: 800, color: "#f8fafc" }}>
+                          {quotePrice ?? (catalogLoading ? "…" : "Contact for pricing")}
+                        </b>
                         <span style={{ fontSize: 12.5, color: "#94a3b8" }}>/mo</span>
                       </div>
-                      <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.55, marginBottom: 16 }}>{QUOTE_BASIS}</div>
+                      <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.55, marginBottom: 16 }}>
+                        {quoteBasis ?? "Priced by the seats connected once you start monitoring."}
+                      </div>
                       <Link
                         href={CHECKOUT_HREF}
                         style={{
@@ -2519,7 +2594,7 @@ function FreeScanPage({ returnMode }: { returnMode: boolean }) {
                     themselves.
                   </div>
                   <div style={{ fontSize: 11.5, color: "#cbd5e1", marginTop: 2 }}>
-                    {QUOTE_PRICE}/mo to close them and watch for the next one.
+                    {quotePrice ?? "…"}/mo to close them and watch for the next one.
                   </div>
                 </div>
                 <Link
