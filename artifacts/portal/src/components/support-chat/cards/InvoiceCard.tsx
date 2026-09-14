@@ -1,43 +1,34 @@
-import { Receipt } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { formatCardDate, type InvoiceCardData } from "./types";
-import { statusBadgeVariant, formatStatusLabel } from "./card-status";
+import { CardShell, Eyebrow, CardRow, StatusPill } from "./CardChrome";
 
 export function InvoiceCard({ data }: { data: InvoiceCardData }) {
   return (
-    <Card className="max-w-md" data-testid="active-card-invoice">
-      <CardHeader className="flex-row items-center gap-2 space-y-0">
-        <Receipt className="size-4 text-primary" />
-        <CardTitle>Invoices</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {data.invoices.map((inv, i) => (
-          <div key={inv.invoiceNumber || i}>
-            {i > 0 && <Separator className="mb-3" />}
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">{inv.invoiceNumber}</p>
-                {inv.description && (
-                  <p className="truncate text-xs text-muted-foreground">{inv.description}</p>
-                )}
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {inv.status === "paid"
-                    ? `Paid ${formatCardDate(inv.paidAt)}`
-                    : `Due ${formatCardDate(inv.dueDate)}`}
-                </p>
-              </div>
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <span className="text-sm font-semibold text-foreground">
-                  {inv.amount} {inv.currency.toUpperCase()}
-                </span>
-                <Badge variant={statusBadgeVariant(inv.status)}>{formatStatusLabel(inv.status)}</Badge>
-              </div>
-            </div>
+    <CardShell testId="active-card-invoice">
+      <Eyebrow>Invoices</Eyebrow>
+      {data.invoices.map((inv, i) => (
+        <CardRow key={inv.invoiceNumber || i}>
+          <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
+            <span className="truncate text-[12.5px] leading-[1.4]" style={{ color: "#e2e8f0" }}>
+              {inv.description || inv.invoiceNumber}
+            </span>
+            {inv.description && (
+              <span
+                className="truncate text-[10.5px]"
+                style={{ color: "#64748b", fontFamily: "ui-monospace, Menlo, monospace" }}
+              >
+                {inv.invoiceNumber}
+              </span>
+            )}
+            <span className="text-[10.5px]" style={{ color: "#64748b" }}>
+              {inv.status === "paid" ? `Paid ${formatCardDate(inv.paidAt)}` : `Due ${formatCardDate(inv.dueDate)}`}
+            </span>
           </div>
-        ))}
-      </CardContent>
-    </Card>
+          <span className="shrink-0 whitespace-nowrap text-[12.5px] tabular-nums" style={{ color: "#e2e8f0" }}>
+            {inv.amount} {inv.currency.toUpperCase()}
+          </span>
+          <StatusPill status={inv.status} />
+        </CardRow>
+      ))}
+    </CardShell>
   );
 }

@@ -547,6 +547,17 @@
       transform: translateX(100%);
     }
   }
+
+  --animate-dot-pulse: dot-pulse 1.2s ease-in-out infinite;
+
+  @keyframes dot-pulse {
+    0%, 100% {
+      opacity: 0.25;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
 }
 
 @layer base {

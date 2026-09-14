@@ -1,9 +1,11 @@
-import { Database } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { formatCardDate, type DataAnswerCardData } from "./types";
-import { statusBadgeVariant, formatStatusLabel } from "./card-status";
+import { formatStatusLabel } from "./card-status";
+import { CardShell } from "./CardChrome";
+
+interface Section {
+  label: string;
+  rows: Array<{ left: string; right: string }>;
+}
 
 /**
  * `data-answer` is the fallback of last resort (contract pack §4.4) — a
@@ -14,83 +16,54 @@ import { statusBadgeVariant, formatStatusLabel } from "./card-status";
  * fetch failure.
  */
 export function DataAnswerCard({ data }: { data: DataAnswerCardData }) {
-  const hasAnything =
-    data.subscriptions.length > 0 || data.purchases.length > 0 || data.latestScan !== null;
+  const sections: Section[] = [];
+  if (data.subscriptions.length > 0) {
+    sections.push({
+      label: "Subscriptions",
+      rows: data.subscriptions.map((s) => ({ left: s.name, right: formatStatusLabel(s.status) })),
+    });
+  }
+  if (data.latestScan) {
+    sections.push({
+      label: "Latest Scan",
+      rows: [{ left: data.latestScan.packageKey, right: formatStatusLabel(data.latestScan.status) }],
+    });
+  }
+  if (data.purchases.length > 0) {
+    sections.push({
+      label: "Purchases",
+      rows: data.purchases.map((p) => ({ left: p.title, right: p.amount })),
+    });
+  }
 
   return (
-    <Card className="max-w-md" data-testid="active-card-data-answer">
-      <CardHeader className="flex-row items-center gap-2 space-y-0">
-        <Database className="size-4 text-primary" />
-        <CardTitle>Account Snapshot</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {!hasAnything && (
-          <p className="text-sm text-muted-foreground">Nothing on file yet for this account.</p>
-        )}
-
-        {data.subscriptions.length > 0 && (
-          <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Subscriptions
-            </p>
-            <div className="space-y-2">
-              {data.subscriptions.map((sub, i) => (
-                <div key={`${sub.name}-${i}`} className="flex items-center justify-between gap-3">
-                  <span className="truncate text-sm text-foreground">{sub.name}</span>
-                  <Badge variant={statusBadgeVariant(sub.status)}>{formatStatusLabel(sub.status)}</Badge>
-                </div>
-              ))}
+    <CardShell testId="active-card-data-answer">
+      {sections.length === 0 && (
+        <span className="text-[12.5px] leading-[1.55]" style={{ color: "#94a3b8" }}>
+          Nothing on file yet for this account.
+        </span>
+      )}
+      {sections.map((s, i) => (
+        <div
+          key={s.label}
+          className="flex flex-col gap-[7px]"
+          style={i > 0 ? { paddingTop: 11, borderTop: "1px solid rgba(255,255,255,.06)" } : undefined}
+        >
+          <span className="text-[10px] font-bold uppercase" style={{ letterSpacing: ".11em", color: "#475569" }}>
+            {s.label}
+          </span>
+          {s.rows.map((r, j) => (
+            <div key={`${r.left}-${j}`} className="flex items-center gap-[11px]">
+              <span className="min-w-0 flex-1 truncate text-[12px]" style={{ color: "#cbd5e1" }}>
+                {r.left}
+              </span>
+              <span className="shrink-0 whitespace-nowrap text-[11.5px]" style={{ color: "#64748b" }}>
+                {r.right}
+              </span>
             </div>
-          </div>
-        )}
-
-        {data.latestScan && (
-          <>
-            {data.subscriptions.length > 0 && <Separator />}
-            <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Latest Scan
-              </p>
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-foreground">{data.latestScan.packageKey}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Started {formatCardDate(data.latestScan.startedAt)}
-                  </p>
-                </div>
-                <Badge variant={statusBadgeVariant(data.latestScan.status)}>
-                  {formatStatusLabel(data.latestScan.status)}
-                </Badge>
-              </div>
-            </div>
-          </>
-        )}
-
-        {data.purchases.length > 0 && (
-          <>
-            {(data.subscriptions.length > 0 || data.latestScan) && <Separator />}
-            <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Purchases
-              </p>
-              <div className="space-y-2">
-                {data.purchases.map((p, i) => (
-                  <div key={`${p.title}-${i}`} className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm text-foreground">{p.title}</p>
-                      <p className="text-xs text-muted-foreground">{formatCardDate(p.date)}</p>
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1">
-                      <span className="text-sm font-medium text-foreground">{p.amount}</span>
-                      <Badge variant={statusBadgeVariant(p.status)}>{formatStatusLabel(p.status)}</Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
+          ))}
+        </div>
+      ))}
+    </CardShell>
   );
 }
