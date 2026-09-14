@@ -46,7 +46,7 @@
  * table — only the transcript itself moved here.
  */
 
-import { and, asc, count, desc, eq, gte, inArray, like } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, like } from "drizzle-orm";
 import {
   db,
   servicesTable,
@@ -58,6 +58,11 @@ import {
   mspSalesBundleAssignmentsTable,
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
+  mspRiskDecisionsTable,
+  mspChangeRequestsTable,
+  mspPoamsTable,
+  policyDecisionsTable,
+  tenantMonitorProfilesTable,
   invoicesTable,
   clientScoresTable,
   botInstancesTable,
@@ -71,6 +76,12 @@ import {
 import { logger } from "./logger.ts";
 import { getShaneBotPersona, renderPersonaPrompt, type ShaneBotSurface } from "./shanebot-persona.ts";
 import { SUGGESTED_REPLIES_INSTRUCTION } from "./chat-content-blocks.ts";
+import { resolveTenantScope, type TenantScope } from "./portal-customer-scope.ts";
+import { displayStatus, isOpenStatus, formatChangeRequestCode } from "./portal-change-control.ts";
+import { assembleOwnershipPayload } from "../routes/portal-ownership.ts";
+import { getCurrentSecurityPlanVersion } from "./security-plan-versioning.ts";
+import { getSecurityPlanDrift } from "./security-plan-drift.ts";
+import { GOV_AREA_CHECK_DEFS, buildGovArea, type GovProfileRow } from "./portal-governance-areas.ts";
 
 const log = logger.child({ channel: "engine.shanebot" });
 
@@ -80,8 +91,28 @@ const log = logger.child({ channel: "engine.shanebot" });
 
 export type BotSlug = "shanebot_public" | "shanebot_paid";
 
-/** Active Cards (#366) — the four v1 card types. shanebot_paid only. */
-export type BotCardType = "invoice" | "subscription" | "score" | "data-answer";
+/**
+ * Active Cards (#366) — the four v1 card types, plus #4125 Batch A's ten
+ * "generic card" types (Governance & Risk cluster), shaped after the
+ * `gen:<key>` card the ShaneBot Card Gallery design (`Design/portal/
+ * design_handoff_full_site/screens/ShaneBot Card Gallery.dc.html`) already
+ * specifies for every topic beyond the original four. shanebot_paid only.
+ */
+export type BotCardType =
+  | "invoice"
+  | "subscription"
+  | "score"
+  | "data-answer"
+  | "risk"
+  | "changes"
+  | "findings"
+  | "poams"
+  | "secplan"
+  | "raci"
+  | "raci-workload"
+  | "policy"
+  | "conditional-access"
+  | "signal";
 
 export interface BotInstanceConfig {
   slug: BotSlug;
@@ -113,7 +144,23 @@ export const BOT_INSTANCES: Record<BotSlug, BotInstanceConfig> = {
     authMode: "portal_authenticated",
     groundingSource: "customer_entitlements",
     allowedActions: ["regenerate_document", "rerun_scan"],
-    allowedCardTypes: ["invoice", "subscription", "score", "data-answer"],
+    allowedCardTypes: [
+      "invoice",
+      "subscription",
+      "score",
+      "data-answer",
+      // #4125 Batch A — Governance & Risk cluster.
+      "risk",
+      "changes",
+      "findings",
+      "poams",
+      "secplan",
+      "raci",
+      "raci-workload",
+      "policy",
+      "conditional-access",
+      "signal",
+    ],
     costOwner: "msp",
     personaSurface: "portal",
   },
@@ -172,6 +219,31 @@ export interface DataAnswerCardData {
   purchases: Array<{ title: string; status: string; amount: string; date: string | null }>;
 }
 
+/**
+ * #4125 Batch A — the "generic card" shape the Card Gallery design's `GEN`
+ * table specifies for every topic beyond the original four (`gen:<key>`,
+ * `Design/portal/design_handoff_full_site/screens/ShaneBot Card Gallery.dc.html`).
+ * One shape, ten real backings (risk / changes / findings / poams / secplan /
+ * raci / raci-workload / policy / conditional-access / signal) — every field
+ * is populated from real, customer-scoped rows, never fixture content.
+ */
+export type GenericCardTone = "gold" | "red" | "green" | "blue" | "purple" | "slate";
+
+export interface GenericCardRow {
+  readonly left: string;
+  readonly sub: string;
+  readonly right: string;
+  readonly tone: GenericCardTone;
+}
+
+export interface GenericCardData {
+  readonly eyebrow: string;
+  readonly navLabel: string;
+  readonly head: { readonly value: string; readonly label: string } | null;
+  readonly rows: readonly GenericCardRow[];
+  readonly note: string | null;
+}
+
 export interface BotGrounding {
   /** One line describing who the model is talking to, for the prompt. */
   identity: string;
@@ -188,6 +260,17 @@ export interface BotGrounding {
     subscription?: SubscriptionCardData;
     score?: ScoreCardData;
     dataAnswer?: DataAnswerCardData;
+    // #4125 Batch A — Governance & Risk cluster generic cards.
+    risk?: GenericCardData;
+    changes?: GenericCardData;
+    findings?: GenericCardData;
+    poams?: GenericCardData;
+    secplan?: GenericCardData;
+    raci?: GenericCardData;
+    raciWorkload?: GenericCardData;
+    policy?: GenericCardData;
+    conditionalAccess?: GenericCardData;
+    signal?: GenericCardData;
   };
 }
 
@@ -198,6 +281,16 @@ export interface CustomerEntitlementsContext {
   isCustomerUser: boolean;
   /** users.id of the requesting login — invoicesTable/clientScoresTable key off this, not the tenant (#366). */
   userId?: number | null;
+  /**
+   * #4125 Batch A — the turn's own latest user message text, verbatim. Used
+   * ONLY for the two dynamic lookups the Card Gallery's own reference script
+   * (`ShaneBot.dc.html`) already does client-side: "who owns <workload>?"
+   * (the `ownMatch` regex) and a specific Governance pillar signal keyword
+   * match. Never used to decide WHAT data to query beyond those two narrow
+   * extractions — every other topic's grounding is queried unconditionally,
+   * same as the four existing topics.
+   */
+  lastUserMessage?: string | null;
 }
 
 /**
@@ -360,7 +453,7 @@ async function buildCustomerEntitlementsGrounding(
   ctx: CustomerEntitlementsContext,
 ): Promise<BotGrounding> {
   if (ctx.isCustomerUser && ctx.customerId) {
-    return buildCustomerContext(ctx.customerId, ctx.mspId, ctx.userId ?? null);
+    return buildCustomerContext(ctx.customerId, ctx.mspId, ctx.userId ?? null, ctx.lastUserMessage ?? null);
   }
   if (ctx.mspId) {
     return buildMspContext(ctx.mspId);
@@ -516,7 +609,390 @@ function formatScanStatus(
   return lines.join("\n");
 }
 
-async function buildCustomerContext(customerId: number, mspId: number | null, userId: number | null): Promise<BotGrounding> {
+// ── #4125 Batch A — Governance & Risk cluster topic builders ─────────────────
+// Pure functions over already-fetched rows (same DB-free split
+// portal-governance-areas.ts uses): each returns a prose summary fragment and
+// a GenericCardData payload shaped like the Card Gallery design's `gen:<key>`
+// card, or null when there is genuinely nothing to show. Every row is a real,
+// customer-scoped DB read done in buildCustomerContext below — nothing here
+// invents a status, a count or a row.
+
+export interface GenericTopic {
+  readonly summaryLabel: string;
+  readonly summary: string;
+  readonly card: GenericCardData | null;
+}
+
+export function riskTopic(rows: readonly { rbdId: string; title: string; riskStatus: string | null; reviewState: string | null }[]): GenericTopic {
+  if (rows.length === 0) {
+    return { summaryLabel: "Risk register", summary: "No risks recorded on your risk register.", card: null };
+  }
+  const openOrMitigating = rows.filter((r) => r.riskStatus === "Open" || r.riskStatus === "Mitigating");
+  const overdue = rows.filter((r) => r.reviewState === "overdue");
+  const lines = rows.slice(0, 8).map((r) =>
+    `• ${r.rbdId} — ${r.title} (${r.riskStatus ?? "Unknown"}${r.reviewState === "overdue" ? ", review overdue" : ""})`,
+  );
+  return {
+    summaryLabel: "Risk register",
+    summary: `${openOrMitigating.length} open or mitigating of ${rows.length} total, ${overdue.length} review(s) overdue.\n${lines.join("\n")}`,
+    card: {
+      eyebrow: "RISK REGISTER",
+      navLabel: "Open Risk Register",
+      head: { value: String(openOrMitigating.length), label: `open or mitigating${overdue.length ? `, ${overdue.length} review overdue` : ""}` },
+      rows: rows.slice(0, 5).map((r) => ({
+        left: `${r.rbdId} — ${r.title}`,
+        sub: r.riskStatus ?? "Unknown",
+        right: r.reviewState === "overdue" ? "Overdue" : (r.riskStatus ?? "—"),
+        tone: r.reviewState === "overdue" ? "red" : r.riskStatus === "Mitigating" ? "gold" : "slate",
+      })),
+      note: "Pulled straight from your risk register.",
+    },
+  };
+}
+
+export function changesTopic(
+  rows: readonly { id: number; title: string; status: string; approvedBy: string | null; scheduledFor: string }[],
+): GenericTopic {
+  if (rows.length === 0) {
+    return { summaryLabel: "Change Control", summary: "No change requests on file.", card: null };
+  }
+  const wire = rows.map((r) => ({ ...r, display: displayStatus(r.status, r.approvedBy) }));
+  const open = wire.filter((r) => isOpenStatus(r.display));
+  const pendingApproval = wire.filter((r) => r.display === "Pending approval").length;
+  const scheduled = wire.filter((r) => r.display === "Scheduled").length;
+  const lines = wire.slice(0, 8).map((r) => `• ${formatChangeRequestCode(r.id)} — ${r.title} (${r.display})`);
+  return {
+    summaryLabel: "Change Control",
+    summary: `${open.length} open (${pendingApproval} pending approval, ${scheduled} scheduled) of ${rows.length} total.\n${lines.join("\n")}`,
+    card: {
+      eyebrow: "CHANGE CONTROL",
+      navLabel: "Open Change Control",
+      head: { value: String(pendingApproval), label: `pending approval, ${scheduled} scheduled` },
+      rows: wire.slice(0, 5).map((r) => ({
+        left: `${formatChangeRequestCode(r.id)} — ${r.title}`,
+        sub: r.scheduledFor || "No window booked",
+        right: r.display,
+        tone: r.display === "Pending approval" ? "gold" : r.display === "Scheduled" ? "blue" : "slate",
+      })),
+      note: "Shane cannot approve these on your behalf.",
+    },
+  };
+}
+
+export function findingsTopic(rows: readonly { severity: string; title: string }[]): GenericTopic {
+  if (rows.length === 0) {
+    return { summaryLabel: "Remediation tracking findings", summary: "No open critical/warning findings from your latest scan.", card: null };
+  }
+  return {
+    summaryLabel: "Remediation tracking findings",
+    summary: `${rows.length} open finding(s) from your latest scan.\n${rows.map((r) => `• [${r.severity}] ${r.title}`).join("\n")}`,
+    card: {
+      eyebrow: "REMEDIATION TRACKING",
+      navLabel: "Open Remediation Tracking",
+      head: { value: String(rows.length), label: "open findings from your latest scan" },
+      rows: rows.slice(0, 5).map((r) => ({
+        left: r.title,
+        sub: "",
+        right: r.severity,
+        tone: r.severity === "critical" ? "red" : "gold",
+      })),
+      note: "Findings are keyed to your latest scan. A re-scan is what clears one.",
+    },
+  };
+}
+
+export function poamsTopic(
+  rows: readonly { poamId: string; title: string; status: string; scheduledCompletionDate: string }[],
+): GenericTopic {
+  if (rows.length === 0) {
+    return { summaryLabel: "POA&Ms", summary: "No active plans of action.", card: null };
+  }
+  const activeStatuses = new Set(["pending_signature", "active"]);
+  const active = rows.filter((r) => activeStatuses.has(r.status));
+  const unsigned = rows.filter((r) => r.status === "pending_signature");
+  const lines = rows.slice(0, 8).map((r) => `• ${r.poamId} — ${r.title} (${r.status}, target ${r.scheduledCompletionDate})`);
+  return {
+    summaryLabel: "POA&Ms",
+    summary: `${active.length} active plan(s), ${unsigned.length} awaiting your signature.\n${lines.join("\n")}`,
+    card: {
+      eyebrow: "POA&MS",
+      navLabel: "Open POA&Ms",
+      head: { value: String(active.length), label: `active plans, ${unsigned.length} awaiting your signature` },
+      rows: rows.slice(0, 5).map((r) => ({
+        left: `${r.poamId} — ${r.title}`,
+        sub: `Target ${r.scheduledCompletionDate}`,
+        right: r.status === "pending_signature" ? "Unsigned" : r.status,
+        tone: r.status === "pending_signature" ? "gold" : r.status === "active" ? "green" : "slate",
+      })),
+      note: "Milestones are set and ticked off by Shane; this only reads them back.",
+    },
+  };
+}
+
+export function secplanTopic(
+  version: { versionNumber: number; customerSignedAt: Date | null; mspSignedAt: Date | null } | null,
+  driftTotal: number | null,
+): GenericTopic {
+  if (!version) {
+    return { summaryLabel: "Security Plan", summary: "No Security Plan version has been sealed yet.", card: null };
+  }
+  const fullyExecuted = version.customerSignedAt !== null && version.mspSignedAt !== null;
+  const signedDate = version.customerSignedAt ? relativeDate(new Date(version.customerSignedAt)) : null;
+  const statusLabel = fullyExecuted ? `sealed and signed, ${signedDate}` : "sealed, not yet fully signed";
+  const driftLine = driftTotal !== null && driftTotal > 0
+    ? `${driftTotal} row(s) have moved since it was signed.`
+    : "No drift since it was signed.";
+  return {
+    summaryLabel: "Security Plan",
+    summary: `Version ${version.versionNumber} — ${statusLabel}. ${driftLine}`,
+    card: {
+      eyebrow: "SECURITY PLAN",
+      navLabel: "Open Security Plan",
+      head: { value: `v${version.versionNumber}`, label: statusLabel },
+      rows: driftTotal !== null && driftTotal > 0
+        ? [{ left: "Changes since signing", sub: `${driftTotal} row(s) moved`, right: "Drift", tone: "blue" }]
+        : [],
+      note: "Content is fixed the moment a version seals — drift is compared, never rewritten in place.",
+    },
+  };
+}
+
+export interface WorkloadHolders {
+  readonly id: string;
+  readonly name: string;
+  readonly holders: readonly string[];
+}
+
+export function raciTopic(workloads: readonly WorkloadHolders[]): GenericTopic {
+  if (workloads.length === 0) {
+    return { summaryLabel: "Ownership / RACI", summary: "No workloads on your ownership matrix yet.", card: null };
+  }
+  const unassigned = workloads.filter((w) => w.holders.length === 0);
+  const lines = workloads.slice(0, 8).map((w) =>
+    `• Accountable — ${w.name}: ${w.holders.length ? w.holders.join(" and ") : "no holder assigned"}`,
+  );
+  return {
+    summaryLabel: "Ownership / RACI",
+    summary: `${unassigned.length} role(s) with no Accountable holder assigned (of ${workloads.length} workloads).\n${lines.join("\n")}`,
+    card: {
+      eyebrow: "OWNERSHIP / RACI",
+      navLabel: "Open Ownership / RACI",
+      head: { value: String(unassigned.length), label: "roles with no holder assigned" },
+      rows: workloads.slice(0, 5).map((w) => ({
+        left: `Accountable — ${w.name}`,
+        sub: w.holders.length ? `Held by ${w.holders.join(" and ")}` : "No holder currently assigned",
+        right: w.holders.length ? "Held" : "Unassigned",
+        tone: w.holders.length ? "green" : "red",
+      })),
+      note: "An unassigned Accountable role is why some risks and changes can't be signed yet.",
+    },
+  };
+}
+
+/** #4125 — the real "who owns <workload>?" lookup, same `ownMatch` pattern the
+ * Card Gallery's reference script (`ShaneBot.dc.html`) already demonstrates,
+ * matched here against the real workload list instead of a design fixture. */
+export function extractWorkloadQuestion(text: string): string | null {
+  const m = text.toLowerCase().match(/who owns (.+?)\??\s*$/);
+  return m ? m[1].trim() : null;
+}
+
+export function raciWorkloadTopic(workloads: readonly WorkloadHolders[], lastUserMessage: string | null): GenericTopic | null {
+  if (!lastUserMessage) return null;
+  const raw = extractWorkloadQuestion(lastUserMessage);
+  if (!raw) return null;
+  const rawLower = raw.toLowerCase();
+  const found = workloads.find(
+    (w) => w.name.toLowerCase().includes(rawLower) || rawLower.includes(w.name.toLowerCase().split(" ")[0]),
+  );
+  if (!found) {
+    const known = workloads.map((w) => w.name).join(", ");
+    return {
+      summaryLabel: "Ownership / RACI — workload lookup",
+      summary: `No workload on your ownership matrix matches "${raw}". Tracked workloads: ${known || "none yet"}.`,
+      card: null,
+    };
+  }
+  return {
+    summaryLabel: "Ownership / RACI — workload lookup",
+    summary: `${found.name} is Accountable to ${found.holders.length ? found.holders.join(" and ") : "nobody right now"}.`,
+    card: {
+      eyebrow: "OWNERSHIP / RACI",
+      navLabel: "Open Ownership / RACI",
+      head: { value: String(found.holders.length), label: `holder(s) for ${found.name}` },
+      rows: [{
+        left: `Accountable — ${found.name}`,
+        sub: found.holders.length ? `${found.holders.join(" and ")} · any of them may sign` : "No holder assigned yet",
+        right: found.holders.length ? "Held" : "Unassigned",
+        tone: found.holders.length ? "green" : "red",
+      }],
+      note: found.holders.length
+        ? "Any listed holder may sign for this workload; Shane cannot sign on their behalf."
+        : "Assign a holder on Ownership / RACI before anything on this workload can be signed.",
+    },
+  };
+}
+
+export function policyTopic(
+  rows: readonly { id: number; title: string; reviewState: string | null; clearanceCondition: string | null; clearanceResolvedAt: Date | null }[],
+): GenericTopic {
+  if (rows.length === 0) {
+    return { summaryLabel: "Policy decisions", summary: "No policy decisions on file.", card: null };
+  }
+  const overdue = rows.filter((r) => r.reviewState === "overdue");
+  const waiting = rows.filter((r) => r.clearanceCondition !== null && r.clearanceResolvedAt === null);
+  const lines = rows.slice(0, 8).map((r) => {
+    if (r.reviewState === "overdue") return `• #${r.id} — ${r.title} (review overdue)`;
+    if (r.clearanceCondition !== null && r.clearanceResolvedAt === null) return `• #${r.id} — ${r.title} (waiting on ${r.clearanceCondition})`;
+    return `• #${r.id} — ${r.title}`;
+  });
+  return {
+    summaryLabel: "Policy decisions",
+    summary: `${overdue.length} review(s) overdue, ${waiting.length} waiting on a dependency (of ${rows.length} total).\n${lines.join("\n")}`,
+    card: {
+      eyebrow: "POLICY DECISIONS",
+      navLabel: "Open Policy Decisions",
+      head: { value: String(overdue.length), label: `review overdue, ${waiting.length} waiting on a licence` },
+      rows: rows.slice(0, 5).map((r) => ({
+        left: `#${r.id} — ${r.title}`,
+        sub: r.reviewState === "overdue" ? "Review overdue" : (r.clearanceCondition ?? ""),
+        right: r.reviewState === "overdue" ? "Overdue" : (r.clearanceCondition && r.clearanceResolvedAt === null ? "Waiting" : "Live"),
+        tone: r.reviewState === "overdue" ? "red" : (r.clearanceCondition && r.clearanceResolvedAt === null ? "blue" : "slate"),
+      })),
+      note: "A lapsed review doesn't undo the position.",
+    },
+  };
+}
+
+/** No dedicated Conditional Access inventory exists (per #4125/#4124's own
+ * note) — this is a real, honest cross-reference over the SAME Change Control
+ * and Risk Register rows already fetched for those two topics, filtered by a
+ * plain keyword match rather than a fabricated CA data model. */
+function looksLikeConditionalAccess(text: string): boolean {
+  const t = text.toLowerCase();
+  return ["conditional access", "legacy auth", "legacy authentic", "mfa polic", "block legacy"].some((k) => t.includes(k));
+}
+
+export function conditionalAccessTopic(
+  changeRows: readonly { id: number; title: string; status: string; approvedBy: string | null }[],
+  riskRows: readonly { rbdId: string; title: string; riskStatus: string | null }[],
+): GenericTopic {
+  const caChanges = changeRows.filter((r) => looksLikeConditionalAccess(r.title));
+  const caRisks = riskRows.filter((r) => looksLikeConditionalAccess(r.title));
+  const total = caChanges.length + caRisks.length;
+  if (total === 0) {
+    return {
+      summaryLabel: "Conditional Access (cross-reference)",
+      summary: "No open items in Change Control or the Risk Register currently reference Conditional Access, by keyword match.",
+      card: null,
+    };
+  }
+  const rows: GenericCardRow[] = [
+    ...caChanges.slice(0, 3).map((r) => ({
+      left: `${formatChangeRequestCode(r.id)} — ${r.title}`,
+      sub: "Change Control",
+      right: displayStatus(r.status, r.approvedBy),
+      tone: "gold" as GenericCardTone,
+    })),
+    ...caRisks.slice(0, 3).map((r) => ({
+      left: `${r.rbdId} — ${r.title}`,
+      sub: "Risk Register",
+      right: r.riskStatus ?? "Unknown",
+      tone: "purple" as GenericCardTone,
+    })),
+  ];
+  return {
+    summaryLabel: "Conditional Access (cross-reference)",
+    summary: `${total} item(s) reference Conditional Access, by keyword match across Change Control and the Risk Register.\n${rows.map((r) => `• ${r.left} — ${r.right}`).join("\n")}`,
+    card: {
+      eyebrow: "CONDITIONAL ACCESS",
+      navLabel: "Open Change Control",
+      head: { value: String(total), label: "open items reference Conditional Access" },
+      rows,
+      note: "No standalone Conditional Access inventory exists yet — read across Change Control and the Risk Register by keyword match.",
+    },
+  };
+}
+
+/** #4125 — authored display labels + keywords for the real Governance pillar
+ * signal catalog (`GOV_AREA_CHECK_DEFS`, `portal-governance-areas.ts`). The
+ * VALUES are always real (tenant_monitor_profiles); only the label/keyword
+ * strings here are authored copy, same as `OWN_LINK_LABEL` elsewhere in this
+ * codebase — never a substitute for a real number. */
+const GOVERNANCE_SIGNAL_META: Readonly<Record<string, { readonly label: string; readonly keywords: readonly string[] }>> = {
+  "compliance:eeeu-site-sharing": { label: "Oversharing sites", keywords: ["overshar", "site sharing", "external sharing"] },
+  "governance:public-teams-discoverable": { label: "Public, discoverable teams", keywords: ["public team", "discoverable team"] },
+  "teams:channel-sprawl": { label: "Channel sprawl", keywords: ["channel sprawl", "channel"] },
+  "governance:guest-count": { label: "Guest accounts", keywords: ["guest account", "guest user", "how many guest"] },
+  "governance:ownerless-groups": { label: "Groups without an owner", keywords: ["group without", "groups without", "ownerless group", "group owner"] },
+  "teams:ownerless-teams": { label: "Teams without an owner", keywords: ["team without", "teams without", "ownerless team", "team owner"] },
+  "governance:empty-security-groups": { label: "Empty security groups", keywords: ["empty security group", "orphaned group"] },
+  "teams:inactive-teams": { label: "Inactive teams", keywords: ["inactive team", "orphaned team"] },
+  "appgov:risky-permission-grants": { label: "Risky app permission grants", keywords: ["risky app", "permission grant", "app access"] },
+  "identity:pim-permanent-roles": { label: "Permanent (non-PIM) role assignments", keywords: ["pim", "permanent role", "permanent admin"] },
+  "devices:enrollment-status": { label: "Device enrollment", keywords: ["device inventory", "enrolled device", "device enrollment"] },
+  "devices:stale-duplicate-records": { label: "Stale/duplicate device records", keywords: ["stale device", "duplicate device"] },
+  "devices:compliant-vs-noncompliant": { label: "Non-compliant devices", keywords: ["noncompliant device", "device complian", "compliant device"] },
+};
+
+function govToneFor(status: "red" | "yellow" | "green" | null): GenericCardTone {
+  if (status === "red") return "red";
+  if (status === "yellow") return "gold";
+  if (status === "green") return "green";
+  return "slate";
+}
+
+export function signalTopic(
+  areas: readonly { readonly checkKey: string; readonly value: number | null; readonly status: "red" | "yellow" | "green" | null; readonly hasData: boolean }[],
+  lastUserMessage: string | null,
+): GenericTopic {
+  const withData = areas.filter((a) => a.hasData);
+  const catalogLines = withData.map((a) => {
+    const meta = GOVERNANCE_SIGNAL_META[a.checkKey];
+    return `• ${meta?.label ?? a.checkKey}: ${a.value} (${a.status ?? "n/a"})`;
+  });
+  const baseSummary = withData.length === 0
+    ? "No Governance pillar signals have been collected for this tenant yet."
+    : `Governance pillar signal catalog (${withData.length} real checks):\n${catalogLines.join("\n")}`;
+
+  if (!lastUserMessage) {
+    return { summaryLabel: "Governance pillar signals", summary: baseSummary, card: null };
+  }
+  const t = lastUserMessage.toLowerCase();
+  let best: (typeof areas)[number] | null = null;
+  let bestScore = 0;
+  for (const area of withData) {
+    const meta = GOVERNANCE_SIGNAL_META[area.checkKey];
+    if (!meta) continue;
+    const score = meta.keywords.filter((k) => t.includes(k)).length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = area;
+    }
+  }
+  if (!best) {
+    return { summaryLabel: "Governance pillar signals", summary: baseSummary, card: null };
+  }
+  const meta = GOVERNANCE_SIGNAL_META[best.checkKey];
+  return {
+    summaryLabel: "Governance pillar signals",
+    summary: baseSummary,
+    card: {
+      eyebrow: "GOVERNANCE PILLAR SIGNAL",
+      navLabel: "Open Governance pillar",
+      head: { value: String(best.value), label: meta.label },
+      rows: [{ left: meta.label, sub: best.checkKey, right: best.status === "green" ? "Healthy" : best.status === "red" ? "Attention" : "Worth a look", tone: govToneFor(best.status) }],
+      note: "Read straight from the Governance pillar's signal catalog — same number, same checkKey.",
+    },
+  };
+}
+
+async function buildCustomerContext(
+  customerId: number,
+  mspId: number | null,
+  userId: number | null,
+  lastUserMessage: string | null,
+): Promise<BotGrounding> {
   const since30d = new Date(Date.now() - 30 * 86_400_000);
 
   const sowConditions = [eq(mspSowsTable.customerId, customerId)];
@@ -529,11 +1005,17 @@ async function buildCustomerContext(customerId: number, mspId: number | null, us
   }
 
   const [customerRow, signalRows, sowRows, bundleRows, latestRunRows, lastCompletedRows, invoiceRows, scoreRows] = await Promise.all([
+    // #4125 Batch A: mspId + businessUnit added to this SAME row read so the
+    // (mspId, tenantId) scope every new topic below needs can be derived
+    // without a second tenantsTable round trip — see the inline derivation
+    // right after this Promise.all resolves.
     db.select({
       name: tenantsTable.customerName,
       domain: tenantsTable.domain,
       status: tenantsTable.status,
       tenantId: tenantsTable.tenantId,
+      mspId: tenantsTable.mspId,
+      businessUnit: tenantsTable.businessUnit,
     })
       .from(tenantsTable)
       .where(eq(tenantsTable.id, customerId))
@@ -645,6 +1127,21 @@ async function buildCustomerContext(customerId: number, mspId: number | null, us
   const customer = customerRow[0];
   if (!customer) return { identity: "customer user", summary: "No customer data found." };
 
+  // #4125 Batch A — derived from the SAME row fetched above, not a second
+  // tenantsTable round trip. Same validation `resolveTenantScope` applies
+  // (portal-customer-scope.ts): fail closed — never a partial scope — on a
+  // non-numeric mspId or a blank M365 tenant identifier.
+  const scope: TenantScope | null = typeof customer.mspId === "number" && (customer.tenantId ?? "").trim()
+    ? {
+        customerId,
+        mspId: customer.mspId,
+        tenantId: (customer.tenantId ?? "").trim(),
+        tenantName: (customer.name ?? "").trim() || "Your organisation",
+        primaryDomain: (customer.domain ?? "").trim(),
+        businessUnit: customer.businessUnit?.trim() || null,
+      }
+    : null;
+
   const lastCompleted = lastCompletedRows[0];
   const findingRows = lastCompleted
     ? await db.select({
@@ -667,6 +1164,165 @@ async function buildCustomerContext(customerId: number, mspId: number | null, us
     : signalRows.map((s) => `• ${s.eventType.replace("signal.", "")} (${relativeDate(new Date(s.occurredAt))})`).join("\n");
 
   const scoreRow = scoreRows[0];
+
+  // #4125 Batch A — Governance & Risk cluster: a second wave, run only once
+  // `scope` above is known (every one of these is a real, mspId+tenantId- or
+  // customerId-scoped query — see each topic's own comment for its source).
+  // A null scope means "no resolvable M365 tenant" — the same fail-closed,
+  // empty-not-error state every route above already applies — so every entry
+  // here degrades to Promise.resolve(<empty>) rather than querying at all.
+  const [riskRows, changeRows, poamRows, policyRows, ownershipPayload, secplanVersion, secplanDriftResult, govAreaRows] = await Promise.all([
+    // Risk register.
+    scope
+      ? db.select({
+          rbdId: mspRiskDecisionsTable.rbdId,
+          title: mspRiskDecisionsTable.title,
+          riskStatus: mspRiskDecisionsTable.riskStatus,
+          reviewState: mspRiskDecisionsTable.reviewState,
+        })
+          .from(mspRiskDecisionsTable)
+          .where(and(eq(mspRiskDecisionsTable.mspId, scope.mspId), eq(mspRiskDecisionsTable.tenantId, scope.tenantId)))
+          .orderBy(desc(mspRiskDecisionsTable.id))
+      : Promise.resolve([]),
+
+    // Change Control.
+    scope
+      ? db.select({
+          id: mspChangeRequestsTable.id,
+          title: mspChangeRequestsTable.title,
+          status: mspChangeRequestsTable.status,
+          approvedBy: mspChangeRequestsTable.approvedBy,
+          scheduledFor: mspChangeRequestsTable.scheduledFor,
+        })
+          .from(mspChangeRequestsTable)
+          .where(and(eq(mspChangeRequestsTable.mspId, scope.mspId), eq(mspChangeRequestsTable.tenantId, scope.tenantId)))
+          .orderBy(desc(mspChangeRequestsTable.id))
+      : Promise.resolve([]),
+
+    // POA&Ms (excludes soft-deleted, same convention every other reader of
+    // this table follows — see portal-poams.ts's own header).
+    scope
+      ? db.select({
+          poamId: mspPoamsTable.poamId,
+          title: mspPoamsTable.title,
+          status: mspPoamsTable.status,
+          scheduledCompletionDate: mspPoamsTable.scheduledCompletionDate,
+        })
+          .from(mspPoamsTable)
+          .where(and(
+            eq(mspPoamsTable.mspId, scope.mspId),
+            eq(mspPoamsTable.tenantId, scope.tenantId),
+            isNull(mspPoamsTable.deletedAt),
+          ))
+          .orderBy(desc(mspPoamsTable.id))
+      : Promise.resolve([]),
+
+    // Policy decisions' own table (policy_decisions), NOT the risk-derived
+    // view — see portal-policy-decisions.ts's own header for why the two are
+    // separate real sources.
+    scope
+      ? db.select({
+          id: policyDecisionsTable.id,
+          title: policyDecisionsTable.title,
+          reviewState: policyDecisionsTable.reviewState,
+          clearanceCondition: policyDecisionsTable.clearanceCondition,
+          clearanceResolvedAt: policyDecisionsTable.clearanceResolvedAt,
+        })
+          .from(policyDecisionsTable)
+          .where(and(eq(policyDecisionsTable.mspId, scope.mspId), eq(policyDecisionsTable.tenantId, scope.tenantId)))
+          .orderBy(desc(policyDecisionsTable.id))
+      : Promise.resolve([]),
+
+    // Ownership / RACI. Reuses the SAME assembly the real
+    // `GET /portal/ownership` route calls, rather than re-querying the
+    // underlying tables here (see portal-ownership.ts's own header on why
+    // MSP-console and portal share one assembly instead of forking reads).
+    // callerEmail is "" — only used upstream to resolve currentUserId/Name,
+    // neither of which this topic reads. Gated on scope resolving, same as
+    // every other topic here — the real GET route itself still serves a
+    // partial payload for an unresolvable scope, but that partial (people-
+    // only) payload has no workload rows for raci/raci-workload to read.
+    scope
+      ? assembleOwnershipPayload(customerId, "").catch((err: unknown) => {
+          log.error({ err, customerId }, "shanebot-engine: failed to load ownership payload for raci/raci-workload topics");
+          return null;
+        })
+      : Promise.resolve(null),
+
+    // Security Plan current version.
+    scope
+      ? getCurrentSecurityPlanVersion(scope.mspId, scope.customerId).catch((err: unknown) => {
+          log.error({ err, customerId }, "shanebot-engine: failed to load current security plan version");
+          return null;
+        })
+      : Promise.resolve(null),
+
+    // Security Plan drift since last signed version.
+    scope
+      ? getSecurityPlanDrift(scope).catch((err: unknown) => {
+          log.error({ err, customerId }, "shanebot-engine: failed to compute security plan drift");
+          return null;
+        })
+      : Promise.resolve(null),
+
+    // Governance pillar signal catalog (real, confirmed backing per
+    // portal-governance-areas.ts — the same 13-check, two-query-per-check
+    // read `GET /portal/governance/areas` already does).
+    scope
+      ? Promise.all(
+          GOV_AREA_CHECK_DEFS.map(async (def) => {
+            const rows = await db.select({
+              extractedProperties: tenantMonitorProfilesTable.extractedProperties,
+              severityMatched: tenantMonitorProfilesTable.severityMatched,
+              severityLabel: tenantMonitorProfilesTable.severityLabel,
+              collectedAt: tenantMonitorProfilesTable.collectedAt,
+            })
+              .from(tenantMonitorProfilesTable)
+              .where(and(
+                eq(tenantMonitorProfilesTable.tenantId, scope.tenantId),
+                eq(tenantMonitorProfilesTable.checkKey, def.checkKey),
+              ))
+              .orderBy(desc(tenantMonitorProfilesTable.collectedAt), desc(tenantMonitorProfilesTable.id))
+              .limit(2);
+            const [latest, previous] = rows as GovProfileRow[];
+            return buildGovArea(def, latest, previous);
+          }),
+        )
+      : Promise.resolve([]),
+  ]);
+
+  // Built from the rows already fetched above; ownership needs its workload
+  // objects + Accountable-role overlay merged first (same pattern the real
+  // GET /portal/ownership caller would do client-side, done here server-side
+  // instead).
+  const workloadHolders: WorkloadHolders[] = (() => {
+    if (!ownershipPayload) return [];
+    const peopleById = new Map(ownershipPayload.people.map((p) => [p.id, p.name] as const));
+    const holdersByObjectId = new Map<string, string[]>();
+    for (const a of ownershipPayload.overlay.assignments) {
+      if (a.roleKey !== "a" || a.ownerPersonId === "") continue;
+      const list = holdersByObjectId.get(a.objectId) ?? [];
+      list.push(peopleById.get(a.ownerPersonId) ?? a.ownerPersonId);
+      holdersByObjectId.set(a.objectId, list);
+    }
+    return ownershipPayload.objects
+      .filter((o) => o.type === "workload")
+      .map((o) => ({ id: o.id, name: o.name, holders: holdersByObjectId.get(o.id) ?? [] }));
+  })();
+
+  const risk = riskTopic(riskRows);
+  const changes = changesTopic(changeRows);
+  const findings = findingsTopic(findingRows);
+  const poams = poamsTopic(poamRows);
+  const secplan = secplanTopic(
+    secplanVersion,
+    secplanDriftResult ? secplanDriftResult.drift.totalAdded + secplanDriftResult.drift.totalRemoved + secplanDriftResult.drift.totalChanged : null,
+  );
+  const raci = raciTopic(workloadHolders);
+  const raciWorkload = raciWorkloadTopic(workloadHolders, lastUserMessage);
+  const policy = policyTopic(policyRows);
+  const conditionalAccess = conditionalAccessTopic(changeRows, riskRows);
+  const signal = signalTopic(govAreaRows, lastUserMessage);
 
   // Active Cards (#366) — structured payloads built from the SAME rows the
   // prose summary above already fetched, so requesting a card never triggers
@@ -729,6 +1385,19 @@ async function buildCustomerContext(customerId: number, mspId: number | null, us
         date: (r.chargeConfirmedAt ?? r.signedAt) ? (r.chargeConfirmedAt ?? r.signedAt)!.toISOString() : null,
       })),
     },
+    // #4125 Batch A — a topic's card is undefined (not present) when its
+    // builder found nothing real to show, same "omitted, not null" contract
+    // the four original card types already use.
+    risk: risk.card ?? undefined,
+    changes: changes.card ?? undefined,
+    findings: findings.card ?? undefined,
+    poams: poams.card ?? undefined,
+    secplan: secplan.card ?? undefined,
+    raci: raci.card ?? undefined,
+    raciWorkload: raciWorkload?.card ?? undefined,
+    policy: policy.card ?? undefined,
+    conditionalAccess: conditionalAccess.card ?? undefined,
+    signal: signal.card ?? undefined,
   };
 
   return {
@@ -752,7 +1421,34 @@ Scan / monitoring status:
 ${formatScanStatus(latestRunRows[0], lastCompleted, findingRows)}
 
 Recent signals (last 30 days):
-${signalSummary}`,
+${signalSummary}
+
+${risk.summaryLabel}:
+${risk.summary}
+
+${changes.summaryLabel}:
+${changes.summary}
+
+${findings.summaryLabel}:
+${findings.summary}
+
+${poams.summaryLabel}:
+${poams.summary}
+
+${secplan.summaryLabel}:
+${secplan.summary}
+
+${raci.summaryLabel}:
+${raci.summary}
+${raciWorkload ? `\n${raciWorkload.summaryLabel}:\n${raciWorkload.summary}\n` : ""}
+${policy.summaryLabel}:
+${policy.summary}
+
+${conditionalAccess.summaryLabel}:
+${conditionalAccess.summary}
+
+${signal.summaryLabel}:
+${signal.summary}`,
     cardData,
   };
 }

@@ -78,6 +78,17 @@ import {
   upsertBotConversation,
   getBotConversationTranscript,
   getBotConversationTranscripts,
+  riskTopic,
+  changesTopic,
+  findingsTopic,
+  poamsTopic,
+  secplanTopic,
+  raciTopic,
+  raciWorkloadTopic,
+  extractWorkloadQuestion,
+  policyTopic,
+  conditionalAccessTopic,
+  signalTopic,
 } from "./shanebot-engine.ts";
 import { db } from "@workspace/db";
 
@@ -92,12 +103,15 @@ describe("BOT_INSTANCES — the two permanent instances", () => {
     expect(pub.personaSurface).toBe("public");
   });
 
-  it("ShaneBot Paid: portal-authenticated, customer_entitlements, both actions, all 4 card types, msp cost", () => {
+  it("ShaneBot Paid: portal-authenticated, customer_entitlements, both actions, all 14 card types (#4125 Batch A), msp cost", () => {
     const paid = resolveInstance("shanebot_paid");
     expect(paid.authMode).toBe("portal_authenticated");
     expect(paid.groundingSource).toBe("customer_entitlements");
     expect(paid.allowedActions).toEqual(["regenerate_document", "rerun_scan"]);
-    expect(paid.allowedCardTypes).toEqual(["invoice", "subscription", "score", "data-answer"]);
+    expect(paid.allowedCardTypes).toEqual([
+      "invoice", "subscription", "score", "data-answer",
+      "risk", "changes", "findings", "poams", "secplan", "raci", "raci-workload", "policy", "conditional-access", "signal",
+    ]);
     expect(paid.costOwner).toBe("msp");
     expect(paid.personaSurface).toBe("portal");
   });
@@ -401,6 +415,159 @@ describe("customer_entitlements grounding (#362): buildCustomerContext", () => {
     expect(grounding.cardData?.subscription).toBeUndefined();
     expect(grounding.cardData?.score).toBeUndefined();
     expect(grounding.cardData?.dataAnswer).toEqual({ subscriptions: [], latestScan: null, purchases: [] });
+  });
+
+  // ── #4125 Batch A: no resolvable (mspId, tenantId) scope ────────────────────
+  // The mocked customer row here (as in every test above) carries no mspId,
+  // so the derived `scope` is null — every Batch A topic must fail closed to
+  // its honest "nothing yet" text and its cardData must stay undefined,
+  // exactly like the real portal-risk-register.ts etc. do for an unresolvable
+  // tenant, and NOT fire a second-wave query at all.
+  it("#4125 Batch A: with no resolvable tenant scope, every new topic degrades honestly and fires no query", async () => {
+    mockDb["limit"]
+      .mockResolvedValueOnce([{ name: "Acme Corp", domain: "acme.com", status: "active", tenantId: "tid-1" }])
+      .mockResolvedValue([]);
+    const callsBefore = mockDb["limit"].mock.calls.length;
+    const grounding = await buildGrounding(paid, { customerId: 42, mspId: 7, isCustomerUser: true });
+
+    expect(grounding.summary).toContain("Risk register:\nNo risks recorded on your risk register.");
+    expect(grounding.summary).toContain("Change Control:\nNo change requests on file.");
+    expect(grounding.summary).toContain("Remediation tracking findings:\nNo open critical/warning findings from your latest scan.");
+    expect(grounding.summary).toContain("POA&Ms:\nNo active plans of action.");
+    expect(grounding.summary).toContain("Security Plan:\nNo Security Plan version has been sealed yet.");
+    expect(grounding.summary).toContain("Ownership / RACI:\nNo workloads on your ownership matrix yet.");
+    expect(grounding.summary).toContain("Policy decisions:\nNo policy decisions on file.");
+    expect(grounding.summary).toContain("Conditional Access (cross-reference):\nNo open items in Change Control or the Risk Register currently reference Conditional Access, by keyword match.");
+    expect(grounding.summary).toContain("Governance pillar signals:\nNo Governance pillar signals have been collected for this tenant yet.");
+
+    expect(grounding.cardData?.risk).toBeUndefined();
+    expect(grounding.cardData?.changes).toBeUndefined();
+    expect(grounding.cardData?.findings).toBeUndefined();
+    expect(grounding.cardData?.poams).toBeUndefined();
+    expect(grounding.cardData?.secplan).toBeUndefined();
+    expect(grounding.cardData?.raci).toBeUndefined();
+    expect(grounding.cardData?.raciWorkload).toBeUndefined();
+    expect(grounding.cardData?.policy).toBeUndefined();
+    expect(grounding.cardData?.conditionalAccess).toBeUndefined();
+    expect(grounding.cardData?.signal).toBeUndefined();
+
+    // No resolvable scope means every scope-gated second-wave query
+    // short-circuits to Promise.resolve — the only new call beyond the
+    // original 6 is the always-run findings check, which itself short-
+    // circuits (lastCompleted is undefined) without querying.
+    expect(mockDb["limit"].mock.calls.length).toBe(callsBefore + 6);
+  });
+});
+
+describe("#4125 Batch A — Governance & Risk cluster topic builders (pure, DB-free)", () => {
+  it("riskTopic: counts open/mitigating and overdue reviews, builds a card only when rows exist", () => {
+    expect(riskTopic([]).card).toBeNull();
+    const t = riskTopic([
+      { rbdId: "RR-1", title: "No retention on Teams sites", riskStatus: "Open", reviewState: null },
+      { rbdId: "RR-2", title: "MFA gaps", riskStatus: "Accepted", reviewState: "overdue" },
+      { rbdId: "RR-3", title: "Licence spend", riskStatus: "Mitigating", reviewState: "on_track" },
+    ]);
+    expect(t.summary).toContain("2 open or mitigating of 3 total, 1 review(s) overdue");
+    expect(t.card?.head).toEqual({ value: "2", label: "open or mitigating, 1 review overdue" });
+    expect(t.card?.rows.find((r) => r.left.startsWith("RR-2"))?.tone).toBe("red");
+  });
+
+  it("changesTopic: pending approval / scheduled counts, honest empty state", () => {
+    expect(changesTopic([]).card).toBeNull();
+    const t = changesTopic([
+      { id: 18, title: "Block legacy auth", status: "pending_approval", approvedBy: null, scheduledFor: "Sat window" },
+      { id: 16, title: "Move service accounts", status: "scheduled", approvedBy: "Jordan", scheduledFor: "Fri window" },
+    ]);
+    expect(t.card?.head).toEqual({ value: "1", label: "pending approval, 1 scheduled" });
+    expect(t.summary).toContain("CR-2026-118");
+  });
+
+  it("findingsTopic: lists critical/warning findings, honest empty state", () => {
+    expect(findingsTopic([]).card).toBeNull();
+    const t = findingsTopic([{ severity: "critical", title: "External sharing defaults to anyone with the link" }]);
+    expect(t.card?.head?.value).toBe("1");
+    expect(t.card?.rows[0].tone).toBe("red");
+  });
+
+  it("poamsTopic: active vs unsigned counts", () => {
+    expect(poamsTopic([]).card).toBeNull();
+    const t = poamsTopic([
+      { poamId: "POAM-19", title: "Retire legacy auth", status: "pending_signature", scheduledCompletionDate: "2026-11-30" },
+      { poamId: "POAM-17", title: "Enforce guest MFA", status: "active", scheduledCompletionDate: "2026-10-15" },
+      { poamId: "POAM-10", title: "Old one", status: "completed", scheduledCompletionDate: "2026-01-01" },
+    ]);
+    expect(t.card?.head).toEqual({ value: "2", label: "active plans, 1 awaiting your signature" });
+  });
+
+  it("secplanTopic: fully-executed status and drift total, honest 'never sealed' state", () => {
+    expect(secplanTopic(null, null).card).toBeNull();
+    const t = secplanTopic({ versionNumber: 4, customerSignedAt: new Date("2026-09-02T00:00:00Z"), mspSignedAt: new Date("2026-09-01T00:00:00Z") }, 5);
+    expect(t.card?.head?.value).toBe("v4");
+    expect(t.summary).toContain("5 row(s) have moved since it was signed");
+  });
+
+  it("raciTopic + raciWorkloadTopic: unassigned count, and the real 'who owns X' lookup", () => {
+    const workloads = [
+      { id: "wl-sharepoint", name: "SharePoint", holders: [] as string[] },
+      { id: "wl-exchange", name: "Exchange Online", holders: ["Marcus Chen"] },
+    ];
+    expect(raciTopic([]).card).toBeNull();
+    const raci = raciTopic(workloads);
+    expect(raci.card?.head).toEqual({ value: "1", label: "roles with no holder assigned" });
+
+    expect(extractWorkloadQuestion("Who owns SharePoint?")).toBe("sharepoint");
+    expect(extractWorkloadQuestion("What Conditional Access am I missing?")).toBeNull();
+
+    expect(raciWorkloadTopic(workloads, null)).toBeNull();
+    expect(raciWorkloadTopic(workloads, "What's my score?")).toBeNull();
+
+    const found = raciWorkloadTopic(workloads, "Who owns SharePoint?");
+    expect(found?.card?.head).toEqual({ value: "0", label: "holder(s) for SharePoint" });
+    expect(found?.card?.rows[0].right).toBe("Unassigned");
+
+    const held = raciWorkloadTopic(workloads, "Who owns Exchange Online?");
+    expect(held?.summary).toContain("Marcus Chen");
+
+    const notFound = raciWorkloadTopic(workloads, "Who owns Teams?");
+    expect(notFound?.card).toBeNull();
+    expect(notFound?.summary).toContain("No workload on your ownership matrix matches");
+  });
+
+  it("policyTopic: overdue review vs licence-waiting counts", () => {
+    expect(policyTopic([]).card).toBeNull();
+    const t = policyTopic([
+      { id: 39, title: "Two service accounts kept out of MFA", reviewState: "overdue", clearanceCondition: null, clearanceResolvedAt: null },
+      { id: 33, title: "Guest access reviews paused", reviewState: null, clearanceCondition: "Entra ID P2 licences land", clearanceResolvedAt: null },
+    ]);
+    expect(t.card?.head).toEqual({ value: "1", label: "review overdue, 1 waiting on a licence" });
+  });
+
+  it("conditionalAccessTopic: real keyword cross-reference over Change Control + Risk Register, honest when nothing matches", () => {
+    const noMatch = conditionalAccessTopic(
+      [{ id: 1, title: "Rotate service account password", status: "pending_approval", approvedBy: null }],
+      [{ rbdId: "RR-1", title: "Licence spend", riskStatus: "Open" }],
+    );
+    expect(noMatch.card).toBeNull();
+
+    const match = conditionalAccessTopic(
+      [{ id: 118, title: "Block legacy authentication protocols", status: "pending_approval", approvedBy: null }],
+      [{ rbdId: "RR-9", title: "Conditional access change declined", riskStatus: "Accepted" }],
+    );
+    expect(match.card?.head?.value).toBe("2");
+  });
+
+  it("signalTopic: catalog prose always present, card only on a real keyword match", () => {
+    const areas = [
+      { checkKey: "governance:ownerless-groups", value: 12, status: "yellow" as const, hasData: true },
+      { checkKey: "governance:guest-count", value: 3, status: "green" as const, hasData: true },
+      { checkKey: "teams:channel-sprawl", value: 0, status: null, hasData: false },
+    ];
+    const noMatch = signalTopic(areas, "What's my Copilot score?");
+    expect(noMatch.card).toBeNull();
+    expect(noMatch.summary).toContain("Groups without an owner: 12");
+
+    const match = signalTopic(areas, "How many groups without an owner do I have?");
+    expect(match.card?.head).toEqual({ value: "12", label: "Groups without an owner" });
   });
 });
 

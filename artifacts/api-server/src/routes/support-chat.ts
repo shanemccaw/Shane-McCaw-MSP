@@ -202,6 +202,27 @@ function resolveCardData(
       return cardData.score ? (cardData.score as unknown as Record<string, unknown>) : null;
     case "data-answer":
       return cardData.dataAnswer ? (cardData.dataAnswer as unknown as Record<string, unknown>) : null;
+    // #4125 Batch A — Governance & Risk cluster generic cards.
+    case "risk":
+      return cardData.risk ? (cardData.risk as unknown as Record<string, unknown>) : null;
+    case "changes":
+      return cardData.changes ? (cardData.changes as unknown as Record<string, unknown>) : null;
+    case "findings":
+      return cardData.findings ? (cardData.findings as unknown as Record<string, unknown>) : null;
+    case "poams":
+      return cardData.poams ? (cardData.poams as unknown as Record<string, unknown>) : null;
+    case "secplan":
+      return cardData.secplan ? (cardData.secplan as unknown as Record<string, unknown>) : null;
+    case "raci":
+      return cardData.raci ? (cardData.raci as unknown as Record<string, unknown>) : null;
+    case "raci-workload":
+      return cardData.raciWorkload ? (cardData.raciWorkload as unknown as Record<string, unknown>) : null;
+    case "policy":
+      return cardData.policy ? (cardData.policy as unknown as Record<string, unknown>) : null;
+    case "conditional-access":
+      return cardData.conditionalAccess ? (cardData.conditionalAccess as unknown as Record<string, unknown>) : null;
+    case "signal":
+      return cardData.signal ? (cardData.signal as unknown as Record<string, unknown>) : null;
     default:
       return null;
   }
@@ -285,13 +306,23 @@ When your answer is about one of these, prefer the specific card for it over any
 - Invoices or billing history → [SHOW_CARD:invoice]
 - Subscription or plan status → [SHOW_CARD:subscription]
 - Copilot readiness score → [SHOW_CARD:score]
-Only if none of those three fit, and the question is still a structured platform-data question you can answer from the data above, you may fall back to [SHOW_CARD:data-answer]. Treat data-answer as the fallback of last resort, not a first choice.
+- Risk register (open/mitigating risks, overdue reviews) → [SHOW_CARD:risk]
+- Change Control (change requests, approvals, scheduled windows) → [SHOW_CARD:changes]
+- Remediation tracking / scan findings → [SHOW_CARD:findings]
+- POA&Ms (plans of action & milestones) → [SHOW_CARD:poams]
+- Security Plan version or drift since it was signed → [SHOW_CARD:secplan]
+- Ownership / RACI overview (which Accountable roles have a gap) → [SHOW_CARD:raci]
+- Who owns a SPECIFIC workload (e.g. "Who owns SharePoint?") → [SHOW_CARD:raci-workload]
+- Policy decisions (overdue reviews, licence-blocked items) → [SHOW_CARD:policy]
+- Conditional Access (read across Change Control + the Risk Register — there is no standalone CA inventory) → [SHOW_CARD:conditional-access]
+- A specific Governance pillar signal/check (e.g. guest accounts, ownerless groups) → [SHOW_CARD:signal]
+Only if none of the above fit, and the question is still a structured platform-data question you can answer from the data above, you may fall back to [SHOW_CARD:data-answer]. Treat data-answer as the fallback of last resort, not a first choice.
 Append the marker on its own line, alone, after your written answer.
 === END DATA CARDS ===
 
 DATA CARD RULES (follow exactly):
 - Only request a card type that is actually relevant to what the user just asked.
-- Prefer the specific card (invoice, subscription, score) whenever it applies. Only request data-answer when none of those three do.
+- Prefer the specific card listed above whenever it applies. Only request data-answer when none of them do.
 - Still answer briefly in your own words too — the card supplements your reply, it never replaces it.
 - Request at most one card per reply.
 - If there is no real data available for that card type, none will be shown — do not claim one is showing.`;
@@ -507,6 +538,13 @@ router.post(
     // null mspId, so reading it directly would leave the spend unattributed.
     const billingMspId = resolveBillingMspId(user) ?? mspId;
 
+    // #4125 Batch A — the turn's own latest user message, resolved once here
+    // (rather than only later for escalation/audit) so it can also seed the
+    // engine's two dynamic lookups: "who owns <workload>?" and a Governance
+    // pillar signal keyword match. See CustomerEntitlementsContext.lastUserMessage.
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    const lastUserText = lastUserMsg ? contentToText(lastUserMsg.content) : "";
+
     // ShaneBot Paid — grounded via the shared engine's customer_entitlements
     // builder. The engine branches Customer → own tenant, MSP staff → their
     // MSP, and falls back for a user with no resolvable MSP context (the
@@ -521,11 +559,11 @@ router.post(
     try {
       if (isCustomerUser && customerId) {
         [groundedCtx, remediableOffers] = await Promise.all([
-          buildGrounding(paidInstance, { customerId, mspId, isCustomerUser, userId: user.id }),
+          buildGrounding(paidInstance, { customerId, mspId, isCustomerUser, userId: user.id, lastUserMessage: lastUserText }),
           listRemediableOffers(customerId),
         ]);
       } else {
-        groundedCtx = await buildGrounding(paidInstance, { customerId, mspId, isCustomerUser, userId: user.id });
+        groundedCtx = await buildGrounding(paidInstance, { customerId, mspId, isCustomerUser, userId: user.id, lastUserMessage: lastUserText });
       }
     } catch (err) {
       log.error({ err }, "support-chat: failed to build grounded context");
@@ -685,9 +723,7 @@ router.post(
     // it for any client that hasn't moved over yet.
     const replyContent = buildAssistantContent(visibleReply, suggestedReplies, proposedCard ? [proposedCard] : []);
 
-    // Audit with correct AuditEvent shape
-    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
-    const lastUserText = lastUserMsg ? contentToText(lastUserMsg.content) : "";
+    // Audit with correct AuditEvent shape (lastUserText resolved earlier, before grounding)
     void createAuditLog({
       actorUserId: user.id,
       actorName: user.name ?? user.email,
