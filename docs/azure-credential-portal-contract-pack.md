@@ -129,7 +129,7 @@ Handler flow and every real response shape it can return:
 | Metadata fields: `id`, `displayName`, `tenantId`, `clientId`, `credentialType`, `expiresOn`, `updatedAt` | **CURRENT** | #3961 |
 | Secret value (view or echo-back) | **DECIDED — never exposed, by design.** Not a gap; #3960's own scope decision (Key Vault write-only, "Never displays the current secret value") | #3960 |
 | Certificate-type credential rotation | **DECIDED — out of scope.** Route explicitly 400s; no certificate-rotation endpoint exists anywhere in this codebase today | — |
-| Portal UI page/component | **MISSING — genuinely new work, not a wiring gap.** Zero references in `artifacts/msp-portal/src` (§0 above) | #3960 Phase 4 (UI build + wire), not yet filed with a real number as of this pack |
+| Portal UI page/component | **MISSING — genuinely new work, not a wiring gap.** Zero references in `artifacts/msp-portal/src` (§0 above) | #3964 (Portal: Azure credential self-service — UI build + wire), already filed as a sub-issue of #3960 |
 | Create/register a *new* credential from Portal (vs. admin creating the initial row) | **NOT BUILT.** No `POST /api/portal/azure-credential` (create) exists — only GET (read) and `/rotate` (update-in-place on an already-admin-created row). #3960's own body scopes Portal to "view status and rotate their own secret" only; creation stays admin-only (`admin-azure-credentials.ts:196`, `requireAdmin`) | #3960 (scope as written; flagged here as a real absence, not assumed) |
 | Delete/unregister own credential from Portal | **NOT BUILT.** No portal-facing DELETE exists — only the admin route (`admin-azure-credentials.ts:278`, `requireAdmin`) | #3960 (out of stated scope; flagged) |
 
