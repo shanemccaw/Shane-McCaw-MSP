@@ -157,6 +157,13 @@ async function ensureDirectCustomerRecord(userId: number, tenantId?: string | nu
  * msp_users row exists yet"); an account already carrying an explicit role or
  * link is never role-patched here (promoteMspUserToCustomer owns upgrades).
  * Defaults to `Customer`, keeping the historical behavior.
+ *
+ * #3973 (step 3 of #3970) — the one other role this function DOES swap,
+ * unconditionally and regardless of desiredRole: a `RetainerNoConsent` row
+ * (no tenant, ever, while in that state — #3971) reaching here IS the tenant
+ * actually getting connected, so it becomes `RetainerConsented` in the exact
+ * same `UPDATE` that sets tenant_id/mspId below — one atomic transition, never
+ * a tenant link left sitting on the pre-consent role.
  */
 export async function ensureClientMspUser(
   userId: number,
@@ -237,12 +244,22 @@ export async function ensureClientMspUser(
   // merge, a wholly-unbridged row (all three scope columns at their defaults)
   // is that same state, so it takes desiredRole; anything else keeps its role.
   const stillAtUnbridgedDefault = existing.existingRole === "Free" && existing.existingMspId == null;
+  // #3973 — a RetainerNoConsent row reaching here (tenant now resolvable, not
+  // yet linked) is by definition completing consent: swap it to
+  // RetainerConsented regardless of desiredRole, which carries the CALLER's
+  // product-type default (Free/Customer) and has no bearing on this ladder
+  // transition.
+  const isRetainerConsentCompletion = existing.existingRole === LEGACY_ROLE.retainerNoConsent;
   await db
     .update(usersTable)
     .set({
       tenantId: customerId,
       mspId: existing.existingMspId ?? mspId,
-      ...(stillAtUnbridgedDefault ? { mspRole: desiredRole ?? LEGACY_ROLE.customer } : {}),
+      ...(isRetainerConsentCompletion
+        ? { mspRole: LEGACY_ROLE.retainerConsented }
+        : stillAtUnbridgedDefault
+          ? { mspRole: desiredRole ?? LEGACY_ROLE.customer }
+          : {}),
       updatedAt: new Date(),
     })
     .where(eq(usersTable.id, userId));
