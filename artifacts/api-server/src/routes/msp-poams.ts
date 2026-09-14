@@ -179,7 +179,15 @@ async function loadOwnScoped(mspId: number, poamId: string) {
   const [existing] = await db
     .select()
     .from(mspPoamsTable)
-    .where(and(eq(mspPoamsTable.poamId, poamId), eq(mspPoamsTable.mspId, mspId)))
+    // Git #3451: reads exclude soft-deleted rows by default (the platform
+    // convention `lifecycle.ts` documents).
+    .where(
+      and(
+        eq(mspPoamsTable.poamId, poamId),
+        eq(mspPoamsTable.mspId, mspId),
+        isNull(mspPoamsTable.deletedAt),
+      ),
+    )
     .limit(1);
   return existing ?? null;
 }
