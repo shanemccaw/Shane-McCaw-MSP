@@ -3,7 +3,6 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Link } from "wouter";
 import { PolicyDecisionsCard } from "@/components/risk-register/PolicyDecisionsCard";
 import { RiskHeatMap } from "@/components/risk-register/RiskHeatMap";
 import { RiskRow } from "@/components/risk-register/RiskRow";
@@ -31,63 +30,9 @@ const CLOCKS = [
   },
 ];
 
-const LEDGER: { gap: string; where: string; link?: { label: string; href: string } }[] = [
-  {
-    gap: "No second signature, on a line or on a document. Acceptance is written once and cannot be replaced, re-signed or amended.",
-    where: "§9.3",
-  },
-  {
-    gap: "No renewal on your behalf. Your MSP has no path to re-accept or extend anything you signed, by design.",
-    where: "§9.6",
-  },
-  {
-    gap: "No name check. The name you type is recorded as typed and is never matched against your account.",
-    where: "§9.5",
-  },
-  {
-    gap: "No document produced on request, and the document viewer / drawn-signature flow are not wired into this portal yet — the endpoints behind them are live. Your MSP prepares the render so it always has a real author.",
-    where: "§9.9",
-  },
-  {
-    gap: "No authority check on cross-cutting risks. Cost, governance and licence checks resolve to no workload owner, so anyone signed in here may sign them.",
-    where: "§9.8",
-  },
-  {
-    gap: "No line items. A risk covering many accounts is one line here; the individual objects are tracked by your MSP and not served to this page.",
-    where: "§6.2",
-  },
-  {
-    gap: "No structured owner as an editable field. The owner shown is display text; the person who may sign is resolved through the workload instead.",
-    where: "§4",
-  },
-  {
-    gap: 'No fabricated values. Anything unrecorded reads "Not recorded" rather than a zero, a dash or a guessed default.',
-    where: "§8",
-  },
-  {
-    gap: "No difference between an empty register and a tenant we cannot identify — both answer with an empty list.",
-    where: "§8",
-  },
-  {
-    gap: "No provenance for a risk raised by a declined remediation step. The pointer exists in the database but is not served, so such a risk looks authored from scratch.",
-    where: "§7.3",
-  },
-  {
-    gap: 'Two separate registers use the name "policy decisions". This page shows only the risk-derived ones.',
-    where: "§0.1",
-    // #1724 wired the real own-table page — no longer a coming-soon destination.
-    link: { label: "Open the standing Policy Decisions register", href: "/policy-decisions" },
-  },
-  {
-    gap: "Whether a risk's own Expired state should still be a product concept is unsettled — if your MSP has used it, it renders like any other status here rather than being hidden.",
-    where: "§2",
-  },
-];
-
 export default function RiskRegisterPage() {
   const { data: risks, isLoading, isError, refetch, isRefetching } = useRiskRegister();
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
-  const [ledgerOpen, setLedgerOpen] = useState(true);
 
   const toggleRow = (id: string) => {
     setOpenIds((prev) => {
@@ -271,48 +216,6 @@ export default function RiskRegisterPage() {
           <PolicyDecisionsCard onSelect={openFromDecision} />
         </>
       )}
-
-      <Card className="bg-muted/5">
-        <CardContent className="flex flex-col gap-2.5 pt-6">
-          <div className="flex items-baseline gap-2.5">
-            <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-            <Button
-              variant="link"
-              size="sm"
-              className="ml-auto h-auto p-0 text-[11.5px] font-semibold text-muted-foreground"
-              onClick={() => setLedgerOpen((o) => !o)}
-            >
-              {ledgerOpen ? "Collapse" : "Expand"}
-            </Button>
-          </div>
-          {ledgerOpen && (
-            <>
-              <div className="flex flex-col">
-                {LEDGER.map((l, i) => (
-                  <div key={i} className="flex items-start gap-3 border-t border-border/50 py-2 first:border-t-0">
-                    <div className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">
-                      {l.gap}
-                      {l.link && (
-                        <>
-                          {" "}
-                          <Link href={l.link.href} className="font-semibold text-primary hover:underline">
-                            {l.link.label}
-                          </Link>
-                        </>
-                      )}
-                    </div>
-                    <span className="flex-none font-mono text-[10.5px] text-muted-foreground/70">{l.where}</span>
-                  </div>
-                ))}
-              </div>
-              <span className="pt-1 text-[10.5px] leading-relaxed text-muted-foreground/70">
-                The last two are open questions rather than settled positions, and are shown here
-                so nobody has to discover them from a blank field.
-              </span>
-            </>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
