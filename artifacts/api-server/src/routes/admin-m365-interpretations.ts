@@ -39,10 +39,13 @@
  *   GET    /api/admin/m365/interpretations/:id/routings — the stored per-tenant
  *          routing decisions (auto_created / proposed / none / declined_risk).
  *
- * Auth: `requireAdmin` — the platform-admin session the AdminV2 console carries.
- * Scoping is per-MSP: the library is resolved against the single direct-business
- * MSP (structurally per-MSP even though there is one MSP today, #1532), never taken
- * from the request body.
+ * Auth: `requireCapability("ladder.msp-operator")` — admits MSPOperator, MSPAdmin
+ * and PlatformAdmin (#1688's 2026-09-12 decision: authoring lives in the MSP
+ * Console, not AdminV2-only; re-gated from the legacy `requireAdmin` in #4086,
+ * matching the pattern `msp-message-center.ts` already uses). Scoping is per-MSP:
+ * the library is resolved against the single direct-business MSP (structurally
+ * per-MSP even though there is one MSP today, #1532), never taken from the
+ * request body.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -64,7 +67,7 @@ import {
 } from "@workspace/db";
 import { and, eq, desc } from "drizzle-orm";
 import { z } from "zod";
-import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { requireCapability } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 import { proposeInterpretation } from "../lib/m365-interpretation-proposer.ts";
 import { resolveInterpretationAcrossTenants } from "../lib/m365-change-resolver.ts";
@@ -128,7 +131,7 @@ function toWire(row: M365ChangeInterpretation) {
 }
 
 // ── GET /admin/m365/interpretations ─────────────────────────────────────────
-router.get("/admin/m365/interpretations", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/admin/m365/interpretations", requireCapability("ladder.msp-operator"), async (_req: Request, res: Response) => {
   try {
     const mspId = await resolveDefaultMspId();
     if (mspId === null) {
@@ -165,7 +168,7 @@ router.get("/admin/m365/interpretations", requireAdmin, async (_req: Request, re
 // gov-only items (real gov/GCC scope enforcement, not an assumption); `gov` is
 // the mode the future NASA extraction needs (GCC High / DoD only); `all` is
 // the unfiltered set. See lib/m365-cloud-instance.ts for the classifier.
-router.get("/admin/m365/interpretations/candidates", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/m365/interpretations/candidates", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const cloudMode = parseCloudInstanceFilterMode(req.query.cloud);
     const mspId = await resolveDefaultMspId();
@@ -291,7 +294,7 @@ const proposeSchema = z.object({
   graphMessageId: z.string().min(1).max(400).optional(),
 });
 
-router.post("/admin/m365/interpretations/propose", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/m365/interpretations/propose", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const parsed = proposeSchema.safeParse(req.body);
     if (!parsed.success || (!parsed.data.featureId && !parsed.data.graphMessageId)) {
@@ -394,7 +397,7 @@ const createSchema = z.object({
   status: z.enum(M365_INTERPRETATION_STATUSES).default("proposed"),
 });
 
-router.post("/admin/m365/interpretations", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/m365/interpretations", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -462,7 +465,7 @@ const patchSchema = z.object({
   notes: z.string().max(4000).nullable().optional(),
 });
 
-router.patch("/admin/m365/interpretations/:id", requireAdmin, async (req: Request, res: Response) => {
+router.patch("/admin/m365/interpretations/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -514,12 +517,12 @@ router.patch("/admin/m365/interpretations/:id", requireAdmin, async (req: Reques
 // ── POST /admin/m365/interpretations/:id/confirm ────────────────────────────
 // Shane confirms an AI-proposed reading. This is the ONLY path to 'confirmed' —
 // the gate the resolution layer reads before an interpretation touches a tenant.
-router.post("/admin/m365/interpretations/:id/confirm", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/m365/interpretations/:id/confirm", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   await setStatus(req, res, "confirmed");
 });
 
 // ── POST /admin/m365/interpretations/:id/reject ─────────────────────────────
-router.post("/admin/m365/interpretations/:id/reject", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/m365/interpretations/:id/reject", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   await setStatus(req, res, "rejected");
 });
 
@@ -560,7 +563,7 @@ async function setStatus(req: Request, res: Response, status: "confirmed" | "rej
 }
 
 // ── DELETE /admin/m365/interpretations/:id ──────────────────────────────────
-router.delete("/admin/m365/interpretations/:id", requireAdmin, async (req: Request, res: Response) => {
+router.delete("/admin/m365/interpretations/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -597,7 +600,7 @@ const resolveSchema = z.object({
   live: z.boolean().default(true),
 });
 
-router.post("/admin/m365/interpretations/:id/resolve", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/m365/interpretations/:id/resolve", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -655,7 +658,7 @@ router.post("/admin/m365/interpretations/:id/resolve", requireAdmin, async (req:
 // ── GET /admin/m365/interpretations/:id/resolutions (#1533) ─────────────────
 // The stored per-tenant answers for one interpretation — each tenant's CURRENT
 // number (or its honest not-measured reason), joined with the tenant's name.
-router.get("/admin/m365/interpretations/:id/resolutions", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/m365/interpretations/:id/resolutions", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -726,7 +729,7 @@ router.get("/admin/m365/interpretations/:id/resolutions", requireAdmin, async (r
 // interpretation via `interpretationId` in the run's trigger payload (see
 // handleM365RouteChanges in m365-change-router.ts). Confirmed only — the same
 // gate /resolve enforces, since routing an unconfirmed reading makes no sense.
-router.post("/admin/m365/interpretations/:id/route", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/m365/interpretations/:id/route", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -788,7 +791,7 @@ router.post("/admin/m365/interpretations/:id/route", requireAdmin, async (req: R
 // resolved tenant count BECAME (auto_created / proposed / none / declined_risk),
 // same read shape as /resolutions. Populated by both the nightly sweep and the
 // on-demand /route trigger above, since both write through routeResolution().
-router.get("/admin/m365/interpretations/:id/routings", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/m365/interpretations/:id/routings", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
