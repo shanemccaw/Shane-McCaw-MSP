@@ -15,7 +15,7 @@
 
 import { describe, it, expect, afterAll } from "vitest";
 import bcrypt from "bcryptjs";
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import {
   db,
   checkoutSessionsTable,
@@ -23,8 +23,11 @@ import {
   usersTable,
   leadStagingTable,
   mspJobQueueTable,
+  tenantsTable,
 } from "@workspace/db";
 import { desc, eq, inArray, like, sql } from "drizzle-orm";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { resolveProspectRole } from "./direct-tenant-provisioning.ts";
 import {
   resolvePaidPurchaseSession,
   issueVerificationCode,
@@ -41,6 +44,7 @@ import {
 const RUN_TAG = randomBytes(4).toString("hex");
 const createdSessionIds: string[] = [];
 const createdEmails: string[] = [];
+const createdTenantIds: number[] = [];
 
 function testEmail(label: string): string {
   const email = `test-1310-${RUN_TAG}-${label}@purchase-flow-test.invalid`;
@@ -76,6 +80,10 @@ afterAll(async () => {
   }
   if (createdEmails.length > 0) {
     await db.delete(usersTable).where(inArray(usersTable.email, createdEmails));
+  }
+  // tenants after users — users.tenant_id references tenants ON DELETE RESTRICT.
+  if (createdTenantIds.length > 0) {
+    await db.delete(tenantsTable).where(inArray(tenantsTable.id, createdTenantIds));
   }
   // The REAL provisioning path stages a lead + a queued Zoho upsert job for the
   // buyer — right in production, garbage here. Sweep both so no fake lead for a
@@ -324,7 +332,10 @@ describe("attachPasswordToAccount", () => {
 
   it("attaches to an EXISTING password-less account without provisioning a second one", async () => {
     const email = testEmail("existing");
-    await db.insert(usersTable).values({ email, role: "client", name: "Pre-Existing Prospect" });
+    // #3971's users_role_scope_check requires a tenant for the default "Free"
+    // role — RetainerNoConsent is the one role it exempts, so this tenant-less
+    // pre-existing-Prospect fixture needs it explicit (#3972).
+    await db.insert(usersTable).values({ email, role: "client", name: "Pre-Existing Prospect", mspRole: LEGACY_ROLE.retainerNoConsent });
 
     const session = await resolveOrThrow(await createSession({ email }));
     const { code } = await issueVerificationCode(session);
@@ -337,6 +348,101 @@ describe("attachPasswordToAccount", () => {
 
     const rows = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email));
     expect(rows).toHaveLength(1);
+  });
+});
+
+// ── Git #3972 — real-product-type role assignment ──────────────────────────────
+
+describe("resolveProspectRole — #3972, the real-product-type -> role mapping", () => {
+  it("retainer with no tenant (skipped consent) is RetainerNoConsent", () => {
+    expect(resolveProspectRole("retainer", false)).toBe(LEGACY_ROLE.retainerNoConsent);
+  });
+
+  it("retainer with a tenant is RetainerConsented", () => {
+    expect(resolveProspectRole("retainer", true)).toBe(LEGACY_ROLE.retainerConsented);
+  });
+
+  it("monitoring/pack (always tenant-scoped) stays Customer, unaffected", () => {
+    expect(resolveProspectRole("monitoring", true)).toBe(LEGACY_ROLE.customer);
+    expect(resolveProspectRole("config_pack", true)).toBe(LEGACY_ROLE.customer);
+  });
+
+  it("an unrecognized/uncatalogued category with a tenant defaults to Customer, same as today", () => {
+    expect(resolveProspectRole(null, true)).toBe(LEGACY_ROLE.customer);
+  });
+
+  it("no tenant is ALWAYS RetainerNoConsent regardless of category — the only role users_role_scope_check permits tenant-less", () => {
+    expect(resolveProspectRole("monitoring", false)).toBe(LEGACY_ROLE.retainerNoConsent);
+    expect(resolveProspectRole(null, false)).toBe(LEGACY_ROLE.retainerNoConsent);
+  });
+});
+
+describe("attachPasswordToAccount — real product type decides the provisioned role (#3972)", () => {
+  it("a real retainer purchase with a consented tenant provisions RetainerConsented, not Customer", async () => {
+    const email = testEmail("retainer-consented");
+    const tenantGuid = randomUUID();
+    const session = await resolveOrThrow(
+      await createSession({ email, productSlug: "architect-essentials-retainer", tenantId: tenantGuid }),
+    );
+    const { code } = await issueVerificationCode(session);
+    await checkVerificationCode(session.id, code);
+
+    const r = await attachPasswordToAccount(session, "correct horse battery", { provisionIfMissing: true });
+    expect(r.outcome).toBe("ok");
+
+    const [user] = await db
+      .select({ mspRole: usersTable.mspRole, tenantId: usersTable.tenantId })
+      .from(usersTable)
+      .where(eq(usersTable.email, email));
+    expect(user.mspRole).toBe(LEGACY_ROLE.retainerConsented);
+    expect(user.tenantId).not.toBeNull();
+
+    const [tenantRow] = await db
+      .select({ id: tenantsTable.id })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.tenantId, tenantGuid));
+    if (tenantRow) createdTenantIds.push(tenantRow.id);
+  });
+
+  it("a real monitoring purchase with a tenant still provisions Customer — provably unaffected by #3972", async () => {
+    const email = testEmail("monitoring-unaffected");
+    const tenantGuid = randomUUID();
+    const session = await resolveOrThrow(
+      await createSession({ email, productSlug: "monitoring-foundation-smb", tenantId: tenantGuid }),
+    );
+    const { code } = await issueVerificationCode(session);
+    await checkVerificationCode(session.id, code);
+
+    const r = await attachPasswordToAccount(session, "correct horse battery", { provisionIfMissing: true });
+    expect(r.outcome).toBe("ok");
+
+    const [user] = await db.select({ mspRole: usersTable.mspRole }).from(usersTable).where(eq(usersTable.email, email));
+    expect(user.mspRole).toBe(LEGACY_ROLE.customer);
+
+    const [tenantRow] = await db
+      .select({ id: tenantsTable.id })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.tenantId, tenantGuid));
+    if (tenantRow) createdTenantIds.push(tenantRow.id);
+  });
+
+  it("a retainer purchase with a skipped (null) tenant provisions RetainerNoConsent", async () => {
+    const email = testEmail("retainer-no-consent");
+    const session = await resolveOrThrow(
+      await createSession({ email, productSlug: "architect-essentials-retainer", tenantId: null }),
+    );
+    const { code } = await issueVerificationCode(session);
+    await checkVerificationCode(session.id, code);
+
+    const r = await attachPasswordToAccount(session, "correct horse battery", { provisionIfMissing: true });
+    expect(r.outcome).toBe("ok");
+
+    const [user] = await db
+      .select({ mspRole: usersTable.mspRole, tenantId: usersTable.tenantId })
+      .from(usersTable)
+      .where(eq(usersTable.email, email));
+    expect(user.mspRole).toBe(LEGACY_ROLE.retainerNoConsent);
+    expect(user.tenantId).toBeNull();
   });
 });
 

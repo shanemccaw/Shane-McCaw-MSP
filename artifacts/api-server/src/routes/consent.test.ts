@@ -143,16 +143,22 @@ vi.mock("../lib/audit.ts", () => ({
 }));
 
 // The consent callback statically imports lib/direct-tenant-provisioning.ts
-// for the two functions it needs (resolveOrCreateDirectTenant — the single
+// for the functions it needs (resolveOrCreateDirectTenant — the single
 // tenant-creation door the consent stamp now depends on — and
 // provisionProspectAccount). Mocked here so this test exercises only
 // consent.ts's own logic; the real behaviour of both is covered by
-// direct-tenant-provisioning's own callers/tests.
+// direct-tenant-provisioning's own callers/tests. resolveProspectRole (#3972)
+// is kept real — it's a pure function with no DB access, and consent.ts calls
+// it directly to pick provisionProspectAccount's role argument.
 const mockResolveOrCreateDirectTenant = vi.fn().mockResolvedValue({ id: 5, mspId: 1 });
-vi.mock("../lib/direct-tenant-provisioning.ts", () => ({
-  resolveOrCreateDirectTenant: (...args: unknown[]) => mockResolveOrCreateDirectTenant(...args),
-  provisionProspectAccount: vi.fn().mockResolvedValue(null),
-}));
+vi.mock("../lib/direct-tenant-provisioning.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/direct-tenant-provisioning.ts")>();
+  return {
+    resolveOrCreateDirectTenant: (...args: unknown[]) => mockResolveOrCreateDirectTenant(...args),
+    provisionProspectAccount: vi.fn().mockResolvedValue(null),
+    resolveProspectRole: actual.resolveProspectRole,
+  };
+});
 
 vi.mock("../lib/logger.ts", () => {
   // `.child()` returns the same logger so both the module-level binding in

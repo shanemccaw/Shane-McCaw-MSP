@@ -8,6 +8,38 @@ import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "tenant.portal" });
 
+/** Every role a Prospect account can be created under. */
+type ProspectRole =
+  | typeof LEGACY_ROLE.free
+  | typeof LEGACY_ROLE.customer
+  | typeof LEGACY_ROLE.retainerNoConsent
+  | typeof LEGACY_ROLE.retainerConsented;
+
+/**
+ * #3972 — the real-product-type role a purchase/consent flow should provision
+ * a Prospect under, given the product's catalog `category` (`services.category`
+ * — "retainer", "monitoring", "config_pack", …) and whether a tenant (M365
+ * consent) is already attached.
+ *
+ * `hasTenant` is the primary signal, not `category`: `RetainerNoConsent` is the
+ * ONLY role users_role_scope_check (#3971) permits with no tenant_id, and a
+ * tenant-less call at either real call site (consent.ts's callback always has
+ * one; attachPasswordToAccount's session.tenantId is null only for a
+ * skipped-consent Retainer purchase — monitoring/pack purchases always require
+ * consent first, per the existing "read consent REQUIRED" rule, so they can
+ * never reach here without a tenant) can only legitimately be a Retainer buy.
+ * Branching on `hasTenant` first, rather than requiring `category === "retainer"`
+ * too, is what lets a not-yet-cataloged/test product slug still provision
+ * correctly instead of re-hitting the #3950 constraint violation.
+ */
+export function resolveProspectRole(
+  category: string | null,
+  hasTenant: boolean,
+): typeof LEGACY_ROLE.retainerNoConsent | typeof LEGACY_ROLE.retainerConsented | typeof LEGACY_ROLE.customer {
+  if (!hasTenant) return LEGACY_ROLE.retainerNoConsent;
+  return category === "retainer" ? LEGACY_ROLE.retainerConsented : LEGACY_ROLE.customer;
+}
+
 /**
  * Extracted from portal.ts (#175, portal.ts route decommission) — this
  * direct-business tenant/account provisioning cluster is consumed externally
@@ -20,7 +52,11 @@ const log = logger.child({ channel: "tenant.portal" });
 export async function ensureClientAccount(
   email: string,
   name?: string,
-  scope?: { tenantId: number; mspId: number | null; mspRole: typeof LEGACY_ROLE.free | typeof LEGACY_ROLE.customer },
+  scope?: {
+    tenantId?: number;
+    mspId?: number | null;
+    mspRole: ProspectRole;
+  },
 ): Promise<{ id: number }> {
   const normalizedEmail = email.toLowerCase().trim();
   // Atomic upsert — if the email already exists the ON CONFLICT clause returns
@@ -32,7 +68,16 @@ export async function ensureClientAccount(
       email: normalizedEmail,
       role: "client",
       name: name?.trim() || undefined,
-      ...(scope ? { tenantId: scope.tenantId, mspId: scope.mspId, mspRole: scope.mspRole } : {}),
+      // tenantId/mspId are optional (#3972) — `RetainerNoConsent` is a real,
+      // deliberately tenant-less scope (users_role_scope_check exempts it, #3971),
+      // so mspRole is written whenever a scope is given, whether or not a tenant
+      // came with it.
+      ...(scope
+        ? {
+            mspRole: scope.mspRole,
+            ...(scope.tenantId != null ? { tenantId: scope.tenantId, mspId: scope.mspId } : {}),
+          }
+        : {}),
     })
     .onConflictDoUpdate({
       target: usersTable.email,
@@ -155,7 +200,8 @@ async function ensureDirectCustomerRecord(userId: number, tenantId?: string | nu
  * desiredRole is applied only when the row is still at its wholly-unbridged
  * default (mspRole "Free", no mspId, no tenantId — i.e. what used to be "no
  * msp_users row exists yet"); an account already carrying an explicit role or
- * link is never role-patched here (promoteMspUserToCustomer owns upgrades).
+ * link is never role-patched here (promoteMspUserToCustomer owns upgrades;
+ * #3973 owns the RetainerNoConsent -> RetainerConsented swap on real consent).
  * Defaults to `Customer`, keeping the historical behavior.
  *
  * #3973 (step 3 of #3970) — the one other role this function DOES swap,
@@ -169,7 +215,7 @@ export async function ensureClientMspUser(
   userId: number,
   tenantId?: string | null,
   explicitCustomerId?: number | null,
-  desiredRole?: typeof LEGACY_ROLE.customer | typeof LEGACY_ROLE.free,
+  desiredRole?: ProspectRole,
 ): Promise<void> {
   // Resolve target mspId + tenants.id — explicitCustomerId takes precedence over tenantId.
   let mspId: number | null = null;
@@ -205,6 +251,12 @@ export async function ensureClientMspUser(
   if (existing.existingCustomerId != null) return; // already tenant-linked — done
 
   if (customerId == null) {
+    // #3972 — RetainerNoConsent is the one desiredRole that is SUPPOSED to
+    // reach here with no tenant resolvable: a skipped-consent Retainer
+    // purchase, by design, not a defect. Nothing to link yet; #3973 wires the
+    // RetainerNoConsent -> RetainerConsented swap once real consent lands.
+    if (desiredRole === LEGACY_ROLE.retainerNoConsent) return;
+
     // No tenants row resolvable. users_role_scope_check makes a tenant-scoped
     // role without users.tenant_id impossible, so there is no bare-bridge
     // fallback anymore — a customer account reaching here means the
@@ -278,9 +330,12 @@ export async function ensureClientMspUser(
  *      no tenant link; this is the schema-level consent-first rule), then
  *   2. a `users` row (role "client", passwordHash left NULL — no usable
  *      password yet; the customer sets one via the account-setup / password
- *      flow) stamped inline with tenantId/mspId and `role` — "Free" for
- *      the assessment funnel (promoted to `Customer` on payment; see
- *      promoteMspUserToCustomer), else `Customer`.
+ *      flow) stamped inline with tenantId/mspId (when a tenant was resolved)
+ *      and `role` — see [[resolveProspectRole]] (#3972) for how a caller picks
+ *      it: "Free" for the assessment funnel (promoted to `Customer` on
+ *      payment; see promoteMspUserToCustomer), `RetainerNoConsent` for a
+ *      skipped-consent Retainer buy (deliberately tenant-less), else
+ *      `RetainerConsented`/`Customer`.
  * It also converts the funnel-entry lead (name+email capture) new → converted.
  *
  * Reuses ensureClientAccount / ensureDirectCustomerRecord / ensureClientMspUser so
@@ -297,7 +352,7 @@ export async function provisionProspectAccount(opts: {
   company?: string | null;
   industry?: string | null;
   tenantId?: string | null;
-  role: typeof LEGACY_ROLE.free | typeof LEGACY_ROLE.customer;
+  role: ProspectRole;
 }): Promise<{ userId: number; customerId: number | null } | null> {
   const email = opts.email?.toLowerCase().trim();
   if (!email) return null;
@@ -314,10 +369,15 @@ export async function provisionProspectAccount(opts: {
       )
     : null;
 
+  // #3972/#3950 — mspRole is written even with no tenant: `RetainerNoConsent`
+  // (the only role opts.role can legitimately be here with no tenant, per
+  // resolveProspectRole) is exempt from users_role_scope_check's tenant_id
+  // requirement, so a scope-less insert must still carry the role rather than
+  // silently falling back to the column default.
   const acct = await ensureClientAccount(
     email,
     opts.fullName ?? undefined,
-    tenant ? { tenantId: tenant.id, mspId: tenant.mspId, mspRole: opts.role } : undefined,
+    tenant ? { tenantId: tenant.id, mspId: tenant.mspId, mspRole: opts.role } : { mspRole: opts.role },
   );
   const userId = acct.id;
 
@@ -333,7 +393,9 @@ export async function provisionProspectAccount(opts: {
     // payment webhook, which verifies and alerts), but this is never routine.
     log.error({ err, userId, tenantId: opts.tenantId }, "provisionProspectAccount: ensure customer/msp_user FAILED — user exists without a customer bridge");
   }
-  if (customerId == null) {
+  // RetainerNoConsent is deliberately tenant-less (#3972) — no tenant id to
+  // report missing.
+  if (customerId == null && opts.role !== LEGACY_ROLE.retainerNoConsent) {
     log.error(
       { userId, tenantId: opts.tenantId },
       "provisionProspectAccount: no tenants id resolved for Prospect — account has no tenant link yet",

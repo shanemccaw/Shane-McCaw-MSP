@@ -23,6 +23,7 @@ import {
   mspDiagnosticRunsTable,
 } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import {
   ensureMonitoringScanKickoff,
   type OnboardingScanTriggerOpts,
@@ -80,7 +81,14 @@ async function makeTenant(mspId: number): Promise<number> {
 async function makeUser(tenantId: number | null): Promise<number> {
   const [row] = await db
     .insert(usersTable)
-    .values({ email: `test-1314-${RUN_TAG}-${randomBytes(3).toString("hex")}@onboarding-scan-test.invalid`, tenantId })
+    .values({
+      email: `test-1314-${RUN_TAG}-${randomBytes(3).toString("hex")}@onboarding-scan-test.invalid`,
+      tenantId,
+      // #3971's users_role_scope_check requires a tenant for the default "Free"
+      // role — RetainerNoConsent is the one role it exempts, so the no-tenant
+      // case (this helper's whole reason to exist, Git #1314) needs it explicit.
+      ...(tenantId == null ? { mspRole: LEGACY_ROLE.retainerNoConsent } : {}),
+    })
     .returning({ id: usersTable.id });
   createdUserIds.push(row.id);
   return row.id;

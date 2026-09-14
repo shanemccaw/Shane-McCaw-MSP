@@ -78,7 +78,7 @@ import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, getInit
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
 import { startPowerPlatformEnrollmentDeviceCode, pollPowerPlatformEnrollmentDeviceCode } from "../lib/power-platform-admin.ts";
 import { createAuditLog } from "../lib/audit.ts";
-import { resolveOrCreateDirectTenant, provisionProspectAccount } from "../lib/direct-tenant-provisioning.ts";
+import { resolveOrCreateDirectTenant, provisionProspectAccount, resolveProspectRole } from "../lib/direct-tenant-provisioning.ts";
 import { getReadConsentRequirementForProduct, buildSessionReadConsentUrl } from "../lib/read-consent-flow.ts";
 import { logger } from "../lib/logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
@@ -856,16 +856,22 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
       // Resolve packageKey + serviceType via services.type_attributes->>'packageKey'.
       // serviceType picks the Prospect's role: assessment products get the low-
-      // privilege, pre-payment "Free" role (promoted to Customer on payment); anything
-      // else gets `Customer` directly (a passwordless account can't log in until
-      // setup, so this grants no premature access).
+      // privilege, pre-payment "Free" role (promoted to Customer on payment);
+      // #3972 — a Retainer product gets RetainerConsented (this callback only
+      // ever runs with a real just-consented tenant GUID, so a Retainer buy
+      // reaching here is by definition the consented case, never
+      // RetainerNoConsent); everything else keeps `Customer` directly (a
+      // passwordless account can't log in until setup, so this grants no
+      // premature access).
       let serviceType: string | null = null;
+      let category: string | null = null;
       let isFreeOffering = false;
       if (productSlug) {
         const [svcRow] = await db
           .select({
             pk: sql<string>`type_attributes->>'packageKey'`,
             serviceType: servicesTable.serviceType,
+            category: servicesTable.category,
             isFreeOffering: servicesTable.isFreeOffering,
           })
           .from(servicesTable)
@@ -873,6 +879,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
           .limit(1);
         packageKey = svcRow?.pk ?? null;
         serviceType = svcRow?.serviceType ?? null;
+        category = svcRow?.category ?? null;
         isFreeOffering = svcRow?.isFreeOffering ?? false;
       }
 
@@ -901,7 +908,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
           company: sessionCompany,
           industry: sessionIndustry,
           tenantId: tenant,
-          role: serviceType === "assessment" ? LEGACY_ROLE.free : LEGACY_ROLE.customer,
+          role: serviceType === "assessment" ? LEGACY_ROLE.free : resolveProspectRole(category, Boolean(tenant)),
         });
         if (prospect) {
           clientId = prospect.userId;
