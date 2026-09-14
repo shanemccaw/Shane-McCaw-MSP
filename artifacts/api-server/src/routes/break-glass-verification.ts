@@ -55,6 +55,7 @@ import {
 } from "../lib/graph.ts";
 import { sendEmailForMspOrThrow } from "../lib/mailer.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { createAuditLog } from "../lib/audit.ts";
 
 const router = Router();
 
@@ -411,6 +412,17 @@ router.post("/portal/break-glass/:pendingSecretId/invite", requireAuth, async (r
     }
 
     const sent = await sendBreakGlassInvites(pendingSecretId, body.data.emails, req.user!.id, ctx.mspId);
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: req.user!.role,
+      actionType: "break_glass.invite_sent",
+      actionCategory: "access",
+      entityType: "break_glass_pending_secret",
+      entityId: pendingSecretId,
+      tenantId: ctx.secret.customerId,
+      metadata: { invited: body.data.emails.length, sent },
+    });
     return res.json({ ok: true, invited: body.data.emails.length, sent });
   } catch (err) {
     req.log.error({ err, pendingSecretId }, "break-glass: invite failed");
@@ -873,6 +885,19 @@ router.post("/public/break-glass/:pendingSecretId/acknowledge", publicLimiter, a
 
     // Log ONLY non-sensitive delivery metadata — never the value.
     log.info({ revealed: true, deliveredToEmail: attempt.invitedEmail, timestamp: new Date().toISOString() }, "break-glass: secret delivered");
+    // Unauthenticated route — the real actor is the customer-tenant admin who just
+    // proved control via the Microsoft OAuth callback, not a platform session.
+    await createAuditLog({
+      actorUserId: null,
+      actorName: attempt.entraUserPrincipalName ?? attempt.invitedEmail,
+      actorRole: "customer",
+      actionType: "break_glass.acknowledged",
+      actionCategory: "access",
+      entityType: "break_glass_pending_secret",
+      entityId: pendingSecretId,
+      tenantId: secret.customerId,
+      metadata: { deliveredToEmail: attempt.invitedEmail },
+    });
 
     return res.status(200).send(renderPage("Done", `<h1>Delivery complete</h1><p>The credential has been delivered and the stored copy purged. The paused automation has resumed and is continuing on its own — you can close this window.</p>`, branding));
   } catch (err) {
@@ -1231,6 +1256,17 @@ router.post("/portal/break-glass/:pendingSecretId/admin-override", requireAuth, 
     if (!result.ok) {
       return res.status(result.status).json({ error: result.error, ...(result.detail ? { detail: result.detail } : {}) });
     }
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: req.user!.role,
+      actionType: "break_glass.admin_override",
+      actionCategory: "security",
+      entityType: "break_glass_pending_secret",
+      entityId: pendingSecretId,
+      tenantId: ctx.secret.customerId,
+      metadata: { reason: body.data.reason, newPendingSecretId: result.newPendingSecretId, reissued: result.reissued, sent: result.sent },
+    });
     return res.json(result);
   } catch (err) {
     // Write-back gate refusals are expected, actionable states — surface which

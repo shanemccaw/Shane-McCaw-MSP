@@ -70,6 +70,7 @@ import {
   WriteConsentRequiredError,
 } from "../lib/graph.ts";
 import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "auth" });
 
@@ -295,6 +296,17 @@ router.post(
       if (!result.ok) {
         return res.status(result.status).json({ error: result.error, ...(result.detail ? { detail: result.detail } : {}) });
       }
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: req.user!.role,
+        actionType: "break_glass.admin_override",
+        actionCategory: "security",
+        entityType: "break_glass_pending_secret",
+        entityId: pendingSecretId,
+        tenantId: customerId,
+        metadata: { reason: body.data.reason, newPendingSecretId: result.newPendingSecretId, reissued: result.reissued, sent: result.sent, actorSurface: "msp" },
+      });
       return res.json(result);
     } catch (err) {
       if (err instanceof WriteBackNotEnabledError || err instanceof WriteBackCustomerNotFoundError || err instanceof WriteConsentRequiredError) {
