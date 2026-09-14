@@ -2,8 +2,8 @@
  * workflow-executor-content.test.ts
  *
  * Unit tests for content-generation workflow node types:
- *   generate_article, generate_image, generate_script, topic_picker,
- *   create_marketing_campaign, generate_landing_page, publish_article,
+ *   generate_article, generate_script,
+ *   create_marketing_campaign, publish_article,
  *   edit_stripe_invoice, build_presentation
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -116,8 +116,6 @@ vi.mock("./sse-channels.ts", () => ({
 
 // Anthropic mock — returns a JSON blob compatible with ALL nodes that parse AI JSON:
 //   generate_article needs: title, slug, summary, date, content
-//   generate_landing_page needs: title, headline, subheadline, valuePropBlocks, socialProof, cta
-//   topic_picker needs: topic, rationale, context, hotScore, targetSector, articleSuggestion
 vi.mock("@workspace/integrations-anthropic-ai", () => ({
   // The executor wraps every AI call in withAiAttribution() so the metered
   // client can bill it. Pass-through here — attribution itself is covered by
@@ -340,123 +338,6 @@ describe("generate_article — dry-run skips AI call", () => {
 });
 
 // =============================================================================
-// generate_image — live path
-// =============================================================================
-
-describe("generate_image — missing prompt is an error (live)", () => {
-  beforeEach(async () => {
-    resetState();
-    seedDb(singleNodeGraph("generate_image", { prompt: "", aspectRatio: "landscape" }));
-    await executeWorkflowRun(1);
-  });
-
-  it("output.error mentions prompt", () => {
-    expect((capturedOutput().error as string)).toContain("prompt");
-  });
-
-  it("node status is error", () => {
-    expect(capturedStatus()).toBe("error");
-  });
-});
-
-describe("generate_image — happy path (live)", () => {
-  beforeEach(async () => {
-    resetState();
-    seedDb(singleNodeGraph("generate_image", {
-      prompt:      "A professional photo of a modern office with Microsoft 365 branding",
-      aspectRatio: "landscape",
-    }));
-    await executeWorkflowRun(1);
-  });
-
-  it("calls openai.images.generate once", () => {
-    expect(state.imageGenCalls.length).toBe(1);
-  });
-
-  it("output.imageUrl is a local API path", () => {
-    const url = capturedOutput().imageUrl as string;
-    expect(typeof url).toBe("string");
-    expect(url.length).toBeGreaterThan(0);
-  });
-
-  it("output.revisedPrompt is set", () => {
-    expect(typeof capturedOutput().revisedPrompt).toBe("string");
-  });
-
-  it("node status is ok", () => {
-    expect(capturedStatus()).toBe("ok");
-  });
-});
-
-describe("generate_image — dry-run returns placeholder URL", () => {
-  beforeEach(async () => {
-    resetState();
-    seedDb(singleNodeGraph("generate_image", { prompt: "test prompt", aspectRatio: "square" }));
-    await executeWorkflowRun(1, { dryRun: true });
-  });
-
-  it("output.dryRun is true", () => {
-    expect(capturedOutput().dryRun).toBe(true);
-  });
-
-  it("output.imageUrl is a placehold.co URL", () => {
-    expect((capturedOutput().imageUrl as string)).toContain("placehold.co");
-  });
-
-  it("does not call openai.images.generate", () => {
-    expect(state.imageGenCalls.length).toBe(0);
-  });
-});
-
-// =============================================================================
-// topic_picker — live path
-// =============================================================================
-
-describe("topic_picker — happy path calls anthropic (live)", () => {
-  beforeEach(async () => {
-    resetState();
-    seedDb(singleNodeGraph("topic_picker", {
-      focusArea: "Microsoft 365 governance best practices",
-      category:  "Governance",
-    }));
-    await executeWorkflowRun(1);
-  });
-
-  it("calls anthropic.messages.create", () => {
-    expect(state.anthropicCalls.length).toBeGreaterThan(0);
-  });
-
-  it("output.articleTopic is set", () => {
-    expect(typeof capturedOutput().articleTopic).toBe("string");
-    expect((capturedOutput().articleTopic as string).length).toBeGreaterThan(0);
-  });
-
-  it("output.topicCategory is set", () => {
-    expect(typeof capturedOutput().topicCategory).toBe("string");
-  });
-
-  it("node status is ok", () => {
-    expect(capturedStatus()).toBe("ok");
-  });
-});
-
-describe("topic_picker — dry-run skips AI call", () => {
-  beforeEach(async () => {
-    resetState();
-    seedDb(singleNodeGraph("topic_picker", { focusArea: "SharePoint", category: "SharePoint" }));
-    await executeWorkflowRun(1, { dryRun: true });
-  });
-
-  it("output.dryRun is true", () => {
-    expect(capturedOutput().dryRun).toBe(true);
-  });
-
-  it("does not call anthropic in dry-run", () => {
-    expect(state.anthropicCalls.length).toBe(0);
-  });
-});
-
-// =============================================================================
 // create_marketing_campaign — live path
 // =============================================================================
 
@@ -497,59 +378,6 @@ describe("create_marketing_campaign — dry-run returns preview", () => {
 
   it("output.campaignName is set", () => {
     expect(typeof capturedOutput().campaignName).toBe("string");
-  });
-});
-
-// =============================================================================
-// generate_landing_page — live path
-// =============================================================================
-
-describe("generate_landing_page — happy path with anthropic mock (live)", () => {
-  beforeEach(async () => {
-    resetState();
-    seedDb(singleNodeGraph("generate_landing_page", {
-      topic:    "Microsoft 365 Copilot AI Consulting",
-      audience: "Small business owners",
-    }));
-    await executeWorkflowRun(1);
-  });
-
-  it("calls anthropic.messages.create", () => {
-    expect(state.anthropicCalls.length).toBe(1);
-  });
-
-  it("output.landingPageId is set", () => {
-    expect(capturedOutput().landingPageId).toBeDefined();
-  });
-
-  it("output.slug is a non-empty string", () => {
-    expect(typeof capturedOutput().slug).toBe("string");
-    expect((capturedOutput().slug as string).length).toBeGreaterThan(0);
-  });
-
-  it("output.headline is set", () => {
-    expect(typeof capturedOutput().headline).toBe("string");
-    expect((capturedOutput().headline as string).length).toBeGreaterThan(0);
-  });
-
-  it("node status is ok", () => {
-    expect(capturedStatus()).toBe("ok");
-  });
-});
-
-describe("generate_landing_page — dry-run skips AI and DB (live-dry)", () => {
-  beforeEach(async () => {
-    resetState();
-    seedDb(singleNodeGraph("generate_landing_page", { topic: "M365", audience: "SMB" }));
-    await executeWorkflowRun(1, { dryRun: true });
-  });
-
-  it("output.dryRun is true", () => {
-    expect(capturedOutput().dryRun).toBe(true);
-  });
-
-  it("output.slug is dry-run-landing-page", () => {
-    expect(capturedOutput().slug).toBe("dry-run-landing-page");
   });
 });
 

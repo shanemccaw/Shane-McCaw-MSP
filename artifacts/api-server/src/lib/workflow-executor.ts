@@ -2298,28 +2298,11 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "publish_article":
       return { dryRun: true, published: true, slug: "dry-run-preview-article", articleId: 0, title: str("titleExpr", "Dry-run Article") };
 
-    case "topic_picker":
-      return {
-        dryRun: true,
-        articleTopic: `Dry-run topic: ${str("focusArea", "Microsoft 365 governance best practices")}`,
-        topicCategory: str("category", "M365 Best Practices"),
-      };
-
     case "create_marketing_campaign":
       return { dryRun: true, campaignId: 1, campaignName: str("nameExpr", "Dry-run Campaign"), campaignStatus: "draft" };
 
     case "publish_landing_page":
       return { dryRun: true, landingPageId: 1, slug: str("slugExpr", "dry-run-page"), published: false };
-
-    case "generate_landing_page":
-      return {
-        dryRun: true,
-        landingPageId: null,
-        slug: "dry-run-landing-page",
-        headline: "(AI-generated headline — preview in live run)",
-        subheadline: "(AI-generated subheadline)",
-        published: false,
-      };
 
     case "edit_stripe_invoice":
       return { dryRun: true, invoiceId: "dry-run-inv-id", status: "draft", dueDate: new Date().toISOString() };
@@ -2362,18 +2345,6 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         }
       }
       return { dryRun: true, value: dryRawValue };
-    }
-
-    case "generate_image": {
-      const giAspect = (node.data.aspectRatio as string | undefined) ?? "landscape";
-      const giSize = ASPECT_RATIO_SIZE[giAspect] ?? "1536x1024";
-      const giPlaceholderSize = giSize === "1024x1024" ? "1024x1024" : giSize === "1024x1536" ? "1024x1536" : "1536x1024";
-      const [giW, giH] = giPlaceholderSize.split("x");
-      return {
-        dryRun: true,
-        imageUrl: `https://placehold.co/${giW}x${giH}/0A2540/FFFFFF?text=Generated+Image`,
-        revisedPrompt: "[dry-run — no AI call made]",
-      };
     }
 
     case "fetch_news_headlines":
@@ -6415,106 +6386,6 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
         break;
       }
 
-      // ── Topic Picker ──────────────────────────────────────────────────────
-      case "topic_picker": {
-        const tpCategory    = interp(node.data.category    as string | undefined, payload) ?? "M365 Best Practices";
-        const tpFocusArea   = interp(node.data.focusArea   as string | undefined, payload) ?? "";
-        const tpExcludeRecent = Number(node.data.excludeRecent ?? 20);
-
-        const recentRows = await db
-          .select({ title: articlesTable.title })
-          .from(articlesTable)
-          .orderBy(articlesTable.createdAt)
-          .limit(tpExcludeRecent);
-
-        const recentTitles = recentRows.map(r => `- ${r.title}`).join("\n") || "(none yet)";
-
-        const tpPrompt = `You are a content strategist for Shane McCaw Consulting, a Microsoft 365 advisory firm.
-
-Choose ONE compelling article topic in the "${tpCategory}" category that has NOT already been covered.
-
-${tpFocusArea ? `Focus area: ${tpFocusArea}\n` : ""}Already published topics (do NOT repeat these):
-${recentTitles}
-
-Return ONLY a JSON object with these exact keys:
-{
-  "topic": "Specific, actionable article topic — under 100 chars",
-  "rationale": "One sentence explaining why this topic will resonate"
-}`;
-
-        const tpResp = await withAiAttribution(
-          aiAttributionFor(node, payload, runId),
-          () => anthropic.messages.create({
-            model: "claude-haiku-4-5",
-            max_tokens: 512,
-            messages: [{ role: "user", content: tpPrompt }],
-          }),
-        );
-
-        const tpRaw = tpResp.content.filter(b => b.type === "text").map(b => (b as { type: "text"; text: string }).text).join("");
-        const tpParsed = extractJsonFromAiText(tpRaw);
-
-        if (!tpParsed?.topic) {
-          nodeError = true;
-          output = { error: "topic_picker: AI did not return a valid topic", rawText: tpRaw.slice(0, 300) };
-        } else {
-          output = {
-            articleTopic:   String(tpParsed.topic),
-            topicRationale: String(tpParsed.rationale ?? ""),
-            topicCategory:  tpCategory,
-          };
-        }
-        break;
-      }
-
-      // ── Generate Image ────────────────────────────────────────────────────
-      case "generate_image": {
-        const giPromptRaw = interp(node.data.prompt as string | undefined, payload);
-        if (!giPromptRaw?.trim()) {
-          nodeError = true;
-          output = { error: "generate_image requires a prompt" };
-          break;
-        }
-
-        const giAspect = (node.data.aspectRatio as string | undefined) ?? "landscape";
-        const giStyle  = (node.data.style  as string | undefined) ?? "";
-        const giSize   = ASPECT_RATIO_SIZE[giAspect] ?? "1536x1024";
-
-        const giFullPrompt = giStyle
-          ? `${giPromptRaw.trim()} Style: ${giStyle}.`
-          : giPromptRaw.trim();
-
-        try {
-          const giResp = await openai.images.generate({
-            model: "gpt-image-1",
-            prompt: giFullPrompt,
-            size: giSize,
-          });
-
-          const giBase64 = (giResp.data ?? [])[0]?.b64_json;
-          if (!giBase64) {
-            nodeError = true;
-            output = { error: "generate_image: API returned no image data" };
-            break;
-          }
-
-          const giBuffer = Buffer.from(giBase64, "base64");
-          const giFilename = `${randomUUID()}.png`;
-          const giFilePath = path.join(GENERATED_IMAGES_DIR, giFilename);
-          await fs.writeFile(giFilePath, giBuffer);
-
-          output = {
-            imageUrl:      `/api/uploads/generated-images/${giFilename}`,
-            revisedPrompt: giFullPrompt,
-          };
-        } catch (err) {
-          log.error({ err }, "generate_image: OpenAI image generation failed");
-          nodeError = true;
-          output = { error: `generate_image: ${err instanceof Error ? err.message : String(err)}` };
-        }
-        break;
-      }
-
       // ── Define Campaign Goal ───────────────────────────────────────────────
       case "define_campaign_goal": {
         const dcgGoal = (interp(node.data.goalExpr as string | undefined, payload) ?? "").trim();
@@ -6622,102 +6493,6 @@ Return ONLY a JSON object with these exact keys:
           slug:          plpPage.slug,
           published:     true,
           wasAlreadyPublished: plpPage.published,
-        };
-        break;
-      }
-
-      // ── Generate Landing Page ─────────────────────────────────────────────
-      case "generate_landing_page": {
-        const glpTopic    = (interp(node.data.topic    as string | undefined, payload) ?? "Microsoft 365 Consulting").trim();
-        const glpAudience = (interp(node.data.audience as string | undefined, payload) ?? "IT decision-makers").trim();
-        const glpCta      = (interp(node.data.cta      as string | undefined, payload) ?? "Book Your Paid Assessment").trim();
-
-        const glpPrompt = `You are generating a landing page for a PAID professional Microsoft 365 service.
-Topic: ${glpTopic}
-Target audience: ${glpAudience}
-CTA: ${glpCta}
-
-RULES:
-- DO NOT use generic marketing language, hype, or "free audit" language.
-- DO NOT write long paragraphs. Keep it concise and enterprise-grade.
-- Never imply the offer is free.
-- The headline must be risk-first (e.g. "Your M365 Tenant Is a Compliance Risk").
-- The subheadline must frame the core problem the prospect faces right now.
-- Produce exactly 3 valuePropBlocks.
-- Each valuePropBlock body must be 1–2 concise, authoritative sentences.
-- Each valuePropBlock icon must be a single relevant emoji.
-- socialProof must always be an empty array.
-
-Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdown fences:
-{
-  "title": "page title (service name — concise)",
-  "headline": "risk-first headline",
-  "subheadline": "one sentence framing the core problem",
-  "valuePropBlocks": [
-    { "icon": "🔍", "heading": "pillar heading", "body": "1–2 authoritative sentences" }
-  ],
-  "socialProof": [],
-  "cta": { "buttonText": "${glpCta}", "href": "/contact", "subtext": "Fixed price. Senior-level delivery." }
-}`;
-
-        const glpResp = await withAiAttribution(
-          aiAttributionFor(node, payload, runId),
-          () => anthropic.messages.create({
-            model: "claude-haiku-4-5",
-            max_tokens: 2000,
-            messages: [{ role: "user", content: glpPrompt }],
-          }),
-        );
-
-        const glpRaw = glpResp.content.filter(b => b.type === "text").map(b => (b as { type: "text"; text: string }).text).join("");
-        const glpParsed = extractJsonFromAiText(glpRaw);
-
-        if (!glpParsed?.title || !glpParsed?.headline) {
-          nodeError = true;
-          output = { error: "generate_landing_page: AI did not return valid landing page JSON" };
-          break;
-        }
-
-        const glpTitle    = String(glpParsed.title);
-        const glpHeadline = String(glpParsed.headline);
-        const glpSlugBase = slugify(glpTitle).slice(0, 55);
-
-        // Insert with slug-collision retry (up to 5 attempts)
-        let glpPage: { id: number; slug: string } | undefined;
-        for (let attempt = 0; attempt <= 5; attempt++) {
-          const slug = attempt === 0 ? glpSlugBase : `${glpSlugBase}-${attempt + 1}`;
-          try {
-            ([glpPage] = await db.insert(landingPagesTable).values({
-              slug,
-              title:            glpTitle,
-              headline:         glpHeadline,
-              subheadline:      glpParsed.subheadline ? String(glpParsed.subheadline) : null,
-              valuePropBlocks:  Array.isArray(glpParsed.valuePropBlocks) ? glpParsed.valuePropBlocks as Array<{ icon?: string; heading: string; body: string }> : [],
-              socialProof:      [],
-              cta:              glpParsed.cta as { buttonText: string; href: string; subtext?: string } ?? { buttonText: glpCta, href: "/contact" },
-              layoutBlocks:     [],
-              published:        false,
-            }).returning({ id: landingPagesTable.id, slug: landingPagesTable.slug }));
-            break;
-          } catch (e) {
-            const errText = String(e).toLowerCase();
-            if ((errText.includes("unique") || errText.includes("duplicate")) && attempt < 5) continue;
-            throw e;
-          }
-        }
-
-        if (!glpPage) {
-          nodeError = true;
-          output = { error: "generate_landing_page: failed to insert landing page after slug retries" };
-          break;
-        }
-
-        output = {
-          landingPageId: glpPage.id,
-          slug:          glpPage.slug,
-          headline:      glpHeadline,
-          subheadline:   glpParsed.subheadline ? String(glpParsed.subheadline) : "",
-          published:     false,
         };
         break;
       }
@@ -7205,53 +6980,6 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           nodeError = true;
           output = { error: esiErrMsg };
         }
-        break;
-      }
-
-      // ── Ask AI ────────────────────────────────────────────────────────────
-      case "ask_ai": {
-        // If the payload carries a sowDocId but no inline sowHtml, fetch the HTML
-        // from the DB and inject it so {{sowHtml}} interpolation works in promptExpr.
-        if (payload.sowDocId && !payload.sowHtml) {
-          const docId = parseInt(String(payload.sowDocId), 10);
-          if (!isNaN(docId)) {
-            const [docRow] = await db
-              .select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
-              .from(insightsGeneratedDocumentsTable)
-              .where(eq(insightsGeneratedDocumentsTable.id, docId))
-              .limit(1);
-            if (docRow?.htmlContent) {
-              payload = { ...payload, sowHtml: docRow.htmlContent };
-            }
-          }
-        }
-        const aaPrompt = (interp(node.data.promptExpr as string | undefined, payload) ?? "").trim();
-        const aaSystem = (interp(node.data.systemExpr  as string | undefined, payload) ?? "").trim();
-        const aaModel  = (node.data.model as string | undefined) ?? "claude-haiku-4-5";
-
-        if (!aaPrompt) {
-          nodeError = true;
-          output = { error: "ask_ai requires a prompt" };
-          break;
-        }
-
-        const aaResp = await withAiAttribution(
-          aiAttributionFor(node, payload, runId),
-          () => anthropic.messages.create({
-            model: aaModel,
-            max_tokens: 1024,
-            ...(aaSystem ? { system: aaSystem } : {}),
-            messages: [{ role: "user", content: aaPrompt }],
-          }),
-        );
-
-        const aaText = aaResp.content
-          .filter(b => b.type === "text")
-          .map(b => (b as { type: "text"; text: string }).text)
-          .join("")
-          .trim();
-
-        output = { aiResponse: aaText, model: aaModel };
         break;
       }
 
