@@ -20,7 +20,7 @@ Most screens also end with a **"What this page deliberately does not do" ledger*
 
 ## How this package is organized
 
-- **`screens/`** — the 44 `.dc.html` design files, one per screen, plus `support.js` and `ios-frame.jsx` (runtime dependencies for the design tool — not something you build).
+- **`screens/`** — the 44 `.dc.html` design files, one per screen, plus `ShaneBot Card Gallery.dc.html` (all of ShaneBot's card templates in one reference sheet) and `support.js` / `ios-frame.jsx` (runtime dependencies for the design tool — not something you build).
 - **`screenshots/`** — one image per screen, numbered to match the inventory table below.
 - **`docs/`** — contract-pack markdown files. These are backend-extraction documents: for most modules, a pack traces every field and state shown on that screen back to the real API route and database schema (file:line citations). They are the single most reliable source for exact data shapes, validation rules, error states, and "what's real vs. not built yet." **Read the relevant pack before implementing a screen.**
 - **`sync-record.md`** — a copy of the project's `github.md`: the source repo, the full sync history, and a table mapping every screen to the exact repo files it was built from.
@@ -47,6 +47,7 @@ Most screens also end with a **"What this page deliberately does not do" ledger*
 | 16 | Notification Preferences | `Notification Preferences.dc.html` | `notification-preferences-contract-pack.md` | 15-category in-app/email preference matrix. |
 | 17 | Portal Alerts | `Portal Alerts.dc.html` | `alert_preferences.md` | Alerts dropdown + the alert-preferences settings pane. |
 | 18 | ShaneBot | `ShaneBot.dc.html` | `shanebot-contract-pack.md` | Full-page support chat surface with real "Active Card" renderers (invoice, subscription, score, data-answer). |
+| 18b | ShaneBot card gallery | `ShaneBot Card Gallery.dc.html` | `shanebot-contract-pack.md` | Every card ShaneBot's response engine can render, laid out side by side for template extraction: invoice, subscription, score, data-answer, and one `gen:*` template per module (Change Control, Risk Register, POA&Ms, Team, Billing, etc.) with its real copy, status tokens, and "open module" link label. Use this as the source of truth for building each card as a reusable component, then wire the response engine to pick one per `kind`. |
 | 19 | Auth: Sign in | `Auth Sign-In.dc.html` | `auth-core-contract-pack.md` | |
 | 20 | Auth: MFA challenge | `Auth MFA Challenge.dc.html` | `auth-core-contract-pack.md` | TOTP + emergency bypass; SMS/passkey are real backend routes with no UI wired yet. |
 | 21 | Auth: Forgot password | `Auth Forgot Password.dc.html` | `auth-core-contract-pack.md` | Always responds 200 regardless of whether the email exists (enumeration resistance). |

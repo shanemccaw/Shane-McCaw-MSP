@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#020617;font-family:Inter,system-ui,sans-serif}
+a{color:#60a5fa}a:hover{color:#93c5fd}
+</style>
+</helmet>
+<div style="min-height:100vh;background:#020617;color:#cbd5e1;padding:28px 30px 60px">
+  <div style="display:flex;flex-direction:column;gap:4px;padding-bottom:20px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:24px">
+    <span style="font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">ShaneBot — card gallery</span>
+    <span style="font-size:12.5px;color:#64748b">Every card ShaneBot can surface, in one place, for review. {{count}} cards.</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:18px;align-items:start">
+    <sc-for list="{{cards}}" as="c" hint-placeholder-count="6">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <span style="font-size:11.5px;font-weight:700;color:#e2e8f0">{{c.label}}</span>
+          <span style="font-size:10px;color:#475569;font-family:ui-monospace,Menlo,monospace">{{c.kind}}</span>
+        </div>
+
+        <sc-if value="{{c.isInvoice}}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(255,255,255,.11);border-radius:12px;background:rgba(255,255,255,.025);padding:14px 16px 13px;display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">INVOICES</span>
+            <sc-for list="{{c.invoices}}" as="i" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:12px;padding-top:9px;border-top:1px solid rgba(255,255,255,.06)">
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                  <span style="font-size:12.5px;color:#e2e8f0;line-height:1.4">{{i.desc}}</span>
+                  <span style="font-size:10.5px;color:#64748b;font-family:ui-monospace,Menlo,monospace">{{i.ref}}</span>
+                  <span style="font-size:10.5px;color:#64748b">{{i.when}}</span>
+                </div>
+                <span style="font-size:12.5px;color:#e2e8f0;flex:none;font-variant-numeric:tabular-nums;white-space:nowrap">{{i.amount}}</span>
+                <span style="font-size:10px;font-weight:600;color:{{i.stInk}};background:{{i.stBg}};border:1px solid {{i.stBd}};border-radius:999px;padding:3px 0;width:62px;flex:none;text-align:center">{{i.status}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{c.isSub}}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(255,255,255,.11);border-radius:12px;background:rgba(255,255,255,.025);padding:14px 16px 13px;display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">SUBSCRIPTIONS</span>
+            <sc-for list="{{c.subs}}" as="s" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;gap:12px;padding-top:9px;border-top:1px solid rgba(255,255,255,.06)">
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                  <span style="font-size:12.5px;color:#e2e8f0;line-height:1.4">{{s.name}}</span>
+                  <span style="font-size:10.5px;color:#64748b">{{s.caption}}</span>
+                </div>
+                <span style="font-size:10px;font-weight:600;color:{{s.stInk}};background:{{s.stBg}};border:1px solid {{s.stBd}};border-radius:999px;padding:3px 0;width:70px;flex:none;text-align:center">{{s.status}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{c.isScore}}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(255,255,255,.11);border-radius:12px;background:rgba(255,255,255,.025);padding:14px 16px 14px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+              <span style="font-size:26px;font-weight:800;color:#f8fafc;letter-spacing:-.02em;font-variant-numeric:tabular-nums">{{c.scoreValue}}</span>
+              <span style="font-size:12px;color:#94a3b8">/ 100 Copilot readiness</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{c.pillars}}" as="p" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:11px">
+                  <span style="font-size:11.5px;color:#94a3b8;width:100px;flex:none">{{p.label}}</span>
+                  <div style="flex:1;min-width:0;height:6px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden">
+                    <div style="height:100%;width:{{p.pct}};background:{{p.ink}};border-radius:999px"></div>
+                  </div>
+                  <span style="font-size:11.5px;color:#cbd5e1;width:28px;flex:none;text-align:right;font-variant-numeric:tabular-nums">{{p.n}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{c.isData}}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(255,255,255,.11);border-radius:12px;background:rgba(255,255,255,.025);padding:14px 16px 13px;display:flex;flex-direction:column;gap:12px">
+            <sc-for list="{{c.dataSections}}" as="s" hint-placeholder-count="2">
+              <div style="display:flex;flex-direction:column;gap:7px;padding-top:{{s.pad}};border-top:{{s.border}}">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">{{s.label}}</span>
+                <sc-for list="{{s.rows}}" as="r" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:11px">
+                    <span style="font-size:12px;color:#cbd5e1;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{r.left}}</span>
+                    <span style="font-size:11.5px;color:#64748b;flex:none;white-space:nowrap">{{r.right}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{c.isGen}}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid rgba(255,255,255,.11);border-radius:12px;background:rgba(255,255,255,.025);padding:14px 16px 14px;display:flex;flex-direction:column;gap:12px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.11em;color:#475569">{{c.genEyebrow}}</span>
+            <sc-if value="{{c.genHeadShow}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                <span style="font-size:22px;font-weight:800;color:#f8fafc;letter-spacing:-.02em">{{c.genHeadValue}}</span>
+                <span style="font-size:12px;color:#94a3b8">{{c.genHeadLabel}}</span>
+              </div>
+            </sc-if>
+            <div style="display:flex;flex-direction:column;gap:0">
+              <sc-for list="{{c.genRows}}" as="g" hint-placeholder-count="2">
+                <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid rgba(255,255,255,.06)">
+                  <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                    <span style="font-size:12.5px;color:#e2e8f0;line-height:1.4">{{g.left}}</span>
+                    <span style="font-size:10.5px;color:#64748b;line-height:1.4">{{g.sub}}</span>
+                  </div>
+                  <span style="font-size:10px;font-weight:600;color:{{g.ink}};background:{{g.bg}};border:1px solid {{g.bd}};border-radius:999px;padding:3px 10px;flex:none;white-space:nowrap">{{g.right}}</span>
+                </div>
+              </sc-for>
+            </div>
+            <sc-if value="{{c.genNoteShow}}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:10.5px;color:#64748b;line-height:1.55">{{c.genNote}}</span>
+            </sc-if>
+            <span style="font-size:11.5px;font-weight:600;color:#60a5fa">{{c.genLinkLabel}} →</span>
+          </div>
+        </sc-if>
+      </div>
+    </sc-for>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const T_GOLD = { ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" };
+const T_RED = { ink: "#f87171", bg: "rgba(248,113,113,.10)", bd: "rgba(248,113,113,.28)" };
+const T_GRN = { ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" };
+const T_BLU = { ink: "#60a5fa", bg: "rgba(96,165,250,.10)", bd: "rgba(96,165,250,.28)" };
+const T_PUR = { ink: "#a78bfa", bg: "rgba(167,139,250,.10)", bd: "rgba(167,139,250,.28)" };
+const T_SLT = { ink: "#94a3b8", bg: "rgba(148,163,184,.10)", bd: "rgba(148,163,184,.26)" };
+const PAID = { ink: "#34d399", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.28)" };
+const PEND = { ink: "#fbbf24", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.28)" };
+
+const GEN = {
+  ca: { eyebrow: "CONDITIONAL ACCESS", navLabel: "Open Change Control", head: { value: "2", label: "open items reference Conditional Access" },
+    rows: [
+      { left: "CR-2026-118 — Block legacy authentication protocols", sub: "High risk · pending a second approval · Saturday window", right: "Pending", t: T_GOLD },
+      { left: "RR-2026-009 — Conditional access change declined", sub: "Accepted risk on the register · review due 12 Sep 2026", right: "Accepted", t: T_PUR },
+    ], note: "No standalone Conditional Access inventory yet — read across Change Control and the Risk Register." },
+  risk: { eyebrow: "RISK REGISTER", navLabel: "Open Risk Register", head: { value: "4", label: "open or mitigating, 1 review overdue" },
+    rows: [
+      { left: "RR-2026-016 — Teams sites with no retention policy", sub: "High inherent · no owner recorded", right: "Open", t: T_SLT },
+      { left: "RR-2026-011 — MFA gaps on privileged accounts", sub: "Accepted risk · review was due 1 Sep 2026", right: "Overdue", t: T_RED },
+    ], note: "Pulled straight from your risk register." },
+  changes: { eyebrow: "CHANGE CONTROL", navLabel: "Open Change Control", head: { value: "2", label: "pending approval, 1 scheduled" },
+    rows: [
+      { left: "CR-2026-118 — Block legacy authentication protocols", sub: "High risk · one approval in, one still due", right: "Pending", t: T_GOLD },
+      { left: "CR-2026-116 — Move two service accounts to modern auth", sub: "Approved · Friday identity window", right: "Scheduled", t: T_BLU },
+    ], note: "Shane cannot approve these on your behalf." },
+  findings: { eyebrow: "REMEDIATION TRACKING", navLabel: "Open Remediation Tracking", head: { value: "2", label: "open findings from your latest scan" },
+    rows: [
+      { left: "External sharing defaults to anyone with the link", sub: "Critical · six sites, links never expire", right: "Critical", t: T_RED },
+      { left: "Five accounts hold permanent Global Administrator", sub: "Critical · assigned outright", right: "Critical", t: T_RED },
+    ], note: "Findings are keyed to your latest scan." },
+  poams: { eyebrow: "POA&MS", navLabel: "Open POA&Ms", head: { value: "3", label: "active plans, 1 awaiting your signature" },
+    rows: [
+      { left: "POAM-2026-019 — Retire legacy authentication for Exchange Online", sub: "Target 30 Nov 2026 · needs your signature", right: "Unsigned", t: T_GOLD },
+      { left: "POAM-2026-017 — Enforce MFA registration for guest accounts", sub: "Target 15 Oct 2026 · signed 21 Aug 2026", right: "Active", t: T_GRN },
+    ], note: "Milestones are set and ticked off by Shane; this only reads them back." },
+  secplan: { eyebrow: "SECURITY PLAN", navLabel: "Open Security Plan", head: { value: "v4", label: "sealed and signed, 2 Sep 2026" },
+    rows: [{ left: "Changes since signing", sub: "5 rows moved across identity and remediation registers", right: "Drift", t: T_BLU }],
+    note: "Content is fixed the moment a version seals." },
+  raci: { eyebrow: "OWNERSHIP / RACI", navLabel: "Open Ownership / RACI", head: { value: "2", label: "roles with no holder assigned" },
+    rows: [
+      { left: "Accountable — SharePoint", sub: "No holder currently assigned", right: "Unassigned", t: T_RED },
+      { left: "Accountable — Identity & access", sub: "Held by Dana Whitfield and Marcus Lein", right: "Held", t: T_GRN },
+    ], note: "An unassigned Accountable role is why some risks and changes can't be signed yet." },
+  raciWorkload: { eyebrow: "OWNERSHIP / RACI", navLabel: "Open Ownership / RACI", head: { value: "0", label: "holders for SharePoint" },
+    rows: [{ left: "Accountable — SharePoint", sub: "No holder assigned yet", right: "Unassigned", t: T_RED }],
+    note: "Dynamic per-workload drill-down — reached via \"Who owns SharePoint?\"." },
+  policy: { eyebrow: "POLICY DECISIONS", navLabel: "Open Policy Decisions", head: { value: "1", label: "review overdue, 1 waiting on a licence" },
+    rows: [
+      { left: "#39 — Two service accounts kept out of MFA", sub: "Quarterly review — was due 2 Aug 2026", right: "Overdue", t: T_RED },
+      { left: "#33 — Guest access reviews paused", sub: "Waiting on Entra ID P2 licences", right: "Waiting", t: T_BLU },
+    ], note: "A lapsed review doesn't undo the position." },
+  team: { eyebrow: "TEAM & ROLES", navLabel: "Open Team Management", head: { value: "14", label: "active members" },
+    rows: [
+      { left: "Customer Admins", sub: "Full billing, team and change-approval capability", right: "2 people", t: T_SLT },
+      { left: "Without MFA enforced", sub: "Accounts that haven't completed enrollment", right: "1 account", t: T_GOLD },
+    ], note: "Billing access is auto-granted to whoever a bill is addressed to." },
+  tickets: { eyebrow: "REQUESTS & SUPPORT", navLabel: "Open Requests", head: { value: "2", label: "open tickets with Shane" },
+    rows: [{ left: "Break-glass invite email never arrived", sub: "Category: Access · opened this week", right: "Open", t: T_BLU }],
+    note: "I can raise a new one, but can't check status changes beyond what's shown here." },
+  sla: { eyebrow: "SCOPE & SLA", navLabel: "Open Service and Scope", head: { value: "2 of 5", label: "open requests are approaching their response target" },
+    rows: [{ left: "Response time compliance", sub: "Live reading, compared against your agreement's targets", right: "Attention", t: T_GOLD }],
+    note: "This is a live reading — can differ from the stored Overview snapshot." },
+  retainer: { eyebrow: "MY ARCHITECT", navLabel: "Open My Architect", head: { value: "5.5h", label: "used of 9.5h allotted this month" },
+    rows: [{ left: "Conditional Access consolidation — twelve policies to five", sub: "Security · report-only trial running until 25 Sep", right: "In progress", t: T_BLU }],
+    note: "Hours only — the money side lives on Billing." },
+  tenantStatus: { eyebrow: "TENANT STATUS", navLabel: "Open Overview", head: { value: "Attention", label: "1 area needs a look, last scan 6h ago" },
+    rows: [
+      { left: "Security", sub: "1 critical finding — legacy authentication still enabled", right: "Attention", t: T_GOLD },
+      { left: "Governance", sub: "No open findings on the latest scan", right: "Healthy", t: T_GRN },
+    ], note: "Same status strip that sits at the top of your sidebar." },
+  project: { eyebrow: "PROJECTS", navLabel: "Open Projects", head: { value: "63%", label: "tasks completed on Legacy authentication retirement" },
+    rows: [
+      { left: "Migration of service mailboxes", sub: "In progress · due 6 Oct 2026", right: "In progress", t: T_BLU },
+      { left: "Protocol switch-off", sub: "Blocked on the kiosk firmware dependency", right: "Blocked", t: T_RED },
+    ], note: "Shane moves the cards; this only reads back where they landed." },
+  burndown: { eyebrow: "MY ARCHITECT — BURN-DOWN", navLabel: "Open My Architect", head: { value: "58%", label: "of this month's 9.5h allotment used" },
+    rows: [
+      { left: "Conditional Access consolidation", sub: "Security · in progress", right: "5.0h", t: T_BLU },
+      { left: "Remaining this month", sub: "Resets 1 Oct — unused hours already rolled in once", right: "4.0h", t: T_GRN },
+    ], note: "Burn-down resets each calendar month." },
+  msChanges: { eyebrow: "MICROSOFT CHANGES", navLabel: "Open Microsoft Changes", head: { value: "76", label: "Microsoft-side changes land in the next 90 days" },
+    rows: [{ left: "Shared calendars move to the REST-based model", sub: "Exchange Online · 29 Sep – 27 Nov window", right: "Reference", t: T_SLT }],
+    note: "Microsoft's own change roadmap — separate from Change Control." },
+  diagnostics: { eyebrow: "DIAGNOSTICS & SCRIPTS", navLabel: "Open Diagnostics and Scripts", head: { value: "2", label: "critical findings on the latest diagnostic run" },
+    rows: [{ left: "Legacy authentication is still allowed for 12 accounts", sub: "Conditional Access — legacy auth", right: "Critical", t: T_RED }],
+    note: "A point-in-time run, separate from Remediation Tracking's ongoing checklist." },
+  statusReports: { eyebrow: "STATUS REPORTS", navLabel: "Open Status Reports", head: { value: "3", label: "published reports, newest is August 2026" },
+    rows: [{ left: "August 2026", sub: "Published 3 Sep 2026 · written by Shane McCaw", right: "Published", t: T_GRN }],
+    note: "Shane's monthly reports — a different register from My Architect's retainer reports." },
+  configState: { eyebrow: "CONFIGURATION STATE", navLabel: "Open Configuration State", head: { value: "13.8%", label: "of the tenant is machine-readable on the latest snapshot" },
+    rows: [{ left: "MicrosoftGraph", sub: "852 types · 49,627 objects", right: "73 collected", t: T_SLT }],
+    note: "Reads coverage, not compliance." },
+  mfa: { eyebrow: "ACCOUNT SECURITY — MFA", navLabel: "Open Account Security", head: { value: "1", label: "method registered — add a backup for resilience" },
+    rows: [
+      { left: "Microsoft Authenticator", sub: "Registered 11 Jan 2026 · push + code", right: "Registered", t: T_GRN },
+      { left: "Text message backup", sub: "Not set up — the weakest method", right: "Not set up", t: T_GOLD },
+    ], note: "Adding or removing a method happens on the page itself." },
+  password: { eyebrow: "ACCOUNT SECURITY — PASSWORD", navLabel: "Open Account Security", head: { value: "No forced expiry", label: "on this portal login" },
+    rows: [{ left: "Portal password", sub: "Changed from Account Security, not from here", right: "Change", t: T_BLU }],
+    note: "Separate from any Microsoft 365 password policy on your tenant." },
+  breakglass: { eyebrow: "BREAK-GLASS ACCESS", navLabel: "Open Break-glass Access", head: { value: "2", label: "verification links currently live" },
+    rows: [{ left: "it.director@contoso.com", sub: "GA eligible, not active — activate in PIM first", right: "Pending", t: T_GOLD }],
+    note: "Nothing changes on your tenant until a verification succeeds." },
+  documents: { eyebrow: "DOCUMENTS", navLabel: "Open Documents", head: { value: "1", label: "document waiting on your review" },
+    rows: [{ left: "Conditional Access hardening — scoped SOW", sub: "Statement of work · $6,400 · scoped 12 Sep", right: "Review", t: T_GOLD }],
+    note: "Some reports render live with no stored copy." },
+  settings: { eyebrow: "SETTINGS", navLabel: "Open Settings", head: { value: "7", label: "alert categories, all on their default delivery mode" },
+    rows: [{ left: "Alert preferences", sub: "Findings, drift, progress, reviews, remediation, billing, support", right: "Configured", t: T_SLT }],
+    note: "Settings covers alerts, notifications, webhooks, departments, privacy and email auth." },
+  signal: { eyebrow: "GOVERNANCE PILLAR SIGNAL", navLabel: "Open Governance pillar", head: { value: "5", label: "Public, discoverable teams · +1 since last scan" },
+    rows: [{ left: "Public, discoverable teams", sub: "of 18 teams · governance:public-teams-discoverable", right: "Worth a look", t: T_GOLD }],
+    note: "Read straight from the Governance pillar's signal catalog — same number, same checkKey." },
+};
+
+class Component extends DCLogic {
+  renderVals() {
+    const INV = [
+      { desc: "Tenant monitoring — July", ref: "INV-2026-0714", when: "Paid 29 Jul 2026", amount: "$1,180.00", status: "Paid", st: PAID },
+      { desc: "Architect retainer — Q3", ref: "INV-2026-0688", when: "Paid 1 Jul 2026", amount: "$4,500.00", status: "Paid", st: PAID },
+      { desc: "Onboarding — one-off", ref: "inv_2148", when: "Due 18 Jun 2026", amount: "$960.00", status: "Due", st: PEND },
+    ];
+    const SUBS = [
+      { name: "Tenant Monitoring — Growth", caption: "Active since 14 Jan 2026", status: "Active", st: PAID },
+      { name: "Architect Retainer", caption: "Active since 1 Apr 2026", status: "Active", st: PAID },
+    ];
+    const PILLARS = [{ label: "Identity", n: 74 }, { label: "Security", n: 61 }, { label: "Collaboration", n: 88 }, { label: "Compliance", n: 47 }];
+    const bar = (n) => n >= 80 ? "#34d399" : n >= 50 ? "#fbbf24" : "#f87171";
+
+    const cards = [];
+    cards.push({ kind: "invoice", label: "Invoices", isInvoice: true,
+      invoices: INV.map((i) => ({ desc: i.desc, ref: i.ref, when: i.when, amount: i.amount, status: i.status, stInk: i.st.ink, stBg: i.st.bg, stBd: i.st.bd })) });
+    cards.push({ kind: "subscription", label: "Subscriptions", isSub: true,
+      subs: SUBS.map((s) => ({ name: s.name, caption: s.caption, status: s.status, stInk: s.st.ink, stBg: s.st.bg, stBd: s.st.bd })) });
+    cards.push({ kind: "score", label: "Copilot readiness score", isScore: true, scoreValue: "68",
+      pillars: PILLARS.map((p) => ({ label: p.label, n: String(p.n), pct: p.n + "%", ink: bar(p.n) })) });
+    cards.push({ kind: "data-answer", label: "Account overview (fallback)", isData: true,
+      dataSections: [
+        { label: "SUBSCRIPTIONS", pad: "0", border: "none", rows: SUBS.map((s) => ({ left: s.name, right: s.status })) },
+        { label: "LATEST SCAN", pad: "11px", border: "1px solid rgba(255,255,255,.06)", rows: [{ left: "Full tenant diagnostic", right: "Completed 1 Sep" }] },
+      ] });
+
+    Object.keys(GEN).forEach((key) => {
+      const g = GEN[key];
+      cards.push({
+        kind: "gen:" + key, label: g.eyebrow, isGen: true,
+        genEyebrow: g.eyebrow, genHeadShow: !!g.head, genHeadValue: (g.head || {}).value || "", genHeadLabel: (g.head || {}).label || "",
+        genRows: (g.rows || []).map((r) => ({ left: r.left, sub: r.sub, right: r.right, ink: r.t.ink, bg: r.t.bg, bd: r.t.bd })),
+        genNoteShow: !!g.note, genNote: g.note || "", genLinkLabel: g.navLabel,
+      });
+    });
+
+    return { count: cards.length, cards };
+  }
+}
+
+</script>
+</body>
+</html>
