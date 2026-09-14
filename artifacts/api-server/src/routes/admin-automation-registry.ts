@@ -41,6 +41,7 @@ import { z } from "zod";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "admin.automation-registry" });
 
@@ -79,6 +80,15 @@ router.get("/admin/automation-registry/:customerId", requireAdmin, async (req: R
       .from(automationRegistryTable)
       .where(eq(automationRegistryTable.customerId, customerId))
       .orderBy(desc(automationRegistryTable.updatedAt));
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_automation_registry_viewed",
+      entityType: "tenant",
+      tenantId: customerId,
+    });
 
     res.json({
       customer: { customerId, name: scope.tenantName },

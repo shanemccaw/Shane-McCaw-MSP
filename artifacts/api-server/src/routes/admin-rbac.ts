@@ -36,7 +36,7 @@ import { ladderCapabilityKey } from "@workspace/db/rbac/legacy-ladder";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { invalidateLadderSnapshot, userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
 import { logger } from "../lib/logger.ts";
-import { createAuditLog } from "../lib/audit.ts";
+import { createAuditLog, auditPrivilegedRead } from "../lib/audit.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "admin.active-directory" });
@@ -216,6 +216,17 @@ router.get("/admin/rbac/user/:userId/roles", requireAdmin, async (req: Request, 
 
   try {
     const [roles, orgId] = await Promise.all([listUserRoles(db, system, userId), resolveUserOrgId(db, system, userId)]);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_user_rbac_roles_viewed",
+      entityType: "user",
+      entityId: userId,
+      metadata: { system },
+    });
+
     res.json({ roles, orgId });
   } catch (err) {
     log.error({ err, system, userId }, "Failed to list a user's RBAC roles");

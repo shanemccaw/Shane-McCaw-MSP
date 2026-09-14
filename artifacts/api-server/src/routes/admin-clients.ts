@@ -20,6 +20,7 @@ import {
 import { eq, and, desc, count, inArray, sql, isNotNull, isNull, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "admin.clients" });
@@ -392,6 +393,16 @@ router.get("/admin/clients/:id/command-center", requireAdmin, async (req: Reques
     const appRegStatus = (appRegRows[0]?.status ?? null) as "pending" | "submitted" | "verified" | null;
     const hasM365Profile = m365Rows.length > 0;
 
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_client_command_center_viewed",
+      entityType: "user",
+      clientId: id,
+      entityLabel: client.email,
+    });
+
     res.json({
       client: { ...client, passwordHash: undefined, appRegStatus, hasM365Profile },
       projects: projects.map(p => ({
@@ -441,6 +452,15 @@ router.get("/admin/clients/:id/health/summary", requireAdmin, async (req: Reques
       .from(clientHealthHistoryTable)
       .where(eq(clientHealthHistoryTable.clientId, id))
       .orderBy(asc(clientHealthHistoryTable.recordedAt));
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_client_health_summary_viewed",
+      entityType: "user",
+      clientId: id,
+    });
 
     if (rows.length === 0) {
       res.json({ hasData: false });

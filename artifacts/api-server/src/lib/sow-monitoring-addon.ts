@@ -7,17 +7,27 @@
  *
  * TENANT MONITORING
  * ------------------
- * `services` carries 12 real monitoring_tier rows: 3 quality tiers (Basic /
- * Enhanced / Premium, `type_attributes.tenantTierLabel`) × 4 seat bands
- * (`type_attributes.seatMin`/`seatMax`), each per-seat priced via
- * `type_attributes.pricePerUserMonth`.
+ * `services` carries 12 real monitoring_tier rows: 3 quality tiers
+ * (Foundation / Growth / Premier, `type_attributes.packageKey` — `"core:
+ * foundation"` / `"core:growth"` / `"core:premier"`) × 4 seat bands
+ * (`type_attributes.tenantTierLabel` names the band — Micro/SMB/Mid-Market/
+ * Enterprise — and `type_attributes.seatMin`/`seatMax` bound it), each
+ * per-seat priced via `type_attributes.pricePerUserMonth`.
+ *
+ * Git #4074: `tenantTierLabel` is the SEAT BAND, not the quality tier — a
+ * prior version of this resolver grouped candidates by `tenantTierLabel` and
+ * matched `"enhanced"` against it, which never matched a real row (the real
+ * label set there is Micro/SMB/Mid-Market/Enterprise) and fell through to a
+ * `TIER_LABEL_ORDER` keyed on the equally-stale basic/enhanced/premium
+ * vocabulary. The default pick was silently arbitrary DB row order. Fixed to
+ * group/select by the real quality-tier vocabulary parsed from `packageKey`.
  *
  * Git #609 (supersedes the prior "customer picks Basic/Enhanced/Premium"
  * design): live-testing the 3-card picker showed all three quality tiers are
  * the same real feature set (Live Monitor Engine) — showing them as
  * selectable implied a choice that doesn't exist. Per Shane's 2026-08-08
  * confirmation, this resolves each quality tier's real price at this
- * tenant's real seat band exactly as before, then keeps only Enhanced (this
+ * tenant's real seat band exactly as before, then keeps only Growth (this
  * platform's one designated default) as the single tier the UI renders — no
  * band-selection UI, add/remove only.
  *
@@ -130,9 +140,32 @@ type ServiceRow = typeof servicesTable.$inferSelect;
 
 interface MonitoringAttrs {
   tenantTierLabel?: unknown;
+  packageKey?: unknown;
   seatMin?: unknown;
   seatMax?: unknown;
   stage?: unknown;
+}
+
+/** Git #4074 — real quality-tier vocabulary, lowest to highest. */
+const QUALITY_TIER_LABELS: Readonly<Record<string, string>> = {
+  foundation: "Foundation",
+  growth: "Growth",
+  premier: "Premier",
+};
+
+/**
+ * The real quality tier (`foundation`/`growth`/`premier`) a monitoring_tier
+ * row belongs to, parsed from its own `type_attributes.packageKey`
+ * (`"core:<tier>"`) — never from `tenantTierLabel`, which is the seat band
+ * (Micro/SMB/Mid-Market/Enterprise), a different axis entirely. `null` for
+ * a row that isn't a real, recognized monitoring quality tier (e.g. a test
+ * fixture row with an unrelated or missing `packageKey`).
+ */
+function resolveQualityTierKey(ta: MonitoringAttrs): string | null {
+  const packageKey = typeof ta.packageKey === "string" ? ta.packageKey : "";
+  const [prefix, tier] = packageKey.split(":");
+  if (prefix !== "core" || !tier) return null;
+  return tier in QUALITY_TIER_LABELS ? tier : null;
 }
 
 function slugify(s: string): string {
@@ -170,7 +203,7 @@ function pickBandRow(rows: readonly ServiceRow[], seats: number): ServiceRow | n
   return best;
 }
 
-const TIER_LABEL_ORDER: Readonly<Record<string, number>> = { basic: 0, enhanced: 1, premium: 2 };
+const TIER_LABEL_ORDER: Readonly<Record<string, number>> = { foundation: 0, growth: 1, premier: 2 };
 
 /**
  * The real Tenant Monitoring add-on, priced for this tenant's real seat
@@ -209,31 +242,35 @@ export async function resolveTenantMonitoringAddon(
       and(eq(servicesTable.serviceType, "monitoring_tier"), eq(servicesTable.visibility, "public")),
     );
 
-  const byLabel = new Map<string, ServiceRow[]>();
+  // Git #4074: grouped by the real quality-tier key parsed from `packageKey`
+  // — `tenantTierLabel` is the seat band (a different axis), not this.
+  const byQualityTier = new Map<string, ServiceRow[]>();
   for (const row of rows) {
     const ta = (row.typeAttributes ?? {}) as MonitoringAttrs;
-    const label = typeof ta.tenantTierLabel === "string" ? ta.tenantTierLabel.trim() : "";
-    if (!label) continue;
-    const group = byLabel.get(label);
+    const tierKey = resolveQualityTierKey(ta);
+    if (!tierKey) continue;
+    const group = byQualityTier.get(tierKey);
     if (group) group.push(row);
-    else byLabel.set(label, [row]);
+    else byQualityTier.set(tierKey, [row]);
   }
 
   // Every real quality tier's own real price at this tenant's real seat band
   // — the same resolution as before Git #609, just no longer all exposed as
   // selectable alternatives (see the class doc above).
-  const candidates: ResolvedAddonTier[] = [];
-  for (const [label, group] of byLabel) {
+  const candidates: (ResolvedAddonTier & { tierKey: string })[] = [];
+  for (const [tierKey, group] of byQualityTier) {
     const row = pickBandRow(group, seats);
     if (!row) continue;
     const monthlyCents = resolveTypeAttributesMonthlyPriceCents(row, seats);
     if (monthlyCents <= 0) continue;
+    const label = QUALITY_TIER_LABELS[tierKey];
     candidates.push({
       id: slugify(label),
       label,
       upfrontUsd: 0,
       monthlyUsd: monthlyCents / 100,
       detail: (row.tagline ?? row.description ?? "").trim(),
+      tierKey,
     });
   }
 
@@ -242,14 +279,13 @@ export async function resolveTenantMonitoringAddon(
     return null;
   }
 
-  // Git #609: keep only the one this platform actually recommends (Enhanced),
-  // falling back to whichever quality tier priced if Enhanced itself did not
-  // — never an empty addon when at least one real tier is priceable.
+  // Git #609 (name corrected under #4074): keep only the one this platform
+  // actually recommends (Growth), falling back to whichever quality tier
+  // priced if Growth itself did not — never an empty addon when at least one
+  // real tier is priceable.
   const resolved =
-    candidates.find((t) => t.label.toLowerCase() === "enhanced") ??
-    candidates.sort(
-      (a, b) => (TIER_LABEL_ORDER[a.label.toLowerCase()] ?? 99) - (TIER_LABEL_ORDER[b.label.toLowerCase()] ?? 99),
-    )[0];
+    candidates.find((t) => t.tierKey === "growth") ??
+    candidates.sort((a, b) => (TIER_LABEL_ORDER[a.tierKey] ?? 99) - (TIER_LABEL_ORDER[b.tierKey] ?? 99))[0];
 
   // Git #593 — real, not asserted: only set when at least one of this
   // tenant's actual band rows carries it (every monitoring_tier row does,

@@ -43,6 +43,7 @@ import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -192,6 +193,16 @@ router.get("/admin/config-snapshots/:id", requireAdmin, async (req: Request, res
       group.objectCount += r.objectCount;
     }
 
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_config_snapshot_viewed",
+      entityType: "config_snapshot",
+      entityId: snapshot.snapshotId,
+      tenantId: snapshot.tenantId,
+    });
+
     res.json({
       snapshot: { ...snapshot, tenantName: tenant?.name ?? null },
       workloads: Array.from(byWorkload.values()).sort((a, b) => a.workload.localeCompare(b.workload)),
@@ -212,7 +223,11 @@ router.get("/admin/config-snapshots/:id/objects", requireAdmin, async (req: Requ
     if (!cond) {
       return apiError(res, 400, ApiErrorCode.VALIDATION, "id must be a uuid or an integer row id");
     }
-    const [snapshot] = await db.select({ id: tenantConfigSnapshotsTable.id })
+    const [snapshot] = await db.select({
+      id: tenantConfigSnapshotsTable.id,
+      snapshotId: tenantConfigSnapshotsTable.snapshotId,
+      tenantId: tenantConfigSnapshotsTable.tenantId,
+    })
       .from(tenantConfigSnapshotsTable).where(cond).limit(1);
     if (!snapshot) return apiError(res, 404, ApiErrorCode.NOT_FOUND, "Configuration snapshot not found");
 
@@ -236,6 +251,17 @@ router.get("/admin/config-snapshots/:id/objects", requireAdmin, async (req: Requ
 
     const [{ total }] = await db.select({ total: sql<number>`count(*)::int` })
       .from(tenantConfigSnapshotObjectsTable).where(where);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_config_snapshot_objects_viewed",
+      entityType: "config_snapshot",
+      entityId: snapshot.snapshotId,
+      tenantId: snapshot.tenantId,
+      metadata: { resourceKey },
+    });
 
     res.json({
       resourceKey,

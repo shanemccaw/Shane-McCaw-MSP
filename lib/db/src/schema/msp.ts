@@ -9289,6 +9289,62 @@ export const retainerAdjustmentNotesTable = pgTable("retainer_adjustment_notes",
 export type RetainerAdjustmentNoteRow = typeof retainerAdjustmentNotesTable.$inferSelect;
 export type InsertRetainerAdjustmentNoteRow = typeof retainerAdjustmentNotesTable.$inferInsert;
 
+// The closed-period approval queue for the tracker BYPRODUCT hook (Git #4098,
+// follow-up to #4026). logRetainerWorkFromTracker (retainer-work-logger.ts)
+// isn't a route — it fires automatically when Shane closes/resolves a tracked
+// change request or remediation step — so it was never wired into
+// retainer-ledger-lock.ts's close check at all, and inserted straight into
+// retainer_work_log regardless of the target period's lock state. Shane's
+// decision (2026-09-14): it doesn't silently write past the lock, and it
+// doesn't silently skip either — a closed-period byproduct lands here for an
+// MSP Console operator/admin to approve or reject, with a required reason
+// captured at review time. Approval inserts the real row into
+// retainer_work_log (same idempotent (source, sourceRefId) path) and records
+// the reason via retainer_adjustment_notes — the same mechanism #4026 built
+// for its own "adjust after close" trail. Rejection never touches the ledger.
+export const RETAINER_PENDING_ENTRY_STATUSES = ["pending", "approved", "rejected"] as const;
+export type RetainerPendingEntryStatus = typeof RETAINER_PENDING_ENTRY_STATUSES[number];
+
+export const retainerPendingEntriesTable = pgTable("retainer_pending_entries", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The closed period this entry targets — retainer_work_log.periodMonth's own convention. */
+  periodKey: text("period_key").notNull(),
+  weekLabel: text("week_label"),
+  item: text("item").notNull(),
+  minutes: integer("minutes").notNull().default(0),
+  pillar: text("pillar"),
+  finding: text("finding"),
+  outcome: text("outcome"),
+  /** Same source vocabulary as retainer_work_log, minus "unscoped" — only the tracker byproduct hook writes here. */
+  source: text("source", { enum: RETAINER_WORK_SOURCES }).notNull(),
+  sourceRefId: integer("source_ref_id"),
+  /** users.id of whoever closed the tracked item; NULL for automation. */
+  loggedByUserId: integer("logged_by_user_id"),
+  /** When the tracked item actually closed (drives the target period/week). */
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  status: text("status", { enum: RETAINER_PENDING_ENTRY_STATUSES }).notNull().default("pending"),
+  /** users.id of the MSP operator/admin who approved or rejected this entry. */
+  reviewedByUserId: integer("reviewed_by_user_id"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  /** Mandatory on review — the API layer rejects an empty reason before either transition is written. */
+  reviewReason: text("review_reason"),
+  /** retainer_work_log.id the approval created. NULL until approved. */
+  workLogEntryId: integer("work_log_entry_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("retainer_pending_entries_customer_period_idx").on(t.customerId, t.periodKey),
+  index("retainer_pending_entries_msp_id_idx").on(t.mspId),
+  index("retainer_pending_entries_status_idx").on(t.status),
+  // Idempotency, mirroring retainer_work_log's own: a re-close of the same
+  // tracked item never double-queues.
+  uniqueIndex("retainer_pending_entries_source_ref_uidx").on(t.source, t.sourceRefId),
+]);
+
+export type RetainerPendingEntryRow = typeof retainerPendingEntriesTable.$inferSelect;
+export type InsertRetainerPendingEntryRow = typeof retainerPendingEntriesTable.$inferInsert;
+
 // ── Evidence attachments (#3503) ──────────────────────────────────────────────
 //
 // `desktop/MyArchitect/Services/IEvidencePostClient.cs` (#3470's screenshot tool)

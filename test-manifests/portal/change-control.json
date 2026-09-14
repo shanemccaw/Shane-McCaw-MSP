@@ -2,12 +2,13 @@
   "issue": 1717,
   "feature": "Change Control (#1485, screen 02; Feature #1486) — the real Change Control page in the rebuilt artifacts/portal (/change-control), wired to all 14 customer-portal routes plus the 3-route customer settings surface documented in docs/portal/change-control-contract-pack.md (#2989). This manifest replaces the old test-manifests/portal/change-control.json, which covered the retired portal-v2 page at /portal-v2/change-control (a different app, different components, different data-testids) — that page and its route no longer exist. Page lives at artifacts/portal/src/pages/change-control.tsx; components under artifacts/portal/src/components/change-control/. This build also added `activeNow` to the freeze-windows and maintenance-windows GETs, and `maintenanceWindows` to the settings policy GET/PUT — both real, small backend extensions covered below.",
   "baseUrl": "{{DEPLOY_URL}}",
+  "loginAs": "Customer — RBAC test",
   "lastVerifiedAgainstCommit": "0231b1938",
 
   "notes": [
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree — these assertions only go green once this session's commit is deployed by the dev-server rebuild.",
     "NOT RUN THIS SESSION AGAINST THE REWRITTEN CONTENT — real attempt made, real evidence why: shaneapp://runTest was invoked from this build (buildId 2065, worktree C:\\wt\\1717-q2065) and DID return a real result, but BuildConsole resolves `test-manifests/` against its own dev-server checkout (C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP), not this worktree, and that checkout has not yet received this session's commit (merge-back happens on build completion, which had not occurred at the time of this run). The result it returned was therefore the OLD, pre-#1717 file content (feature field literally read 'Customer Portal v2 -- Change Control (/portal-v2/change-control)', the retired page), 6/18 steps failing because they targeted the retired portal-v2 route/testids that no longer exist. Confirmed independently, not just inferred: a direct authenticated probe of the running dev api-server (using the JWT that run's own login step returned) hit GET /api/portal/settings/change-control and got back a policy object with NO `maintenanceWindows` key at all — the old shape, proving the deployed api-server genuinely predates this session's commit, not a fluke of the UI layer. Verified instead by: `artifacts/portal` tsc --noEmit clean + `vite build` clean, `artifacts/api-server` tsc --noEmit clean, and the touched vitest suites (portal-change-control, portal-settings-change-control, portal-change-freeze, portal-change-maintenance) at 75/75. Re-running this manifest once the dev-server checkout has merged this commit is real follow-up, not a gap being silently skipped — see build-journal/1717.md.",
-    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD — the same testbed Customer account the retired change-control manifest already used, which the #1173 add-on migration seeds with an active `change_control` entitlement row. Every read/action route on this page floors at requireRole('Customer') + requireAddOnEntitlement('change_control') except the register's own POST (raise), which is unconditional per #1168.",
+    "ENV VARS required: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD — the same testbed Customer account the retired change-control manifest already used, which the #1173 add-on migration seeds with an active `change_control` entitlement row. Every read/action route on this page floors at requireRole('Customer') + requireAddOnEntitlement('change_control') except the register's own POST (raise), which is unconditional per #1168.",
     "TRI-STATE COVERED HONESTLY: A2 pins `scoped: true` on the register read, which is what tells a genuinely-empty register apart from the fail-closed no-tenant envelope — the same distinction the page's own dataState logic makes (pages/change-control.tsx's own header comment). This manifest exercises the LIVE/scoped state only, since that is what the entitled testbed tenant resolves to; the no-tenant/read-failed states are covered by code review of the tri-state derivation, not by a second test account.",
     "NEW FIELDS THIS BUILD ADDED, REGRESSION-GUARDED HERE: A6/A7 pin `activeNow` existing on a freeze-windows / maintenance-windows row (boolean, computed server-side via the existing isWindowActiveAt / spanWithinMaintenanceWindow pure functions — not duplicated client-side). A9 pins `policy.maintenanceWindows` existing on the settings GET — previously the DB column (`portal_change_control_policy.enforce_maintenance_windows`) was read by the catalog-execute path but never exposed on this wire at all.",
     "NO WRITE MUTATION IS EXERCISED by the uiSteps below (approve/reject/decline/raise/comment/attachment/catalog-execute) — each is a real, permanent, audit-relevant tenant-governance action with no delete route (same posture microsoft-changes.json documents for its own decline action), so exercising them on every regression run would leave real rows on the testbed tenant's msp_change_requests / cr_approvals / cr_comments / cr_attachments indefinitely. Each mutation route already has its own passing test coverage in artifacts/api-server (portal-change-control.test.ts, 75/75 passing at the time of this build) and was verified by direct code review of the calling hook in change-control-api.ts. UI-level coverage of a live approve/reject/raise/comment cycle is a natural, real follow-up once a disposable-data convention exists for this module, not a gap silently skipped.",
@@ -21,7 +22,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
@@ -100,12 +101,6 @@
   ],
 
   "uiSteps": [
-    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
-    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    { "name": "Primary login — every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
-
     { "name": "goto the real Change Control page.", "action": "goto", "target": "/portal/change-control" },
     { "name": "CC0 — the page itself resolved, not NotFound.", "action": "expect", "selector": "[data-testid='change-control-page']", "state": "visible", "critical": true },
     { "name": "CC0b — the status line reads Live, not loading/failed/no-tenant, for the entitled testbed tenant.", "action": "expect", "selector": "[data-testid='change-control-status']", "textContains": "Live" },

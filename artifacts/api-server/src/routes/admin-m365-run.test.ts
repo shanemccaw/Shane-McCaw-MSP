@@ -78,8 +78,14 @@ mock.module("@workspace/db", {
 
 mock.module("../middlewares/requireAuth.ts", {
   namedExports: {
-    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
-    requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
+    requireAdmin: (req: any, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: "admin@test.local", role: "admin" };
+      next();
+    },
+    requireAuth: (req: any, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: "admin@test.local", role: "admin" };
+      next();
+    },
   },
 });
 
@@ -125,7 +131,7 @@ mock.module("../lib/azure-keyvault.ts", {
 });
 
 mock.module("../lib/audit.ts", {
-  namedExports: { createAuditLog: async () => {} },
+  namedExports: { createAuditLog: async () => {}, auditPrivilegedRead: async () => {} },
 });
 
 mock.module("../lib/m365-profile-update.ts", {

@@ -12,7 +12,7 @@
 
     "The two STATE reads (subscriptions, retainer-intervals) ARE real positive assertions: with the testbed portal bearer they return 200 + a real array (possibly empty) — the exact payloads customer-billing.tsx / SubscriptionList.tsx render. 999999999 is used as a valid-integer-but-not-this-user's client_services id; a NEGATIVE ownership result there also proves a customer cannot cancel/resume someone else's retainer.",
 
-    "ENV VARS (BuildConsole → Settings → Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (a designated testbed portal account — the same one money-path-e2e.json uses). No SECRET_KEY needed (no admin/testbed-reset endpoints are touched — nothing to reset, since no real mutation is performed). Run against the deployed origin serving /api/auth/login and /api/portal/*.",
+    "ENV VARS (BuildConsole → Settings → Test Environment Variables): DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD (a designated testbed portal account — the same one money-path-e2e.json uses). No SECRET_KEY needed (no admin/testbed-reset endpoints are touched — nothing to reset, since no real mutation is performed). Run against the deployed origin serving /api/auth/login and /api/portal/*.",
 
     "logger channel for all endpoints under test: `billing`."
   ],
@@ -30,7 +30,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },

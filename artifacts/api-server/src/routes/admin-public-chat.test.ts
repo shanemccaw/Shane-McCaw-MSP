@@ -49,7 +49,10 @@ vi.mock("../lib/shanebot-engine.ts", () => ({
 }));
 
 vi.mock("../middlewares/requireAuth.ts", () => ({
-  requireAdmin: (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
+  requireAdmin: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+    (req as any).user = { id: 1, email: "admin@test.local", role: "admin" };
+    next();
+  },
 }));
 
 vi.mock("../lib/logger.ts", () => ({

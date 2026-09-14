@@ -34,6 +34,7 @@ import { parseM365ScriptOutput, normaliseProfileUpdates } from "../lib/parse-m36
 import { sendWebPushToAdmins } from "../lib/web-push.ts";
 import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase-advance.ts";
 import { fireWorkflowsForEvent } from "../lib/workflow-executor.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 
 const router: IRouter = Router();
 
@@ -515,6 +516,15 @@ router.get("/admin/callback-tokens", requireAdmin, async (req: Request, res: Res
       createdAt: r.createdAt,
       lastUsedAt: r.lastUsedAt ?? null,
     }));
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_client_callback_tokens_viewed",
+      entityType: "client_callback_token",
+      clientId: clientIdRaw,
+    });
 
     res.json(result);
   } catch (err) {

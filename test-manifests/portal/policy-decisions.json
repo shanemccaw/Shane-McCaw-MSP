@@ -2,13 +2,14 @@
   "issue": 1724,
   "feature": "Policy Decisions -- own-table register (#1724, Feature #1490) -- the real customer-facing Policy Decisions page in artifacts/portal (/policy-decisions), wired to GET/POST /api/portal/policy-register, PATCH /api/portal/policy-register/:id/clearance/resolve, and GET /api/portal/compliance-obligations -- see docs/portal/policy-decisions-contract-pack.md. No fixture module: every row on screen comes from these endpoints. This is a DIFFERENT register from the risk-derived GET /api/portal/policy-decisions view already covered by test-manifests/portal/risk-register.json's A2/UI6 (PolicyDecisionsCard on the Risk Register page) -- the two are never merged, per contract pack §0/§9.",
   "baseUrl": "{{DEPLOY_URL}}",
+  "loginAs": "Customer — RBAC test",
   "lastVerifiedAgainstCommit": "ea4192eb0",
 
   "notes": [
     "WHAT THIS COVERS: the real live-empty read (policy_decisions holds 0 rows for the testbed tenant, verified by direct SELECT this session -- {decisions: []} is a true empty, not a read failure), the real obligations catalogue read (8 real seeded compliance_obligations rows, verified by direct SELECT), the 400 validation guard on an invalid create body, and the 404 on a clearance-resolve for a decision that does not exist.",
     "WHY NO HAPPY-PATH CREATE IS DRIVEN HERE: a signed policy decision has no delete route -- POST /api/portal/policy-register creates a permanent, signed row (same 'no unsigned intermediate state' design as Risk Register's accept). A step that successfully creates one would leave real fixture-looking rows in the live register on every run of this manifest, which is exactly the invented-data outcome this project forbids. If a real create needs proving end-to-end, do it the same way risk-register.json's A3/A4 notes describe: seed + a manual one-off session, then reset the DB -- never as a repeatable manifest step.",
     "WHY THE UI DOES NOT ASSERT A REAL ROW ON THE REGISTER: the testbed tenant's own-table register is genuinely empty (0 rows) -- there is no real row to assert into the DOM the way risk-register.json's UI2 does. UI2 below instead asserts the real obligations catalogue's first row (8 real seeded rows, stable, not user-writable) reached the DOM -- the same 'endpoint's first real value shows up under its own testid' proof, on the one real dataset this page can show without writing anything.",
-    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD."
   ],
 
   "apiTests": [
@@ -18,7 +19,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
@@ -71,12 +72,6 @@
   ],
 
   "uiSteps": [
-    { "name": "goto the real login URL.", "sessionTag": "setup", "action": "goto", "target": "/portal/login" },
-    { "name": "WAIT for the login form to hydrate before typing.", "sessionTag": "setup", "action": "expect", "selector": "#email", "state": "visible" },
-    { "sessionTag": "setup", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "sessionTag": "setup", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    { "name": "Primary login -- every assertion below needs a real session.", "sessionTag": "setup", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
-
     { "name": "goto the real Policy Decisions page.", "sessionTag": "setup", "action": "goto", "target": "/portal/policy-decisions" },
     { "name": "UI1 -- the page renders.", "action": "expect", "selector": "[data-testid='policy-decisions-page-title']", "textContains": "Policy decisions", "critical": true },
     { "name": "UI2 -- THE REAL-DATA ASSERTION. The obligation the ENDPOINT returned first is on screen, under its own real citation. A page falling back to fixture/placeholder text has no element with this id at all.", "action": "expect", "selector": "[data-testid='policy-obligation-row-{{firstObligationId}}']", "textContains": "{{firstObligationCitation}}", "critical": true },

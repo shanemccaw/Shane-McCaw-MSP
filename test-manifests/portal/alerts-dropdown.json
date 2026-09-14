@@ -13,7 +13,7 @@
 
     "MARK-READ is NOT marked critical: it extracts an id from the real LIST response and PATCHes it read - harmless and idempotent (mirrors how SH-new-sop3 in shell-systems.json accepts writing a real row each run), but if the testbed account happens to have zero personal notifications at run time there is nothing to extract, and that must not fail the whole suite over account state this manifest doesn't control.",
 
-    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use)."
+    "ENV VARS required: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use)."
   ],
 
   "apiTests": [
@@ -34,7 +34,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },

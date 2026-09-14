@@ -23,6 +23,7 @@ import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "workflow.script" });
 import { generateManualScriptPackage } from "../lib/manual-script-package.ts";
 import { processManualScriptUpload, UploadError } from "../lib/manual-script-upload.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 
 const router: IRouter = Router();
 
@@ -90,6 +91,16 @@ router.get("/admin/manual-scripts/:id/download", requireAdmin, async (req: Reque
     const manualRequirements = libraryScript.permissions?.notes
       ? [libraryScript.permissions.notes]
       : [];
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "manual_script_downloaded",
+      entityType: "script_run_result",
+      entityId: runResultId,
+      clientId: runResult.customerId ?? null,
+    });
 
     const { psContent, filename } = generateManualScriptPackage({
       scriptId: 0,

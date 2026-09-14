@@ -10,6 +10,7 @@ import {
 import { eq, desc, count, and, gte, lte, sql, inArray, lt, isNull, or, ne } from "drizzle-orm";
 import { ingestIntentEvent, recomputeAndPersistHotScore } from "../lib/lead-intent.ts";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import { queueLeadStagingPush } from "../lib/zoho-lead-sync.ts";
 import { ZOHO_DEFAULT_MSP_ID } from "../lib/zoho-client.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -1763,6 +1764,15 @@ router.get("/admin/marketing/leads/:id/emails", requireAdmin, async (req: Reques
       .where(eq(emailEventsTable.leadId, id))
       .orderBy(desc(emailEventsTable.occurredAt));
 
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "marketing_lead_email_history_viewed",
+      entityType: "lead",
+      entityId: id,
+    });
+
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -2058,6 +2068,16 @@ router.get("/admin/marketing/leads/:id/intent-events", requireAdmin, async (req:
     const id = parseId(req.params, "id");
     const events = await db.select().from(leadIntentEventsTable)
       .where(eq(leadIntentEventsTable.leadId, id)).orderBy(desc(leadIntentEventsTable.occurredAt)).limit(50);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "marketing_lead_intent_events_viewed",
+      entityType: "lead",
+      entityId: id,
+    });
+
     res.json(events);
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -2097,6 +2117,16 @@ router.get("/admin/marketing/hot-leads/:leadId/intent-timeline", requireAdmin, a
     const id = parseId(req.params, "leadId");
     const events = await db.select().from(leadIntentEventsTable)
       .where(eq(leadIntentEventsTable.leadId, id)).orderBy(desc(leadIntentEventsTable.occurredAt)).limit(50);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "marketing_lead_intent_events_viewed",
+      entityType: "lead",
+      entityId: id,
+    });
+
     res.json(events);
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -2165,7 +2195,18 @@ router.post("/admin/marketing/leads/:id/next-best-action", requireAdmin, async (
 router.get("/admin/marketing/next-best-action/:leadId", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = parseId(req.params, "leadId");
-    res.json(await computeNextBestAction(id));
+    const result = await computeNextBestAction(id);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "marketing_lead_next_best_action_viewed",
+      entityType: "lead",
+      entityId: id,
+    });
+
+    res.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "Lead not found") { res.status(404).json({ error: msg }); return; }

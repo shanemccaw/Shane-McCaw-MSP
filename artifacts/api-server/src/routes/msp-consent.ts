@@ -222,7 +222,7 @@ router.post(
     await createAuditLog({
       actorUserId: req.user!.id,
       actorName: req.user!.email ?? "msp-operator",
-      actorRole: "client",
+      actorRole: resolveAuditActorRole(req.user!),
       actionType: "consent_invite_created",
       entityType: "consent_invite",
       entityId: customerId,
@@ -303,7 +303,7 @@ router.get(
     await createAuditLog({
       actorUserId: req.user!.id,
       actorName: req.user!.email ?? "msp-operator",
-      actorRole: "client",
+      actorRole: resolveAuditActorRole(req.user!),
       actionType: "write_consent_invite_created",
       entityType: "tenant_write_consent",
       entityId: customerId,
@@ -378,7 +378,7 @@ router.get(
     await createAuditLog({
       actorUserId: req.user!.id,
       actorName: req.user!.email ?? "msp-operator",
-      actorRole: "client",
+      actorRole: resolveAuditActorRole(req.user!),
       actionType: "sharepoint_consent_invite_created",
       entityType: "tenant_sharepoint_consent",
       entityId: customerId,
@@ -429,7 +429,7 @@ router.patch(
     await createAuditLog({
       actorUserId: req.user!.id,
       actorName: req.user!.email ?? "msp-operator",
-      actorRole: "client",
+      actorRole: resolveAuditActorRole(req.user!),
       actionType: "tenant_consent_revoked",
       entityType: "tenant_consent",
       entityId: customerId,

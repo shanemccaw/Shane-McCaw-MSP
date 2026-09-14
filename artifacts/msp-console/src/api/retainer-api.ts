@@ -2,9 +2,10 @@
  * Retainer Hours module's own data (Git #2618, part of Feature #2560's real
  * remaining scope — Status Reports, the other half of #2560's original
  * description, already shipped separately). Backed by
- * `artifacts/api-server/src/routes/msp-retainer.ts` (8 routes, Git #4020/#4026),
- * all `requireCapability("ladder.msp-operator")` + `requireMspScope("params")`
- * gated — except reopen and the "adjust after close" route, which floor at
+ * `artifacts/api-server/src/routes/msp-retainer.ts` (11 routes, Git
+ * #4020/#4026/#4098), all `requireCapability("ladder.msp-operator")` +
+ * `requireMspScope("params")` gated — except reopen, the "adjust after close"
+ * route, and the pending-entry approve/reject routes, which floor at
  * `ladder.msp-admin`. See
  * `docs/msp-console/retainer-hours-msp-console-contract-pack.md` for the full
  * wire contract this file is built against.
@@ -330,5 +331,97 @@ export function useAdjustClosedRetainerPeriod(mspId: number | null, customerId: 
         fetchWithAuth, "POST", `/api/msp/${mspId}/customers/${customerId}/retainer/periods/${periodKey}/adjustments`, body,
       ),
     onSuccess: () => invalidateRetainer(queryClient, mspId, customerId),
+  });
+}
+
+// ── GET /msp/:mspId/retainer/pending (ladder.msp-operator, #4098) ───────────
+// The tracker byproduct hook's approval queue: `logRetainerWorkFromTracker`
+// queues here instead of silently writing past a closed period's lock, or
+// silently skipping, when its target period is already closed. Default
+// `status` filter is "pending" — the review queue's normal shape.
+
+export type RetainerPendingEntryStatus = "pending" | "approved" | "rejected";
+
+export interface PendingEntryWire {
+  id: number;
+  customerId: number;
+  customerName: string | null;
+  periodKey: string;
+  week: string | null;
+  item: string;
+  hours: number;
+  minutes: number;
+  pillar: string | null;
+  finding: string | null;
+  outcome: string | null;
+  source: RetainerWorkSource;
+  sourceRefId: number | null;
+  occurredAt: string;
+  status: RetainerPendingEntryStatus;
+  reviewedByUserId: number | null;
+  reviewedAt: string | null;
+  reviewReason: string | null;
+  workLogEntryId: number | null;
+  createdAt: string;
+}
+
+export interface PendingEntriesResponse {
+  entries: PendingEntryWire[];
+}
+
+const pendingKey = (mspId: number, customerId: number | null, status: RetainerPendingEntryStatus) =>
+  ["msp", mspId, "retainer", "pending", customerId ?? "all", status] as const;
+
+export function usePendingRetainerEntries(
+  mspId: number | null,
+  customerId: number | null,
+  status: RetainerPendingEntryStatus = "pending",
+): UseQueryResult<PendingEntriesResponse, Error> {
+  const { fetchWithAuth, isLoading, accessToken } = useAuth();
+  return useQuery({
+    queryKey: mspId != null ? pendingKey(mspId, customerId, status) : ["msp", "retainer", "pending", "unscoped"],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams({ status });
+      if (customerId != null) params.set("customerId", String(customerId));
+      return getJson<PendingEntriesResponse>(fetchWithAuth, `/api/msp/${mspId}/retainer/pending?${params.toString()}`, signal);
+    },
+    enabled: !isLoading && !!accessToken && mspId != null,
+    staleTime: 10_000,
+  });
+}
+
+function invalidatePending(queryClient: ReturnType<typeof useQueryClient>, mspId: number | null) {
+  if (mspId == null) return;
+  void queryClient.invalidateQueries({ queryKey: ["msp", mspId, "retainer"] });
+}
+
+// ── POST /msp/:mspId/retainer/pending/:entryId/approve (ladder.msp-admin, #4098) ─
+// Writes the real row into retainer_work_log plus a retainer_adjustment_notes
+// reason — the same mechanism `useAdjustClosedRetainerPeriod` (#4026) uses.
+
+export function useApprovePendingRetainerEntry(mspId: number | null) {
+  const { fetchWithAuth } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ entryId, reason }: { entryId: number; reason: string }) =>
+      sendJson<{ entry: PendingEntryWire; ledgerEntry: EntryWithLock | null }>(
+        fetchWithAuth, "POST", `/api/msp/${mspId}/retainer/pending/${entryId}/approve`, { reason },
+      ),
+    onSuccess: () => invalidatePending(queryClient, mspId),
+  });
+}
+
+// ── POST /msp/:mspId/retainer/pending/:entryId/reject (ladder.msp-admin, #4098) ─
+// Marks the entry rejected. Never touches retainer_work_log.
+
+export function useRejectPendingRetainerEntry(mspId: number | null) {
+  const { fetchWithAuth } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ entryId, reason }: { entryId: number; reason: string }) =>
+      sendJson<{ entry: PendingEntryWire }>(
+        fetchWithAuth, "POST", `/api/msp/${mspId}/retainer/pending/${entryId}/reject`, { reason },
+      ),
+    onSuccess: () => invalidatePending(queryClient, mspId),
   });
 }

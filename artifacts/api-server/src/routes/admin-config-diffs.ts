@@ -46,6 +46,7 @@ import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { diffSnapshots, SnapshotNotDiffableError } from "../lib/config-snapshot-differ.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -258,6 +259,16 @@ router.get("/admin/config-diffs/:diffId/resources", requireAdmin, async (req: Re
       .orderBy(asc(configSnapshotResourceTypesTable.workload), asc(configDiffResourceStatusTable.resourceKey))
       .limit(clampLimit(req.query.limit));
 
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_config_diff_resources_viewed",
+      entityType: "config_diff",
+      entityId: diff.diffId,
+      tenantId: diff.headTenantId,
+    });
+
     res.json({
       diffId: diff.diffId,
       resources: rows.map((r) => ({
@@ -349,6 +360,16 @@ router.get("/admin/config-diffs/:diffId", requireAdmin, async (req: Request, res
     }).from(configDiffResourceStatusTable)
       .where(eq(configDiffResourceStatusTable.diffRowId, diff.id))
       .groupBy(configDiffResourceStatusTable.comparability);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_config_diff_viewed",
+      entityType: "config_diff",
+      entityId: diff.diffId,
+      tenantId: diff.headTenantId,
+    });
 
     res.json({
       diff,

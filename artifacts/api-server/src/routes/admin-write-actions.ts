@@ -47,6 +47,7 @@ import {
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import {
   resolveBaselineTemplateRequest,
   runBaselineTemplateAgainstTenant,
@@ -486,6 +487,18 @@ router.get("/admin/write-actions/:templateId/runs", requireAdmin, async (req: Re
       })
       .filter(run => (customerFilter ? run.customerId === customerFilter : true))
       .slice(0, limit);
+
+    if (customerFilter != null) {
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: "platform_admin",
+        actionType: "admin_write_action_run_history_viewed",
+        entityType: "tenant",
+        tenantId: customerFilter,
+        metadata: { templateId },
+      });
+    }
 
     res.json({ runs });
   } catch (err) {

@@ -2,6 +2,7 @@
   "feature": "Customer Portal v2 -- THE SHELL'S FIVE SYSTEMS (Part 1), recreated from 'Customer Portal Shell.dc.html'. The global chrome that renders on every /portal-v2 page: the command palette (Cmd-K), ShaneBot (selection chip + chat panel + launcher), the alerts tray with real smart alerts and a hold-windows section, the account menu, the New menu, and the knowledge-base overlay. All UI-only against the design's own fixtures in components/portal-v2/shell/; the palette ranking + 14-cap are unit-tested in shell/paletteIndex.test.ts.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "a07df4e9443d2358cc9e368286b3cc0fbc5466f6",
+  "loginAs": "Customer — RBAC test",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2. The shell chrome renders on every portal-v2 page; this exercises it from the Overview.",
@@ -10,15 +11,9 @@
     "PALETTE RANKING IS UNIT-TESTED, NOT ASSERTED HERE: shell/paletteIndex.test.ts pins the exact-> prefix-> contains-> sub/kind order and the 14 cap (npm test, 13 cases). This manifest proves the palette MOUNTS, indexes a real count, and turns a typed query into the always-last Ask-ShaneBot row.",
     "TEXTCONTAINS asserts the element's REAL rendered text; an array is ANY-of, so every all-of assertion is its own step (per the standing test-coverage rule).",
     "THE NEW MENU IS NOW REAL CREATION, NOT NAVIGATION. SH-new-sop* and SH-new-cr* prove the four backed items (Change request / Emergency change / Standard change / Procedure) open the portal's ONE form primitive (FormDrawer, via useFormDrawer/openForm hosted in PortalV2Shell) whose onSubmit does a real POST -- /api/portal/change-control for the three CR variants and /api/portal/sops for the SOP (see newMenuCreate.ts). SH-new-sop3 submits the SOP form and fires a genuine POST, so it writes a real (manual, non-runnable) msp_sops row each run; that is intended and harmless on the testbed. The three New-menu items WITHOUT a backend (Freeze window, Ownership row, Webhook endpoint) deliberately still navigate -- there is no create route for them and none is faked.",
-    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "ENV VARS required: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD."
   ],
   "uiSteps": [
-    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
-    { "name": "WAIT for the login form to hydrate.", "action": "expect", "selector": "#email", "state": "visible" },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    { "name": "Primary login.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
-
     { "name": "goto the portal-v2 Overview -- the shell chrome renders here.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2" },
     { "name": "SH0 -- the header rendered.", "action": "expect", "selector": "[data-testid='pv2-header']", "state": "visible", "critical": true },
 

@@ -41,6 +41,7 @@ import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.monitor" });
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import { applyMapping, classifySeverity, validateOutputShape } from "../lib/monitor-executor.ts";
 import type { SeverityRule, MappingRule } from "../lib/monitor-executor.ts";
 
@@ -641,6 +642,26 @@ router.get("/admin/monitor-checks/profiles/:tenantId", requireAdmin, async (req:
       .where(eq(tenantMonitorProfilesTable.tenantId, tenantId))
       .orderBy(desc(tenantMonitorProfilesTable.collectedAt))
       .limit(limit);
+
+    // `tenantId` here is the free-text M365 tenant GUID (tenant_monitor_profiles.tenant_id),
+    // not tenants.id — resolve the real numeric FK so the audit row's `tenantId` field
+    // (which references tenants.id) is genuinely correct rather than a type-mismatched guess.
+    const [tenantRow] = await db
+      .select({ id: tenantsTable.id })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.tenantId, tenantId))
+      .limit(1);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_tenant_monitor_profile_viewed",
+      entityType: "tenant",
+      entityId: tenantId,
+      ...(tenantRow ? { tenantId: tenantRow.id } : {}),
+    });
+
     res.json({ profiles });
   } catch (err) {
     log.error({ err }, "admin-monitor-checks: list profiles failed");

@@ -3,6 +3,7 @@ import { db, quickWinPresentationsTable, presentationDocViewsTable } from "@work
 import { eq, desc, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "admin.presentations" });
 
@@ -67,6 +68,15 @@ router.get("/admin/engagements/:id/presentation-analytics", requireAdmin, async 
     const firstCardClick = cardClicks.length > 0
       ? { cardName: cardClicks[0].cardName!, clickedAt: cardClicks[0].viewedAt, totalClicks: distinctCardNames.size }
       : null;
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_presentation_analytics_viewed",
+      entityType: "project",
+      entityId: projectId,
+    });
 
     res.json({
       presentationId: pres.id,

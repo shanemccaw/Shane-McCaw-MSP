@@ -25,6 +25,7 @@ import { db, publicChatConversationsTable, type BotConversationMessage } from "@
 import { and, count, desc, eq, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import { contentToText } from "../lib/chat-content-blocks.ts";
 import { getBotConversationTranscript, getBotConversationTranscripts } from "../lib/shanebot-engine.ts";
 
@@ -161,6 +162,19 @@ router.get("/admin/public-chat/conversations/:id", requireAdmin, async (req: Req
     // Transcript lives in bot_conversations (#361) — merged in under the same
     // `messages` field the ChatQueue.tsx detail view already reads.
     const messages = (await getBotConversationTranscript(row.sessionId)) ?? [];
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_chat_conversation_viewed",
+      entityType: "public_chat_conversation",
+      entityId: row.id,
+      ...(row.contactName || row.contactEmail
+        ? { entityLabel: row.contactName ?? row.contactEmail ?? undefined }
+        : {}),
+    });
+
     res.json({ ...row, messages });
   } catch (err) {
     log.error({ err, id }, "admin/public-chat conversation detail failed");

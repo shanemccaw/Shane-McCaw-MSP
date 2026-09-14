@@ -43,6 +43,7 @@ import { z } from "zod";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import {
   minutesToHours,
   hoursToMinutes,
@@ -256,6 +257,15 @@ router.get("/admin/retainer/:customerId", requireAdmin, async (req: Request, res
       active: settings?.active ?? false,
       configured: !!settings,
     };
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_retainer_detail_viewed",
+      entityType: "tenant",
+      tenantId: customerId,
+    });
 
     res.json({
       customer: { customerId, name: scope.tenantName },

@@ -11,6 +11,7 @@ import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth.ts";
 import { executeMonitorCheck } from "../lib/monitor-executor.ts";
 import { callPsExecution, PsExecutionError } from "../lib/ps-execution-client.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.signals" });
 const policyLog = logger.child({ channel: "engine.policy" });
@@ -83,6 +84,16 @@ router.get("/admin/msps/:mspId/portfolio-risk", requireAdmin, async (req: Reques
       return;
     }
     const output = await calculateMspPortfolioRisk(mspId);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_msp_portfolio_risk_viewed",
+      entityType: "msp",
+      entityId: mspId,
+    });
+
     res.json(output);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -871,6 +882,17 @@ router.get("/admin/engines/:key/history", requireAdmin, async (req: Request, res
         .orderBy(desc(tenantEngineSnapshotsTable.capturedAt))
         .limit(1),
     ]);
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_customer_engine_history_viewed",
+      entityType: "tenant",
+      tenantId: customerId,
+      metadata: { engineKey: String(key) },
+    });
+
     res.json({ engineKey: key, customerId, series, baselineEvents, signalDeltas, latest: latestRows[0] ?? null });
   } catch (err) {
     log.error({ err, engineKey: key, customerId }, "admin-engines: history failed");

@@ -3,6 +3,7 @@ import { db, invoicesTable, usersTable, projectsTable, contractsTable, servicesT
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 const log = logger.child({ channel: "admin.purchases" });
 
 const router: IRouter = Router();
@@ -109,6 +110,16 @@ router.get("/admin/purchases/:id", requireAdmin, async (req: Request, res: Respo
         )
       );
   }
+
+  await auditPrivilegedRead({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email,
+    actorRole: "platform_admin",
+    actionType: "admin_purchase_detail_viewed",
+    entityType: "invoice",
+    entityId: inv.id,
+    clientId: inv.clientId ?? null,
+  });
 
   res.json({
     id: inv.id,

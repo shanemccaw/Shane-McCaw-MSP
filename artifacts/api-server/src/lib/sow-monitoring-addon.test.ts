@@ -50,7 +50,12 @@ vi.mock("./license-waste-source.ts", () => ({
 
 import { resolveArchitectRetainerAddon, resolveTenantMonitoringAddon } from "./sow-monitoring-addon.ts";
 
-/** One real monitoring_tier row shape, per productTypeConfig.ts's template. */
+/**
+ * One real monitoring_tier row shape, per productTypeConfig.ts's template.
+ * Git #4074: `tenantTierLabel` is the real SEAT BAND (Micro/SMB/Mid-Market/
+ * Enterprise), not the quality tier — the quality tier (foundation/growth/
+ * premier) lives in `packageKey` as `"core:<tier>"`.
+ */
 function monitoringRow(over: Record<string, unknown> = {}) {
   return {
     id: 1,
@@ -58,7 +63,8 @@ function monitoringRow(over: Record<string, unknown> = {}) {
     tagline: null,
     description: null,
     typeAttributes: {
-      tenantTierLabel: "Basic",
+      tenantTierLabel: "Enterprise",
+      packageKey: "core:foundation",
       seatMin: 1,
       seatMax: 1000,
       pricePerUserMonth: "0.75",
@@ -83,14 +89,14 @@ describe("resolveTenantMonitoringAddon", () => {
     mockSeatFigures = null;
     mockResultQueue = [
       [
-        monitoringRow({ typeAttributes: { tenantTierLabel: "Basic", seatMin: 1, seatMax: 1000, pricePerUserMonth: "0.75" } }),
-        monitoringRow({ typeAttributes: { tenantTierLabel: "Enhanced", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.10" } }),
-        monitoringRow({ typeAttributes: { tenantTierLabel: "Premium", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.60" } }),
+        monitoringRow({ typeAttributes: { packageKey: "core:foundation", seatMin: 1, seatMax: 1000, pricePerUserMonth: "0.75" } }),
+        monitoringRow({ typeAttributes: { packageKey: "core:growth", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.10" } }),
+        monitoringRow({ typeAttributes: { packageKey: "core:premier", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.60" } }),
       ],
     ];
     const addon = await resolveTenantMonitoringAddon("tenant-guid");
     expect(addon).not.toBeNull();
-    expect(addon!.tiers[0]!.label).toBe("Enhanced");
+    expect(addon!.tiers[0]!.label).toBe("Growth");
     expect(addon!.tiers[0]!.monthlyUsd).toBeCloseTo(26 * 1.1);
     expect(addon!.defaultOn).toBe(true);
   });
@@ -98,53 +104,53 @@ describe("resolveTenantMonitoringAddon", () => {
   it("Git #632: same SMB fallback when seat figures resolve but provisioned is 0", async () => {
     mockSeatFigures = { provisioned: 0 };
     mockResultQueue = [
-      [monitoringRow({ typeAttributes: { tenantTierLabel: "Enhanced", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.10" } })],
+      [monitoringRow({ typeAttributes: { packageKey: "core:growth", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.10" } })],
     ];
     const addon = await resolveTenantMonitoringAddon("tenant-guid");
     expect(addon).not.toBeNull();
     expect(addon!.tiers[0]!.monthlyUsd).toBeCloseTo(26 * 1.1);
   });
 
-  it("Git #609: resolves to Enhanced's real seat-matched price ONLY — Basic/Premium are priced internally but never exposed as alternatives", async () => {
+  it("Git #609/#4074: resolves to Growth's real seat-matched price ONLY — Foundation/Premier are priced internally but never exposed as alternatives", async () => {
     mockSeatFigures = { provisioned: 1_200 };
     mockResultQueue = [
       [
-        monitoringRow({ id: 1, typeAttributes: { tenantTierLabel: "Basic", seatMin: 1, seatMax: 1000, pricePerUserMonth: "0.75" } }),
-        monitoringRow({ id: 2, typeAttributes: { tenantTierLabel: "Basic", seatMin: 1001, seatMax: null, pricePerUserMonth: "0.60" } }),
-        monitoringRow({ id: 3, typeAttributes: { tenantTierLabel: "Enhanced", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.10" } }),
-        monitoringRow({ id: 4, typeAttributes: { tenantTierLabel: "Enhanced", seatMin: 1001, seatMax: null, pricePerUserMonth: "0.90" } }),
-        monitoringRow({ id: 5, typeAttributes: { tenantTierLabel: "Premium", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.60" } }),
-        monitoringRow({ id: 6, typeAttributes: { tenantTierLabel: "Premium", seatMin: 1001, seatMax: null, pricePerUserMonth: "1.40" } }),
+        monitoringRow({ id: 1, typeAttributes: { packageKey: "core:foundation", seatMin: 1, seatMax: 1000, pricePerUserMonth: "0.75" } }),
+        monitoringRow({ id: 2, typeAttributes: { packageKey: "core:foundation", seatMin: 1001, seatMax: null, pricePerUserMonth: "0.60" } }),
+        monitoringRow({ id: 3, typeAttributes: { packageKey: "core:growth", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.10" } }),
+        monitoringRow({ id: 4, typeAttributes: { packageKey: "core:growth", seatMin: 1001, seatMax: null, pricePerUserMonth: "0.90" } }),
+        monitoringRow({ id: 5, typeAttributes: { packageKey: "core:premier", seatMin: 1, seatMax: 1000, pricePerUserMonth: "1.60" } }),
+        monitoringRow({ id: 6, typeAttributes: { packageKey: "core:premier", seatMin: 1001, seatMax: null, pricePerUserMonth: "1.40" } }),
       ],
     ];
     const addon = await resolveTenantMonitoringAddon("tenant-guid");
     expect(addon).not.toBeNull();
     expect(addon!.id).toBe("tenant-monitoring");
     expect(addon!.tiers).toHaveLength(1);
-    expect(addon!.tiers[0]!.label).toBe("Enhanced");
+    expect(addon!.tiers[0]!.label).toBe("Growth");
     // 1,200 seats falls in the 1001+ band.
     expect(addon!.tiers[0]!.monthlyUsd).toBeCloseTo(1_200 * 0.9);
     expect(addon!.defaultTierId).toBe(addon!.tiers[0]!.id);
     expect(addon!.defaultOn).toBe(true);
   });
 
-  it("falls back to whichever quality tier priced when Enhanced itself is not priceable", async () => {
+  it("falls back to whichever quality tier priced when Growth itself is not priceable", async () => {
     mockResultQueue = [
       [
-        monitoringRow({ typeAttributes: { tenantTierLabel: "Basic", seatMin: 1, seatMax: null, pricePerUserMonth: "0.75" } }),
-        monitoringRow({ typeAttributes: { tenantTierLabel: "Premium", seatMin: 1, seatMax: null, pricePerUserMonth: "1.60" } }),
+        monitoringRow({ typeAttributes: { packageKey: "core:foundation", seatMin: 1, seatMax: null, pricePerUserMonth: "0.75" } }),
+        monitoringRow({ typeAttributes: { packageKey: "core:premier", seatMin: 1, seatMax: null, pricePerUserMonth: "1.60" } }),
       ],
     ];
     const addon = await resolveTenantMonitoringAddon("tenant-guid");
     expect(addon!.tiers).toHaveLength(1);
-    expect(addon!.tiers[0]!.label).toBe("Basic");
+    expect(addon!.tiers[0]!.label).toBe("Foundation");
   });
 
   it("falls back to the nearest band rather than leaving a real tenant unpriced", async () => {
     // Every row tops out at 500 seats; this tenant has 1,200.
     mockSeatFigures = { provisioned: 1_200 };
     mockResultQueue = [
-      [monitoringRow({ typeAttributes: { tenantTierLabel: "Basic", seatMin: 1, seatMax: 500, pricePerUserMonth: "0.75" } })],
+      [monitoringRow({ typeAttributes: { packageKey: "core:foundation", seatMin: 1, seatMax: 500, pricePerUserMonth: "0.75" } })],
     ];
     const addon = await resolveTenantMonitoringAddon("tenant-guid");
     expect(addon).not.toBeNull();
@@ -155,7 +161,7 @@ describe("resolveTenantMonitoringAddon", () => {
     mockResultQueue = [
       [
         monitoringRow({
-          typeAttributes: { tenantTierLabel: "Basic", seatMin: 1, seatMax: null, pricePerUserMonth: "0.75", includedEngines: ["priority", "health"] },
+          typeAttributes: { packageKey: "core:foundation", seatMin: 1, seatMax: null, pricePerUserMonth: "0.75", includedEngines: ["priority", "health"] },
           tagline: "Baseline hourly coverage.",
         }),
       ],
@@ -165,7 +171,7 @@ describe("resolveTenantMonitoringAddon", () => {
     expect(addon!.tiers[0]!.detail).not.toMatch(/priority|health/);
   });
 
-  it("null when the catalog carries no monitoring_tier rows with a real tenantTierLabel", async () => {
+  it("null when the catalog carries no monitoring_tier rows with a real, recognized packageKey quality tier", async () => {
     mockResultQueue = [[{ id: 1, name: "Untagged row", typeAttributes: {} }]];
     expect(await resolveTenantMonitoringAddon("tenant-guid")).toBeNull();
   });

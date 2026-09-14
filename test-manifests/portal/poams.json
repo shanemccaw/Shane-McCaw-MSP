@@ -2,13 +2,14 @@
   "issue": 4037,
   "feature": "POA&Ms (#4037, Feature #1935) -- the real customer-facing POA&Ms page in artifacts/portal (/poams), wired to the six live artifacts/api-server/src/routes/portal-poams.ts routes -- see docs/portal/poams-contract-pack.md. No fixture module: every row on screen comes from these endpoints. The sibling exit to the Risk Register ('we ARE fixing this, here is the plan' vs. 'we accept the consequence').",
   "baseUrl": "{{DEPLOY_URL}}",
+  "loginAs": "Customer — RBAC test",
   "lastVerifiedAgainstCommit": "PENDING",
 
   "notes": [
     "TIER GATE IS THE REAL CURRENT STATE FOR EVERY TENANT (#3104): confirmed this session via a direct SELECT against the local DATABASE_URL -- no monitoring_tier row's type_attributes.includedFeatures array anywhere in the local DB contains 'poams'. So GET /api/portal/poams and GET /api/portal/poams/:poamId 402 for the designated test account exactly like they would for any real customer today; A1/A2 below assert that live 402, not a hypothetical.",
     "CREATION AND SIGNING ARE UNCONDITIONAL (#1168): the two POST routes and the sign/delete/request-acceleration routes carry no tier check, so LIFECYCLE1-6 below drive a real end-to-end create -> sign -> re-sign-refused(409) -> soft-delete -> request-acceleration sequence against a plan this run creates for itself. Unlike the Risk Register's accept (permanent, one row, poisons re-runs), POA&M creation makes a fresh row every run, so this whole lifecycle is safely re-runnable: each run creates and then soft-deletes its own row, never touching another run's.",
     "WHY NO FULL UI-DRIVEN CREATE SUBMIT: the create form has seven real inputs (title, date, optional checkKey, optional sowId, weakness, interim control, resources) and this project's own manifests document WebView2 form-driven flows as a recurring flakiness source (see e.g. portal-v2-manifest-login-block-persisted-session-flaky). The full real create/sign/delete lifecycle is already proven end-to-end and deterministically via LIFECYCLE1-6 below; the UI steps here instead prove the DOM actually renders the live 402 gated state and that the create panel opens with its real fields, which is what the honest-empty-state design calls out as the state every real tenant sees today.",
-    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD."
   ],
 
   "apiTests": [
@@ -18,7 +19,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
@@ -131,12 +132,6 @@
   ],
 
   "uiSteps": [
-    { "name": "goto the real login URL.", "sessionTag": "setup", "action": "goto", "target": "/portal/login" },
-    { "name": "WAIT for the login form to hydrate before typing.", "sessionTag": "setup", "action": "expect", "selector": "#email", "state": "visible" },
-    { "sessionTag": "setup", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "sessionTag": "setup", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    { "name": "Primary login -- every assertion below needs a real session.", "sessionTag": "setup", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
-
     { "name": "goto the real POA&Ms page.", "sessionTag": "setup", "action": "goto", "target": "/portal/poams" },
     { "name": "UI1 -- the page renders.", "action": "expect", "selector": "body", "textContains": "POA&Ms", "critical": true },
     { "name": "UI2 -- THE REAL-DATA ASSERTION. The live 402 tier gate the ENDPOINT actually answers today is drawn honestly, not hidden behind a generic error or a fake empty list.", "action": "expect", "selector": "body", "textContains": "aren't included in your Monitoring tier", "critical": true },

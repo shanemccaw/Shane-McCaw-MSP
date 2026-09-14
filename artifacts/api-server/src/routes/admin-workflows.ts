@@ -53,6 +53,7 @@ import { STATIC_NODE_SAMPLES, DYNAMIC_SHAPE_NODE_TYPES } from "../lib/workflow-n
 import { eq, and, desc, asc, count, sql, gte, lte, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { auditPrivilegedRead } from "../lib/audit.ts";
 const log = logger.child({ channel: "workflow.run" });
 import { fireWorkflowForDefinition, fireWorkflowFanOut, isFanOutConfigured, computeNextCronRun, executeWorkflowRun, resumeWorkflowRun } from "../lib/workflow-executor.ts";
 import { registerAdminWorkflowEventClient } from "../lib/sse-channels.ts";
@@ -1277,6 +1278,15 @@ router.get("/admin/workflows/runs/:id", requireAdmin, async (req: Request, res: 
         nodeResultMap[o.nodeId] = entry;
       }
     }
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: "platform_admin",
+      actionType: "admin_workflow_run_viewed",
+      entityType: "workflow_run",
+      entityId: id,
+    });
 
     res.json({
       ...row.run,

@@ -196,6 +196,18 @@ router.get("/admin/clients/:id/azure-credential", requireAdmin, async (req: Requ
     if (!row) { res.json(null); return; }
 
     const expiresOn = await safeGetExpiry(row.keyVaultSecretName, req.log);
+
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: req.user!.role,
+      actionType: "admin_client_azure_credential_viewed",
+      actionCategory: "access",
+      entityType: "azure_tenant_credential",
+      entityId: row.id,
+      clientId: clientId,
+    });
+
     res.json({ ...row, expiresOn });
   } catch {
     res.status(500).json({ error: "Failed to fetch Azure credential" });

@@ -1,7 +1,9 @@
 /**
  * retainer-work-logger.test.ts — the BYPRODUCT hook (Git #1293), plus its
  * Git #3473 wiring: the inserted row's `periodMonth` must come from the real
- * anniversary anchor (`resolveRetainerAnchorDay`), not a calendar month.
+ * anniversary anchor (`resolveRetainerAnchorDay`), not a calendar month; and
+ * its Git #4098 wiring: a closed target period queues into
+ * `retainer_pending_entries` instead of writing past the period-close lock.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -16,23 +18,54 @@ vi.mock("./logger.ts", () => {
 });
 
 let insertedValues: Record<string, unknown> | null = null;
+let insertedTable: "workLog" | "pending" | null = null;
 let returningResult: Array<{ id: number }> = [];
+/** null = period open (findClose returns nothing); non-null = closed. */
+let closeRow: { id: number } | null = null;
 
 vi.mock("@workspace/db", () => {
-  const chain: any = {
+  const workLogChain: any = {
     values: (v: Record<string, unknown>) => {
       insertedValues = v;
-      return chain;
+      insertedTable = "workLog";
+      return workLogChain;
     },
-    onConflictDoNothing: () => chain,
+    onConflictDoNothing: () => workLogChain,
     returning: () => Promise.resolve(returningResult),
   };
+  const pendingChain: any = {
+    values: (v: Record<string, unknown>) => {
+      insertedValues = v;
+      insertedTable = "pending";
+      return pendingChain;
+    },
+    onConflictDoNothing: () => pendingChain,
+    returning: () => Promise.resolve(returningResult),
+  };
+  const selectChain: any = {
+    from: () => selectChain,
+    where: () => selectChain,
+    limit: () => Promise.resolve(closeRow ? [closeRow] : []),
+  };
+  const makeTx = () => ({
+    execute: () => Promise.resolve(),
+    select: () => selectChain,
+    insert: (table: unknown) => (table === "PENDING_TABLE" ? pendingChain : workLogChain),
+  });
   return {
-    db: { insert: vi.fn(() => chain) },
+    db: {
+      insert: vi.fn((table: unknown) => (table === "PENDING_TABLE" ? pendingChain : workLogChain)),
+      transaction: vi.fn((fn: (tx: unknown) => unknown) => fn(makeTx())),
+    },
     retainerWorkLogTable: {
       source: "source",
       sourceRefId: "source_ref_id",
       id: "id",
+    },
+    retainerPendingEntriesTable: "PENDING_TABLE",
+    retainerPeriodClosesTable: {
+      customerId: "customer_id",
+      periodKey: "period_key",
     },
   };
 });
@@ -41,7 +74,9 @@ import { logRetainerWorkFromTracker } from "./retainer-work-logger.ts";
 
 beforeEach(() => {
   insertedValues = null;
+  insertedTable = null;
   returningResult = [{ id: 1 }];
+  closeRow = null;
   mockResolveRetainerAnchorDay.mockClear();
   mockResolveRetainerAnchorDay.mockImplementation(async () => 1);
 });
@@ -91,5 +126,49 @@ describe("logRetainerWorkFromTracker — Git #3473 anniversary wiring", () => {
       item: "Closed while the anchor lookup failed",
     });
     expect(created).toBe(false);
+  });
+});
+
+describe("logRetainerWorkFromTracker — Git #4098 closed-period queueing (follow-up to #4026)", () => {
+  it("writes straight into the ledger when the target period is open", async () => {
+    closeRow = null;
+    const created = await logRetainerWorkFromTracker({
+      customerId: 42,
+      mspId: 7,
+      source: "change_control",
+      sourceRefId: 200,
+      item: "Closed a change request in an open period",
+    });
+    expect(created).toBe(true);
+    expect(insertedTable).toBe("workLog");
+  });
+
+  it("queues into retainer_pending_entries instead of writing past a closed period's lock", async () => {
+    closeRow = { id: 9 };
+    const created = await logRetainerWorkFromTracker({
+      customerId: 42,
+      mspId: 7,
+      source: "remediation_tracker",
+      sourceRefId: 201,
+      item: "Closed a remediation step against a closed period",
+    });
+    expect(created).toBe(true);
+    expect(insertedTable).toBe("pending");
+    expect(insertedValues?.periodKey).toBeDefined();
+    expect(insertedValues?.status).toBeUndefined(); // defaults server-side, not set explicitly here
+  });
+
+  it("no-ops (does not double-queue) when the same closed-period item re-fires", async () => {
+    closeRow = { id: 9 };
+    returningResult = []; // ON CONFLICT DO NOTHING → no row returned
+    const created = await logRetainerWorkFromTracker({
+      customerId: 42,
+      mspId: 7,
+      source: "remediation_tracker",
+      sourceRefId: 202,
+      item: "Re-closed the same remediation step",
+    });
+    expect(created).toBe(false);
+    expect(insertedTable).toBe("pending");
   });
 });

@@ -2,6 +2,7 @@
   "issue": 4000,
   "feature": "Scope and SLA (Portal) — Feature #1661, Design/portal/design_handoff_full_site/screens/Scope and SLA.dc.html. The real page in the rebuilt artifacts/portal (/scope-and-sla), wired to the two live customer-facing engine reads documented in Design/portal/design_handoff_full_site/docs/scope-and-sla-contract-pack.md (#2452): GET /api/portal/customer/sla-status and GET /api/portal/customer/scope-status. Page lives at artifacts/portal/src/pages/scope-and-sla.tsx; hooks/types at lib/scope-sla-api.ts / lib/scope-sla-types.ts. Registered in the sidebar as 'Scope and SLA', between Change Control and Risk Register.",
   "baseUrl": "{{DEPLOY_URL}}",
+  "loginAs": "Customer — RBAC test",
   "lastVerifiedAgainstCommit": "3a74b81cd",
 
   "notes": [
@@ -10,7 +11,7 @@
     "The design's own .dc.html carries a dashed-amber caveat card citing #2513 as still-open ('Treat this card as unconfirmed until that fix lands'). That fix has already landed, so the wired page in this build DOES NOT carry that caveat forward — keeping it would show customers a stale warning about a bug that no longer exists. Everything else in the design (layout, both cards, the three-area breakdown, the ledger) is carried forward verbatim.",
     "Both engines compute live on every call (contract pack §3) — there is no persisted 'last run' row for either route, so updatedAt is always 'now'.",
     "Confirmed live against the local DB at build time: sla_timers and scope_creep_detections both have 0 rows for every tenant (`SELECT count(*) FROM sla_timers` / `scope_creep_detections`), so the entitled testbed tenant's real, honest response today is the on_track / zero-open-items state for both engines — the same shape §5/§6 of the contract pack describes as indistinguishable from a bug-masked one before the fix, and now genuinely just an empty state. This manifest's apiTests assert exactly that real, current shape rather than a scenario the local data can't produce.",
-    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD — the same testbed Customer account other portal manifests (risk-register.json, change-control.json) already use.",
+    "ENV VARS required: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD — the same testbed Customer account other portal manifests (risk-register.json, change-control.json) already use.",
     "textContains reads el.innerText / el.textContent, so every assertion below targets RENDERED text. Copy is final and reproduced verbatim from the component source (carried forward from the design's own strings), so these are reliable probes.",
     "data-testid coverage: scope-and-sla-page, scope-and-sla-status, scope-and-sla-sla-card, scope-and-sla-scope-card — all real testids added on the built components as part of this manifest (none pre-existed)."
   ],
@@ -21,7 +22,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
@@ -82,12 +83,6 @@
   ],
 
   "uiSteps": [
-    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
-    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    { "name": "Primary login — every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
-
     { "name": "goto the real Scope and SLA page.", "action": "goto", "target": "/portal/scope-and-sla" },
     { "name": "SS0 — the page itself resolved, not NotFound.", "action": "expect", "selector": "[data-testid='scope-and-sla-page']", "state": "visible", "critical": true },
     { "name": "SS0b — the status line reads Live for the resolved testbed tenant, proving both engines resolved rather than erroring.", "action": "expect", "selector": "[data-testid='scope-and-sla-status']", "textContains": "Live" },
