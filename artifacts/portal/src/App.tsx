@@ -35,6 +35,7 @@ import MyArchitectPage from "@/pages/my-architect";
 import RemediationTrackingPage from "@/pages/remediation-tracking";
 import MicrosoftChangesPage from "@/pages/microsoft-changes";
 import ChangeControlPage from "@/pages/change-control";
+import ScopeAndSlaPage from "@/pages/scope-and-sla";
 import PillarPage from "@/pages/pillar";
 import BreakGlassStatusPage from "@/pages/break-glass-status";
 import BreakGlassVerifyPage from "@/pages/break-glass-verify";
@@ -123,6 +124,7 @@ function ProtectedRoutes() {
           <Route path="/remediation-tracking" component={RemediationTrackingPage} />
           <Route path="/microsoft-changes" component={MicrosoftChangesPage} />
           <Route path="/change-control" component={ChangeControlPage} />
+          <Route path="/scope-and-sla" component={ScopeAndSlaPage} />
           <Route path="/pillars/:pillar" component={PillarPage} />
           <Route path="/break-glass" component={BreakGlassStatusPage} />
           <Route path="/break-glass/:runId" component={BreakGlassStatusPage} />

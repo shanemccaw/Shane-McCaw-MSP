@@ -1,0 +1,102 @@
+{
+  "issue": 4000,
+  "feature": "Scope and SLA (Portal) — Feature #1661, Design/portal/design_handoff_full_site/screens/Scope and SLA.dc.html. The real page in the rebuilt artifacts/portal (/scope-and-sla), wired to the two live customer-facing engine reads documented in Design/portal/design_handoff_full_site/docs/scope-and-sla-contract-pack.md (#2452): GET /api/portal/customer/sla-status and GET /api/portal/customer/scope-status. Page lives at artifacts/portal/src/pages/scope-and-sla.tsx; hooks/types at lib/scope-sla-api.ts / lib/scope-sla-types.ts. Registered in the sidebar as 'Scope and SLA', between Change Control and Risk Register.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "#2513 (runSlaEngineForTenant resolving customerId as a users.id instead of a tenant id, so sla-status always read empty) is CLOSED/complete as of this build — confirmed live in artifacts/api-server/src/lib/sla-engine.ts:279-286, which now applies customerId directly to the SLA tables exactly like the sibling runScopeCreepEngineForTenant. This manifest asserts the real post-fix response shape, not the pre-fix always-empty one.",
+    "The design's own .dc.html carries a dashed-amber caveat card citing #2513 as still-open ('Treat this card as unconfirmed until that fix lands'). That fix has already landed, so the wired page in this build DOES NOT carry that caveat forward — keeping it would show customers a stale warning about a bug that no longer exists. Everything else in the design (layout, both cards, the three-area breakdown, the ledger) is carried forward verbatim.",
+    "Both engines compute live on every call (contract pack §3) — there is no persisted 'last run' row for either route, so updatedAt is always 'now'.",
+    "Confirmed live against the local DB at build time: sla_timers and scope_creep_detections both have 0 rows for every tenant (`SELECT count(*) FROM sla_timers` / `scope_creep_detections`), so the entitled testbed tenant's real, honest response today is the on_track / zero-open-items state for both engines — the same shape §5/§6 of the contract pack describes as indistinguishable from a bug-masked one before the fix, and now genuinely just an empty state. This manifest's apiTests assert exactly that real, current shape rather than a scenario the local data can't produce.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD — the same testbed Customer account other portal manifests (risk-register.json, change-control.json) already use.",
+    "textContains reads el.innerText / el.textContent, so every assertion below targets RENDERED text. Copy is final and reproduced verbatim from the component source (carried forward from the design's own strings), so these are reliable probes.",
+    "data-testid coverage: scope-and-sla-page, scope-and-sla-status, scope-and-sla-sla-card, scope-and-sla-scope-card — all real testids added on the built components as part of this manifest (none pre-existed)."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the testbed Customer account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 — sla-status responds 200 with the real, post-#2513-fix overall status (not a 400/500).",
+      "method": "GET",
+      "path": "/api/portal/customer/sla-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overall", "exists": true },
+      "extract": { "as": "slaOverall", "jsonPath": "$.overall" }
+    },
+    {
+      "name": "A2 — sla-status carries the real headline this build's page renders verbatim.",
+      "method": "GET",
+      "path": "/api/portal/customer/sla-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.headline", "exists": true },
+      "extract": { "as": "slaHeadline", "jsonPath": "$.headline" }
+    },
+    {
+      "name": "A3 — sla-status.updatedAt exists — both engines compute live on every call (contract pack §3), so this is always 'now', never a stored figure.",
+      "method": "GET",
+      "path": "/api/portal/customer/sla-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.updatedAt", "exists": true }
+    },
+    {
+      "name": "A4 — scope-status responds 200 with the real overall status.",
+      "method": "GET",
+      "path": "/api/portal/customer/scope-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overall", "exists": true },
+      "extract": { "as": "scopeOverall", "jsonPath": "$.overall" }
+    },
+    {
+      "name": "A5 — scope-status carries the real headline this build's page renders verbatim.",
+      "method": "GET",
+      "path": "/api/portal/customer/scope-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.headline", "exists": true },
+      "extract": { "as": "scopeHeadline", "jsonPath": "$.headline" }
+    },
+    {
+      "name": "A6 — scope-status.areas is always exactly 3 entries (contract pack §2) — the page never adds a fourth or hides an empty one.",
+      "method": "GET",
+      "path": "/api/portal/customer/scope-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.areas[2].key", "exists": true }
+    },
+    {
+      "name": "A7 — extract the first area's label, which SS5 asserts against the page's real rendered text.",
+      "method": "GET",
+      "path": "/api/portal/customer/scope-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.areas[0].label", "exists": true },
+      "extract": { "as": "firstAreaLabel", "jsonPath": "$.areas[0].label" }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login — every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the real Scope and SLA page.", "action": "goto", "target": "/portal/scope-and-sla" },
+    { "name": "SS0 — the page itself resolved, not NotFound.", "action": "expect", "selector": "[data-testid='scope-and-sla-page']", "state": "visible", "critical": true },
+    { "name": "SS0b — the status line reads Live for the resolved testbed tenant, proving both engines resolved rather than erroring.", "action": "expect", "selector": "[data-testid='scope-and-sla-status']", "textContains": "Live" },
+
+    { "name": "SS1 — THE LIVE ASSERTION: the SLA card rendered.", "action": "expect", "selector": "[data-testid='scope-and-sla-sla-card']", "state": "visible", "critical": true },
+    { "name": "SS2 — ...and its REAL rendered text is the headline A2 returned — the endpoint-to-DOM integration proof, and confirmation this is the real post-#2513-fix reading, not the always-empty pre-fix one.", "action": "expect", "selector": "[data-testid='scope-and-sla-sla-card']", "textContains": "{{slaHeadline}}" },
+    { "name": "SS3 — the scope card rendered.", "action": "expect", "selector": "[data-testid='scope-and-sla-scope-card']", "state": "visible", "critical": true },
+    { "name": "SS4 — ...and its REAL rendered text is the headline A5 returned.", "action": "expect", "selector": "[data-testid='scope-and-sla-scope-card']", "textContains": "{{scopeHeadline}}" },
+    { "name": "SS5 — the first area's real label (A7) renders inside the scope card's per-area breakdown.", "action": "expect", "selector": "[data-testid='scope-and-sla-scope-card']", "textContains": "{{firstAreaLabel}}" },
+
+    { "name": "SS6 — the honest ledger section is present with its real, unconditional heading.", "action": "expect", "selector": "[data-testid='scope-and-sla-page']", "textContains": "What this page deliberately does not do" }
+  ]
+}

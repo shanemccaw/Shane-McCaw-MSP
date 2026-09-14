@@ -12,6 +12,7 @@ import {
   Layers,
   FileCheck2,
   Compass,
+  Gauge,
   type LucideProps,
 } from "lucide-react";
 
@@ -47,6 +48,7 @@ export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   { key: "my-architect", label: "My Architect", icon: Compass, builtPath: "/my-architect" },
   { key: "changes", label: "Microsoft Changes", icon: Megaphone, builtPath: "/microsoft-changes" },
   { key: "change-control", label: "Change Control", icon: Waypoints, builtPath: "/change-control" },
+  { key: "scope-sla", label: "Scope and SLA", icon: Gauge, builtPath: "/scope-and-sla" },
   { key: "risk-register", label: "Risk Register", icon: AlertTriangle, builtPath: "/risk-register" },
   { key: "remediation", label: "Remediation", icon: Wrench, builtPath: "/remediation-tracking" },
   { key: "sops", label: "SOPs", icon: BookOpen, builtPath: "/sops" },
