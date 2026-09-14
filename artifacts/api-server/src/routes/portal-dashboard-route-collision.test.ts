@@ -135,6 +135,19 @@ vi.mock("../lib/audit.ts", () => ({ createAuditLog: vi.fn() }));
 vi.mock("../lib/stripe.ts", () => ({ getStripeKey: vi.fn(() => "sk_test") }));
 vi.mock("../lib/sla-engine.ts", () => ({ runSlaEngineForTenant: vi.fn() }));
 vi.mock("../lib/scope-creep-engine.ts", () => ({ runScopeCreepEngineForTenant: vi.fn() }));
+// #4067: the dashboard route now reads computeCopilotGate() too. Stubbed —
+// the real chain loads health-engine.ts/priority-engine.ts, which reference
+// drizzle-orm's `sql` tag at module scope, and this file's own drizzle-orm
+// mock above has no `sql` export.
+vi.mock("../lib/copilot-gate.ts", () => ({
+  computeCopilotGate: vi.fn(async () => ({
+    score: null,
+    threshold: 82,
+    status: null,
+    source: "health_engine:copilot",
+    evaluation: { status: "not_evaluated", evaluableSignalCount: 0, minRequiredSignals: 3, reason: "stubbed for route-collision test" },
+  })),
+}));
 vi.mock("../lib/request-context.ts", () => ({
   getRequestContext: vi.fn(() => ({})),
   enrichRequestContext: vi.fn(),
