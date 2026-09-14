@@ -159,57 +159,7 @@ namespace BuildConsole.Services
             sb.AppendLine();
 
             // 3. Bugs & Observations
-            sb.AppendLine($"## Bugs & Issues Logged ({context.Entries.Count})");
-            if (context.Entries.Count > 0)
-            {
-                sb.AppendLine("| # | Severity | Status | Title / Description | Steps | Shots |");
-                sb.AppendLine("|---|---|---|---|---|---|");
-                int idx = 1;
-                foreach (var b in context.Entries)
-                {
-                    string title = !string.IsNullOrWhiteSpace(b.Title)
-                        ? b.Title
-                        : (!string.IsNullOrWhiteSpace(b.Notes) ? b.Notes.Split('\n')[0].Trim() : "Visual Observation");
-                    if (title.Length > 45) title = title.Substring(0, 42) + "...";
-
-                    int shotCount = b.ScreenshotPaths?.Count ?? 0;
-                    bool hasSteps = !string.IsNullOrWhiteSpace(b.StepsToReproduce);
-
-                    sb.AppendLine($"| {idx++} | **{b.Severity}** | {b.Status} | {EscapeMarkdownTable(title)} | {(hasSteps ? "Yes" : "No")} | {shotCount} |");
-                }
-                sb.AppendLine();
-
-                // Detailed bug entries
-                foreach (var b in context.Entries)
-                {
-                    string title = !string.IsNullOrWhiteSpace(b.Title) ? b.Title : b.Notes.Split('\n')[0].Trim();
-                    sb.AppendLine($"### [{b.Severity.ToUpperInvariant()}] {title}");
-                    if (!string.IsNullOrWhiteSpace(b.CurrentUrl)) sb.AppendLine($"- **URL**: `{b.CurrentUrl}`");
-                    if (b.Tags != null && b.Tags.Count > 0) sb.AppendLine($"- **Tags**: {string.Join(", ", b.Tags.Select(t => $"`{t}`"))}");
-                    if (!string.IsNullOrWhiteSpace(b.Notes))
-                    {
-                        sb.AppendLine("\n**Notes**:");
-                        sb.AppendLine(b.Notes);
-                    }
-                    if (!string.IsNullOrWhiteSpace(b.StepsToReproduce))
-                    {
-                        sb.AppendLine("\n**Steps to Reproduce**:");
-                        sb.AppendLine(b.StepsToReproduce);
-                    }
-                    if (!string.IsNullOrWhiteSpace(b.ExpectedBehavior) || !string.IsNullOrWhiteSpace(b.ActualBehavior))
-                    {
-                        sb.AppendLine("\n**Expected vs Actual**:");
-                        if (!string.IsNullOrWhiteSpace(b.ExpectedBehavior)) sb.AppendLine($"- **Expected**: {b.ExpectedBehavior}");
-                        if (!string.IsNullOrWhiteSpace(b.ActualBehavior)) sb.AppendLine($"- **Actual**: {b.ActualBehavior}");
-                    }
-                    sb.AppendLine();
-                }
-            }
-            else
-            {
-                sb.AppendLine("No bug entries were filed during this test session.");
-                sb.AppendLine();
-            }
+            AppendBugsSection(sb, context.Entries);
 
             // 4. Console Errors & Telemetry Diagnostics
             var errors = context.ConsoleLogs.Where(l => l.Level == "error" || l.Level == "exception" || l.Level == "unhandledrejection").ToList();
@@ -322,6 +272,69 @@ namespace BuildConsole.Services
             }
 
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Renders the "## Bugs &amp; Issues Logged" section (summary table + detailed per-bug
+        /// entries) used by both a fresh End &amp; Sync export and a later re-export patch
+        /// (Git #3980 — <see cref="VisualTestTrackerReExportService"/> reconstructs a lightweight
+        /// entry list straight from a committed report.json's bugs[] and calls this again so the
+        /// patched summary.md renders identically to a full regeneration, without needing the rest
+        /// of a live SessionSyncContext this section never actually touches).
+        /// </summary>
+        internal static void AppendBugsSection(StringBuilder sb, IReadOnlyList<VisualTestTrackerEntry> entries)
+        {
+            sb.AppendLine($"## Bugs & Issues Logged ({entries.Count})");
+            if (entries.Count > 0)
+            {
+                sb.AppendLine("| # | Severity | Status | Title / Description | Steps | Shots |");
+                sb.AppendLine("|---|---|---|---|---|---|");
+                int idx = 1;
+                foreach (var b in entries)
+                {
+                    string title = !string.IsNullOrWhiteSpace(b.Title)
+                        ? b.Title
+                        : (!string.IsNullOrWhiteSpace(b.Notes) ? b.Notes.Split('\n')[0].Trim() : "Visual Observation");
+                    if (title.Length > 45) title = title.Substring(0, 42) + "...";
+
+                    int shotCount = b.ScreenshotPaths?.Count ?? 0;
+                    bool hasSteps = !string.IsNullOrWhiteSpace(b.StepsToReproduce);
+
+                    sb.AppendLine($"| {idx++} | **{b.Severity}** | {b.Status} | {EscapeMarkdownTable(title)} | {(hasSteps ? "Yes" : "No")} | {shotCount} |");
+                }
+                sb.AppendLine();
+
+                // Detailed bug entries
+                foreach (var b in entries)
+                {
+                    string title = !string.IsNullOrWhiteSpace(b.Title) ? b.Title : b.Notes.Split('\n')[0].Trim();
+                    sb.AppendLine($"### [{b.Severity.ToUpperInvariant()}] {title}");
+                    if (!string.IsNullOrWhiteSpace(b.CurrentUrl)) sb.AppendLine($"- **URL**: `{b.CurrentUrl}`");
+                    if (b.Tags != null && b.Tags.Count > 0) sb.AppendLine($"- **Tags**: {string.Join(", ", b.Tags.Select(t => $"`{t}`"))}");
+                    if (!string.IsNullOrWhiteSpace(b.Notes))
+                    {
+                        sb.AppendLine("\n**Notes**:");
+                        sb.AppendLine(b.Notes);
+                    }
+                    if (!string.IsNullOrWhiteSpace(b.StepsToReproduce))
+                    {
+                        sb.AppendLine("\n**Steps to Reproduce**:");
+                        sb.AppendLine(b.StepsToReproduce);
+                    }
+                    if (!string.IsNullOrWhiteSpace(b.ExpectedBehavior) || !string.IsNullOrWhiteSpace(b.ActualBehavior))
+                    {
+                        sb.AppendLine("\n**Expected vs Actual**:");
+                        if (!string.IsNullOrWhiteSpace(b.ExpectedBehavior)) sb.AppendLine($"- **Expected**: {b.ExpectedBehavior}");
+                        if (!string.IsNullOrWhiteSpace(b.ActualBehavior)) sb.AppendLine($"- **Actual**: {b.ActualBehavior}");
+                    }
+                    sb.AppendLine();
+                }
+            }
+            else
+            {
+                sb.AppendLine("No bug entries were filed during this test session.");
+                sb.AppendLine();
+            }
         }
 
         /// <summary>
@@ -567,6 +580,13 @@ namespace BuildConsole.Services
                         uuid = b.EntryUuid,
                         severity = b.Severity,
                         status = b.Status,
+                        // Git #3980 — these three were never serialized at all, so a re-export
+                        // pass had nothing to diff against. Included from here on; an older
+                        // committed report.json missing them is treated by the reconcile pass
+                        // as "unset", which forces a first patch that backfills them.
+                        gitIssueNumber = b.GitIssueNumber,
+                        resolution = b.Resolution,
+                        resolutionReason = b.ResolutionReason,
                         title = b.Title,
                         notes = b.Notes,
                         stepsToReproduce = b.StepsToReproduce,
@@ -633,7 +653,52 @@ namespace BuildConsole.Services
             string bugsFolder = Directory.Exists(Path.Combine(repoRoot, "Bug")) && !Directory.Exists(Path.Combine(repoRoot, "Bugs")) ? "Bug" : "Bugs";
             string relDir = Path.Combine(bugsFolder, VisualTestTrackerExportService.SanitizeDirectoryName(context.ProductName), context.SessionId).Replace('\\', '/');
 
-            // 2. git add <relDir>
+            // 2-5. Stage, commit, and (optionally) push — shared with the Git #3980 re-export
+            // pass via StageCommitPushAsync below, rather than duplicating this plumbing.
+            var pushRes2 = await StageCommitPushAsync(repoRoot, relDir, result.CommitMessage, pushToRemote);
+            if (!pushRes2.Success)
+            {
+                result.Success = false;
+                result.Error = pushRes2.Error;
+                return result;
+            }
+            result.CommitMessage = pushRes2.CommitMessage;
+            result.CommitHash = pushRes2.CommitHash;
+            result.PushedToRemote = pushRes2.PushedToRemote;
+            result.PushOutput = pushRes2.PushOutput;
+
+            totalSw.Stop();
+            long endMemory = GC.GetTotalMemory(false);
+            long memDeltaMb = (endMemory - startMemory) / (1024 * 1024);
+            ActivityLog.Log("visual-test-tracker", $"Session sync performance: total={totalSw.ElapsedMilliseconds}ms, memory delta={memDeltaMb}MB (start: {startMemory / (1024 * 1024)}MB, end: {endMemory / (1024 * 1024)}MB)");
+
+            result.Success = true;
+            return result;
+        }
+
+        /// <summary>Result of <see cref="StageCommitPushAsync"/> — just the git-plumbing outcome,
+        /// no session-file concerns.</summary>
+        public sealed class GitStageCommitPushResult
+        {
+            public bool Success { get; set; }
+            public string? Error { get; set; }
+            public string CommitHash { get; set; } = "";
+            public string CommitMessage { get; set; } = "";
+            public bool PushedToRemote { get; set; }
+            public string? PushOutput { get; set; }
+        }
+
+        /// <summary>
+        /// Stages an already-written relative directory, commits with the given message, and
+        /// (optionally) pushes to the current branch. Extracted from <see cref="ExecuteGitSyncAsync"/>
+        /// (Git #3980) so <see cref="VisualTestTrackerReExportService"/>'s reconcile pass can reuse
+        /// the exact same git plumbing — including the "nothing to commit" / push-fallback handling —
+        /// for a later re-export instead of duplicating it.
+        /// </summary>
+        public static async Task<GitStageCommitPushResult> StageCommitPushAsync(string repoRoot, string relDir, string commitMessage, bool pushToRemote = true)
+        {
+            var result = new GitStageCommitPushResult { CommitMessage = commitMessage };
+
             var addSw = Stopwatch.StartNew();
             var addRes = await RunGitAsync(repoRoot, $"add \"{relDir}\"");
             addSw.Stop();
@@ -648,11 +713,10 @@ namespace BuildConsole.Services
                 return result;
             }
 
-            // 3. git commit
-            var lines = (result.CommitMessage ?? "").Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+            var lines = (commitMessage ?? "").Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
             string mArgs = lines.Length > 0
                 ? string.Join(" ", lines.Select(l => $"-m \"{l.Replace("\"", "\\\"")}\""))
-                : $"-m \"QA Session {context.SessionId} – {context.ProductName}\"";
+                : $"-m \"{relDir}\"";
             var commitSw = Stopwatch.StartNew();
             var commitRes = await RunGitAsync(repoRoot, $"commit {mArgs}");
             commitSw.Stop();
@@ -662,7 +726,6 @@ namespace BuildConsole.Services
             }
             if (commitRes.ExitCode != 0)
             {
-                // Check if nothing to commit (e.g. already committed)
                 if (commitRes.StdOut.Contains("nothing to commit") || commitRes.StdErr.Contains("nothing to commit"))
                 {
                     result.CommitMessage = "Already committed.";
@@ -675,18 +738,15 @@ namespace BuildConsole.Services
                 }
             }
 
-            // 4. Query current commit hash
             var revRes = await RunGitAsync(repoRoot, "rev-parse --short HEAD");
             if (revRes.ExitCode == 0)
             {
                 result.CommitHash = revRes.StdOut.Trim();
             }
 
-            // 5. git push (if requested)
             if (pushToRemote)
             {
                 var pushSw = Stopwatch.StartNew();
-                // Query current branch
                 var branchRes = await RunGitAsync(repoRoot, "rev-parse --abbrev-ref HEAD");
                 string currentBranch = branchRes.ExitCode == 0 ? branchRes.StdOut.Trim() : "main";
 
@@ -698,7 +758,6 @@ namespace BuildConsole.Services
                 }
                 else
                 {
-                    // If origin push failed, try plain 'git push'
                     var plainPush = await RunGitAsync(repoRoot, "push", timeoutMs: 30000);
                     if (plainPush.ExitCode == 0)
                     {
@@ -718,11 +777,6 @@ namespace BuildConsole.Services
                     ActivityLog.Log("visual-test-tracker", $"Slow git push: {pushSw.ElapsedMilliseconds}ms");
                 }
             }
-
-            totalSw.Stop();
-            long endMemory = GC.GetTotalMemory(false);
-            long memDeltaMb = (endMemory - startMemory) / (1024 * 1024);
-            ActivityLog.Log("visual-test-tracker", $"Session sync performance: total={totalSw.ElapsedMilliseconds}ms, memory delta={memDeltaMb}MB (start: {startMemory / (1024 * 1024)}MB, end: {endMemory / (1024 * 1024)}MB)");
 
             result.Success = true;
             return result;

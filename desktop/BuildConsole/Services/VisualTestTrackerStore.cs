@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Npgsql;
 
@@ -283,7 +284,7 @@ namespace BuildConsole.Services
                 await using var cmd = new NpgsqlCommand(
                     "SELECT id, entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at, " +
                     "COALESCE(bug_number, id) as bug_num, git_issue_number, site_name, epic_name, closing_build_id, " +
-                    "steps_to_reproduce, expected_behavior, actual_behavior " +
+                    "steps_to_reproduce, expected_behavior, actual_behavior, resolution, resolution_reason " +
                     "FROM visual_test_tracker_entries WHERE page_id = @pid ORDER BY bug_num DESC, created_at DESC", conn);
                 cmd.Parameters.AddWithValue("@pid", pageId);
                 await using var reader = await cmd.ExecuteReaderAsync();
@@ -341,7 +342,7 @@ namespace BuildConsole.Services
                 await using var cmd = new NpgsqlCommand(
                     "SELECT id, entry_uuid, page_id, base_url, page_path, title, notes, severity, status, created_at, updated_at, " +
                     "COALESCE(bug_number, id) as bug_num, git_issue_number, site_name, epic_name, closing_build_id, " +
-                    "steps_to_reproduce, expected_behavior, actual_behavior " +
+                    "steps_to_reproduce, expected_behavior, actual_behavior, resolution, resolution_reason " +
                     "FROM visual_test_tracker_entries ORDER BY site_name ASC, epic_name ASC, bug_num DESC, created_at DESC", conn);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 var dbList = new List<VisualTestTrackerEntry>();
@@ -381,6 +382,51 @@ namespace BuildConsole.Services
                 ActivityLog.Log(Channel, $"DB ListAllBugsAsync fallback to local: {ex.Message}");
                 return local;
             }
+        }
+
+        /// <summary>One entry's real, currently-live lifecycle state, straight from Postgres —
+        /// no local-JSON overlay. See <see cref="GetLifecycleSnapshotAsync"/>.</summary>
+        public sealed class LifecycleSnapshot
+        {
+            public string Status = "Open";
+            public int? GitIssueNumber;
+            public string? Resolution;
+            public string? ResolutionReason;
+        }
+
+        /// <summary>
+        /// Git #3980 — direct-from-Postgres lifecycle read for the given entry_uuids, deliberately
+        /// bypassing the local-JSON-overlay merge that <see cref="ListEntriesAsync"/>/<see cref="ListAllBugsAsync"/>
+        /// do. Those two exist to let the composer UI show a bug's rich (screenshots/console/notes)
+        /// data before it's ever reached Postgres; local JSON is never the source of truth for
+        /// status/git_issue_number/resolution once a bug has been synced, and a build dispatched per
+        /// #3985 writes those fields directly to Postgres with no local JSON involved at all — so a
+        /// reconcile pass that went through the merge would miss exactly the writes it exists to
+        /// detect. Returns only uuids that still exist; the caller treats a missing uuid as "nothing
+        /// to compare" rather than an error (the bug row may have been deleted).
+        /// </summary>
+        public async Task<Dictionary<string, LifecycleSnapshot>> GetLifecycleSnapshotAsync(IReadOnlyCollection<string> entryUuids)
+        {
+            var result = new Dictionary<string, LifecycleSnapshot>(StringComparer.OrdinalIgnoreCase);
+            if (entryUuids == null || entryUuids.Count == 0) return result;
+
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT entry_uuid, status, git_issue_number, resolution, resolution_reason " +
+                "FROM visual_test_tracker_entries WHERE entry_uuid = ANY(@uuids)", conn);
+            cmd.Parameters.AddWithValue("@uuids", entryUuids.ToArray());
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                result[reader.GetString(0)] = new LifecycleSnapshot
+                {
+                    Status = reader.GetString(1),
+                    GitIssueNumber = reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                    Resolution = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    ResolutionReason = reader.IsDBNull(4) ? null : reader.GetString(4),
+                };
+            }
+            return result;
         }
 
         /// <summary>Saves or updates a bug entry to both local JSON and PostgreSQL.</summary>
@@ -550,6 +596,15 @@ namespace BuildConsole.Services
                 entry.StepsToReproduce = reader.IsDBNull(16) ? "" : reader.GetString(16);
                 entry.ExpectedBehavior = reader.IsDBNull(17) ? "" : reader.GetString(17);
                 entry.ActualBehavior = reader.IsDBNull(18) ? "" : reader.GetString(18);
+            }
+
+            // Git #3978/#3980 — resolution/resolution_reason only exist on installs that have
+            // already run 2026-09-14-bug-lifecycle-3978.sql; guard the same way the trio above
+            // guards a pre-2026-09-13 table.
+            if (reader.FieldCount > 20)
+            {
+                entry.Resolution = reader.IsDBNull(19) ? null : reader.GetString(19);
+                entry.ResolutionReason = reader.IsDBNull(20) ? null : reader.GetString(20);
             }
 
             return entry;

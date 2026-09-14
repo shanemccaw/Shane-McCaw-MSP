@@ -247,6 +247,15 @@ namespace BuildConsole
         private BuildConsole.Services.PostgresServiceStatus? _lastPostgresStatus;
         private BuildConsole.Services.PostgresServiceState? _lastKnownPostgresState;
 
+        // ── Git #3980: Visual Test Tracker re-export reconcile poll — keeps a
+        // committed session's report.json/summary.md a live mirror of Postgres after
+        // End & Sync (status/git_issue_number/resolution/resolution_reason can all
+        // change later, from a source with no BuildConsole process running at all —
+        // e.g. a dispatched build's own direct psql write per Git #3985). See
+        // VisualTestTrackerReExportService for the full rationale.
+        private DispatcherTimer? _visualTestTrackerReExportTimer;
+        private bool _visualTestTrackerReExportRunning;
+
         // ── Epic #803: auto deploy+verify+test on build completion ────────────────
         // The missing automation between "a queue build finished" and "its code is live
         // and tested". On QueueWatcherService.BuildFinished (success) it reuses the exact
@@ -1308,6 +1317,24 @@ namespace BuildConsole
             _persistTabsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
             _persistTabsTimer.Tick += (_, _) => PersistOpenChatTabs();
             _persistTabsTimer.Start();
+
+            // Git #3980 — Visual Test Tracker re-export reconcile. 60s cadence (same order of
+            // magnitude as QueueWatcherService's 30s tick; this only does a single batched SELECT
+            // plus a git commit+push on real drift, so no need for anything tighter). Fires an
+            // immediate first pass on launch too — not just after the first interval — so a
+            // BuildConsole session opened after Postgres changed while it was closed (or while a
+            // dispatched build wrote directly via psql per #3985) catches up right away instead of
+            // waiting a full tick. This is the real, deliberate answer to the open question on
+            // #3980: BuildConsole does NOT need a separate standalone startup-reconcile mechanism
+            // beyond this — an immediate on-launch tick already covers "catch up on start." The one
+            // remaining, accepted gap is unchanged from the issue's own framing: if Postgres changes
+            // while BuildConsole is fully closed and it is never reopened again before chat next
+            // reads the file, no process exists to commit the update — this poll only runs while
+            // BuildConsole itself is running.
+            _visualTestTrackerReExportTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
+            _visualTestTrackerReExportTimer.Tick += async (_, _) => await RunVisualTestTrackerReExportAsync();
+            _visualTestTrackerReExportTimer.Start();
+            _ = RunVisualTestTrackerReExportAsync();
             _postgresStatusTimer.Start();
             _ = RefreshPostgresStatusAsync();
 
@@ -4925,6 +4952,46 @@ namespace BuildConsole
                     $"{status.Summary}\n\nClick to start it.",
                     ToastKind.Error,
                     onClick: () => _ = StartPostgresServiceAsync());
+            }
+        }
+
+        /// <summary>
+        /// Git #3980 — one Visual Test Tracker re-export reconcile pass, on the
+        /// _visualTestTrackerReExportTimer tick (and once immediately at startup — see the
+        /// comment where the timer is created). Re-entrancy guarded the same way other
+        /// long-running periodic ticks in this file are (a slow git push must never let a
+        /// second tick pile a second pass on top of one still running).
+        /// </summary>
+        private async System.Threading.Tasks.Task RunVisualTestTrackerReExportAsync()
+        {
+            if (_visualTestTrackerReExportRunning) return;
+            _visualTestTrackerReExportRunning = true;
+            try
+            {
+                var connStr = BuildConsole.Services.VisualTestTrackerStore.ResolveConnectionString();
+                if (string.IsNullOrWhiteSpace(connStr)) return; // No DATABASE_URL resolvable — nothing to reconcile against.
+
+                var store = new BuildConsole.Services.VisualTestTrackerStore(connStr);
+                string repoRoot = BuildConsole.Services.VisualTestTrackerExportService.ResolveRepoRoot();
+
+                var result = await BuildConsole.Services.VisualTestTrackerReExportService.ReconcileAsync(repoRoot, store);
+                if (!string.IsNullOrEmpty(result.Error))
+                {
+                    BuildConsole.Services.ActivityLog.Log("visual-test-tracker", $"ReExport reconcile pass failed: {result.Error}");
+                }
+                else if (result.SessionsUpdated > 0)
+                {
+                    BuildConsole.Services.ActivityLog.Log("visual-test-tracker",
+                        $"ReExport reconcile: re-committed {result.SessionsUpdated} session(s) with live lifecycle changes: {string.Join(", ", result.UpdatedSessionDirs)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("visual-test-tracker", $"ReExport reconcile pass errored: {ex.Message}");
+            }
+            finally
+            {
+                _visualTestTrackerReExportRunning = false;
             }
         }
 

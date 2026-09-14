@@ -91,7 +91,11 @@ namespace BuildConsole.Services
         public string ExpectedBehavior { get; set; } = "";
         public string ActualBehavior { get; set; } = "";
         public string Severity { get; set; } = "Bug"; // "Blocker", "Critical", "Bug", "UI Glitch", "Functional", "Low"
-        public string Status { get; set; } = "Open"; // "Open", "Resolved"
+        public string Status { get; set; } = "Open"; // "Open", "Verifying", "Closed" (Git #3978)
+        // Git #3978/#3980 — set only once Status reaches "Closed"; distinguishes a genuinely-fixed
+        // close from a dismissed "not a bug" one. Null while still Open/Verifying.
+        public string? Resolution { get; set; } // "Fixed", "NotABug"
+        public string? ResolutionReason { get; set; }
         public List<string> Tags { get; set; } = new();
 
         // ── Auto-Collected Metadata ─────────────────────────────────────────────
