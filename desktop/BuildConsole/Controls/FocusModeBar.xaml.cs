@@ -114,7 +114,7 @@ namespace BuildConsole.Controls
                 else if (p.Total > 0)
                 {
                     ProgressFill.Width = Math.Max(0, Math.Min(TrackWidth, TrackWidth * p.Percent / 100.0));
-                    ProgressText.Text = $"{p.Closed}/{p.Total} · {p.Percent}%";
+                    ProgressText.Text = $"{p.Closed}/{p.Total} · {p.Percent}% · {p.Total - p.Closed} remaining";
                     ProgressText.Visibility = Visibility.Visible;
                 }
                 else
