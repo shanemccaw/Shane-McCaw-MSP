@@ -52,6 +52,7 @@ import {
 } from "./nav";
 import { RiskRegister } from "@/modules/risk-register/RiskRegister";
 import { RetentionQueue } from "@/modules/retention/RetentionQueue";
+import { RetainerHours } from "@/modules/retainer/RetainerHours";
 import { PartnerRevenue } from "./modules/PartnerRevenue";
 import { Overview } from "./modules/Overview";
 import { LaunchControl } from "./modules/LaunchControl";
@@ -449,6 +450,13 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "retention") {
     return <RetentionQueue />;
+  }
+  if (sel.kind === "msp" && sel.page === "retainer") {
+    // Reopen and the "adjust after close" override both require
+    // ladder.msp-admin server-side (msp-retainer.ts); MSPOperator can log,
+    // adjust, delete and close an open period but not either of those two.
+    const isAdmin = profile.role === "admin" || profile.mspRole === "PlatformAdmin" || profile.mspRole === "MSPAdmin";
+    return <RetainerHours mspId={profile.mspId ?? null} isAdmin={isAdmin} />;
   }
   if (sel.kind === "msp" && sel.page === "revenue") {
     return <PartnerRevenue embedded />;
