@@ -19,34 +19,72 @@ const log = logger.child({ channel: "admin.testimonials" });
 
 const router: IRouter = Router();
 
+// (Git #4060) Public feed — real, published rows only, from BOTH sources:
+// project_closures (permission granted at sign-off) and customer_testimonials
+// (a portal testimonial the admin has actually approved for publication —
+// permissionToPublish alone is only the customer's intent, not the publish
+// decision; see /admin/testimonials/all above for the same distinction).
 router.get("/testimonials", async (_req: Request, res: Response) => {
-  const rows = await db
-    .select({
-      id: projectClosuresTable.id,
-      feedback: projectClosuresTable.feedback,
-      signedAt: projectClosuresTable.signedAt,
-      projectType: projectsTable.projectType,
-      clientName: usersTable.name,
-    })
-    .from(projectClosuresTable)
-    .innerJoin(projectsTable, eq(projectClosuresTable.projectId, projectsTable.id))
-    .leftJoin(usersTable, eq(projectClosuresTable.signerUserId, usersTable.id))
-    .where(
-      and(
-        eq(projectClosuresTable.permissionGranted, true),
-        sql`${projectClosuresTable.signedAt} IS NOT NULL`,
-        sql`${projectClosuresTable.feedback} IS NOT NULL AND trim(${projectClosuresTable.feedback}) <> ''`,
+  const [closureRows, portalRows] = await Promise.all([
+    db
+      .select({
+        id: projectClosuresTable.id,
+        feedback: projectClosuresTable.feedback,
+        signedAt: projectClosuresTable.signedAt,
+        projectType: projectsTable.projectType,
+        clientName: usersTable.name,
+      })
+      .from(projectClosuresTable)
+      .innerJoin(projectsTable, eq(projectClosuresTable.projectId, projectsTable.id))
+      .leftJoin(usersTable, eq(projectClosuresTable.signerUserId, usersTable.id))
+      .where(
+        and(
+          eq(projectClosuresTable.permissionGranted, true),
+          sql`${projectClosuresTable.signedAt} IS NOT NULL`,
+          sql`${projectClosuresTable.feedback} IS NOT NULL AND trim(${projectClosuresTable.feedback}) <> ''`,
+        )
       )
-    )
-    .orderBy(desc(projectClosuresTable.signedAt));
+      .orderBy(desc(projectClosuresTable.signedAt)),
+    db
+      .select({
+        id: customerTestimonialsTable.id,
+        body: customerTestimonialsTable.body,
+        createdAt: customerTestimonialsTable.createdAt,
+        clientName: usersTable.name,
+      })
+      .from(customerTestimonialsTable)
+      .leftJoin(usersTable, eq(customerTestimonialsTable.authorUserId, usersTable.id))
+      .where(
+        and(
+          eq(customerTestimonialsTable.status, "approved"),
+          eq(customerTestimonialsTable.kind, "testimonial"),
+          eq(customerTestimonialsTable.permissionToPublish, true),
+        )
+      )
+      .orderBy(desc(customerTestimonialsTable.createdAt)),
+  ]);
 
-  const out = rows.map(r => ({
-    id: r.id,
-    feedback: r.feedback,
-    signedAt: r.signedAt,
-    projectType: r.projectType,
-    clientFirstName: r.clientName ? r.clientName.trim().split(/\s+/)[0] : null,
-  }));
+  const out = [
+    ...closureRows.map(r => ({
+      id: r.id,
+      feedback: r.feedback,
+      signedAt: r.signedAt,
+      projectType: r.projectType,
+      clientFirstName: r.clientName ? r.clientName.trim().split(/\s+/)[0] : null,
+    })),
+    ...portalRows.map(r => ({
+      id: r.id,
+      feedback: r.body,
+      signedAt: r.createdAt,
+      projectType: null,
+      clientFirstName: r.clientName ? r.clientName.trim().split(/\s+/)[0] : null,
+    })),
+  ].sort((a, b) => {
+    const at = a.signedAt ? new Date(a.signedAt).getTime() : 0;
+    const bt = b.signedAt ? new Date(b.signedAt).getTime() : 0;
+    return bt - at;
+  });
+
   res.json(out);
 });
 

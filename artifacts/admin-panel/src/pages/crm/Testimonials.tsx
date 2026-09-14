@@ -272,8 +272,20 @@ export default function TestimonialsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const published = items.filter(i => i.permissionToPublish && i.body?.trim());
-  const awaitingPermission = items.filter(i => !i.permissionToPublish && i.body?.trim());
+  // (Git #4060) "Published" means it actually went out — for a project_closure
+  // that's still permissionToPublish (no review step exists for those), but for
+  // a portal customer_testimonial it's the admin's real approval decision
+  // (status === "approved"), not the customer's own permissionToPublish intent.
+  const isPublished = (i: AdminTestimonialRow) =>
+    i.source === "project_closure" ? i.permissionToPublish : i.status === "approved";
+
+  const published = items.filter(i => isPublished(i) && i.body?.trim());
+  const pendingReview = items.filter(
+    i => !isPublished(i) && i.body?.trim() && i.source === "customer_testimonial" && i.status === "pending",
+  );
+  const awaitingPermission = items.filter(
+    i => !isPublished(i) && i.body?.trim() && !pendingReview.includes(i),
+  );
   const signedOff = items.filter(i => !i.body?.trim());
 
   return (
@@ -350,6 +362,54 @@ export default function TestimonialsPage() {
             </section>
           )}
 
+          {pendingReview.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-2 h-2 rounded-full bg-primary" />
+                <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                  Pending Review ({pendingReview.length})
+                </h2>
+              </div>
+              <div className="space-y-4">
+                {pendingReview.map(item => (
+                  <div key={`${item.source}-${item.id}`} className="bg-card border border-border rounded-xl p-5 space-y-3">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-bold text-foreground">
+                            {item.source === "project_closure" ? item.projectTitle : (item.customerName ?? "Unknown customer")}
+                          </p>
+                          {item.source === "project_closure" ? (
+                            <ProjectTypeBadge type={item.projectType} />
+                          ) : (
+                            <SourceBadge row={item} />
+                          )}
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/15 text-primary">
+                            Pending Review
+                          </span>
+                        </div>
+                        {item.clientName && (
+                          <p className="text-xs text-muted-foreground">{item.clientName} {item.clientEmail ? `· ${item.clientEmail}` : ""}</p>
+                        )}
+                      </div>
+                      {item.createdAt && (
+                        <p className="text-xs text-muted-foreground flex-shrink-0">
+                          {item.source === "project_closure" ? "Signed" : "Submitted"} {formatDay(item.createdAt)}
+                        </p>
+                      )}
+                    </div>
+                    {item.body && (
+                      <blockquote className="border-l-4 border-border pl-4 text-sm text-foreground/80 italic leading-relaxed">
+                        "{item.body}"
+                      </blockquote>
+                    )}
+                    {item.source === "customer_testimonial" && <ReviewPanel row={item} onChanged={load} />}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {awaitingPermission.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-4">
@@ -373,7 +433,7 @@ export default function TestimonialsPage() {
                             <SourceBadge row={item} />
                           )}
                           <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
-                            No Publish Permission
+                            {item.source === "customer_testimonial" && item.status === "rejected" ? "Rejected" : "No Publish Permission"}
                           </span>
                         </div>
                         {item.clientName && (
