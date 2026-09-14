@@ -7067,7 +7067,7 @@ namespace BuildConsole
             foreach (var kvp in DevServicesManager.KnownServices)
             {
                 string name = kvp.Key;
-                var (title, port, _, icon) = kvp.Value;
+                var (title, port, _, icon, _) = kvp.Value;
 
                 var item = new MenuItem { Header = $"{icon} {title} ({port})", StaysOpenOnClick = true };
 
@@ -7138,7 +7138,7 @@ namespace BuildConsole
                 foreach (var kvp in DevServicesManager.KnownServices)
                 {
                     string name = kvp.Key;
-                    var (title, port, _, icon) = kvp.Value;
+                    var (title, port, _, icon, _) = kvp.Value;
                     bool running = await DevServicesManager.IsPortOpenAsync(port);
                     if (running) runningCount++;
                     if (_serviceMenuItems.TryGetValue(name, out var menuItem))
@@ -10482,7 +10482,11 @@ namespace BuildConsole
                             .Select(s => s.Target ?? s.Selector ?? string.Empty)
                             .ToList();
                         string primaryServiceKey = BuildConsole.Services.DevServiceRouting.PrimaryServiceKey(uiNavRoutes, manifest.SourcePath);
-                        uiTargetUrl = BuildConsole.Services.DevServiceRouting.OriginForServiceKey(primaryServiceKey);
+                        // Git #4100 — the initial load must also carry the primary service's mount basePath
+                        // (e.g. Portal's "/portal/"), not just its bare origin, or a manifest with no
+                        // explicit first goto loads straight into Vite's 404 page.
+                        uiTargetUrl = BuildConsole.Services.DevServiceRouting.OriginForServiceKey(primaryServiceKey)
+                            + BuildConsole.Services.DevServiceRouting.BasePathForServiceKey(primaryServiceKey);
                         uiOriginResolver = route => BuildConsole.Services.DevServiceRouting.OriginForRoute(route, primaryServiceKey);
                         BuildConsole.Services.ActivityLog.Log("testing.ui-executor",
                             $"[{mode}] Issue #{manifest.Issue} uiSteps Dev front-end routing: primary service {BuildConsole.Services.DevServiceRouting.DescribeServiceKey(primaryServiceKey)} (base {uiTargetUrl}); each goto remaps to its owning front-end port (API server 8080 is not a uiSteps target).");

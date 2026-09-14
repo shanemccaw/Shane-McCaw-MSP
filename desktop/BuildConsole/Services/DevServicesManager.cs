@@ -53,11 +53,11 @@ namespace BuildConsole.Services
         /// (Git #1782). Loaded once at startup; a new artifact needs only a line added
         /// to that JSON file, not a code change here.
         /// </summary>
-        public static readonly Dictionary<string, (string Title, int Port, string RelPath, string Icon)> KnownServices = LoadKnownServices();
+        public static readonly Dictionary<string, (string Title, int Port, string RelPath, string Icon, string BasePath)> KnownServices = LoadKnownServices();
 
-        private static Dictionary<string, (string Title, int Port, string RelPath, string Icon)> LoadKnownServices()
+        private static Dictionary<string, (string Title, int Port, string RelPath, string Icon, string BasePath)> LoadKnownServices()
         {
-            var result = new Dictionary<string, (string Title, int Port, string RelPath, string Icon)>();
+            var result = new Dictionary<string, (string Title, int Port, string RelPath, string Icon, string BasePath)>();
             try
             {
                 // Git #1985 — audited, genuinely tolerable: `?? "."` falls back to the process
@@ -86,8 +86,12 @@ namespace BuildConsole.Services
                         int port = svcEl.TryGetProperty("port", out var portEl) ? portEl.GetInt32() : 0;
                         string relPath = $"artifacts/{name}";
                         string icon = IconGlyphs.TryGetValue(name, out var glyph) ? glyph : DefaultIconGlyph;
+                        // Git #4100 — the local-dev mount base (e.g. "/portal/", "/admin-panel/") a bare
+                        // route must be prefixed with to land on a real page instead of Vite's 404. Empty
+                        // when the service mounts flat at "/" (Marketing, Website, API Server).
+                        string basePath = svcEl.TryGetProperty("basePath", out var basePathEl) ? (basePathEl.GetString() ?? string.Empty) : string.Empty;
 
-                        result[name] = (title, port, relPath, icon);
+                        result[name] = (title, port, relPath, icon, basePath);
                     }
                 }
             }
