@@ -3,7 +3,7 @@
  *
  * Unit tests for communication / notification / CRM workflow node types:
  *   send_browser_notification, create_notification, send_mobile_push, play_sound,
- *   send_campaign_email, create_kanban_task, create_phase, ask_ai,
+ *   send_campaign_email, create_kanban_task, create_phase,
  *   fetch_news_headlines, find_object (lead / project)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -657,72 +657,6 @@ describe("create_phase — happy path (live)", () => {
 
   it("node status is ok", () => {
     expect(capturedStatus()).toBe("ok");
-  });
-});
-
-// =============================================================================
-// ask_ai — live path
-// =============================================================================
-
-describe("ask_ai — missing prompt is an error (live)", () => {
-  beforeEach(async () => {
-    resetState();
-    seedDb(singleNodeGraph("ask_ai", { promptExpr: "" }));
-    await executeWorkflowRun(1);
-  });
-
-  it("output.error mentions prompt", () => {
-    expect((capturedOutput().error as string)).toContain("prompt");
-  });
-
-  it("node status is error", () => {
-    expect(capturedStatus()).toBe("error");
-  });
-});
-
-describe("ask_ai — happy path calls anthropic and returns aiResponse (live)", () => {
-  beforeEach(async () => {
-    resetState();
-    seedDb(singleNodeGraph("ask_ai", {
-      promptExpr: "Summarise Microsoft 365 security best practices in 3 bullet points.",
-      model: "claude-haiku-4-5",
-    }));
-    await executeWorkflowRun(1);
-  });
-
-  it("calls anthropic.messages.create once", () => {
-    expect(state.anthropicCalls.length).toBe(1);
-  });
-
-  it("output.aiResponse is a non-empty string", () => {
-    expect(typeof capturedOutput().aiResponse).toBe("string");
-    expect((capturedOutput().aiResponse as string).length).toBeGreaterThan(0);
-  });
-
-  it("output.model matches the configured model", () => {
-    expect(capturedOutput().model).toBe("claude-haiku-4-5");
-  });
-
-  it("node status is ok", () => {
-    expect(capturedStatus()).toBe("ok");
-  });
-});
-
-describe("ask_ai — dry-run returns dryRun flag", () => {
-  beforeEach(async () => {
-    resetState();
-    seedDb(singleNodeGraph("ask_ai", {
-      promptExpr: "Tell me about SharePoint.",
-    }));
-    await executeWorkflowRun(1, { dryRun: true });
-  });
-
-  it("output.dryRun is true", () => {
-    expect(capturedOutput().dryRun).toBe(true);
-  });
-
-  it("does not call anthropic in dry-run mode", () => {
-    expect(state.anthropicCalls.length).toBe(0);
   });
 });
 

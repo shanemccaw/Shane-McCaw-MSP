@@ -71,21 +71,16 @@ export const NODE_STYLES: Record<string, { bg: string; border: string; icon: str
   // ── Content ──
   generate_article:          { bg: "#1A0D1A", border: "#C084FC", icon: "✍️", label: "Generate Article"        },
   publish_article:           { bg: "#0F1A12", border: "#4ADE80", icon: "📢", label: "Publish Article"          },
-  topic_picker:              { bg: "#1A0D1A", border: "#E879F9", icon: "🎯", label: "Topic Picker"             },
-  generate_image:            { bg: "#1A100A", border: "#F59E0B", icon: "🖼️", label: "Generate Image"           },
   // ── Marketing Actions (extended) ──
   define_campaign_goal:      { bg: "#0A1A12", border: "#34D399", icon: "🎯", label: "Define Goal"            },
   define_target_audience:    { bg: "#0A1A12", border: "#6EE7B7", icon: "👥", label: "Define Target Audience" },
   create_campaign_offer:     { bg: "#0A1A12", border: "#10B981", icon: "🎁", label: "Create Offer"           },
   create_marketing_campaign: { bg: "#0D1A10", border: "#34D399", icon: "📣", label: "Create Campaign"          },
   publish_landing_page:      { bg: "#0D1A10", border: "#6EE7B7", icon: "🚀", label: "Publish Landing Page"     },
-  generate_landing_page:     { bg: "#0A1A18", border: "#34D399", icon: "🖥️", label: "Generate Landing Page"    },
   // ── Data ──
   find_object:               { bg: "#0D1020", border: "#818CF8", icon: "🔍", label: "Find Object"              },
   compose:                   { bg: "#0A1A18", border: "#2DD4BF", icon: "⧉",  label: "Compose"                  },
   group_by:                  { bg: "#0A1020", border: "#818CF8", icon: "⊞",  label: "Group By"                 },
-  // ── AI ──
-  ask_ai: { bg: "#110D1F", border: "#A78BFA", icon: "🤖", label: "Ask AI" },
   // ── News ──
   fetch_news_headlines: { bg: "#041A14", border: "#06B6D4", icon: "📰", label: "Fetch News Headlines" },
   // ── Social Media ──
@@ -214,16 +209,13 @@ export const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: stri
       { type: "create_campaign_offer",     label: "Create Offer",           description: "Create an offer record in the database (name, pricing, deliverables) — outputs {{offerId}}", tags: ["marketing", "campaign", "offer", "create", "crm"] },
       { type: "create_marketing_campaign", label: "Create Campaign",         description: "Create a new marketing campaign record in the database",     tags: ["marketing", "campaign", "create", "crm"] },
       { type: "publish_landing_page",      label: "Publish Landing Page",   description: "Set a landing page live by its slug",                        tags: ["marketing", "landing page", "publish", "site"] },
-      { type: "generate_landing_page",     label: "Generate Landing Page",  description: "AI generates a landing page from topic, audience and CTA and saves it to the DB (unpublished)", tags: ["marketing", "landing page", "ai", "generate", "content"] },
     ],
   },
   {
     name: "Content",
     nodes: [
-      { type: "topic_picker",    label: "Topic Picker",    description: "AI picks a fresh article topic not already covered",           tags: ["content", "article", "ai", "topic", "generate"] },
       { type: "generate_article", label: "Generate Article", description: "AI-writes a consulting article (title, slug, Markdown body)",  tags: ["content", "article", "ai", "blog", "generate"] },
       { type: "publish_article",  label: "Publish Article",  description: "Save article to DB and write .md file to the public site",    tags: ["content", "article", "publish", "blog", "site"] },
-      { type: "generate_image",        label: "Generate Image",        description: "AI-generates an image (social card, OG image, banner) via gpt-image-1 and saves it permanently", tags: ["image", "social", "ai", "og", "generate", "content"] },
       { type: "fetch_news_headlines",  label: "Fetch News Headlines",  description: "Pull today's M365 headlines, AI hot-scores them, and optionally triggers a campaign draft", tags: ["news", "headlines", "ai", "hot-score", "campaign", "content", "microsoft 365"] },
     ],
   },
@@ -233,12 +225,6 @@ export const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: stri
       { type: "post_linkedin", label: "Post to LinkedIn", description: "Publish a text post to a LinkedIn company/org page", tags: ["social", "linkedin", "post", "marketing"] },
       { type: "post_twitter",  label: "Post to X / Twitter", description: "Post a tweet via the Twitter API v2 with OAuth 1.0a", tags: ["social", "twitter", "x", "tweet", "marketing"] },
       { type: "post_facebook", label: "Post to Facebook", description: "Publish a post to a Facebook Page via the Graph API", tags: ["social", "facebook", "post", "marketing"] },
-    ],
-  },
-  {
-    name: "AI",
-    nodes: [
-      { type: "ask_ai", label: "Ask AI", description: "Send a prompt to Claude and expose the response as {{aiResponse}} for downstream nodes", tags: ["ai", "claude", "llm", "generate", "prompt", "ask"] },
     ],
   },
   {
