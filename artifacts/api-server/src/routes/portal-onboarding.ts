@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, usersTable, servicesTable, contractsTable, contractTemplatesTable, couponsTable } from "@workspace/db";
+import { db, usersTable, servicesTable, contractsTable, contractTemplatesTable, couponsTable, couponRedemptionsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import { resolveTypeAttributesMonthlyPriceCents } from "../lib/catalog-pricing.ts";
@@ -497,6 +497,27 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
 
   const createdContracts: typeof contractsTable.$inferSelect[] = [];
 
+  // ── Resolve + enforce the coupon code once for this signing action ───────
+  // The coupon code is passed from the frontend at signing time (before checkout).
+  // Checkout also authoritatively re-checks and updates agreementBody if needed.
+  let appliedCoupon: typeof couponsTable.$inferSelect | null = null;
+  if (bodyCouponCode?.trim()) {
+    const [couponRow] = await db
+      .select()
+      .from(couponsTable)
+      .where(eq(couponsTable.code, bodyCouponCode.trim().toUpperCase()))
+      .limit(1);
+    if (couponRow) {
+      const isExpired = couponRow.expiresAt != null && couponRow.expiresAt <= new Date();
+      const isExhausted = couponRow.maxUses != null && couponRow.usesCount >= couponRow.maxUses;
+      if (!couponRow.active || isExpired || isExhausted) {
+        res.status(400).json({ error: "This coupon code is no longer valid." });
+        return;
+      }
+      appliedCoupon = couponRow;
+    }
+  }
+
   for (const svc of services) {
     // Fetch admin-authored contract template for this service (if any)
     const [contractTemplate] = await db
@@ -598,28 +619,18 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
       : undefined;
 
     // ── Testimonial obligation clause (TESTIMONIAL coupon) ────────────────
-    // The coupon code is passed from the frontend at signing time (before checkout).
-    // Checkout also authoritatively re-checks and updates agreementBody if needed.
-    const TESTIMONIAL_MARKER = "Testimonial & Case Study Obligation";
     const TESTIMONIAL_CLAUSE = `\n\n---\n\n**Testimonial & Case Study Obligation**\n\nThe discounted rate applied to this engagement was granted in exchange for the Client's agreement to provide a written testimonial or short case study within 5 days of project completion. The testimonial or case study will describe the Client's experience working with Shane McCaw Consulting and may be used by Shane McCaw Consulting for marketing purposes. Failure to deliver the testimonial or case study within the stated period does not retroactively alter the agreed service price, but the discount benefit will not be available on future engagements until the obligation is fulfilled.`;
     let pdfAppendBody: string | undefined;
 
-    if (bodyCouponCode?.trim()) {
-      const [appliedCouponRow] = await db
-        .select({ requiresTestimonial: couponsTable.requiresTestimonial })
-        .from(couponsTable)
-        .where(eq(couponsTable.code, bodyCouponCode.trim().toUpperCase()))
-        .limit(1);
-      if (appliedCouponRow?.requiresTestimonial) {
-        if (templateBody) {
-          // Append clause to admin-authored template (both DB record and PDF use it)
-          templateBody = templateBody + TESTIMONIAL_CLAUSE;
-        } else {
-          // No admin template: standard PDF sections render via the normal path.
-          // The testimonial clause is appended separately via appendBody so the
-          // standard legal sections are preserved in the generated PDF.
-          pdfAppendBody = TESTIMONIAL_CLAUSE.trimStart();
-        }
+    if (appliedCoupon?.requiresTestimonial) {
+      if (templateBody) {
+        // Append clause to admin-authored template (both DB record and PDF use it)
+        templateBody = templateBody + TESTIMONIAL_CLAUSE;
+      } else {
+        // No admin template: standard PDF sections render via the normal path.
+        // The testimonial clause is appended separately via appendBody so the
+        // standard legal sections are preserved in the generated PDF.
+        pdfAppendBody = TESTIMONIAL_CLAUSE.trimStart();
       }
     }
 
@@ -690,6 +701,31 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
     } catch (pdfErr) {
       req.log.error({ err: pdfErr }, "contract signing: PDF generation failed (non-fatal)");
       createdContracts.push(contract);
+    }
+  }
+
+  // ── Record the coupon redemption once for this signing action ───────────
+  // One row per signing action (not per service) — a multi-service signing that
+  // applies one code is one real use of the coupon, not one per contract.
+  if (appliedCoupon && createdContracts.length > 0) {
+    try {
+      const totalFinalPrice = createdContracts.reduce(
+        (sum, c) => sum + (c.finalPrice != null ? parseFloat(c.finalPrice) : 0), 0,
+      );
+      await db.transaction(async (tx) => {
+        await tx.insert(couponRedemptionsTable).values({
+          couponCode: appliedCoupon!.code,
+          checkoutSessionId: `contract-signing:${createdContracts.map(c => c.id).join(",")}`,
+          couponId: appliedCoupon!.id,
+          userId: resolvedUserId,
+          purchaseAmount: totalFinalPrice > 0 ? String(totalFinalPrice) : null,
+        });
+        await tx.update(couponsTable)
+          .set({ usesCount: sql`${couponsTable.usesCount} + 1` })
+          .where(eq(couponsTable.id, appliedCoupon!.id));
+      });
+    } catch (err) {
+      req.log.error({ err, couponCode: appliedCoupon.code }, "contract signing: failed to record coupon redemption (non-fatal)");
     }
   }
 
