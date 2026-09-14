@@ -259,7 +259,7 @@ export function LaunchControl({ mspId, customerId, customerName }: { mspId: numb
   }
 
   const tier = data.customerTier ? data.customerTier.toLowerCase() : null;
-  const tierTone: ToneKey = tier === "premium" ? "violet" : tier === "enhanced" ? "blue" : "slate";
+  const tierTone: ToneKey = tier === "premier" ? "violet" : tier === "growth" ? "blue" : "slate";
   const testbed = data.tenant.isTestbed;
   const sel = selId != null ? actions.find((a) => a.id === selId) ?? null : null;
 

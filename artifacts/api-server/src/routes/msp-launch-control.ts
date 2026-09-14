@@ -91,15 +91,17 @@ function p(val: string | string[] | undefined): string {
 }
 
 // Monitoring tier rank, used only to compare a customer's purchased tier
-// against a catalog action's min_bundled_tier. Not independently
-// re-verified against live services.tier values in this session (no DB
-// access here) — Basic/Enhanced/Premium are the three names given for this
-// task; an unrecognized tier name resolves to null and fails closed (see
+// against a catalog action's min_bundled_tier. Keys match the real, live
+// services.tier vocabulary (Git #4035 — confirmed via `select distinct tier
+// from services`: foundation/growth/premier only; write_action_catalog.
+// min_bundled_tier migrated to match, see
+// lib/db/migrations/manual/0XXX_rename_min_bundled_tier_to_real_vocab.sql).
+// An unrecognized tier name resolves to null and fails closed (see
 // resolveTierRank), never silently grants coverage.
 const MONITORING_TIER_RANK: Record<string, number> = {
-  basic: 0,
-  enhanced: 1,
-  premium: 2,
+  foundation: 0,
+  growth: 1,
+  premier: 2,
 };
 
 function resolveTierRank(tierName: string | null | undefined): number | null {
