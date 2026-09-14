@@ -8,12 +8,17 @@ Module: **Scan Progress SSE** (leaf issue #2520, parented under Application Core
 a shared engine-layer capability underneath Shell, Mission Control, and the Assessment wizard, not
 one page's property).
 
-**This pack documents a live, fully-working backend mechanism with zero customer-facing callers in
-the current `artifacts/portal`.** Every real client of this stream lived in retired portal-v2,
-archived at tag `portal-archive-2026-08-29` — `MissionControl.tsx`,
-`useAssessmentLiveStatus.ts`, `scan-status-context.tsx`. The only live consumer today is internal
-tooling (`admin-panel`'s `SimulatorAssessmentCanvas.tsx`). This is the same orphaned-endpoint shape
-documented elsewhere pre-Design/wire — not a defect. See §5.
+**Freshness re-check (2026-09-14, #2768): the orphaned-endpoint gap this pack originally reported
+is CLOSED.** At extraction (2026-09-03/04) this pack documented a live, fully-working backend
+mechanism with **zero** customer-facing callers in `artifacts/portal`, and filed that gap as
+**#2521** against #1817 (Portal Shell's endpoint table). #2521 closed 2026-09-03 — same-day,
+`#1824` "Portal Shell: scan status and progress" wired a real, live, customer-facing consumer:
+`artifacts/portal/src/components/shell/useScanState.ts`, consumed by `PortalShell.tsx`,
+`TenantStatusCard.tsx`, `ScanLogPanel.tsx`, `customer-diagnostics.tsx` and
+`useDiagnosticsPage.ts`. It implements exactly the combined poll+stream pattern §4/§5b describe —
+its own code comments cite this pack's §1e/§1f/§4 sections by name. See the rewritten §5 for the
+real consumer detail. The internal-tooling consumer (`admin-panel`'s
+`SimulatorAssessmentCanvas.tsx`) is still live and unchanged.
 
 ---
 
@@ -30,39 +35,50 @@ lower-frequency, state-snapshot angle (§4).
 ## 1. Stream endpoint — wire contract
 
 **`GET /api/msp/customers/:customerId/diagnostics/runs/:runId/sse`**
-Source: `artifacts/api-server/src/routes/msp-diagnostics.ts:534-629`.
+Source: `artifacts/api-server/src/routes/msp-diagnostics.ts:622-717`* (was `:534-629` at
+extraction — file grew ~89 lines ahead of this route from an unrelated route insertion;
+route logic itself is unchanged, only line citations moved and the role system was renamed
+underneath it, see 1b).
 
 ### 1a. Auth — query-string JWT, not header
 
-`?jwt=<token>` (`:543-544`). Deliberate: browser `EventSource` cannot set custom headers, so this
-route hand-verifies the JWT inline (`jwt.verify(token, jwtSecret)`, `:546-552`) rather than going
-through the standard `requireAuth`/`requireRole` middleware every other route in this file uses.
-401 if the param is missing or the token fails verification.
+`?jwt=<token>` (`:631-632`). Deliberate: browser `EventSource` cannot set custom headers, so this
+route hand-verifies the JWT inline (`jwt.verify(token, jwtSecret)`, `:634-640`) rather than going
+through the standard `requireAuth`/`requireCapability` middleware (was `requireRole` at
+extraction — RBAC renamed by #2460) every other route in this file uses. 401 if the param is
+missing or the token fails verification.
 
-### 1b. Three real scoping paths (`:558-594`)
+### 1b. Three real scoping paths (`:647-683`)
+
+**Role terminology changed since extraction (#3590, 2026-09-03), same-day as extraction but not
+yet reflected in the original pack.** `CustomerUser` was renamed `Customer`, and `Assessment` was
+folded into a `Free` capability rung. The route now compares against `LEGACY_ROLE.customer`/
+`LEGACY_ROLE.free`/etc. constants via `canonicalRoleValue()` rather than bare string literals —
+this normalizes an older, pre-#3590 JWT that may still carry `CustomerUser`/`Assessment` in its
+claims, so old sessions don't get silently locked out.
 
 | Caller | Scope rule | Source |
 |---|---|---|
-| `CustomerUser` / `Assessment` role (customer/prospect) | `decoded.customerId` must equal the `:customerId` route param exactly, or **403** | `:559-568` |
-| `MSPOperator` / `MSPAdmin` / `PlatformAdmin` | `assertCustomerBelongsToMsp(customerId, userMspId)` + `isCustomerBlockedByStaffScope` — a per-staff-scoped operator gets **404, not 403**, on a customer outside their assigned set, deliberately, so the blocked response never reveals the run exists | `:569-593` |
-| `decoded.role === "admin"` | Bypasses all of the above (`isAdmin` short-circuit at `:556-558`) | `:556` |
+| `Customer` / `Free` role (customer/prospect; was `CustomerUser`/`Assessment`) | `decoded.customerId` must equal the `:customerId` route param exactly, or **403** | `:648-657` |
+| `MSPOperator` / `MSPAdmin` / `PlatformAdmin` | `assertCustomerBelongsToMsp(customerId, userMspId)` + `isCustomerBlockedByStaffScope` — a per-staff-scoped operator gets **404, not 403**, on a customer outside their assigned set, deliberately, so the blocked response never reveals the run exists | `:658-682` |
+| `decoded.role === "admin"` | Bypasses all of the above (`isAdmin` short-circuit at `:645,647`) | `:645` |
 
-The `CustomerUser`/`Assessment` branch is what both the retired portal-v2 consumers and any future
-portal wiring use — `Assessment` covers the assessment-wizard's live deep-scan step, `CustomerUser`
-covers the full-portal Mission Control scan-progress strip, per the route's own comment (`:562-564`).
+The `Customer`/`Free` branch is what both the retired portal-v2 consumers and the real, live
+`artifacts/portal` consumer (§5) use — `Free` covers the assessment-wizard's live deep-scan step,
+`Customer` covers the full-portal scan-progress strip, per the route's own comment (`:649-653`).
 
 Because the MSP-staff auth path can't reuse the shared `assertCustomerAccess` helper (no `req.user`
 on a query-JWT-only route), it hand-rebuilds a minimal `AuthUser` from the verified claims
-(`:582-589`) to call `isCustomerBlockedByStaffScope`.
+(`:671-678`) to call `isCustomerBlockedByStaffScope`.
 
-### 1c. Run existence check (`:596-606`)
+### 1c. Run existence check (`:685-695`)
 
 Before opening the stream, the route re-verifies the run row exists for that `customerId` —
 **404** (`{ error: "Run not found" }`) if not. This is the same predicate the picker/history routes
 use (`runId` + `customerId` composite), so a `runId` valid for a different customer 404s here too,
 not just at auth.
 
-### 1d. Stream open — headers + heartbeat (`:608-622`)
+### 1d. Stream open — headers + heartbeat (`:697-711`)
 
 ```
 Content-Type: text/event-stream
@@ -90,9 +106,10 @@ every broadcast — `:18,145`).
 
 The cached replay state is explicitly cleared the moment a run reaches either terminal outcome —
 `clearDiagnosticsRunSSEState(runId)` is called from **both** the success path
-(`diagnostics-runner.ts:1078`, right after `broadcastDiagnosticsRunComplete` at `:1067`) and the
-failure path (`diagnostics-runner.ts:1181`, right after `broadcastDiagnosticsRunError` at `:1180`).
-A client that connects
+(`diagnostics-runner.ts:1086`, was `:1078`, right after `broadcastDiagnosticsRunComplete` at
+`:1075`, was `:1067`) and the failure path (`diagnostics-runner.ts:1189`, was `:1181`, right after
+`broadcastDiagnosticsRunError` at `:1188`, was `:1180`) — an 8-line drift from an unrelated
+insertion earlier in the file, logic unchanged. A client that connects
 to a `runId` whose run finished and had its cache cleared receives **nothing on connect** — no
 replay, no error — until/unless a *new* run starts under a different `runId`. This is a real gap a
 consumer must design around: **the SSE stream alone cannot tell a late-arriving client "this run
@@ -102,11 +119,11 @@ polling endpoints fill that gap.
 ### 1g. What a client sees on disconnect
 
 `res.on("close")` fires `registerDiagnosticsRunSSEClient`'s own `onClose` callback
-(logs `"diagnostics SSE client disconnected"`, `msp-diagnostics.ts:615`) and clears the heartbeat
-interval. There is no server-initiated close on run completion — the client (all three real
-consumers, current and archived) is responsible for calling `es.close()` itself once it receives a
-`diagnostics_complete` or `diagnostics_error` frame (see `SimulatorAssessmentCanvas.tsx:308,323`,
-§3).
+(logs `"diagnostics SSE client disconnected"`, `msp-diagnostics.ts:704`, was `:615`) and clears the
+heartbeat interval. There is no server-initiated close on run completion — the client (every real
+consumer, current and archived — see the expanded §5) is responsible for calling `es.close()`
+itself once it receives a `diagnostics_complete` or `diagnostics_error` frame (see
+`SimulatorAssessmentCanvas.tsx:308,323` and `useScanState.ts:229-235`, §3/§5).
 
 ---
 
@@ -153,7 +170,8 @@ bespoke mechanism.
 
 ### 3a. `ProgressCallback` — the source type
 
-Source: `artifacts/api-server/src/lib/monitor-executor.ts:422-448`. This is the callback signature
+Source: `artifacts/api-server/src/lib/monitor-executor.ts:400-426`, was `:422-448` (small drift
+from unrelated earlier edits, content unchanged). This is the callback signature
 `executeMonitoringPackage` invokes once per check, synchronously as each check resolves:
 
 ```ts
@@ -186,7 +204,8 @@ completes**, not after the whole run finishes.
 
 ### 3b. `diagnostics_progress`
 
-Emitted once per check from `diagnostics-runner.ts:808-822`, inside `executeMonitoringPackage`'s
+Emitted once per check from `diagnostics-runner.ts:818-832`, was `:808-822`, inside
+`executeMonitoringPackage`'s
 `onProgress` handler — the wire event is the `ProgressCallback` payload verbatim, wrapped with a
 `type` discriminator:
 
@@ -199,7 +218,8 @@ Emitted once per check from `diagnostics-runner.ts:808-822`, inside `executeMoni
 
 ### 3c. `diagnostics_complete`
 
-Emitted once, from `diagnostics-runner.ts:1067-1074`, right after the run row is persisted as
+Emitted once, from `diagnostics-runner.ts:1075-1082`, was `:1067-1074` (8-line drift, unrelated
+insertion earlier in the file — see §1f), right after the run row is persisted as
 `completed`/`partial`:
 
 ```ts
@@ -212,9 +232,9 @@ carries.
 
 ### 3d. `diagnostics_error`
 
-Emitted once, from `diagnostics-runner.ts:1180` (the run's outer `catch` block), when the run dies
-before reaching a terminal `completed`/`partial` state (e.g. no M365 tenant connected — the
-pre-flight throw at `:792-794` — or an unhandled exception mid-run):
+Emitted once, from `diagnostics-runner.ts:1188`, was `:1180` (the run's outer `catch` block), when
+the run dies before reaching a terminal `completed`/`partial` state (e.g. no M365 tenant connected
+— the pre-flight throw at `:800`, was `:792-794` — or an unhandled exception mid-run):
 
 ```ts
 { message: string }  // errorMessage, truncated to 1000 chars before persisting to the run row
@@ -263,10 +283,10 @@ The SSE stream is the **live-progress mechanism only**; two lower-frequency poll
 state snapshots of the same `msp_diagnostic_runs` row from a different angle, and a full live
 consumer combines all three. Both live in `artifacts/api-server/src/routes/portal-assessment.ts`.
 
-### 4a. `GET /api/portal/scan-status` (`:954-1117`, `requireRole("Assessment")`)
+### 4a. `GET /api/portal/scan-status` (`:954-1117`, `requireCapability("ladder.free")`, was `requireRole("Assessment")` — RBAC renamed by #2460/#3590, route path/line unchanged)
 
 Polled every 30-60s (or every 3s while a run is live, per the `scan-plan` route's own comment,
-`:1144`) from the whole portal shell. Deliberately minimal — reads only the customer's latest
+`:1153`, was `:1144`) from the whole portal shell. Deliberately minimal — reads only the customer's latest
 `msp_diagnostic_runs` row, not the full assessment-wizard payload. Real fields relevant to a live
 progress UI:
 
@@ -285,17 +305,19 @@ progress UI:
 This is exactly the fallback the SSE stream's §1f gap needs: `active` (a run in `ACTIVE_RUN_STATUSES`)
 gives a client the `runId` to open/re-open an `EventSource` against, and `lastRunSummary` gives it
 the terminal outcome of a run whose SSE replay cache has already been cleared — the two mechanisms
-are meant to be read together, not as alternatives. `active` goes `null` the instant a run finishes
-(`:1069`), which is precisely why `lastRunSummary` exists as a separate, always-present field
-(`:1080-1086`'s own comment states this).
+are meant to be read together, not as alternatives. **This is exactly the pattern the real
+`artifacts/portal` consumer implements** — see §5a, `useScanState.ts`'s own `watchedRunId` derivation
+(`status?.active?.runId ?? status?.lastRunSummary?.runId`) reads word-for-word off this rule.
+`active` goes `null` the instant a run finishes, which is precisely why `lastRunSummary` exists as
+a separate, always-present field.
 
-### 4b. `GET /api/portal/scan-plan` (`:1152-1194`, `requireRole("Assessment")`)
+### 4b. `GET /api/portal/scan-plan` (`:1161-1203`, `requireCapability("ladder.free")`, was `:1152-1194`/`requireRole("Assessment")` — 9-line drift from an unrelated insertion earlier in the file, plus the same RBAC rename)
 
 The real check **plan** — the ordered list of `checkKey`s the customer's latest run actually
 executes, sourced from the same `loadOrderedPackageChecks(packageKey)` call the executor itself
 iterates (so the plan can never drift from what `diagnostics_progress` events will actually emit).
-Fetched once per `runId`, not polled continuously (`:1143-1145`'s comment: "the plan for a given
-run never changes"). Exists because the per-check SSE stream alone can only say which checks
+Fetched once per `runId`, not polled continuously (`:1152-1154`, was `:1143-1145`'s comment: "the
+plan for a given run never changes"). Exists because the per-check SSE stream alone can only say which checks
 **have** reported — never how many a given pillar/grouping is still owed mid-scan (the #340 bug
 this route fixed: a pillar with five real checks reading "done" after the first one reported).
 
@@ -305,29 +327,71 @@ this route fixed: a pillar with five real checks reading "done" after the first 
 // reportable state, not an error.
 ```
 
-Grouping `checkKeys` into pillars is deliberately left to the client (the domain→pillar mapping
-lives in `msp-portal`'s `warRoomScan.ts`, `WAR_ROOM_PILLAR_DOMAINS` — a second copy here would be
-free to drift).
+Grouping `checkKeys` into pillars is deliberately left to the client, per the route's own comment
+— **but that comment (`portal-assessment.ts`, just above the route) still cites `msp-portal`'s
+`warRoomScan.ts`, a file that no longer exists** (`artifacts/msp-portal` was retired for
+`artifacts/portal` in `f40438cdc`, #1921). `WAR_ROOM_PILLAR_DOMAINS` today lives only server-side,
+in `artifacts/api-server/src/lib/pillar-summary-stats.ts` — no client-side copy exists anywhere in
+`artifacts/portal`. This is consistent with, not contradicted by, real current scope: the client
+that would consume this grouping is the pillar pages, and **Pillar Pages (#1621) is still at the
+architecture stage and was deferred to v1.2 on 2026-09-13** (confirmed this session — see #2768's
+own comment thread) — no pillar-page contract pack exists to freshness-check alongside this one.
+`useScanState.ts` (§5a), the one real live consumer today, does not group by pillar at all; it
+only exposes a flat per-check log. Design should not assume a client-side pillar-grouping
+mechanism exists yet — it doesn't, and the code comment describing where it would come from is
+itself stale.
 
 ---
 
-## 5. Real consumers — one live, three retired
+## 5. Real consumers — two live (one is customer-facing now), three retired
+
+**Real update since extraction: the customer-facing gap this pack originally reported (§0's
+"zero customer-facing callers") is closed.** #2521, the finding this pack's own extraction filed
+against #1817 (Portal Shell's endpoint table missing this route), closed 2026-09-03 — #1824
+("Portal Shell: scan status and progress") landed the real consumer documented in §5a below,
+same day as this pack's own extraction commit.
 
 ### 5a. Live today
 
+**`artifacts/portal/src/components/shell/useScanState.ts`** (#1824, real, customer-facing) — the
+combined scan-status source for the Portal Shell's Tenant Status card and scan log panel.
+Consumed by `PortalShell.tsx`, `TenantStatusCard.tsx`, `ScanLogPanel.tsx`,
+`customer-diagnostics.tsx`, and `useDiagnosticsPage.ts`. This is a genuinely careful, real
+implementation of exactly the three-way combined mechanism §4 describes — its own code comments
+cite this pack's §1e/§1f/§4 sections by section number:
+
+- Polls `/portal/scan-status` adaptively (3s active / 45s idle, §4a's own documented cadence) to
+  get `watchedRunId` (`status?.active?.runId ?? status?.lastRunSummary?.runId`).
+- Fetches `/portal/scan-plan` once per `runId` (§4b) for a `total` check count before any live
+  event arrives.
+- Opens the run-scoped `EventSource` **only** when a run is actually active (`status?.active?.runId`)
+  — deliberately does not open a stream for an already-finished run, since its replay cache is
+  already gone by then (§1f) and there is nothing to gain.
+- Implements the exact late-join / cache-cleared distinction §1e/§1f document as its own real UI
+  states: `lateJoin` (true when the first received `diagnostics_progress` event's `index > 1` — the
+  replay cache handed it a mid-run event, meaning everything before it was never delivered) is
+  distinct from `phase: "cache-cleared"` (the poll says the run finished, but this tab's own SSE
+  connection never witnessed a live terminal event for it — §1f's documented gap, realized as a
+  real, honestly-labeled UI phase rather than silently reusing the "complete" state).
+- Treats a raw `es.onerror` identically to a real `diagnostics_error` frame (§3e's documented
+  pattern), but only when the run hadn't already reached a witnessed terminal state — the same
+  discipline `SimulatorAssessmentCanvas.tsx` uses.
+
 **`artifacts/admin-panel/src/components/SimulatorAssessmentCanvas.tsx`** — Simulator Studio's
-Assessments node (internal MSP/admin tooling, not customer-facing). Full event handling quoted at
-§3e. Also see the sibling generic admin stream `artifacts/admin-panel/src/hooks/useLiveStream.ts`
-(`GET /api/admin/live-stream?channel=...`) — a **different**, unscoped firehose-style mechanism
-(§2's `registerChannelFirehoseClient`/`registerFirehoseClient` in `sse-hub.ts`), not this run-scoped
-stream; do not conflate the two when reading admin-panel code.
+Assessments node (internal MSP/admin tooling, not customer-facing), unchanged since extraction.
+Full event handling quoted at §3e. Also see the sibling generic admin stream
+`artifacts/admin-panel/src/hooks/useLiveStream.ts` (`GET /api/admin/live-stream?channel=...`) — a
+**different**, unscoped firehose-style mechanism (§2's `registerChannelFirehoseClient`/
+`registerFirehoseClient` in `sse-hub.ts`), not this run-scoped stream; do not conflate the two
+when reading admin-panel code.
 
 ### 5b. Retired — archived at tag `portal-archive-2026-08-29`
 
 All three lived under the retired portal-v2 and are **not** to be treated as a current baseline
 (per this repo's standing rule — portal-v2 is retired, not a fallback target for new work). Cited
-here only because their real, already-proven wiring is the pattern any new portal consumer should
-follow, same discipline as any other archived-but-instructive code. Paths below are as of the
+here only because their real, already-proven wiring **was** the pattern a new portal consumer
+should follow — and, as of #1824 (§5a), now genuinely has been followed, not just cited as
+precedent. Paths below are as of the
 `artifacts/msp-portal` tree at that archive tag — `artifacts/msp-portal` was retired for
 `artifacts/portal` in `f40438cdc` (#1921), and none of these three files were carried over; none
 exist in `artifacts/portal` today:
@@ -350,10 +414,38 @@ exist in `artifacts/portal` today:
 
 ---
 
-## 6. Findings from this pass (not fixed here — flagged only)
+## 6. Findings from this pass — status re-verified 2026-09-14
 
-**#1817's own endpoint table is missing this route.** Portal Shell's Feature body lists only the
-two polling GETs (`/portal/scan-status`, `/portal/scan-plan`) under "Scan" — this SSE stream is the
-actual live-progress mechanism and isn't in that table. Filed as a sibling finding under #1096; see
-the issue this pack's own build filed (linked in the #2520 completion comment). Not corrected here
-per this issue's own instruction to flag, not silently fix, #1817.
+**#2521 — CLOSED 2026-09-03.** Original finding: #1817's own endpoint table (Portal Shell's
+Feature body) listed only the two polling GETs (`/portal/scan-status`, `/portal/scan-plan`) under
+"Scan" — this SSE stream was the actual live-progress mechanism and wasn't in that table. Real
+resolution: #1824 ("Portal Shell: scan status and progress") wired the real, live, customer-facing
+consumer documented in the rewritten §5a above, closing both the missing-endpoint-table gap and
+the deeper "zero customer-facing callers" gap this whole pack originally centered on.
+
+**New finding, not filed as a separate issue — folded into this freshness pass instead per #2768's
+own scope (rewrite what's stale, don't spin up parallel bug-filing for documentation drift already
+traceable to a known, already-tracked deferral):** `portal-assessment.ts`'s own code comment above
+`/portal/scan-plan` still cites `msp-portal`'s `warRoomScan.ts` for client-side pillar grouping — a
+file retired with `artifacts/msp-portal` itself (`f40438cdc`, #1921) and never rebuilt in
+`artifacts/portal`. See §4b for the real current state. This is consistent with Pillar Pages
+(#1621) being deferred to v1.2 (confirmed this session), not a newly-discovered defect, so it is
+documented here rather than filed as a fresh finding.
+
+---
+
+*Extraction performed 2026-09-03 (commit `fae6ca4ee`), annotated 2026-09-04 (commit `aa7d11439`)
+against `main`. Freshness re-checked 2026-09-14 against `main` (commit `2ee6ac1cf` base, per
+#2768) via git-diff-against-extraction-commit on every cited source file.
+`sse-channels.ts`/`sse-hub.ts`/`SimulatorAssessmentCanvas.tsx`/`useLiveStream.ts` are byte-for-byte
+unchanged since extraction. `diagnostics-runner.ts` and `portal-assessment.ts` changed only in
+RBAC-refactor auth citations (#2460/#3590) and `.ts` import-extension mechanics — no wire-shape
+change. `msp-diagnostics.ts`'s SSE route logic is unchanged; its citations moved ~89 lines from an
+unrelated route insertion ahead of it, and its role-check code now uses `LEGACY_ROLE` constants +
+`canonicalRoleValue()` for pre-#3590-token back-compat instead of bare string literals. **Real,
+substantive change:** `artifacts/portal/src/components/shell/useScanState.ts` (#1824) is a new,
+live, customer-facing consumer that closes the exact gap (#2521) this pack's own original
+extraction identified — see the rewritten §5a. Event payload shapes (§3), the honest-empty
+contract, and the SSE lifecycle rules (§1e-§1g) held completely unchanged, and are now validated
+against real production wiring rather than only against the retired portal-v2 pattern. Read-only:
+only this pack + the session's own bookend changed.*
