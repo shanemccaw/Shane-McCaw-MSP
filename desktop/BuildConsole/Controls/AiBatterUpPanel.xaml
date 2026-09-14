@@ -74,6 +74,18 @@
                                    Foreground="{StaticResource Subtext0Brush}" FontSize="11"
                                    VerticalAlignment="Center" Text=""/>
 
+                        <!-- Git #4146 — Epic filter dropdown, populated in code-behind
+                             (PopulateEpicFilterOptions) from the distinct Epics actually present
+                             in _allRows, "All Epics" default first. Combines AND-wise with
+                             TxtFilter below (see RenderFilteredRows) — never replaces it. -->
+                        <ComboBox x:Name="CmbEpicFilter" DockPanel.Dock="Left"
+                                  Width="90" Height="18" FontSize="10.5"
+                                  Margin="0,0,6,0"
+                                  VerticalContentAlignment="Center"
+                                  Visibility="Collapsed"
+                                  DisplayMemberPath="Label"
+                                  SelectionChanged="CmbEpicFilter_SelectionChanged"/>
+
                         <Grid x:Name="FilterBoxHost" DockPanel.Dock="Left" Margin="0,0,6,0"
                               Visibility="Collapsed">
                             <TextBox x:Name="TxtFilter"

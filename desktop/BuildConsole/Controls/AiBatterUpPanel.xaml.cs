@@ -162,7 +162,11 @@ namespace BuildConsole.Controls
         // collapsed-by-default state it left this document tab opening into) is gone.
         private void UpdateFilterBoxVisibility()
         {
-            FilterBoxHost.Visibility = _allRows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            var visibility = _allRows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            FilterBoxHost.Visibility = visibility;
+            // Git #4146 — the Epic filter dropdown follows the same "nothing to filter" gate
+            // as the text filter box.
+            CmbEpicFilter.Visibility = visibility;
         }
 
         // Git #2737 — build a fresh client on every call, matching BatterUpPanel's convention.
@@ -269,6 +273,7 @@ namespace BuildConsole.Controls
                 TxtCount.Text = _allRows.Count == 0 ? "— none open" : $"({_allRows.Count})";
                 TxtEmpty.Visibility = Visibility.Collapsed;
                 UpdateFilterBoxVisibility();
+                PopulateEpicFilterOptions();
                 RenderFilteredRows();
                 SetCount(_allRows.Count);
             }
@@ -307,9 +312,17 @@ namespace BuildConsole.Controls
             IEnumerable<Services.AiBatterUpRow> visible = _allRows;
             if (term.Length > 0)
             {
-                visible = _allRows.Where(r =>
+                visible = visible.Where(r =>
                     r.Number.ToString().Contains(term, StringComparison.OrdinalIgnoreCase) ||
                     (r.Title?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            // Git #4146 — the Epic filter combines AND-wise with the text filter above, never
+            // replacing it: narrows to just the selected Epic's rows (or "No Epic" rows) on top
+            // of whatever the text term already matched.
+            if (CmbEpicFilter.SelectedItem is EpicFilterOption { IsAll: false } epicFilter)
+            {
+                visible = visible.Where(r => r.EpicNumber == epicFilter.EpicNumber);
             }
 
             var visibleList = visible.ToList();
@@ -336,7 +349,7 @@ namespace BuildConsole.Controls
             // Rows with no resolved Epic land in a real "No Epic" group, never silently dropped/mixed.
             foreach (var epicGroup in GroupByEpic(visibleList))
             {
-                RowsList.Children.Add(BuildEpicGroupHeader(epicGroup.Label));
+                RowsList.Children.Add(BuildEpicGroupHeader(epicGroup));
                 foreach (var row in epicGroup.Rows)
                 {
                     var card = BuildAiBatterUpCard(row);
@@ -351,9 +364,12 @@ namespace BuildConsole.Controls
             if (toSelect != null) SelectCard(toSelect, toSelectNumber);
         }
 
-        /// <summary>Git #3336 — one real Epic-header group of rows, in on-screen order.</summary>
+        /// <summary>Git #3336 — one real Epic-header group of rows, in on-screen order.
+        /// Git #4146 — carries the resolved <see cref="EpicNumber"/> too (null for "No Epic"),
+        /// so both the group-header copy button and the Epic filter dropdown can key off it.</summary>
         private readonly struct EpicRowGroup
         {
+            public int? EpicNumber { get; init; }
             public string Label { get; init; }
             public List<Services.AiBatterUpRow> Rows { get; init; }
         }
@@ -371,22 +387,112 @@ namespace BuildConsole.Controls
                 .ThenBy(g => g.Key ?? int.MaxValue)
                 .Select(g => new EpicRowGroup
                 {
+                    EpicNumber = g.Key,
                     Label = g.Key.HasValue ? $"#{g.Key} — {g.First().EpicTitle}" : "No Epic",
                     Rows = g.ToList(),
                 })
                 .ToList();
         }
 
-        /// <summary>Git #3336 — a real, bold section header naming the resolved Epic (or "No Epic")
-        /// a following block of rows/cards belongs to.</summary>
-        private static TextBlock BuildEpicGroupHeader(string label) => new()
+        /// <summary>Git #4146 — one entry in the Epic filter dropdown. <see cref="IsAll"/> is the
+        /// "All Epics" default (matches every row, no filtering); otherwise <see cref="EpicNumber"/>
+        /// (null for the real "No Epic" group) is what <see cref="RenderFilteredRows"/> filters on.</summary>
+        private readonly struct EpicFilterOption
         {
-            Text = label,
-            FontSize = 11,
-            FontWeight = FontWeights.Bold,
-            Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
-            Margin = new Thickness(4, 10, 0, 4),
-        };
+            public bool IsAll { get; init; }
+            public int? EpicNumber { get; init; }
+            public string Label { get; init; }
+        }
+
+        /// <summary>
+        /// Git #4146 — rebuilds CmbEpicFilter's items from the distinct Epics actually present in
+        /// <see cref="_allRows"/> (same order/grouping as <see cref="GroupByEpic"/>, so the dropdown
+        /// always matches what RowsList can actually group into), with a real "All Epics" default
+        /// first. Preserves the currently-selected Epic across a refresh if it's still present;
+        /// falls back to "All Epics" otherwise (e.g. that Epic's last row just left the queue).
+        /// </summary>
+        private void PopulateEpicFilterOptions()
+        {
+            var previouslySelected = CmbEpicFilter.SelectedItem is EpicFilterOption prev ? prev : (EpicFilterOption?)null;
+
+            var options = new List<EpicFilterOption>
+            {
+                new() { IsAll = true, EpicNumber = null, Label = "All Epics" },
+            };
+            options.AddRange(GroupByEpic(_allRows).Select(g => new EpicFilterOption
+            {
+                IsAll = false,
+                EpicNumber = g.EpicNumber,
+                Label = g.Label,
+            }));
+
+            CmbEpicFilter.ItemsSource = options;
+
+            int indexToSelect = 0;
+            if (previouslySelected is { IsAll: false } sel)
+            {
+                int found = options.FindIndex(o => !o.IsAll && o.EpicNumber == sel.EpicNumber);
+                if (found >= 0) indexToSelect = found;
+            }
+            CmbEpicFilter.SelectedIndex = indexToSelect;
+        }
+
+        /// <summary>Git #4146 — the Epic filter dropdown combines AND-wise with TxtFilter's text
+        /// filter (see RenderFilteredRows); it never replaces it.</summary>
+        private void CmbEpicFilter_SelectionChanged(object sender, SelectionChangedEventArgs e) => RenderFilteredRows();
+
+        /// <summary>Git #3336 — a real, bold section header naming the resolved Epic (or "No Epic")
+        /// a following block of rows/cards belongs to. Git #4146 — now a header row with a real
+        /// copy button alongside the label, wrapping the label TextBlock instead of returning it
+        /// directly so it stays a single child RenderFilteredRows can add to RowsList unchanged.</summary>
+        private static UIElement BuildEpicGroupHeader(EpicRowGroup group)
+        {
+            var grid = new Grid { Margin = new Thickness(4, 10, 0, 4) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var label = new TextBlock
+            {
+                Text = group.Label,
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            Grid.SetColumn(label, 0);
+            grid.Children.Add(label);
+
+            // Git #4146 — same IconButton copy-button pattern SettingsTabView.xaml.cs's per-row
+            // copy button uses (📋 content, IconButton style, Clipboard.SetText + ToastEngine).
+            var copyBtn = new Button
+            {
+                Content = "📋",
+                ToolTip = $"Copy \"Git #\" list for {group.Label}",
+                Style = (Style)Application.Current.FindResource("IconButton"),
+                Padding = new Thickness(5, 1, 5, 1),
+                FontSize = 9.5,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            copyBtn.Click += (_, _) =>
+            {
+                var lines = new List<string> { "Check AI Batter Up for your issues:" };
+                lines.AddRange(group.Rows.Select(r => $"Git #{r.Number}"));
+                try
+                {
+                    Clipboard.SetText(string.Join(Environment.NewLine, lines));
+                    ToastEngine.Success("Copied",
+                        $"Copied {group.Rows.Count} issue number(s) for {group.Label}.");
+                }
+                catch (Exception ex)
+                {
+                    ToastEngine.Error("Copy", $"Couldn't copy: {ex.Message}");
+                }
+            };
+            Grid.SetColumn(copyBtn, 1);
+            grid.Children.Add(copyBtn);
+
+            return grid;
+        }
 
         /// <summary>
         /// Highlights <paramref name="card"/> (restoring whatever card was previously
