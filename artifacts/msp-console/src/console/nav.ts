@@ -111,6 +111,10 @@ export const MSP_PAGES: LeafPage[] = [
   { id: "reports", label: "Reports", icon: "file-bar-chart-2" },
   { id: "retention", label: "Retention Queue", icon: "hourglass" },
   { id: "revenue", label: "Partner Revenue", icon: "handshake" },
+  // Audit Log (Git #4012, README screen 63), mounted here unfiltered and
+  // again per tenant (CHILD_GROUPS' "audit" leaf above) with customerId set
+  // — same component, one prop, per the README's tree-placement table.
+  { id: "audit", label: "Audit log", icon: "history" },
 ];
 
 /** Flattened tenant pages (leaf groups + every group child). */

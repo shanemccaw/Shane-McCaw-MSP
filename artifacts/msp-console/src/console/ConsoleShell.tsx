@@ -22,6 +22,7 @@ import { ScopeSla } from "./modules/ScopeSla";
 import { Ownership } from "./modules/Ownership";
 import { Sales } from "./modules/Sales";
 import { ActivityTimeline } from "./modules/ActivityTimeline";
+import { AuditLog } from "./modules/AuditLog";
 import { PolicyEngine } from "./modules/PolicyEngine";
 import { ConsentOnboarding } from "./modules/ConsentOnboarding";
 import { AccountSecurity } from "./modules/AccountSecurity";
@@ -342,6 +343,22 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     const customer = customers.find((c) => c.id === sel.tenant);
     return <MarketplacePurchase customerId={sel.tenant} customerName={customer?.name ?? `Customer ${sel.tenant}`} />;
   }
+  if (sel.kind === "page" && sel.page === "audit") {
+    // Audit Log (#4012, README screen 63), per-tenant leaf — narrowed
+    // server-side by customerId (#3671). Same component as the Operations
+    // mount below, one prop.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    const isPlatformAdmin = profile.mspRole === "PlatformAdmin";
+    return (
+      <AuditLog
+        customerId={sel.tenant}
+        customerName={customer?.name ?? `Customer ${sel.tenant}`}
+        isPlatformAdmin={isPlatformAdmin}
+        ownMspId={profile.mspId ?? null}
+        ownMspLabel={profile.mspSlug ?? "your MSP"}
+      />
+    );
+  }
   if (sel.kind === "msp" && sel.page === "docs") {
     // Documents (#2647), README screen 32 — the MSP-wide library, unscoped.
     return <Documents initialTab="hub" />;
@@ -420,6 +437,18 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "revenue") {
     return <PartnerRevenue embedded />;
+  }
+  if (sel.kind === "msp" && sel.page === "audit") {
+    // Audit Log (#4012, README screen 63), Operations mount — no customer
+    // filter, the whole MSP. Same component as the per-tenant leaf above.
+    const isPlatformAdmin = profile.mspRole === "PlatformAdmin";
+    return (
+      <AuditLog
+        isPlatformAdmin={isPlatformAdmin}
+        ownMspId={profile.mspId ?? null}
+        ownMspLabel={profile.mspSlug ?? "your MSP"}
+      />
+    );
   }
   if (sel.kind === "page" && (CHANGE_CONTROL_TABS as readonly string[]).includes(sel.page)) {
     // Change Control (#2579) needs the full customer row too — its Register,

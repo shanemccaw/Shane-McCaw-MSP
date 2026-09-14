@@ -434,6 +434,15 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "Every generated document, every custom canvas, and the schedules nothing yet executes.",
       };
     }
+    // #4012 — Audit Log's title is the design's own exact copy
+    // (`Audit Log.dc.html`'s logic class, the unfiltered `title` branch).
+    if (sel.page === "audit") {
+      return {
+        eyebrow: "AUDIT LOG",
+        title: "Everything recorded across your MSP",
+        note: "MSPAdmin or above. Search matches the action, entity type, label and actor role — never names, addresses, ids or metadata.",
+      };
+    }
     return { eyebrow: "OPERATIONS · MSP-WIDE", title: mp?.label ?? "", note: "" };
   }
   const c = find(sel.tenant);
@@ -481,6 +490,15 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
       eyebrow: "PLANS OF ACTION & MILESTONES",
       title: "POA&Ms across the book",
       note: `Opened from ${name} — the route has no per-tenant filter, so every plan on the MSP's book shows here, not just this tenant's.`,
+    };
+  }
+  // #4012 — Audit Log's per-tenant title is the design's own exact copy
+  // (`Audit Log.dc.html`'s logic class, the `customer` title branch).
+  if (sel.page === "audit") {
+    return {
+      eyebrow: `AUDIT LOG · ${name.toUpperCase()}`,
+      title: `Everything recorded against ${name}`,
+      note: "Narrowed on the server, inside your MSP scope. Rows never say which customer they belong to — the filter is the only place the customer appears.",
     };
   }
   const p = tenantPageMeta(sel.page);
