@@ -12,6 +12,7 @@ import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { setSecretValue } from "../lib/azure-keyvault.ts";
 import { safeGetExpiry, getExpiringAzureCredentials } from "../lib/azure-credential-expiry.ts";
+import { createAuditLog } from "../lib/audit.ts";
 
 const router: IRouter = Router();
 
@@ -64,6 +65,17 @@ router.post("/admin/azure-credentials", requireAdmin, async (req: Request, res: 
       })
       .returning();
 
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: req.user!.role,
+      actionType: "azure_credential.created",
+      actionCategory: "security",
+      entityType: "azure_tenant_credential",
+      entityId: row.id,
+      clientId: row.clientUserId ?? null,
+      metadata: { displayName: row.displayName, credentialType: row.credentialType },
+    });
     res.status(201).json(row);
   } catch {
     res.status(500).json({ error: "Failed to create Azure credential" });
@@ -126,6 +138,17 @@ router.put("/admin/azure-credentials/:id", requireAdmin, async (req: Request, re
       .returning();
 
     if (!row) { res.status(404).json({ error: "Credential not found" }); return; }
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: req.user!.role,
+      actionType: "azure_credential.updated",
+      actionCategory: "security",
+      entityType: "azure_tenant_credential",
+      entityId: id,
+      clientId: row.clientUserId ?? null,
+      metadata: { secretRotated: Boolean(clientSecretValue && clientSecretValue.trim() !== "") },
+    });
     res.json(row);
   } catch {
     res.status(500).json({ error: "Failed to update Azure credential" });
@@ -137,7 +160,17 @@ router.delete("/admin/azure-credentials/:id", requireAdmin, async (req: Request,
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-    await db.delete(azureTenantCredentialsTable).where(eq(azureTenantCredentialsTable.id, id));
+    const [deleted] = await db.delete(azureTenantCredentialsTable).where(eq(azureTenantCredentialsTable.id, id)).returning();
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: req.user!.role,
+      actionType: "azure_credential.deleted",
+      actionCategory: "delete",
+      entityType: "azure_tenant_credential",
+      entityId: id,
+      clientId: deleted?.clientUserId ?? null,
+    });
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to delete Azure credential" });
@@ -255,6 +288,17 @@ router.post("/admin/clients/:id/azure-credential", requireAdmin, async (req: Req
         })
         .where(eq(azureTenantCredentialsTable.id, existing.id))
         .returning();
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: req.user!.role,
+        actionType: "azure_credential.updated",
+        actionCategory: "security",
+        entityType: "azure_tenant_credential",
+        entityId: row.id,
+        clientId,
+        metadata: { secretRotated: Boolean(clientSecretValue && clientSecretValue.trim() !== "") },
+      });
       res.json(row);
     } else {
       const [row] = await db
@@ -268,6 +312,17 @@ router.post("/admin/clients/:id/azure-credential", requireAdmin, async (req: Req
           clientUserId: clientId,
         })
         .returning();
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: req.user!.role,
+        actionType: "azure_credential.created",
+        actionCategory: "security",
+        entityType: "azure_tenant_credential",
+        entityId: row.id,
+        clientId,
+        metadata: { displayName: row.displayName, credentialType: row.credentialType },
+      });
       res.status(201).json(row);
     }
   } catch {
@@ -280,10 +335,20 @@ router.delete("/admin/clients/:id/azure-credential", requireAdmin, async (req: R
     const clientId = Number(req.params.id);
     if (isNaN(clientId)) { res.status(400).json({ error: "Invalid client id" }); return; }
 
-    await db
+    const [deleted] = await db
       .delete(azureTenantCredentialsTable)
-      .where(eq(azureTenantCredentialsTable.clientUserId, clientId));
-
+      .where(eq(azureTenantCredentialsTable.clientUserId, clientId))
+      .returning();
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: req.user!.role,
+      actionType: "azure_credential.deleted",
+      actionCategory: "delete",
+      entityType: "azure_tenant_credential",
+      entityId: deleted?.id ?? clientId,
+      clientId,
+    });
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to delete Azure credential" });

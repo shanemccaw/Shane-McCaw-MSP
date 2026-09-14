@@ -35,6 +35,7 @@ import { requireCapability, requireMspScope } from "../middlewares/requireAuth.t
 import { setSecretValue } from "../lib/azure-keyvault.ts";
 import { safeGetExpiry } from "../lib/azure-credential-expiry.ts";
 import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "integration.azure" });
@@ -178,6 +179,17 @@ router.post(
           })
           .where(eq(azureTenantCredentialsTable.id, existing.id))
           .returning();
+        await createAuditLog({
+          actorUserId: req.user!.id,
+          actorName: req.user!.name ?? req.user!.email,
+          actorRole: req.user!.role,
+          actionType: "azure_credential.updated",
+          actionCategory: "security",
+          entityType: "azure_tenant_credential",
+          entityId: row.id,
+          clientId: clientUserId,
+          metadata: { secretRotated: Boolean(clientSecretValue && clientSecretValue.trim() !== ""), actorSurface: "msp", mspId },
+        });
         res.json(row);
       } else {
         const [row] = await db
@@ -191,6 +203,17 @@ router.post(
             clientUserId,
           })
           .returning();
+        await createAuditLog({
+          actorUserId: req.user!.id,
+          actorName: req.user!.name ?? req.user!.email,
+          actorRole: req.user!.role,
+          actionType: "azure_credential.created",
+          actionCategory: "security",
+          entityType: "azure_tenant_credential",
+          entityId: row.id,
+          clientId: clientUserId,
+          metadata: { displayName: row.displayName, credentialType: row.credentialType, actorSurface: "msp", mspId },
+        });
         res.status(201).json(row);
       }
     } catch (err) {
@@ -272,6 +295,17 @@ router.put(
         .set(updates)
         .where(eq(azureTenantCredentialsTable.id, existing.id))
         .returning();
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: req.user!.role,
+        actionType: "azure_credential.updated",
+        actionCategory: "security",
+        entityType: "azure_tenant_credential",
+        entityId: row.id,
+        clientId: clientUserId,
+        metadata: { secretRotated: Boolean(clientSecretValue && clientSecretValue.trim() !== ""), actorSurface: "msp", mspId },
+      });
       res.json(row);
     } catch (err) {
       log.error({ err, mspId, clientUserId }, "PUT msp azure-credential failed");
@@ -300,9 +334,21 @@ router.delete(
         return;
       }
 
-      await db
+      const [deleted] = await db
         .delete(azureTenantCredentialsTable)
-        .where(eq(azureTenantCredentialsTable.clientUserId, clientUserId));
+        .where(eq(azureTenantCredentialsTable.clientUserId, clientUserId))
+        .returning();
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: req.user!.role,
+        actionType: "azure_credential.deleted",
+        actionCategory: "delete",
+        entityType: "azure_tenant_credential",
+        entityId: deleted?.id ?? clientUserId,
+        clientId: clientUserId,
+        metadata: { actorSurface: "msp", mspId },
+      });
 
       res.json({ ok: true });
     } catch (err) {

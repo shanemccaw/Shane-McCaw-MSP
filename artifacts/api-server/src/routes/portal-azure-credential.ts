@@ -25,6 +25,7 @@ import { requireAuth } from "../middlewares/requireAuth.ts";
 import { setSecretValue } from "../lib/azure-keyvault.ts";
 import { safeGetExpiry } from "../lib/azure-credential-expiry.ts";
 import { resolveSiblingUserIds } from "../lib/tenant-signals.ts";
+import { createAuditLog } from "../lib/audit.ts";
 
 const router: IRouter = Router();
 
@@ -133,6 +134,17 @@ router.post("/portal/azure-credential/rotate", requireAuth, async (req: Request,
       .where(eq(azureTenantCredentialsTable.id, existing.id))
       .returning();
 
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: req.user!.role,
+      actionType: "azure_credential.rotated",
+      actionCategory: "security",
+      entityType: "azure_tenant_credential",
+      entityId: row.id,
+      clientId: existing.clientUserId ?? null,
+      metadata: { actorSurface: "portal-self-service" },
+    });
     res.json(await toPortalCredentialView(row, req.log));
   } catch (err) {
     req.log.error({ err }, "portal-azure-credential: failed to rotate credential");
