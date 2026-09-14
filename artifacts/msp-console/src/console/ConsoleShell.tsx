@@ -51,6 +51,7 @@ import { RiskRegister } from "@/modules/risk-register/RiskRegister";
 import { RetentionQueue } from "@/modules/retention/RetentionQueue";
 import { PartnerRevenue } from "./modules/PartnerRevenue";
 import { Overview } from "./modules/Overview";
+import { LaunchControl } from "./modules/LaunchControl";
 
 function roleLabelFor(p: MspUserProfile): string {
   if (p.mspRole === "PlatformAdmin") return "PlatformAdmin — full access";
@@ -286,6 +287,13 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     const customer = customers.find((c) => c.id === sel.tenant);
     const isAdmin = profile.role === "admin" || profile.mspRole === "PlatformAdmin" || profile.mspRole === "MSPAdmin";
     return <PoamsPage customer={customer ? { name: customer.name, tenantId: customer.tenantId, domain: customer.domain } : undefined} isAdmin={isAdmin} />;
+  }
+  if (sel.kind === "page" && sel.page === "lc") {
+    // Launch Control (#2615), README screen 19. The routes are path-scoped by
+    // mspId, taken from the customer's own directory row so a PlatformAdmin
+    // session (no mspId claim) still addresses the right MSP.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    return customer ? <LaunchControl mspId={customer.mspId} customerId={sel.tenant} customerName={customer.name} /> : undefined;
   }
   if (sel.kind === "page" && sel.page === "wh") {
     return <Webhooks customerId={sel.tenant} />;

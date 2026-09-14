@@ -48,6 +48,7 @@
  *
  * Routes:
  *   GET  /api/msp/:mspId/launch-control/actions?customerId=:customerId
+ *   GET  /api/msp/:mspId/launch-control/history?customerId=:customerId  (Git #2615)
  *   POST /api/msp/:mspId/launch-control/execute
  *   POST /api/msp/:mspId/launch-control/rollback/:auditLogId
  */
@@ -61,9 +62,11 @@ import {
   tenantsTable,
   clientServicesTable,
   servicesTable,
+  mspsTable,
   type WriteActionCatalog,
+  type TenantConsentMap,
 } from "@workspace/db";
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, asc, desc, inArray, sql } from "drizzle-orm";
 import { requireCapability, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { loadTier, tierAllowsFeature } from "../lib/msp-entitlement.ts";
 import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
@@ -197,7 +200,7 @@ router.get(
         return;
       }
 
-      const [tier, customerTier, catalog, templates, customerTenant] = await Promise.all([
+      const [tier, customerTier, catalog, templates, customerTenant, msp] = await Promise.all([
         loadTier(mspId),
         resolveCustomerMonitoringTier(customerId),
         db.select().from(writeActionCatalogTable).orderBy(asc(writeActionCatalogTable.sortOrder)),
@@ -205,12 +208,29 @@ router.get(
           .select({
             templateId: baselineActionTemplatesTable.templateId,
             requiredVariables: baselineActionTemplatesTable.requiredVariables,
+            label: baselineActionTemplatesTable.label,
+            description: baselineActionTemplatesTable.description,
+            reversible: baselineActionTemplatesTable.reversible,
+            reverseTemplateId: baselineActionTemplatesTable.reverseTemplateId,
           })
           .from(baselineActionTemplatesTable),
+        // Explicit columns — consent is read only for its writeBack key's
+        // status, which is all the console's pre-flight row needs.
         db
-          .select({ tenantId: tenantsTable.tenantId })
+          .select({
+            tenantId: tenantsTable.tenantId,
+            name: tenantsTable.customerName,
+            isTestbed: tenantsTable.isTestbed,
+            consent: tenantsTable.consent,
+          })
           .from(tenantsTable)
           .where(and(eq(tenantsTable.id, customerId), eq(tenantsTable.mspId, mspId)))
+          .limit(1)
+          .then((rows) => rows[0]),
+        db
+          .select({ writeBackEnabled: mspsTable.writeBackEnabled })
+          .from(mspsTable)
+          .where(eq(mspsTable.id, mspId))
           .limit(1)
           .then((rows) => rows[0]),
       ]);
@@ -218,7 +238,7 @@ router.get(
       // Keyed off write_action_catalog.template_id, not the catalog row's own
       // id — a catalog row only has non-empty requiredVariables once it's
       // wired to a real baseline_action_templates row.
-      const requiredVariablesByTemplateId = new Map(templates.map((t) => [t.templateId, t.requiredVariables]));
+      const templatesById = new Map(templates.map((t) => [t.templateId, t]));
 
       // Git #3947 — one live /subscribedSkus read per listing render (cached
       // ~60s per tenant in license-gate.ts), not one per catalog row — the
@@ -232,20 +252,161 @@ router.get(
       const actions = catalog.map((row) => {
         const requiredLicenseSkus = (row.requiredLicenseSkus ?? []) as string[];
         const hasRequiredLicense = tenantHasRequiredLicense(requiredLicenseSkus, tenantSkus.skuPartNumbers);
+        const template = row.templateId ? templatesById.get(row.templateId) : undefined;
         return {
           ...row,
           availability: computeAvailability(row, tier, customerTierRank, hasRequiredLicense),
           licenseRequirement: requiredLicenseSkus.length > 0
             ? { skus: requiredLicenseSkus, satisfied: hasRequiredLicense, description: describeRequiredLicense(requiredLicenseSkus) }
             : null,
-          requiredVariables: row.templateId ? (requiredVariablesByTemplateId.get(row.templateId) ?? []) : [],
+          requiredVariables: template?.requiredVariables ?? [],
+          // Git #2615 — the console's confirm drawer shows what the linked
+          // template does and whether a paired reverse step exists; both are
+          // real baseline_action_templates columns, null when no template is
+          // linked yet.
+          templateLabel: template?.label ?? null,
+          templateDescription: template?.description ?? null,
+          reversible: Boolean(template?.reversible && template.reverseTemplateId),
         };
       });
 
-      res.json({ actions, customerTier });
+      // Git #2615 — the pre-flight context the console renders before an
+      // execute: the same testbed flag, MSP write-back switch and writeBack
+      // consent key that execute (isTestbed) and graphWriteForTenant
+      // (WriteBackNotEnabledError / WriteConsentRequiredError) enforce at
+      // write time. Informational only — execute never trusts it.
+      const consent = (customerTenant?.consent ?? null) as TenantConsentMap | null;
+      res.json({
+        actions,
+        customerTier,
+        tenant: {
+          customerId,
+          name: customerTenant?.name ?? null,
+          isTestbed: customerTenant?.isTestbed ?? false,
+          connected: Boolean(customerTenant?.tenantId),
+        },
+        writeBack: {
+          mspEnabled: msp?.writeBackEnabled ?? false,
+          consentStatus: consent?.writeBack?.status ?? null,
+        },
+        licenseRead: { error: tenantSkus.error },
+      });
     } catch (err) {
       log.error({ err, mspId, customerId }, "GET /msp/:mspId/launch-control/actions failed");
       res.status(500).json({ error: "Failed to load launch control actions" });
+    }
+  },
+);
+
+// ── GET /msp/:mspId/launch-control/history ────────────────────────────────────
+//
+// Git #2615 — the console's "What has been run" tab. Every
+// baseline_action_template_audit_log row whose after_snapshot names this
+// customer AND this customer's own M365 tenant — whatever surface fired it
+// (Launch Control, the admin simulator, a verification script), since the
+// executor writes the same row shape for all of them and records the surface
+// on after_snapshot.source. Scoped the same way as the listing: MSP-fenced by
+// requireMspScope + assertCustomerAccess, and the tenant row re-read by mspId.
+// request_variables are deliberately not returned.
+
+const HISTORY_LIMIT = 100;
+
+router.get(
+  "/msp/:mspId/launch-control/history",
+  requireCapability("ladder.msp-operator"),
+  requireMspScope("params"),
+  async (req: Request, res: Response): Promise<void> => {
+    const mspId = parseInt(p(req.params["mspId"]), 10);
+    if (isNaN(mspId)) { res.status(400).json({ error: "mspId must be a number" }); return; }
+
+    const customerId = parseInt(p(req.query["customerId"] as string | string[] | undefined), 10);
+    if (isNaN(customerId)) { res.status(400).json({ error: "customerId query param is required" }); return; }
+
+    try {
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this customer is not permitted");
+        return;
+      }
+
+      const [customer] = await db
+        .select({ tenantId: tenantsTable.tenantId })
+        .from(tenantsTable)
+        .where(and(eq(tenantsTable.id, customerId), eq(tenantsTable.mspId, mspId)))
+        .limit(1);
+      if (!customer?.tenantId) {
+        res.json({ history: [] });
+        return;
+      }
+
+      const audit = baselineActionTemplateAuditLogTable;
+      const rows = await db
+        .select({ id: audit.id, action: audit.action, templateId: audit.templateId, afterSnapshot: audit.afterSnapshot, createdAt: audit.createdAt })
+        .from(audit)
+        .where(and(
+          sql`${audit.afterSnapshot}->>'customerId' = ${String(customerId)}`,
+          sql`${audit.afterSnapshot}->>'tenantId' = ${customer.tenantId}`,
+        ))
+        .orderBy(desc(audit.createdAt), desc(audit.id))
+        .limit(HISTORY_LIMIT);
+
+      const templateIds = [...new Set(rows.map((r) => r.templateId).filter((t): t is string => !!t))];
+      const [templates, catalogRows] = templateIds.length === 0
+        ? [[], []]
+        : await Promise.all([
+          db
+            .select({
+              templateId: baselineActionTemplatesTable.templateId,
+              label: baselineActionTemplatesTable.label,
+              reversible: baselineActionTemplatesTable.reversible,
+              reverseTemplateId: baselineActionTemplatesTable.reverseTemplateId,
+            })
+            .from(baselineActionTemplatesTable)
+            .where(inArray(baselineActionTemplatesTable.templateId, templateIds)),
+          db
+            .select({ templateId: writeActionCatalogTable.templateId, actionName: writeActionCatalogTable.actionName })
+            .from(writeActionCatalogTable)
+            .where(inArray(writeActionCatalogTable.templateId, templateIds))
+            .orderBy(asc(writeActionCatalogTable.sortOrder)),
+        ]);
+      const templateById = new Map(templates.map((t) => [t.templateId, t]));
+      // Several catalog rows can share one template (e.g. Teams membership
+      // routes through the group-membership template); the first by sort
+      // order names it.
+      const actionNameByTemplateId = new Map<string, string>();
+      for (const c of catalogRows) {
+        if (c.templateId && !actionNameByTemplateId.has(c.templateId)) actionNameByTemplateId.set(c.templateId, c.actionName);
+      }
+
+      const history = rows.map((r) => {
+        const snap = (r.afterSnapshot ?? {}) as Record<string, unknown>;
+        const template = r.templateId ? templateById.get(r.templateId) : undefined;
+        const source = typeof snap["source"] === "string" ? (snap["source"] as string) : null;
+        return {
+          id: r.id,
+          outcome: r.action,
+          templateId: r.templateId,
+          actionName: r.templateId ? (actionNameByTemplateId.get(r.templateId) ?? null) : null,
+          templateLabel: template?.label ?? null,
+          endpoint: typeof snap["endpoint"] === "string" ? (snap["endpoint"] as string) : null,
+          method: typeof snap["method"] === "string" ? (snap["method"] as string) : null,
+          status: typeof snap["status"] === "number" ? (snap["status"] as number) : null,
+          errorType: typeof snap["errorType"] === "string" ? (snap["errorType"] as string) : null,
+          licenseFeature: typeof snap["licenseFeature"] === "string" ? (snap["licenseFeature"] as string) : null,
+          source,
+          createdAt: r.createdAt,
+          // Mirrors rollbackExecution's own preconditions: only an executed
+          // row whose template has a paired reverse step, and never a
+          // rollback's own row (one level only).
+          reversible: r.action === "executed"
+            && Boolean(template?.reversible && template.reverseTemplateId)
+            && source !== "launch_control_rollback",
+        };
+      });
+
+      res.json({ history });
+    } catch (err) {
+      log.error({ err, mspId, customerId }, "GET /msp/:mspId/launch-control/history failed");
+      res.status(500).json({ error: "Failed to load launch control history" });
     }
   },
 );
@@ -510,6 +671,26 @@ router.post(
       }
       if (!(await assertCustomerAccess(req.user!, customerId))) {
         apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this customer is not permitted");
+        return;
+      }
+
+      // Git #2615 — a rollback is a real Graph write too, so it carries the
+      // same TEMPORARY STAGING RESTRICTION execute does (it previously had
+      // none). Re-scoped to the caller's own MSP at the point of read, and
+      // the audit row's recorded tenantId must be that customer's own tenant
+      // — rollbackExecution writes against the tenantId on the audit row, so
+      // a row whose tenant doesn't match the customer it names is refused.
+      const [customer] = await db
+        .select({ tenantId: tenantsTable.tenantId, isTestbed: tenantsTable.isTestbed })
+        .from(tenantsTable)
+        .where(and(eq(tenantsTable.id, customerId), eq(tenantsTable.mspId, mspId)))
+        .limit(1);
+      if (!customer?.tenantId || afterSnapshot["tenantId"] !== customer.tenantId) {
+        res.status(404).json({ error: "Audit log entry does not belong to a connected tenant of this MSP" });
+        return;
+      }
+      if (!customer.isTestbed) {
+        res.status(403).json({ error: "Launch Control is only available for a customer flagged isTestbed" });
         return;
       }
 

@@ -454,6 +454,15 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
       note: `${name} — manual placements and the customer's own requests to change them.`,
     };
   }
+  // #2615 — Launch Control's eyebrow/title/note are the design's own exact
+  // copy (`MSP Console.dc.html`'s logic class, the `isLc` header branch).
+  if (sel.page === "lc") {
+    return {
+      eyebrow: "M365 LAUNCH CONTROL · STAGING ONLY",
+      title: "Launch Control",
+      note: `Real Microsoft 365 write actions against ${name}. Availability is recomputed server-side on every execute.`,
+    };
+  }
   // #3822 — Overview's eyebrow/note are the design's own exact copy
   // (`MSP Console.dc.html`'s logic class, the `overview` frames-meta entry).
   if (sel.page === "overview") {
