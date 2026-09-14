@@ -1,7 +1,7 @@
 import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index, date, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
-import { mspsTable, tenantsTable } from "./msp.ts";
+import { mspsTable, tenantsTable, tenantSubscriptionsTable } from "./msp.ts";
 // #2460 — the seven legacy role values, from the migration's own compatibility shim.
 // PURE (no schema imports), so this cannot form the msp.ts <-> index.ts cycle the
 // note above usersTable warns about.
@@ -1638,16 +1638,74 @@ export const customerTestimonialsTable = pgTable("customer_testimonials", {
   body: text("body").notNull(),
   kind: text("kind").notNull().default("testimonial"), // 'testimonial' | 'feedback' | 'suggestion'
   permissionToPublish: boolean("permission_to_publish").notNull().default(false),
+  // Admin Panel review decision (Git #4032). Settled on #3436: approval — never
+  // submission — is what grants the customer's one-time next-month credit
+  // (customer_billing_credits below). reviewed_* records who decided and when.
+  status: text("status").notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedByUserId: integer("reviewed_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   index("customer_testimonials_customer_id_idx").on(t.customerId),
   check("customer_testimonials_kind_check", sql`${t.kind} IN ('testimonial', 'feedback', 'suggestion')`),
+  check("customer_testimonials_status_check", sql`${t.status} IN ('pending', 'approved', 'rejected')`),
 ]);
 
 export type InsertCustomerTestimonial = typeof customerTestimonialsTable.$inferInsert;
 export type CustomerTestimonial = typeof customerTestimonialsTable.$inferSelect;
 export const CUSTOMER_TESTIMONIAL_KINDS = ["testimonial", "feedback", "suggestion"] as const;
 export type CustomerTestimonialKind = typeof CUSTOMER_TESTIMONIAL_KINDS[number];
+export const CUSTOMER_TESTIMONIAL_STATUSES = ["pending", "approved", "rejected"] as const;
+export type CustomerTestimonialStatus = typeof CUSTOMER_TESTIMONIAL_STATUSES[number];
+
+// Customer Billing Credits — a one-time credit against a customer's NEXT invoice
+// (Git #4032). Deliberately not a `coupons` row: a coupon is a global, code-entered
+// checkout promo with no customer binding, and nothing in the codebase redeems one
+// against a subscription invoice. A credit here is bound to one tenant, and is
+// delivered as a Stripe `duration: "once"` coupon attached to that tenant's active
+// subscription, which Stripe consumes on exactly one invoice.
+//   pending               — row written, Stripe not yet attempted
+//   issued                — discount attached; the next invoice will carry it
+//   awaiting_subscription — no active Stripe subscription recorded to credit
+//   failed                — Stripe call failed (failure_reason); retryable
+//   applied               — an invoice.paid carried the discount (applied_* columns)
+export const CUSTOMER_BILLING_CREDIT_STATUSES = ["pending", "issued", "awaiting_subscription", "failed", "applied"] as const;
+export type CustomerBillingCreditStatus = typeof CUSTOMER_BILLING_CREDIT_STATUSES[number];
+export const CUSTOMER_BILLING_CREDIT_SOURCES = ["testimonial_approval"] as const;
+
+export const customerBillingCreditsTable = pgTable("customer_billing_credits", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  source: text("source").notNull(),
+  sourceTestimonialId: integer("source_testimonial_id").references(() => customerTestimonialsTable.id, { onDelete: "set null" }),
+  // Same discount shape as coupons: fixed values are dollars, percentage is 0–100.
+  discountType: text("discount_type", { enum: ["fixed", "percentage"] }).notNull(),
+  discountValue: numeric("discount_value", { precision: 10, scale: 2 }).notNull(),
+  currency: text("currency").notNull().default("usd"),
+  status: text("status").notNull().default("pending"),
+  failureReason: text("failure_reason"),
+  tenantSubscriptionId: integer("tenant_subscription_id").references(() => tenantSubscriptionsTable.id, { onDelete: "set null" }),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripeCouponId: text("stripe_coupon_id"),
+  stripeDiscountId: text("stripe_discount_id"),
+  issuedAt: timestamp("issued_at", { withTimezone: true }),
+  appliedStripeInvoiceId: text("applied_stripe_invoice_id"),
+  appliedAmountCents: integer("applied_amount_cents"),
+  appliedAt: timestamp("applied_at", { withTimezone: true }),
+  issuedByUserId: integer("issued_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("customer_billing_credits_tenant_id_idx").on(t.tenantId),
+  index("customer_billing_credits_stripe_discount_idx").on(t.stripeDiscountId),
+  uniqueIndex("customer_billing_credits_source_testimonial_uq").on(t.sourceTestimonialId),
+  check("customer_billing_credits_status_check", sql`${t.status} IN ('pending', 'issued', 'awaiting_subscription', 'failed', 'applied')`),
+  check("customer_billing_credits_source_check", sql`${t.source} IN ('testimonial_approval')`),
+  check("customer_billing_credits_discount_type_check", sql`${t.discountType} IN ('fixed', 'percentage')`),
+]);
+
+export type CustomerBillingCredit = typeof customerBillingCreditsTable.$inferSelect;
+export type InsertCustomerBillingCredit = typeof customerBillingCreditsTable.$inferInsert;
 
 // Audit Log — persistent, append-only chronological record of platform actions.
 //

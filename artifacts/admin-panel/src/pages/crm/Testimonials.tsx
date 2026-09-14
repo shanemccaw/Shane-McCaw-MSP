@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
 type TestimonialKind = "testimonial" | "feedback" | "suggestion";
 
@@ -17,6 +19,20 @@ interface ProjectClosureTestimonial {
   clientEmail: string | null;
 }
 
+type CreditStatus = "pending" | "issued" | "awaiting_subscription" | "failed" | "applied";
+
+interface BillingCredit {
+  id: number;
+  status: CreditStatus;
+  discountType: "fixed" | "percentage";
+  discountValue: string;
+  currency: string;
+  failureReason: string | null;
+  issuedAt: string | null;
+  appliedAt: string | null;
+  appliedAmountCents: number | null;
+}
+
 interface CustomerTestimonial {
   source: "customer_testimonial";
   id: number;
@@ -25,6 +41,10 @@ interface CustomerTestimonial {
   kind: TestimonialKind;
   body: string | null;
   permissionToPublish: boolean;
+  status: "pending" | "approved" | "rejected";
+  reviewedAt: string | null;
+  reviewerName: string | null;
+  credit: BillingCredit | null;
   createdAt: string | null;
   clientName: string | null;
   clientEmail: string | null;
@@ -59,18 +79,198 @@ function SourceBadge({ row }: { row: AdminTestimonialRow }) {
   );
 }
 
+function formatDay(val: string) {
+  return new Date(val).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatCreditAmount(credit: BillingCredit) {
+  const v = parseFloat(credit.discountValue);
+  return credit.discountType === "percentage"
+    ? `${v}% off`
+    : `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} off`;
+}
+
+const CREDIT_STATUS: Record<CreditStatus, { label: string; cls: string }> = {
+  pending: { label: "Credit pending", cls: "bg-border/50 text-muted-foreground" },
+  issued: { label: "Credit on next invoice", cls: "bg-emerald-500/15 text-emerald-400" },
+  awaiting_subscription: { label: "Credit waiting for a subscription", cls: "bg-amber-500/15 text-amber-400" },
+  failed: { label: "Credit failed", cls: "bg-red-500/15 text-red-400" },
+  applied: { label: "Credit applied", cls: "bg-emerald-500/15 text-emerald-400" },
+};
+
+// Approval decision + next-month credit for a portal testimonial (Git #4032).
+function ReviewPanel({ row, onChanged }: { row: CustomerTestimonial; onChanged: () => void }) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [discountType, setDiscountType] = useState<"fixed" | "percentage">("fixed");
+  const [discountValue, setDiscountValue] = useState("");
+  const [busy, setBusy] = useState<"approve" | "reject" | "retry" | null>(null);
+  const [error, setError] = useState("");
+
+  const post = async (action: "approve" | "reject" | "retry", url: string, body: unknown, successTitle: string) => {
+    setError("");
+    setBusy(action);
+    try {
+      const res = await fetchWithAuth(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok) {
+        setError(data.error ?? `Request failed (HTTP ${res.status})`);
+        return;
+      }
+      toast({ title: successTitle });
+      onChanged();
+    } catch {
+      setError("Network error — please try again");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleApprove = () => {
+    const value = parseFloat(discountValue);
+    if (isNaN(value) || value <= 0) { setError("Credit value must be a positive number"); return; }
+    if (discountType === "percentage" && value > 100) { setError("Percentage credit cannot exceed 100"); return; }
+    void post("approve", `/api/admin/testimonials/${row.id}/approve`, { discountType, discountValue: value }, "Testimonial approved");
+  };
+
+  if (row.status !== "pending") {
+    const credit = row.credit;
+    return (
+      <div className="border-t border-border pt-3 space-y-2" data-testid={`testimonial-review-${row.id}`}>
+        <p className="text-xs text-muted-foreground">
+          <span className={`font-semibold ${row.status === "approved" ? "text-emerald-400" : "text-red-400"}`}>
+            {row.status === "approved" ? "Approved" : "Rejected"}
+          </span>
+          {row.reviewedAt ? ` ${formatDay(row.reviewedAt)}` : ""}
+          {row.reviewerName ? ` by ${row.reviewerName}` : ""}
+        </p>
+        {credit && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-foreground">{formatCreditAmount(credit)}</span>
+            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${CREDIT_STATUS[credit.status].cls}`} data-testid={`testimonial-credit-status-${row.id}`}>
+              {CREDIT_STATUS[credit.status].label}
+            </span>
+            {credit.status === "applied" && credit.appliedAmountCents != null && (
+              <span className="text-xs text-muted-foreground">
+                ${(credit.appliedAmountCents / 100).toFixed(2)} taken off{credit.appliedAt ? ` on ${formatDay(credit.appliedAt)}` : ""}
+              </span>
+            )}
+            {(credit.status === "failed" || credit.status === "awaiting_subscription") && (
+              <button
+                onClick={() => void post("retry", `/api/admin/testimonial-credits/${credit.id}/retry`, {}, "Credit retried")}
+                disabled={busy !== null}
+                data-testid={`testimonial-credit-retry-${row.id}`}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-lg border border-border text-foreground hover:border-primary hover:text-primary disabled:opacity-50 transition-colors"
+              >
+                {busy === "retry" && <Loader2 className="w-3 h-3 animate-spin" />}
+                Retry credit
+              </button>
+            )}
+          </div>
+        )}
+        {credit?.failureReason && (credit.status === "failed" || credit.status === "awaiting_subscription") && (
+          <p className="text-xs text-muted-foreground">{credit.failureReason}</p>
+        )}
+        {error && <p className="text-xs text-red-400">{error}</p>}
+      </div>
+    );
+  }
+
+  const eligible = row.kind === "testimonial" && row.permissionToPublish;
+
+  return (
+    <div className="border-t border-border pt-3 space-y-2" data-testid={`testimonial-review-${row.id}`}>
+      {eligible ? (
+        <>
+          <p className="text-xs text-muted-foreground">Approving grants the customer a one-time credit on their next month of service.</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex gap-1">
+              {(["fixed", "percentage"] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setDiscountType(t)}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors ${
+                    discountType === t
+                      ? "bg-primary text-white border-primary"
+                      : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                  }`}
+                >
+                  {t === "fixed" ? "$ Fixed" : "% Percentage"}
+                </button>
+              ))}
+            </div>
+            <input
+              type="number"
+              min="0"
+              max={discountType === "percentage" ? 100 : undefined}
+              step="0.01"
+              value={discountValue}
+              onChange={e => setDiscountValue(e.target.value)}
+              placeholder={discountType === "fixed" ? "Amount" : "Percent"}
+              data-testid={`testimonial-credit-value-${row.id}`}
+              className="w-28 border border-border rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <button
+              onClick={handleApprove}
+              disabled={busy !== null}
+              data-testid={`testimonial-approve-${row.id}`}
+              className="flex items-center gap-1.5 bg-primary text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-[#005A9E] disabled:opacity-50 transition-colors"
+            >
+              {busy === "approve" && <Loader2 className="w-3 h-3 animate-spin" />}
+              Approve
+            </button>
+            <button
+              onClick={() => void post("reject", `/api/admin/testimonials/${row.id}/reject`, {}, "Testimonial rejected")}
+              disabled={busy !== null}
+              data-testid={`testimonial-reject-${row.id}`}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-red-400 hover:border-red-500/40 disabled:opacity-50 transition-colors"
+            >
+              {busy === "reject" && <Loader2 className="w-3 h-3 animate-spin" />}
+              Reject
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-muted-foreground">
+            {row.kind === "testimonial"
+              ? "Can't be approved: the customer did not give permission to publish."
+              : "Feedback and suggestions are not published, so they can't be approved for a credit."}
+          </p>
+          <button
+            onClick={() => void post("reject", `/api/admin/testimonials/${row.id}/reject`, {}, "Marked as rejected")}
+            disabled={busy !== null}
+            data-testid={`testimonial-reject-${row.id}`}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-red-400 hover:border-red-500/40 disabled:opacity-50 transition-colors"
+          >
+            {busy === "reject" && <Loader2 className="w-3 h-3 animate-spin" />}
+            Reject
+          </button>
+        </div>
+      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
+
 export default function TestimonialsPage() {
   const { fetchWithAuth } = useAuth();
   const [items, setItems] = useState<AdminTestimonialRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     fetchWithAuth("/api/admin/testimonials/all")
       .then(r => r.json())
       .then(d => setItems(d as AdminTestimonialRow[]))
       .catch(() => null)
       .finally(() => setLoading(false));
   }, [fetchWithAuth]);
+
+  useEffect(() => { load(); }, [load]);
 
   const published = items.filter(i => i.permissionToPublish && i.body?.trim());
   const awaitingPermission = items.filter(i => !i.permissionToPublish && i.body?.trim());
@@ -134,7 +334,7 @@ export default function TestimonialsPage() {
                       </div>
                       {item.createdAt && (
                         <p className="text-xs text-muted-foreground flex-shrink-0">
-                          {item.source === "project_closure" ? "Signed" : "Submitted"} {new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          {item.source === "project_closure" ? "Signed" : "Submitted"} {formatDay(item.createdAt)}
                         </p>
                       )}
                     </div>
@@ -143,6 +343,7 @@ export default function TestimonialsPage() {
                         "{item.body}"
                       </blockquote>
                     )}
+                    {item.source === "customer_testimonial" && <ReviewPanel row={item} onChanged={load} />}
                   </div>
                 ))}
               </div>
@@ -181,7 +382,7 @@ export default function TestimonialsPage() {
                       </div>
                       {item.createdAt && (
                         <p className="text-xs text-muted-foreground flex-shrink-0">
-                          {item.source === "project_closure" ? "Signed" : "Submitted"} {new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          {item.source === "project_closure" ? "Signed" : "Submitted"} {formatDay(item.createdAt)}
                         </p>
                       )}
                     </div>
@@ -190,6 +391,7 @@ export default function TestimonialsPage() {
                         "{item.body}"
                       </blockquote>
                     )}
+                    {item.source === "customer_testimonial" && <ReviewPanel row={item} onChanged={load} />}
                   </div>
                 ))}
               </div>
@@ -224,7 +426,7 @@ export default function TestimonialsPage() {
                     </div>
                     {item.createdAt && (
                       <p className="text-xs text-muted-foreground">
-                        {new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {formatDay(item.createdAt)}
                       </p>
                     )}
                   </div>
