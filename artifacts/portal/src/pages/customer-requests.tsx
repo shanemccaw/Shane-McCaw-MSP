@@ -99,6 +99,27 @@ const LEDGER: { gap: string; where: string }[] = [
   { gap: "The chat itself lives on ShaneBot, not a second chat drawn on this page — this page only explains the propose-then-confirm handoff and links there.", where: "§1 · §11" },
 ];
 
+const SHANEBOT_PROPOSALS: { title: string; body: string; note: string; noteColor: string }[] = [
+  {
+    title: "Fix it now",
+    body: "For an offer your provider has sent, the assistant can propose running the remediation pack behind it.",
+    note: "Only on test tenants. On a live tenant this is refused, because it writes to Microsoft 365.",
+    noteColor: "#fbbf24",
+  },
+  {
+    title: "Regenerate a document",
+    body: "Re-runs generation for your current document, always for the document you're currently viewing.",
+    note: "Confirm first. Progress streams back as it runs.",
+    noteColor: "#64748b",
+  },
+  {
+    title: "Re-run the scan",
+    body: "Starts a fresh scan of your tenant with your monitoring package.",
+    note: "Confirm first. The run then shows on Diagnostics as it progresses.",
+    noteColor: "#64748b",
+  },
+];
+
 export function CustomerRequestsContent() {
   const { fetchWithAuth } = useAuth();
 
@@ -638,9 +659,23 @@ export function CustomerRequestsContent() {
         </div>
         <span className="max-w-[720px] text-xs leading-relaxed text-muted-foreground">
           The assistant answers from your own tenant's data. When it cannot help, or when you ask for a person, it
-          hands off to your provider — that handoff becomes a ticket in the list above. Nothing it proposes runs
-          until you confirm it.
+          hands off to your provider — that handoff becomes a ticket in the list above and a note in your inbox.
+          Three things it may offer, none of which run until you confirm:
         </span>
+        <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))" }}>
+          {SHANEBOT_PROPOSALS.map((pr) => (
+            <div
+              key={pr.title}
+              className="flex flex-col gap-1 rounded-[10px] border p-3"
+              style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(255,255,255,.015)" }}
+              data-testid={`shanebot-proposal-${pr.title.toLowerCase().replace(/\s+/g, "-")}`}
+            >
+              <span className="text-xs font-semibold" style={{ color: "#e2e8f0" }}>{pr.title}</span>
+              <span className="text-[11px] leading-relaxed" style={{ color: "#94a3b8" }}>{pr.body}</span>
+              <span className="pt-0.5 text-[10.5px] leading-snug" style={{ color: pr.noteColor }}>{pr.note}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-col gap-2 rounded-2xl border p-4" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(255,255,255,.015)" }}>
