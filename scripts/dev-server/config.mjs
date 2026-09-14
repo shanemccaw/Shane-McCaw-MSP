@@ -81,6 +81,14 @@ export function loadConfig({ cwd = process.cwd() } = {}) {
       ? "C:\\dev-server"
       : path.join(path.dirname(mainRepoRoot), "dev-server"));
 
+  // --- The checkout that actually SERVES the dev ports (Git #1395 / #4033) ---
+  // Despite its name, serverWorktree above is only the MERGE MIRROR: builds merge
+  // into it, but nothing serves traffic from it. BuildConsole's DevServicesManager
+  // launches dev-all.mjs from the main checkout, so that is what the restart
+  // refreshes and what serving-checkout.mjs verifies the live port holders
+  // against. One field, read by both, so the two can't disagree again.
+  const servingRoot = process.env.DEV_SERVER_SERVING_ROOT || mainRepoRoot;
+
   const serverBranch = process.env.DEV_SERVER_BRANCH || "dev-server";
 
   // Base ref new work is expected to branch from / the server tracks.
@@ -127,8 +135,9 @@ export function loadConfig({ cwd = process.cwd() } = {}) {
     // restartHoldsDir; see restart-hold.mjs.
     restartHoldsDir: path.join(stateDir, "restart-holds"),
 
-    // server checkout
+    // server checkout (merge mirror) + the checkout actually serving the ports
     serverWorktree,
+    servingRoot,
     serverBranch,
     baseRef,
     devAllPath,
@@ -142,6 +151,10 @@ export function loadConfig({ cwd = process.cwd() } = {}) {
     maxWaitMs: Number(process.env.DEV_SERVER_MAX_WAIT_MS || 600_000),
     restartStopTimeoutMs: Number(process.env.DEV_SERVER_STOP_TIMEOUT_MS || 20_000),
     readyTimeoutMs: Number(process.env.DEV_SERVER_READY_TIMEOUT_MS || 45_000),
+    // Git #4033: how long a refresh waits for a NEW process to take the api port
+    // (kill-port + build.mjs + boot). Longer than readyTimeoutMs because it no
+    // longer returns early on the old process still answering.
+    apiRestartTimeoutMs: Number(process.env.DEV_SERVER_API_RESTART_TIMEOUT_MS || 240_000),
 
     // A build set open longer than this with no restart yet is considered stale
     // (a member likely crashed without reporting). `buildset.mjs sweep` reports

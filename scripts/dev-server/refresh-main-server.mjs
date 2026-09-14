@@ -42,6 +42,7 @@ import { pathToFileURL } from "node:url";
 import { loadConfig } from "./config.mjs";
 import { git, revParse, isAncestor, shortSha, diffNameOnly } from "./git.mjs";
 import { pidAlive } from "./lock.mjs";
+import { findListeningPids, verifyServingCheckout, describeVerification } from "./serving-checkout.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -66,7 +67,7 @@ const FRONTEND_SERVICES = [
  * structured result; never throws, never force-resets, never discards local work.
  */
 export function fastForwardMainCheckout(config) {
-  const root = config.mainRepoRoot;
+  const root = config.servingRoot || config.mainRepoRoot;
   const branch = "main";
   const before = revParse(root, "HEAD");
 
@@ -83,11 +84,45 @@ export function fastForwardMainCheckout(config) {
   }
   // Only fast-forward: origin/main must be strictly ahead of the checkout's HEAD.
   if (!isAncestor(root, before, target)) {
+    // Git #4033: a skipped pull used to be silent about WHY, and permanent -- once
+    // the checkout carried a commit origin/main didn't, every later refresh skipped
+    // too. Name the local-only commits, and reconcile when doing so loses nothing.
+    const div = assessDivergence(root, originRef);
+    if (!div.lossless) {
+      return {
+        pulled: false,
+        reason:
+          `main checkout has ${div.notUpstream.length} local-only commit(s) not on origin/main -- refusing to reset a shared checkout; ` +
+          `skipped (fetch only). Push or drop them in ${root} to unblock: ${listCommits(div.notUpstream)}`,
+        before,
+        after: before,
+        localOnlyCommits: div.notUpstream.map((c) => c.sha),
+        fetchOk: fetch.code === 0,
+      };
+    }
+    // `reset --keep` refuses (changing nothing) if an uncommitted change sits in a
+    // file the move would rewrite, and carries every other uncommitted change over.
+    const k = git(root, ["reset", "--keep", originRef]);
+    const after = revParse(root, "HEAD");
+    if (k.code !== 0) {
+      return {
+        pulled: false,
+        reason:
+          `main checkout's ${div.localCommits.length} local-only commit(s) are already on origin/main (${div.basis}), but reset --keep refused -- ` +
+          `an uncommitted change touches a file origin/main also changes; skipped: ${(k.stdout + " " + k.stderr).trim().slice(0, 300)}`,
+        before,
+        after,
+        fetchOk: fetch.code === 0,
+      };
+    }
     return {
-      pulled: false,
-      reason: "main checkout has local commits ahead of / diverged from origin/main -- refusing to reset a shared checkout; skipped (fetch only)",
+      pulled: after !== before,
+      reconciled: true,
+      reason:
+        `main checkout had ${div.localCommits.length} local-only commit(s) whose content is already on origin/main (${div.basis}); ` +
+        `moved to origin/main with reset --keep -- no committed content or uncommitted change discarded: ${listCommits(div.localCommits)}`,
       before,
-      after: before,
+      after,
       fetchOk: fetch.code === 0,
     };
   }
@@ -105,6 +140,64 @@ export function fastForwardMainCheckout(config) {
     };
   }
   return { pulled: after !== before, reason: "fast-forwarded main checkout to origin/main", before, after, fetchOk: fetch.code === 0 };
+}
+
+/** `git diff --name-only a..b`, or null when git fails (never an empty "no changes" on error). */
+function namesOrNull(root, a, b) {
+  const r = git(root, ["diff", "--name-only", `${a}..${b}`]);
+  return r.code === 0 ? r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : null;
+}
+
+function listCommits(commits) {
+  const shown = commits.slice(0, 5).map((c) => `${shortSha(c.sha)} "${c.subject.slice(0, 80)}"`);
+  return shown.join("; ") + (commits.length > 5 ? `; +${commits.length - 5} more` : "");
+}
+
+/**
+ * Git #4033: a checkout that can't fast-forward because HEAD has commits
+ * `targetRef` doesn't. Read-only. `lossless` means moving it to `targetRef`
+ * discards no committed content, proven one of two ways:
+ *   - "content": every file the local-only commits touched (merge-base..HEAD) is
+ *     already identical between HEAD and targetRef;
+ *   - "patch-id": the local-only range has no merges and `git cherry` finds every
+ *     local commit's patch already upstream (e.g. it was cherry-picked there).
+ * Anything unproven is reported as not lossless, and the caller skips.
+ */
+export function assessDivergence(root, targetRef) {
+  const logR = git(root, ["log", "--format=%H %s", `${targetRef}..HEAD`]);
+  const localCommits =
+    logR.code === 0
+      ? logR.stdout.split(/\r?\n/).filter(Boolean).map((l) => ({ sha: l.slice(0, 40), subject: l.slice(41) }))
+      : [];
+  const cherry = git(root, ["cherry", targetRef, "HEAD"]);
+  const unique =
+    cherry.code === 0
+      ? new Set(cherry.stdout.split(/\r?\n/).filter((l) => l.startsWith("+")).map((l) => l.slice(2).trim()))
+      : null;
+  const mergesR = git(root, ["rev-list", "--merges", "--count", `${targetRef}..HEAD`]);
+  const mergeCount = mergesR.code === 0 ? Number(mergesR.stdout.trim()) : null;
+  const mbR = git(root, ["merge-base", "HEAD", targetRef]);
+  const mergeBase = mbR.code === 0 ? mbR.stdout.trim() : null;
+
+  let lossless = false;
+  let basis = null;
+  if (logR.code === 0 && mergeBase) {
+    const localPaths = namesOrNull(root, mergeBase, "HEAD");
+    const differing = namesOrNull(root, "HEAD", targetRef);
+    if (localPaths && differing) {
+      const diff = new Set(differing);
+      if (!localPaths.some((f) => diff.has(f))) {
+        lossless = true;
+        basis = "content";
+      }
+    }
+  }
+  if (!lossless && logR.code === 0 && mergeCount === 0 && unique && unique.size === 0 && localCommits.length) {
+    lossless = true;
+    basis = "patch-id";
+  }
+  const notUpstream = lossless ? [] : unique ? localCommits.filter((c) => unique.has(c.sha)) : localCommits;
+  return { lossless, basis, localCommits, notUpstream, mergeBase, mergeCount };
 }
 
 /** Read a dev-all per-service meta ({pid,status,...}) from the shared log dir. */
@@ -137,9 +230,17 @@ async function waitForPortReady(config, port) {
   return false;
 }
 
-/** Best-effort readiness: can we open a TCP connection to the api port? */
-async function waitForApiReady(config) {
-  return waitForPortReady(config, config.apiPort);
+/** Git #4033: wait until a process OTHER than `oldListeners` is LISTENING on the
+ * api port. A bare "port accepts TCP" poll started right after the rebuild spawn
+ * was satisfied by the old process before kill-port ever reached it. */
+async function waitForFreshApiListener(config, oldListeners) {
+  const deadline = Date.now() + (config.apiRestartTimeoutMs || config.readyTimeoutMs);
+  while (Date.now() < deadline) {
+    const pids = findListeningPids(config.apiPort);
+    if (pids.some((p) => !oldListeners.includes(p))) return true;
+    await sleep(1000);
+  }
+  return false;
 }
 
 /** Is this service's tracked process genuinely alive right now? Mirrors
@@ -162,7 +263,7 @@ async function startFrontendIfDown(config, svc) {
   if (isServiceRunning(config, svc.name)) {
     return { name: svc.name, started: false, alreadyRunning: true, ready: true };
   }
-  const root = config.mainRepoRoot;
+  const root = config.servingRoot || config.mainRepoRoot;
   const devAll = path.join(root, "scripts", "dev-all.mjs");
   if (!existsSync(devAll)) {
     return { name: svc.name, started: false, alreadyRunning: false, ready: false, reason: `dev-all.mjs not found at ${devAll}` };
@@ -215,10 +316,11 @@ async function ensureFrontendsRunning(config, onlyList, { dryRun = false } = {})
  * old/new pids and readiness.
  */
 async function restartMainApiServer(config) {
-  const root = config.mainRepoRoot;
+  const root = config.servingRoot || config.mainRepoRoot;
   const devAll = path.join(root, "scripts", "dev-all.mjs");
   const oldMeta = readServiceMeta(config, BUILT_SERVICE);
   const oldPid = oldMeta?.pid && pidAlive(oldMeta.pid) ? oldMeta.pid : null;
+  const oldListeners = findListeningPids(config.apiPort);
 
   if (!existsSync(devAll)) {
     return { restartedApi: false, reason: `dev-all.mjs not found at ${devAll}`, oldPid, newPid: null, ready: false };
@@ -226,6 +328,7 @@ async function restartMainApiServer(config) {
 
   // Detached so it outlives this short-lived coordinator process; its own
   // kill-port frees :8080 from the old holder before rebuilding.
+  const spawnedAt = Date.now();
   const child = spawn(process.execPath, [devAll, "--start", BUILT_SERVICE], {
     cwd: root,
     detached: true,
@@ -235,8 +338,8 @@ async function restartMainApiServer(config) {
     env: { ...process.env, DEV_ALL_LOG_DIR: config.devAllLogDir, APP_ENV: "dev", NODE_ENV: "development" },
   });
   child.unref();
-  const ready = await waitForApiReady(config);
-  return { restartedApi: true, oldPid, newPid: child.pid, ready };
+  const ready = await waitForFreshApiListener(config, oldListeners);
+  return { restartedApi: true, oldPid, oldListeners, newPid: child.pid, spawnedAt, ready };
 }
 
 /**
@@ -250,7 +353,7 @@ async function restartMainApiServer(config) {
  * Signature matches the old restartServer(config, {only}) so it drops into the
  * coordinator's deps.restart slot unchanged.
  */
-export async function refreshMainServer(config, { only, dryRun = false } = {}) {
+export async function refreshMainServer(config, { only, dryRun = false, expectCommits = [] } = {}) {
   const ff = dryRun ? previewFastForward(config) : fastForwardMainCheckout(config);
 
   const onlyList = Array.isArray(only) ? only.filter(Boolean) : null;
@@ -270,14 +373,28 @@ export async function refreshMainServer(config, { only, dryRun = false } = {}) {
   // service, which is the real false limitation this fixes.
   const frontends = await ensureFrontendsRunning(config, onlyList, { dryRun });
 
+  // Git #4033: prove the checkout just refreshed is the one serving the ports, that
+  // it contains the commits this restart is for, and (after a rebuild) that a new
+  // process took the api port. `ready` used to be only "the port accepts TCP".
+  const live = dryRun
+    ? null
+    : verifyServingCheckout(config, {
+        commits: expectCommits,
+        apiSpawnedAt: api.restartedApi ? api.spawnedAt : null,
+      });
+
   // Return a shape compatible with the coordinator's restart record (oldPid/newPid/
   // ready) plus the extra main-checkout detail for observability.
   return {
     oldPid: api.oldPid ?? null,
     newPid: api.newPid ?? null,
-    ready: api.ready ?? null,
+    // true only when a fresh listener came up AND the serving checkout verified live;
+    // portReady keeps the bare listener result on its own.
+    ready: api.ready == null ? (live ? live.verified : null) : !!(api.ready && live?.verified),
+    portReady: api.ready ?? null,
+    live,
     target: "main-checkout",
-    mainRoot: config.mainRepoRoot,
+    mainRoot: config.servingRoot || config.mainRepoRoot,
     ff,
     only: onlyList && onlyList.length ? onlyList : null,
     restartedApi: !!api.restartedApi,
@@ -330,14 +447,29 @@ function dirtyTrackedFiles(root) {
  * zero risk of that.)
  */
 export function previewFastForward(config) {
-  const root = config.mainRepoRoot;
+  const root = config.servingRoot || config.mainRepoRoot;
   const before = revParse(root, "HEAD");
   const fetch = git(root, ["fetch", "origin", "main"]);
   const target = revParse(root, "origin/main");
   if (!target) return { wouldPull: false, reason: "could not resolve origin/main", before, target: null, fetchOk: fetch.code === 0 };
   if (before === target) return { wouldPull: false, reason: "already at origin/main", before, target, alreadyCurrent: true, fetchOk: fetch.code === 0 };
-  if (!isAncestor(root, before, target))
-    return { wouldPull: false, reason: "diverged/ahead -- would SKIP (never reset a shared checkout)", before, target, fetchOk: fetch.code === 0 };
+  let reconcile = null;
+  if (!isAncestor(root, before, target)) {
+    const div = assessDivergence(root, "origin/main");
+    if (!div.lossless) {
+      return {
+        wouldPull: false,
+        reason: `diverged: ${div.notUpstream.length} local-only commit(s) not on origin/main -- would SKIP (never reset a shared checkout): ${listCommits(div.notUpstream)}`,
+        before,
+        target,
+        localOnlyCommits: div.notUpstream.map((c) => c.sha),
+        fetchOk: fetch.code === 0,
+      };
+    }
+    // Lossless: the real path runs `reset --keep`, which refuses on exactly the same
+    // dirty-file intersection the ff-only merge does, so the check below applies.
+    reconcile = div;
+  }
 
   const dirty = dirtyTrackedFiles(root);
   if (dirty.length) {
@@ -355,6 +487,16 @@ export function previewFastForward(config) {
     }
   }
 
+  if (reconcile) {
+    return {
+      wouldPull: true,
+      reconcile: true,
+      reason: `would reconcile with reset --keep: ${reconcile.localCommits.length} local-only commit(s) already on origin/main (${reconcile.basis})`,
+      before,
+      target,
+      fetchOk: fetch.code === 0,
+    };
+  }
   return { wouldPull: true, reason: "would fast-forward", before, target, behindBy: countBetween(root, before, target), fetchOk: fetch.code === 0 };
 }
 
@@ -382,7 +524,8 @@ if (isMain) {
       console.error(
         `[refresh-main] ${dryRun ? "DRY-RUN " : ""}main checkout ${config.mainRepoRoot}: ${f.reason || f.wouldPull ? "" : ""}${arrow ? " " + arrow : ""}` +
           (res.restartedApi ? ` | api-server restarted (pid ${res.newPid}, ready=${res.ready})` : ` | api restart: ${res.apiReason || "skipped"}`) +
-          (fe ? ` | frontends: ${fe}` : "")
+          (fe ? ` | frontends: ${fe}` : "") +
+          (res.live ? `\n[refresh-main] ${describeVerification(res.live)}` : "")
       );
       process.exit(0);
     })

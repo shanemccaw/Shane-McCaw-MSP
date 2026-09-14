@@ -48,7 +48,11 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-import { resolveLicenseWasteCounts, unusedSeatsFromSubscribedSkus } from "./license-waste-source.ts";
+import {
+  activeLicensedUserCountFromAssignments,
+  resolveLicenseWasteCounts,
+  unusedSeatsFromSubscribedSkus,
+} from "./license-waste-source.ts";
 
 /** The real /subscribedSkus shape, as Graph returns it. */
 function skuPage(items: unknown[], nextLink?: string) {
@@ -220,5 +224,31 @@ describe("resolveLicenseWasteCounts", () => {
     // `cost:license-waste-estimate` does not exist in the catalog, so whatever
     // is used is by definition not the declared source.
     expect(res!.fallback).toBe(true);
+  });
+});
+
+describe("activeLicensedUserCountFromAssignments", () => {
+  it("counts a user holding two paid SKUs once, not twice (#4111)", () => {
+    const paidSkuIds = new Set(["id-SPE_E3", "id-SPB"]);
+    const assignments = [
+      { userId: "user-1", skuId: "id-SPE_E3" },
+      { userId: "user-1", skuId: "id-SPB" }, // same user, second paid SKU
+      { userId: "user-2", skuId: "id-SPE_E3" },
+    ];
+    expect(activeLicensedUserCountFromAssignments(assignments, paidSkuIds)).toBe(2);
+  });
+
+  it("ignores assignments to SKUs outside the paid set", () => {
+    const paidSkuIds = new Set(["id-SPE_E3"]);
+    const assignments = [
+      { userId: "user-1", skuId: "id-SPE_E3" },
+      { userId: "user-2", skuId: "id-FLOW_FREE" }, // free/viral SKU, not paid
+      { userId: "user-3", skuId: "id-FLOW_FREE" },
+    ];
+    expect(activeLicensedUserCountFromAssignments(assignments, paidSkuIds)).toBe(1);
+  });
+
+  it("returns 0 for no assignments", () => {
+    expect(activeLicensedUserCountFromAssignments([], new Set(["id-SPE_E3"]))).toBe(0);
   });
 });

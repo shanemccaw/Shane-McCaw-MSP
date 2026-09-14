@@ -189,11 +189,12 @@ export async function runCycle(config, deps, opts = {}) {
       batch: batch.map((r) => r.id),
       holdWait,
     });
-    restart = { skipped: false, ...(await deps.restart(config)) };
+    restart = { skipped: false, ...(await deps.restart(config, { expectCommits: merged.map((r) => r.commit) })) };
   }
 
   // 5) CONFIRM with real git: the server checkout HEAD must now genuinely
-  //    contain each merged commit.
+  //    contain each merged commit. `landed` is the MIRROR; `live` (Git #4033) is
+  //    the restart's own verification of the checkout actually serving the ports.
   const serverHeadFinal = revParse(W, "HEAD");
   for (const req of merged) {
     const confirmed = isAncestor(W, req.commit, serverHeadFinal);
@@ -201,6 +202,7 @@ export async function runCycle(config, deps, opts = {}) {
       ...perRequest[req.id],
       landed: confirmed,
       confirmed,
+      live: restart.live ? !!restart.live.verified : null,
       serverHead: serverHeadFinal,
     };
   }
@@ -220,6 +222,7 @@ export async function runCycle(config, deps, opts = {}) {
     runnerPid: process.pid,
     serverWorktree: W,
     serverBranch: config.serverBranch,
+    servingRoot: config.servingRoot,
     serverHeadBefore,
     serverHeadFinal,
     restarted: changed,
@@ -339,6 +342,10 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
   let restart = { skipped: true, oldPid: null, newPid: null, ready: null };
   let holdWait = null;
   let reason;
+  // Git #4033: the commits this one restart must make live on the serving checkout.
+  const expectCommits = Object.values(set.members || {})
+    .filter((m) => m.commit && (m.status === "merged" || m.status === "already-live"))
+    .map((m) => m.commit);
   if (!advanced) {
     reason = "build set complete -- no member merged; restart skipped (nothing new to reload)";
   } else {
@@ -349,12 +356,12 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
       restart = {
         skipped: false,
         targeting,
-        ...(await deps.restart(config, { only: plan.neededRunning, plan })),
+        ...(await deps.restart(config, { only: plan.neededRunning, plan, expectCommits })),
       };
     } else {
       reason =
         "build set complete -- ONE restart of all services (combined footprint unresolved -> full restart)";
-      restart = { skipped: false, targeting, ...(await deps.restart(config)) };
+      restart = { skipped: false, targeting, ...(await deps.restart(config, { expectCommits })) };
     }
   }
 
@@ -414,6 +421,7 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
     runnerPid: process.pid,
     serverWorktree: W,
     serverBranch: config.serverBranch,
+    servingRoot: config.servingRoot,
     serverHeadBefore,
     serverHeadFinal,
     restarted: advanced,
@@ -427,6 +435,7 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
   return {
     complete: true,
     restarted: advanced,
+    live: restart.live || null,
     cycleId,
     serverHeadFinal,
     reason,
@@ -515,6 +524,7 @@ export async function runSetMemberCycle(config, deps, { commit, agentId, setName
     conflict: status === "conflict",
     setComplete: fire.complete,
     restarted: fire.restarted,
+    liveVerification: fire.live ?? null,
     // Only the caller that fired the restart runs the combined test pass for the
     // whole set -- exactly once, never once-per-build.
     runSetTests: !!fire.restarted,

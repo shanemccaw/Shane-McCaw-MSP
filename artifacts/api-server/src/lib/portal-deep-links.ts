@@ -66,6 +66,9 @@ export interface ResolvedPortalDeepLink {
 // not a guess.
 const DYNAMIC_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
   { pattern: /^\/status-reports\/\d+$/, label: "Status report" },
+  // #4116 — the revise-invoice notification's own target, mounted at
+  // /billing/invoices/:id (artifacts/portal/src/pages/invoice-detail.tsx).
+  { pattern: /^\/billing\/invoices\/\d+$/, label: "Invoice" },
 ];
 
 /**

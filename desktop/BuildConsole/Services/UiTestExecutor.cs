@@ -1232,13 +1232,18 @@ namespace BuildConsole.Services
             // resolver is only set for Dev; for Staging/Prod/manual it is null and the base-URL resolution
             // below (single origin serving every route) is used unchanged. Only root-anchored paths are
             // remapped — a truly-relative ("../x") or already-absolute target is handled above/below as before.
+            //
+            // Git #4100 — the resolver (DevServiceRouting.OriginForRoute) returns a COMPLETE URL, origin +
+            // the service's mount basePath + route (e.g. "http://localhost:5175/portal/billing" for bare
+            // "/billing"), not a bare origin. It must be used as-is rather than combined with `target` via
+            // Uri.TryCreate(originUri, target, …) — combining an absolute-path target ("/billing") against
+            // a base URI REPLACES the base's own path per RFC 3986, which would silently strip the basePath
+            // the resolver just added and land back on the 404 this fix exists to close.
             if (_originResolver != null && target.StartsWith("/"))
             {
-                string origin = _originResolver(target);
-                if (!string.IsNullOrWhiteSpace(origin)
-                    && Uri.TryCreate(origin, UriKind.Absolute, out var originUri)
-                    && Uri.TryCreate(originUri, target, out var combinedFrontend))
-                    return combinedFrontend.ToString();
+                string resolved = _originResolver(target);
+                if (!string.IsNullOrWhiteSpace(resolved) && Uri.TryCreate(resolved, UriKind.Absolute, out var resolvedUri))
+                    return resolvedUri.ToString();
             }
 
             // Try resolving against the base targetUrl first, then CoreWebView2's current location, then Source

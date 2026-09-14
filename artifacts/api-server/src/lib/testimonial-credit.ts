@@ -1,9 +1,20 @@
 /**
- * Testimonial approval credit (Git #4032, decision settled on #3436 2026-09-14).
+ * Customer billing credits — one-time or multi-month Stripe discounts attached to a
+ * tenant's active subscription.
  *
- * When Admin Panel approves a customer's portal testimonial, that customer gets a
- * one-time credit against their NEXT month of service. Never on submission, never
+ * Originated as the testimonial approval credit (Git #4032, decision settled on #3436
+ * 2026-09-14): when Admin Panel approves a customer's portal testimonial, that customer
+ * gets a one-time credit against their NEXT month of service. Never on submission, never
  * recurring.
+ *
+ * Generalized for Git #4110 (MSP Console operator billing actions): the same table and
+ * the same `issueCreditToNextInvoice()` mechanism now also serve an MSP operator's own
+ * "apply a discount" and "apply free month(s)" actions (`source`
+ * `msp_operator_discount` / `msp_operator_free_month`) — #4110's real audit found this
+ * was already the natural hook invoice generation has for a subscription-level credit,
+ * so it is extended rather than duplicated. `durationMonths` is what makes a MULTI-month
+ * free grant real: null/1 stays the original "once" (single next invoice) coupon; 2+
+ * becomes a Stripe "repeating" coupon spanning that many consecutive invoices.
  *
  * ─── Why this is not a `coupons` row ─────────────────────────────────────────
  * `coupons` / `coupon_redemptions` is the admin-managed promo-code feature
@@ -38,9 +49,6 @@ import { logger } from "./logger.ts";
 const log = logger.child({ channel: "billing" });
 
 const ACTIVE_SUBSCRIPTION_STATUSES: TenantSubscriptionStatus[] = [...TENANT_SUBSCRIPTION_ACTIVE_STATUSES];
-
-/** `metadata.flow` on every Stripe coupon this module creates. */
-export const TESTIMONIAL_CREDIT_STRIPE_FLOW = "testimonial_credit";
 
 export type CreditDiscountType = "fixed" | "percentage";
 
@@ -91,6 +99,25 @@ export function discountCouponId(discount: unknown): string | null {
 
 function refId(ref: string | { id: string }): string {
   return typeof ref === "string" ? ref : ref.id;
+}
+
+/** Display name Stripe shows on the invoice line, by which real flow issued the credit. */
+export function creditCouponName(source: string): string {
+  switch (source) {
+    case "testimonial_approval": return "Testimonial credit";
+    case "msp_operator_discount": return "MSP-issued discount";
+    case "msp_operator_free_month": return "MSP-issued free month";
+    default: return "Customer credit";
+  }
+}
+
+/** null/1 → a single-invoice "once" coupon (the original #4032 shape). 2+ → "repeating" for that many invoices (#4110). */
+export function creditCouponDuration(
+  durationMonths: number | null,
+): { duration: "once" } | { duration: "repeating"; duration_in_months: number } {
+  return durationMonths != null && durationMonths > 1
+    ? { duration: "repeating", duration_in_months: durationMonths }
+    : { duration: "once" };
 }
 
 /**
@@ -168,18 +195,18 @@ export async function issueCreditToNextInvoice(creditId: number): Promise<Custom
     if (!couponId) {
       const coupon = await stripe.coupons.create(
         {
-          duration: "once",
+          ...creditCouponDuration(credit.durationMonths),
           max_redemptions: 1,
-          name: "Testimonial credit",
+          name: creditCouponName(credit.source),
           ...stripeCouponAmount(credit.discountType, Number(credit.discountValue), credit.currency),
           metadata: {
-            flow: TESTIMONIAL_CREDIT_STRIPE_FLOW,
+            flow: credit.source,
             creditId: String(credit.id),
             tenantId: String(credit.tenantId),
             testimonialId: credit.sourceTestimonialId != null ? String(credit.sourceTestimonialId) : "",
           },
         },
-        { idempotencyKey: `testimonial-credit-coupon-${credit.id}` },
+        { idempotencyKey: `customer-credit-coupon-${credit.id}` },
       );
       couponId = coupon.id;
       await update({ stripeCouponId: couponId, ...target });

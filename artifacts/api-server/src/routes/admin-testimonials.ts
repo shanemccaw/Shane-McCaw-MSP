@@ -111,13 +111,19 @@ router.get("/admin/closures/signed", requireAdmin, async (_req: Request, res: Re
   res.json(rows);
 });
 
-/** The credit fields the admin page shows. Stripe ids stay server-side. */
-function serializeCredit(credit: CustomerBillingCredit) {
+/**
+ * The credit fields an admin/operator surface shows. Stripe ids stay server-side.
+ * Exported for reuse by `msp-subscription-billing.ts` (Git #4110) — the MSP Console
+ * operator's discount/free-month routes write the same `customer_billing_credits` row
+ * shape this module does, and should render it identically.
+ */
+export function serializeCredit(credit: CustomerBillingCredit) {
   return {
     id: credit.id,
     status: credit.status,
     discountType: credit.discountType,
     discountValue: credit.discountValue,
+    durationMonths: credit.durationMonths,
     currency: credit.currency,
     failureReason: credit.failureReason,
     issuedAt: credit.issuedAt,

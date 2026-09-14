@@ -5,6 +5,7 @@
   "lastVerifiedAgainstCommit": "TBD",
 
   "notes": [
+    "Git #4103: the login-step goto target was `/portal/shane-mccaw-consulting/login`, a stale tenant-slugged path that never existed in artifacts/portal's router (App.tsx has exactly one flat /login route, mounted under the app's /portal/ base) — fixed to `/portal/login`, matching every other manifest in the repo.",
     "Git #1089: the uiSteps entry point moved from `goto /` to `goto /LP/copilot-assessment` — / now",
     "renders the restored multi-service Home.tsx (Monitoring/Assessment/Retainer funnel), not the",
     "quiz. CopilotAssessmentLanding.tsx (the quiz this flow drives) is otherwise unchanged and still",
@@ -226,7 +227,7 @@
     { "action": "click", "selector": "[data-testid='get-real-score-cta']" },
     { "action": "expect", "selector": "[data-testid='assessment-flow-details-step']", "state": "visible" },
 
-    { "action": "goto", "target": "/portal/shane-mccaw-consulting/login" },
+    { "action": "goto", "target": "/portal/login" },
     {
       "name": "Wait for login form to render before typing",
       "action": "expect",

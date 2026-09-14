@@ -1,16 +1,18 @@
 {
   "issue": 2998,
-  "feature": "Billing - the real artifacts/portal '/billing' page (src/pages/billing.tsx), part of #1598. Covers this build's own scope: Receipts (GET /api/portal/invoices, Git #1237) and 'Manage payment in Stripe' (POST /api/portal/billing/customer-portal), wired via billingLive.ts, per Design/portal/design_handoff_full_site/docs/portal/billing-contract-pack.md and the landed Billing.dc.html export. The landed design deliberately does NOT surface a live plan-state section (subscriptionsLive.ts / GET /portal/billing/subscriptions, Git #1611) on this page - its own logic states no tenant holds a monthly monitoring subscription today, so there is nothing real to show as a current plan; that endpoint stays real and unwired here, matching the design as shipped. Monitoring-plan tier cards are the design's own labeled illustration ('Illustrative, not your account'), not tenant data - not covered by apiTests.",
+  "feature": "Billing - the real artifacts/portal '/billing' page (src/pages/billing.tsx), part of #1598. Covers this build's own scope: Receipts (GET /api/portal/invoices, Git #1237) and 'Manage payment in Stripe' (POST /api/portal/billing/customer-portal), wired via billingLive.ts, per Design/portal/design_handoff_full_site/docs/portal/billing-contract-pack.md and the landed Billing.dc.html export. The landed design deliberately does NOT surface a live plan-state section (subscriptionsLive.ts / GET /portal/billing/subscriptions, Git #1611) on this page - its own logic states no tenant holds a monthly monitoring subscription today, so there is nothing real to show as a current plan; that endpoint stays real and unwired here, matching the design as shipped. Monitoring-plan tier cards are the design's own labeled illustration ('Illustrative, not your account'), not tenant data - not covered by apiTests. #4116 (2026-09-14) extends this manifest (tagged '4116') to cover the real invoice-revision surface: GET /api/portal/invoices now excludes status='superseded' (latest-version-only default, Shane's decision), a new GET /api/portal/invoices/:id/versions endpoint serves the real version-history chain + field diffs for the 'see what changed' affordance, and a new by-id route /billing/invoices/:id (src/pages/invoice-detail.tsx) renders it.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "19277acfd",
 
   "notes": [
+    "#4112 (2026-09-14): added coverage for the MSP-console-proposed retainer interval switch (propose/approve/reject state machine, portal-retainer-billing.ts + msp-retainer-billing.ts). The approve/reject card on this page (retainerIntervalProposalLive.ts) is a real addition past the landed design - it is NOT the excluded hypothetical-repricing calculator noted below, since the customer only ever decides on a specific already-made proposal, never picks a target interval themselves. New apiTests below are tagged sessionTag '4112' - run with onlyTag when re-verifying just this addition. NOT YET RUN via shaneapp://runTest this session: no shaneapp:// tool was reachable from this build session (confirmed via a real tool-availability check, not assumed), and the shared dev server this protocol targets runs the merged main checkout, which does not yet carry this branch's new routes/columns. Verified instead by: real `tsc --noEmit` passes (0 errors) across artifacts/api-server, artifacts/msp-console and artifacts/portal; the real `portal-retainer-billing.test.ts` / `portal-retainer-billing-scope.test.ts` / `portal-billing-capability-gates.test.ts` vitest suites (55/55 passing) exercising the new approve/reject routes and the refactored switch-interval path; and the manual migration run for real against the local `DATABASE_URL` Postgres instance with the new `client_services.proposed_*` columns confirmed via `\\d client_services`. Re-run this manifest's '4112' tag via shaneapp://runTest once this branch reaches the dev-server checkout.",
     "#3647 (2026-09-11): the 'Manage payment in Stripe' button is now also gated client-side on can(\"customer\",\"billing.manage\") - a presentation hint only, mirroring UserMenu.tsx's existing showBilling pattern. The real gate remains server-side (AUTH-GATE-2 below asks the identical customer:billing.manage, #3465); every holder of billing.view also holds billing.manage today so this hides nothing yet, and becomes real the moment a customer role is granted view without manage - which is exactly what #3629's new Billing role (see test-manifests/portal/team-role-assignment.json) is for. Not independently asserted by a new apiTest here since it is a pure client-side render condition with no portal login page to drive it against (see the existing uiSteps limitation below) - the server-side boundary it mirrors is already covered by AUTH-GATE-2.",
     "WHAT THIS COVERS: both real reads/actions this page wires - GET /api/portal/invoices (Receipts) and POST /api/portal/billing/customer-portal (Manage payment in Stripe) - are auth-gated as documented, and a logged-in customer gets the real payload shape billingLive.ts consumes.",
     "WHAT THIS DOES NOT COVER, AND WHY (no portal login page yet): artifacts/portal has no login page today (#1648) - App.tsx's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor, the same structural gap test-manifests/portal/account-security-data-rights.json (#2996) and customer-home-overview.json (#2921) already document. The uiSteps below only assert what is honestly reachable today. apiTests exercise the full real backend directly with a real bearer token. Once a portal login page exists, extend this manifest with a real login block + goto '/billing' + assert on real rendered data-testids (billing-source / billing-manage-payment / billing-receipt-row / billing-download-<id> are already on the page) - no code change needed on the page side.",
     "GET /api/portal/billing/customer-portal IS A POST that opens a real Stripe session - not exercised end-to-end here (it would open a live external redirect target for whichever account authenticates); the auth-gate (401 unauthenticated) is asserted, matching the same real-write caution account-security-data-rights.json documents for its own deletion-request POST.",
     "ENV VARS required: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use).",
-    "NOT YET RUN via shaneapp://runTest as of this build (2026-09-06, session for #2998): BuildConsole's local instance resolves test-manifests/ and UI routes against the dev-server checkout, which does not yet have this page/route merged/deployed (this branch is not yet picked up). Same structural gap #2921's and #2996's own manifests document for their uiSteps run. Verified instead by: a real `tsc -p tsconfig.json --noEmit` pass (0 errors) and a real `vite build` (succeeds) against artifacts/portal with this page + route added, plus direct reading of portal-billing.ts confirming the shapes billingWire.ts/billingLive.ts assert against. Re-run this manifest via shaneapp://runTest once the dev-server merge/restart cycle has picked up this branch."
+    "NOT YET RUN via shaneapp://runTest as of this build (2026-09-06, session for #2998): BuildConsole's local instance resolves test-manifests/ and UI routes against the dev-server checkout, which does not yet have this page/route merged/deployed (this branch is not yet picked up). Same structural gap #2921's and #2996's own manifests document for their uiSteps run. Verified instead by: a real `tsc -p tsconfig.json --noEmit` pass (0 errors) and a real `vite build` (succeeds) against artifacts/portal with this page + route added, plus direct reading of portal-billing.ts confirming the shapes billingWire.ts/billingLive.ts assert against. Re-run this manifest via shaneapp://runTest once the dev-server merge/restart cycle has picked up this branch.",
+    "(#4116, 2026-09-14) Real `shaneapp://runTest?file=billing.json&onlyTag=4116` was invoked from this build session and genuinely reached BuildConsole (the protocol round-tripped and returned a real envelope, not a timeout) - it answered `ok:false, error:\"no steps matched session tag '4116'\"`, because the dev-server checkout BuildConsole resolves test-manifests/ against still has the PRE-#4116 copy of this file (this branch's manifest edit, along with the rest of #4116's code, is not yet merged/deployed there) - the exact same structural gap the #2998 note above already documents for its own first run. Verified the new backend/UI surface instead by: a real `tsc --noEmit` pass (0 errors) on both artifacts/api-server and artifacts/portal, and a real `vite build` (succeeds) against artifacts/portal with invoice-detail.tsx + its route added. Re-run `onlyTag=4116` via shaneapp://runTest once this branch's merge/restart cycle has landed on the dev-server checkout."
   ],
 
   "apiTests": [
@@ -41,6 +43,66 @@
       "path": "/api/portal/invoices",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "isArray": true }
+    },
+    {
+      "name": "AUTH-GATE-3 - GET /api/portal/billing/retainer-intervals with no Authorization header returns 401 (requireAuth)",
+      "sessionTag": "4112",
+      "method": "GET",
+      "path": "/api/portal/billing/retainer-intervals",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-4 - POST .../subscriptions/1/approve-interval-proposal with no Authorization header returns 401 (requireAuth)",
+      "sessionTag": "4112",
+      "method": "POST",
+      "path": "/api/portal/billing/subscriptions/1/approve-interval-proposal",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-5 - POST .../subscriptions/1/reject-interval-proposal with no Authorization header returns 401 (requireAuth)",
+      "sessionTag": "4112",
+      "method": "POST",
+      "path": "/api/portal/billing/subscriptions/1/reject-interval-proposal",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "RETAINER-INTERVALS - an authenticated GET /api/portal/billing/retainer-intervals returns a real array (possibly empty), carrying the #4112 proposal fields",
+      "sessionTag": "4112",
+      "method": "GET",
+      "path": "/api/portal/billing/retainer-intervals",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "isArray": true }
+    },
+    {
+      "name": "REJECT-404 - an authenticated reject on a client_service with no pending proposal answers 404, not a silent 200 (the designated testbed account holds no MSP-proposed switch)",
+      "sessionTag": "4112",
+      "method": "POST",
+      "path": "/api/portal/billing/subscriptions/999999999/reject-interval-proposal",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 404 }
+    },
+    {
+      "name": "AUTH-GATE-6 (#4116) - GET /api/portal/invoices/1/versions with no Authorization header returns 401 (requireAuth)",
+      "sessionTag": "4116",
+      "method": "GET",
+      "path": "/api/portal/invoices/1/versions",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "VERSIONS-INVALID-ID (#4116) - an authenticated GET on a non-numeric id returns 400",
+      "sessionTag": "4116",
+      "method": "GET",
+      "path": "/api/portal/invoices/not-a-number/versions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "VERSIONS-NOT-FOUND (#4116) - an authenticated GET on an invoice id that doesn't exist (or isn't on this account's scope) returns a real 404, never a fabricated version chain",
+      "sessionTag": "4116",
+      "method": "GET",
+      "path": "/api/portal/invoices/999999999/versions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 404 }
     }
   ],
 
@@ -48,6 +110,21 @@
     { "action": "goto", "target": "/billing" },
     {
       "name": "Unauthenticated visit: the shell route mounts and RequireAuth's honest sign-in-required panel renders (no portal login page exists yet - see notes)",
+      "action": "expect",
+      "selector": "h1",
+      "state": "visible",
+      "textContains": "Sign in required",
+      "critical": true
+    },
+    {
+      "name": "(#4116) Unauthenticated visit to the new by-id invoice detail route also renders RequireAuth's honest sign-in-required panel - the route is real and mounted, not a 404",
+      "sessionTag": "4116",
+      "action": "goto",
+      "target": "/billing/invoices/1"
+    },
+    {
+      "name": "(#4116) Same honest gate as the Billing page itself",
+      "sessionTag": "4116",
       "action": "expect",
       "selector": "h1",
       "state": "visible",

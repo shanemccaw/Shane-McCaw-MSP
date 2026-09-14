@@ -28,6 +28,7 @@ vi.mock("@workspace/db", () => {
     const chain: any = {
       from: () => chain,
       innerJoin: () => chain,
+      leftJoin: () => chain,
       where: () => chain,
       limit: () => chain,
       then: (onfulfilled: any, onrejected?: any) =>

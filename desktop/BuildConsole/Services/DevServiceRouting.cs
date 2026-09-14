@@ -189,7 +189,9 @@ namespace BuildConsole.Services
 
         /// <summary>The local Dev origin (http://localhost:{port}) for a KnownServices key, using the port
         /// from <see cref="DevServicesManager.KnownServices"/>. Falls back to the Marketing port if an
-        /// unknown key is passed (never expected).</summary>
+        /// unknown key is passed (never expected). Does NOT include the service's mount <c>basePath</c>
+        /// (see <see cref="BasePathForServiceKey"/>) — callers building a navigable URL from a bare route
+        /// must add that separately, which <see cref="OriginForRoute"/> does.</summary>
         public static string OriginForServiceKey(string serviceKey)
         {
             if (DevServicesManager.KnownServices.TryGetValue(serviceKey, out var def))
@@ -199,14 +201,54 @@ namespace BuildConsole.Services
             return "http://localhost:5173";
         }
 
-        /// <summary>Resolve a single navigation <paramref name="route"/> to the Dev front-end origin it should
-        /// load from: the service that clearly owns the route, else the run's <paramref name="primaryServiceKey"/>.
-        /// This is the per-navigation remap that lets a cross-service flow (e.g. #1210's money-path-e2e:
-        /// "/LP/…" on Marketing then "/portal/…" on Portal) land each goto on the correct front-end within one run.</summary>
+        /// <summary>Git #4100 — the local-dev mount base for a KnownServices key (e.g. "/portal/",
+        /// "/admin-panel/"), from <see cref="DevServicesManager.KnownServices"/>'s <c>basePath</c> (itself
+        /// sourced from <c>scripts/dev-server/services.json</c>). Always returns a value starting AND
+        /// ending with "/"; a service with no configured basePath (Marketing, Website, API Server) mounts
+        /// flat and this returns "/".</summary>
+        public static string BasePathForServiceKey(string serviceKey)
+        {
+            if (!DevServicesManager.KnownServices.TryGetValue(serviceKey, out var def)
+                || string.IsNullOrWhiteSpace(def.BasePath))
+                return "/";
+
+            string bp = def.BasePath;
+            if (!bp.StartsWith("/")) bp = "/" + bp;
+            if (!bp.EndsWith("/")) bp += "/";
+            return bp;
+        }
+
+        /// <summary>Resolve a single navigation <paramref name="route"/> to the full Dev front-end URL it
+        /// should load: the service that clearly owns the route (else <paramref name="primaryServiceKey"/>),
+        /// its origin, AND its mount <c>basePath</c> prepended to <paramref name="route"/> (Git #4100 — a
+        /// bare route like "/billing" must land on "http://localhost:5175/portal/billing", not
+        /// "http://localhost:5175/billing", which is Vite's 404 page for Portal/Admin). A route that
+        /// already carries the basePath (e.g. a manifest that hardcodes "/portal/…") is left unprefixed a
+        /// second time. This is also what lets a cross-service flow (e.g. #1210's money-path-e2e: "/LP/…"
+        /// on Marketing then "/portal/…" on Portal) land each goto on the correct front-end AND mount
+        /// within one run.</summary>
         public static string OriginForRoute(string route, string primaryServiceKey)
         {
             string key = ServiceKeyForRoute(route) ?? primaryServiceKey;
-            return OriginForServiceKey(key);
+            string origin = OriginForServiceKey(key);
+            string basePath = BasePathForServiceKey(key);
+
+            if (basePath == "/" || string.IsNullOrEmpty(route))
+                return origin + route;
+
+            string routePath = route;
+            int q = routePath.IndexOf('?');
+            string query = q >= 0 ? routePath.Substring(q) : string.Empty;
+            if (q >= 0) routePath = routePath.Substring(0, q);
+
+            string basePathNoTrailingSlash = basePath.Substring(0, basePath.Length - 1);
+            bool alreadyPrefixed = routePath.Equals(basePathNoTrailingSlash, StringComparison.OrdinalIgnoreCase)
+                || routePath.StartsWith(basePath, StringComparison.OrdinalIgnoreCase);
+            if (alreadyPrefixed)
+                return origin + routePath + query;
+
+            string routeNoLeadingSlash = routePath.StartsWith("/") ? routePath.Substring(1) : routePath;
+            return origin + basePath + routeNoLeadingSlash + query;
         }
 
         /// <summary>Human-readable "Marketing (5173)" style label for a service key, for logging the resolution

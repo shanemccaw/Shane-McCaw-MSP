@@ -15,6 +15,7 @@ import CustomerRequestsPage from "@/pages/customer-requests";
 import AccountSecurityPage from "@/pages/account-security";
 import DataRightsAndPrivacyPage from "@/pages/data-rights-and-privacy";
 import BillingPage from "@/pages/billing";
+import InvoiceDetailPage from "@/pages/invoice-detail";
 import CustomerTeamPage from "@/pages/customer-team";
 import ConfigStatePage from "@/pages/config-state";
 import EmailAuthSetupPage from "@/pages/email-auth-setup";
@@ -125,6 +126,10 @@ function ProtectedRoutes() {
           <Route path="/account-security" component={AccountSecurityPage} />
           <Route path="/privacy" component={DataRightsAndPrivacyPage} />
           <Route path="/billing" component={BillingPage} />
+          {/* Invoice detail + version history (#4116) — by-id only, no list route
+              on the server beyond GET /portal/invoices itself; reached from a
+              Billing receipt row or the revise-invoice notification. */}
+          <Route path="/billing/invoices/:id" component={InvoiceDetailPage} />
           <Route path="/team" component={CustomerTeamPage} />
           <Route path="/config-state" component={ConfigStatePage} />
           <Route path="/email-auth-setup" component={EmailAuthSetupPage} />

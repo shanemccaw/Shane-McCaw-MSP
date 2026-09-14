@@ -5,11 +5,11 @@
   "lastVerifiedAgainstCommit": "6f991a3b",
 
   "notes": [
-    "Debug manifest: starts directly from /portal/shane-mccaw-consulting/login, bypassing the public home quiz and intake steps for fast iteration on the authenticated Copilot Readiness flow (verdict, pillars, documents, proposal, and checkout)."
+    "Debug manifest: starts directly from /portal/login, bypassing the public home quiz and intake steps for fast iteration on the authenticated Copilot Readiness flow (verdict, pillars, documents, proposal, and checkout). Git #4103: the old target /portal/shane-mccaw-consulting/login was a stale tenant-slugged path that never existed in artifacts/portal's router (App.tsx has exactly one flat /login route, mounted under the app's /portal/ base) -- fixed to match every other manifest in the repo."
   ],
 
   "uiSteps": [
-    { "action": "goto", "target": "/portal/shane-mccaw-consulting/login" },
+    { "action": "goto", "target": "/portal/login" },
     {
       "name": "Wait for login form to render",
       "action": "expect",

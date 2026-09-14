@@ -1648,6 +1648,34 @@ export const mspSubscriptionsTable = pgTable("msp_subscriptions", {
 export type MspSubscription = typeof mspSubscriptionsTable.$inferSelect;
 export type InsertMspSubscription = typeof mspSubscriptionsTable.$inferInsert;
 
+// ── MSP Add-On Subscriptions (Git #4036) ───────────────────────────────────────
+//
+// msp_subscriptions is UNIQUE(msp_id) by design — one base platform tier per MSP —
+// so an add-on (e.g. services.id=131, "M365 Launch Control — Plus Add-On",
+// typeAttributes.grantsCapabilityKey = "launch_control_plus") has nowhere to be
+// recorded alongside it. This table is separate and deliberately many-to-many
+// capable (no unique constraint on mspId, or on (mspId, serviceId) either — an MSP
+// re-subscribing to the same add-on after a cancel gets a new row rather than
+// fighting a stale one for the update). Status vocabulary matches
+// MSP_SUBSCRIPTION_STATUSES so `loadTier()` can filter both tables the same way.
+// serviceId is not a TS-level FK for the same cross-schema-file reason
+// mspSubscriptionsTable.serviceId isn't (servicesTable lives in schema/index.ts) —
+// enforced at DB level in the migration instead.
+export const mspAddonSubscriptionsTable = pgTable("msp_addon_subscriptions", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  serviceId: integer("service_id").notNull(),
+  status: text("status", { enum: MSP_SUBSCRIPTION_STATUSES }).notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_addon_subscriptions_msp_id_idx").on(t.mspId),
+  index("msp_addon_subscriptions_service_id_idx").on(t.serviceId),
+  index("msp_addon_subscriptions_status_idx").on(t.status),
+]);
+
+export type MspAddonSubscription = typeof mspAddonSubscriptionsTable.$inferSelect;
+export type InsertMspAddonSubscription = typeof mspAddonSubscriptionsTable.$inferInsert;
+
 // ── Per-customer subscription / billing state (Git #2847) ─────────────────────
 //
 // THE gap #2847 was filed for. #1944 part 8 gates the whole customer portal on
@@ -1786,6 +1814,40 @@ export const tenantSubscriptionsTable = pgTable("tenant_subscriptions", {
 
 export type TenantSubscription = typeof tenantSubscriptionsTable.$inferSelect;
 export type InsertTenantSubscription = typeof tenantSubscriptionsTable.$inferInsert;
+
+// ── Client Billing Overrides (#4111) ─────────────────────────────────────────────
+//
+// Seat-based pricing is automatic: the customer's real, live count of active
+// licensed M365 users (resolveActiveLicensedUserCount, license-waste-source.ts)
+// IS the pricing input, not an operator-picked number. The one manual knob on
+// top of that is this table — a real, operator-set count of "service account"
+// seats to exclude from the billable count before it prices the customer, with
+// a reason.
+//
+// One row per tenant (a current-state correction, not a ledger): there is
+// nothing to "issue" or "apply" against Stripe the way customer_billing_credits
+// tracks a testimonial-approval discount lifecycle — this is just a number
+// subtracted from a live count before every pricing read, so it stays a single
+// mutable row an operator updates in place.
+export const clientBillingOverridesTable = pgTable("client_billing_overrides", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" })
+    .unique(),
+  /** Seats manually excluded from the live licensed-user count before pricing. */
+  excludedServiceAccountSeats: integer("excluded_service_account_seats").notNull().default(0),
+  /** Why — the operator UI requires this whenever the count is set above zero. */
+  reason: text("reason"),
+  setByUserId: integer("set_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("client_billing_overrides_tenant_id_idx").on(t.tenantId),
+]);
+
+export type ClientBillingOverride = typeof clientBillingOverridesTable.$inferSelect;
+export type InsertClientBillingOverride = typeof clientBillingOverridesTable.$inferInsert;
 
 
 // ── MSP Connector Configuration ────────────────────────────────────────────────

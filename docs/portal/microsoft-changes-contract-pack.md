@@ -36,7 +36,7 @@ up front because it changes how Design should read every "measured"/"routed" fie
 | A | `GET /api/portal/message-center` | `artifacts/api-server/src/routes/portal-message-center.ts` | Customer (the page) | no |
 | B | AdminV2 interpretation + resolution routes | `artifacts/api-server/src/routes/admin-m365-interpretations.ts` | MSP admin (authoring) | yes |
 | C | `POST /api/portal/change-control/:code/decline` | `artifacts/api-server/src/routes/portal-change-control.ts:539` | Customer (the decline action) | yes (CR + risk) |
-| D | The routing engine (no HTTP surface) | `artifacts/api-server/src/lib/m365-change-router.ts` | Workflow node | yes (CRs, routings, risks) |
+| D | The routing engine, plus an on-demand operator trigger (#1701) | `artifacts/api-server/src/lib/m365-change-router.ts`; HTTP surface at `artifacts/api-server/src/routes/admin-m365-interpretations.ts:732` (`POST .../:id/route`) and `:794` (`GET .../:id/routings`) | Workflow node (nightly sweep) + MSP operator (on-demand) | yes (CRs, routings, risks) |
 | E | The sync writers (no HTTP surface) | `message-center-sync.ts`, `m365-roadmap-sync.ts`, `m365-change-resolver.ts` | Workflow nodes | yes (the source tables) |
 | F | `GET /api/msp/message-center` | `artifacts/api-server/src/routes/msp-message-center.ts` | MSP operator (the future console list, #1688) | no |
 
@@ -121,6 +121,7 @@ post that landed on the dated axis, capped per wave:
 | `advisoryDateText` | `string \| null` (**#1536**; Microsoft's own prose, never a Date) | null when none found | `166`, `278` |
 | `dateConfidence` | `"dated"` (literal — a post only reaches `posts[]` once it has a structural date) | never null | `168`, `279` |
 | `analysis` | `WireAnalysis \| null` | **null today for all posts** (0 interpretations); null whenever no confirmed interpretation exists | `427` |
+| `routing` | `WireRouting \| null` (**#1701**; §4) | null when no routing decision was taken for this post/customer — `decision === "none"` (not measured) is filtered out, same as `analysis` | `264-279`, `510` |
 
 **`WireDateUnclearPost`** (**#1536**, `portal-message-center.ts:180-192`, `toWireDateUnclearPost`
 at `:194-210`) — a deliberately **smaller, distinct shape** for a post with no structural date at
@@ -166,6 +167,23 @@ actually counted this tenant's estate, the NUMBER:
 The analysis join (`:377-404`) is **confirmed interpretations only** (`eq(status,"confirmed")`,
 `:401`) — a proposed (AI, unverified) reading never reaches a customer.
 
+**`WireRouting`** (**#1701**, `portal-message-center.ts:264-279`, attached at `:510`) — what the
+routing engine (D) decided this post *becomes* for this customer, the missing link the wire had no
+field for until this build:
+
+| Field | Type | Nullability | Line |
+|---|---|---|---|
+| `decision` | `string` (real enum, §3) | never null | `265` |
+| `reason` | `string` (real enum, §3) | never null | `266` |
+| `intake` | `string \| null` (§2 intake axis) | null unless routed | `267` |
+| `changeRequestCode` | `string \| null` | populated only when `decision === "auto_created"` produced a real CR row | `268` |
+| `changeRequestStatus` | `string \| null` | populated only when `decision === "auto_created"` produced a real CR row | `269` |
+| `declined` | `boolean` | true once a customer (or MSP) decline turned this into an accepted risk (#1514) | `271` |
+
+`routing` is only present once a routing decision was actually taken — `decision === "none"` ("not
+measured") is filtered out at the join, since the post's own `analysis.measured` already states
+that fact.
+
 ### 1b. AdminV2 interpretation + resolution routes (B)
 
 Source: `artifacts/api-server/src/routes/admin-m365-interpretations.ts`. `requireAdmin`-gated,
@@ -185,6 +203,8 @@ authored and where cloud filtering (#1537) actually lives.
 | `/admin/m365/interpretations/:id` | DELETE | remove | — |
 | `/admin/m365/interpretations/:id/resolve` | POST | run count now across tenants (confirmed-only) | — |
 | `/admin/m365/interpretations/:id/resolutions` | GET | stored per-tenant answers | — |
+| `/admin/m365/interpretations/:id/route` | POST | **#1701** — on-demand operator trigger: fires the same `m365_route_changes` Workflow Engine node the nightly sweep runs, narrowed to this one interpretation (confirmed-only) | `732` |
+| `/admin/m365/interpretations/:id/routings` | GET | **#1701** — stored per-tenant routing decisions for one interpretation (what each resolved count *became*), same read shape as `/resolutions` | `794` |
 
 **`toWire(interpretation)`** (`admin-m365-interpretations.ts:82-108`): `id`, `mspId`, `featureId`
 (`string \| null`), `graphMessageId` (`string \| null`), `sourceKind` (`"roadmap"` \|
@@ -214,6 +234,15 @@ cloudMode }`, plus `noMsp: true` when no MSP resolves (`:153`).
 > an **admin-authoring-side** dimension today, applied when Shane picks what to interpret. Design
 > must not draw a GCC/gov cloud toggle on the *customer* Microsoft Changes page — no such control
 > exists on surface A, and the customer-facing posts are already tenant-scoped by Microsoft.
+
+**`.../:id/route` and `.../:id/routings` (#1701)** — before this, `runM365ChangeRoutingSweep` (D,
+§1d) had no HTTP surface at all; it only ran via the seeded `m365_route_changes` Workflow Engine
+node on its daily 04:00 UTC schedule. The on-demand trigger fires the identical node through the
+real Workflow Engine (`fireWorkflowForDefinition` → `wf_runs` → `executeWorkflowRun`), never a
+parallel code path, narrowed to one interpretation via `interpretationId` in the run's trigger
+payload — confirmed-only, the same gate `/resolve` already enforces. `/routings` is the stored-read
+counterpart, populated by both the nightly sweep and the on-demand trigger since both write through
+`routeResolution()`.
 
 ### 1c. `POST /api/portal/change-control/:code/decline` — the decline action (C)
 
@@ -315,11 +344,10 @@ enum as surface A (§3).
 route exists for) is explicitly blocked on the console scaffold, #1680. This pack documents F as a
 live, correctly-scoped, working endpoint with **zero UI consumers**, not as dead code to remove.
 
-**Known defect (filed #2696, sub-issue of #1688):** `limit`/`offset` (`:35-36`) are not NaN-guarded
-the way `customerId` two lines above already is — a non-numeric value reaches Postgres as
-`LIMIT NaN`, which Postgres rejects (`ERROR: bigint out of range`, confirmed this session against
-the real local `DATABASE_URL`), so a bad query param surfaces as the route's generic 500 rather
-than a 400. Small, contained; not blocking on the console build.
+`limit`/`offset` (`:35-38`) are NaN-guarded the same way `customerId` two lines above is
+(`!isNaN(limitParam) ? limitParam : 50`, `!isNaN(offsetParam) ? offsetParam : 0`) — the #2696
+defect (a non-numeric value reaching Postgres as `LIMIT NaN`) is fixed (commit `ef46ada2e`); a bad
+query param now falls back to the default rather than 500ing.
 
 ---
 
@@ -456,7 +484,9 @@ The module is read-only on surface A; writes happen on B/C/D/E. The edges Design
   `posts[].analysis`. **Confirmed only** (`:401`).
 - **Interpretation → Resolution**, on `interpretationId` + `customerId` (`:391-397`, left join) —
   one current resolution per pair, overwritten on re-measure.
-- **Resolution → Routing** (D), on the same pair — the count is what trips the gate.
+- **Resolution → Routing** (D), on the same pair — the count is what trips the gate. Surfaced on
+  the customer wire as `posts[].routing` (**#1701**, §1a `WireRouting`), and readable/triggerable
+  directly by an MSP operator via `GET`/`POST .../:id/routings` and `.../:id/route` (§1b).
 - **Routing → Change Control**, via `msp_change_requests.source*` columns (`msp.ts:3941-3960`):
   `intake`, `implementer`, `sourceKind = "microsoft_change"`, `sourceGraphMessageId`,
   `sourceInterpretationId`, `sourceResolutionId`. **All nullable** — every pre-routing CR leaves

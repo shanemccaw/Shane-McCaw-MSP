@@ -9,7 +9,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
-import { db, servicesTable, mspSubscriptionsTable, tenantsTable, mspPlanCapabilitiesTable, mspOverridesTable } from "@workspace/db";
+import { db, servicesTable, mspSubscriptionsTable, mspAddonSubscriptionsTable, tenantsTable, mspPlanCapabilitiesTable, mspOverridesTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
 import { logger } from "./logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
@@ -45,19 +45,24 @@ export class OverageError extends Error {
 /**
  * Loads the subscription + service tier for an MSP, or null if none.
  *
- * `tierCapabilities` merges three sources, in precedence order: the
+ * `tierCapabilities` merges four sources, in precedence order: the
  * typeAttributes JSON baked onto the service/tier row (the historical
  * default), overlaid with any rows the PlatformAdmin has set for this
  * service via the Plan Capability Rules admin UI (`mspPlanCapabilitiesTable`,
  * `/msp/plans` — a rule row, when present, always wins over the typeAttributes
- * default; Git #3683), overlaid last with any still-active `msp_overrides`
- * row for this specific MSP (Git #3681) via applyMspOverride() — the same
- * merge active-directory.ts's deriveEntitlements() (AdMspCanvas's read-only
- * Entitlements panel) uses, so what an operator sees there matches what's
- * enforced here. msp_overrides wins last because it's the explicit, ad hoc,
- * single-MSP override the Admin Panel's own copy warns "bypasses plan tier
- * gating" — it's meant to override the tier-wide capability rules too, not
- * just the typeAttributes default.
+ * default; Git #3683), overlaid with a grant for every active row this MSP
+ * holds in `mspAddonSubscriptionsTable` (Git #4036 — a separate, many-to-many
+ * join table alongside the msp_id-unique msp_subscriptions row, since an
+ * add-on like services.id=131's `grantsCapabilityKey: "launch_control_plus"`
+ * can't be modeled as a second base subscription), overlaid last with any
+ * still-active `msp_overrides` row for this specific MSP (Git #3681) via
+ * applyMspOverride() — the same merge active-directory.ts's
+ * deriveEntitlements() (AdMspCanvas's read-only Entitlements panel) uses, so
+ * what an operator sees there matches what's enforced here. msp_overrides
+ * wins last because it's the explicit, ad hoc, single-MSP override the Admin
+ * Panel's own copy warns "bypasses plan tier gating" — it's meant to override
+ * the tier-wide capability rules (and add-on grants) too, not just the
+ * typeAttributes default.
  *
  * tenantAllowance/aiCreditAllowance have only two sources (typeAttributes and
  * the msp_overrides numeric overrides) — mspPlanCapabilitiesTable is
@@ -107,6 +112,24 @@ export async function loadTier(mspId: number) {
     .where(eq(mspPlanCapabilitiesTable.serviceId, sub.serviceId));
   for (const rule of capabilityRules) {
     tierCapabilities[rule.capabilityKey] = rule.enabled;
+  }
+
+  // Overlay grants from active add-on subscriptions held separately from the
+  // base tier (Git #4036) — e.g. services.id=131's launch_control_plus.
+  const addonGrants = await db
+    .select({ typeAttributes: servicesTable.typeAttributes })
+    .from(mspAddonSubscriptionsTable)
+    .innerJoin(servicesTable, eq(servicesTable.id, mspAddonSubscriptionsTable.serviceId))
+    .where(and(
+      eq(mspAddonSubscriptionsTable.mspId, mspId),
+      eq(mspAddonSubscriptionsTable.status, "active"),
+    ));
+  for (const addon of addonGrants) {
+    const addonAttrs = (addon.typeAttributes ?? {}) as Record<string, unknown>;
+    const grantsKey = addonAttrs.grantsCapabilityKey;
+    if (typeof grantsKey === "string") {
+      tierCapabilities[grantsKey] = true;
+    }
   }
 
   const planEntitlements: MspEntitlements = {
