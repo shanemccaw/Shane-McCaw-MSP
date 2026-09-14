@@ -33,6 +33,7 @@ import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
 import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
 import { toWireCrPir } from "../lib/msp-change-pir.ts";
 import { getPirForExecution, listPirsForChange, listPirsForMsp, recordPir } from "../lib/msp-change-pir-store.ts";
 
@@ -92,6 +93,16 @@ router.post("/msp/change-control/executions/:id/pir", requireAuth, requireCapabi
       res.status(status).json({ error });
       return;
     }
+    await createAuditLog({
+      actorUserId: user.id,
+      actorName: user.email || `person:${personIdForUser(user.id)}`,
+      actorRole: "msp",
+      actionType: "cr_pir.recorded",
+      actionCategory: "action",
+      entityType: "cr_pir",
+      entityId: result.pir.id,
+      metadata: { mspId, executionId, closeCode: parsed.data.closeCode },
+    });
     res.status(201).json({ pir: toWireCrPir(result.pir) });
   } catch (err) {
     log.error({ err, mspId, executionId }, "cr-pir: record failed");

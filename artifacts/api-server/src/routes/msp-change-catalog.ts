@@ -39,6 +39,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 
@@ -184,6 +185,16 @@ router.post(
         .returning();
 
       log.info({ mspId, catalogItemId: inserted.id, packKey: pack.packKey }, "standard change catalog item drafted");
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: actor.name,
+        actorRole: "msp",
+        actionType: "change_catalog.drafted",
+        actionCategory: "create",
+        entityType: "change_catalog_item",
+        entityId: inserted.id,
+        metadata: { mspId, packKey: pack.packKey },
+      });
       res.status(201).json(toWire(inserted, pack.label, pack.status));
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/change-catalog failed");
@@ -272,6 +283,16 @@ router.post(
         .returning();
 
       log.info({ mspId, catalogItemId: id, approvedBy: actor.name }, "standard change catalog item approved");
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: actor.name,
+        actorRole: "msp",
+        actionType: "change_catalog.approved",
+        actionCategory: "security",
+        entityType: "change_catalog_item",
+        entityId: id,
+        metadata: { mspId, packKey: item.packKey },
+      });
       res.json(toWire(updated, pack.label, pack.status));
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/change-catalog/:id/approve failed");
@@ -335,6 +356,16 @@ router.post(
         .limit(1);
 
       log.info({ mspId, catalogItemId: id, revokedBy: actor.name, reason: parsed.data.reason }, "standard change catalog item revoked");
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: actor.name,
+        actorRole: "msp",
+        actionType: "change_catalog.revoked",
+        actionCategory: "security",
+        entityType: "change_catalog_item",
+        entityId: id,
+        metadata: { mspId, packKey: item.packKey, reason: parsed.data.reason },
+      });
       res.json(toWire(updated, pack?.label ?? item.packKey, pack?.status ?? "unknown"));
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/change-catalog/:id/revoke failed");

@@ -36,6 +36,7 @@ import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
 import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
 import { formatChangeRequestCode, toWireCrExecution } from "../lib/msp-change-execution.ts";
 import {
   attestHumanAction,
@@ -138,6 +139,16 @@ router.post("/msp/change-control/executions/human-action", requireAuth, requireC
       attestedByPersonId: actor.personId,
       attestationNote: parsed.data.attestationNote ?? null,
     });
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: actor.email || req.user!.name || `person:${actor.personId}`,
+      actorRole: "msp",
+      actionType: "cr_execution.human_action_recorded",
+      actionCategory: "action",
+      entityType: "cr_execution",
+      entityId: execution.id,
+      metadata: { mspId, changeRequestId: cr.id },
+    });
     res.status(201).json({ execution: toWireCrExecution(execution) });
   } catch (err) {
     log.error({ err, mspId }, "cr-executions: human-action record failed");
@@ -173,6 +184,16 @@ router.post("/msp/change-control/executions/:id/attest", requireAuth, requireCap
       res.status(409).json({ error: "Execution not found, not a human action, or already attested" });
       return;
     }
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: actor.email || req.user!.name || `person:${actor.personId}`,
+      actorRole: "msp",
+      actionType: "cr_execution.attested",
+      actionCategory: "action",
+      entityType: "cr_execution",
+      entityId: executionId,
+      metadata: { mspId },
+    });
     res.status(200).json({ execution: toWireCrExecution(updated) });
   } catch (err) {
     log.error({ err, mspId, executionId }, "cr-executions: attest failed");
@@ -197,6 +218,16 @@ router.post("/msp/change-control/executions/:id/reconcile-plan", requireAuth, re
       return;
     }
     const updated = await getExecution(mspId, executionId);
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: "msp",
+      actionType: "cr_execution.plan_reconciled",
+      actionCategory: "action",
+      entityType: "cr_execution",
+      entityId: executionId,
+      metadata: { mspId },
+    });
     res.status(200).json({ diff, execution: updated ? toWireCrExecution(updated) : null });
   } catch (err) {
     log.error({ err, mspId, executionId }, "cr-executions: reconcile-plan failed");
@@ -223,6 +254,16 @@ router.post("/msp/change-control/change-requests/:id/rollback", requireAuth, req
       res.status(409).json({ error: result.reason });
       return;
     }
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: actor.email || req.user!.name || `person:${actor.personId}`,
+      actorRole: "msp",
+      actionType: "change_request.rollback_raised",
+      actionCategory: "action",
+      entityType: "msp_change_request",
+      entityId: result.inverse.id,
+      metadata: { mspId, rollbackOfChangeRequestId: changeRequestId, approvalsCreated: result.approvalsCreated },
+    });
     res.status(201).json({
       inverseChangeRequestId: result.inverse.id,
       inverseChangeCode: formatChangeRequestCode(result.inverse.id),
@@ -259,6 +300,16 @@ router.post("/msp/change-control/executions/:id/verify-rollback", requireAuth, r
       res.status(409).json({ error: "Execution not found, or is not a rollback execution" });
       return;
     }
+    await createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: "msp",
+      actionType: "cr_execution.rollback_verified",
+      actionCategory: "action",
+      entityType: "cr_execution",
+      entityId: executionId,
+      metadata: { mspId, outcome: parsed.data.outcome },
+    });
     res.status(200).json({ execution: toWireCrExecution(updated) });
   } catch (err) {
     log.error({ err, mspId, executionId }, "cr-executions: verify-rollback failed");
