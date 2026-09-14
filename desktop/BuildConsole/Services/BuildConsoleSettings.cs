@@ -1170,16 +1170,12 @@ namespace BuildConsole.Services
                     };
                 }
 
-                // Seed user accounts if missing
-                if (settings.UserAccounts == null || settings.UserAccounts.Count == 0)
-                {
-                    settings.UserAccounts = new List<UserAccountEntry>
-                    {
-                        new UserAccountEntry { Username = "standard_test_user", Password = "StandardPassword123!", AccountTier = "Standard", Notes = "Standard tier gating test account" },
-                        new UserAccountEntry { Username = "enterprise_test_user", Password = "EnterprisePassword123!", AccountTier = "Enterprise", Notes = "Enterprise tier gating test account" }
-                    };
-                    settings.ActiveUserAccountId = settings.UserAccounts[0].Id;
-                }
+                // Git #4089 — no fake seed accounts. A fresh/reset settings.json starts with a
+                // genuinely empty UserAccounts list (the field initializer above already does
+                // this); the old "standard_test_user"/"enterprise_test_user" placeholders were
+                // fabricated non-email credentials that don't correspond to any real account,
+                // and the empty-state UI already handles a blank list.
+                settings.UserAccounts ??= new List<UserAccountEntry>();
 
                 return settings;
             }
