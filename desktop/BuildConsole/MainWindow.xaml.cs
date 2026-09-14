@@ -3800,7 +3800,10 @@ namespace BuildConsole
                     epicAssocWired = true;
                     int issueNumber = associateIssueNumber.Value;
                     string issueType = associateIssueType ?? "Issue";
-                    string defaultTitle = associateDefaultTitle ?? $"[#{issueNumber}] Chat";
+                    // Git #4107 — RAW title only; "[#N] " is a display-only prefix added exactly
+                    // once by OpenChatTab's forced-title computation, never persisted (the double-
+                    // prefix bug this issue fixes came from baking it in here AND re-adding it there).
+                    string defaultTitle = associateDefaultTitle ?? "Chat";
                     wv.CoreWebView2.WebMessageReceived += async (ws, we) =>
                     {
                         // Git #3885 — [link 2] log EVERY WebMessageReceived this handler sees,
@@ -3981,6 +3984,25 @@ namespace BuildConsole
             return wv;
         }
 
+        /// <summary>Git #4107 — the one shared resolution both the forced tab-title computation
+        /// (<see cref="OpenChatTab"/>) and the Rename-Tab-menu-item visibility (<see cref="BuildTabContextMenu"/>)
+        /// use, so they can never disagree about whether a chat is "epic-linked". Widens Git
+        /// #2534's original EpicId-only check: tries chat.EpicId -&gt; GetEpicForChat first (the
+        /// existing single-hop resolution), then falls back to GetEpicForIssueNumber off the
+        /// resolved leaf issue number — the same walk-to-top-ancestor fallback
+        /// <see cref="ActivateOrReopenEpicChat"/> already trusts — so a chat linked only via a
+        /// leaf issue that itself belongs to a real epic still resolves, instead of falling
+        /// through to the raw, double-prefix-prone title path.</summary>
+        private BuildConsole.Services.BoardEpic? ResolveForcedEpicForChat(BuildConsole.Services.BoardChat? chat, int? githubNumber)
+        {
+            if (chat == null) return null;
+            var epic = chat.EpicId.HasValue ? LeftSidebar?.GetEpicForChat(chat) : null;
+            if (epic != null) return epic;
+            if (githubNumber.HasValue)
+                epic = LeftSidebar?.GetEpicForIssueNumber(githubNumber.Value);
+            return epic;
+        }
+
         /// <param name="selectTab">Git #1636 — false opens/creates the tab as a background tab:
         /// added to <see cref="EditorTabs"/>.Items but never assigned to SelectedItem, and an
         /// already-open match is left focused wherever it currently is. Defaults true so every
@@ -4013,18 +4035,27 @@ namespace BuildConsole
                 Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center,
                 Foreground = (Brush)FindResource("BlueBrush")
             });
-            // Git #2534 — for any chat with a real epic_id, force the tab title to
-            // "[#<epic github number>] <Epic Name>", regardless of the chat's own title or
-            // the claude.ai page title. The epic-linked format always wins (req 6);
-            // GetEpicForChat resolves EpicId directly as its first resolution path.
+            // Git #2534 (widened by #4107) — for any chat that resolves to a real epic
+            // (directly via chat.EpicId, or via the linked leaf issue's own parent epic), force
+            // the tab title to "[#<epic github number>] - <Epic Name> <X>% complete",
+            // regardless of the chat's own title or the claude.ai page title. The epic-linked
+            // format always wins (req 6) and never depends on a manual rename (Git #4107 —
+            // RenameTab only ever wrote to local session-restore state, never the real DB, so
+            // a manual rename always lost to this forced computation on the next reload anyway).
             // Only the DISPLAY title is forced — state.GithubNumber below is left as the
             // caller's value so per-chat build matching (which keys on the leaf issue,
             // not the epic) keeps working for a sub-issue chat that also carries an epic.
-            BuildConsole.Services.BoardEpic? forcedEpic =
-                chat.EpicId.HasValue ? LeftSidebar?.GetEpicForChat(chat) : null;
-            string headerTitle = forcedEpic?.GithubNumber != null
-                ? $"[#{forcedEpic.GithubNumber.Value}] {forcedEpic.Title}"
-                : (githubNumber.HasValue ? $"[#{githubNumber.Value}] {chat.Title}" : chat.Title);
+            BuildConsole.Services.BoardEpic? forcedEpic = ResolveForcedEpicForChat(chat, githubNumber);
+            string headerTitle;
+            if (forcedEpic?.GithubNumber != null)
+            {
+                int pct = LeftSidebar?.GetSubIssuePercentForGithubNumber(forcedEpic.GithubNumber.Value) ?? 0;
+                headerTitle = $"[#{forcedEpic.GithubNumber.Value}] - {forcedEpic.Title} {pct}% complete";
+            }
+            else
+            {
+                headerTitle = githubNumber.HasValue ? $"[#{githubNumber.Value}] {chat.Title}" : chat.Title;
+            }
             // Git #2079 — prefix with the linked Git issue number so the tab header
             // reads "[#N] Title" (matches the [#N]/#N formats ExtractTabTitleIssueNumber
             // already parses back out at ~line 1368 for the #1802 epic-highlight fallback).
@@ -5587,11 +5618,24 @@ namespace BuildConsole
                 }
             };
 
-            // 0b. Rename Tab
+            // 0b. Rename Tab — Git #4107: hidden for any chat that resolves to a real forced
+            // epic title. Shane's real ask was "manual renaming gone entirely for epic-linked
+            // chats" — a rename there would either be silently overridden by OpenChatTab's
+            // forced computation on the very next open, or (per the real root cause here)
+            // never actually survive past this session anyway, since RenameTab only ever wrote
+            // to local session-restore state, never the real DB. Left visible for a genuinely
+            // standalone/unassociated chat, where there's no forced title to fight with.
             var miRename = new MenuItem { Header = "Rename Tab...", InputGestureText = "F2" };
             miRename.Click += (s, e) => RenameTab(tabItem);
             cm.Items.Add(miRename);
             cm.Items.Add(new Separator());
+            cm.Opened += (s, e) =>
+            {
+                var chatTag = tabItem.Tag as BuildConsole.Services.BoardChat;
+                int? trackedNumber = _chatTabs.TryGetValue(tabItem, out var renameState) ? renameState.GithubNumber : null;
+                var forcedEpic = ResolveForcedEpicForChat(chatTag, trackedNumber);
+                miRename.Visibility = forcedEpic != null ? Visibility.Collapsed : Visibility.Visible;
+            };
 
             // 1. Close
             var miClose = new MenuItem { Header = "Close", InputGestureText = "Ctrl+W" };
@@ -6046,7 +6090,7 @@ namespace BuildConsole
             var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, n, handoffFromChatUrl: chatUrl);
 
             BuildConsole.Services.ActivityLog.Log("git-board.chat", $"successor chat for Epic #{n} -> {baseUrl} (handoff from {chatUrl}, PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
-            OpenWebTab(fullUrl, $"#{n} New Chat", "", injectPrefillPoll: true, associateIssueNumber: n, associateIssueType: "Epic", associateDefaultTitle: $"[#{n}] New Chat");
+            OpenWebTab(fullUrl, $"#{n} New Chat", "", injectPrefillPoll: true, associateIssueNumber: n, associateIssueType: "Epic", associateDefaultTitle: "New Chat");
         }
 
         public void CloseTab(TabItem tabItem, TabControl? ownerTabControl = null)
@@ -7206,7 +7250,7 @@ namespace BuildConsole
                 var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, targetIssue);
 
                 BuildConsole.Services.ActivityLog.Log("git-board.chat", $"new chat for Epic #{targetIssue} -> {baseUrl} (prefill '{label}', PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
-                OpenWebTab(fullUrl, $"#{targetIssue} New Chat", "", injectPrefillPoll: true, associateIssueNumber: targetIssue, associateIssueType: "Epic", associateDefaultTitle: $"[#{targetIssue}] New Chat");
+                OpenWebTab(fullUrl, $"#{targetIssue} New Chat", "", injectPrefillPoll: true, associateIssueNumber: targetIssue, associateIssueType: "Epic", associateDefaultTitle: "New Chat");
             }
         }
 
@@ -8720,7 +8764,7 @@ namespace BuildConsole
                 try { LeftSidebar.PopulateChatsTree(); } catch { }
 
                 BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Firing new chat for Epic #{epicNumber}...");
-                OpenWebTab(fullUrl, $"#{epicNumber} New Chat", "", injectPrefillPoll: true, associateIssueNumber: epicNumber, associateIssueType: "Epic", associateDefaultTitle: $"[#{epicNumber}] New Chat");
+                OpenWebTab(fullUrl, $"#{epicNumber} New Chat", "", injectPrefillPoll: true, associateIssueNumber: epicNumber, associateIssueType: "Epic", associateDefaultTitle: "New Chat");
 
                 CloseTab(oldTab);
                 ToastEngine.Success("Handoff", $"Handoff fired for Epic #{epicNumber}! Old chat archived.");
