@@ -1,0 +1,61 @@
+{
+  "testName": "Issue #2998 - Billing - the real artifacts/portal \u0027/billing\u0027 page (src/pages/billing.tsx), part of #1598. Covers this build\u0027s own scope: Receipts (GET /api/portal/invoices, Git #1237) and \u0027Manage payment in Stripe\u0027 (POST /api/portal/billing/customer-portal), wired via billingLive.ts, per Design/portal/design_handoff_full_site/docs/portal/billing-contract-pack.md and the landed Billing.dc.html export. The landed design deliberately does NOT surface a live plan-state section (subscriptionsLive.ts / GET /portal/billing/subscriptions, Git #1611) on this page - its own logic states no tenant holds a monthly monitoring subscription today, so there is nothing real to show as a current plan; that endpoint stays real and unwired here, matching the design as shipped. Monitoring-plan tier cards are the design\u0027s own labeled illustration (\u0027Illustrative, not your account\u0027), not tenant data - not covered by apiTests.",
+  "productName": "Portal",
+  "sessionId": "2026-09-14-1421",
+  "startedAt": "2026-09-14T14:21:34.6132145-04:00",
+  "endedAt": "2026-09-14T14:21:40.4868650-04:00",
+  "durationSeconds": 5.87,
+  "success": false,
+  "summary": "\u274C TEST FAILED (Navigation Error)",
+  "urlsVisited": [
+    "http://localhost:5175/billing"
+  ],
+  "steps": [],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "get-billing",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/billing",
+      "statusCode": 404,
+      "durationMs": 0,
+      "reason": "HTTP 404",
+      "timestamp": "2026-09-14T14:21:34.9692496-04:00"
+    },
+    {
+      "name": "get-billing",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/billing",
+      "statusCode": 404,
+      "durationMs": 0,
+      "reason": "HTTP 404",
+      "timestamp": "2026-09-14T14:21:37.5403650-04:00"
+    },
+    {
+      "name": "get-billing",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/billing",
+      "statusCode": 404,
+      "durationMs": 0,
+      "reason": "HTTP 404",
+      "timestamp": "2026-09-14T14:21:40.1034378-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 0,
+      "StepLabel": "navigate http://localhost:5175/billing",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\2998-20260914142133\\screenshots\\0.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\billing\\0.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [],
+  "recommendations": "Investigate failing step(s) and review captured screenshots and console/API logs under /Bugs/Portal/2026-09-14-1421/automation/."
+}

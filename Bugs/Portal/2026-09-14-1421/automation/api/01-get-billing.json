@@ -1,0 +1,34 @@
+{
+  "name": "get-billing",
+  "method": "GET",
+  "requestUrl": "http://localhost:5175/billing",
+  "statusCode": 404,
+  "durationMs": 0,
+  "reason": "HTTP 404",
+  "requestHeaders": {
+    "Accept": "text/html,application/xhtml\u002Bxml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+    "Host": "localhost:5175",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+    "sec-ch-ua": "\u0022Microsoft Edge\u0022;v=\u0022152\u0022, \u0022Not?A_Brand\u0022;v=\u002224\u0022, \u0022Chromium\u0022;v=\u0022152\u0022, \u0022Microsoft Edge WebView2\u0022;v=\u0022152\u0022",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\u0022Windows\u0022"
+  },
+  "responseHeaders": {
+    "Connection": "keep-alive",
+    "Content-Type": "text/html",
+    "Date": "Mon, 14 Sep 2026 18:21:34 GMT",
+    "Keep-Alive": "timeout=5",
+    "Transfer-Encoding": "chunked",
+    "Vary": "Origin"
+  },
+  "responseBody": null,
+  "timestamp": "2026-09-14T14:21:34.9692496-04:00"
+}
