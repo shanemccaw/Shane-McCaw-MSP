@@ -301,6 +301,7 @@ export default function OverviewPage() {
 
             {openOffers.offers.length > 0 ? (
               <div
+                data-testid="overview-open-offers-card"
                 className="flex min-w-0 flex-col gap-[11px] rounded-[14px] p-[14px] pb-4"
                 style={{ border: "1px solid rgba(0,120,212,.25)", background: "rgba(0,120,212,.05)" }}
               >

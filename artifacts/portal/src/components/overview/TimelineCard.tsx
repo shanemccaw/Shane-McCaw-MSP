@@ -147,6 +147,7 @@ export function TimelineCard({ projects }: { projects: readonly EnrichedProjectW
 
   return (
     <div
+      data-testid="overview-timeline-card"
       className="flex flex-col gap-[10px] rounded-[14px] p-[14px] px-[18px] pb-4"
       style={{ border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.02)" }}
     >
@@ -158,6 +159,7 @@ export function TimelineCard({ projects }: { projects: readonly EnrichedProjectW
           {(["matrix", "list"] as const).map((key) => (
             <span
               key={key}
+              data-testid={`overview-timeline-view-${key}`}
               onClick={() => setTView(key)}
               className="cursor-pointer rounded-md px-[9px] py-1 text-[10px] font-bold"
               style={{
