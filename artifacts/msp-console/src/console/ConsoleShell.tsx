@@ -58,6 +58,7 @@ import { Overview } from "./modules/Overview";
 import { LaunchControl } from "./modules/LaunchControl";
 import { AzureCredential } from "./modules/AzureCredential";
 import { Projects } from "./modules/Projects";
+import { PlaceholderModule } from "./modules/PlaceholderModule";
 
 function roleLabelFor(p: MspUserProfile): string {
   if (p.mspRole === "PlatformAdmin") return "PlatformAdmin — full access";
@@ -468,6 +469,28 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     // lives inside the module itself, not the outer tree, since the backend
     // has no cross-customer aggregate route (pack §5).
     return <Projects customers={customers} embedded />;
+  }
+  if (sel.kind === "msp" && sel.page === "workflows") {
+    // Workflows (#4080, Feature #3768) — real nav slot, generic
+    // `PlaceholderModule` mount. Scope isn't defined yet; see the issue.
+    return (
+      <PlaceholderModule
+        icon="workflow"
+        title="Workflows isn't built yet"
+        description="This nav slot is real — what runs here hasn't been scoped yet. Shane will define it while dogfooding the console on his own tenant, and this placeholder is replaced with the real module once it lands."
+      />
+    );
+  }
+  if (sel.kind === "msp" && sel.page === "agents") {
+    // Agents (#4080, Feature #3768) — real nav slot, generic
+    // `PlaceholderModule` mount. Scope isn't defined yet; see the issue.
+    return (
+      <PlaceholderModule
+        icon="sparkles"
+        title="Agents isn't built yet"
+        description="This nav slot is real — what runs here hasn't been scoped yet. Shane will define it while dogfooding the console on his own tenant, and this placeholder is replaced with the real module once it lands."
+      />
+    );
   }
   if (sel.kind === "msp" && sel.page === "audit") {
     // Audit Log (#4012, README screen 63), Operations mount — no customer
