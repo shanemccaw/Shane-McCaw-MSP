@@ -248,6 +248,8 @@ Posted: <UTC ISO8601>
 
 \- No fixture/hardcoded data
 
+\- \*\*Run all web tests\*\* against a real, role-appropriate test account before calling anything DONE. Request credentials from BuildConsole for the specific RBAC role this build actually needs to verify (Customer, MSPOperator, MSPAdmin, PlatformAdmin, etc.) rather than assuming a fixed test identity exists — different builds need different roles, and a single shared account cannot cover them all. A build that touches auth, role gating, or any page a signed-in user reaches is not DONE on `tsc`/unit tests alone; it needs a real web-test pass against the real role(s) it changes or could break. (Git #4088 — the customer-login gate regression that reached a real account before any web test caught it.)
+
 \- \*\*Never launch a background/dev-server process in a new visible console window — no Windows `start` command, no `UseShellExecute=true` for anything not explicitly meant for Shane to watch interactively. Redirect output to a file or run windowlessly instead.\*\* (Git #3846)
 
 ```
