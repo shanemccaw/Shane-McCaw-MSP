@@ -9,12 +9,64 @@ import { PccGraphValidator } from '../lib/pcc/graph-validator.ts';
 import { PccUiValidator } from '../lib/pcc/ui-validator.ts';
 
 // requireAuth.ts (imported transitively via requireAdmin) imports @workspace/db
-// at module scope, which throws on import unless DATABASE_URL is set. This
-// router test only exercises JWT verification + routing, never a DB query —
-// same mock as admin-live-stream.test.ts.
+// at module scope, which throws on import unless DATABASE_URL is set. Git #3551
+// also moved the PCC test catalog (taxonomy-catalog.ts's getCatalog) off the old
+// in-memory DEFAULT_TESTS array onto a real `pcc_test_catalog` table read via
+// db.select().from(pccTestCatalogTable) — so this router test now needs a real
+// chainable `db.select().from()` mock resolving to the same rows the seed
+// migration (lib/db/migrations/manual/2026-09-13-pcc-test-catalog-3551.sql) put
+// in that table, not just an empty object.
+const CATALOG_ROWS = [
+  {
+    id: 'drift-detect-settings', name: 'Tenant Settings Drift Check', taxonomy: 'ConfigDrift',
+    description: 'Compares target tenant environment configuration against the reference baseline.',
+    isProdSafe: true, dependencies: [], tags: ['drift', 'configuration', 'smoke'],
+  },
+  {
+    id: 'graph-user-read', name: 'Microsoft Graph User Directory Endpoint Test', taxonomy: 'GraphEndpoint',
+    description: 'Queries Graph user endpoint and validates schema compliance.',
+    isProdSafe: true, dependencies: [], tags: ['graph', 'directory', 'smoke'],
+  },
+  {
+    id: 'graph-license-check', name: 'Microsoft Graph License Inactivity Check', taxonomy: 'GraphEndpoint',
+    description: 'Validates that licensing signals are accurately mapped from user sign-in details.',
+    isProdSafe: true, dependencies: ['graph-user-read'], tags: ['graph', 'licensing', 'regression'],
+  },
+  {
+    id: 'event-stripe-checkout', name: 'Stripe Webhook Event Injection', taxonomy: 'EventInjection',
+    description: 'Simulates a Stripe checkout completion webhook delivery.',
+    isProdSafe: false, dependencies: [], tags: ['stripe', 'billing', 'destructive'],
+  },
+  {
+    id: 'event-consent-grant', name: 'Consent Granted Action Injection', taxonomy: 'EventInjection',
+    description: 'Simulates a user accepting policy terms.',
+    isProdSafe: false, dependencies: [], tags: ['consent', 'compliance', 'destructive'],
+  },
+  {
+    id: 'ui-banner-check', name: 'System Alert Banner Visibility Test', taxonomy: 'UISurface',
+    description: 'Verifies warning banner positioning and copy drift.',
+    isProdSafe: true, dependencies: [], tags: ['ui', 'banner', 'smoke'],
+  },
+  {
+    id: 'ui-onboarding-nudge', name: 'Onboarding User Nudge Bubble Test', taxonomy: 'UISurface',
+    description: 'Validates the presence and styling of client onboarding prompts.',
+    isProdSafe: true, dependencies: ['event-consent-grant'], tags: ['ui', 'nudge', 'regression'],
+  },
+  {
+    id: 'journey-90day-replay', name: '90-Day Tenant Journey Lifecycle Replay', taxonomy: 'JourneyReplay',
+    description: 'Replays a sequence of customer lifecycle ticks and asserts state trends.',
+    isProdSafe: false, dependencies: ['event-stripe-checkout'], tags: ['replay', 'temporal', 'destructive'],
+  },
+];
+
 vi.mock('@workspace/db', () => ({
-  db: {},
+  db: {
+    select: () => ({
+      from: () => Promise.resolve(CATALOG_ROWS),
+    }),
+  },
   tenantsTable: {},
+  pccTestCatalogTable: {},
 }));
 
 const JWT_SECRET = 'test-pcc-secret';
