@@ -36,6 +36,7 @@ import { resolveFulfillment } from "../lib/resolve-fulfillment.ts";
 import { syncTenantsAfterStatusWrite } from "../lib/retention/subscription-state.ts";
 import { cascadeMspSubscriptionToCustomers } from "../lib/retention/msp-cascade.ts";
 import { enqueueZohoBooksInvoiceSync } from "../lib/zoho-books.ts";
+import { markCreditsAppliedFromInvoice } from "../lib/testimonial-credit.ts";
 import { fireEventRule } from "../lib/alert-engine.ts";
 import { logger } from "../lib/logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
@@ -276,6 +277,7 @@ export async function dispatchMspStripeEvent(
         break;
 
       case "invoice.paid":
+        await markTestimonialCreditsApplied(event.data.object as import("stripe").Stripe.Invoice);
         await handleInvoicePaidZohoSync(event.data.object as import("stripe").Stripe.Invoice);
         break;
 
@@ -313,6 +315,19 @@ export async function dispatchMspStripeEvent(
 
   const mspId = await resolveMspIdForInboundLog(event);
   await recordInboundWebhookEvent({ event, outcome: "processed", summary: knownSummary, mspId });
+}
+
+/**
+ * Git #4032 — a paid invoice that carried a testimonial-approval credit's discount marks
+ * that credit applied. Its own try/catch: a failure here must not block the Zoho sync
+ * that shares this event, and the credit row simply stays `issued`.
+ */
+async function markTestimonialCreditsApplied(invoice: import("stripe").Stripe.Invoice): Promise<void> {
+  try {
+    await markCreditsAppliedFromInvoice(invoice);
+  } catch (err) {
+    log.error({ err, invoiceId: invoice.id }, "msp-billing-webhook: marking testimonial credits applied failed (non-fatal)");
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

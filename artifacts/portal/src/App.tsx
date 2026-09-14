@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/lib/theme-context";
 import { SlugProvider, getStoredSlug } from "@/lib/slug-context";
 import { PortalLayout } from "@/components/layout";
 import IndexPage from "@/pages/index";
+import CustomerOffersPage from "@/pages/customer-offers";
 import ComingSoon from "@/pages/coming-soon";
 import SupportPage from "@/pages/support";
 import CustomerRequestsPage from "@/pages/customer-requests";
@@ -117,6 +118,7 @@ function ProtectedRoutes() {
       <PortalLayout>
         <Switch>
           <Route path="/" component={IndexPage} />
+          <Route path="/offers" component={CustomerOffersPage} />
           <Route path="/support" component={SupportPage} />
           <Route path="/requests" component={CustomerRequestsPage} />
           <Route path="/account-security" component={AccountSecurityPage} />

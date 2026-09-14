@@ -1,7 +1,7 @@
 import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index, date, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
-import { mspsTable, tenantsTable } from "./msp.ts";
+import { mspsTable, tenantsTable, tenantSubscriptionsTable } from "./msp.ts";
 // #2460 — the seven legacy role values, from the migration's own compatibility shim.
 // PURE (no schema imports), so this cannot form the msp.ts <-> index.ts cycle the
 // note above usersTable warns about.
@@ -1638,32 +1638,155 @@ export const customerTestimonialsTable = pgTable("customer_testimonials", {
   body: text("body").notNull(),
   kind: text("kind").notNull().default("testimonial"), // 'testimonial' | 'feedback' | 'suggestion'
   permissionToPublish: boolean("permission_to_publish").notNull().default(false),
+  // Admin Panel review decision (Git #4032). Settled on #3436: approval — never
+  // submission — is what grants the customer's one-time next-month credit
+  // (customer_billing_credits below). reviewed_* records who decided and when.
+  status: text("status").notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedByUserId: integer("reviewed_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   index("customer_testimonials_customer_id_idx").on(t.customerId),
   check("customer_testimonials_kind_check", sql`${t.kind} IN ('testimonial', 'feedback', 'suggestion')`),
+  check("customer_testimonials_status_check", sql`${t.status} IN ('pending', 'approved', 'rejected')`),
 ]);
 
 export type InsertCustomerTestimonial = typeof customerTestimonialsTable.$inferInsert;
 export type CustomerTestimonial = typeof customerTestimonialsTable.$inferSelect;
 export const CUSTOMER_TESTIMONIAL_KINDS = ["testimonial", "feedback", "suggestion"] as const;
 export type CustomerTestimonialKind = typeof CUSTOMER_TESTIMONIAL_KINDS[number];
+export const CUSTOMER_TESTIMONIAL_STATUSES = ["pending", "approved", "rejected"] as const;
+export type CustomerTestimonialStatus = typeof CUSTOMER_TESTIMONIAL_STATUSES[number];
 
-// Audit Log — persistent chronological record of all admin and client actions
+// Customer Billing Credits — a one-time credit against a customer's NEXT invoice
+// (Git #4032). Deliberately not a `coupons` row: a coupon is a global, code-entered
+// checkout promo with no customer binding, and nothing in the codebase redeems one
+// against a subscription invoice. A credit here is bound to one tenant, and is
+// delivered as a Stripe `duration: "once"` coupon attached to that tenant's active
+// subscription, which Stripe consumes on exactly one invoice.
+//   pending               — row written, Stripe not yet attempted
+//   issued                — discount attached; the next invoice will carry it
+//   awaiting_subscription — no active Stripe subscription recorded to credit
+//   failed                — Stripe call failed (failure_reason); retryable
+//   applied               — an invoice.paid carried the discount (applied_* columns)
+export const CUSTOMER_BILLING_CREDIT_STATUSES = ["pending", "issued", "awaiting_subscription", "failed", "applied"] as const;
+export type CustomerBillingCreditStatus = typeof CUSTOMER_BILLING_CREDIT_STATUSES[number];
+export const CUSTOMER_BILLING_CREDIT_SOURCES = ["testimonial_approval"] as const;
+
+export const customerBillingCreditsTable = pgTable("customer_billing_credits", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  source: text("source").notNull(),
+  sourceTestimonialId: integer("source_testimonial_id").references(() => customerTestimonialsTable.id, { onDelete: "set null" }),
+  // Same discount shape as coupons: fixed values are dollars, percentage is 0–100.
+  discountType: text("discount_type", { enum: ["fixed", "percentage"] }).notNull(),
+  discountValue: numeric("discount_value", { precision: 10, scale: 2 }).notNull(),
+  currency: text("currency").notNull().default("usd"),
+  status: text("status").notNull().default("pending"),
+  failureReason: text("failure_reason"),
+  tenantSubscriptionId: integer("tenant_subscription_id").references(() => tenantSubscriptionsTable.id, { onDelete: "set null" }),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripeCouponId: text("stripe_coupon_id"),
+  stripeDiscountId: text("stripe_discount_id"),
+  issuedAt: timestamp("issued_at", { withTimezone: true }),
+  appliedStripeInvoiceId: text("applied_stripe_invoice_id"),
+  appliedAmountCents: integer("applied_amount_cents"),
+  appliedAt: timestamp("applied_at", { withTimezone: true }),
+  issuedByUserId: integer("issued_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("customer_billing_credits_tenant_id_idx").on(t.tenantId),
+  index("customer_billing_credits_stripe_discount_idx").on(t.stripeDiscountId),
+  uniqueIndex("customer_billing_credits_source_testimonial_uq").on(t.sourceTestimonialId),
+  check("customer_billing_credits_status_check", sql`${t.status} IN ('pending', 'issued', 'awaiting_subscription', 'failed', 'applied')`),
+  check("customer_billing_credits_source_check", sql`${t.source} IN ('testimonial_approval')`),
+  check("customer_billing_credits_discount_type_check", sql`${t.discountType} IN ('fixed', 'percentage')`),
+]);
+
+export type CustomerBillingCredit = typeof customerBillingCreditsTable.$inferSelect;
+export type InsertCustomerBillingCredit = typeof customerBillingCreditsTable.$inferInsert;
+
+// Audit Log — persistent, append-only chronological record of platform actions.
+//
+// Immutable by design (#1946 question D, confirmed 2026-09-14): the append-only
+// pattern proven by #1503's `cr_events` — there is NO update or delete route against
+// this table anywhere in the repo, only inserts and reads. See
+// `docs/audit-log-model-4044.md` for the immutability contract and where the trail
+// under this (new) model begins.
+
+// Real actor model (#4044 / #1946). `actorRole` was a two-value enum ["admin","client"];
+// a platform with MSP operators, service accounts, platform admins and agents (#1931)
+// cannot honestly answer "who did this" against two values. This is the real closed set
+// of principals. `system` is retained only for genuinely unattended actions with no real
+// principal (a cron sweep, a lifecycle transition) — never as a catch-all where a real
+// actor exists (#1946 standing constraint). `microsoft` is an external Microsoft
+// Graph-initiated change. The first four historical values (admin/client) plus the
+// already-in-flight msp/customer/system/microsoft usages are all preserved, so the 179
+// existing call sites keep working unchanged (migrated, not reinterpreted — #1946 F).
+export const AUDIT_ACTOR_ROLES = [
+  "admin",           // platform / MSP administrator (legacy value, retained)
+  "client",          // customer-portal user (legacy value, retained)
+  "customer",        // customer-tenant principal acting in their own tenant
+  "msp",             // MSP operator acting on a customer's behalf
+  "platform_admin",  // platform-level administrator (distinct from a customer admin)
+  "service_account", // non-human service principal
+  "agent",           // automation agent (#1931) — indistinguishable in trail except by name
+  "microsoft",       // external Microsoft Graph-initiated change
+  "system",          // genuinely unattended action with no real principal (never a catch-all)
+] as const;
+export type AuditActorRole = typeof AUDIT_ACTOR_ROLES[number];
+
+// Enumerable action catalogue (#4044 / #1946). `actionType` stays an open detail string
+// (the specific verb, ~175 real values, some passed as variables at the call site — it is
+// NOT hardened into a closed union, which would break those sites). Filterability comes
+// from this coarse, closed operation-class enum — the same class of fix as #1826's
+// `notifications.category`, and the M365-unified-audit-log analogue of `RecordType`. A
+// filterable audit log works against this dimension, not against free text. Ordinary reads
+// are deliberately absent: per the settled read boundary (#1946, 2026-09-14) only
+// privileged / cross-boundary reads are audited, and those are `access`, not `read`.
+export const AUDIT_ACTION_CATEGORIES = [
+  "create",   // a record/entity was created
+  "update",   // a record/entity was modified
+  "delete",   // a record/entity was deleted (soft or hard)
+  "action",   // an operation with no single CRUD target (scan, execute, approve, reject, restore, promote)
+  "settings", // a configuration / preference / policy change
+  "auth",     // authentication & session lifecycle (login, logout, password, MFA, session revoke, token issue)
+  "access",   // a privileged / cross-boundary access event (break-glass, operator reading a customer's data, export/download)
+  "security", // a security-consequential grant/revoke (consent, credential, role grant)
+  "system",   // a platform-lifecycle action attributed to no real principal
+] as const;
+export type AuditActionCategory = typeof AUDIT_ACTION_CATEGORIES[number];
+
 export const auditLogsTable = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   actorUserId: integer("actor_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   actorName: text("actor_name").notNull(),
-  actorRole: text("actor_role", { enum: ["admin", "client"] }).notNull(),
+  actorRole: text("actor_role", { enum: AUDIT_ACTOR_ROLES }).notNull(),
   actionType: text("action_type").notNull(),
+  // Coarse, filterable operation class (nullable: existing rows predate the catalogue and are
+  // NOT backfilled — #1946 F — so a NULL here means "logged before the catalogue landed").
+  actionCategory: text("action_category", { enum: AUDIT_ACTION_CATEGORIES }),
   entityType: text("entity_type").notNull(),
   entityId: text("entity_id"),
   entityLabel: text("entity_label"),
+  // Person-scoped subject (references users.id). Retained for backward compatibility with the
+  // 179 existing call sites; superseded for scoping purposes by `tenantId` below.
   clientId: integer("client_id").references(() => usersTable.id, { onDelete: "set null" }),
+  // Real tenant scoping (#4044 / #1946): a customer-facing audit log scopes to the customer's
+  // tenant, not to a single person — the same defect #1923 records for status reports. References
+  // tenants.id (users.tenant_id → tenants.id is the JWT customerId bridge). Nullable: not every
+  // audited action is tenant-scoped (platform-wide admin actions have no tenant), and existing
+  // rows are not backfilled.
+  tenantId: integer("tenant_id").references(() => tenantsTable.id, { onDelete: "set null" }),
   projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("audit_logs_action_category_idx").on(t.actionCategory),
+  index("audit_logs_action_type_idx").on(t.actionType),
+  index("audit_logs_tenant_id_idx").on(t.tenantId),
+]);
 
 export type InsertAuditLog = typeof auditLogsTable.$inferInsert;
 export type AuditLog = typeof auditLogsTable.$inferSelect;
